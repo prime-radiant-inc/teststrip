@@ -14,6 +14,12 @@ public struct PreviewRequest: Equatable, Sendable {
     public var assetID: AssetID
     public var level: PreviewLevel
     public var priority: PreviewPriority
+
+    public init(assetID: AssetID, level: PreviewLevel, priority: PreviewPriority) {
+        self.assetID = assetID
+        self.level = level
+        self.priority = priority
+    }
 }
 
 public struct PreviewScheduler: Sendable {
