@@ -9,6 +9,12 @@ public struct IngestPlan: Equatable, Sendable {
     public var mode: Mode
     public var sourceRoot: URL
     public var destinationRoot: URL?
+
+    public init(mode: Mode, sourceRoot: URL, destinationRoot: URL? = nil) {
+        self.mode = mode
+        self.sourceRoot = sourceRoot
+        self.destinationRoot = destinationRoot
+    }
 }
 
 public enum IngestPlanner {

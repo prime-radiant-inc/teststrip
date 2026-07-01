@@ -4,7 +4,7 @@ public struct FolderScanner: Sendable {
     private let supportedExtensions: Set<String>
 
     public init(supportedExtensions: Set<String>) {
-        self.supportedExtensions = supportedExtensions
+        self.supportedExtensions = Set(supportedExtensions.map { $0.lowercased() })
     }
 
     public func scan(root: URL) throws -> [URL] {
@@ -19,7 +19,12 @@ public struct FolderScanner: Sendable {
 
         var files: [URL] = []
         for case let url as URL in enumerator {
-            let values = try url.resourceValues(forKeys: [.isRegularFileKey])
+            let values: URLResourceValues
+            do {
+                values = try url.resourceValues(forKeys: [.isRegularFileKey])
+            } catch {
+                throw TeststripError.io("could not inspect \(url.path): \(error.localizedDescription)")
+            }
             guard values.isRegularFile == true else { continue }
             if supportedExtensions.contains(url.pathExtension.lowercased()) {
                 files.append(visibleURL(for: url, resolvedRoot: resolvedRoot, requestedRoot: root))

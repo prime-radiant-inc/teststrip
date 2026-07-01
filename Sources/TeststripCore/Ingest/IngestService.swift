@@ -39,17 +39,44 @@ public struct IngestService: Sendable {
             guard let destinationRoot = plan.destinationRoot else {
                 throw TeststripError.invalidState("copy ingest requires destination root")
             }
-            try FileManager.default.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
-            let destination = destinationRoot.appendingPathComponent(sourceFile.lastPathComponent)
-            if !FileManager.default.fileExists(atPath: destination.path) {
+            let destination = try destinationURL(for: sourceFile, sourceRoot: plan.sourceRoot, destinationRoot: destinationRoot)
+            let destinationDirectory = destination.deletingLastPathComponent()
+            do {
+                try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+            } catch {
+                throw TeststripError.io("could not create ingest directory \(destinationDirectory.path): \(error.localizedDescription)")
+            }
+            guard !FileManager.default.fileExists(atPath: destination.path) else {
+                throw TeststripError.io("ingest destination already exists \(destination.path)")
+            }
+            do {
                 try FileManager.default.copyItem(at: sourceFile, to: destination)
+            } catch {
+                throw TeststripError.io("could not copy \(sourceFile.path) to \(destination.path): \(error.localizedDescription)")
             }
             return destination
         }
     }
 
+    private func destinationURL(for sourceFile: URL, sourceRoot: URL, destinationRoot: URL) throws -> URL {
+        let sourceRootPath = sourceRoot.resolvingSymlinksInPath().path
+        let sourceFilePath = sourceFile.resolvingSymlinksInPath().path
+        let sourceRootPrefix = sourceRootPath == "/" ? sourceRootPath : sourceRootPath + "/"
+        guard sourceFilePath.hasPrefix(sourceRootPrefix) else {
+            throw TeststripError.io("source file \(sourceFile.path) is outside ingest root \(sourceRoot.path)")
+        }
+
+        let relativePath = String(sourceFilePath.dropFirst(sourceRootPrefix.count))
+        return destinationRoot.appendingPathComponent(relativePath)
+    }
+
     private func fingerprint(for url: URL) throws -> FileFingerprint {
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        let attributes: [FileAttributeKey: Any]
+        do {
+            attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        } catch {
+            throw TeststripError.io("could not fingerprint \(url.path): \(error.localizedDescription)")
+        }
         let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
         let modificationDate = attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0)
         return FileFingerprint(size: size, modificationDate: modificationDate)
