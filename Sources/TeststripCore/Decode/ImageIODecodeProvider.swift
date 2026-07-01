@@ -20,12 +20,21 @@ public struct ImageIODecodeProvider: DecodeProvider {
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
             throw TeststripError.unsupportedFormat("ImageIO could not read \(url.lastPathComponent)")
         }
-        let width = properties[kCGImagePropertyPixelWidth] as? Int ?? 0
-        let height = properties[kCGImagePropertyPixelHeight] as? Int ?? 0
+        let dimensions = try Self.dimensions(from: properties, filename: url.lastPathComponent)
         return DecodeMetadata(
-            pixelWidth: width,
-            pixelHeight: height,
+            pixelWidth: dimensions.pixelWidth,
+            pixelHeight: dimensions.pixelHeight,
             provenance: ProviderProvenance(provider: name, model: "ImageIO", version: "1", settingsHash: "default")
         )
+    }
+
+    static func dimensions(from properties: [CFString: Any], filename: String) throws -> (pixelWidth: Int, pixelHeight: Int) {
+        guard let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int,
+              width > 0,
+              height > 0 else {
+            throw TeststripError.unsupportedFormat("ImageIO could not read dimensions for \(filename)")
+        }
+        return (width, height)
     }
 }
