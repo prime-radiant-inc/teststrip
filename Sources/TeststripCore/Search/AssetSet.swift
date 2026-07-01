@@ -18,16 +18,23 @@ public struct AssetSet: Codable, Equatable, Sendable {
     public var membership: Membership
     public var starred: Bool
 
+    public init(id: AssetSetID, name: String, membership: Membership, starred: Bool = false) {
+        self.id = id
+        self.name = name
+        self.membership = membership
+        self.starred = starred
+    }
+
     public var isDynamic: Bool {
         if case .dynamic = membership { return true }
         return false
     }
 
     public static func manual(id: AssetSetID, name: String, assetIDs: [AssetID]) -> AssetSet {
-        AssetSet(id: id, name: name, membership: .manual(assetIDs), starred: false)
+        AssetSet(id: id, name: name, membership: .manual(assetIDs))
     }
 
     public static func dynamic(id: AssetSetID, name: String, query: SetQuery) -> AssetSet {
-        AssetSet(id: id, name: name, membership: .dynamic(query), starred: false)
+        AssetSet(id: id, name: name, membership: .dynamic(query))
     }
 }

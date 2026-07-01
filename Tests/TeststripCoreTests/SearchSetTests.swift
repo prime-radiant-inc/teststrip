@@ -1,5 +1,5 @@
 import XCTest
-@testable import TeststripCore
+import TeststripCore
 
 final class SearchSetTests: XCTestCase {
     func testManualSetPreservesExplicitMembershipAndOrdering() {
@@ -11,6 +11,7 @@ final class SearchSetTests: XCTestCase {
 
         XCTAssertEqual(set.membership, .manual([AssetID(rawValue: "b"), AssetID(rawValue: "a")]))
         XCTAssertFalse(set.isDynamic)
+        XCTAssertFalse(set.starred)
     }
 
     func testDynamicSetStoresStructuredQuery() {
@@ -23,5 +24,20 @@ final class SearchSetTests: XCTestCase {
 
         XCTAssertTrue(set.isDynamic)
         XCTAssertEqual(set.membership, .dynamic(query))
+        XCTAssertFalse(set.starred)
+    }
+
+    func testPublicInitializerSupportsSnapshotMembershipAndStarredState() {
+        let assetID = AssetID(rawValue: "asset-1")
+        let set = AssetSet(
+            id: AssetSetID(rawValue: "set-3"),
+            name: "Session snapshot",
+            membership: .snapshot([assetID]),
+            starred: true
+        )
+
+        XCTAssertEqual(set.membership, .snapshot([assetID]))
+        XCTAssertTrue(set.starred)
+        XCTAssertFalse(set.isDynamic)
     }
 }
