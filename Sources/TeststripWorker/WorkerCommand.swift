@@ -6,7 +6,7 @@ public enum WorkerControlKind: String, Codable, Equatable, Sendable {
     case cancelAll
 }
 
-public enum WorkerCommand: Codable, Equatable, Sendable {
+public enum WorkerCommand: Equatable, Sendable {
     case generatePreview(assetID: AssetID, level: PreviewLevel)
     case syncMetadata(assetID: AssetID)
     case runEvaluation(assetID: AssetID, provider: String)
