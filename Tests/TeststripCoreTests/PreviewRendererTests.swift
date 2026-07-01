@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 import XCTest
@@ -17,6 +18,24 @@ final class PreviewRendererTests: XCTestCase {
         let dimensions = try renderer.dimensions(of: output)
         XCTAssertTrue(FileManager.default.fileExists(atPath: output.path))
         XCTAssertLessThanOrEqual(max(dimensions.width, dimensions.height), PreviewLevel.grid.maxPixelDimension!)
+    }
+
+    func testRendererWrapsDestinationDirectoryCreationFailureAsIO() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "preview-render-directory-error")
+        let source = directory.appendingPathComponent("source.jpg")
+        let blockedParent = directory.appendingPathComponent("blocked-parent")
+        let output = blockedParent.appendingPathComponent("grid.jpg")
+        try writeTestJPEG(to: source, width: 1200, height: 800)
+        try Data("not a directory".utf8).write(to: blockedParent)
+
+        let renderer = PreviewRenderer()
+
+        XCTAssertThrowsError(try renderer.render(sourceURL: source, level: .grid, destinationURL: output)) { error in
+            guard case .io = error as? TeststripError else {
+                XCTFail("expected TeststripError.io, got \(error)")
+                return
+            }
+        }
     }
 
     private func writeTestJPEG(to url: URL, width: Int, height: Int) throws {

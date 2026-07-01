@@ -26,7 +26,12 @@ public struct PreviewRenderer: Sendable {
             throw TeststripError.unsupportedFormat("could not render preview for \(sourceURL.lastPathComponent)")
         }
 
-        try FileManager.default.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let destinationDirectory = destinationURL.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+        } catch {
+            throw TeststripError.io("could not create preview directory \(destinationDirectory.path): \(error.localizedDescription)")
+        }
         guard let destination = CGImageDestinationCreateWithURL(destinationURL as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
             throw TeststripError.io("could not create preview destination")
         }
