@@ -69,7 +69,7 @@ Sources/
     WorkerCommand.swift
     WorkerProtocol.swift
   TeststripApp/
-    TeststripApp.swift
+    main.swift
     AppModel.swift
     SidebarView.swift
     LibraryGridView.swift
@@ -100,8 +100,13 @@ Tests/
 **Files:**
 - Create: `Package.swift`
 - Create: `Sources/TeststripCore/Support/TeststripError.swift`
+- Create: `Sources/TeststripWorker/main.swift`
+- Create: `Sources/TeststripApp/main.swift`
+- Create: `Sources/TeststripBench/main.swift`
 - Create: `Tests/TeststripCoreTests/TestSupport.swift`
 - Test: `Tests/TeststripCoreTests/TestSupportTests.swift`
+- Create: `Tests/TeststripWorkerTests/PlaceholderTests.swift`
+- Create: `Tests/TeststripAppTests/PlaceholderTests.swift`
 
 - [ ] **Step 1: Create the Swift package manifest**
 
@@ -153,6 +158,50 @@ let package = Package(
         )
     ]
 )
+```
+
+- [ ] **Step 1a: Add minimal executable and test target placeholders**
+
+Create `Sources/TeststripWorker/main.swift`:
+
+```swift
+// Placeholder entry point replaced by the worker protocol task.
+```
+
+Create `Sources/TeststripApp/main.swift`:
+
+```swift
+// Placeholder entry point replaced by the native app shell task.
+```
+
+Create `Sources/TeststripBench/main.swift`:
+
+```swift
+// Placeholder entry point replaced by the benchmark task.
+```
+
+Create `Tests/TeststripWorkerTests/PlaceholderTests.swift`:
+
+```swift
+import XCTest
+
+final class PlaceholderWorkerTests: XCTestCase {
+    func testPlaceholder() {
+        XCTAssertTrue(true)
+    }
+}
+```
+
+Create `Tests/TeststripAppTests/PlaceholderTests.swift`:
+
+```swift
+import XCTest
+
+final class PlaceholderAppTests: XCTestCase {
+    func testPlaceholder() {
+        XCTAssertTrue(true)
+    }
+}
 ```
 
 - [ ] **Step 2: Write the failing support test**
@@ -249,7 +298,7 @@ Run:
 
 ```bash
 git status --short
-git add Package.swift Sources/TeststripCore/Support/TeststripError.swift Tests/TeststripCoreTests/TestSupport.swift Tests/TeststripCoreTests/TestSupportTests.swift
+git add Package.swift Sources/TeststripCore/Support/TeststripError.swift Sources/TeststripWorker/main.swift Sources/TeststripApp/main.swift Sources/TeststripBench/main.swift Tests/TeststripCoreTests/TestSupport.swift Tests/TeststripCoreTests/TestSupportTests.swift Tests/TeststripWorkerTests/PlaceholderTests.swift Tests/TeststripAppTests/PlaceholderTests.swift
 git commit -m "Bootstrap Swift package" -m "Create the Swift Package layout for Teststrip's core library, app executable, worker executable, benchmark executable, and XCTest targets. Add shared test support and a small domain error type used by catalog and pipeline work."
 ```
 
@@ -2116,7 +2165,7 @@ git commit -m "Add evaluation provider scaffolding" -m "Represent typed recognit
 **Files:**
 - Create: `Sources/TeststripWorker/WorkerCommand.swift`
 - Create: `Sources/TeststripWorker/WorkerProtocol.swift`
-- Create: `Sources/TeststripWorker/main.swift`
+- Modify: `Sources/TeststripWorker/main.swift`
 - Test: `Tests/TeststripWorkerTests/WorkerProtocolTests.swift`
 
 - [ ] **Step 1: Write failing worker protocol tests**
@@ -2205,7 +2254,7 @@ public enum WorkerProtocolEncoder {
 }
 ```
 
-Create `Sources/TeststripWorker/main.swift`:
+Replace `Sources/TeststripWorker/main.swift`:
 
 ```swift
 import Foundation
@@ -2246,7 +2295,7 @@ git commit -m "Add supervised worker protocol" -m "Create the initial JSON-line 
 ## Task 12: SwiftUI App Shell And View Model
 
 **Files:**
-- Create: `Sources/TeststripApp/TeststripApp.swift`
+- Modify: `Sources/TeststripApp/main.swift`
 - Create: `Sources/TeststripApp/AppModel.swift`
 - Create: `Sources/TeststripApp/SidebarView.swift`
 - Create: `Sources/TeststripApp/LibraryGridView.swift`
@@ -2401,12 +2450,11 @@ public final class AppModel {
 }
 ```
 
-Create `Sources/TeststripApp/TeststripApp.swift`:
+Replace `Sources/TeststripApp/main.swift`:
 
 ```swift
 import SwiftUI
 
-@main
 struct TeststripApplication: App {
     @State private var model = AppModel.demo()
 
@@ -2423,6 +2471,8 @@ struct TeststripApplication: App {
         }
     }
 }
+
+TeststripApplication.main()
 ```
 
 Create `Sources/TeststripApp/SidebarView.swift`:
@@ -2551,11 +2601,11 @@ git commit -m "Add native app shell" -m "Create the first SwiftUI Studio-style s
 ## Task 13: Performance Harness For Catalog Scale
 
 **Files:**
-- Create: `Sources/TeststripBench/main.swift`
+- Modify: `Sources/TeststripBench/main.swift`
 
 - [ ] **Step 1: Add benchmark executable**
 
-Create `Sources/TeststripBench/main.swift`:
+Replace `Sources/TeststripBench/main.swift`:
 
 ```swift
 import Foundation
