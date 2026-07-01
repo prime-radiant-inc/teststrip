@@ -26,6 +26,50 @@ final class EvaluationProviderTests: XCTestCase {
 
         XCTAssertEqual(request.url?.absoluteString, "http://localhost:11434/v1/chat/completions")
         XCTAssertEqual(request.httpMethod, "POST")
-        XCTAssertNotNil(request.httpBody)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+
+        let body = try XCTUnwrap(request.httpBody)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["model"] as? String, "llava")
+
+        let messages = try XCTUnwrap(json["messages"] as? [[String: Any]])
+        let firstMessage = try XCTUnwrap(messages.first)
+        XCTAssertEqual(firstMessage["role"] as? String, "user")
+
+        let content = try XCTUnwrap(firstMessage["content"] as? [[String: Any]])
+        let textValues = content.compactMap { $0["text"] as? String }
+        XCTAssertTrue(textValues.contains("Describe culling signals"))
+        XCTAssertTrue(textValues.contains { $0.contains("/tmp/frame.jpg") })
+    }
+
+    func testEvaluationValuesRoundTripThroughJSON() throws {
+        let values: [EvaluationValue] = [
+            .score(0.92),
+            .label("keeper"),
+            .text("sharp foreground"),
+            .vector([0.1, 0.2, 0.3])
+        ]
+
+        for value in values {
+            let data = try JSONEncoder().encode(value)
+            let decoded = try JSONDecoder().decode(EvaluationValue.self, from: data)
+
+            XCTAssertEqual(decoded, value)
+        }
+    }
+
+    func testEvaluationSignalRoundTripsThroughJSON() throws {
+        let signal = EvaluationSignal(
+            assetID: AssetID(rawValue: "asset-1"),
+            kind: .aesthetics,
+            value: .label("portfolio"),
+            confidence: 0.74,
+            provenance: ProviderProvenance(provider: "LocalHTTP", model: "llava", version: "1", settingsHash: "default")
+        )
+
+        let data = try JSONEncoder().encode(signal)
+        let decoded = try JSONDecoder().decode(EvaluationSignal.self, from: data)
+
+        XCTAssertEqual(decoded, signal)
     }
 }
