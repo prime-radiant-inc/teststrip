@@ -18,8 +18,11 @@ final class MetadataSyncTests: XCTestCase {
 
         XCTAssertEqual(parsed.metadata.rating, 5)
         XCTAssertEqual(parsed.metadata.colorLabel, .green)
+        XCTAssertEqual(parsed.metadata.flag, .pick)
         XCTAssertEqual(parsed.metadata.keywords, ["Patagonia", "mountains"])
         XCTAssertEqual(parsed.metadata.caption, "Fitz Roy sunrise")
+        XCTAssertEqual(parsed.metadata.creator, "Jesse")
+        XCTAssertEqual(parsed.metadata.copyright, "Copyright Jesse")
     }
 
     func testSyncQueueTracksPendingWriteWithCatalogGeneration() {
