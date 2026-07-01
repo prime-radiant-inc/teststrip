@@ -49,7 +49,7 @@ public final class CatalogRepository {
 
     public func allAssets(limit: Int) throws -> [Asset] {
         let rows = try database.rows(
-            "SELECT * FROM assets ORDER BY created_at ASC, id ASC LIMIT ?",
+            "SELECT * FROM assets ORDER BY rowid ASC LIMIT ?",
             bindings: ["\(limit)"]
         )
         return try rows.map(decodeAsset)
