@@ -1,0 +1,1655 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<style>
+body{margin:0;background:#0d0d0f;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',system-ui,sans-serif}
+.dv-turn{padding:44px 48px 36px;border-bottom:1px solid rgba(255,255,255,.06);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 22px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#e8a23c;color:#161616;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 13px/1.2 system-ui,sans-serif;color:rgba(255,255,255,.9)}
+.dv-opts{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:11px;scroll-margin-top:16px}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.85);border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:9px;font:400 11.5px/1.45 system-ui,sans-serif;color:rgba(255,255,255,.5);max-width:1280px}
+.dv-card{max-width:100%;background:#161618;border:1px solid rgba(255,255,255,.09);border-radius:12px;box-shadow:0 30px 70px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.45);overflow:hidden}
+.dv-opt:target .dv-oid{background:#e8a23c;color:#161616}
+.dv-next{margin:26px 0 0;font:12px/1.7 system-ui,sans-serif;color:rgba(255,255,255,.45);max-width:960px}
+.dv-next a{color:rgba(255,255,255,.72);text-decoration:none;border-bottom:1px solid rgba(255,255,255,.2)}
+.ts-grain{background-image:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxNTAnIGhlaWdodD0nMTUwJz48ZmlsdGVyIGlkPSduJz48ZmVUdXJidWxlbmNlIHR5cGU9J2ZyYWN0YWxOb2lzZScgYmFzZUZyZXF1ZW5jeT0nMC44MicgbnVtT2N0YXZlcz0nMicgc3RpdGNoVGlsZXM9J3N0aXRjaCcvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPScxMDAlJyBoZWlnaHQ9JzEwMCUnIGZpbHRlcj0ndXJsKCNuKScvPjwvc3ZnPg==")}
+.ts-sc::-webkit-scrollbar{width:10px;height:10px}
+.ts-sc::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border-radius:6px;border:3px solid transparent;background-clip:content-box}
+.ts-sc::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.22);background-clip:content-box}
+.ts-sc::-webkit-scrollbar-track{background:transparent}
+@keyframes ts-pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes ts-caret{0%,49%{opacity:1}50%,100%{opacity:0}}
+</style>
+</helmet>
+
+<section class="dv-turn" id="t5">
+<div class="dv-thd"><a class="dv-tid" href="#t5">5</a><span class="dv-tname">The rest of the library — first passes</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="5a">
+  <div class="dv-olabel"><a class="dv-oid" href="#5a">5a</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">People</b> — Teststrip groups every face and matches to known people. The few it can't place surface as "who's this?" with its best guess, one tap to confirm.</span></div>
+  <div class="dv-card" style="width:1180px">
+    <div style="width:1180px;height:788px;display:flex;flex-direction:column;background:#141416;color:#fff;overflow:hidden">
+      <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:linear-gradient(#262629,#1d1d20);border-bottom:1px solid rgba(255,255,255,.07)">
+        <div style="display:flex;gap:8px"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+        <span style="font:600 13px system-ui;color:#fff">People</span>
+        <div style="flex:1"></div>
+        <span style="font:500 11.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.45)">18 people · 1,204 photos</span>
+      </div>
+      <div class="ts-sc" style="flex:1;overflow-y:auto;padding:20px 22px">
+        <div style="background:rgba(232,162,60,.05);border:1px solid rgba(232,162,60,.18);border-radius:12px;padding:15px 16px;margin-bottom:24px">
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:14px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+            <span style="font:600 9.5px ui-monospace,Menlo,monospace;color:#e8a23c;letter-spacing:.06em">TESTSTRIP · 3 FACES NEED A NAME</span>
+            <span style="font:450 11px system-ui;color:rgba(255,255,255,.4);margin-left:4px">· 44 others matched automatically</span>
+          </div>
+          <div style="display:flex;gap:14px">
+            <sc-for list="{{ unnamed }}" as="u" hint-placeholder-count="3">
+              <div style="flex:1;display:flex;align-items:center;gap:12px;background:#161618;border:1px solid rgba(255,255,255,.07);border-radius:11px;padding:11px 13px">
+                <div style="position:relative;width:52px;height:52px;border-radius:50%;overflow:hidden;flex:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)"><div style="{{ u.grad }}"></div></div>
+                <div style="flex:1;min-width:0">
+                  <div style="font:450 10.5px system-ui;color:rgba(255,255,255,.45)">{{ u.count }} photos</div>
+                  <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+                    <button style="height:26px;padding:0 11px;background:#e8a23c;color:#171512;border:none;border-radius:7px;font:600 11px system-ui;cursor:pointer">{{ u.suggest }}</button>
+                    <button style="width:26px;height:26px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.12);border-radius:7px;font:500 11px system-ui;cursor:pointer">✕</button>
+                  </div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="font:600 9px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.35);letter-spacing:.08em;margin-bottom:15px">ALL PEOPLE</div>
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:20px 14px">
+          <sc-for list="{{ peopleList }}" as="p" hint-placeholder-count="8">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:9px;cursor:pointer">
+              <div style="position:relative;width:100%;aspect-ratio:1 / 1;border-radius:50%;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),0 4px 14px rgba(0,0,0,.4)" style-hover="box-shadow:inset 0 0 0 2px #e8a23c,0 4px 14px rgba(0,0,0,.4)"><div style="{{ p.grad }}"></div></div>
+              <div style="text-align:center;line-height:1.3">
+                <div style="font:600 12.5px system-ui;color:#fff">{{ p.name }}</div>
+                <div style="font:500 10.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.42)">{{ p.count }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dv-opt" id="5b">
+  <div class="dv-olabel"><a class="dv-oid" href="#5b">5b</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">Places</b> — every geotagged frame on a map, clusters sized by count. Teststrip reverse-geocodes on import, so decades of travel plot themselves.</span></div>
+  <div class="dv-card" style="width:1180px">
+    <div style="width:1180px;height:788px;display:flex;flex-direction:column;background:#0e0e10;color:#fff;overflow:hidden">
+      <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:linear-gradient(#1c1c1f,#161619);border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;gap:8px"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+        <span style="font:600 13px system-ui;color:#fff">Places</span>
+        <div style="flex:1"></div>
+        <span style="font:500 11.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.45)">78 locations · 412,000 geotagged</span>
+      </div>
+      <div style="flex:1;display:flex;min-height:0">
+        <div class="ts-sc" style="width:236px;flex:none;background:#141416;border-right:1px solid rgba(255,255,255,.06);overflow-y:auto;padding:12px 10px">
+          <div style="font:600 9px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.35);letter-spacing:.08em;padding:4px 8px 9px">TOP LOCATIONS</div>
+          <sc-for list="{{ places }}" as="pl" hint-placeholder-count="8">
+            <div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.05)">
+              <span style="width:8px;height:8px;border-radius:50%;background:#e8a23c;box-shadow:0 0 8px rgba(232,162,60,.6);flex:none"></span>
+              <span style="flex:1;font:450 12px system-ui;color:rgba(255,255,255,.82);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ pl.name }}</span>
+              <span style="font:500 10.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.4)">{{ pl.count }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="flex:1;position:relative;overflow:hidden;background:radial-gradient(120% 90% at 50% 30%,#12202e,#0a0f16 70%)">
+          <svg width="100%" height="100%" viewBox="0 0 100 60" preserveAspectRatio="none" style="position:absolute;inset:0;opacity:.35">
+            <g stroke="rgba(120,160,200,.14)" stroke-width="0.15" fill="none"><path d="M0 12H100M0 24H100M0 36H100M0 48H100"/><path d="M14 0V60M28 0V60M42 0V60M56 0V60M70 0V60M84 0V60"/></g>
+          </svg>
+          <div style="position:absolute;left:8%;top:32%;width:20%;height:34%;border-radius:50%;background:radial-gradient(circle,rgba(90,120,140,.24),transparent 70%);filter:blur(2px)"></div>
+          <div style="position:absolute;left:44%;top:16%;width:20%;height:40%;border-radius:50%;background:radial-gradient(circle,rgba(90,120,140,.22),transparent 70%);filter:blur(2px)"></div>
+          <div style="position:absolute;left:74%;top:30%;width:20%;height:32%;border-radius:50%;background:radial-gradient(circle,rgba(90,120,140,.2),transparent 70%);filter:blur(2px)"></div>
+          <div style="position:absolute;left:24%;top:64%;width:14%;height:30%;border-radius:50%;background:radial-gradient(circle,rgba(90,120,140,.2),transparent 70%);filter:blur(2px)"></div>
+          <sc-for list="{{ places }}" as="pl" hint-placeholder-count="8">
+            <div style="{{ pl.posStyle }}">
+              <div style="{{ pl.bubbleStyle }}">{{ pl.label }}</div>
+              <span style="font:600 9px system-ui;color:rgba(255,255,255,.7);text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap">{{ pl.name }}</span>
+            </div>
+          </sc-for>
+          <div style="position:absolute;right:16px;bottom:16px;display:flex;align-items:center;gap:9px;height:32px;padding:0 14px;background:rgba(22,22,24,.88);border:1px solid rgba(255,255,255,.12);border-radius:20px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+            <span style="font:500 11px system-ui;color:rgba(255,255,255,.7)">Geotagged on import — 412k of 486k</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dv-opt" id="5c">
+  <div class="dv-olabel"><a class="dv-oid" href="#5c">5c</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">Search</b> — one Ask bar turns plain language into a precise query; the classic filter facets on the left stay in sync for when you want the knobs instead.</span></div>
+  <div class="dv-card" style="width:1180px">
+    <div style="width:1180px;height:788px;display:flex;flex-direction:column;background:#141416;color:#fff;overflow:hidden">
+      <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:linear-gradient(#262629,#1d1d20);border-bottom:1px solid rgba(255,255,255,.07)">
+        <div style="display:flex;gap:8px"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+        <span style="font:600 13px system-ui;color:#fff">Search</span>
+      </div>
+      <div style="flex:none;padding:15px 18px 13px;border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;align-items:center;gap:12px;height:48px;padding:0 15px;background:linear-gradient(#1c1c1f,#191919);border:1px solid rgba(232,162,60,.22);border-radius:11px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+          <div style="flex:1;font:450 13.5px system-ui;color:rgba(255,255,255,.9)">{{ searchQuery }}<span style="display:inline-block;width:2px;height:14px;background:#e8a23c;margin-left:2px;vertical-align:-2px;animation:ts-caret 1.1s steps(1) infinite"></span></div>
+          <span style="font:600 12px ui-monospace,Menlo,monospace;color:#f0b866">324 results</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;margin-top:11px;flex-wrap:wrap">
+          <span style="font:600 9.5px ui-monospace,Menlo,monospace;color:#e8a23c;letter-spacing:.06em">TESTSTRIP READS</span>
+          <sc-for list="{{ searchFacets }}" as="f" hint-placeholder-count="5"><span style="{{ f.style }}"><sc-if value="{{ f.ai }}" hint-placeholder-val="{{ false }}"><span style="color:#e8a23c;font-size:11px">✦</span></sc-if>{{ f.t }}</span></sc-for>
+        </div>
+      </div>
+      <div style="flex:1;display:flex;min-height:0">
+        <div class="ts-sc" style="width:222px;flex:none;background:#161618;border-right:1px solid rgba(255,255,255,.06);overflow-y:auto;padding:14px 12px">
+          <div style="font:600 9px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.35);letter-spacing:.08em;margin-bottom:10px">REFINE</div>
+          <sc-for list="{{ refineGroups }}" as="g" hint-placeholder-count="3">
+            <div style="margin-bottom:16px">
+              <div style="font:600 11px system-ui;color:rgba(255,255,255,.75);margin-bottom:8px">{{ g.title }}</div>
+              <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer">
+                  <span style="width:14px;height:14px;border-radius:4px;border:1px solid rgba(255,255,255,.2);flex:none"></span>
+                  <span style="flex:1;font:450 11.5px system-ui;color:rgba(255,255,255,.65)">{{ r.label }}</span>
+                  <span style="font:500 10px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.35)">{{ r.count }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+        <div class="ts-sc" style="flex:1;overflow-y:auto;padding:14px;background:#0e0e10">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:9px">
+            <sc-for list="{{ searchResults }}" as="p" hint-placeholder-count="18">
+              <div style="position:relative;border-radius:5px;overflow:hidden;aspect-ratio:3 / 2;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.5)" style-hover="box-shadow:0 0 0 2px rgba(255,255,255,.2),0 6px 16px rgba(0,0,0,.55)">
+                <div style="{{ p.styleObj }}"></div>
+                <div style="position:absolute;inset:0;box-shadow:inset 0 0 24px 4px rgba(0,0,0,.4)"></div>
+                <div class="ts-grain" style="position:absolute;inset:0;opacity:.07;mix-blend-mode:overlay;pointer-events:none"></div>
+                <div style="position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:5px;padding:12px 6px 5px;background:linear-gradient(transparent,rgba(0,0,0,.55))">
+                  <sc-if value="{{ p.isPick }}" hint-placeholder-val="{{ false }}"><span style="width:14px;height:14px;border-radius:3px;background:#5ec98a;display:flex;align-items:center;justify-content:center"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#12281c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5v15M5 6h11l-2 4 2 4H5"/></svg></span></sc-if>
+                  <sc-if value="{{ p.ratingStr }}" hint-placeholder-val=""><span style="font:600 10px system-ui;color:#f5b455;letter-spacing:.5px;text-shadow:0 1px 2px rgba(0,0,0,.6)">{{ p.ratingStr }}</span></sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dv-opt" id="5d">
+  <div class="dv-olabel"><a class="dv-oid" href="#5d">5d</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">Smart collections</b> — stack rules and the set updates live, or start from a Teststrip-suggested collection and tweak. Self-maintaining as new imports land.</span></div>
+  <div class="dv-card" style="width:1180px">
+    <div style="width:1180px;height:788px;display:flex;flex-direction:column;background:#0e0e10;color:#fff;overflow:hidden">
+      <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:linear-gradient(#1c1c1f,#161619);border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;gap:8px"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+        <span style="font:600 13px system-ui;color:#fff">New Smart Collection</span>
+      </div>
+      <div style="flex:1;display:flex;min-height:0">
+        <div class="ts-sc" style="width:452px;flex:none;background:#141416;border-right:1px solid rgba(255,255,255,.06);overflow-y:auto;padding:18px">
+          <div style="font:450 12px system-ui;color:rgba(255,255,255,.5);margin-bottom:7px">Name</div>
+          <div style="height:38px;display:flex;align-items:center;padding:0 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;font:600 13px system-ui;color:#fff;margin-bottom:20px">Patagonia · Portfolio picks</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:13px">
+            <span style="font:450 12px system-ui;color:rgba(255,255,255,.7)">Match</span>
+            <div style="display:flex;align-items:center;gap:6px;height:28px;padding:0 11px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:7px;font:600 12px system-ui;color:#fff">All <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div>
+            <span style="font:450 12px system-ui;color:rgba(255,255,255,.7)">of these rules</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ scRules }}" as="r" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:7px">
+                <div style="width:118px;flex:none;height:32px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;font:500 11.5px system-ui;color:#fff">{{ r.field }}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div>
+                <div style="flex:1;height:32px;display:flex;align-items:center;padding:0 10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;font:450 11.5px system-ui;color:rgba(255,255,255,.6)">{{ r.op }}</div>
+                <div style="width:104px;flex:none;height:32px;display:flex;align-items:center;padding:0 10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:7px;font:600 11.5px system-ui;color:#f0b866">{{ r.val }}</div>
+                <span style="width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.35);cursor:pointer;font-size:15px">✕</span>
+              </div>
+            </sc-for>
+            <div style="display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px dashed rgba(255,255,255,.16);border-radius:7px;font:500 11.5px system-ui;color:rgba(255,255,255,.5);cursor:pointer;width:fit-content">+ Add rule</div>
+          </div>
+          <div style="margin-top:22px;background:rgba(232,162,60,.05);border:1px solid rgba(232,162,60,.18);border-radius:10px;padding:12px 13px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:9px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg><span style="font:600 9.5px ui-monospace,Menlo,monospace;color:#e8a23c;letter-spacing:.05em">TESTSTRIP SUGGESTS</span></div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              <span style="font:450 11px system-ui;color:#f0b866;background:rgba(232,162,60,.1);border:1px solid rgba(232,162,60,.24);padding:3px 9px;border-radius:6px;cursor:pointer">Sharp keepers</span>
+              <span style="font:450 11px system-ui;color:#f0b866;background:rgba(232,162,60,.1);border:1px solid rgba(232,162,60,.24);padding:3px 9px;border-radius:6px;cursor:pointer">Golden hour</span>
+              <span style="font:450 11px system-ui;color:#f0b866;background:rgba(232,162,60,.1);border:1px solid rgba(232,162,60,.24);padding:3px 9px;border-radius:6px;cursor:pointer">Best of each trip</span>
+            </div>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+          <div style="flex:none;display:flex;align-items:baseline;gap:9px;padding:15px 18px 12px">
+            <span style="font:700 17px system-ui;color:#fff;letter-spacing:-.01em">4,204 photos</span>
+            <span style="font:450 12px system-ui;color:rgba(255,255,255,.45)">match · updates live as you shoot</span>
+          </div>
+          <div class="ts-sc" style="flex:1;overflow-y:auto;padding:0 18px 18px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px">
+              <sc-for list="{{ scPreview }}" as="p" hint-placeholder-count="18">
+                <div style="position:relative;border-radius:5px;overflow:hidden;aspect-ratio:3 / 2;box-shadow:0 1px 3px rgba(0,0,0,.5)">
+                  <div style="{{ p.styleObj }}"></div>
+                  <div style="position:absolute;inset:0;box-shadow:inset 0 0 22px 4px rgba(0,0,0,.4)"></div>
+                  <div class="ts-grain" style="position:absolute;inset:0;opacity:.07;mix-blend-mode:overlay;pointer-events:none"></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="flex:none;display:flex;align-items:center;gap:10px;padding:13px 18px;border-top:1px solid rgba(255,255,255,.06);background:#141416">
+            <div style="flex:1"></div>
+            <button style="height:34px;padding:0 13px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.12);border-radius:8px;font:500 12px system-ui;cursor:pointer">Cancel</button>
+            <button style="height:34px;padding:0 16px;background:#e8a23c;color:#171512;border:none;border-radius:8px;font:600 12px system-ui;cursor:pointer">Create collection</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dv-opt" id="5e">
+  <div class="dv-olabel"><a class="dv-oid" href="#5e">5e</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">Keywording</b> — select a batch; Teststrip's suggested keywords sit one tap away and applied ones are removable chips. Caption, copyright &amp; creator apply to the whole selection.</span></div>
+  <div class="dv-card" style="width:1180px">
+    <div style="width:1180px;height:788px;display:flex;flex-direction:column;background:#0e0e10;color:#fff;overflow:hidden">
+      <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:linear-gradient(#1c1c1f,#161619);border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;gap:8px"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+        <span style="font:600 13px system-ui;color:#fff">Keyword &amp; Metadata</span>
+        <div style="flex:1"></div>
+        <span style="display:flex;align-items:center;gap:6px;font:600 11.5px system-ui;color:#f0b866"><span style="width:8px;height:8px;border-radius:2px;background:#e8a23c"></span>15 selected</span>
+      </div>
+      <div style="flex:1;display:flex;min-height:0">
+        <div class="ts-sc" style="flex:1;overflow-y:auto;padding:14px;background:#0b0b0d">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px">
+            <sc-for list="{{ kwPhotos }}" as="p" hint-placeholder-count="18">
+              <div style="position:relative;border-radius:5px;overflow:hidden;aspect-ratio:3 / 2;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.5)">
+                <div style="{{ p.styleObj }}"></div>
+                <div style="position:absolute;inset:0;box-shadow:inset 0 0 22px 4px rgba(0,0,0,.4)"></div>
+                <div class="ts-grain" style="position:absolute;inset:0;opacity:.07;mix-blend-mode:overlay;pointer-events:none"></div>
+                <sc-if value="{{ p.sel }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;box-shadow:inset 0 0 0 2.5px #e8a23c;border-radius:5px"></div><span style="position:absolute;top:5px;right:5px;width:15px;height:15px;border-radius:50%;background:#e8a23c;display:flex;align-items:center;justify-content:center"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#171512" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg></span></sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div class="ts-sc" style="width:342px;flex:none;background:#161618;border-left:1px solid rgba(255,255,255,.06);overflow-y:auto;padding:17px">
+          <div style="font:600 9px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.35);letter-spacing:.08em;margin-bottom:10px">KEYWORDS · APPLIED TO 15</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px">
+            <sc-for list="{{ kwApplied }}" as="k" hint-placeholder-count="4"><span style="display:flex;align-items:center;gap:5px;font:450 11.5px system-ui;color:rgba(255,255,255,.82);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);padding:3px 5px 3px 9px;border-radius:6px">{{ k }}<span style="color:rgba(255,255,255,.4);cursor:pointer;font-size:12px">✕</span></span></sc-for>
+            <span style="font:450 11.5px system-ui;color:rgba(255,255,255,.4);border:1px dashed rgba(255,255,255,.16);padding:3px 9px;border-radius:6px;cursor:pointer">+ add</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg><span style="font:600 9.5px ui-monospace,Menlo,monospace;color:#e8a23c;letter-spacing:.05em">TESTSTRIP SUGGESTS · TAP TO ADD</span></div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:22px">
+            <sc-for list="{{ kwSuggested }}" as="k" hint-placeholder-count="5"><span style="display:flex;align-items:center;gap:4px;font:450 11.5px system-ui;color:#f0b866;background:rgba(232,162,60,.1);border:1px solid rgba(232,162,60,.24);padding:3px 9px;border-radius:6px;cursor:pointer"><span style="font-size:10px">+</span>{{ k }}</span></sc-for>
+          </div>
+          <div style="height:1px;background:rgba(255,255,255,.07);margin-bottom:18px"></div>
+          <div style="font:600 9px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.35);letter-spacing:.08em;margin-bottom:12px">METADATA · BATCH</div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div><div style="font:450 11px system-ui;color:rgba(255,255,255,.5);margin-bottom:5px">Caption</div><div style="min-height:34px;padding:8px 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;font:450 12px system-ui;color:rgba(255,255,255,.85)">Torres del Paine at first light, October 2024</div></div>
+            <div><div style="font:450 11px system-ui;color:rgba(255,255,255,.5);margin-bottom:5px">Copyright</div><div style="height:34px;display:flex;align-items:center;padding:0 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;font:450 12px system-ui;color:rgba(255,255,255,.85)">© 2024 A. Photographer</div></div>
+            <div><div style="font:450 11px system-ui;color:rgba(255,255,255,.5);margin-bottom:5px">Creator</div><div style="height:34px;display:flex;align-items:center;padding:0 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;font:450 12px system-ui;color:rgba(255,255,255,.85)">A. Photographer</div></div>
+          </div>
+          <button style="width:100%;height:40px;margin-top:20px;background:#e8a23c;color:#171512;border:none;border-radius:9px;font:600 13px system-ui;cursor:pointer">Apply to 15 selected</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dv-opt" id="5f">
+  <div class="dv-olabel"><a class="dv-oid" href="#5f">5f</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">Export</b> — presets on the left, settings in the middle. Pick a preset and go; sizing, sharpening, color space, metadata &amp; watermark all handled.</span></div>
+  <div class="dv-card" style="width:1180px">
+    <div style="width:1180px;height:788px;display:flex;flex-direction:column;background:#141416;color:#fff;overflow:hidden">
+      <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;background:linear-gradient(#262629,#1d1d20);border-bottom:1px solid rgba(255,255,255,.07)">
+        <div style="display:flex;gap:8px"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+        <span style="font:600 13px system-ui;color:#fff">Export · 240 photos</span>
+      </div>
+      <div style="flex:1;display:flex;min-height:0">
+        <div class="ts-sc" style="width:230px;flex:none;background:#161618;border-right:1px solid rgba(255,255,255,.06);overflow-y:auto;padding:14px 12px">
+          <div style="font:600 9px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.35);letter-spacing:.08em;margin-bottom:10px">PRESETS</div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <sc-for list="{{ exportPresets }}" as="pr" hint-placeholder-count="5">
+              <div style="position:relative;padding:10px 12px;border-radius:8px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+                <sc-if value="{{ pr.active }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;background:rgba(232,162,60,.1);border:1px solid rgba(232,162,60,.3);border-radius:8px"></div></sc-if>
+                <div style="position:relative;font:600 12.5px system-ui;color:#fff">{{ pr.name }}</div>
+                <div style="position:relative;font:450 10.5px system-ui;color:rgba(255,255,255,.45);margin-top:1px">{{ pr.detail }}</div>
+              </div>
+            </sc-for>
+            <div style="padding:10px 12px;font:500 11.5px system-ui;color:rgba(255,255,255,.4);cursor:pointer">+ New preset</div>
+          </div>
+        </div>
+        <div class="ts-sc" style="flex:1;overflow-y:auto;padding:20px 24px;min-width:0">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px 34px;max-width:640px">
+            <div><div style="font:450 11px system-ui;color:rgba(255,255,255,.5);margin-bottom:6px">Format</div><div style="height:36px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;font:600 12.5px system-ui;color:#fff">JPEG<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div></div>
+            <div><div style="font:450 11px system-ui;color:rgba(255,255,255,.5);margin-bottom:6px">Color space</div><div style="height:36px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;font:600 12.5px system-ui;color:#fff">sRGB<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div></div>
+            <div style="grid-column:span 2"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="font:450 11px system-ui;color:rgba(255,255,255,.5)">Quality</span><span style="font:600 11px ui-monospace,Menlo,monospace;color:#f0b866">92</span></div><div style="height:5px;border-radius:20px;background:rgba(255,255,255,.1)"><div style="width:92%;height:100%;background:#e8a23c;border-radius:20px"></div></div></div>
+            <div><div style="font:450 11px system-ui;color:rgba(255,255,255,.5);margin-bottom:6px">Resize to</div><div style="height:36px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;font:600 12.5px system-ui;color:#fff">Long edge<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></div></div>
+            <div><div style="font:450 11px system-ui;color:rgba(255,255,255,.5);margin-bottom:6px">Pixels</div><div style="height:36px;display:flex;align-items:center;padding:0 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:8px;font:600 12.5px ui-monospace,Menlo,monospace;color:#fff">4096 px</div></div>
+            <div style="grid-column:span 2;height:1px;background:rgba(255,255,255,.07)"></div>
+            <div style="display:flex;align-items:center;justify-content:space-between"><div><div style="font:550 12.5px system-ui;color:#fff">Output sharpening</div><div style="font:450 10.5px system-ui;color:rgba(255,255,255,.45)">Screen · standard</div></div><div style="width:32px;height:18px;border-radius:20px;background:#e8a23c;position:relative"><span style="position:absolute;top:2px;right:2px;width:14px;height:14px;border-radius:50%;background:#171512"></span></div></div>
+            <div style="display:flex;align-items:center;justify-content:space-between"><div><div style="font:550 12.5px system-ui;color:#fff">Include metadata</div><div style="font:450 10.5px system-ui;color:rgba(255,255,255,.45)">keywords, caption, GPS</div></div><div style="width:32px;height:18px;border-radius:20px;background:#e8a23c;position:relative"><span style="position:absolute;top:2px;right:2px;width:14px;height:14px;border-radius:50%;background:#171512"></span></div></div>
+            <div style="display:flex;align-items:center;justify-content:space-between"><div><div style="font:550 12.5px system-ui;color:#fff">Watermark</div><div style="font:450 10.5px system-ui;color:rgba(255,255,255,.45)">off</div></div><div style="width:32px;height:18px;border-radius:20px;background:rgba(255,255,255,.14);position:relative"><span style="position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,.8)"></span></div></div>
+          </div>
+        </div>
+      </div>
+      <div style="flex:none;display:flex;align-items:center;gap:12px;padding:14px 20px;border-top:1px solid rgba(255,255,255,.06);background:#161618">
+        <span style="font:450 12px system-ui;color:rgba(255,255,255,.5)">To</span>
+        <span style="font:500 12px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.85)">~/Exports/Patagonia_2024</span>
+        <div style="flex:1"></div>
+        <span style="font:450 12px system-ui;color:rgba(255,255,255,.45)">≈ 1.4 GB</span>
+        <button style="height:36px;padding:0 18px;background:#e8a23c;color:#171512;border:none;border-radius:9px;font:600 13px system-ui;cursor:pointer">Export 240 photos</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<p class="dv-next" id="t5next">Try next: "wire the People confirm flow" · "make the Map zoomable into a region" · "combine <a class="dv-oid" href="#5c">5c</a> search into <a class="dv-oid" href="#1b">1b</a>"</p>
+</section>
+
+<section class="dv-turn" id="t4">
+<div class="dv-thd"><a class="dv-tid" href="#t4">4</a><span class="dv-tname">Import — the agentic front door <span style="font-weight:400;color:rgba(255,255,255,.4)">· feeds <a class="dv-oid" href="#3a" style="font-size:9.5px;padding:2px 6px">3a</a></span></span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="4a">
+  <div class="dv-olabel"><a class="dv-oid" href="#4a">4a</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">Import</b> — point Teststrip at a card and it lays out exactly what it'll do — stack, cull, keyword, faces, geo — then does it all as the photos copy. No babysitting.</span></div>
+  <div class="dv-card" style="width:1180px">
+    <div style="width:1180px;height:788px;display:flex;flex-direction:column;background:#141416;color:#fff;overflow:hidden">
+
+      <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 14px;background:linear-gradient(#262629,#1d1d20);border-bottom:1px solid rgba(255,255,255,.07)">
+        <div style="display:flex;gap:8px">
+          <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span>
+        </div>
+        <span style="font:600 13px system-ui;color:#fff">Import</span>
+      </div>
+
+      <div style="flex:1;display:flex;min-height:0">
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:#0e0e10;border-right:1px solid rgba(255,255,255,.06)">
+          <div style="flex:none;display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid rgba(255,255,255,.06)">
+            <div style="width:40px;height:40px;border-radius:9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;flex:none">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 5V3M17 5V3"/></svg>
+            </div>
+            <div style="flex:1;line-height:1.3">
+              <div style="font:600 13px system-ui;color:#fff">SanDisk Extreme Pro · 256 GB</div>
+              <div style="font:500 11px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.45)">2,310 new photos · 48.2 GB · all RAW</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:7px;background:rgba(94,201,138,.12);border:1px solid rgba(94,201,138,.3)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5ec98a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>
+              <span style="font:600 10.5px system-ui;color:#7bd6a1">No duplicates on card</span>
+            </div>
+          </div>
+          <div class="ts-sc" style="flex:1;overflow-y:auto;padding:14px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px">
+              <sc-for list="{{ ingestGrid }}" as="p" hint-placeholder-count="20">
+                <div style="position:relative;border-radius:5px;overflow:hidden;aspect-ratio:3 / 2;box-shadow:0 1px 3px rgba(0,0,0,.5)">
+                  <div style="{{ p.styleObj }}"></div>
+                  <div style="position:absolute;inset:0;box-shadow:inset 0 0 24px 4px rgba(0,0,0,.4)"></div>
+                  <div class="ts-grain" style="position:absolute;inset:0;opacity:.07;mix-blend-mode:overlay;pointer-events:none"></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div class="ts-sc" style="width:406px;flex:none;background:#161618;overflow-y:auto;display:flex;flex-direction:column">
+          <div style="padding:16px 18px;display:flex;flex-direction:column;gap:18px">
+
+            <div>
+              <div style="font:600 9px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.35);letter-spacing:.08em;margin-bottom:11px">DESTINATION</div>
+              <div style="display:flex;flex-direction:column;gap:0">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+                  <span style="font:450 12px system-ui;color:rgba(255,255,255,.5)">Catalog</span>
+                  <span style="font:500 12px system-ui;color:rgba(255,255,255,.9)">Master Catalog</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+                  <span style="font:450 12px system-ui;color:rgba(255,255,255,.5)">Organize into</span>
+                  <span style="font:500 12px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.9)">2024 / Patagonia</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+                  <span style="font:450 12px system-ui;color:rgba(255,255,255,.5)">Rename</span>
+                  <span style="font:500 12px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.9)">Patagonia_####</span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0">
+                  <span style="font:450 12px system-ui;color:rgba(255,255,255,.5)">Second copy to</span>
+                  <span style="font:500 12px system-ui;color:rgba(255,255,255,.9)">Backup SSD ✓</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="background:rgba(232,162,60,.05);border:1px solid rgba(232,162,60,.18);border-radius:10px;padding:13px 14px">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:13px">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+                <span style="font:600 9.5px ui-monospace,Menlo,monospace;color:#e8a23c;letter-spacing:.06em">TESTSTRIP WILL</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:13px">
+                <sc-for list="{{ ingestPlan }}" as="p" hint-placeholder-count="5">
+                  <div style="display:flex;align-items:center;gap:11px">
+                    <span style="display:flex">{{ p.iconEl }}</span>
+                    <div style="flex:1;line-height:1.3">
+                      <div style="font:550 12.5px system-ui;color:rgba(255,255,255,.92)">{{ p.label }}</div>
+                      <div style="font:450 10.5px system-ui;color:rgba(255,255,255,.45)">{{ p.detail }}</div>
+                    </div>
+                    <div style="width:32px;height:18px;border-radius:20px;background:#e8a23c;position:relative;flex:none"><span style="position:absolute;top:2px;right:2px;width:14px;height:14px;border-radius:50%;background:#171512"></span></div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="font:450 10.5px system-ui;color:rgba(232,162,60,.6);margin-top:13px;line-height:1.4">Runs automatically as photos copy — nothing to babysit.</div>
+            </div>
+
+            <button style="height:44px;background:#e8a23c;color:#171512;border:none;border-radius:10px;font:600 14px system-ui;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" style-hover="background:#f0ac48">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#171512" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5"/><path d="M5 16v2a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2"/></svg>
+              Import 2,310 photos
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dv-opt" id="4b">
+  <div class="dv-olabel"><a class="dv-oid" href="#4b">4b</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">Import complete</b> — the payoff. Everything Teststrip categorized while copying, with one tap into the work that's actually left for you.</span></div>
+  <div class="dv-card" style="width:1180px">
+    <div style="width:1180px;height:788px;display:flex;flex-direction:column;background:#0e0e10;color:#fff;overflow:hidden">
+
+      <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 14px;background:linear-gradient(#1c1c1f,#161619);border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;gap:8px">
+          <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span>
+        </div>
+        <span style="font:600 13px system-ui;color:#fff">Import complete</span>
+      </div>
+
+      <div class="ts-sc" style="flex:1;overflow-y:auto;padding:26px 30px">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px">
+          <div style="width:44px;height:44px;border-radius:50%;background:rgba(94,201,138,.15);border:1px solid rgba(94,201,138,.4);display:flex;align-items:center;justify-content:center;flex:none">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5ec98a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>
+          </div>
+          <div>
+            <div style="font:600 22px system-ui;color:#fff;letter-spacing:-.02em">2,310 photos imported</div>
+            <div style="font:500 12px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.5);margin-top:2px">Patagonia_2024 · 48.2 GB · copied &amp; backed up in 4 min 12s</div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:7px;margin:22px 0 12px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+          <span style="font:600 9.5px ui-monospace,Menlo,monospace;color:#e8a23c;letter-spacing:.06em">TESTSTRIP · HERE'S WHAT I ORGANIZED WHILE COPYING</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px">
+          <sc-for list="{{ importStats }}" as="s" hint-placeholder-count="6">
+            <div style="background:#161618;border:1px solid rgba(255,255,255,.07);border-radius:11px;padding:16px 17px">
+              <div style="{{ s.numStyle }}">{{ s.n }}</div>
+              <div style="font:600 12.5px system-ui;color:rgba(255,255,255,.9);margin-top:3px">{{ s.label }}</div>
+              <div style="font:450 11px system-ui;color:rgba(255,255,255,.45);margin-top:1px">{{ s.sub }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="font:600 9px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.35);letter-spacing:.08em;margin-bottom:11px">WHAT'S LEFT FOR YOU</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <button style="display:flex;align-items:center;gap:11px;padding:14px 17px;background:#e8a23c;color:#171512;border:none;border-radius:11px;cursor:pointer;text-align:left" style-hover="background:#f0ac48">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#171512" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4"/></svg>
+            <div style="line-height:1.25"><div style="font:600 13px system-ui">Start culling</div><div style="font:500 11px system-ui;opacity:.7">28 stacks ready</div></div>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#171512" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+          <button style="display:flex;align-items:center;gap:11px;padding:14px 17px;background:#161618;color:#fff;border:1px solid rgba(255,255,255,.1);border-radius:11px;cursor:pointer;text-align:left" style-hover="border-color:rgba(255,255,255,.2)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6fb2f2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 6a3 3 0 0 1 0 6"/></svg>
+            <div style="line-height:1.25"><div style="font:600 13px system-ui">Name 3 new faces</div><div style="font:500 11px system-ui;color:rgba(255,255,255,.5)">44 matched automatically</div></div>
+          </button>
+          <button style="display:flex;align-items:center;gap:11px;padding:14px 17px;background:#161618;color:#fff;border:1px solid rgba(255,255,255,.1);border-radius:11px;cursor:pointer;text-align:left" style-hover="border-color:rgba(255,255,255,.2)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef8079" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4M5 5h11l-1.7 3.6L16 12H5"/></svg>
+            <div style="line-height:1.25"><div style="font:600 13px system-ui">Review 340 flagged</div><div style="font:500 11px system-ui;color:rgba(255,255,255,.5)">before they're cut</div></div>
+          </button>
+          <button style="display:flex;align-items:center;gap:11px;padding:14px 17px;background:#161618;color:#fff;border:1px solid rgba(255,255,255,.1);border-radius:11px;cursor:pointer;text-align:left" style-hover="border-color:rgba(255,255,255,.2)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="14" height="14" rx="2.2"/><path d="M8.5 20.5h9a2 2 0 0 0 2-2v-9"/></svg>
+            <div style="line-height:1.25"><div style="font:600 13px system-ui">Open in Library</div><div style="font:500 11px system-ui;color:rgba(255,255,255,.5)">browse everything</div></div>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "show the import mid-copy with agents working live" · "design the People / faces screen for naming" · "build the smart-collections rule builder" · "add a Map view"</p>
+</section>
+
+<section class="dv-turn" id="t3">
+<div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">Set-aware culling — cull by decision, not by frame <span style="font-weight:400;color:rgba(255,255,255,.4)">· evolves <a class="dv-oid" href="#2a" style="font-size:9.5px;padding:2px 6px">2a</a> / <a class="dv-oid" href="#2b" style="font-size:9.5px;padding:2px 6px">2b</a></span></span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="3a">
+  <div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">Stack cull</b> — Teststrip auto-groups the take into stacks of related frames. You move set-by-set; it narrows each burst to the keeper and you confirm the whole set at once. One decision per moment, not per frame.</span></div>
+  <div class="dv-card" style="width:1180px">
+    <div style="width:1180px;height:840px;display:flex;flex-direction:column;background:#0b0b0d;color:#fff;overflow:hidden">
+
+      <div style="height:48px;flex:none;display:flex;align-items:center;gap:14px;padding:0 14px;background:linear-gradient(#1c1c1f,#161619);border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;gap:8px">
+          <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span>
+        </div>
+        <div style="font:600 12.5px system-ui;color:#fff">Culling · Patagonia_2024</div>
+        <div style="display:flex;align-items:center;gap:9px">
+          <span style="font:500 11px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.5)">Stack 3 / 28</span>
+          <div style="width:120px;height:4px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden"><div style="width:11%;height:100%;background:#e8a23c"></div></div>
+        </div>
+        <div style="flex:1"></div>
+        <span style="display:flex;align-items:center;gap:5px;font:600 11px system-ui;color:#5ec98a"><span style="width:8px;height:8px;border-radius:2px;background:#5ec98a"></span>31 keepers</span>
+        <span style="display:flex;align-items:center;gap:5px;font:600 11px system-ui;color:#ec5a52"><span style="width:8px;height:8px;border-radius:2px;background:#ec5a52"></span>112 cut</span>
+        <div style="display:flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:8px;background:rgba(232,162,60,.12);border:1px solid rgba(232,162,60,.3)">
+          <span style="width:7px;height:7px;border-radius:50%;background:#e8a23c;animation:ts-pulse 1.6s ease-in-out infinite"></span>
+          <span style="font:600 11px system-ui;color:#f0b866">Assist on</span>
+        </div>
+      </div>
+
+      <div style="flex:1;display:flex;min-height:0">
+        <div class="ts-sc" style="width:198px;flex:none;background:#141416;border-right:1px solid rgba(255,255,255,.06);overflow-y:auto;padding:12px 10px">
+          <div style="display:flex;align-items:center;gap:6px;padding:2px 6px 4px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+            <span style="font:600 9px ui-monospace,Menlo,monospace;color:#e8a23c;letter-spacing:.06em">STACKS · AUTO-GROUPED</span>
+          </div>
+          <div style="font:450 10px system-ui;color:rgba(255,255,255,.4);padding:0 6px 9px">Today · Torres del Paine</div>
+          <sc-for list="{{ stacks }}" as="s" hint-placeholder-count="9">
+            <div style="{{ s.rowStyle }}" style-hover="background:rgba(255,255,255,.05)">
+              <div style="position:relative;width:34px;height:34px;border-radius:5px;overflow:hidden;flex:none;box-shadow:0 1px 2px rgba(0,0,0,.4)"><div style="{{ s.thumbStyle }}"></div></div>
+              <div style="flex:1;line-height:1.25;min-width:0">
+                <div style="font:600 11.5px system-ui;color:#fff">{{ s.time }}</div>
+                <div style="font:500 9.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.42)">{{ s.count }} frames</div>
+              </div>
+              <sc-if value="{{ s.done }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5ec98a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg></sc-if>
+              <sc-if value="{{ s.active }}" hint-placeholder-val="{{ false }}"><span style="width:7px;height:7px;border-radius:50%;background:#e8a23c;flex:none"></span></sc-if>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:#0b0b0d">
+          <div style="flex:none;display:flex;align-items:center;gap:11px;padding:15px 18px 11px">
+            <span style="font:600 15px system-ui;color:#fff;letter-spacing:-.01em">Stack 3 · 10:24 AM</span>
+            <span style="font:500 12px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.42)">9 frames</span>
+            <div style="flex:1"></div>
+            <div style="display:flex;align-items:center;gap:9px;height:30px;padding:0 13px;border-radius:8px;background:rgba(232,162,60,.06);border:1px solid rgba(232,162,60,.2)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+              <span style="font:600 9px ui-monospace,Menlo,monospace;color:#e8a23c;letter-spacing:.05em">TESTSTRIP</span>
+              <span style="width:1px;height:13px;background:rgba(255,255,255,.12)"></span>
+              <span style="font:450 12px system-ui;color:rgba(255,255,255,.72)">Best of 9 is <b style="color:#fff;font-weight:600">frame 3</b> — sharpest, eyes open</span>
+            </div>
+          </div>
+
+          <div style="flex:1;display:flex;gap:14px;padding:0 18px;min-height:0">
+            <div style="flex:1.55;position:relative;border-radius:8px;overflow:hidden;min-width:0;box-shadow:0 16px 44px rgba(0,0,0,.55)">
+              <div style="{{ heroFrame.innerStyle }}"></div>
+              <div style="position:absolute;inset:0;box-shadow:inset 0 0 60px 14px rgba(0,0,0,.4)"></div>
+              <div class="ts-grain" style="position:absolute;inset:0;opacity:.06;mix-blend-mode:overlay;pointer-events:none"></div>
+              <div style="position:absolute;inset:0;box-shadow:inset 0 0 0 2.5px #e8a23c;border-radius:8px"></div>
+              <span style="position:absolute;top:12px;left:12px;font:600 9.5px ui-monospace,Menlo,monospace;color:#171512;background:#e8a23c;padding:3px 9px;border-radius:5px">✦ BEST OF SET</span>
+              <div style="position:absolute;left:14px;bottom:13px;text-shadow:0 1px 4px rgba(0,0,0,.8)">
+                <div style="font:600 13px ui-monospace,Menlo,monospace;color:#fff">{{ heroFrame.name }}.ARW</div>
+                <div style="font:500 10.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.6)">85mm · ƒ/1.8 · 1/400s · ISO 200</div>
+              </div>
+              <span style="position:absolute;right:12px;bottom:13px;display:flex;align-items:center;gap:5px;height:24px;padding:0 10px;border-radius:6px;background:rgba(94,201,138,.9);color:#12281c;font:700 11px system-ui">KEEP</span>
+            </div>
+
+            <div style="width:346px;flex:none;display:flex;flex-direction:column;gap:8px;min-height:0">
+              <div style="font:600 9px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.4);letter-spacing:.06em;flex:none">THE SET · 9 FRAMES · TAP TO PICK A DIFFERENT KEEPER</div>
+              <div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:7px;min-height:0">
+                <sc-for list="{{ setFrames }}" as="f" hint-placeholder-count="9">
+                  <div style="position:relative;border-radius:5px;overflow:hidden;cursor:pointer" style-hover="box-shadow:0 0 0 2px rgba(255,255,255,.25)">
+                    <div style="{{ f.innerStyle }}"></div>
+                    <div style="position:absolute;inset:0;box-shadow:inset 0 0 18px 3px rgba(0,0,0,.4)"></div>
+                    <sc-if value="{{ f.dim }}" hint-placeholder-val="{{ false }}"><div style="{{ f.dim }}"></div></sc-if>
+                    <sc-if value="{{ f.ring }}" hint-placeholder-val="{{ false }}"><div style="{{ f.ring }}"></div></sc-if>
+                    <sc-if value="{{ f.best }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:5px;left:5px;width:14px;height:14px;border-radius:3px;background:#e8a23c;display:flex;align-items:center;justify-content:center;font:700 9px ui-monospace,Menlo,monospace;color:#171512">✦</span></sc-if>
+                    <sc-if value="{{ f.bad }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:0;right:0;bottom:0;padding:3px 5px;background:linear-gradient(transparent,rgba(0,0,0,.7));font:600 8.5px ui-monospace,Menlo,monospace;color:#ef8079">{{ f.reason }}</span></sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:none;display:flex;align-items:center;gap:10px;padding:15px 18px">
+            <button style="display:flex;align-items:center;gap:7px;height:34px;padding:0 15px;background:#e8a23c;color:#171512;border:none;border-radius:8px;font:600 12px system-ui;cursor:pointer">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#171512" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+              Keep frame 3 · cut 8
+            </button>
+            <button style="height:34px;padding:0 13px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.12);border-radius:8px;font:500 12px system-ui;cursor:pointer">Keep top 2</button>
+            <button style="height:34px;padding:0 13px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.12);border-radius:8px;font:500 12px system-ui;cursor:pointer">Keep all 9</button>
+            <div style="flex:1"></div>
+            <span style="font:500 10.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.34)">↑↓ stacks · ←→ frames · ↵ accept best</span>
+            <button style="display:flex;align-items:center;gap:6px;height:34px;padding:0 13px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.12);border-radius:8px;font:500 12px system-ui;cursor:pointer">Next stack <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dv-opt" id="3b">
+  <div class="dv-olabel"><a class="dv-oid" href="#3b">3b</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">Focus compare</b> — when several frames of a set are all sharp, line up the contenders and let Teststrip's per-frame read — sharpness, eyes, exposure — break the tie. The close call, made obvious.</span></div>
+  <div class="dv-card" style="width:1180px">
+    <div style="width:1180px;height:840px;display:flex;flex-direction:column;background:#0e0e10;color:#fff;overflow:hidden">
+
+      <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 14px;background:linear-gradient(#1c1c1f,#161619);border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;gap:8px">
+          <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:9px">
+          <span style="font:600 12.5px system-ui;color:#fff">Stack 3 · 10:24 AM</span>
+          <span style="font:450 11.5px system-ui;color:rgba(255,255,255,.45)">comparing the 3 sharpest of 9</span>
+        </div>
+        <div style="flex:1"></div>
+        <div style="display:flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:8px;background:rgba(232,162,60,.12);border:1px solid rgba(232,162,60,.3)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+          <span style="font:600 11px system-ui;color:#f0b866">Assist on</span>
+        </div>
+      </div>
+
+      <div style="flex:1;display:flex;gap:14px;padding:18px 18px 12px;min-height:0">
+        <sc-for list="{{ cmp }}" as="c" hint-placeholder-count="3">
+          <div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0">
+            <div style="flex:1;position:relative;border-radius:8px;overflow:hidden;min-height:0;box-shadow:0 10px 30px rgba(0,0,0,.5)">
+              <div style="{{ c.innerStyle }}"></div>
+              <div style="position:absolute;inset:0;box-shadow:inset 0 0 50px 12px rgba(0,0,0,.4)"></div>
+              <div class="ts-grain" style="position:absolute;inset:0;opacity:.06;mix-blend-mode:overlay;pointer-events:none"></div>
+              <sc-if value="{{ c.ring }}" hint-placeholder-val="{{ false }}"><div style="{{ c.ring }}"></div></sc-if>
+              <span style="position:absolute;top:11px;left:11px;{{ c.rankStyle }}">{{ c.rank }}</span>
+              <div style="position:absolute;left:12px;bottom:11px;font:600 11px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.85);text-shadow:0 1px 3px rgba(0,0,0,.8)">{{ c.name }}.ARW</div>
+            </div>
+            <div style="flex:none;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:9px;padding:11px 12px;display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span style="font:450 10.5px system-ui;color:rgba(255,255,255,.5);width:64px">Sharpness</span>
+                <div style="flex:1;height:5px;border-radius:20px;background:rgba(255,255,255,.08);overflow:hidden"><div style="{{ c.sharpBar }}"></div></div>
+                <span style="font:600 10.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.8);width:30px;text-align:right">{{ c.sharp }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:16px">
+                <div style="display:flex;align-items:center;gap:7px">
+                  <span style="font:450 10.5px system-ui;color:rgba(255,255,255,.5)">Eyes</span>
+                  <sc-if value="{{ c.eyes }}" hint-placeholder-val="{{ true }}"><span style="display:flex;align-items:center;gap:3px;font:600 10.5px system-ui;color:#5ec98a"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5ec98a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>open</span></sc-if>
+                  <sc-if value="{{ c.eyesShut }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:3px;font:600 10.5px system-ui;color:#ef8079"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ef8079" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>shut</span></sc-if>
+                </div>
+                <div style="display:flex;align-items:center;gap:7px">
+                  <span style="font:450 10.5px system-ui;color:rgba(255,255,255,.5)">Exposure</span>
+                  <span style="font:600 10.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.8)">{{ c.exp }} EV</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="flex:none;padding:0 18px 10px">
+        <div style="font:600 9px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.38);letter-spacing:.06em;margin-bottom:7px">THE FULL SET · 9 FRAMES</div>
+        <div style="display:flex;gap:6px">
+          <sc-for list="{{ setFrames }}" as="f" hint-placeholder-count="9">
+            <div style="position:relative;height:44px;aspect-ratio:1 / 1;border-radius:4px;overflow:hidden;flex:none;cursor:pointer" style-hover="box-shadow:0 0 0 2px rgba(255,255,255,.22)">
+              <div style="{{ f.innerStyle }}"></div>
+              <sc-if value="{{ f.dim }}" hint-placeholder-val="{{ false }}"><div style="{{ f.dim }}"></div></sc-if>
+              <sc-if value="{{ f.ring }}" hint-placeholder-val="{{ false }}"><div style="{{ f.ring }}"></div></sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="flex:none;display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid rgba(255,255,255,.06);background:#141416">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+        <span style="font:450 12px system-ui;color:rgba(255,255,255,.62)">Frame 3 edges it — <b style="color:#fff;font-weight:600">8% sharper</b> than #2 with eyes open</span>
+        <div style="flex:1"></div>
+        <button style="height:32px;padding:0 15px;background:#e8a23c;color:#171512;border:none;border-radius:8px;font:600 12px system-ui;cursor:pointer">Keep BEST · cut 8</button>
+        <button style="height:32px;padding:0 13px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.12);border-radius:8px;font:500 12px system-ui;cursor:pointer">Keep #1 &amp; #2</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "wire <a class="dv-oid" href="#3a">3a</a>'s keyboard flow for real" · "add a 1:1 pixel-peek loupe to <a class="dv-oid" href="#3b">3b</a>" · "make stacks group by burst-rate, not just time" · "fold the stack rail into <a class="dv-oid" href="#2a">2a</a>"</p>
+</section>
+
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Culling &amp; compare — the fast loop <span style="font-weight:400;color:rgba(255,255,255,.4)">· builds on <a class="dv-oid" href="#1b" style="font-size:9.5px;padding:2px 6px">1b</a>'s agent</span></span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a">
+  <div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">Rapid cull</b> — Photo-Mechanic-speed single-frame loop. Big loupe, keyboard-driven pick / reject / rate, and a Teststrip verdict on every frame so you confirm at a glance. Built for speed.</span></div>
+  <div class="dv-card" style="width:1180px">
+    <div style="width:1180px;height:820px;display:flex;flex-direction:column;background:#0b0b0d;color:#fff;overflow:hidden">
+
+      <div style="height:48px;flex:none;display:flex;align-items:center;gap:14px;padding:0 14px;background:linear-gradient(#1c1c1f,#161619);border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;gap:8px">
+          <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span>
+        </div>
+        <div style="font:600 12.5px system-ui;color:#fff">Culling · Patagonia_2024</div>
+        <div style="display:flex;align-items:center;gap:9px">
+          <span style="font:500 11px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.5)">Frame 42 / 214</span>
+          <div style="width:130px;height:4px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden"><div style="width:20%;height:100%;background:#e8a23c"></div></div>
+        </div>
+        <div style="flex:1"></div>
+        <span style="display:flex;align-items:center;gap:5px;font:600 11px system-ui;color:#5ec98a"><span style="width:8px;height:8px;border-radius:2px;background:#5ec98a"></span>31 picks</span>
+        <span style="display:flex;align-items:center;gap:5px;font:600 11px system-ui;color:#ec5a52"><span style="width:8px;height:8px;border-radius:2px;background:#ec5a52"></span>9 rejects</span>
+        <div style="display:flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:8px;background:rgba(232,162,60,.12);border:1px solid rgba(232,162,60,.3)">
+          <span style="width:7px;height:7px;border-radius:50%;background:#e8a23c;animation:ts-pulse 1.6s ease-in-out infinite"></span>
+          <span style="font:600 11px system-ui;color:#f0b866">Assist on</span>
+        </div>
+      </div>
+
+      <div style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;padding:26px;min-height:0">
+        <div style="position:relative;height:100%;aspect-ratio:3 / 2;max-width:100%;border-radius:6px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.7)">
+          <div style="{{ cull.innerStyle }}"></div>
+          <div style="position:absolute;inset:0;box-shadow:inset 0 0 90px 20px rgba(0,0,0,.45)"></div>
+          <div class="ts-grain" style="position:absolute;inset:0;opacity:.06;mix-blend-mode:overlay;pointer-events:none"></div>
+        </div>
+
+        <div style="position:absolute;left:20px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:rgba(20,20,22,.7);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(6px)" style-hover="background:rgba(30,30,34,.9)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></div>
+        <div style="position:absolute;right:20px;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:rgba(20,20,22,.7);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(6px)" style-hover="background:rgba(30,30,34,.9)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></div>
+
+        <div style="position:absolute;left:34px;bottom:26px;display:flex;flex-direction:column;gap:3px;text-shadow:0 1px 4px rgba(0,0,0,.8)">
+          <div style="font:600 14px ui-monospace,Menlo,monospace;color:#fff">{{ cull.name }}</div>
+          <div style="font:500 11px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.6)">{{ cull.cam }} · {{ cull.lens }}</div>
+          <div style="font:500 11px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.6)">{{ cull.focal }} · {{ cull.ap }} · {{ cull.sh }} · {{ cull.iso }}</div>
+        </div>
+
+      </div>
+
+      <div style="flex:none;display:flex;align-items:center;justify-content:center;gap:12px;padding:12px 0 0">
+        <div style="display:flex;align-items:center;gap:10px;height:30px;padding:0 13px;border-radius:8px;background:rgba(94,201,138,.09);border:1px solid rgba(94,201,138,.28)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+          <span style="font:600 9.5px ui-monospace,Menlo,monospace;color:#e8a23c;letter-spacing:.06em">TESTSTRIP</span>
+          <span style="width:1px;height:13px;background:rgba(255,255,255,.14)"></span>
+          <span style="font:700 12px system-ui;color:#5ec98a">PICK</span>
+          <span style="font:600 10.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.45)">94%</span>
+          <span style="width:1px;height:13px;background:rgba(255,255,255,.1)"></span>
+          <span style="font:450 11.5px system-ui;color:rgba(255,255,255,.6)">sharp · strong side light · eyes open · best of 6-frame burst</span>
+        </div>
+        <span style="font:500 10.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.34)">Assist auto-picked — press X to override</span>
+      </div>
+      <div style="flex:none;display:flex;align-items:center;justify-content:center;gap:14px;padding:11px 0">
+        <div style="display:flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:9px;background:rgba(94,201,138,.14);border:1px solid rgba(94,201,138,.4)">
+          <span style="font:600 10px ui-monospace,Menlo,monospace;color:#5ec98a;border:1px solid rgba(94,201,138,.5);border-radius:4px;padding:1px 5px">P</span>
+          <span style="font:600 12.5px system-ui;color:#7bd6a1">Pick</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1)">
+          <span style="font:600 10px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:1px 5px">X</span>
+          <span style="font:600 12.5px system-ui;color:rgba(255,255,255,.6)">Reject</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;height:34px;padding:0 13px;border-radius:9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1)">
+          <span style="font:600 12px system-ui;color:#f5b455;letter-spacing:1px">★★★★★</span>
+          <span style="font:500 10px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.4)">1–5</span>
+        </div>
+        <div style="display:flex;gap:5px;align-items:center;height:34px;padding:0 12px;border-radius:9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1)">
+          <span style="width:12px;height:12px;border-radius:50%;background:#ec5a52"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#e6b93e"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#5ec98a"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#4a9ef0"></span>
+        </div>
+        <div style="width:1px;height:22px;background:rgba(255,255,255,.1)"></div>
+        <span style="font:500 11px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.4)">← → navigate · Space advances · Assist auto-picks</span>
+      </div>
+
+      <div style="flex:none;height:90px;display:flex;align-items:center;gap:5px;padding:0 16px 16px;overflow-x:hidden">
+        <sc-for list="{{ cullStrip }}" as="s" hint-placeholder-count="16">
+          <div style="position:relative;height:60px;aspect-ratio:3 / 2;border-radius:4px;overflow:hidden;flex:none;cursor:pointer">
+            <div style="{{ s.innerStyle }}"></div>
+            <sc-if value="{{ s.dim }}" hint-placeholder-val="{{ false }}"><div style="{{ s.dim }}"></div></sc-if>
+            <div style="{{ s.bar }}"></div>
+            <sc-if value="{{ s.ring }}" hint-placeholder-val="{{ false }}"><div style="{{ s.ring }}"></div></sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dv-opt" id="2b">
+  <div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">Survey &amp; compare</b> — N-up on a near-duplicate burst. Teststrip pre-picks the sharpest frame and flags the blinks and soft shots; you confirm the whole group in one click.</span></div>
+  <div class="dv-card" style="width:1180px">
+    <div style="width:1180px;height:820px;display:flex;flex-direction:column;background:#0e0e10;color:#fff;overflow:hidden">
+
+      <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 14px;background:linear-gradient(#1c1c1f,#161619);border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;gap:8px">
+          <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:9px">
+          <span style="font:600 12.5px system-ui;color:#fff">Near-duplicate group</span>
+          <span style="font:450 11.5px system-ui;color:rgba(255,255,255,.45)">8 frames · Torres del Paine · 10:24 AM</span>
+        </div>
+        <div style="flex:1"></div>
+        <div style="display:flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:8px;background:rgba(232,162,60,.12);border:1px solid rgba(232,162,60,.3)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+          <span style="font:500 11px system-ui;color:#f0b866">Suggests: keep 1 · reject 7</span>
+        </div>
+      </div>
+
+      <div style="flex:1;padding:22px;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:1fr 1fr;gap:14px;min-height:0">
+        <sc-for list="{{ surveyFrames }}" as="f" hint-placeholder-count="8">
+          <div style="position:relative;border-radius:7px;overflow:hidden;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.5)" style-hover="box-shadow:0 0 0 2px rgba(255,255,255,.2),0 8px 20px rgba(0,0,0,.55)">
+            <div style="{{ f.innerStyle }}"></div>
+            <div style="position:absolute;inset:0;box-shadow:inset 0 0 34px 6px rgba(0,0,0,.4)"></div>
+            <div class="ts-grain" style="position:absolute;inset:0;opacity:.06;mix-blend-mode:overlay;pointer-events:none"></div>
+            <sc-if value="{{ f.badgeStyle }}" hint-placeholder-val="{{ false }}"><span style="{{ f.badgeStyle }}">{{ f.badge.t }}</span></sc-if>
+            <div style="position:absolute;left:9px;bottom:8px;font:500 10px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.75);text-shadow:0 1px 3px rgba(0,0,0,.7)">{{ f.name }}</div>
+            <sc-if value="{{ f.reason }}" hint-placeholder-val=""><div style="position:absolute;right:9px;bottom:8px;font:500 10px system-ui;color:rgba(255,255,255,.85);text-shadow:0 1px 3px rgba(0,0,0,.8)">{{ f.reason }}</div></sc-if>
+            <sc-if value="{{ f.ring }}" hint-placeholder-val="{{ false }}"><div style="{{ f.ring }}"></div></sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="flex:none;display:flex;align-items:center;gap:12px;padding:14px 22px;border-top:1px solid rgba(255,255,255,.06);background:#141416">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+        <span style="font:450 12.5px system-ui;color:rgba(255,255,255,.65)">Teststrip picked the sharpest, eyes-open frame · flagged 2 soft &amp; 1 blink</span>
+        <div style="flex:1"></div>
+        <button style="height:32px;padding:0 15px;background:#e8a23c;color:#171512;border:none;border-radius:8px;font:600 12px system-ui;cursor:pointer">Keep best · reject 7</button>
+        <button style="height:32px;padding:0 13px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.12);border-radius:8px;font:500 12px system-ui;cursor:pointer">Keep all</button>
+        <button style="height:32px;padding:0 13px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.12);border-radius:8px;font:500 12px system-ui;cursor:pointer">Choose manually</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "commit to <a class="dv-oid" href="#2a">2a</a> and wire real keyboard culling" · "add a 2-up A/B compare to <a class="dv-oid" href="#2b">2b</a>" · "put the <a class="dv-oid" href="#2a">2a</a> verdict into <a class="dv-oid" href="#1a">1a</a>'s inspector"</p>
+</section>
+
+<section class="dv-turn" id="t1">
+
+<div style="max-width:1280px;margin:0 0 30px;display:flex;flex-direction:column;gap:15px">
+  <div style="display:flex;align-items:center;gap:13px">
+    <div style="display:flex;gap:2px;align-items:flex-end">
+      <span style="width:7px;height:14px;border-radius:1.5px;background:#2a2a2d"></span>
+      <span style="width:7px;height:18px;border-radius:1.5px;background:#48484c"></span>
+      <span style="width:7px;height:22px;border-radius:1.5px;background:#78787c"></span>
+      <span style="width:7px;height:18px;border-radius:1.5px;background:#b8b8bc"></span>
+      <span style="width:7px;height:14px;border-radius:1.5px;background:#f2c98a"></span>
+    </div>
+    <div style="font:600 19px system-ui;letter-spacing:-.02em;color:#fff">Teststrip</div>
+    <div style="font:500 10.5px ui-monospace,Menlo,monospace;color:#e8a23c;background:rgba(232,162,60,.13);padding:3px 9px;border-radius:20px;letter-spacing:.02em">macOS · LIBRARY</div>
+  </div>
+  <div style="font:400 13px/1.65 system-ui;color:rgba(255,255,255,.56);max-width:790px">A 100% replacement for Lightroom's library side — no editing, just fast catalog, culling &amp; management for pros with hundreds of thousands of frames across decades. Three directions below explore the same catalog through different lenses: a familiar-but-elevated pro workspace, an agent-driven copilot, and a decade-scale timeline. Mix and match — call out any panel by its id.</div>
+  <div style="display:flex;gap:26px;flex-wrap:wrap;padding:14px 0 2px;border-top:1px solid rgba(255,255,255,.07);margin-top:2px">
+    <div style="display:flex;flex-direction:column;gap:7px">
+      <div style="font:600 9.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.32);letter-spacing:.08em">SURFACE</div>
+      <div style="display:flex;gap:5px">
+        <span style="width:22px;height:22px;border-radius:5px;background:#0e0e10;border:1px solid rgba(255,255,255,.12)"></span>
+        <span style="width:22px;height:22px;border-radius:5px;background:#161618;border:1px solid rgba(255,255,255,.12)"></span>
+        <span style="width:22px;height:22px;border-radius:5px;background:#212125;border:1px solid rgba(255,255,255,.12)"></span>
+        <span style="width:22px;height:22px;border-radius:5px;background:#2c2c31;border:1px solid rgba(255,255,255,.12)"></span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px">
+      <div style="font:600 9.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.32);letter-spacing:.08em">ACCENT · SEMANTIC</div>
+      <div style="display:flex;gap:5px">
+        <span style="width:22px;height:22px;border-radius:5px;background:#e8a23c" title="Safelight amber"></span>
+        <span style="width:22px;height:22px;border-radius:5px;background:#5ec98a" title="Pick"></span>
+        <span style="width:22px;height:22px;border-radius:5px;background:#ec5a52" title="Reject"></span>
+        <span style="width:22px;height:22px;border-radius:5px;background:#4a9ef0" title="Label"></span>
+        <span style="width:22px;height:22px;border-radius:5px;background:#a884f0" title="Label"></span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px">
+      <div style="font:600 9.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.32);letter-spacing:.08em">TYPE</div>
+      <div style="display:flex;gap:14px;align-items:baseline">
+        <span style="font:590 15px system-ui;color:rgba(255,255,255,.82)">SF / System</span>
+        <span style="font:500 12px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.55)">ƒ/1.4 · ISO 100 mono</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Teststrip — three library directions</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a">
+  <div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">Studio</b> — refined classic pro. Catalog tree, adaptive grid, live metadata inspector. Everything visible; density is configurable. Agent features woven in quietly.</span></div>
+  <div class="dv-card" style="width:1280px">
+    <div style="width:1280px;height:848px;display:flex;flex-direction:column;background:#141416;color:rgba(255,255,255,.9);overflow:hidden">
+
+      <div style="height:52px;flex:none;display:flex;align-items:center;padding:0 12px;background:linear-gradient(180deg,#262629,#1d1d20);border-bottom:1px solid rgba(255,255,255,.07)">
+        <div style="display:flex;gap:8px;padding-right:16px">
+          <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.25)"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#febc2e;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.25)"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#28c840;box-shadow:inset 0 0 0 .5px rgba(0,0,0,.25)"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;padding-right:14px">
+          <div style="display:flex;gap:1.5px;align-items:flex-end">
+            <span style="width:4px;height:9px;border-radius:1px;background:#48484c"></span>
+            <span style="width:4px;height:13px;border-radius:1px;background:#78787c"></span>
+            <span style="width:4px;height:11px;border-radius:1px;background:#b8b8bc"></span>
+            <span style="width:4px;height:9px;border-radius:1px;background:#f2c98a"></span>
+          </div>
+          <div style="line-height:1.15">
+            <div style="font:600 12.5px system-ui;letter-spacing:-.01em;color:#fff">Master Catalog</div>
+            <div style="font:400 10px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.4)">486,204 photographs</div>
+          </div>
+        </div>
+        <div style="width:1px;height:26px;background:rgba(255,255,255,.08);margin:0 12px"></div>
+        <div style="display:flex;align-items:center;gap:7px;font:400 12px system-ui;color:rgba(255,255,255,.5)">
+          <span>All Photographs</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          <span>2024</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          <span style="color:#fff;font-weight:500">Patagonia</span>
+        </div>
+        <div style="flex:1"></div>
+        <div style="display:flex;align-items:center;gap:8px;width:262px;height:31px;padding:0 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:8px" style-hover="border-color:rgba(232,162,60,.4);background:rgba(255,255,255,.07)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/><path d="M18.5 15.5l.6 1.9 1.9.6-1.9.6-.6 1.9-.6-1.9-1.9-.6 1.9-.6z"/></svg>
+          <span style="font:400 12px system-ui;color:rgba(255,255,255,.4);flex:1">Ask Teststrip or search…</span>
+          <span style="font:500 10px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.3);border:1px solid rgba(255,255,255,.14);border-radius:4px;padding:1px 5px">⌘K</span>
+        </div>
+        <div style="width:12px"></div>
+        <div style="display:flex;gap:2px;padding:2px;background:rgba(0,0,0,.28);border-radius:8px">
+          <div style="width:30px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.1);border-radius:6px" title="Grid">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.2"/><rect x="13" y="4" width="7" height="7" rx="1.2"/><rect x="4" y="13" width="7" height="7" rx="1.2"/><rect x="13" y="13" width="7" height="7" rx="1.2"/></svg>
+          </div>
+          <div style="width:30px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:6px" style-hover="background:rgba(255,255,255,.06)" title="Loupe">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+          </div>
+          <div style="width:30px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:6px" style-hover="background:rgba(255,255,255,.06)" title="Compare">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="7" height="14" rx="1.2"/><rect x="13" y="5" width="7" height="14" rx="1.2"/></svg>
+          </div>
+          <div style="width:30px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:6px" style-hover="background:rgba(255,255,255,.06)" title="Map">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L4 6v14l5-2 6 2 5-2V4l-5 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>
+          </div>
+        </div>
+        <div style="width:12px"></div>
+        <button style="display:flex;align-items:center;gap:6px;height:31px;padding:0 13px;background:#e8a23c;color:#171512;border:none;border-radius:8px;font:600 12px system-ui;cursor:pointer" style-hover="background:#f0ac48">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#171512" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5"/><path d="M5 16v2a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2"/></svg>
+          Import
+        </button>
+      </div>
+
+      <div style="flex:1;display:flex;min-height:0">
+
+        <div class="ts-sc" style="width:238px;flex:none;background:#161618;border-right:1px solid rgba(255,255,255,.06);overflow-y:auto;padding:12px 10px">
+          <div style="font:600 9.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.3);letter-spacing:.09em;padding:4px 10px 7px">LIBRARY</div>
+          <sc-for list="{{ libSection }}" as="it" hint-placeholder-count="5">
+            <div style="{{ it.rowStyle }}" style-hover="background:rgba(255,255,255,.05)">
+              <span style="display:flex">{{ it.iconEl }}</span>
+              <span style="flex:1;font:450 12.5px system-ui">{{ it.label }}</span>
+              <span style="font:500 10.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.34)">{{ it.count }}</span>
+            </div>
+          </sc-for>
+
+          <div style="height:14px"></div>
+          <div style="font:600 9.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.3);letter-spacing:.09em;padding:4px 10px 7px">CATALOG</div>
+          <sc-for list="{{ catSection }}" as="it" hint-placeholder-count="3">
+            <div style="{{ it.rowStyle }}" style-hover="background:rgba(255,255,255,.05)">
+              <span style="display:flex">{{ it.iconEl }}</span>
+              <span style="flex:1;font:450 12.5px system-ui">{{ it.label }}</span>
+              <span style="font:500 10.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.34)">{{ it.count }}</span>
+            </div>
+          </sc-for>
+          <div style="display:flex;gap:7px;padding:9px 10px 4px;overflow:hidden">
+            <sc-for list="{{ peopleChips }}" as="pc" hint-placeholder-count="6">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:none">
+                <div style="{{ pc.chipStyle }}"></div>
+                <span style="font:450 9px system-ui;color:rgba(255,255,255,.42)">{{ pc.name }}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="height:14px"></div>
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 10px 7px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+            <span style="font:600 9.5px ui-monospace,Menlo,monospace;color:#e8a23c;letter-spacing:.06em">SMART · TESTSTRIP</span>
+          </div>
+          <sc-for list="{{ smartSection }}" as="it" hint-placeholder-count="4">
+            <div style="{{ it.rowStyle }}" style-hover="background:rgba(255,255,255,.05)">
+              <span style="display:flex">{{ it.iconEl }}</span>
+              <span style="flex:1;font:450 12.5px system-ui">{{ it.label }}</span>
+              <span style="font:500 10.5px ui-monospace,Menlo,monospace;color:rgba(232,162,60,.6)">{{ it.count }}</span>
+            </div>
+          </sc-for>
+
+          <div style="height:14px"></div>
+          <div style="font:600 9.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.3);letter-spacing:.09em;padding:4px 10px 7px">FOLDERS</div>
+          <sc-for list="{{ folderSection }}" as="it" hint-placeholder-count="3">
+            <div style="{{ it.rowStyle }}" style-hover="background:rgba(255,255,255,.05)">
+              <span style="display:flex">{{ it.iconEl }}</span>
+              <span style="flex:1;font:450 12.5px system-ui">{{ it.label }}</span>
+              <span style="font:500 10.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.34)">{{ it.count }}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:#0e0e10">
+          <div style="height:42px;flex:none;display:flex;align-items:center;gap:9px;padding:0 14px;border-bottom:1px solid rgba(255,255,255,.06);background:#141416">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16l-6 7v6l-4-2v-4z"/></svg>
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="display:flex;align-items:center;gap:5px;height:23px;padding:0 9px;background:rgba(232,162,60,.14);border:1px solid rgba(232,162,60,.3);border-radius:6px;font:500 11px system-ui;color:#f0b866">Rating ≥ 3 <span style="opacity:.6;font-size:12px">×</span></span>
+              <span style="display:flex;align-items:center;gap:5px;height:23px;padding:0 9px;background:rgba(94,201,138,.13);border:1px solid rgba(94,201,138,.28);border-radius:6px;font:500 11px system-ui;color:#7bd6a1">Picks <span style="opacity:.6;font-size:12px">×</span></span>
+              <span style="display:flex;align-items:center;gap:5px;height:23px;padding:0 9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;font:500 11px system-ui;color:rgba(255,255,255,.6)">Sony α7R V <span style="opacity:.5;font-size:12px">×</span></span>
+              <span style="display:flex;align-items:center;gap:4px;height:23px;padding:0 8px;border:1px dashed rgba(255,255,255,.16);border-radius:6px;font:500 11px system-ui;color:rgba(255,255,255,.4);cursor:pointer" style-hover="border-color:rgba(255,255,255,.3);color:rgba(255,255,255,.6)">+ Filter</span>
+            </div>
+            <div style="flex:1"></div>
+            <span style="font:500 11px system-ui;color:rgba(255,255,255,.4)">Sort</span>
+            <div style="display:flex;align-items:center;gap:5px;height:24px;padding:0 9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:6px;font:500 11px system-ui;color:rgba(255,255,255,.7);cursor:pointer">
+              Capture Time
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+          </div>
+
+          <div class="ts-sc" style="flex:1;overflow-y:auto;padding:14px;position:relative">
+            <div style="position:absolute;inset:0;pointer-events:none;opacity:.5" class="ts-grain"></div>
+            <div style="{{ gridStyle }}">
+              <sc-for list="{{ gridPhotos }}" as="p" hint-placeholder-count="24">
+                <div style="position:relative;border-radius:5px;overflow:hidden;cursor:pointer;aspect-ratio:3 / 2;box-shadow:0 1px 3px rgba(0,0,0,.5)" style-hover="box-shadow:0 0 0 2px rgba(255,255,255,.22),0 6px 16px rgba(0,0,0,.55)" onClick="{{ p.onSelect }}">
+                  <div style="{{ p.styleObj }}"></div>
+                  <div style="position:absolute;inset:0;box-shadow:inset 0 0 28px 5px rgba(0,0,0,.4)"></div>
+                  <div class="ts-grain" style="position:absolute;inset:0;opacity:.07;mix-blend-mode:overlay;pointer-events:none"></div>
+                  <div style="position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:5px;padding:14px 6px 5px;background:linear-gradient(transparent,rgba(0,0,0,.6))">
+                    <sc-if value="{{ p.isPick }}" hint-placeholder-val="{{ true }}"><span style="width:15px;height:15px;border-radius:3px;background:#5ec98a;display:flex;align-items:center;justify-content:center"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#12281c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5v15M5 6h11l-2 4 2 4H5"/></svg></span></sc-if>
+                    <sc-if value="{{ p.isReject }}" hint-placeholder-val="{{ false }}"><span style="width:15px;height:15px;border-radius:3px;background:#ec5a52;display:flex;align-items:center;justify-content:center"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#2a1210" stroke-width="2.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span></sc-if>
+                    <sc-if value="{{ p.ratingStr }}" hint-placeholder-val="{{ false }}"><span style="font:600 10px system-ui;color:#f5b455;letter-spacing:.5px;text-shadow:0 1px 2px rgba(0,0,0,.6)">{{ p.ratingStr }}</span></sc-if>
+                    <div style="flex:1"></div>
+                    <sc-if value="{{ p.aiPick }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;justify-content:center;width:14px;height:14px;font:600 9px ui-monospace,Menlo,monospace;color:#e8a23c;background:rgba(0,0,0,.35);border-radius:3px">✦</span></sc-if>
+                    <sc-if value="{{ p.labelColor }}" hint-placeholder-val="{{ false }}"><span style="{{ p.labelDotStyle }}"></span></sc-if>
+                  </div>
+                  <sc-if value="{{ p.sel }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;box-shadow:inset 0 0 0 2.5px #f5b455;border-radius:5px"></div></sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="height:38px;flex:none;display:flex;align-items:center;gap:14px;padding:0 14px;border-top:1px solid rgba(255,255,255,.06);background:#141416">
+            <span style="font:500 11px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.5)">{{ statusLeft }}</span>
+            <div style="flex:1"></div>
+            <div style="display:flex;gap:2px;padding:2px;background:rgba(0,0,0,.28);border-radius:7px">
+              <div onClick="{{ densComfy }}" style="{{ comfyStyle }}">Comfortable</div>
+              <div onClick="{{ densCompact }}" style="{{ compactStyle }}">Compact</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+              <input type="range" min="1" max="7" step="1" value="{{ thumb }}" onChange="{{ onThumb }}" style="width:104px;accent-color:#e8a23c;background:transparent" />
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div class="ts-sc" style="width:290px;flex:none;background:#161618;border-left:1px solid rgba(255,255,255,.06);overflow-y:auto">
+          <div style="{{ sel.previewStyle }}"></div>
+          <div style="padding:14px 15px;display:flex;flex-direction:column;gap:16px">
+            <div>
+              <div style="display:flex;align-items:baseline;gap:6px">
+                <span style="font:600 14px ui-monospace,Menlo,monospace;color:#fff;letter-spacing:-.02em">{{ sel.name }}</span>
+                <span style="font:600 10px ui-monospace,Menlo,monospace;color:#e8a23c;background:rgba(232,162,60,.13);padding:1px 5px;border-radius:4px">{{ sel.ext }}</span>
+              </div>
+              <div style="font:400 12px system-ui;color:rgba(255,255,255,.5);margin-top:3px">{{ sel.dateStr }} · {{ sel.timeStr }}</div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="display:flex;gap:2px">{{ sel.starEls }}</div>
+              <div style="width:1px;height:16px;background:rgba(255,255,255,.1)"></div>
+              <div style="display:flex;gap:5px">
+                <span style="width:22px;height:22px;border-radius:6px;background:rgba(94,201,138,.16);border:1px solid rgba(94,201,138,.4);display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5ec98a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5v15M5 6h11l-2 4 2 4H5"/></svg></span>
+                <span style="width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+              </div>
+              <div style="flex:1"></div>
+              <div style="display:flex;gap:4px">
+                <span style="width:13px;height:13px;border-radius:50%;background:#ec5a52"></span>
+                <span style="width:13px;height:13px;border-radius:50%;background:#e6b93e"></span>
+                <span style="width:13px;height:13px;border-radius:50%;background:#5ec98a;box-shadow:0 0 0 2px rgba(94,201,138,.3)"></span>
+                <span style="width:13px;height:13px;border-radius:50%;background:#4a9ef0"></span>
+              </div>
+            </div>
+
+            <div style="height:1px;background:rgba(255,255,255,.07)"></div>
+
+            <div style="display:flex;flex-direction:column;gap:0">
+              <sc-for list="{{ sel.exif }}" as="row" hint-placeholder-count="9">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+                  <span style="font:450 11.5px system-ui;color:rgba(255,255,255,.42)">{{ row.k }}</span>
+                  <span style="font:500 11.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.82)">{{ row.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div>
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:9px">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.4"/></svg>
+                <span style="font:500 11.5px system-ui;color:rgba(255,255,255,.8)">{{ sel.loc }}</span>
+              </div>
+              <div style="height:74px;border-radius:8px;background:linear-gradient(160deg,#20303a,#16232c);position:relative;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)">
+                <div style="position:absolute;inset:0;background:radial-gradient(circle at 60% 45%,rgba(232,162,60,.16),transparent 55%)"></div>
+                <svg width="60" height="60" viewBox="0 0 100 100" style="position:absolute;inset:0;width:100%;height:100%;opacity:.5"><path d="M-5 60 Q30 40 55 55 T110 45" stroke="rgba(255,255,255,.14)" fill="none" stroke-width="1"/><path d="M-5 78 Q40 62 70 72 T110 66" stroke="rgba(255,255,255,.1)" fill="none" stroke-width="1"/></svg>
+                <div style="position:absolute;left:57%;top:40%;transform:translate(-50%,-100%)"><svg width="18" height="18" viewBox="0 0 24 24" fill="#e8a23c" stroke="#171512" stroke-width="1"><path d="M12 22s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.4" fill="#171512"/></svg></div>
+              </div>
+            </div>
+
+            <div>
+              <div style="font:500 11px system-ui;color:rgba(255,255,255,.42);margin-bottom:8px">Keywords</div>
+              <div style="display:flex;flex-wrap:wrap;gap:5px">
+                <sc-for list="{{ sel.kwArr }}" as="k" hint-placeholder-count="4">
+                  <span style="font:450 11px system-ui;color:rgba(255,255,255,.72);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);padding:3px 8px;border-radius:5px">{{ k }}</span>
+                </sc-for>
+                <span style="font:450 11px system-ui;color:rgba(255,255,255,.4);border:1px dashed rgba(255,255,255,.16);padding:3px 8px;border-radius:5px;cursor:pointer">+ add</span>
+              </div>
+            </div>
+
+            <div style="background:rgba(232,162,60,.05);border:1px solid rgba(232,162,60,.18);border-radius:10px;padding:11px 12px">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:9px">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+                <span style="font:600 9.5px ui-monospace,Menlo,monospace;color:#e8a23c;letter-spacing:.06em">TESTSTRIP TAGS</span>
+                <div style="flex:1"></div>
+                <span style="font:450 10px system-ui;color:rgba(232,162,60,.6)">auto · verify</span>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:5px">
+                <sc-for list="{{ sel.aiArr }}" as="k" hint-placeholder-count="3">
+                  <span style="font:450 11px system-ui;color:#f0b866;background:rgba(232,162,60,.1);border:1px solid rgba(232,162,60,.24);padding:3px 8px;border-radius:5px">{{ k }}</span>
+                </sc-for>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dv-opt" id="1b">
+  <div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">Copilot</b> — agent-driven. Ask in plain language; Teststrip parses it into filters, auto-culls the take, and works the catalog in the background. The differentiator, front and center.</span></div>
+  <div class="dv-card" style="width:1180px">
+    <div style="width:1180px;height:848px;display:flex;flex-direction:column;background:#141416;color:rgba(255,255,255,.9);overflow:hidden">
+
+      <div style="height:52px;flex:none;display:flex;align-items:center;padding:0 12px;background:linear-gradient(180deg,#262629,#1d1d20);border-bottom:1px solid rgba(255,255,255,.07)">
+        <div style="display:flex;gap:8px;padding-right:16px">
+          <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px">
+          <div style="display:flex;gap:1.5px;align-items:flex-end">
+            <span style="width:4px;height:9px;border-radius:1px;background:#48484c"></span>
+            <span style="width:4px;height:13px;border-radius:1px;background:#78787c"></span>
+            <span style="width:4px;height:11px;border-radius:1px;background:#b8b8bc"></span>
+            <span style="width:4px;height:9px;border-radius:1px;background:#f2c98a"></span>
+          </div>
+          <div style="line-height:1.15">
+            <div style="font:600 12.5px system-ui;letter-spacing:-.01em;color:#fff">Master Catalog</div>
+            <div style="font:400 10px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.4)">Teststrip Intelligence</div>
+          </div>
+        </div>
+        <div style="flex:1"></div>
+        <div onClick="{{ toggleAuto }}" style="display:flex;align-items:center;gap:8px;height:28px;padding:0 12px;border-radius:8px;background:rgba(232,162,60,.12);border:1px solid rgba(232,162,60,.3);cursor:pointer">
+          <span style="width:7px;height:7px;border-radius:50%;background:#e8a23c;animation:ts-pulse 1.6s ease-in-out infinite"></span>
+          <span style="font:600 11px system-ui;color:#f0b866">Autopilot on</span>
+        </div>
+        <div style="width:12px"></div>
+        <button style="display:flex;align-items:center;gap:6px;height:31px;padding:0 13px;background:#e8a23c;color:#171512;border:none;border-radius:8px;font:600 12px system-ui;cursor:pointer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#171512" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5"/><path d="M5 16v2a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2"/></svg>
+          Import
+        </button>
+      </div>
+
+      <div style="flex:1;display:flex;min-height:0">
+        <div style="width:56px;flex:none;background:#161618;border-right:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:4px">
+          <div style="width:38px;height:38px;border-radius:9px;background:rgba(232,162,60,.16);border:1px solid rgba(232,162,60,.32);display:flex;align-items:center;justify-content:center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+          </div>
+          <div style="width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(255,255,255,.06)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.2"/><rect x="13" y="4" width="7" height="7" rx="1.2"/><rect x="4" y="13" width="7" height="7" rx="1.2"/><rect x="13" y="13" width="7" height="7" rx="1.2"/></svg></div>
+          <div style="width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(255,255,255,.06)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 6a3 3 0 0 1 0 6"/></svg></div>
+          <div style="width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(255,255,255,.06)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L4 6v14l5-2 6 2 5-2V4l-5 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg></div>
+          <div style="width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(255,255,255,.06)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4"/></svg></div>
+        </div>
+
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:#0e0e10;overflow:hidden">
+          <div style="padding:16px 20px 12px;flex:none">
+            <div style="display:flex;align-items:center;gap:12px;height:52px;padding:0 15px;background:linear-gradient(#1c1c1f,#191919);border:1px solid rgba(232,162,60,.22);border-radius:12px">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/><path d="M18.5 15.5l.6 1.9 1.9.6-1.9.6-.6 1.9-.6-1.9-1.9-.6 1.9-.6z"/></svg>
+              <div style="flex:1;font:450 14px system-ui;color:rgba(255,255,255,.92)">{{ cpQuery }}<span style="display:inline-block;width:2px;height:15px;background:#e8a23c;margin-left:2px;vertical-align:-2px;animation:ts-caret 1.1s steps(1) infinite"></span></div>
+              <span style="font:500 10px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.35);border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:3px 7px">return ↵</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;margin-top:13px;flex-wrap:wrap">
+              <span style="display:flex;align-items:center;gap:5px;font:600 9.5px ui-monospace,Menlo,monospace;color:#e8a23c;letter-spacing:.06em"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>TESTSTRIP READS</span>
+              <sc-for list="{{ cpChips }}" as="c" hint-placeholder-count="7">
+                <span style="{{ c.style }}"><sc-if value="{{ c.ai }}" hint-placeholder-val="{{ false }}"><span style="color:#e8a23c;font-size:11px">✦</span></sc-if>{{ c.t }}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="margin:0 20px 12px;flex:none;display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(232,162,60,.05);border:1px solid rgba(232,162,60,.18);border-radius:10px">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+            <div style="flex:1">
+              <div style="font:600 12.5px system-ui;color:#fff">Auto-culled 2,310 frames from this take</div>
+              <div style="font:450 11.5px system-ui;color:rgba(255,255,255,.55);margin-top:2px"><span style="color:#5ec98a;font-weight:600">890 keepers</span> · <span style="color:#ec5a52;font-weight:600">340 rejects</span> · 3,204 near-dupes → 980 stacks</div>
+            </div>
+            <button style="height:28px;padding:0 12px;background:#e8a23c;color:#171512;border:none;border-radius:7px;font:600 11px system-ui;cursor:pointer">Review</button>
+            <button style="height:28px;padding:0 12px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.12);border-radius:7px;font:500 11px system-ui;cursor:pointer">Undo all</button>
+          </div>
+
+          <div class="ts-sc" style="flex:1;overflow-y:auto;padding:0 20px 18px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(126px,1fr));gap:9px">
+              <sc-for list="{{ cpPhotos }}" as="p" hint-placeholder-count="18">
+                <div style="position:relative;border-radius:5px;overflow:hidden;aspect-ratio:3 / 2;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.5)" style-hover="box-shadow:0 0 0 2px rgba(255,255,255,.2),0 6px 16px rgba(0,0,0,.55)">
+                  <div style="{{ p.styleObj }}"></div>
+                  <div style="position:absolute;inset:0;box-shadow:inset 0 0 26px 5px rgba(0,0,0,.4)"></div>
+                  <div class="ts-grain" style="position:absolute;inset:0;opacity:.07;mix-blend-mode:overlay;pointer-events:none"></div>
+                  <sc-if value="{{ p.dim }}" hint-placeholder-val="{{ false }}"><div style="{{ p.dim }}"></div></sc-if>
+                  <sc-if value="{{ p.autoPick }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;box-shadow:inset 0 0 0 2px rgba(94,201,138,.85);border-radius:5px"></div><span style="position:absolute;top:5px;left:5px;font:600 8.5px ui-monospace,Menlo,monospace;color:#12281c;background:#5ec98a;padding:1px 4px;border-radius:3px">✦ KEEP</span></sc-if>
+                  <sc-if value="{{ p.autoReject }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:5px;left:5px;font:600 8.5px ui-monospace,Menlo,monospace;color:#fff;background:#ec5a52;padding:1px 4px;border-radius:3px">✕ CUT</span></sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div style="width:332px;flex:none;background:#161618;border-left:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;overflow:hidden">
+          <div style="height:46px;flex:none;display:flex;align-items:center;gap:8px;padding:0 15px;border-bottom:1px solid rgba(255,255,255,.06)">
+            <span style="width:8px;height:8px;border-radius:50%;background:#e8a23c;animation:ts-pulse 1.6s ease-in-out infinite"></span>
+            <span style="font:600 13px system-ui;color:#fff">Agents</span>
+            <div style="flex:1"></div>
+            <span style="font:500 10.5px system-ui;color:rgba(232,162,60,.7)">5 active</span>
+          </div>
+          <div class="ts-sc" style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:9px">
+            <sc-for list="{{ cpAgents }}" as="a" hint-placeholder-count="5">
+              <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:11px 12px">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
+                  <sc-if value="{{ a.running }}" hint-placeholder-val="{{ false }}"><span style="width:7px;height:7px;border-radius:50%;background:#4a9ef0;animation:ts-pulse 1.5s ease-in-out infinite;flex:none"></span></sc-if>
+                  <span style="flex:1;font:600 12px system-ui;color:rgba(255,255,255,.9)">{{ a.title }}</span>
+                  <span style="{{ a.chipStyle }}">{{ a.label }}</span>
+                </div>
+                <div style="font:450 11px system-ui;color:rgba(255,255,255,.5);margin-bottom:9px">{{ a.detail }}</div>
+                <div style="height:4px;border-radius:20px;background:rgba(255,255,255,.08);overflow:hidden"><div style="{{ a.barFill }}"></div></div>
+              </div>
+            </sc-for>
+            <div style="background:rgba(232,162,60,.05);border:1px solid rgba(232,162,60,.18);border-radius:10px;padding:11px 12px;display:flex;align-items:center;gap:10px">
+              <div style="flex:1"><div style="font:600 12px system-ui;color:#f0b866">2 tasks need your review</div><div style="font:450 10.5px system-ui;color:rgba(255,255,255,.5);margin-top:2px">340 auto-rejects · 3 unnamed faces</div></div>
+              <button style="height:28px;padding:0 12px;background:#e8a23c;color:#171512;border:none;border-radius:7px;font:600 11px system-ui;cursor:pointer">Review</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="dv-opt" id="1c">
+  <div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a><span><b style="color:rgba(255,255,255,.72);font-weight:600">Timeline</b> — decade-scale. A density ribbon spans every year you've shot; scrub from decades down to a single day. Chrome recedes, photographs dominate.</span></div>
+  <div class="dv-card" style="width:1180px">
+    <div style="width:1180px;height:848px;display:flex;flex-direction:column;background:#0b0b0d;color:rgba(255,255,255,.9);overflow:hidden;position:relative">
+
+      <div style="height:52px;flex:none;display:flex;align-items:center;padding:0 12px;background:linear-gradient(180deg,#202023,#161619);border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;gap:8px;padding-right:16px">
+          <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span>
+          <span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px">
+          <div style="display:flex;gap:1.5px;align-items:flex-end">
+            <span style="width:4px;height:9px;border-radius:1px;background:#48484c"></span>
+            <span style="width:4px;height:13px;border-radius:1px;background:#78787c"></span>
+            <span style="width:4px;height:11px;border-radius:1px;background:#b8b8bc"></span>
+            <span style="width:4px;height:9px;border-radius:1px;background:#f2c98a"></span>
+          </div>
+          <div style="font:600 12.5px system-ui;letter-spacing:-.01em;color:#fff">All Photographs</div>
+        </div>
+        <div style="flex:1"></div>
+        <div style="display:flex;gap:2px;padding:2px;background:rgba(0,0,0,.28);border-radius:8px">
+          <div style="padding:0 11px;height:26px;display:flex;align-items:center;font:500 11px system-ui;color:rgba(255,255,255,.5);border-radius:6px" style-hover="background:rgba(255,255,255,.06)">Years</div>
+          <div style="padding:0 11px;height:26px;display:flex;align-items:center;font:500 11px system-ui;color:rgba(255,255,255,.5);border-radius:6px" style-hover="background:rgba(255,255,255,.06)">Months</div>
+          <div style="padding:0 11px;height:26px;display:flex;align-items:center;font:600 11px system-ui;color:#171512;background:#e8a23c;border-radius:6px">Days</div>
+        </div>
+        <div style="width:12px"></div>
+        <div style="display:flex;align-items:center;gap:8px;width:210px;height:31px;padding:0 11px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:8px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#e8a23c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/></svg>
+          <span style="font:400 12px system-ui;color:rgba(255,255,255,.4);flex:1">Jump to any moment…</span>
+        </div>
+      </div>
+
+      <div style="flex:none;padding:16px 22px 12px;background:#0e0e10;border-bottom:1px solid rgba(255,255,255,.06)">
+        <div style="display:flex;align-items:flex-end;gap:20px">
+          <div style="flex:none;padding-bottom:24px">
+            <div style="font:600 9.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.32);letter-spacing:.08em">CATALOG TIMELINE</div>
+            <div style="font:600 23px system-ui;color:#fff;letter-spacing:-.02em;margin-top:4px">2003 — 2026</div>
+            <div style="font:450 11px system-ui;color:rgba(255,255,255,.45);margin-top:1px">486,204 photographs · 23 years</div>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:flex-end;height:88px;padding:0 2px">
+              <sc-for list="{{ tlYears }}" as="y" hint-placeholder-count="24">
+                <div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center">
+                  <sc-if value="{{ y.focus }}" hint-placeholder-val="{{ false }}"><div style="font:600 8.5px ui-monospace,Menlo,monospace;color:#171512;background:#e8a23c;padding:2px 6px;border-radius:4px;margin-bottom:5px;white-space:nowrap">2024 · 61,540</div></sc-if>
+                  <div style="{{ y.barStyle }}"></div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;padding:8px 2px 0;border-top:1px solid rgba(255,255,255,.08);margin-top:2px">
+              <sc-for list="{{ tlYears }}" as="y" hint-placeholder-count="24">
+                <div style="flex:1;text-align:center;font:500 9.5px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.35)">{{ y.tick }}</div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ts-sc" style="flex:1;overflow-y:auto">
+        <sc-for list="{{ tlGroups }}" as="g" hint-placeholder-count="3">
+          <div style="padding:0 22px 6px">
+            <div style="position:sticky;top:0;display:flex;align-items:baseline;gap:11px;padding:15px 0 12px;background:linear-gradient(#0b0b0d 60%,rgba(11,11,13,0));z-index:2">
+              <span style="font:600 15px system-ui;color:#fff;letter-spacing:-.01em">{{ g.title }}</span>
+              <span style="font:450 12px system-ui;color:rgba(255,255,255,.45)">{{ g.sub }}</span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              <sc-for list="{{ g.photos }}" as="p" hint-placeholder-count="8">
+                <div style="{{ p.outerStyle }}" style-hover="box-shadow:0 0 0 2px rgba(255,255,255,.22),0 8px 20px rgba(0,0,0,.6)">
+                  <div style="{{ p.styleObj }}"></div>
+                  <div style="position:absolute;inset:0;box-shadow:inset 0 0 32px 6px rgba(0,0,0,.4)"></div>
+                  <div class="ts-grain" style="position:absolute;inset:0;opacity:.06;mix-blend-mode:overlay;pointer-events:none"></div>
+                  <sc-if value="{{ p.isPick }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:7px;left:7px;width:15px;height:15px;border-radius:3px;background:#5ec98a;display:flex;align-items:center;justify-content:center"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#12281c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5v15M5 6h11l-2 4 2 4H5"/></svg></span></sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+        <div style="height:64px"></div>
+      </div>
+
+      <div style="position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;height:34px;padding:0 17px;background:rgba(22,22,24,.9);border:1px solid rgba(255,255,255,.12);border-radius:20px;box-shadow:0 8px 24px rgba(0,0,0,.5)">
+        <span style="font:600 11.5px system-ui;color:#fff">October 2024</span>
+        <span style="width:1px;height:14px;background:rgba(255,255,255,.15)"></span>
+        <span style="font:450 11px ui-monospace,Menlo,monospace;color:rgba(255,255,255,.5)">684 photographs · 3 days</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</div>
+
+<p class="dv-next">Try next: "build out the culling / compare view" · "make <a class="dv-oid" href="#1a">1a</a> a light theme too" · "push <a class="dv-oid" href="#1b">1b</a> further — full agent autopilot screen" · "combine <a class="dv-oid" href="#1c">1c</a>'s timeline ribbon into <a class="dv-oid" href="#1a">1a</a>"</p>
+
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  C = { AMBER:'#e8a23c', AMBER2:'#f5b455', PICK:'#5ec98a', REJECT:'#ec5a52',
+        L:{red:'#ec5a52',yellow:'#e6b93e',green:'#5ec98a',blue:'#4a9ef0',purple:'#a884f0'} };
+  state = { selectedId: 4, thumb: 4, density:'comfortable', autopilot:true };
+
+  makeRng(seed){ let s=seed>>>0; return ()=>{ s=(s*1664525+1013904223)>>>0; return s/4294967296; }; }
+
+  icon(name,o){ o=o||{}; const P={
+    stack:'<rect x="4" y="4" width="14" height="14" rx="2.2"/><path d="M8.5 20.5h9a2 2 0 0 0 2-2v-9"/>',
+    clock:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4.4l3 1.8"/>',
+    flag:'<path d="M5 21V4"/><path d="M5 5h11l-1.7 3.6L16 12H5"/>',
+    x:'<path d="M6 6l12 12M18 6L6 18"/>',
+    users:'<circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 6a3 3 0 0 1 0 6"/><path d="M15.5 19a5.5 5.5 0 0 0-1.6-3.9"/>',
+    map:'<path d="M9 4L4 6v14l5-2 6 2 5-2V4l-5 2-6-2z"/><path d="M9 4v14M15 6v14"/>',
+    calendar:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9.5h16M8 3v4M16 3v4"/>',
+    check:'<path d="M4 12l5 5L20 6"/>',
+    layers:'<path d="M12 4l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4"/>',
+    sparkle:'<path d="M12 3l1.5 5L18 9.5 13.5 11 12 16l-1.5-5L6 9.5 10.5 8z"/>',
+    folder:'<path d="M4 6.5a1 1 0 0 1 1-1h3.6l2 2H19a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/>'
+  };
+    return React.createElement('svg',{width:o.size||16,height:o.size||16,viewBox:'0 0 24 24',fill:'none',stroke:o.color||'currentColor',strokeWidth:o.sw||1.55,strokeLinecap:'round',strokeLinejoin:'round',style:{flex:'none',display:'block'},dangerouslySetInnerHTML:{__html:P[name]||''}});
+  }
+
+  stars(n){ const els=[]; for(let i=0;i<5;i++){ const on=i<n; els.push(React.createElement('svg',{key:i,width:14,height:14,viewBox:'0 0 24 24',fill:on?'#f5b455':'none',stroke:on?'#f5b455':'rgba(255,255,255,.22)',strokeWidth:1.4,style:{display:'block'}},React.createElement('path',{d:'M12 3.5l2.5 5.2 5.7.8-4.1 4 1 5.6-5.1-2.7-5.1 2.7 1-5.6-4.1-4 5.7-.8z'}))); } return React.createElement('div',{style:{display:'flex',gap:'1px'}},els); }
+
+  buildData(){
+    if(this._d) return this._d;
+    const C=this.C, rnd=this.makeRng(70714), me=this;
+    const rp=a=>a[Math.floor(rnd()*a.length)], ri=(lo,hi)=>lo+Math.floor(rnd()*(hi-lo+1));
+    const looks=[
+      {bg:'linear-gradient(178deg,#f6c877 0%,#eb9a52 20%,#9c5b3c 43%,#3a2521 72%,#160f0e 100%)',k:'landscape',r:1.5},
+      {bg:'radial-gradient(2px 2px at 28% 64%,#ffd48a,transparent 60%),radial-gradient(2px 2px at 44% 71%,#ffcf7d,transparent 60%),radial-gradient(3px 3px at 63% 66%,#ffe0a0,transparent 55%),radial-gradient(2px 2px at 74% 70%,#ffd48a,transparent 60%),linear-gradient(179deg,#26354f 0%,#1a2740 46%,#0e1626 100%)',k:'cityscape',r:1.5},
+      {bg:'radial-gradient(62% 74% at 50% 42%,#d8ab84 0%,#8a5f45 46%,#2c1f19 80%,#150f0c 100%)',k:'portrait',r:0.72},
+      {bg:'radial-gradient(60% 72% at 50% 40%,#d9d9d9 0%,#8f8f8f 46%,#2a2a2a 82%,#0f0f0f 100%)',k:'portrait',r:0.72},
+      {bg:'linear-gradient(158deg,#4a6b3f 0%,#2c4a2c 46%,#16281a 80%,#0b1710 100%)',k:'landscape',r:1.5},
+      {bg:'linear-gradient(179deg,#bfe1ee 0%,#7db3cf 30%,#3d7591 58%,#1d4459 82%,#0f2a37 100%)',k:'landscape',r:1.5},
+      {bg:'linear-gradient(179deg,#f5a45e 0%,#e2765f 24%,#9a4e6e 49%,#4a3560 73%,#1a1e36 100%)',k:'landscape',r:1.6},
+      {bg:'linear-gradient(179deg,#eef4f7 0%,#d3dee4 52%,#aebcc4 100%)',k:'landscape',r:1.5},
+      {bg:'linear-gradient(179deg,#e9c48a 0%,#c98f57 40%,#8a5a38 72%,#3a2620 100%)',k:'landscape',r:1.6},
+      {bg:'radial-gradient(1px 1px at 22% 28%,#fff,transparent),radial-gradient(1px 1px at 68% 20%,#fff,transparent),radial-gradient(1px 1px at 48% 46%,#dfe9ff,transparent),radial-gradient(1px 1px at 82% 38%,#fff,transparent),radial-gradient(60% 50% at 40% 30%,rgba(120,150,220,.25),transparent 70%),linear-gradient(179deg,#0b1020 0%,#0a0e1a 60%,#06090f 100%)',k:'astro',r:1.5},
+      {bg:'radial-gradient(42% 60% at 30% 32%,rgba(194,59,208,.7),transparent 62%),radial-gradient(42% 60% at 72% 42%,rgba(46,198,214,.7),transparent 62%),linear-gradient(179deg,#160a1c,#0a0710)',k:'event',r:1.5},
+      {bg:'linear-gradient(160deg,#d98a3a,#a85a2a 46%,#5c3320 78%,#231410)',k:'landscape',r:1.5},
+      {bg:'linear-gradient(179deg,#cfd8dc 0%,#9aa9ad 30%,#647074 58%,#3a4446 82%,#1c2426 100%)',k:'landscape',r:1.5},
+      {bg:'radial-gradient(55% 64% at 42% 45%,#f2a6c0 0%,#c76a92 40%,#5f5a2e 72%,#20301a 100%)',k:'macro',r:1.0},
+      {bg:'linear-gradient(155deg,#c9c9c9,#8f8f8f 40%,#4a4a4a 75%,#1a1a1a)',k:'street',r:0.75},
+      {bg:'linear-gradient(150deg,#a9c3b0,#5f8a74 40%,#2f4d43 75%,#132521)',k:'landscape',r:0.72},
+      {bg:'linear-gradient(179deg,#e3c07a 0%,#bf8f4e 38%,#7c5a34 68%,#2f251a 100%)',k:'wildlife',r:1.6},
+      {bg:'linear-gradient(150deg,#5b6b72,#3a474d 45%,#20292d 80%,#0f1618)',k:'street',r:1.5}
+    ];
+    const trips=[
+      {loc:'Torres del Paine, Patagonia',kw:['Patagonia','trek','mountains'],y:2024,m:9},
+      {loc:'Kyoto, Japan',kw:['Japan','temple','autumn'],y:2023,m:10},
+      {loc:'Lofoten, Norway',kw:['Norway','fjord','arctic'],y:2022,m:1},
+      {loc:'Amalfi Coast, Italy',kw:['Italy','coast','summer'],y:2019,m:6},
+      {loc:'Serengeti, Tanzania',kw:['safari','wildlife','Africa'],y:2018,m:7},
+      {loc:'Moab, Utah',kw:['desert','canyon','USA'],y:2021,m:4},
+      {loc:'Reykjavík, Iceland',kw:['Iceland','aurora','winter'],y:2016,m:10},
+      {loc:'Big Sur, California',kw:['coast','roadtrip','USA'],y:2025,m:2}
+    ];
+    const cams=[
+      {n:'Sony α7R V',x:'ARW',dims:'9504 × 6336',mp:61,pre:'_DSC'},
+      {n:'Canon EOS R5',x:'CR3',dims:'8192 × 5464',mp:45,pre:'IMG_'},
+      {n:'Nikon Z9',x:'NEF',dims:'8256 × 5504',mp:46,pre:'_Z9_'},
+      {n:'Leica Q3',x:'DNG',dims:'9520 × 6336',mp:60,pre:'L100'},
+      {n:'Fujifilm X-T5',x:'RAF',dims:'7728 × 5152',mp:40,pre:'DSCF'}
+    ];
+    const aiK={
+      landscape:['golden hour','leading lines','rule of thirds','wide vista','long exposure','high dynamic range'],
+      portrait:['eyes open','shallow depth','1 subject','soft light','sharp focus','natural light'],
+      wildlife:['animal','motion','sharp','telephoto','shallow depth'],
+      astro:['milky way','long exposure','low light','stars'],
+      event:['stage light','crowd','motion','low light'],
+      macro:['close-up','shallow depth','fine detail'],
+      street:['candid','urban','high contrast','1 subject'],
+      cityscape:['blue hour','cityscape','symmetry','architecture']
+    };
+    function exif(k){
+      switch(k){
+        case 'portrait': return {lens:rp(['85mm ƒ/1.4 GM','50mm ƒ/1.2','85mm ƒ/1.8']),focal:rp(['85mm','50mm']),ap:rp(['ƒ/1.4','ƒ/1.8','ƒ/2.0']),sh:rp(['1/200s','1/250s','1/400s']),iso:'ISO '+rp([100,200,400])};
+        case 'wildlife': return {lens:rp(['400mm ƒ/2.8','600mm ƒ/4','300mm ƒ/2.8']),focal:rp(['400mm','600mm','300mm']),ap:rp(['ƒ/4','ƒ/5.6']),sh:rp(['1/1600s','1/2000s','1/1250s']),iso:'ISO '+rp([800,1600,3200])};
+        case 'astro': return {lens:'14-24mm ƒ/2.8',focal:'14mm',ap:'ƒ/2.8',sh:rp(['15s','20s','25s']),iso:'ISO '+rp([3200,6400])};
+        case 'event': return {lens:'70-200mm ƒ/2.8',focal:rp(['70mm','135mm','200mm']),ap:'ƒ/2.8',sh:rp(['1/200s','1/320s']),iso:'ISO '+rp([3200,6400])};
+        case 'macro': return {lens:'100mm ƒ/2.8 Macro',focal:'100mm',ap:rp(['ƒ/8','ƒ/11']),sh:'1/160s',iso:'ISO 200'};
+        case 'street': return {lens:'35mm ƒ/1.4',focal:'35mm',ap:rp(['ƒ/2.8','ƒ/4','ƒ/5.6']),sh:rp(['1/250s','1/500s']),iso:'ISO '+rp([400,800])};
+        case 'cityscape': return {lens:'24-70mm ƒ/2.8',focal:rp(['24mm','35mm']),ap:rp(['ƒ/8','ƒ/11']),sh:rp(['1/60s','1/30s']),iso:'ISO '+rp([100,200])};
+        default: return {lens:rp(['16-35mm ƒ/2.8','24-70mm ƒ/2.8','14-30mm ƒ/4']),focal:rp(['16mm','20mm','24mm','35mm']),ap:rp(['ƒ/8','ƒ/9','ƒ/11']),sh:rp(['1/125s','1/250s','1/60s','1/200s']),iso:'ISO '+rp([100,200])};
+      }
+    }
+    const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const photos=[];
+    for(let i=0;i<130;i++){
+      const look=rp(looks), trip=rp(trips), cam=rp(cams), e=exif(look.k);
+      const day=ri(1,26), hh=ri(6,20), mm=ri(0,59);
+      const rat = (r=>r<.18?5:r<.4?4:r<.63?3:r<.73?2:r<.79?1:0)(rnd());
+      const fr=rnd();
+      const isPick = rat>=4 && fr<.72;
+      const isReject = !isPick && rat<=1 && fr<.4;
+      const lr=rnd(); const lk = lr<.1?'red':lr<.17?'yellow':lr<.26?'green':lr<.32?'blue':lr<.36?'purple':'';
+      const aiPick = !isPick && rat>=3 && rnd()<.28;
+      const ais=(aiK[look.k]||aiK.landscape).slice(); const ai=[]; for(let j=0;j<3&&ais.length;j++){ ai.push(ais.splice(Math.floor(rnd()*ais.length),1)[0]); }
+      const kw=[trip.kw[0],trip.kw[1],look.k].filter(Boolean);
+      const p={ id:i, k:look.k, r:look.r,
+        styleObj:{position:'absolute',inset:0,background:look.bg},
+        cam:cam.n, ext:cam.x, dims:cam.dims, size:(cam.mp*0.82+rnd()*6).toFixed(1)+' MB',
+        name:cam.pre+String(ri(1000,9999)),
+        dateStr:MON[trip.m]+' '+day+', '+trip.y, timeStr:(hh%12||12)+':'+String(mm).padStart(2,'0')+(hh<12?' AM':' PM'),
+        y:trip.y, mon:trip.m,
+        lens:e.lens, focal:e.focal, ap:e.ap, sh:e.sh, iso:e.iso,
+        loc:trip.loc, kw:kw, ai:ai,
+        rating:rat, ratingStr: rat?'★'.repeat(rat):'', isPick, isReject,
+        labelColor: lk?C.L[lk]:'', labelDotStyle: lk?{width:'8px',height:'8px',borderRadius:'50%',background:C.L[lk],boxShadow:'0 0 0 1.5px rgba(0,0,0,.35)'}:null,
+        aiPick,
+        onSelect: ()=>me.select(i)
+      };
+      photos.push(p);
+    }
+    const portraitBg=['radial-gradient(60% 70% at 50% 40%,#d8ab84,#6e4c3a 60%,#241a16)','radial-gradient(60% 70% at 50% 40%,#c9b7a6,#5f5148 60%,#241f1b)','radial-gradient(60% 70% at 50% 40%,#b98d7a,#4f3a35 60%,#221a18)','radial-gradient(60% 70% at 50% 40%,#8fa8b8,#3f5560 60%,#1a242a)','radial-gradient(60% 70% at 50% 40%,#d6c07a,#6b5a34 60%,#241f16)','radial-gradient(60% 70% at 50% 40%,#c98a92,#5f3a42 60%,#241618)'];
+    const peopleChips=['Maya','Theo','Aria','Kai','Noor','Dad'].map((n,i)=>({name:n,chipStyle:{width:'34px',height:'34px',borderRadius:'50%',background:portraitBg[i],boxShadow:'inset 0 0 0 1px rgba(255,255,255,.1)'}}));
+
+    this._d={ photos, peopleChips };
+    return this._d;
+  }
+
+  select(id){ this.setState({selectedId:id}); }
+  onThumb=(e)=>this.setState({thumb:+e.target.value});
+  toggleAuto=()=>this.setState(s=>({autopilot:!s.autopilot}));
+
+  renderVals(){
+    const d=this.buildData(), C=this.C, me=this;
+    const { selectedId, thumb, density } = this.state;
+    const mk=(name,color)=>this.icon(name,{size:15,color:color||'rgba(255,255,255,.5)'});
+    const rowFor=(it)=>({display:'flex',alignItems:'center',gap:'9px',padding:'0 10px',height:'28px',borderRadius:'6px',cursor:'pointer',color: it.active?C.AMBER:'rgba(255,255,255,.68)',background: it.active?'rgba(232,162,60,.12)':'transparent'});
+    const deco=(arr)=>arr.map(it=>({ ...it, iconEl: mk(it.icon, it.active?C.AMBER:(it.tint||'rgba(255,255,255,.5)')), rowStyle: rowFor(it) }));
+
+    const libSection=deco([
+      {label:'All Photographs',count:'486,204',icon:'stack',active:true},
+      {label:'Recently Added',count:'2,310',icon:'clock'},
+      {label:'Picks',count:'12,480',icon:'flag',tint:C.PICK},
+      {label:'Flagged for Review',count:'640',icon:'flag',tint:C.AMBER},
+      {label:'Rejects',count:'8,920',icon:'x'}
+    ]);
+    const catSection=deco([
+      {label:'People',count:'1,204',icon:'users'},
+      {label:'Places',count:'78',icon:'map'},
+      {label:'Calendar',count:'',icon:'calendar'}
+    ]);
+    const smartSection=deco([
+      {label:'Sharp Keepers',count:'41,200',icon:'check'},
+      {label:'Near-Duplicates',count:'3,204',icon:'layers'},
+      {label:'Golden Hour',count:'8,760',icon:'sparkle'},
+      {label:'Needs Keywords',count:'5,120',icon:'sparkle'}
+    ]);
+    const folderSection=deco([
+      {label:'2026',count:'18,204',icon:'folder'},
+      {label:'2025',count:'52,110',icon:'folder'},
+      {label:'2024',count:'61,540',icon:'folder'}
+    ]);
+
+    const min = 60 + thumb*20;
+    const gap = density==='compact' ? 5 : 11;
+    const gridStyle={ display:'grid', gridTemplateColumns:`repeat(auto-fill,minmax(${min}px,1fr))`, gap:gap+'px', alignContent:'start', position:'relative' };
+    const gridPhotos=d.photos.slice(0,66).map(p=>({ ...p, sel: p.id===selectedId }));
+
+    const s=d.photos.find(p=>p.id===selectedId)||d.photos[0];
+    const sel={
+      name:s.name, ext:'.'+s.ext, dateStr:s.dateStr, timeStr:s.timeStr, loc:s.loc,
+      kwArr:s.kw, aiArr:s.ai, starEls:this.stars(s.rating),
+      previewStyle:{ height:'186px', background:s.styleObj.background, boxShadow:'inset 0 0 40px 8px rgba(0,0,0,.4)', borderBottom:'1px solid rgba(255,255,255,.06)' },
+      exif:[ {k:'Camera',v:s.cam},{k:'Lens',v:s.lens},{k:'Focal Length',v:s.focal},{k:'Aperture',v:s.ap},{k:'Shutter',v:s.sh},{k:'ISO',v:s.iso.replace('ISO ','')},{k:'Dimensions',v:s.dims},{k:'File Size',v:s.size} ]
+    };
+
+    const segBase={padding:'0 11px',height:'22px',display:'flex',alignItems:'center',font:'500 11px system-ui',borderRadius:'6px',cursor:'pointer'};
+    const comfyStyle={ ...segBase, background: density!=='compact'?'rgba(255,255,255,.12)':'transparent', color: density!=='compact'?'#fff':'rgba(255,255,255,.5)' };
+    const compactStyle={ ...segBase, background: density==='compact'?'rgba(255,255,255,.12)':'transparent', color: density==='compact'?'#fff':'rgba(255,255,255,.5)' };
+    const selCount=d.photos.slice(0,66).filter(p=>p.id===selectedId).length;
+    const statusLeft = '66 of 486,204   ·   '+ (selCount? '1 selected · '+ (s.rating? s.rating+'★ ':'') + (s.isPick?'Pick':'') : '');
+
+    // ---- 1b Copilot ----
+    const cpQuery='sharp, well-lit portraits from the 2019 Amalfi trip — eyes open, not yet keyworded';
+    const chipN={display:'flex',alignItems:'center',gap:'5px',height:'26px',padding:'0 10px',borderRadius:'7px',font:'500 12px system-ui',color:'rgba(255,255,255,.82)',background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.1)'};
+    const chipA={...chipN,color:'#f0b866',background:'rgba(232,162,60,.12)',border:'1px solid rgba(232,162,60,.32)'};
+    const cpChips=[['Portraits',0],['2019',0],['Amalfi Coast',0],['Sharp',1],['Eyes open',1],['Rating ≥ 3',0],['No keywords',0]].map(c=>({t:c[0],ai:!!c[1],style:c[1]?chipA:chipN}));
+    const cpPhotos=d.photos.slice(30,64).map(p=>{ const rej=p.isReject; const pk=(p.isPick||p.aiPick)&&!rej; return {styleObj:p.styleObj,autoPick:pk,autoReject:rej,dim:rej?{position:'absolute',inset:'0',background:'rgba(9,9,11,.58)'}:null}; });
+    const agRaw=[['Culling · Patagonia_2024','2,310 frames → 890 keepers · 340 rejects',100,'review'],['Auto-keywording','12,400 photos · places, scenes, subjects',72,'run'],['Near-duplicate stacking','3,204 dupes → 980 stacks',100,'done'],['Face grouping','47 new faces · 3 need names',100,'review'],['Blur & eyes-closed scan','scanning 486,204 photos',38,'run']];
+    const stCol={run:'#4a9ef0',review:'#e8a23c',done:'#5ec98a'}, stLab={run:'Running',review:'Review',done:'Done'};
+    const cpAgents=agRaw.map(a=>({title:a[0],detail:a[1],pct:a[2],state:a[3],running:a[3]==='run',label:stLab[a[3]],
+      chipStyle:{font:'600 9px ui-monospace,Menlo,monospace',letterSpacing:'.04em',color:stCol[a[3]],background:'rgba(255,255,255,.05)',border:'1px solid '+stCol[a[3]]+'55',padding:'2px 7px',borderRadius:'20px',whiteSpace:'nowrap'},
+      barFill:{height:'100%',width:a[2]+'%',background:stCol[a[3]],borderRadius:'20px'} }));
+
+    // ---- 1c Timeline ----
+    const yr=this.makeRng(9931), yrs=[];
+    for(let y=2003;y<=2026;y++){ const base=(y-2003)/23; yrs.push({year:y,vol:Math.round((6000+base*42000)*(0.5+yr()*0.75))}); }
+    const maxVol=Math.max.apply(null,yrs.map(y=>y.vol));
+    const tlYears=yrs.map(y=>({year:y.year,focus:y.year===2024,tick:(y.year%5===0)?String(y.year):'',
+      barStyle:{width:'13px',height:Math.max(6,Math.round(y.vol/maxVol*64))+'px',borderRadius:'3px 3px 0 0',background:y.year===2024?'#e8a23c':'rgba(255,255,255,.22)',boxShadow:y.year===2024?'0 0 14px rgba(232,162,60,.55)':'none'}}));
+    const tlMeta=[['Saturday · October 12, 2024','Torres del Paine, Patagonia · 214 photos',[0,9]],['Sunday · October 13, 2024','Grey Glacier, Patagonia · 168 photos',[9,17]],['Tuesday · October 15, 2024','Fitz Roy, El Chaltén · 302 photos',[17,25]]];
+    const tlGroups=tlMeta.map(m=>({title:m[0],sub:m[1],
+      photos:d.photos.slice(m[2][0],m[2][1]).map(p=>({styleObj:p.styleObj,isPick:p.isPick,
+        outerStyle:{position:'relative',height:'186px',flexGrow:p.r,flexShrink:1,flexBasis:(p.r*186)+'px',borderRadius:'4px',overflow:'hidden',boxShadow:'0 1px 3px rgba(0,0,0,.5)',cursor:'pointer'}})) }));
+
+    // ---- Turn 2: Culling ----
+    const cullLook='radial-gradient(62% 74% at 50% 42%,#d8ab84 0%,#8a5f45 46%,#2c1f19 80%,#150f0c 100%)';
+    const svRaw=[['dupe',''],['soft','Soft focus'],['best','Sharpest · eyes open'],['dupe',''],['blink','Eyes closed'],['dupe',''],['dupe',''],['soft','Slight motion']];
+    const surveyFrames=svRaw.map((a,i)=>{ const best=a[0]==='best'; const bad=(a[0]==='soft'||a[0]==='blink');
+      const badge = best?{t:'✦ BEST',bg:'#e8a23c',c:'#171512'}:(a[0]==='blink'?{t:'EYES CLOSED',bg:'rgba(236,90,82,.92)',c:'#fff'}:(a[0]==='soft'?{t:'SOFT',bg:'rgba(236,90,82,.85)',c:'#fff'}:null));
+      return { name:'_DSC08'+(341+i), best, reason:a[1],
+        innerStyle:{position:'absolute',inset:'0',background:cullLook,filter:bad?'grayscale(.25) brightness(.6)':'none'},
+        ring: best?{position:'absolute',inset:'0',boxShadow:'inset 0 0 0 3px #e8a23c',borderRadius:'7px'}:null,
+        badge, badgeStyle: badge?{position:'absolute',top:'9px',left:'9px',font:'600 9px ui-monospace,Menlo,monospace',letterSpacing:'.03em',color:badge.c,background:badge.bg,padding:'2px 7px',borderRadius:'4px'}:null };
+    });
+    const cf=d.photos[73];
+    const cull={ innerStyle:{position:'absolute',inset:'0',background:cf.styleObj.background},
+      name:cf.name+'.'+cf.ext, cam:cf.cam, lens:cf.lens, ap:cf.ap, sh:cf.sh, iso:cf.iso, focal:cf.focal };
+    const cullStrip=d.photos.slice(66,84).map((p,i)=>{ const cur=i===7; const st=cur?'current':(p.isPick?'pick':(p.isReject?'reject':'none'));
+      return { innerStyle:{position:'absolute',inset:'0',background:p.styleObj.background},
+        ring: cur?{position:'absolute',inset:'0',boxShadow:'inset 0 0 0 2.5px #f5b455',borderRadius:'3px'}:null,
+        dim: st==='reject'?{position:'absolute',inset:'0',background:'rgba(9,9,11,.52)'}:null,
+        bar:{position:'absolute',left:'0',right:'0',bottom:'0',height:'3px',background: st==='pick'?'#5ec98a':(st==='reject'?'#ec5a52':'rgba(255,255,255,.14)')} };
+    });
+
+    // ---- Turn 3: Set-aware culling (stacks) ----
+    const stackReps=d.photos.slice(40,52);
+    const stacks=[{t:'10:18',c:6,done:true},{t:'10:21',c:12,done:true},{t:'10:24',c:9,active:true},{t:'10:26',c:4},{t:'10:31',c:14},{t:'10:33',c:7},{t:'10:40',c:5},{t:'10:44',c:11},{t:'10:52',c:8}].map((s,i)=>({
+      time:s.t+' AM', count:s.c, active:!!s.active, done:!!s.done,
+      thumbStyle:{position:'absolute',inset:'0',background:stackReps[i%stackReps.length].styleObj.background},
+      rowStyle:{display:'flex',alignItems:'center',gap:'9px',padding:'6px 8px',borderRadius:'8px',cursor:'pointer',background:s.active?'rgba(232,162,60,.1)':'transparent',border:'1px solid '+(s.active?'rgba(232,162,60,.26)':'transparent')}
+    }));
+    const setState3=['ok','soft','best','contender','blink','ok','contender','ok','soft'];
+    const setReason3={soft:'soft',blink:'eyes shut',best:'sharpest · eyes open',contender:'runner-up',ok:''};
+    const setFrames=setState3.map((st,i)=>{ const cx=(47+(i%3)*2.2).toFixed(1), cy=(39+Math.floor(i/3)*2).toFixed(1); const dim=(st==='soft'||st==='blink');
+      const badge = st==='best'?{t:'✦ BEST',bg:'#e8a23c',c:'#171512'}:(st==='blink'?{t:'EYES SHUT',bg:'rgba(236,90,82,.92)',c:'#fff'}:(st==='soft'?{t:'SOFT',bg:'rgba(236,90,82,.85)',c:'#fff'}:null));
+      return { name:'_DSC0834'+(1+i), state:st, reason:setReason3[st]||'', best:st==='best', bad:dim,
+        innerStyle:{position:'absolute',inset:'0',background:'radial-gradient(60% 72% at '+cx+'% '+cy+'%,#d8ab84 0%,#8a5f45 46%,#2c1f19 80%,#150f0c 100%)',filter:dim?'grayscale(.22) brightness(.56)':'none'},
+        ring: st==='best'?{position:'absolute',inset:'0',boxShadow:'inset 0 0 0 2px #e8a23c',borderRadius:'5px'}:null,
+        dim: dim?{position:'absolute',inset:'0',background:'rgba(9,9,11,.45)'}:null,
+        badgeStyle: badge?{position:'absolute',top:'6px',left:'6px',font:'600 8px ui-monospace,Menlo,monospace',letterSpacing:'.03em',color:badge.c,background:badge.bg,padding:'2px 5px',borderRadius:'3px'}:null,
+        badgeText: badge?badge.t:'' };
+    });
+    const heroFrame=setFrames[2];
+    const cmp=[{i:2,rank:'BEST',rankBg:'#e8a23c',rankC:'#171512',sharp:96,eyes:true,exp:'0.0'},{i:3,rank:'#2',rankBg:'rgba(255,255,255,.14)',rankC:'#fff',sharp:88,eyes:true,exp:'−0.3'},{i:6,rank:'#3',rankBg:'rgba(255,255,255,.14)',rankC:'#fff',sharp:81,eyes:false,exp:'+0.2'}].map(c=>({ rank:c.rank, rankStyle:{font:'700 10px ui-monospace,Menlo,monospace',color:c.rankC,background:c.rankBg,padding:'2px 8px',borderRadius:'5px'}, best:c.rank==='BEST', name:setFrames[c.i].name, innerStyle:setFrames[c.i].innerStyle, ring:c.rank==='BEST'?{position:'absolute',inset:'0',boxShadow:'inset 0 0 0 2.5px #e8a23c',borderRadius:'8px'}:null, sharp:c.sharp, eyes:c.eyes, eyesShut:!c.eyes, exp:c.exp, sharpBar:{width:c.sharp+'%',height:'100%',background:c.sharp>92?'#5ec98a':(c.sharp>85?'#e8a23c':'rgba(255,255,255,.4)'),borderRadius:'20px'} }));
+
+    // ---- Turn 4: Agentic import ----
+    const ingestGrid=d.photos.slice(0,44).map(p=>({styleObj:p.styleObj}));
+    const planMap={stacks:'layers',cull:'check',tag:'sparkle',faces:'users',geo:'map'};
+    const ingestPlan=[['stacks','Group into stacks','bursts & near-dupes'],['cull','Auto-cull','flag soft, blinks & dupes'],['tag','Keyword','scenes, subjects & places'],['faces','Detect & group faces','match to known people'],['geo','Reverse-geocode','locations from GPS']].map(r=>({label:r[1],detail:r[2],iconEl:this.icon(planMap[r[0]],{size:15,color:'#e8a23c'})}));
+    const importStats=[['28','stacks grouped','bursts & sequences','#f0b866'],['~890','likely keepers','ready to confirm','#5ec98a'],['340','flagged','soft · blinks · dupes','#ef8079'],['1,420','near-dupes','grouped into 980','#f0b866'],['47','faces','3 need names','#6fb2f2'],['12','locations','mapped from GPS','#5ec98a']].map(s=>({n:s[0],label:s[1],sub:s[2],numStyle:{font:'700 28px system-ui',letterSpacing:'-.02em',color:s[3]}}));
+
+    // ---- Turn 5: remaining views ----
+    const faceGrads=['#d8ab84,#6e4c3a 60%,#241a16','#c9b7a6,#5f5148 60%,#241f1b','#b98d7a,#4f3a35 60%,#221a18','#8fa8b8,#3f5560 60%,#1a242a','#d6c07a,#6b5a34 60%,#241f16','#c98a92,#5f3a42 60%,#241618','#a0b58f,#4c5f3c 60%,#1a2416','#b0a0c0,#4f4560 60%,#1c1824'].map(g=>({position:'absolute',inset:'0',background:'radial-gradient(62% 72% at 50% 40%,'+g+')'}));
+    const peopleList=[['Maya Chen',4820],['Theo Alvarez',3210],['Aria Nakamura',2870],['Kai Bennett',1940],['Noor Hassan',1520],['Dad',1180],['Elena Ruiz',940],['Sam Park',760]].map((p,i)=>({name:p[0],count:p[1].toLocaleString(),grad:faceGrads[i%faceGrads.length]}));
+    const unnamed=[['Elena Ruiz?',214,96],['New person',86,0],['Kai Bennett?',52,88]].map((u,i)=>({suggest:u[0],count:u[1],conf:u[2],grad:faceGrads[(i+3)%faceGrads.length]}));
+    const places=[['Torres del Paine, Patagonia',2310,'30%','80%',36],['Amalfi Coast, Italy',1204,'54%','40%',27],['Kyoto, Japan',3120,'83%','43%',31],['Lofoten, Norway',890,'52%','20%',23],['Serengeti, Tanzania',640,'57%','66%',21],['Big Sur, California',1180,'13%','43%',25],['Reykjavík, Iceland',720,'46%','25%',22],['Moab, Utah',540,'19%','45%',19]].map(p=>({name:p[0],count:p[1].toLocaleString(),posStyle:{position:'absolute',left:p[2],top:p[3],transform:'translate(-50%,-50%)',display:'flex',flexDirection:'column',alignItems:'center',gap:'4px',cursor:'pointer'},bubbleStyle:{width:p[4]+'px',height:p[4]+'px',borderRadius:'50%',background:'radial-gradient(circle at 50% 38%,#f3c078,#e8a23c 55%,rgba(232,162,60,.32))',boxShadow:'0 0 18px rgba(232,162,60,.5),inset 0 0 0 1px rgba(255,255,255,.25)',display:'flex',alignItems:'center',justifyContent:'center',font:'700 10px system-ui',color:'#171512'},label:(p[1]>=1000?(p[1]/1000).toFixed(1)+'k':(''+p[1]))}));
+    const searchQuery='golden-hour shots in Patagonia with mountains, rated 4★ and up, not yet exported';
+    const searchFacets=[['Patagonia',0],['golden hour',1],['mountains',1],['Rating ≥ 4',0],['not exported',0]].map(f=>({t:f[0],ai:!!f[1],style:f[1]?chipA:chipN}));
+    const refineGroups=[{title:'Camera',rows:[{label:'Sony α7R V',count:'180'},{label:'Nikon Z9',count:'96'},{label:'Leica Q3',count:'48'}]},{title:'Lens',rows:[{label:'16-35mm ƒ/2.8',count:'150'},{label:'24-70mm ƒ/2.8',count:'110'},{label:'85mm ƒ/1.4',count:'64'}]},{title:'Rating',rows:[{label:'★★★★★',count:'120'},{label:'★★★★',count:'204'}]}];
+    const searchResults=d.photos.slice(8,56).map(p=>({styleObj:p.styleObj,ratingStr:p.ratingStr,isPick:p.isPick}));
+    const scRules=[['Rating','is at least','4 stars'],['Keyword','contains','Patagonia'],['Capture Date','in the last','2 years'],['Flag','is not','Rejected']].map(r=>({field:r[0],op:r[1],val:r[2]}));
+    const scPreview=d.photos.slice(0,36).map(p=>({styleObj:p.styleObj}));
+    const kwApplied=['Patagonia','mountains','trek','landscape'];
+    const kwSuggested=['golden hour','Torres del Paine','glacier','hiking','Chile'];
+    const kwPhotos=d.photos.slice(18,46).map((p,i)=>({styleObj:p.styleObj,sel:i<15}));
+    const exportPresets=[['Full-res JPEG','best quality · sRGB'],['Web · 2048 px','sharpened · 80%'],['Instagram · 1080²','square-safe crop'],['Print · 300 dpi','Adobe RGB · TIFF'],['Email · 1 MB','resized · sRGB']].map((p,i)=>({name:p[0],detail:p[1],active:i===0}));
+
+    return {
+      peopleList, unnamed, places, searchQuery, searchFacets, refineGroups, searchResults, scRules, scPreview, kwApplied, kwSuggested, kwPhotos, exportPresets,
+      libSection, catSection, smartSection, folderSection, peopleChips:d.peopleChips,
+      gridStyle, gridPhotos, sel,
+      thumb, onThumb:this.onThumb,
+      comfyStyle, compactStyle, densComfy:()=>this.setState({density:'comfortable'}), densCompact:()=>this.setState({density:'compact'}),
+      statusLeft,
+      cpQuery, cpChips, cpPhotos, cpAgents, autopilot:this.state.autopilot, toggleAuto:this.toggleAuto,
+      tlYears, tlGroups,
+      surveyFrames, cull, cullStrip,
+      stacks, setFrames, heroFrame, cmp,
+      ingestGrid, ingestPlan, importStats
+    };
+  }
+}
+</script>
+</body>
+</html>
