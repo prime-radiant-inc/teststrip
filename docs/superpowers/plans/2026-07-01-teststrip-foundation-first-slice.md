@@ -162,6 +162,12 @@ let package = Package(
 
 - [ ] **Step 1a: Add minimal executable and test target placeholders**
 
+Create `Sources/TeststripCore/Support/TeststripError.swift`:
+
+```swift
+// Placeholder replaced after the support test proves the missing error type.
+```
+
 Create `Sources/TeststripWorker/main.swift`:
 
 ```swift
@@ -242,7 +248,7 @@ Expected: FAIL because `TestDirectories` and `TeststripError` do not exist.
 
 - [ ] **Step 4: Add minimal support implementation**
 
-Create `Sources/TeststripCore/Support/TeststripError.swift`:
+Replace `Sources/TeststripCore/Support/TeststripError.swift`:
 
 ```swift
 import Foundation
