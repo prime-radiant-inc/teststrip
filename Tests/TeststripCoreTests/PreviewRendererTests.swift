@@ -3,9 +3,17 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 import XCTest
-@testable import TeststripCore
+import TeststripCore
 
 final class PreviewRendererTests: XCTestCase {
+    func testPreviewDimensionsCanBeConstructedByPublicClients() {
+        let dimensions = PreviewDimensions(width: 10, height: 20)
+
+        XCTAssertEqual(dimensions, PreviewDimensions(width: 10, height: 20))
+        XCTAssertEqual(dimensions.width, 10)
+        XCTAssertEqual(dimensions.height, 20)
+    }
+
     func testRendererCreatesBoundedGridPreview() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "preview-render")
         let source = directory.appendingPathComponent("source.jpg")
