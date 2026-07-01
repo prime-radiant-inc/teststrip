@@ -52,7 +52,8 @@ public final class CatalogDatabase: @unchecked Sendable {
         try bind(bindings, to: statement)
 
         var result: [[String: String]] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
             var row: [String: String] = [:]
             for index in 0..<sqlite3_column_count(statement) {
                 let name = String(cString: sqlite3_column_name(statement, index))
@@ -61,6 +62,10 @@ public final class CatalogDatabase: @unchecked Sendable {
                 }
             }
             result.append(row)
+            stepResult = sqlite3_step(statement)
+        }
+        guard stepResult == SQLITE_DONE else {
+            throw CatalogError.sqlite(lastError)
         }
         return result
     }

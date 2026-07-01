@@ -66,6 +66,17 @@ final class CatalogDatabaseTests: XCTestCase {
 
         XCTAssertEqual(assets.map(\.id), [first.id, second.id])
     }
+
+    func testRowsThrowsWhenSQLiteStepFails() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+
+        XCTAssertThrowsError(try database.rows("SELECT abs(-9223372036854775808)")) { error in
+            guard case CatalogError.sqlite = error else {
+                return XCTFail("expected sqlite error, got \(error)")
+            }
+        }
+    }
 }
 
 private extension Asset {
