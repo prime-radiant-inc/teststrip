@@ -58,7 +58,7 @@ private extension Asset {
             id: .new(),
             originalURL: URL(fileURLWithPath: path),
             volumeIdentifier: "NAS",
-            fingerprint: FileFingerprint(size: 100, modificationDate: Date(timeIntervalSince1970: 1), contentHash: "hash"),
+            fingerprint: FileFingerprint(size: 100, modificationDate: Date(timeIntervalSince1970: 1.25), contentHash: "hash"),
             availability: .online,
             metadata: AssetMetadata(rating: rating)
         )

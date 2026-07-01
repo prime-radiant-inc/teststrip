@@ -7,8 +7,8 @@ public final class CatalogRepository {
 
     public init(database: CatalogDatabase) {
         self.database = database
-        encoder.dateEncodingStrategy = .iso8601
-        decoder.dateDecodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .secondsSince1970
+        decoder.dateDecodingStrategy = .secondsSince1970
     }
 
     public func upsert(_ asset: Asset) throws {
