@@ -52,8 +52,7 @@ public struct PreviewCache: Sendable {
         (65...90).contains(byte) ||
             (97...122).contains(byte) ||
             (48...57).contains(byte) ||
-            byte == 45 ||
-            byte == 95
+            byte == 45
     }
 
     private static func stableFallbackDirectoryName(for rawValue: String) -> String {

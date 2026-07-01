@@ -37,6 +37,23 @@ final class PreviewSchedulerTests: XCTestCase {
         XCTAssertEqual(components[1], "grid.jpg")
     }
 
+    func testPreviewCacheKeepsDistinctUnsafeAndLiteralIDsSeparate() {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("teststrip-preview-cache", isDirectory: true)
+        let cache = PreviewCache(root: root)
+        let unsafeKey = PreviewCacheKey(assetID: AssetID(rawValue: "a/b"), level: .grid)
+        let literalKey = PreviewCacheKey(assetID: AssetID(rawValue: "a_2Fb"), level: .grid)
+
+        let unsafeDirectory = cache.url(for: unsafeKey)
+            .deletingLastPathComponent()
+            .standardizedFileURL
+        let literalDirectory = cache.url(for: literalKey)
+            .deletingLastPathComponent()
+            .standardizedFileURL
+
+        XCTAssertNotEqual(unsafeDirectory, literalDirectory)
+    }
+
     func testVisibleLoupeRequestPromotesToLargePreview() {
         let scheduler = PreviewScheduler()
         let request = scheduler.request(
