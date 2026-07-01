@@ -24,6 +24,39 @@ final class AssetDomainTests: XCTestCase {
         }
     }
 
+    func testMetadataValidatedAcceptsBoundaryRatings() throws {
+        XCTAssertEqual(try AssetMetadata.validated(rating: 0, colorLabel: nil, flag: nil, keywords: []).rating, 0)
+        XCTAssertEqual(try AssetMetadata.validated(rating: 5, colorLabel: nil, flag: nil, keywords: []).rating, 5)
+    }
+
+    func testMetadataDecodingRejectsInvalidRating() {
+        let data = """
+        {
+            "rating": 9,
+            "colorLabel": null,
+            "flag": null,
+            "keywords": [],
+            "caption": null,
+            "creator": null,
+            "copyright": null
+        }
+        """.data(using: .utf8)!
+
+        XCTAssertThrowsError(try JSONDecoder().decode(AssetMetadata.self, from: data)) { error in
+            guard case DecodingError.dataCorrupted(let context) = error else {
+                return XCTFail("expected data corrupted decoding error, got \(error)")
+            }
+            XCTAssertEqual(context.debugDescription, "rating must be between 0 and 5")
+        }
+    }
+
+    func testAssetIDNewProducesUUIDString() {
+        let id = AssetID.new()
+
+        XCTAssertFalse(id.rawValue.isEmpty)
+        XCTAssertNotNil(UUID(uuidString: id.rawValue))
+    }
+
     func testProviderProvenanceIdentifiesSignalSource() {
         let provenance = ProviderProvenance(provider: "AppleVision", model: "aesthetics", version: "1", settingsHash: "default")
 
