@@ -13,6 +13,9 @@ struct InspectorView: View {
                 Text("Availability: \(asset.availability.rawValue)")
                 Text("Rating: \(asset.metadata.rating)")
                 Text("Keywords: \(asset.metadata.keywords.joined(separator: ", "))")
+                if let technicalMetadata = asset.technicalMetadata {
+                    technicalMetadataView(technicalMetadata)
+                }
                 if model.pendingMetadataSyncItems.contains(where: { $0.assetID == asset.id }) {
                     Text("XMP sync pending")
                         .font(.caption)
@@ -113,6 +116,39 @@ struct InspectorView: View {
         }
     }
 
+    private func technicalMetadataView(_ metadata: AssetTechnicalMetadata) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Technical")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            metadataRow("Dimensions", "\(metadata.pixelWidth) x \(metadata.pixelHeight)")
+            if let camera = cameraText(metadata) {
+                metadataRow("Camera", camera)
+            }
+            if let lensModel = metadata.lensModel {
+                metadataRow("Lens", lensModel)
+            }
+            if let isoSpeed = metadata.isoSpeed {
+                metadataRow("ISO", "\(isoSpeed)")
+            }
+            if let capturedAt = metadata.capturedAt {
+                metadataRow("Captured", capturedAt.formatted(date: .abbreviated, time: .shortened))
+            }
+        }
+    }
+
+    private func metadataRow(_ title: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(width: 64, alignment: .leading)
+            Text(value)
+                .font(.caption)
+                .lineLimit(1)
+        }
+    }
+
     private func evaluationSignals(_ signals: [EvaluationSignal]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Signals")
@@ -138,6 +174,16 @@ struct InspectorView: View {
         } catch {
             model.errorMessage = error.localizedDescription
         }
+    }
+
+    private func cameraText(_ metadata: AssetTechnicalMetadata) -> String? {
+        [metadata.cameraMake, metadata.cameraModel]
+            .compactMap { value in
+                let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed?.isEmpty == false ? trimmed : nil
+            }
+            .joined(separator: " ")
+            .nilIfEmpty
     }
 
     private func color(for label: ColorLabel) -> Color {
@@ -179,5 +225,11 @@ struct InspectorView: View {
 
     private func confidenceText(_ confidence: Double) -> String {
         "\(Int((confidence * 100).rounded()))%"
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }

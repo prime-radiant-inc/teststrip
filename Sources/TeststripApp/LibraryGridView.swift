@@ -12,6 +12,7 @@ struct LibraryGridView: View {
     @State private var savedSearchStarred = false
     @State private var manualSetName = ""
     @State private var manualSetStarred = false
+    @State private var isShowingDateFilters = false
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
 
@@ -81,83 +82,180 @@ struct LibraryGridView: View {
     }
 
     private var filterBar: some View {
-        HStack(spacing: 8) {
-            TextField("Search filenames", text: Binding(
-                get: { model.librarySearchText },
-                set: { model.librarySearchText = $0 }
-            ))
-            .textFieldStyle(.roundedBorder)
-            .frame(width: 220)
-            .onSubmit {
-                applyLibraryFilters()
-            }
-
-            Button {
-                applyLibraryFilters()
-            } label: {
-                Image(systemName: "magnifyingglass")
-            }
-            .buttonStyle(.borderless)
-            .help("Search")
-
-            Picker("Rating", selection: minimumRatingBinding) {
-                Text("Any Rating").tag(0)
-                ForEach(Array(1...5), id: \.self) { rating in
-                    Text("\(rating)+").tag(rating)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                TextField("Search filenames", text: Binding(
+                    get: { model.librarySearchText },
+                    set: { model.librarySearchText = $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 200)
+                .onSubmit {
+                    applyLibraryFilters()
                 }
-            }
-            .frame(width: 118)
 
-            Picker("Flag", selection: flagFilterBinding) {
-                Text("Any Flag").tag("")
-                Text("Pick").tag(PickFlag.pick.rawValue)
-                Text("Reject").tag(PickFlag.reject.rawValue)
-            }
-            .frame(width: 112)
+                TextField("Camera", text: Binding(
+                    get: { model.cameraFilterText },
+                    set: { model.cameraFilterText = $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 116)
+                .onSubmit {
+                    applyLibraryFilters()
+                }
 
-            if hasActiveFilters {
+                TextField("Lens", text: Binding(
+                    get: { model.lensFilterText },
+                    set: { model.lensFilterText = $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 116)
+                .onSubmit {
+                    applyLibraryFilters()
+                }
+
+                TextField("ISO+", text: minimumISOTextBinding)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 66)
+                    .onSubmit {
+                        applyLibraryFilters()
+                    }
+
                 Button {
-                    clearLibraryFilters()
+                    isShowingDateFilters = true
+                } label: {
+                    Image(systemName: "calendar")
+                }
+                .buttonStyle(.borderless)
+                .help("Date filters")
+                .popover(isPresented: $isShowingDateFilters) {
+                    dateFilterPopover
+                }
+
+                Button {
+                    applyLibraryFilters()
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                }
+                .buttonStyle(.borderless)
+                .help("Search")
+
+                Picker("Rating", selection: minimumRatingBinding) {
+                    Text("Any Rating").tag(0)
+                    ForEach(Array(1...5), id: \.self) { rating in
+                        Text("\(rating)+").tag(rating)
+                    }
+                }
+                .frame(width: 118)
+
+                Picker("Flag", selection: flagFilterBinding) {
+                    Text("Any Flag").tag("")
+                    Text("Pick").tag(PickFlag.pick.rawValue)
+                    Text("Reject").tag(PickFlag.reject.rawValue)
+                }
+                .frame(width: 112)
+
+                if hasActiveFilters {
+                    Button {
+                        clearLibraryFilters()
+                    } label: {
+                        Image(systemName: "xmark.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Clear filters")
+                }
+
+                Button {
+                    savedSearchName = model.suggestedSavedSearchName
+                    savedSearchStarred = false
+                    isSavingSearch = true
+                } label: {
+                    Image(systemName: "bookmark")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!model.canSaveCurrentLibraryQuery)
+                .help("Save search")
+                .popover(isPresented: $isSavingSearch) {
+                    saveSearchPopover
+                }
+
+                Button {
+                    manualSetName = model.suggestedManualSetName
+                    manualSetStarred = false
+                    isSavingManualSet = true
+                } label: {
+                    Image(systemName: "rectangle.stack.badge.plus")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!model.canSaveSelectedAssetAsManualSet)
+                .help("Save selected photo as set")
+                .popover(isPresented: $isSavingManualSet) {
+                    saveManualSetPopover
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        }
+        .background(.bar)
+    }
+
+    private var dateFilterPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("From", isOn: Binding(
+                get: { model.captureDateStartFilter != nil },
+                set: { isOn in
+                    model.captureDateStartFilter = isOn ? Calendar.current.startOfDay(for: Date()) : nil
+                }
+            ))
+            if model.captureDateStartFilter != nil {
+                DatePicker("From", selection: Binding(
+                    get: { model.captureDateStartFilter ?? Calendar.current.startOfDay(for: Date()) },
+                    set: { date in
+                        model.captureDateStartFilter = Calendar.current.startOfDay(for: date)
+                    }
+                ), displayedComponents: .date)
+            }
+
+            Toggle("Before", isOn: Binding(
+                get: { model.captureDateEndFilter != nil },
+                set: { isOn in
+                    model.captureDateEndFilter = isOn ? Calendar.current.startOfDay(for: Date()) : nil
+                }
+            ))
+            if model.captureDateEndFilter != nil {
+                DatePicker("Before", selection: Binding(
+                    get: { model.captureDateEndFilter ?? Calendar.current.startOfDay(for: Date()) },
+                    set: { date in
+                        model.captureDateEndFilter = Calendar.current.startOfDay(for: date)
+                    }
+                ), displayedComponents: .date)
+            }
+
+            HStack {
+                Spacer()
+                Button {
+                    model.captureDateStartFilter = nil
+                    model.captureDateEndFilter = nil
+                    applyLibraryFilters()
+                    isShowingDateFilters = false
                 } label: {
                     Image(systemName: "xmark.circle")
                 }
-                .buttonStyle(.borderless)
-                .help("Clear filters")
+                .help("Clear date filters")
+                Button {
+                    applyLibraryFilters()
+                    isShowingDateFilters = false
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                }
+                .keyboardShortcut(.defaultAction)
+                .help("Apply date filters")
             }
-
-            Button {
-                savedSearchName = model.suggestedSavedSearchName
-                savedSearchStarred = false
-                isSavingSearch = true
-            } label: {
-                Image(systemName: "bookmark")
-            }
-            .buttonStyle(.borderless)
-            .disabled(!model.canSaveCurrentLibraryQuery)
-            .help("Save search")
-            .popover(isPresented: $isSavingSearch) {
-                saveSearchPopover
-            }
-
-            Button {
-                manualSetName = model.suggestedManualSetName
-                manualSetStarred = false
-                isSavingManualSet = true
-            } label: {
-                Image(systemName: "rectangle.stack.badge.plus")
-            }
-            .buttonStyle(.borderless)
-            .disabled(!model.canSaveSelectedAssetAsManualSet)
-            .help("Save selected photo as set")
-            .popover(isPresented: $isSavingManualSet) {
-                saveManualSetPopover
-            }
-
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.bar)
+        .padding(14)
+        .frame(width: 260)
     }
 
     private var saveSearchPopover: some View {
@@ -230,11 +328,18 @@ struct LibraryGridView: View {
         )
     }
 
+    private var minimumISOTextBinding: Binding<String> {
+        Binding(
+            get: { model.minimumISOFilter.map(String.init) ?? "" },
+            set: { value in
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                model.minimumISOFilter = trimmed.isEmpty ? nil : Int(trimmed)
+            }
+        )
+    }
+
     private var hasActiveFilters: Bool {
-        !model.librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-            model.minimumRatingFilter != nil ||
-            model.flagFilter != nil ||
-            model.selectedAssetSetID != nil
+        model.hasActiveLibraryFilters
     }
 
     private var assetGrid: some View {

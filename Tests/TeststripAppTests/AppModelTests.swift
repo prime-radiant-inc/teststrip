@@ -771,6 +771,22 @@ final class AppModelTests: XCTestCase {
         ])))
     }
 
+    func testTechnicalFiltersCountAsActiveLibraryFiltersAndClear() throws {
+        let (model, _, _) = try makeModelWithCatalogAsset(named: "active-technical-filter")
+
+        model.cameraFilterText = "Canon"
+        XCTAssertTrue(model.hasActiveLibraryFilters)
+
+        try model.clearLibraryFilters()
+
+        XCTAssertFalse(model.hasActiveLibraryFilters)
+        XCTAssertEqual(model.cameraFilterText, "")
+        XCTAssertEqual(model.lensFilterText, "")
+        XCTAssertNil(model.minimumISOFilter)
+        XCTAssertNil(model.captureDateStartFilter)
+        XCTAssertNil(model.captureDateEndFilter)
+    }
+
     func testLoadExposesSavedAndStarredAssetSetsInSidebar() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-saved-sets")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

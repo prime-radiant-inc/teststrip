@@ -301,6 +301,10 @@ public final class AppModel {
         currentLibraryQuery() != nil
     }
 
+    public var hasActiveLibraryFilters: Bool {
+        selectedAssetSetID != nil || currentLibraryQuery() != nil
+    }
+
     public var canSaveSelectedAssetAsManualSet: Bool {
         catalog != nil && selectedAssetID != nil
     }
