@@ -70,6 +70,49 @@ final class FolderImportTests: XCTestCase {
         XCTAssertEqual(fetched.availability, .online)
     }
 
+    func testReingestingFolderPreservesAssetIdentityAndMetadata() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "ingest-idempotent")
+        let image = root.appendingPathComponent("one.jpg")
+        try Data("jpg".utf8).write(to: image)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["jpg"]))
+        let firstImport = try service.ingest(plan: IngestPlanner.addFolder(root), repository: repository)
+        let assetID = firstImport[0].id
+        try repository.updateMetadata(assetID: assetID) { metadata in
+            metadata.rating = 4
+            metadata.keywords = ["keeper"]
+        }
+        let refreshedData = Data("refreshed jpg".utf8)
+        try refreshedData.write(to: image)
+
+        let secondImport = try service.ingest(plan: IngestPlanner.addFolder(root), repository: repository)
+
+        let assets = try repository.allAssets(limit: 100)
+        XCTAssertEqual(assets.count, 1)
+        XCTAssertEqual(secondImport.map(\.id), [assetID])
+        let fetched = try repository.asset(id: assetID)
+        XCTAssertEqual(fetched.metadata.rating, 4)
+        XCTAssertEqual(fetched.metadata.keywords, ["keeper"])
+        XCTAssertEqual(fetched.fingerprint.size, Int64(refreshedData.count))
+    }
+
+    func testIngestDoesNotUsePathComponentAsVolumeIdentifier() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "ingest-volume")
+        let image = root.appendingPathComponent("one.jpg")
+        try Data("jpg".utf8).write(to: image)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["jpg"]))
+
+        let imported = try service.ingest(plan: IngestPlanner.addFolder(root), repository: repository)
+
+        let pathComponentFallback = image.pathComponents.dropFirst().first
+        XCTAssertNotEqual(imported[0].volumeIdentifier, pathComponentFallback)
+    }
+
     func testCopyFromCardPreservesRelativeDirectoriesForDuplicateBasenames() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy")
         let source = root.appendingPathComponent("DCIM", isDirectory: true)

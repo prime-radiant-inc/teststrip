@@ -21,7 +21,7 @@ enum CatalogMigrations {
             updated_at REAL NOT NULL
         )
         """,
-        "CREATE INDEX IF NOT EXISTS idx_assets_original_path ON assets(original_path)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_original_path_unique ON assets(original_path)",
         "CREATE INDEX IF NOT EXISTS idx_assets_availability ON assets(availability)"
     ]
 }

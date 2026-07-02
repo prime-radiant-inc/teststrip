@@ -47,6 +47,14 @@ public final class CatalogRepository {
         return try decodeAsset(row)
     }
 
+    public func asset(originalURL: URL) throws -> Asset? {
+        let rows = try database.rows(
+            "SELECT * FROM assets WHERE original_path = ? LIMIT 1",
+            bindings: [originalURL.path]
+        )
+        return try rows.first.map(decodeAsset)
+    }
+
     public func allAssets(limit: Int) throws -> [Asset] {
         let rows = try database.rows(
             "SELECT * FROM assets ORDER BY rowid ASC LIMIT ?",

@@ -67,6 +67,23 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(assets.map(\.id), [first.id, second.id])
     }
 
+    func testDatabaseRejectsDuplicateOriginalPaths() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let first = Asset.testAsset(id: AssetID(rawValue: "first"), path: "/Volumes/NAS/Job/a.cr2", rating: 2)
+        let duplicate = Asset.testAsset(id: AssetID(rawValue: "second"), path: "/Volumes/NAS/Job/a.cr2", rating: 5)
+        try repository.upsert(first)
+
+        XCTAssertThrowsError(try database.insertTestAsset(duplicate, createdAt: "11.0")) { error in
+            guard case CatalogError.sqlite = error else {
+                return XCTFail("expected sqlite error, got \(error)")
+            }
+        }
+        XCTAssertEqual(try repository.allAssets(limit: 100).map(\.id), [first.id])
+    }
+
     func testRowsThrowsWhenSQLiteStepFails() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

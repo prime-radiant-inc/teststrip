@@ -17,13 +17,14 @@ public struct IngestService: Sendable {
         for sourceFile in sourceFiles {
             let originalURL = try catalogURL(for: sourceFile, plan: plan)
             let fingerprint = try fingerprint(for: originalURL)
+            let existingAsset = try repository.asset(originalURL: originalURL)
             let asset = Asset(
-                id: .new(),
+                id: existingAsset?.id ?? .new(),
                 originalURL: originalURL,
-                volumeIdentifier: originalURL.pathComponents.dropFirst().first,
+                volumeIdentifier: volumeIdentifier(for: originalURL),
                 fingerprint: fingerprint,
                 availability: .online,
-                metadata: AssetMetadata()
+                metadata: existingAsset?.metadata ?? AssetMetadata()
             )
             try repository.upsert(asset)
             assets.append(asset)
@@ -80,5 +81,21 @@ public struct IngestService: Sendable {
         let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
         let modificationDate = attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0)
         return FileFingerprint(size: size, modificationDate: modificationDate)
+    }
+
+    private func volumeIdentifier(for url: URL) -> String? {
+        guard let identifier = try? url.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier else {
+            return nil
+        }
+        if let data = identifier as? Data {
+            return data.base64EncodedString()
+        }
+        if let data = identifier as? NSData {
+            return data.base64EncodedString()
+        }
+        if let string = identifier as? String {
+            return string
+        }
+        return String(describing: identifier)
     }
 }
