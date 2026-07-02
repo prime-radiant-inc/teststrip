@@ -76,7 +76,7 @@ struct ActivityView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
-            if let total = activity.totalUnitCount {
+            if activity.showsProgress, let total = activity.totalUnitCount {
                 ProgressView(value: Double(activity.completedUnitCount), total: Double(max(total, 1)))
                     .controlSize(.small)
             }

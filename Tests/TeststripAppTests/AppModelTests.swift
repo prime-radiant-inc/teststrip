@@ -19,6 +19,39 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(section.rowTitles, ["All Photographs"])
     }
 
+    func testWorkActivityShowsProgressOnlyForActiveWorkWithKnownTotal() {
+        var activity = AppWorkActivity(
+            kind: .previewGeneration,
+            status: .running,
+            title: "Generate preview",
+            detail: "Rendering",
+            completedUnitCount: 1,
+            totalUnitCount: 8,
+            failureCount: 0
+        )
+
+        XCTAssertTrue(activity.showsProgress)
+
+        activity.status = .queued
+        XCTAssertTrue(activity.showsProgress)
+
+        activity.status = .paused
+        XCTAssertTrue(activity.showsProgress)
+
+        activity.status = .completed
+        XCTAssertFalse(activity.showsProgress)
+
+        activity.status = .failed
+        XCTAssertFalse(activity.showsProgress)
+
+        activity.status = .cancelled
+        XCTAssertFalse(activity.showsProgress)
+
+        activity.status = .running
+        activity.totalUnitCount = nil
+        XCTAssertFalse(activity.showsProgress)
+    }
+
     func testSelectingAssetUpdatesInspector() {
         let first = Asset(
             id: AssetID(rawValue: "first"),

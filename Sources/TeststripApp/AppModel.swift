@@ -130,6 +130,10 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
         self.failureCount = failureCount
     }
 
+    public var showsProgress: Bool {
+        totalUnitCount != nil && [.queued, .running, .paused].contains(status)
+    }
+
     public init(workItem: BackgroundWorkItem) {
         self.init(
             id: workItem.id.rawValue,
