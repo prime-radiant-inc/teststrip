@@ -13,6 +13,7 @@ struct LibraryGridView: View {
     @State private var manualSetName = ""
     @State private var manualSetStarred = false
     @State private var isShowingDateFilters = false
+    @State private var cullingFocusRequest = 0
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
 
@@ -29,7 +30,7 @@ struct LibraryGridView: View {
             } else if model.selectedView == .loupe {
                 LoupeView(model: model)
             } else if model.selectedView == .compare {
-                CompareView(model: model)
+                CompareView(model: model, focusCullingSurface: focusCullingSurface)
             } else {
                 ScrollView {
                     assetGrid
@@ -78,6 +79,11 @@ struct LibraryGridView: View {
         }
         .safeAreaInset(edge: .bottom) {
             footer
+        }
+        .overlay(alignment: .topLeading) {
+            CullingKeyCaptureView(focusRequest: cullingFocusRequest, onShortcut: handleCullingShortcut)
+                .frame(width: 1, height: 1)
+                .accessibilityHidden(true)
         }
     }
 
@@ -350,7 +356,7 @@ struct LibraryGridView: View {
                     previewURL: model.gridPreviewURL(for: asset.id),
                     isSelected: model.selectedAssetID == asset.id
                 )
-                .assetActivation(for: asset, model: model)
+                .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface)
                 .task(id: asset.id.rawValue) {
                     do {
                         try model.requestVisibleGridPreview(assetID: asset.id)
@@ -511,6 +517,10 @@ struct LibraryGridView: View {
         }
     }
 
+    private func focusCullingSurface() {
+        cullingFocusRequest += 1
+    }
+
     private func handleCullingShortcut(_ shortcut: CullingShortcut) {
         do {
             try model.applyCullingShortcut(shortcut)
@@ -593,6 +603,7 @@ private struct LoupeView: View {
 
 private struct CompareView: View {
     var model: AppModel
+    var focusCullingSurface: () -> Void
 
     private let columns = [GridItem(.adaptive(minimum: 260), spacing: 10)]
 
@@ -605,7 +616,7 @@ private struct CompareView: View {
                         previewURL: model.loupePreviewURL(for: asset.id),
                         isSelected: model.selectedAssetID == asset.id
                     )
-                    .assetActivation(for: asset, model: model)
+                    .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface)
                 }
             }
             .padding(12)
@@ -615,11 +626,13 @@ private struct CompareView: View {
 }
 
 private extension View {
-    func assetActivation(for asset: Asset, model: AppModel) -> some View {
+    func assetActivation(for asset: Asset, model: AppModel, focusCullingSurface: @escaping () -> Void) -> some View {
         let doubleClick = TapGesture(count: 2).onEnded {
+            focusCullingSurface()
             model.openAssetInLoupe(asset.id)
         }
         let singleClick = TapGesture(count: 1).onEnded {
+            focusCullingSurface()
             model.select(asset.id)
         }
         return contentShape(Rectangle())
