@@ -12,10 +12,13 @@ The UI must not start unbounded detached work silently. Any long-running preview
 - Queued work stays queued until a running slot opens.
 - Running work can be paused, resumed, or cancelled through app-model methods.
 - The activity panel uses the app model's visible work projection so background queue state can be shown even when no import is active.
+- Worker commands and JSON-lines protocol live in `TeststripCore` so the app and `TeststripWorker` share one process contract.
+- `WorkerSupervisor` dispatches only runnable queue items to a `WorkerTransport`, launches the worker transport on demand, sends explicit pause/resume/cancel commands, and terminates the transport on cancel.
+- `FoundationWorkerTransport` is the concrete local process adapter for launching a worker executable and writing commands to its standard input.
 
 ## Next Work
 
-- Connect queued items to a supervised `TeststripWorker` process.
+- Wire app-level preview/XMP/recognition requests through `WorkerSupervisor`.
 - Persist queue state across app relaunches.
 - Emit structured worker events for progress, completion, failure, and cancellation.
 - Add per-kind throttles for NAS/source scans, preview rendering, XMP sync, and recognition.

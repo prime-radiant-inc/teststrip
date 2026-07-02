@@ -1,5 +1,4 @@
 import Foundation
-import TeststripCore
 
 public enum WorkerProtocolEncoder {
     private static let encoder = JSONEncoder()
@@ -17,6 +16,8 @@ public enum WorkerProtocolEncoder {
             envelope = WorkerCommandEnvelope(command: "runEvaluation", assetID: assetID.rawValue, level: nil, provider: provider)
         case .pause:
             envelope = WorkerCommandEnvelope(command: "pause", assetID: nil, level: nil, provider: nil)
+        case .resume:
+            envelope = WorkerCommandEnvelope(command: "resume", assetID: nil, level: nil, provider: nil)
         case .cancelAll:
             envelope = WorkerCommandEnvelope(command: "cancelAll", assetID: nil, level: nil, provider: nil)
         }
@@ -41,6 +42,8 @@ public enum WorkerProtocolEncoder {
             return .runEvaluation(assetID: assetID, provider: provider)
         case "pause":
             return .pause
+        case "resume":
+            return .resume
         case "cancelAll":
             return .cancelAll
         default:

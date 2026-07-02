@@ -43,8 +43,9 @@ final class WorkerProtocolTests: XCTestCase {
         XCTAssertEqual(decoded, command)
     }
 
-    func testPauseAndCancelCommandsAreExplicit() throws {
+    func testPauseResumeAndCancelCommandsAreExplicit() throws {
         XCTAssertEqual(try WorkerProtocolEncoder.decode(try WorkerProtocolEncoder.encode(.pause)).controlKind, .pause)
+        XCTAssertEqual(try WorkerProtocolEncoder.decode(try WorkerProtocolEncoder.encode(.resume)).controlKind, .resume)
         XCTAssertEqual(try WorkerProtocolEncoder.decode(try WorkerProtocolEncoder.encode(.cancelAll)).controlKind, .cancelAll)
     }
 }
