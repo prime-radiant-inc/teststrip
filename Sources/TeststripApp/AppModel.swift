@@ -241,6 +241,7 @@ public final class AppModel {
     @ObservationIgnored
     private var workerImportContextsByItemID: [WorkSessionID: WorkerImportContext]
 
+    private var previewCacheGenerationsByAssetID: [AssetID: Int]
     private var metadataUndoStack: [MetadataChange]
     private var metadataRedoStack: [MetadataChange]
     private var assetPageOffset: Int
@@ -423,6 +424,7 @@ public final class AppModel {
         self.selectedAssetSetID = selectedAssetSetID
         self.catalog = catalog
         self.workerSupervisor = workerSupervisor
+        self.previewCacheGenerationsByAssetID = [:]
         let importPreviewPolicy: LibraryImportPreviewPolicy = workerSupervisor == nil ? .generateImmediately : .deferGeneration
         self.importTaskFactory = importTaskFactory ?? { paths, folderURL, progress in
             Self.defaultImportTask(
@@ -938,6 +940,10 @@ public final class AppModel {
         try requestPreview(assetID: request.assetID, level: request.level)
     }
 
+    public func previewCacheGeneration(for assetID: AssetID) -> Int {
+        previewCacheGenerationsByAssetID[assetID] ?? 0
+    }
+
     public func requestVisibleLoupePreview(assetID: AssetID) throws {
         let request = PreviewScheduler().request(
             assetID: assetID,
@@ -1031,8 +1037,42 @@ public final class AppModel {
     }
 
     private func handleWorkerCommandCompleted(_ event: WorkerEvent) {
-        guard case .completedImport(let itemID, _, let importedAssetIDs) = event,
-              let itemID,
+        switch event {
+        case .completed(let itemID, _):
+            invalidatePreviewCacheIfNeeded(itemID: itemID)
+        case .completedImport(let itemID, _, let importedAssetIDs):
+            handleWorkerImportCompleted(itemID: itemID, importedAssetIDs: importedAssetIDs)
+        case .accepted, .failed:
+            return
+        }
+    }
+
+    private func invalidatePreviewCacheIfNeeded(itemID: WorkSessionID?) {
+        guard let itemID,
+              backgroundWorkQueue.item(id: itemID)?.kind == .previewGeneration,
+              let assetID = Self.previewAssetID(from: itemID) else {
+            return
+        }
+        previewCacheGenerationsByAssetID[assetID, default: 0] += 1
+    }
+
+    private static func previewAssetID(from itemID: WorkSessionID) -> AssetID? {
+        let rawValue = itemID.rawValue
+        guard rawValue.hasPrefix("preview-") else {
+            return nil
+        }
+        let prefixedAssetID = rawValue.dropFirst("preview-".count)
+        for level in PreviewLevel.allCases {
+            let suffix = "-\(level.rawValue)"
+            if prefixedAssetID.hasSuffix(suffix) {
+                return AssetID(rawValue: String(prefixedAssetID.dropLast(suffix.count)))
+            }
+        }
+        return nil
+    }
+
+    private func handleWorkerImportCompleted(itemID: WorkSessionID?, importedAssetIDs: [AssetID]) {
+        guard let itemID,
               let context = workerImportContextsByItemID.removeValue(forKey: itemID) else {
             return
         }

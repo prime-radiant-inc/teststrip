@@ -27,13 +27,15 @@ struct CachedPreviewImage: View {
     var previewURL: URL?
     var scaling: Scaling
     var cornerRadius: CGFloat = 5
+    var cacheGeneration: Int = 0
 
     @State private var image: NSImage?
     @State private var loadedURL: URL?
+    @State private var loadedGeneration: Int?
 
     var body: some View {
         content
-            .task(id: previewURL) {
+            .task(id: PreviewLoadRequest(url: previewURL, cacheGeneration: cacheGeneration)) {
                 await loadPreview()
             }
     }
@@ -62,14 +64,21 @@ struct CachedPreviewImage: View {
         guard let previewURL else {
             image = nil
             loadedURL = nil
+            loadedGeneration = cacheGeneration
             return
         }
-        guard loadedURL != previewURL else { return }
+        guard loadedURL != previewURL || loadedGeneration != cacheGeneration else { return }
         image = nil
         loadedURL = previewURL
+        loadedGeneration = cacheGeneration
         guard let loadedImage = await PreviewImageDataLoader.loadImage(from: previewURL), !Task.isCancelled else {
             return
         }
         image = loadedImage
     }
+}
+
+private struct PreviewLoadRequest: Equatable {
+    var url: URL?
+    var cacheGeneration: Int
 }

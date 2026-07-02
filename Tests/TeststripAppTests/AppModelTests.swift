@@ -1397,6 +1397,51 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    @MainActor
+    func testPreviewCompletionInvalidatesPreviewCacheGeneration() async throws {
+        let directory = try makeTemporaryDirectory(named: "preview-completion-invalidation")
+        let source = directory.appendingPathComponent("source.jpg")
+        try writeTestPNG(to: source)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let otherAsset = Asset(
+            id: AssetID(rawValue: "asset-2"),
+            originalURL: directory.appendingPathComponent("other.jpg"),
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 11, modificationDate: Date(timeIntervalSince1970: 11)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(asset)
+        try catalog.repository.upsert(otherAsset)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        try model.requestVisibleGridPreview(assetID: asset.id)
+        let previewURL = catalog.previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+        try writePreviewPlaceholder(to: previewURL)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-grid"),
+            message: "generated grid preview for \(asset.id.rawValue)"
+        )))
+
+        try await waitForPreviewCacheGeneration(1, for: asset.id, in: model)
+        XCTAssertEqual(model.previewCacheGeneration(for: otherAsset.id), 0)
+        XCTAssertEqual(model.gridPreviewURL(for: asset.id), previewURL)
+    }
+
     func testBackgroundControlsForwardToWorkerSupervisor() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -2064,6 +2109,17 @@ final class AppModelTests: XCTestCase {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
         }
         return (try? transport.commands()) == expected
+    }
+
+    @MainActor
+    private func waitForPreviewCacheGeneration(_ generation: Int, for assetID: AssetID, in model: AppModel) async throws {
+        for _ in 0..<100 {
+            if model.previewCacheGeneration(for: assetID) == generation {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTFail("timed out waiting for preview cache generation \(generation)")
     }
 }
 

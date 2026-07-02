@@ -398,6 +398,7 @@ struct LibraryGridView: View {
                 AssetGridCell(
                     asset: asset,
                     previewURL: model.gridPreviewURL(for: asset.id),
+                    previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
                     isSelected: model.selectedAssetID == asset.id
                 )
                 .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface)
@@ -629,7 +630,7 @@ private struct LoupeView: View {
     @ViewBuilder
     private func loupeContent(for asset: Asset) -> some View {
         if let previewURL = model.loupePreviewURL(for: asset.id) {
-            CachedPreviewImage(previewURL: previewURL, scaling: .fit)
+            CachedPreviewImage(previewURL: previewURL, scaling: .fit, cacheGeneration: model.previewCacheGeneration(for: asset.id))
                 .padding(16)
                 .overlay(alignment: .bottomLeading) {
                     loupeOverlay(for: asset)
@@ -688,6 +689,7 @@ private struct CompareView: View {
                     AssetGridCell(
                         asset: asset,
                         previewURL: model.loupePreviewURL(for: asset.id),
+                        previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
                         isSelected: model.selectedAssetID == asset.id
                     )
                     .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface)
@@ -725,6 +727,7 @@ private extension View {
 private struct AssetGridCell: View {
     var asset: Asset
     var previewURL: URL?
+    var previewCacheGeneration: Int
     var isSelected: Bool
 
     var body: some View {
@@ -761,7 +764,7 @@ private struct AssetGridCell: View {
 
     @ViewBuilder
     private var thumbnail: some View {
-        CachedPreviewImage(previewURL: previewURL, scaling: .fill)
+        CachedPreviewImage(previewURL: previewURL, scaling: .fill, cacheGeneration: previewCacheGeneration)
     }
 
     private var metadataOverlay: some View {
