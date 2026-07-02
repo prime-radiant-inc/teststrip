@@ -86,7 +86,7 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(request.itemID, item.id)
     }
 
-    func testCompletedWorkerEventCompletesMatchingDispatchedItemOutOfOrder() throws {
+    func testCompletedWorkerEventIgnoresUndispatchedItem() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
             queue: BackgroundWorkQueue(maxRunningCount: 2),
@@ -101,14 +101,12 @@ final class WorkerSupervisorTests: XCTestCase {
 
         transport.emitOutputLine(#"{"event":"completed","itemID":"second","message":"generated large preview"}"#)
 
-        XCTAssertTrue(waitUntil {
-            supervisor.queue.item(id: first.id)?.status == .running &&
-                supervisor.queue.item(id: second.id)?.status == .completed
-        })
-        XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
+        XCTAssertEqual(supervisor.queue.item(id: first.id)?.status, .running)
+        XCTAssertEqual(supervisor.queue.item(id: second.id)?.status, .running)
+        XCTAssertEqual(try transport.commands(), [firstCommand])
     }
 
-    func testFailedWorkerEventFailsMatchingDispatchedItemOutOfOrder() throws {
+    func testFailedWorkerEventIgnoresUndispatchedItem() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
             queue: BackgroundWorkQueue(maxRunningCount: 2),
@@ -126,11 +124,36 @@ final class WorkerSupervisorTests: XCTestCase {
             message: "could not render preview"
         )))
 
-        XCTAssertTrue(waitUntil {
-            supervisor.queue.item(id: first.id)?.status == .running &&
-                supervisor.queue.item(id: second.id)?.status == .failed &&
-                supervisor.queue.item(id: second.id)?.detail == "could not render preview"
-        })
+        XCTAssertEqual(supervisor.queue.item(id: first.id)?.status, .running)
+        XCTAssertEqual(supervisor.queue.item(id: second.id)?.status, .running)
+        XCTAssertEqual(try transport.commands(), [firstCommand])
+    }
+
+    func testSerialWorkerDispatchDoesNotFailBufferedWorkWhenFirstCommandTimesOut() throws {
+        let transport = RecordingWorkerTransport()
+        let timeoutScheduler = ManualWorkerTimeoutScheduler()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 2),
+            transport: transport,
+            commandTimeout: 30,
+            timeoutScheduler: timeoutScheduler
+        )
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let second = BackgroundWorkItem.testItem(id: "second")
+        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        try supervisor.enqueue(first, command: firstCommand)
+        try supervisor.enqueue(second, command: secondCommand)
+
+        XCTAssertEqual(try transport.commands(), [firstCommand])
+
+        timeoutScheduler.fireNext()
+
+        XCTAssertEqual(transport.terminateCount, 1)
+        XCTAssertEqual(transport.launchCount, 2)
+        XCTAssertEqual(supervisor.queue.item(id: first.id)?.status, .failed)
+        XCTAssertEqual(supervisor.queue.item(id: first.id)?.detail, "Worker command timed out after 30 seconds")
+        XCTAssertEqual(supervisor.queue.item(id: second.id)?.status, .running)
         XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
     }
 

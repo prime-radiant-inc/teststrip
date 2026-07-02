@@ -14,6 +14,7 @@ The UI must not start unbounded detached work silently. Any long-running preview
 - The activity panel uses the app model's visible work projection so background queue state can be shown even when no import is active.
 - Worker commands and JSON-lines protocol live in `TeststripCore` so the app and `TeststripWorker` share one process contract.
 - `WorkerSupervisor` dispatches only runnable queue items to a `WorkerTransport`, launches the worker transport on demand, maps completed worker output back to dispatched queue items, sends explicit pause/resume/cancel commands, and terminates the transport on cancel.
+- The current helper executes commands synchronously, so `WorkerSupervisor` writes one work command to the helper at a time even when the visible queue allows more than one running item.
 - `FoundationWorkerTransport` is the concrete local process adapter for launching a worker executable, writing commands to its standard input, and streaming standard-output and standard-error response lines back to the supervisor.
 - The packaged macOS app stages `TeststripWorker` as a signed helper at `Contents/Helpers/TeststripWorker`; app startup injects that helper URL into `AppCatalog.loadModel`.
 - Explicit preview requests dispatch missing preview work through `WorkerSupervisor` and surface it through the app model's background queue projection.

@@ -1238,9 +1238,18 @@ final class AppModelTests: XCTestCase {
         try model.requestSelectedAssetEvaluations()
 
         XCTAssertEqual(try transport.commands(), [
+            .runEvaluation(assetID: asset.id, provider: "local-image-metrics")
+        ])
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: WorkSessionID(rawValue: "evaluation-\(asset.id.rawValue)-local-image-metrics"),
+            message: "completed local-image-metrics"
+        )))
+
+        XCTAssertTrue(waitForCommands([
             .runEvaluation(assetID: asset.id, provider: "local-image-metrics"),
             .runEvaluation(assetID: asset.id, provider: "apple-vision")
-        ])
+        ], in: transport))
     }
 
     func testCanRequestSelectedAssetEvaluationRequiresSelectionAndWorker() throws {
@@ -1333,13 +1342,22 @@ final class AppModelTests: XCTestCase {
         try model.requestVisibleLoupePreview(assetID: asset.id)
 
         XCTAssertEqual(try transport.commands(), [
-            .generatePreview(assetID: asset.id, level: .medium),
-            .generatePreview(assetID: asset.id, level: .large)
+            .generatePreview(assetID: asset.id, level: .medium)
         ])
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.map(\.id.rawValue), [
             "preview-\(asset.id.rawValue)-medium",
             "preview-\(asset.id.rawValue)-large"
         ])
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-medium"),
+            message: "generated medium preview"
+        )))
+
+        XCTAssertTrue(waitForCommands([
+            .generatePreview(assetID: asset.id, level: .medium),
+            .generatePreview(assetID: asset.id, level: .large)
+        ], in: transport))
     }
 
     func testVisibleLoupePreviewDoesNotDispatchWhenLargePreviewIsCached() throws {
@@ -1804,6 +1822,21 @@ final class AppModelTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTFail("timed out waiting for active import progress")
+    }
+
+    private func waitForCommands(
+        _ expected: [WorkerCommand],
+        in transport: RecordingWorkerTransport,
+        timeout: TimeInterval = 2
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if (try? transport.commands()) == expected {
+                return true
+            }
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+        return (try? transport.commands()) == expected
     }
 }
 

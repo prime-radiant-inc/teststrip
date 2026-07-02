@@ -39,6 +39,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
     private let transport: WorkerTransport
     private let commandTimeout: TimeInterval?
     private let timeoutScheduler: any WorkerTimeoutScheduling
+    private let maxDispatchedCommandCount: Int
     private var commandsByItemID: [WorkSessionID: WorkerCommand]
     private var dispatchedItemIDs: [WorkSessionID]
     private var timeoutsByItemID: [WorkSessionID: any WorkerTimeoutCancellation]
@@ -47,12 +48,15 @@ public final class WorkerSupervisor: @unchecked Sendable {
         queue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
         transport: WorkerTransport,
         commandTimeout: TimeInterval? = 120,
-        timeoutScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler()
+        timeoutScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler(),
+        maxDispatchedCommandCount: Int = 1
     ) {
+        precondition(maxDispatchedCommandCount > 0, "maxDispatchedCommandCount must be positive")
         self.queue = queue
         self.transport = transport
         self.commandTimeout = commandTimeout
         self.timeoutScheduler = timeoutScheduler
+        self.maxDispatchedCommandCount = maxDispatchedCommandCount
         self.commandsByItemID = [:]
         self.dispatchedItemIDs = []
         self.timeoutsByItemID = [:]
@@ -125,6 +129,9 @@ public final class WorkerSupervisor: @unchecked Sendable {
 
     private func dispatchRunnableItems() throws {
         for item in queue.runningItems where !dispatchedItemIDs.contains(item.id) {
+            guard dispatchedItemIDs.count < maxDispatchedCommandCount else {
+                return
+            }
             guard let command = commandsByItemID[item.id] else {
                 throw TeststripError.invalidState("missing worker command for \(item.id.rawValue)")
             }
