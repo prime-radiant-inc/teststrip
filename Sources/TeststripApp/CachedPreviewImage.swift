@@ -7,6 +7,15 @@ enum PreviewImageDataLoader {
             try? Data(contentsOf: url, options: [.mappedIfSafe])
         }.value
     }
+
+    static func loadImage(from url: URL) async -> NSImage? {
+        await Task.detached(priority: .userInitiated) {
+            guard let data = try? Data(contentsOf: url, options: [.mappedIfSafe]) else {
+                return nil
+            }
+            return NSImage(data: data)
+        }.value
+    }
 }
 
 struct CachedPreviewImage: View {
@@ -58,9 +67,9 @@ struct CachedPreviewImage: View {
         guard loadedURL != previewURL else { return }
         image = nil
         loadedURL = previewURL
-        guard let data = await PreviewImageDataLoader.loadData(from: previewURL), !Task.isCancelled else {
+        guard let loadedImage = await PreviewImageDataLoader.loadImage(from: previewURL), !Task.isCancelled else {
             return
         }
-        image = NSImage(data: data)
+        image = loadedImage
     }
 }
