@@ -17,6 +17,11 @@ struct InspectorView: View {
                         .font(.caption)
                         .foregroundStyle(.yellow)
                 }
+                if model.metadataSyncConflictItems.contains(where: { $0.assetID == asset.id }) {
+                    Text("XMP conflict")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
                 metadataControls(for: asset)
             } else {
                 Text("No selection")

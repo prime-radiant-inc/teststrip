@@ -225,6 +225,41 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.pendingMetadataSyncItems(), [pending])
     }
 
+    func testLoadExposesMetadataSyncConflicts() throws {
+        let directory = try makeTemporaryDirectory(named: "xmp-conflict")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "conflict-target"),
+            originalURL: URL(fileURLWithPath: "/Photos/conflict.jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        let conflict = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: asset.originalURL.appendingPathExtension("xmp"),
+            catalogGeneration: 1,
+            lastSyncedFingerprint: "old"
+        )
+        try repository.recordMetadataSyncConflict(conflict)
+
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+
+        XCTAssertEqual(model.metadataSyncConflictItems, [conflict])
+    }
+
     func testRatingSelectedAssetDispatchesWorkerMetadataSyncWhenSupervisorConfigured() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-xmp")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)

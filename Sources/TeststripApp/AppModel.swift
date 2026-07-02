@@ -148,6 +148,7 @@ public final class AppModel {
     public var activeWork: AppWorkActivity?
     public var recentWork: [AppWorkActivity]
     public var pendingMetadataSyncItems: [MetadataSyncItem]
+    public var metadataSyncConflictItems: [MetadataSyncItem]
     public var backgroundWorkQueue: BackgroundWorkQueue
     public var librarySearchText: String
     public var minimumRatingFilter: Int?
@@ -236,6 +237,7 @@ public final class AppModel {
         activeWork: AppWorkActivity? = nil,
         recentWork: [AppWorkActivity] = [],
         pendingMetadataSyncItems: [MetadataSyncItem] = [],
+        metadataSyncConflictItems: [MetadataSyncItem] = [],
         backgroundWorkQueue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
         workerSupervisor: WorkerSupervisor? = nil,
         importTaskFactory: AppImportTaskFactory? = nil
@@ -250,6 +252,7 @@ public final class AppModel {
         self.activeWork = activeWork
         self.recentWork = recentWork
         self.pendingMetadataSyncItems = pendingMetadataSyncItems
+        self.metadataSyncConflictItems = metadataSyncConflictItems
         self.backgroundWorkQueue = backgroundWorkQueue
         self.librarySearchText = ""
         self.minimumRatingFilter = nil
@@ -262,6 +265,7 @@ public final class AppModel {
         self.assetPageOffset = 0
         self.workerSupervisor?.onQueueChanged = { [weak self] queue in
             self?.backgroundWorkQueue = queue
+            try? self?.refreshMetadataSyncState()
         }
     }
 
@@ -304,6 +308,7 @@ public final class AppModel {
             totalAssetCount: try catalog.repository.assetCount(),
             catalog: catalog,
             pendingMetadataSyncItems: try catalog.repository.pendingMetadataSyncItems(),
+            metadataSyncConflictItems: try catalog.repository.metadataSyncConflictItems(),
             workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory
         )
@@ -503,6 +508,12 @@ public final class AppModel {
     private func upsertPendingMetadataSyncItem(_ item: MetadataSyncItem) {
         pendingMetadataSyncItems.removeAll { $0.assetID == item.assetID }
         pendingMetadataSyncItems.append(item)
+    }
+
+    private func refreshMetadataSyncState() throws {
+        guard let catalog else { return }
+        pendingMetadataSyncItems = try catalog.repository.pendingMetadataSyncItems()
+        metadataSyncConflictItems = try catalog.repository.metadataSyncConflictItems()
     }
 
     public func enqueueBackgroundWork(_ item: BackgroundWorkItem) {
