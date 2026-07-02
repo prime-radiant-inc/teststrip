@@ -75,7 +75,12 @@ struct LibraryGridView: View {
             onCompletion: handleImportSelection
         )
         .safeAreaInset(edge: .top) {
-            filterBar
+            VStack(spacing: 0) {
+                filterBar
+                if isImporting {
+                    importProgressBanner
+                }
+            }
         }
         .safeAreaInset(edge: .bottom) {
             footer
@@ -205,6 +210,47 @@ struct LibraryGridView: View {
             .padding(.vertical, 6)
         }
         .background(.bar)
+    }
+
+    private var importProgressBanner: some View {
+        HStack(spacing: 10) {
+            importProgressIndicator
+                .controlSize(.small)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.activeWork?.title ?? "Import photos")
+                    .font(.caption.weight(.semibold))
+                Text(model.activeWork?.detail ?? "Importing")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if let activeWork = model.activeWork, let total = activeWork.totalUnitCount {
+                Text("\(activeWork.completedUnitCount) of \(total)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Button {
+                model.cancelActiveWork()
+            } label: {
+                Image(systemName: "xmark.circle")
+            }
+            .buttonStyle(.borderless)
+            .help("Cancel import")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(.bar)
+    }
+
+    @ViewBuilder
+    private var importProgressIndicator: some View {
+        if let activeWork = model.activeWork, let total = activeWork.totalUnitCount {
+            ProgressView(value: Double(activeWork.completedUnitCount), total: Double(max(total, 1)))
+                .frame(width: 96)
+        } else {
+            ProgressView()
+        }
     }
 
     private var dateFilterPopover: some View {
