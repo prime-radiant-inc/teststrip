@@ -75,8 +75,14 @@ public struct AppCatalog {
     }
 
     public static func loadModel(paths: AppCatalogPaths, workerExecutableURL: URL? = nil) throws -> AppModel {
-        let workerSupervisor = workerExecutableURL.map {
-            WorkerSupervisor(transport: FoundationWorkerTransport(executableURL: $0, arguments: workerArguments(paths: paths)))
+        let workerSupervisor: WorkerSupervisor? = workerExecutableURL.flatMap { executableURL -> WorkerSupervisor? in
+            guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
+                return nil
+            }
+            return WorkerSupervisor(transport: FoundationWorkerTransport(
+                executableURL: executableURL,
+                arguments: workerArguments(paths: paths)
+            ))
         }
         return try AppModel.load(catalog: open(paths: paths), workerSupervisor: workerSupervisor)
     }

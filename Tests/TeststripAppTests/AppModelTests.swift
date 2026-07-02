@@ -1475,6 +1475,28 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBackgroundImportWithMissingWorkerExecutableGeneratesPreviewLocally() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-background-import-missing-worker")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let model = try AppCatalog.loadModel(
+            paths: paths,
+            workerExecutableURL: directory.appendingPathComponent("missing-worker")
+        )
+
+        let result = try await model.importFolderInBackground(photoFolder)
+
+        let assetID = result.importedAssets[0].id
+        let previewURL = try XCTUnwrap(model.gridPreviewURL(for: assetID))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
+        XCTAssertEqual(model.backgroundWorkQueue.items, [])
+        XCTAssertFalse(model.canRequestSelectedAssetEvaluation)
+    }
+
+    @MainActor
     func testBackgroundImportRecordsCompletedActivity() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-activity")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
