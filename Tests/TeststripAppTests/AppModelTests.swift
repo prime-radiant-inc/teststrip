@@ -1358,6 +1358,56 @@ final class AppModelTests: XCTestCase {
         try await waitForActivityStatus(.cancelled, in: model)
     }
 
+    @MainActor
+    func testBackgroundImportShowsCatalogedAssetsBeforePreviewCompletion() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-early-assets")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("early.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "early-import"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let model = try AppModel.load(
+            catalog: catalog,
+            importTaskFactory: { paths, _, progress in
+                Task.detached {
+                    let backgroundCatalog = try AppCatalog.open(paths: paths)
+                    try backgroundCatalog.repository.upsert(importedAsset)
+                    progress(LibraryImportProgress(
+                        completedUnitCount: 1,
+                        totalUnitCount: 1,
+                        detail: "Cataloged 1 photo",
+                        catalogedAssetIDs: [importedAsset.id]
+                    ))
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [importedAsset], previewFailures: []),
+                        assets: try backgroundCatalog.repository.allAssets(limit: 500),
+                        totalAssetCount: try backgroundCatalog.repository.assetCount()
+                    )
+                }
+            }
+        )
+
+        model.beginImportFolder(photoFolder)
+
+        try await waitForSelectedAsset(importedAsset.id, in: model)
+        XCTAssertEqual(model.assets.map(\.id), [importedAsset.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+        XCTAssertEqual(model.activeWork?.status, .running)
+
+        model.cancelActiveWork()
+        try await waitForActivityStatus(.cancelled, in: model)
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-app-tests", isDirectory: true)
@@ -1505,6 +1555,17 @@ final class AppModelTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTFail("timed out waiting for visible work status \(status.rawValue)")
+    }
+
+    @MainActor
+    private func waitForSelectedAsset(_ assetID: AssetID, in model: AppModel) async throws {
+        for _ in 0..<100 {
+            if model.selectedAssetID == assetID {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTFail("timed out waiting for selected asset \(assetID.rawValue)")
     }
 
     @MainActor

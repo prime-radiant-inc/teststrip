@@ -1248,6 +1248,13 @@ public final class AppModel {
     }
 
     fileprivate func applyImportProgress(_ progress: LibraryImportProgress) {
+        if let firstCatalogedAssetID = progress.catalogedAssetIDs.first {
+            do {
+                try loadCatalogPage(preferredSelection: firstCatalogedAssetID)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
         guard var activity = activeWork else { return }
         activity.detail = progress.detail
         activity.completedUnitCount = progress.completedUnitCount

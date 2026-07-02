@@ -36,11 +36,18 @@ public struct LibraryImportProgress: Equatable, Sendable {
     public var completedUnitCount: Int
     public var totalUnitCount: Int?
     public var detail: String
+    public var catalogedAssetIDs: [AssetID]
 
-    public init(completedUnitCount: Int, totalUnitCount: Int?, detail: String) {
+    public init(
+        completedUnitCount: Int,
+        totalUnitCount: Int?,
+        detail: String,
+        catalogedAssetIDs: [AssetID] = []
+    ) {
         self.completedUnitCount = completedUnitCount
         self.totalUnitCount = totalUnitCount
         self.detail = detail
+        self.catalogedAssetIDs = catalogedAssetIDs
     }
 }
 
@@ -84,6 +91,13 @@ public struct LibraryImportService: Sendable {
         for item in previewItems {
             try repository.recordPreviewGenerationPending(item)
         }
+
+        progress?(LibraryImportProgress(
+            completedUnitCount: assets.count,
+            totalUnitCount: assets.count,
+            detail: "Cataloged \(assets.count) \(assets.count == 1 ? "photo" : "photos")",
+            catalogedAssetIDs: assets.map(\.id)
+        ))
 
         progress?(LibraryImportProgress(
             completedUnitCount: 0,
