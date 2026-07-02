@@ -23,7 +23,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
         let result = try executor.execute(.generatePreview(assetID: asset.id, level: .medium))
 
-        XCTAssertEqual(result, .completed("generated medium preview for asset-1"))
+        XCTAssertEqual(result, .completed("generated medium preview for source.jpg"))
         let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .medium))
         XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
         let dimensions = try PreviewRenderer().dimensions(of: previewURL)
@@ -146,7 +146,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
         let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
 
-        XCTAssertEqual(result, .completed("synced metadata for asset-1"))
+        XCTAssertEqual(result, .completed("synced metadata for asset.raw"))
         let sidecarData = try Data(contentsOf: setup.sidecarURL)
         XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata, setup.asset.metadata)
         XCTAssertEqual(
@@ -154,6 +154,21 @@ final class WorkerCommandExecutorTests: XCTestCase {
             XMPSidecarStore.fingerprint(for: sidecarData)
         )
         XCTAssertEqual(try setup.repository.pendingMetadataSyncItems(), [])
+    }
+
+    func testSyncMetadataCommandReportsFilenameWhenSidecarIsUpToDate() throws {
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-up-to-date", metadata: AssetMetadata(rating: 4))
+        let write = try XMPSidecarStore().write(metadata: setup.asset.metadata, forOriginalAt: setup.asset.originalURL)
+        try setup.repository.markMetadataSynced(
+            assetID: setup.asset.id,
+            sidecarURL: write.sidecarURL,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id),
+            fingerprint: write.fingerprint
+        )
+
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("metadata up to date for asset.raw"))
     }
 
     func testSyncMetadataCommandRecordsPendingWhenSidecarCannotBeWritten() throws {
@@ -179,7 +194,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
         let result = try executor.execute(.syncMetadata(assetID: asset.id))
 
-        XCTAssertEqual(result, .completed("metadata pending for asset-1"))
+        XCTAssertEqual(result, .completed("metadata pending for asset.raw"))
         XCTAssertEqual(try repository.pendingMetadataSyncItems(), [
             MetadataSyncItem(
                 assetID: asset.id,
@@ -205,7 +220,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
         let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
 
-        XCTAssertEqual(result, .completed("imported metadata for asset-1"))
+        XCTAssertEqual(result, .completed("imported metadata for asset.raw"))
         XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata, sidecarMetadata)
         let currentSidecarData = try Data(contentsOf: setup.sidecarURL)
         XCTAssertEqual(
@@ -235,7 +250,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
         let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
 
-        XCTAssertEqual(result, .completed("imported metadata for asset-1"))
+        XCTAssertEqual(result, .completed("imported metadata for asset.raw"))
         XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata, metadata)
         let refreshedSync = try XCTUnwrap(try setup.repository.metadataSyncItem(assetID: setup.asset.id)?.lastSyncedAt)
         XCTAssertGreaterThan(refreshedSync.timeIntervalSince1970, initialSync.timeIntervalSince1970)
@@ -259,7 +274,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
         let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
 
-        XCTAssertEqual(result, .completed("metadata conflict for asset-1"))
+        XCTAssertEqual(result, .completed("metadata conflict for asset.raw"))
         XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata.rating, 4)
         XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: setup.sidecarURL)).metadata, sidecarMetadata)
         XCTAssertEqual(try setup.repository.metadataSyncConflictItems().map(\.assetID), [setup.asset.id])
@@ -293,7 +308,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
         let result = try executor.execute(.runEvaluation(assetID: asset.id, provider: "local"))
 
-        XCTAssertEqual(result, .completed("evaluated asset-1 with local"))
+        XCTAssertEqual(result, .completed("evaluated source.jpg with local"))
         XCTAssertEqual(try repository.evaluationSignals(assetID: asset.id), [
             EvaluationSignal(
                 assetID: asset.id,
@@ -333,7 +348,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
         let result = try executor.execute(.runEvaluation(assetID: asset.id, provider: "local-image-metrics"))
 
-        XCTAssertEqual(result, .completed("evaluated asset-1 with local-image-metrics"))
+        XCTAssertEqual(result, .completed("evaluated source.jpg with local-image-metrics"))
         XCTAssertEqual(try repository.evaluationSignals(assetID: asset.id).map(\.kind), [.exposure, .colorPalette])
     }
 
@@ -365,7 +380,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
         let result = try executor.execute(.runEvaluation(assetID: asset.id, provider: "apple-vision"))
 
-        XCTAssertEqual(result, .completed("evaluated asset-1 with apple-vision"))
+        XCTAssertEqual(result, .completed("evaluated source.jpg with apple-vision"))
     }
 
     func testRuntimeConfigurationRegistersLocalHTTPModelProviderWhenConfigured() throws {
@@ -410,7 +425,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
         let result = try executor.execute(.runEvaluation(assetID: asset.id, provider: "local-http-model"))
 
-        XCTAssertEqual(result, .completed("evaluated asset-1 with local-http-model"))
+        XCTAssertEqual(result, .completed("evaluated source.jpg with local-http-model"))
         XCTAssertEqual(try repository.evaluationSignals(assetID: asset.id), [
             EvaluationSignal(
                 assetID: asset.id,

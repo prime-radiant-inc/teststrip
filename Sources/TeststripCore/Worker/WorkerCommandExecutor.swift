@@ -180,7 +180,7 @@ public struct WorkerCommandExecutor {
                 destinationURL: previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
             )
             try repository.markPreviewGenerated(assetID: assetID, level: level)
-            return .completed("generated \(level.rawValue) preview for \(assetID.rawValue)")
+            return .completed("generated \(level.rawValue) preview for \(Self.displayName(for: asset))")
         case .syncMetadata(let assetID):
             return try syncMetadata(assetID: assetID)
         case .runEvaluation(let assetID, let provider):
@@ -209,8 +209,13 @@ public struct WorkerCommandExecutor {
         "\(count) \(count == 1 ? "photo" : "photos")"
     }
 
+    private static func displayName(for asset: Asset) -> String {
+        let name = asset.originalURL.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? asset.id.rawValue : name
+    }
+
     private func runEvaluation(assetID: AssetID, providerName: String) throws -> WorkerCommandResult {
-        _ = try repository.asset(id: assetID)
+        let asset = try repository.asset(id: assetID)
         guard let provider = evaluationProviders[providerName] else {
             throw TeststripError.invalidState("unknown evaluation provider \(providerName)")
         }
@@ -218,7 +223,7 @@ public struct WorkerCommandExecutor {
             throw TeststripError.invalidState("no cached preview for \(assetID.rawValue)")
         }
         try repository.recordEvaluationSignals(try provider.evaluate(assetID: assetID, previewURL: previewURL))
-        return .completed("evaluated \(assetID.rawValue) with \(providerName)")
+        return .completed("evaluated \(Self.displayName(for: asset)) with \(providerName)")
     }
 
     private func cachedPreviewURL(for assetID: AssetID) -> URL? {
@@ -233,6 +238,7 @@ public struct WorkerCommandExecutor {
 
     private func syncMetadata(assetID: AssetID) throws -> WorkerCommandResult {
         let asset = try repository.asset(id: assetID)
+        let assetName = Self.displayName(for: asset)
         let sidecarStore = XMPSidecarStore()
         let sidecarURL = sidecarStore.sidecarURL(forOriginalAt: asset.originalURL)
         let sidecarData = try? Data(contentsOf: sidecarURL)
@@ -253,7 +259,7 @@ public struct WorkerCommandExecutor {
 
         switch decision {
         case .upToDate:
-            return .completed("metadata up to date for \(assetID.rawValue)")
+            return .completed("metadata up to date for \(assetName)")
         case .writeCatalog:
             do {
                 let result = try sidecarStore.write(metadata: asset.metadata, forOriginalAt: asset.originalURL)
@@ -263,7 +269,7 @@ public struct WorkerCommandExecutor {
                     catalogGeneration: catalogGeneration,
                     fingerprint: result.fingerprint
                 )
-                return .completed("synced metadata for \(assetID.rawValue)")
+                return .completed("synced metadata for \(assetName)")
             } catch {
                 try repository.recordMetadataSyncPending(MetadataSyncItem(
                     assetID: assetID,
@@ -271,7 +277,7 @@ public struct WorkerCommandExecutor {
                     catalogGeneration: catalogGeneration,
                     lastSyncedFingerprint: try repository.lastMetadataSyncFingerprint(assetID: assetID)
                 ))
-                return .completed("metadata pending for \(assetID.rawValue)")
+                return .completed("metadata pending for \(assetName)")
             }
         case .importSidecar(let metadata):
             try repository.updateMetadata(assetID: assetID) { catalogMetadata in
@@ -290,7 +296,7 @@ public struct WorkerCommandExecutor {
                 catalogGeneration: importedGeneration,
                 fingerprint: XMPSidecarStore.fingerprint(for: importedData)
             )
-            return .completed("imported metadata for \(assetID.rawValue)")
+            return .completed("imported metadata for \(assetName)")
         case .conflict:
             try repository.recordMetadataSyncConflict(MetadataSyncItem(
                 assetID: assetID,
@@ -298,7 +304,7 @@ public struct WorkerCommandExecutor {
                 catalogGeneration: catalogGeneration,
                 lastSyncedFingerprint: try repository.lastMetadataSyncFingerprint(assetID: assetID)
             ))
-            return .completed("metadata conflict for \(assetID.rawValue)")
+            return .completed("metadata conflict for \(assetName)")
         }
     }
 }
