@@ -664,12 +664,14 @@ private extension View {
             focusCullingSurface()
             model.openAssetInLoupe(asset.id)
         }
-        let singleClick = TapGesture(count: 1).onEnded {
+        return Button {
             focusCullingSurface()
             model.select(asset.id)
+        } label: {
+            contentShape(Rectangle())
         }
-        return contentShape(Rectangle())
-            .gesture(doubleClick.exclusively(before: singleClick))
+            .buttonStyle(.plain)
+            .simultaneousGesture(doubleClick)
             .accessibilityElement()
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(asset.originalURL.lastPathComponent)
