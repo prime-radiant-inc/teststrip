@@ -85,6 +85,50 @@ public final class CatalogRepository {
         return intValue
     }
 
+    public func recordMetadataSyncPending(_ item: MetadataSyncItem) throws {
+        try upsertMetadataSyncState(item, status: "pending")
+    }
+
+    public func pendingMetadataSyncItems() throws -> [MetadataSyncItem] {
+        let rows = try database.rows(
+            """
+            SELECT asset_id, sidecar_path, catalog_generation, last_synced_fingerprint
+            FROM metadata_sync_state
+            WHERE status = 'pending'
+            ORDER BY updated_at ASC
+            """
+        )
+        return try rows.map(decodeMetadataSyncItem)
+    }
+
+    public func markMetadataSynced(
+        assetID: AssetID,
+        sidecarURL: URL,
+        catalogGeneration: Int,
+        fingerprint: String
+    ) throws {
+        try upsertMetadataSyncState(
+            MetadataSyncItem(
+                assetID: assetID,
+                sidecarURL: sidecarURL,
+                catalogGeneration: catalogGeneration,
+                lastSyncedFingerprint: fingerprint
+            ),
+            status: "synced"
+        )
+    }
+
+    public func lastMetadataSyncFingerprint(assetID: AssetID) throws -> String? {
+        let rows = try database.rows(
+            "SELECT last_synced_fingerprint FROM metadata_sync_state WHERE asset_id = ?",
+            bindings: [assetID.rawValue]
+        )
+        guard let fingerprint = rows.first?["last_synced_fingerprint"], !fingerprint.isEmpty else {
+            return nil
+        }
+        return fingerprint
+    }
+
     private func decodeAsset(_ row: [String: String]) throws -> Asset {
         guard let id = row["id"],
               let path = row["original_path"],
@@ -102,6 +146,53 @@ public final class CatalogRepository {
             fingerprint: try decode(FileFingerprint.self, from: fingerprintJSON),
             availability: availability,
             metadata: try decode(AssetMetadata.self, from: metadataJSON)
+        )
+    }
+
+    private func upsertMetadataSyncState(_ item: MetadataSyncItem, status: String) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT INTO metadata_sync_state (
+                asset_id,
+                sidecar_path,
+                catalog_generation,
+                last_synced_fingerprint,
+                status,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(asset_id) DO UPDATE SET
+                sidecar_path = excluded.sidecar_path,
+                catalog_generation = excluded.catalog_generation,
+                last_synced_fingerprint = excluded.last_synced_fingerprint,
+                status = excluded.status,
+                updated_at = excluded.updated_at
+            """,
+            bindings: [
+                item.assetID.rawValue,
+                item.sidecarURL.path,
+                "\(item.catalogGeneration)",
+                item.lastSyncedFingerprint ?? "",
+                status,
+                now
+            ]
+        )
+    }
+
+    private func decodeMetadataSyncItem(_ row: [String: String]) throws -> MetadataSyncItem {
+        guard let assetID = row["asset_id"],
+              let sidecarPath = row["sidecar_path"],
+              let generationValue = row["catalog_generation"],
+              let generation = Int(generationValue),
+              let fingerprint = row["last_synced_fingerprint"] else {
+            throw CatalogError.sqlite("metadata sync row is missing required columns")
+        }
+        return MetadataSyncItem(
+            assetID: AssetID(rawValue: assetID),
+            sidecarURL: URL(fileURLWithPath: sidecarPath),
+            catalogGeneration: generation,
+            lastSyncedFingerprint: fingerprint.isEmpty ? nil : fingerprint
         )
     }
 

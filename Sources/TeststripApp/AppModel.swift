@@ -128,6 +128,7 @@ public final class AppModel {
     public var errorMessage: String?
     public var activeWork: AppWorkActivity?
     public var recentWork: [AppWorkActivity]
+    public var pendingMetadataSyncItems: [MetadataSyncItem]
 
     @ObservationIgnored
     private var catalog: AppCatalog?
@@ -176,6 +177,7 @@ public final class AppModel {
         errorMessage: String? = nil,
         activeWork: AppWorkActivity? = nil,
         recentWork: [AppWorkActivity] = [],
+        pendingMetadataSyncItems: [MetadataSyncItem] = [],
         importTaskFactory: AppImportTaskFactory? = nil
     ) {
         self.sidebarSections = sidebarSections
@@ -187,6 +189,7 @@ public final class AppModel {
         self.errorMessage = errorMessage
         self.activeWork = activeWork
         self.recentWork = recentWork
+        self.pendingMetadataSyncItems = pendingMetadataSyncItems
         self.catalog = catalog
         self.importTaskFactory = importTaskFactory ?? Self.defaultImportTask
         self.metadataUndoStack = []
@@ -227,6 +230,7 @@ public final class AppModel {
             assets: assets,
             totalAssetCount: try catalog.repository.assetCount(),
             catalog: catalog,
+            pendingMetadataSyncItems: try catalog.repository.pendingMetadataSyncItems(),
             importTaskFactory: importTaskFactory
         )
     }
@@ -353,10 +357,44 @@ public final class AppModel {
             currentMetadata = metadata
         }
         let updatedAsset = try catalog.repository.asset(id: assetID)
+        try syncMetadataSidecar(for: updatedAsset)
         guard let index = assets.firstIndex(where: { $0.id == assetID }) else {
             return
         }
         assets[index] = updatedAsset
+    }
+
+    private func syncMetadataSidecar(for asset: Asset) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let generation = try catalog.repository.catalogGeneration(assetID: asset.id)
+        let lastFingerprint = try catalog.repository.lastMetadataSyncFingerprint(assetID: asset.id)
+        let pendingItem = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: catalog.metadataSidecarStore.sidecarURL(forOriginalAt: asset.originalURL),
+            catalogGeneration: generation,
+            lastSyncedFingerprint: lastFingerprint
+        )
+        do {
+            let result = try catalog.metadataSidecarStore.write(metadata: asset.metadata, forOriginalAt: asset.originalURL)
+            try catalog.repository.markMetadataSynced(
+                assetID: asset.id,
+                sidecarURL: result.sidecarURL,
+                catalogGeneration: generation,
+                fingerprint: result.fingerprint
+            )
+            pendingMetadataSyncItems.removeAll { $0.assetID == asset.id }
+        } catch {
+            try catalog.repository.recordMetadataSyncPending(pendingItem)
+            upsertPendingMetadataSyncItem(pendingItem)
+            statusMessage = "XMP write pending for \(asset.originalURL.lastPathComponent)"
+        }
+    }
+
+    private func upsertPendingMetadataSyncItem(_ item: MetadataSyncItem) {
+        pendingMetadataSyncItems.removeAll { $0.assetID == item.assetID }
+        pendingMetadataSyncItems.append(item)
     }
 
     public func reload() throws {

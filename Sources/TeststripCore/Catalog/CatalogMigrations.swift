@@ -1,5 +1,5 @@
 enum CatalogMigrations {
-    static let version = 1
+    static let version = 2
 
     static let statements = [
         """
@@ -22,6 +22,17 @@ enum CatalogMigrations {
         )
         """,
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_original_path_unique ON assets(original_path)",
-        "CREATE INDEX IF NOT EXISTS idx_assets_availability ON assets(availability)"
+        "CREATE INDEX IF NOT EXISTS idx_assets_availability ON assets(availability)",
+        """
+        CREATE TABLE IF NOT EXISTS metadata_sync_state (
+            asset_id TEXT PRIMARY KEY NOT NULL,
+            sidecar_path TEXT NOT NULL,
+            catalog_generation INTEGER NOT NULL,
+            last_synced_fingerprint TEXT NOT NULL,
+            status TEXT NOT NULL,
+            updated_at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_metadata_sync_status ON metadata_sync_state(status)"
     ]
 }

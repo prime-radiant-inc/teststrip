@@ -18,17 +18,20 @@ public struct AppCatalog {
     public var repository: CatalogRepository
     public var previewCache: PreviewCache
     public var importService: LibraryImportService
+    public var metadataSidecarStore: XMPSidecarStore
 
     public init(
         paths: AppCatalogPaths,
         repository: CatalogRepository,
         previewCache: PreviewCache,
-        importService: LibraryImportService
+        importService: LibraryImportService,
+        metadataSidecarStore: XMPSidecarStore = XMPSidecarStore()
     ) {
         self.paths = paths
         self.repository = repository
         self.previewCache = previewCache
         self.importService = importService
+        self.metadataSidecarStore = metadataSidecarStore
     }
 
     public static func defaultPaths() throws -> AppCatalogPaths {

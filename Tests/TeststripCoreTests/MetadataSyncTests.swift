@@ -60,6 +60,22 @@ final class MetadataSyncTests: XCTestCase {
         XCTAssertEqual(parsed.metadata.copyright, "Copyright Jesse")
     }
 
+    func testSidecarStoreWritesPortableMetadataBesideOriginal() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "xmp-sidecar-write")
+        let originalURL = directory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let metadata = AssetMetadata(rating: 4, colorLabel: .yellow, flag: .pick, keywords: ["cull"])
+        let store = XMPSidecarStore()
+
+        let result = try store.write(metadata: metadata, forOriginalAt: originalURL)
+
+        XCTAssertEqual(result.sidecarURL, originalURL.appendingPathExtension("xmp"))
+        XCTAssertEqual(try Data(contentsOf: originalURL), Data("original raw bytes".utf8))
+        let sidecarData = try Data(contentsOf: result.sidecarURL)
+        XCTAssertEqual(result.fingerprint, XMPSidecarStore.fingerprint(for: sidecarData))
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata, metadata)
+    }
+
     func testSyncQueueTracksPendingWriteWithCatalogGeneration() {
         let item = MetadataSyncItem(
             assetID: AssetID(rawValue: "asset-1"),
@@ -70,6 +86,53 @@ final class MetadataSyncTests: XCTestCase {
 
         XCTAssertEqual(item.catalogGeneration, 7)
         XCTAssertEqual(item.lastSyncedFingerprint, "old")
+    }
+
+    func testCatalogPersistsPendingMetadataSyncItems() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "metadata-sync-queue")
+        let catalogURL = directory.appendingPathComponent("catalog.sqlite")
+        let database = try CatalogDatabase.open(at: catalogURL)
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let item = MetadataSyncItem(
+            assetID: AssetID(rawValue: "asset-1"),
+            sidecarURL: URL(fileURLWithPath: "/Volumes/NAS/frame.cr2.xmp"),
+            catalogGeneration: 3,
+            lastSyncedFingerprint: "previous"
+        )
+
+        try repository.recordMetadataSyncPending(item)
+        let reopenedDatabase = try CatalogDatabase.open(at: catalogURL)
+        try reopenedDatabase.migrate()
+        let reopenedRepository = CatalogRepository(database: reopenedDatabase)
+
+        XCTAssertEqual(try reopenedRepository.pendingMetadataSyncItems(), [item])
+    }
+
+    func testCatalogMarksMetadataSyncCompleteWithLastFingerprint() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "metadata-sync-complete")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assetID = AssetID(rawValue: "asset-1")
+        let sidecarURL = URL(fileURLWithPath: "/Volumes/NAS/frame.cr2.xmp")
+        let pending = MetadataSyncItem(
+            assetID: assetID,
+            sidecarURL: sidecarURL,
+            catalogGeneration: 3,
+            lastSyncedFingerprint: nil
+        )
+
+        try repository.recordMetadataSyncPending(pending)
+        try repository.markMetadataSynced(
+            assetID: assetID,
+            sidecarURL: sidecarURL,
+            catalogGeneration: 3,
+            fingerprint: "written"
+        )
+
+        XCTAssertEqual(try repository.pendingMetadataSyncItems(), [])
+        XCTAssertEqual(try repository.lastMetadataSyncFingerprint(assetID: assetID), "written")
     }
 
     private func assertParseInvalidState(

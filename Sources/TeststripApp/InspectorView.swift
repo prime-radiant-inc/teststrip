@@ -12,6 +12,11 @@ struct InspectorView: View {
                 Text("Availability: \(asset.availability.rawValue)")
                 Text("Rating: \(asset.metadata.rating)")
                 Text("Keywords: \(asset.metadata.keywords.joined(separator: ", "))")
+                if model.pendingMetadataSyncItems.contains(where: { $0.assetID == asset.id }) {
+                    Text("XMP sync pending")
+                        .font(.caption)
+                        .foregroundStyle(.yellow)
+                }
                 metadataControls(for: asset)
             } else {
                 Text("No selection")
