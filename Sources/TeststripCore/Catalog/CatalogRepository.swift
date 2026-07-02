@@ -116,6 +116,47 @@ public final class CatalogRepository {
         return count
     }
 
+    public func upsert(_ assetSet: AssetSet) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT INTO asset_sets (id, name, membership_json, starred, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                membership_json = excluded.membership_json,
+                starred = excluded.starred,
+                updated_at = excluded.updated_at
+            """,
+            bindings: [
+                assetSet.id.rawValue,
+                assetSet.name,
+                try encode(assetSet.membership),
+                assetSet.starred ? "1" : "0",
+                now,
+                now
+            ]
+        )
+    }
+
+    public func assetSet(id: AssetSetID) throws -> AssetSet {
+        let rows = try database.rows("SELECT * FROM asset_sets WHERE id = ?", bindings: [id.rawValue])
+        guard let row = rows.first else {
+            throw CatalogError.notFound(id.rawValue)
+        }
+        return try decodeAssetSet(row)
+    }
+
+    public func assetSets(starredOnly: Bool = false) throws -> [AssetSet] {
+        let rows: [[String: String]]
+        if starredOnly {
+            rows = try database.rows("SELECT * FROM asset_sets WHERE starred = 1 ORDER BY rowid ASC")
+        } else {
+            rows = try database.rows("SELECT * FROM asset_sets ORDER BY rowid ASC")
+        }
+        return try rows.map(decodeAssetSet)
+    }
+
     public func updateMetadata(assetID: AssetID, _ update: (inout AssetMetadata) throws -> Void) throws {
         var asset = try asset(id: assetID)
         try update(&asset.metadata)
@@ -222,6 +263,22 @@ public final class CatalogRepository {
             fingerprint: try decode(FileFingerprint.self, from: fingerprintJSON),
             availability: availability,
             metadata: try decode(AssetMetadata.self, from: metadataJSON)
+        )
+    }
+
+    private func decodeAssetSet(_ row: [String: String]) throws -> AssetSet {
+        guard let id = row["id"],
+              let name = row["name"],
+              let membershipJSON = row["membership_json"],
+              let starred = row["starred"] else {
+            throw CatalogError.sqlite("asset set row is missing required columns")
+        }
+
+        return AssetSet(
+            id: AssetSetID(rawValue: id),
+            name: name,
+            membership: try decode(AssetSet.Membership.self, from: membershipJSON),
+            starred: starred == "1"
         )
     }
 

@@ -126,6 +126,73 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.allAssets(matching: colorKeywordQuery, limit: 10).map(\.id), [landscape.id])
     }
 
+    func testPersistsDynamicAssetSet() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-sets")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let set = AssetSet(
+            id: AssetSetID(rawValue: "ceremony-picks"),
+            name: "Ceremony Picks",
+            membership: .dynamic(SetQuery(predicates: [.text("ceremony"), .ratingAtLeast(4), .flag(.pick)])),
+            starred: true
+        )
+
+        try repository.upsert(set)
+
+        XCTAssertEqual(try repository.assetSet(id: set.id), set)
+    }
+
+    func testListsAssetSetsWithStarredFilter() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-sets-list")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let recent = AssetSet.manual(
+            id: AssetSetID(rawValue: "recent-import"),
+            name: "Recent Import",
+            assetIDs: [AssetID(rawValue: "a")]
+        )
+        let starred = AssetSet(
+            id: AssetSetID(rawValue: "long-running"),
+            name: "Long Running",
+            membership: .snapshot([AssetID(rawValue: "b")]),
+            starred: true
+        )
+
+        try repository.upsert(recent)
+        try repository.upsert(starred)
+
+        XCTAssertEqual(try repository.assetSets().map(\.id), [recent.id, starred.id])
+        XCTAssertEqual(try repository.assetSets(starredOnly: true), [starred])
+    }
+
+    func testUpsertAssetSetReplacesMembershipAndStarredState() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-sets-upsert")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let id = AssetSetID(rawValue: "keepers")
+
+        try repository.upsert(AssetSet.manual(id: id, name: "Keepers", assetIDs: [AssetID(rawValue: "old")]))
+        try repository.upsert(AssetSet(
+            id: id,
+            name: "Five Star Keepers",
+            membership: .dynamic(SetQuery(predicates: [.ratingAtLeast(5)])),
+            starred: true
+        ))
+
+        XCTAssertEqual(
+            try repository.assetSet(id: id),
+            AssetSet(
+                id: id,
+                name: "Five Star Keepers",
+                membership: .dynamic(SetQuery(predicates: [.ratingAtLeast(5)])),
+                starred: true
+            )
+        )
+    }
+
     func testFetchesAllAssetsInInsertionOrderWhenCreatedAtTies() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
