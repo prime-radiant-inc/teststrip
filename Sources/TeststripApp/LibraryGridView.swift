@@ -44,7 +44,7 @@ struct LibraryGridView: View {
             Button {
                 isImportingFolder = true
             } label: {
-                Label("Import", systemImage: "square.and.arrow.down")
+                Label("Import Folder", systemImage: "square.and.arrow.down")
             }
             .disabled(isImporting)
         }
@@ -75,6 +75,9 @@ struct LibraryGridView: View {
                 .focusEffectDisabled()
                 .contentShape(Rectangle())
                 .accessibilityLabel(asset.originalURL.lastPathComponent)
+                .simultaneousGesture(TapGesture(count: 2).onEnded {
+                    model.openAssetInLoupe(asset.id)
+                })
             }
         }
         .padding(12)

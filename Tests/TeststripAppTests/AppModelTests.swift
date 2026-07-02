@@ -45,6 +45,17 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAsset?.id, second.id)
     }
 
+    func testOpenAssetInLoupeSelectsAssetAndSwitchesView() {
+        let first = makeAsset(id: "first", size: 1)
+        let second = makeAsset(id: "second", size: 2)
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [first, second])
+
+        model.openAssetInLoupe(second.id)
+
+        XCTAssertEqual(model.selectedAsset?.id, second.id)
+        XCTAssertEqual(model.selectedView, .loupe)
+    }
+
     func testSelectNextAssetMovesSelectionForwardThroughLoadedAssets() {
         let first = makeAsset(id: "first", size: 1)
         let second = makeAsset(id: "second", size: 2)

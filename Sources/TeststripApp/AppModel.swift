@@ -287,6 +287,11 @@ public final class AppModel {
         selectedAssetID = assetID
     }
 
+    public func openAssetInLoupe(_ assetID: AssetID) {
+        select(assetID)
+        selectedView = .loupe
+    }
+
     public func selectNextAsset() {
         guard !assets.isEmpty else {
             selectedAssetID = nil
