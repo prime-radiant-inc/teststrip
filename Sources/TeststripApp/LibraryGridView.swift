@@ -1,11 +1,8 @@
-import AppKit
 import SwiftUI
 import TeststripCore
-import UniformTypeIdentifiers
 
 struct LibraryGridView: View {
     var model: AppModel
-    @State private var isImportingFolder = false
     @State private var isSavingSearch = false
     @State private var isSavingManualSet = false
     @State private var savedSearchName = ""
@@ -54,7 +51,7 @@ struct LibraryGridView: View {
             .labelsHidden()
 
             Button {
-                isImportingFolder = true
+                showImportFolderPanel()
             } label: {
                 Label("Import Folder", systemImage: "square.and.arrow.down")
             }
@@ -68,12 +65,6 @@ struct LibraryGridView: View {
             .disabled(isImporting || !model.canRequestSelectedAssetEvaluation)
             .help("Evaluate selected photo")
         }
-        .fileImporter(
-            isPresented: $isImportingFolder,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false,
-            onCompletion: handleImportSelection
-        )
         .safeAreaInset(edge: .top) {
             VStack(spacing: 0) {
                 filterBar
@@ -423,7 +414,7 @@ struct LibraryGridView: View {
             Text("No photographs in this catalog")
                 .font(.headline)
             Button {
-                isImportingFolder = true
+                showImportFolderPanel()
             } label: {
                 Label("Import Folder", systemImage: "square.and.arrow.down")
             }
@@ -492,13 +483,9 @@ struct LibraryGridView: View {
         .background(.bar)
     }
 
-    private func handleImportSelection(_ result: Result<[URL], Error>) {
-        do {
-            guard let folderURL = try result.get().first else { return }
-            importFolder(folderURL)
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
+    private func showImportFolderPanel() {
+        guard let folderURL = FolderSelectionPanel.chooseImportFolder() else { return }
+        importFolder(folderURL)
     }
 
     private func importFolder(_ folderURL: URL) {
