@@ -15,6 +15,11 @@ public struct SidebarSection: Identifiable, Equatable {
     public var id: String { title }
     public var title: String
     public var rows: [String]
+
+    public init(title: String, rows: [String]) {
+        self.title = title
+        self.rows = rows
+    }
 }
 
 @Observable

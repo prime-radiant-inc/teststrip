@@ -1,6 +1,6 @@
 import XCTest
-@testable import TeststripCore
-@testable import TeststripApp
+import TeststripCore
+import TeststripApp
 
 final class AppModelTests: XCTestCase {
     func testAppModelStartsWithStudioLayoutSections() {
@@ -9,6 +9,14 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.sidebarSections.map(\.title).contains("Library"))
         XCTAssertTrue(model.sidebarSections.map(\.title).contains("Work"))
         XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.selectedAsset?.id, model.assets.first?.id)
+    }
+
+    func testSidebarSectionCanBeConstructedByPublicClients() {
+        let section = SidebarSection(title: "Library", rows: ["All Photographs"])
+
+        XCTAssertEqual(section.title, "Library")
+        XCTAssertEqual(section.rows, ["All Photographs"])
     }
 
     func testSelectingAssetUpdatesInspector() {
@@ -56,6 +64,19 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.assets.map(\.id), [asset.id])
         XCTAssertEqual(model.selectedAsset?.id, asset.id)
+    }
+
+    func testLoadingEmptyRepositoryLeavesSelectionEmpty() throws {
+        let directory = try makeTemporaryDirectory(named: "empty-app-model")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        let model = try AppModel.load(repository: repository)
+
+        XCTAssertEqual(model.assets, [])
+        XCTAssertNil(model.selectedAssetID)
+        XCTAssertNil(model.selectedAsset)
     }
 
     private func makeTemporaryDirectory(named name: String) throws -> URL {
