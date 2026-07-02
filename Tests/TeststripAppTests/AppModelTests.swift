@@ -167,6 +167,40 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .reject)
     }
 
+    func testCullingShortcutMovesSelectionThroughLoadedAssets() throws {
+        let first = makeAsset(id: "first", size: 1)
+        let second = makeAsset(id: "second", size: 2)
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [first, second])
+
+        try model.applyCullingShortcut(.nextPhoto)
+        XCTAssertEqual(model.selectedAsset?.id, second.id)
+
+        try model.applyCullingShortcut(.previousPhoto)
+        XCTAssertEqual(model.selectedAsset?.id, first.id)
+    }
+
+    func testCullingShortcutAppliesMetadataToSelectedAsset() throws {
+        let (model, repository, asset) = try makeModelWithCatalogAsset(named: "shortcut-metadata")
+
+        try model.applyCullingShortcut(.rating(5))
+        XCTAssertEqual(model.selectedAsset?.metadata.rating, 5)
+
+        try model.applyCullingShortcut(.reject)
+        XCTAssertEqual(model.selectedAsset?.metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.rating, 5)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .reject)
+    }
+
+    func testCullingShortcutInterpretsKeyboardKeys() {
+        XCTAssertEqual(CullingShortcut(key: .rightArrow), .nextPhoto)
+        XCTAssertEqual(CullingShortcut(key: .leftArrow), .previousPhoto)
+        XCTAssertEqual(CullingShortcut(key: .character("5")), .rating(5))
+        XCTAssertEqual(CullingShortcut(key: .character("P")), .pick)
+        XCTAssertEqual(CullingShortcut(key: .character("x")), .reject)
+        XCTAssertEqual(CullingShortcut(key: .character("u")), .clearFlag)
+        XCTAssertNil(CullingShortcut(key: .character("a")))
+    }
+
     func testUndoMetadataChangeRestoresLoadedAssetAndCatalog() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "undo-rating")
 

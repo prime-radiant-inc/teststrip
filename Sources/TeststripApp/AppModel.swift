@@ -18,6 +18,43 @@ public enum CullingCommand: Equatable, Sendable {
     case clearFlag
 }
 
+public enum CullingShortcut: Equatable, Sendable {
+    case previousPhoto
+    case nextPhoto
+    case rating(Int)
+    case pick
+    case reject
+    case clearFlag
+
+    public init?(key: CullingShortcutKey) {
+        switch key {
+        case .leftArrow:
+            self = .previousPhoto
+        case .rightArrow:
+            self = .nextPhoto
+        case .character(let character):
+            switch character.lowercased() {
+            case "0": self = .rating(0)
+            case "1": self = .rating(1)
+            case "2": self = .rating(2)
+            case "3": self = .rating(3)
+            case "4": self = .rating(4)
+            case "5": self = .rating(5)
+            case "p": self = .pick
+            case "x": self = .reject
+            case "u": self = .clearFlag
+            default: return nil
+            }
+        }
+    }
+}
+
+public enum CullingShortcutKey: Equatable, Sendable {
+    case leftArrow
+    case rightArrow
+    case character(String)
+}
+
 public struct SidebarSection: Identifiable, Equatable {
     public var id: String { title }
     public var title: String
@@ -234,6 +271,23 @@ public final class AppModel {
             try setFlagForSelectedAsset(.reject)
         case .clearFlag:
             try setFlagForSelectedAsset(nil)
+        }
+    }
+
+    public func applyCullingShortcut(_ shortcut: CullingShortcut) throws {
+        switch shortcut {
+        case .previousPhoto:
+            selectPreviousAsset()
+        case .nextPhoto:
+            selectNextAsset()
+        case .rating(let rating):
+            try applyCullingCommand(.rating(rating))
+        case .pick:
+            try applyCullingCommand(.pick)
+        case .reject:
+            try applyCullingCommand(.reject)
+        case .clearFlag:
+            try applyCullingCommand(.clearFlag)
         }
     }
 

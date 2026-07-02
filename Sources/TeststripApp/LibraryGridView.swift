@@ -56,6 +56,11 @@ struct LibraryGridView: View {
         .safeAreaInset(edge: .bottom) {
             footer
         }
+        .background {
+            CullingKeyCaptureView { shortcut in
+                handleCullingShortcut(shortcut)
+            }
+        }
     }
 
     private var emptyLibraryView: some View {
@@ -134,6 +139,89 @@ struct LibraryGridView: View {
             try model.loadMoreAssets()
         } catch {
             model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func handleCullingShortcut(_ shortcut: CullingShortcut) {
+        do {
+            try model.applyCullingShortcut(shortcut)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct CullingKeyCaptureView: NSViewRepresentable {
+    var onShortcut: (CullingShortcut) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onShortcut: onShortcut)
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        context.coordinator.view = view
+        context.coordinator.installMonitor()
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.view = nsView
+        context.coordinator.onShortcut = onShortcut
+        context.coordinator.installMonitor()
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.removeMonitor()
+    }
+
+    @MainActor
+    final class Coordinator {
+        weak var view: NSView?
+        var onShortcut: (CullingShortcut) -> Void
+        private var monitor: Any?
+
+        init(onShortcut: @escaping (CullingShortcut) -> Void) {
+            self.onShortcut = onShortcut
+        }
+
+        func installMonitor() {
+            guard monitor == nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                self?.handle(event) ?? event
+            }
+        }
+
+        func removeMonitor() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+            }
+            monitor = nil
+        }
+
+        private func handle(_ event: NSEvent) -> NSEvent? {
+            guard let view, event.window === view.window else { return event }
+            guard event.window?.firstResponder is NSTextView == false else { return event }
+            guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return event }
+            guard let key = shortcutKey(for: event), let shortcut = CullingShortcut(key: key) else {
+                return event
+            }
+            onShortcut(shortcut)
+            return nil
+        }
+
+        private func shortcutKey(for event: NSEvent) -> CullingShortcutKey? {
+            switch event.keyCode {
+            case 123:
+                return .leftArrow
+            case 124:
+                return .rightArrow
+            default:
+                guard let character = event.charactersIgnoringModifiers, character.count == 1 else {
+                    return nil
+                }
+                return .character(character)
+            }
         }
     }
 }
