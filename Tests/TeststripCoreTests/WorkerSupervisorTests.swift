@@ -210,7 +210,7 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(supervisor.queue.item(id: item.id)?.detail, "generated medium preview")
     }
 
-    func testPausingWorkerCommandCancelsTimeoutUntilResume() throws {
+    func testPausingWorkerCommandDoesNotDisableTimeoutForDispatchedWork() throws {
         let transport = RecordingWorkerTransport()
         let timeoutScheduler = ManualWorkerTimeoutScheduler()
         let supervisor = WorkerSupervisor(
@@ -226,14 +226,9 @@ final class WorkerSupervisorTests: XCTestCase {
         try supervisor.pause()
         timeoutScheduler.fireNext()
 
-        XCTAssertEqual(transport.terminateCount, 0)
-        XCTAssertEqual(supervisor.queue.item(id: item.id)?.status, .paused)
-
-        try supervisor.resume()
-        timeoutScheduler.fireNext()
-
         XCTAssertEqual(transport.terminateCount, 1)
         XCTAssertEqual(supervisor.queue.item(id: item.id)?.status, .failed)
+        XCTAssertEqual(supervisor.queue.item(id: item.id)?.detail, "Worker command timed out after 30 seconds")
     }
 
     func testPauseResumeAndCancelSendExplicitControlCommands() throws {

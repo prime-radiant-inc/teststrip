@@ -89,7 +89,6 @@ public final class WorkerSupervisor: @unchecked Sendable {
         if transport.isRunning {
             try send(.pause)
         }
-        cancelAllTimeouts()
         queue.pause()
         notifyQueueChanged()
     }
@@ -203,9 +202,14 @@ public final class WorkerSupervisor: @unchecked Sendable {
         }
     }
 
+    private func scheduleTimeoutIfNeeded(for itemID: WorkSessionID) {
+        guard timeoutsByItemID[itemID] == nil else { return }
+        scheduleTimeout(for: itemID)
+    }
+
     private func scheduleTimeoutsForDispatchedRunningItems() {
         for itemID in dispatchedItemIDs where queue.item(id: itemID)?.status == .running {
-            scheduleTimeout(for: itemID)
+            scheduleTimeoutIfNeeded(for: itemID)
         }
     }
 
