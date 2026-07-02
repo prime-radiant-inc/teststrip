@@ -177,6 +177,13 @@ public typealias AppImportTaskFactory = @Sendable (
     @escaping LibraryImportProgressHandler
 ) -> Task<AppImportOutput, Error>
 
+public typealias AppCardImportTaskFactory = @Sendable (
+    AppCatalogPaths,
+    URL,
+    URL,
+    @escaping LibraryImportProgressHandler
+) -> Task<AppImportOutput, Error>
+
 private struct MetadataChange: Equatable {
     var assetID: AssetID
     var before: AssetMetadata
@@ -214,6 +221,9 @@ public final class AppModel {
 
     @ObservationIgnored
     private let importTaskFactory: AppImportTaskFactory
+
+    @ObservationIgnored
+    private let cardImportTaskFactory: AppCardImportTaskFactory
 
     @ObservationIgnored
     private let workerSupervisor: WorkerSupervisor?
@@ -362,7 +372,8 @@ public final class AppModel {
         savedAssetSets: [AssetSet] = [],
         selectedAssetSetID: AssetSetID? = nil,
         workerSupervisor: WorkerSupervisor? = nil,
-        importTaskFactory: AppImportTaskFactory? = nil
+        importTaskFactory: AppImportTaskFactory? = nil,
+        cardImportTaskFactory: AppCardImportTaskFactory? = nil
     ) {
         self.sidebarSections = sidebarSections.isEmpty ? Self.defaultSidebarSections(
             savedAssetSets: savedAssetSets,
@@ -398,6 +409,15 @@ public final class AppModel {
             Self.defaultImportTask(
                 paths: paths,
                 folderURL: folderURL,
+                previewPolicy: importPreviewPolicy,
+                progress: progress
+            )
+        }
+        self.cardImportTaskFactory = cardImportTaskFactory ?? { paths, source, destinationRoot, progress in
+            Self.defaultCardImportTask(
+                paths: paths,
+                source: source,
+                destinationRoot: destinationRoot,
                 previewPolicy: importPreviewPolicy,
                 progress: progress
             )
@@ -450,6 +470,7 @@ public final class AppModel {
     public static func load(
         catalog: AppCatalog,
         importTaskFactory: AppImportTaskFactory? = nil,
+        cardImportTaskFactory: AppCardImportTaskFactory? = nil,
         workerSupervisor: WorkerSupervisor? = nil
     ) throws -> AppModel {
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
@@ -472,7 +493,8 @@ public final class AppModel {
             metadataSyncConflictItems: try catalog.repository.metadataSyncConflictItems(),
             savedAssetSets: savedAssetSets,
             workerSupervisor: workerSupervisor,
-            importTaskFactory: importTaskFactory
+            importTaskFactory: importTaskFactory,
+            cardImportTaskFactory: cardImportTaskFactory
         )
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
@@ -1263,6 +1285,42 @@ public final class AppModel {
         }
     }
 
+    @discardableResult
+    @MainActor
+    public func importCardInBackground(source: URL, destinationRoot: URL) async throws -> LibraryImportResult {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        errorMessage = nil
+        statusMessage = "Importing \(source.lastPathComponent)..."
+        startImportActivity(folderURL: source, destinationRoot: destinationRoot)
+        guard let activityID = activeWork?.id else {
+            throw TeststripError.invalidState("import activity was not created")
+        }
+        let paths = catalog.paths
+        do {
+            let output = try await cardImportTaskFactory(
+                paths,
+                source,
+                destinationRoot,
+                importProgressHandler(activityID: activityID)
+            ).value
+            replaceAssets(
+                output.assets,
+                pageOffset: output.assetPageOffset,
+                preferredSelection: output.result.importedAssets.first?.id
+            )
+            totalAssetCount = output.totalAssetCount
+            try enqueuePendingPreviewGeneration()
+            updateImportStatus(with: output.result)
+            recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
+            return output.result
+        } catch {
+            failImportActivity(folderURL: source, destinationRoot: destinationRoot, error: error)
+            throw error
+        }
+    }
+
     @MainActor
     public func beginImportFolder(_ folderURL: URL) {
         guard let catalog else {
@@ -1333,12 +1391,12 @@ public final class AppModel {
         }
     }
 
-    private func startImportActivity(folderURL: URL) {
+    private func startImportActivity(folderURL: URL, destinationRoot: URL? = nil) {
         activeWork = AppWorkActivity(
             kind: .ingest,
             status: .running,
             title: "Import photos",
-            detail: "Importing from \(folderURL.lastPathComponent)",
+            detail: "Importing from \(importSourceDescription(folderURL: folderURL, destinationRoot: destinationRoot))",
             completedUnitCount: 0,
             totalUnitCount: nil,
             failureCount: 0
@@ -1367,14 +1425,18 @@ public final class AppModel {
         activeWork = activity
     }
 
-    private func recordCompletedImportActivity(folderURL: URL, result: LibraryImportResult) {
+    private func recordCompletedImportActivity(
+        folderURL: URL,
+        destinationRoot: URL? = nil,
+        result: LibraryImportResult
+    ) {
         let photoLabel = result.importedAssets.count == 1 ? "photo" : "photos"
         let activity = AppWorkActivity(
             id: activeWork?.id ?? UUID().uuidString,
             kind: .ingest,
             status: .completed,
             title: "Import photos",
-            detail: "Imported \(result.importedAssets.count) \(photoLabel) from \(folderURL.lastPathComponent)",
+            detail: "Imported \(result.importedAssets.count) \(photoLabel) from \(importSourceDescription(folderURL: folderURL, destinationRoot: destinationRoot))",
             completedUnitCount: result.importedAssets.count,
             totalUnitCount: result.importedAssets.count,
             failureCount: result.previewFailures.count
@@ -1383,13 +1445,13 @@ public final class AppModel {
         recordRecentActivity(activity)
     }
 
-    private func failImportActivity(folderURL: URL, error: Error) {
+    private func failImportActivity(folderURL: URL, destinationRoot: URL? = nil, error: Error) {
         let activity = AppWorkActivity(
             id: activeWork?.id ?? UUID().uuidString,
             kind: .ingest,
             status: .failed,
             title: "Import photos",
-            detail: "Import failed from \(folderURL.lastPathComponent): \(error.localizedDescription)",
+            detail: "Import failed from \(importSourceDescription(folderURL: folderURL, destinationRoot: destinationRoot)): \(error.localizedDescription)",
             completedUnitCount: 0,
             totalUnitCount: nil,
             failureCount: 1
@@ -1412,6 +1474,13 @@ public final class AppModel {
         activeWork = nil
         statusMessage = "Cancelled import"
         recordRecentActivity(activity)
+    }
+
+    private func importSourceDescription(folderURL: URL, destinationRoot: URL?) -> String {
+        guard let destinationRoot else {
+            return folderURL.lastPathComponent
+        }
+        return "\(folderURL.lastPathComponent) to \(destinationRoot.lastPathComponent)"
     }
 
     private func recordRecentActivity(_ activity: AppWorkActivity) {
@@ -1437,6 +1506,38 @@ public final class AppModel {
             let backgroundCatalog = try AppCatalog.open(paths: paths)
             let result = try backgroundCatalog.importService.addFolderInPlace(
                 folderURL,
+                repository: backgroundCatalog.repository,
+                previewPolicy: previewPolicy,
+                progress: progress
+            )
+            try Task.checkCancellation()
+            let page = try Self.catalogPage(
+                containing: result.importedAssets.first?.id,
+                repository: backgroundCatalog.repository,
+                query: nil
+            )
+            return AppImportOutput(
+                result: result,
+                assets: page.assets,
+                totalAssetCount: page.totalAssetCount,
+                assetPageOffset: page.offset
+            )
+        }
+    }
+
+    private static func defaultCardImportTask(
+        paths: AppCatalogPaths,
+        source: URL,
+        destinationRoot: URL,
+        previewPolicy: LibraryImportPreviewPolicy,
+        progress: @escaping LibraryImportProgressHandler
+    ) -> Task<AppImportOutput, Error> {
+        Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            let backgroundCatalog = try AppCatalog.open(paths: paths)
+            let result = try backgroundCatalog.importService.copyFromCard(
+                source: source,
+                destinationRoot: destinationRoot,
                 repository: backgroundCatalog.repository,
                 previewPolicy: previewPolicy,
                 progress: progress

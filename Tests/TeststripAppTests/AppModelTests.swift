@@ -1521,6 +1521,44 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBackgroundCardImportCopiesIntoDestinationAndRecordsActivity() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-card-import")
+        let source = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = directory.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        let image = source.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let metadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["keeper"])
+        let sourceSidecar = XMPSidecarStore().sidecarURL(forOriginalAt: image)
+        let sidecarData = try XMPPacket(metadata: metadata).xmlData()
+        try sidecarData.write(to: sourceSidecar)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(catalog: catalog)
+
+        let result = try await model.importCardInBackground(source: source, destinationRoot: destination)
+
+        let destinationImage = destination.appendingPathComponent("one.png")
+        let destinationSidecar = XMPSidecarStore().sidecarURL(forOriginalAt: destinationImage)
+        let assetID = result.importedAssets[0].id
+        XCTAssertEqual(result.importedAssets.map(\.originalURL), [destinationImage])
+        XCTAssertEqual(model.assets.map(\.originalURL), [destinationImage])
+        XCTAssertEqual(model.selectedAssetID, assetID)
+        XCTAssertEqual(try catalog.repository.asset(id: assetID).metadata, metadata)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: image.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sourceSidecar.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destinationImage.path))
+        XCTAssertEqual(try Data(contentsOf: destinationSidecar), sidecarData)
+        let previewURL = try XCTUnwrap(model.gridPreviewURL(for: assetID))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
+        XCTAssertEqual(model.statusMessage, "Imported 1 photo")
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.kind, .ingest)
+        XCTAssertEqual(activity.status, .completed)
+        XCTAssertEqual(activity.detail, "Imported 1 photo from DCIM to Library")
+    }
+
+    @MainActor
     func testBackgroundImportPersistsCompletedActivityForReload() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-activity-reload")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
