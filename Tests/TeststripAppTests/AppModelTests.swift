@@ -81,6 +81,17 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAsset?.id, first.id)
     }
 
+    func testCompareAssetsReturnWindowAroundSelection() {
+        let assets = (0..<6).map { makeAsset(id: "asset-\($0)", size: Int64($0 + 1)) }
+        let model = AppModel(sidebarSections: [], selectedView: .compare, assets: assets)
+
+        XCTAssertEqual(model.compareAssets().map(\.id), assets[0..<4].map(\.id))
+
+        model.select(assets[3].id)
+
+        XCTAssertEqual(model.compareAssets().map(\.id), assets[2..<6].map(\.id))
+    }
+
     func testLibraryCountTextShowsLoadedAndTotalWhenGridIsLimited() {
         let asset = Asset(
             id: AssetID(rawValue: "first"),

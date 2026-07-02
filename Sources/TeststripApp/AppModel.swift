@@ -318,6 +318,18 @@ public final class AppModel {
         selectedView = .loupe
     }
 
+    public func compareAssets(limit: Int = 4) -> [Asset] {
+        guard !assets.isEmpty else { return [] }
+        let boundedLimit = max(1, limit)
+        let selectedIndex = selectedAssetID.flatMap { selectedID in
+            assets.firstIndex { $0.id == selectedID }
+        } ?? 0
+        let maximumStartIndex = max(assets.count - boundedLimit, 0)
+        let startIndex = min(max(selectedIndex - 1, 0), maximumStartIndex)
+        let endIndex = min(startIndex + boundedLimit, assets.count)
+        return Array(assets[startIndex..<endIndex])
+    }
+
     public func selectNextAsset() {
         guard !assets.isEmpty else {
             selectedAssetID = nil

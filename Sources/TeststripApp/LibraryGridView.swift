@@ -21,6 +21,8 @@ struct LibraryGridView: View {
                 }
             } else if model.selectedView == .loupe {
                 LoupeView(model: model)
+            } else if model.selectedView == .compare {
+                CompareView(model: model)
             } else {
                 ScrollView {
                     assetGrid
@@ -37,6 +39,8 @@ struct LibraryGridView: View {
                     .tag(LibraryViewMode.grid)
                 Label("Loupe", systemImage: "rectangle.inset.filled")
                     .tag(LibraryViewMode.loupe)
+                Label("Compare", systemImage: "rectangle.grid.2x2")
+                    .tag(LibraryViewMode.compare)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -365,6 +369,39 @@ private struct LoupeView: View {
                 .font(.headline)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+private struct CompareView: View {
+    var model: AppModel
+
+    private let columns = [GridItem(.adaptive(minimum: 260), spacing: 10)]
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: columns, spacing: 10) {
+                ForEach(model.compareAssets(), id: \.id.rawValue) { asset in
+                    Button {
+                        model.select(asset.id)
+                    } label: {
+                        AssetGridCell(
+                            asset: asset,
+                            previewURL: model.loupePreviewURL(for: asset.id),
+                            isSelected: model.selectedAssetID == asset.id
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .focusEffectDisabled()
+                    .contentShape(Rectangle())
+                    .accessibilityLabel(asset.originalURL.lastPathComponent)
+                    .simultaneousGesture(TapGesture(count: 2).onEnded {
+                        model.openAssetInLoupe(asset.id)
+                    })
+                }
+            }
+            .padding(12)
+        }
+        .background(Color.black.opacity(0.24))
     }
 }
 
