@@ -34,6 +34,36 @@ final class WorkerProtocolTests: XCTestCase {
         XCTAssertEqual(json["provider"] as? String, "local")
     }
 
+    func testImportFolderCommandRoundTripsThroughJSONLine() throws {
+        let root = URL(fileURLWithPath: "/Volumes/Card/DCIM", isDirectory: true)
+        let command = WorkerCommand.importFolder(root: root)
+
+        let line = try WorkerProtocolEncoder.encode(command)
+        let decoded = try WorkerProtocolEncoder.decode(line)
+
+        XCTAssertEqual(decoded, command)
+        let body = String(line.dropLast())
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
+        XCTAssertEqual(json["command"] as? String, "importFolder")
+        XCTAssertEqual(json["rootURL"] as? String, root.path)
+    }
+
+    func testImportCardCommandRoundTripsThroughJSONLine() throws {
+        let source = URL(fileURLWithPath: "/Volumes/Card/DCIM", isDirectory: true)
+        let destinationRoot = URL(fileURLWithPath: "/Photos/Ingested", isDirectory: true)
+        let command = WorkerCommand.importCard(source: source, destinationRoot: destinationRoot)
+
+        let line = try WorkerProtocolEncoder.encode(command)
+        let decoded = try WorkerProtocolEncoder.decode(line)
+
+        XCTAssertEqual(decoded, command)
+        let body = String(line.dropLast())
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
+        XCTAssertEqual(json["command"] as? String, "importCard")
+        XCTAssertEqual(json["sourceURL"] as? String, source.path)
+        XCTAssertEqual(json["destinationRootURL"] as? String, destinationRoot.path)
+    }
+
     func testCommandRequestRoundTripsItemID() throws {
         let itemID = WorkSessionID(rawValue: "work-1")
         let command = WorkerCommand.runEvaluation(assetID: AssetID(rawValue: "asset-1"), provider: "local")

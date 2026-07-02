@@ -53,17 +53,20 @@ public struct WorkerCommandExecutor {
     private let repository: CatalogRepository
     private let previewCache: PreviewCache
     private let renderer: PreviewRenderer
+    private let importService: LibraryImportService
     private let evaluationProviders: [String: any EvaluationProvider]
 
     public init(
         repository: CatalogRepository,
         previewCache: PreviewCache,
         renderer: PreviewRenderer = PreviewRenderer(),
-        evaluationProviders: [any EvaluationProvider] = []
+        evaluationProviders: [any EvaluationProvider] = [],
+        importService: LibraryImportService? = nil
     ) {
         self.repository = repository
         self.previewCache = previewCache
         self.renderer = renderer
+        self.importService = importService ?? Self.defaultImportService(previewCache: previewCache)
         var providersByName: [String: any EvaluationProvider] = [:]
         for provider in evaluationProviders {
             providersByName[provider.name] = provider
@@ -83,6 +86,21 @@ public struct WorkerCommandExecutor {
 
     public func execute(_ command: WorkerCommand) throws -> WorkerCommandResult {
         switch command {
+        case .importFolder(let root):
+            let result = try importService.addFolderInPlace(
+                root,
+                repository: repository,
+                previewPolicy: .deferGeneration
+            )
+            return .completed("imported \(Self.photoCountDescription(result.importedAssets.count)) from \(root.lastPathComponent)")
+        case .importCard(let source, let destinationRoot):
+            let result = try importService.copyFromCard(
+                source: source,
+                destinationRoot: destinationRoot,
+                repository: repository,
+                previewPolicy: .deferGeneration
+            )
+            return .completed("imported \(Self.photoCountDescription(result.importedAssets.count)) from \(source.lastPathComponent) to \(destinationRoot.lastPathComponent)")
         case .generatePreview(let assetID, let level):
             let asset = try repository.asset(id: assetID)
             try renderer.render(
@@ -103,6 +121,21 @@ public struct WorkerCommandExecutor {
         case .cancelAll:
             return .accepted("cancelAll")
         }
+    }
+
+    private static func defaultImportService(previewCache: PreviewCache) -> LibraryImportService {
+        let decodeProvider = ImageIODecodeProvider()
+        return LibraryImportService(
+            ingestService: IngestService(
+                scanner: FolderScanner(supportedExtensions: ImageIODecodeProvider.supportedExtensions),
+                decodeRegistry: DecodeRegistry(providers: [decodeProvider])
+            ),
+            previewCache: previewCache
+        )
+    }
+
+    private static func photoCountDescription(_ count: Int) -> String {
+        "\(count) \(count == 1 ? "photo" : "photos")"
     }
 
     private func runEvaluation(assetID: AssetID, providerName: String) throws -> WorkerCommandResult {

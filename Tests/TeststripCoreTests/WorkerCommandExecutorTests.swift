@@ -57,6 +57,62 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
     }
 
+    func testImportFolderCommandCatalogsAssetsAndDefersPreviewGeneration() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-import-folder")
+        let sourceRoot = root.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+        let source = sourceRoot.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1600, height: 1000)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
+
+        let result = try executor.execute(.importFolder(root: sourceRoot))
+
+        let imported = try repository.allAssets(limit: 10)
+        let asset = try XCTUnwrap(imported.first)
+        XCTAssertEqual(result, .completed("imported 1 photo from photos"))
+        XCTAssertEqual(imported.map(\.originalURL), [source])
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: asset.id, level: .grid)
+        ])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)).path))
+    }
+
+    func testImportCardCommandCopiesAssetsAndDefersPreviewGeneration() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-import-card")
+        let sourceRoot = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destinationRoot = root.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+        let source = sourceRoot.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1600, height: 1000)
+        let metadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["keeper"])
+        let sourceSidecar = XMPSidecarStore().sidecarURL(forOriginalAt: source)
+        let sidecarData = try XMPPacket(metadata: metadata).xmlData()
+        try sidecarData.write(to: sourceSidecar)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
+
+        let result = try executor.execute(.importCard(source: sourceRoot, destinationRoot: destinationRoot))
+
+        let destination = destinationRoot.appendingPathComponent("source.jpg")
+        let imported = try repository.allAssets(limit: 10)
+        let asset = try XCTUnwrap(imported.first)
+        XCTAssertEqual(result, .completed("imported 1 photo from DCIM to Library"))
+        XCTAssertEqual(imported.map(\.originalURL), [destination])
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata, metadata)
+        XCTAssertEqual(try Data(contentsOf: XMPSidecarStore().sidecarURL(forOriginalAt: destination)), sidecarData)
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: asset.id, level: .grid)
+        ])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)).path))
+    }
+
     func testSyncMetadataCommandWritesMissingSidecarFromCatalogMetadata() throws {
         let setup = try makeMetadataSyncSetup(named: "worker-sync-write", metadata: AssetMetadata(rating: 4, flag: .pick))
 

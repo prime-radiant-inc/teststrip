@@ -38,12 +38,37 @@ public enum WorkerProtocolEncoder {
         let envelope: WorkerCommandEnvelope
 
         switch command {
+        case .importFolder(let root):
+            envelope = WorkerCommandEnvelope(
+                command: "importFolder",
+                assetID: nil,
+                level: nil,
+                provider: nil,
+                rootURL: root.path,
+                sourceURL: nil,
+                destinationRootURL: nil,
+                itemID: itemID?.rawValue
+            )
+        case .importCard(let source, let destinationRoot):
+            envelope = WorkerCommandEnvelope(
+                command: "importCard",
+                assetID: nil,
+                level: nil,
+                provider: nil,
+                rootURL: nil,
+                sourceURL: source.path,
+                destinationRootURL: destinationRoot.path,
+                itemID: itemID?.rawValue
+            )
         case .generatePreview(let assetID, let level):
             envelope = WorkerCommandEnvelope(
                 command: "generatePreview",
                 assetID: assetID.rawValue,
                 level: level.rawValue,
                 provider: nil,
+                rootURL: nil,
+                sourceURL: nil,
+                destinationRootURL: nil,
                 itemID: itemID?.rawValue
             )
         case .syncMetadata(let assetID):
@@ -52,6 +77,9 @@ public enum WorkerProtocolEncoder {
                 assetID: assetID.rawValue,
                 level: nil,
                 provider: nil,
+                rootURL: nil,
+                sourceURL: nil,
+                destinationRootURL: nil,
                 itemID: itemID?.rawValue
             )
         case .runEvaluation(let assetID, let provider):
@@ -60,14 +88,17 @@ public enum WorkerProtocolEncoder {
                 assetID: assetID.rawValue,
                 level: nil,
                 provider: provider,
+                rootURL: nil,
+                sourceURL: nil,
+                destinationRootURL: nil,
                 itemID: itemID?.rawValue
             )
         case .pause:
-            envelope = WorkerCommandEnvelope(command: "pause", assetID: nil, level: nil, provider: nil, itemID: itemID?.rawValue)
+            envelope = WorkerCommandEnvelope(command: "pause", assetID: nil, level: nil, provider: nil, rootURL: nil, sourceURL: nil, destinationRootURL: nil, itemID: itemID?.rawValue)
         case .resume:
-            envelope = WorkerCommandEnvelope(command: "resume", assetID: nil, level: nil, provider: nil, itemID: itemID?.rawValue)
+            envelope = WorkerCommandEnvelope(command: "resume", assetID: nil, level: nil, provider: nil, rootURL: nil, sourceURL: nil, destinationRootURL: nil, itemID: itemID?.rawValue)
         case .cancelAll:
-            envelope = WorkerCommandEnvelope(command: "cancelAll", assetID: nil, level: nil, provider: nil, itemID: itemID?.rawValue)
+            envelope = WorkerCommandEnvelope(command: "cancelAll", assetID: nil, level: nil, provider: nil, rootURL: nil, sourceURL: nil, destinationRootURL: nil, itemID: itemID?.rawValue)
         }
 
         let data = try encoder.encode(envelope)
@@ -99,6 +130,13 @@ public enum WorkerProtocolEncoder {
         let command: WorkerCommand
 
         switch envelope.command {
+        case "importFolder":
+            command = .importFolder(root: try envelope.requiredRootURL())
+        case "importCard":
+            command = .importCard(
+                source: try envelope.requiredSourceURL(),
+                destinationRoot: try envelope.requiredDestinationRootURL()
+            )
         case "generatePreview":
             let assetID = try envelope.requiredAssetID()
             let level = try envelope.requiredPreviewLevel()
@@ -153,6 +191,9 @@ public enum WorkerProtocolEncoder {
         var assetID: String?
         var level: String?
         var provider: String?
+        var rootURL: String?
+        var sourceURL: String?
+        var destinationRootURL: String?
         var itemID: String?
 
         func requiredAssetID() throws -> AssetID {
@@ -174,6 +215,18 @@ public enum WorkerProtocolEncoder {
 
         func requiredProvider() throws -> String {
             try requiredField(provider, key: .provider)
+        }
+
+        func requiredRootURL() throws -> URL {
+            URL(fileURLWithPath: try requiredField(rootURL, key: .rootURL), isDirectory: true)
+        }
+
+        func requiredSourceURL() throws -> URL {
+            URL(fileURLWithPath: try requiredField(sourceURL, key: .sourceURL), isDirectory: true)
+        }
+
+        func requiredDestinationRootURL() throws -> URL {
+            URL(fileURLWithPath: try requiredField(destinationRootURL, key: .destinationRootURL), isDirectory: true)
         }
 
         private func requiredField(_ value: String?, key: CodingKeys) throws -> String {
