@@ -62,6 +62,23 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(), 2)
     }
 
+    func testFetchesAssetPageWithOffset() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let first = Asset.testAsset(path: "/Volumes/NAS/Job/a.cr2", rating: 1)
+        let second = Asset.testAsset(path: "/Volumes/NAS/Job/b.cr2", rating: 2)
+        let third = Asset.testAsset(path: "/Volumes/NAS/Job/c.cr2", rating: 3)
+        try repository.upsert(first)
+        try repository.upsert(second)
+        try repository.upsert(third)
+
+        let page = try repository.allAssets(limit: 1, offset: 1)
+
+        XCTAssertEqual(page.map(\.id), [second.id])
+    }
+
     func testFetchesAllAssetsInInsertionOrderWhenCreatedAtTies() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

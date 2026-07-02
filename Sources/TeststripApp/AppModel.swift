@@ -88,8 +88,14 @@ public final class AppModel {
     @ObservationIgnored
     private var activeImportTask: Task<AppImportOutput, Error>?
 
+    private static let assetPageSize = 500
+
     public var selectedAsset: Asset? {
         assets.first { $0.id == selectedAssetID }
+    }
+
+    public var hasMoreAssets: Bool {
+        assets.count < totalAssetCount
     }
 
     public var libraryCountText: String {
@@ -141,7 +147,7 @@ public final class AppModel {
     }
 
     public static func load(repository: CatalogRepository) throws -> AppModel {
-        let assets = try repository.allAssets(limit: 500)
+        let assets = try repository.allAssets(limit: Self.assetPageSize)
         return AppModel(
             sidebarSections: defaultSidebarSections(),
             selectedView: .grid,
@@ -151,7 +157,7 @@ public final class AppModel {
     }
 
     public static func load(catalog: AppCatalog, importTaskFactory: AppImportTaskFactory? = nil) throws -> AppModel {
-        let assets = try catalog.repository.allAssets(limit: 500)
+        let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
         return AppModel(
             sidebarSections: defaultSidebarSections(),
             selectedView: .grid,
@@ -206,10 +212,23 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        let loadedAssets = try catalog.repository.allAssets(limit: 500)
+        let loadedAssets = try catalog.repository.allAssets(limit: Self.assetPageSize)
         let count = try catalog.repository.assetCount()
         replaceAssets(loadedAssets)
         totalAssetCount = count
+    }
+
+    public func loadMoreAssets() throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard hasMoreAssets else { return }
+        let loadedAssets = try catalog.repository.allAssets(limit: Self.assetPageSize, offset: assets.count)
+        assets.append(contentsOf: loadedAssets)
+        totalAssetCount = try catalog.repository.assetCount()
+        if selectedAssetID == nil {
+            selectedAssetID = assets.first?.id
+        }
     }
 
     private func replaceAssets(_ loadedAssets: [Asset]) {
@@ -391,7 +410,7 @@ public final class AppModel {
             let backgroundCatalog = try AppCatalog.open(paths: paths)
             let result = try backgroundCatalog.importService.addFolderInPlace(folderURL, repository: backgroundCatalog.repository)
             try Task.checkCancellation()
-            let assets = try backgroundCatalog.repository.allAssets(limit: 500)
+            let assets = try backgroundCatalog.repository.allAssets(limit: Self.assetPageSize)
             let count = try backgroundCatalog.repository.assetCount()
             return AppImportOutput(result: result, assets: assets, totalAssetCount: count)
         }

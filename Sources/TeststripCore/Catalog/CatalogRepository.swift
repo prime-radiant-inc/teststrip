@@ -55,10 +55,10 @@ public final class CatalogRepository {
         return try rows.first.map(decodeAsset)
     }
 
-    public func allAssets(limit: Int) throws -> [Asset] {
+    public func allAssets(limit: Int, offset: Int = 0) throws -> [Asset] {
         let rows = try database.rows(
-            "SELECT * FROM assets ORDER BY rowid ASC LIMIT ?",
-            bindings: ["\(limit)"]
+            "SELECT * FROM assets ORDER BY rowid ASC LIMIT ? OFFSET ?",
+            bindings: ["\(limit)", "\(offset)"]
         )
         return try rows.map(decodeAsset)
     }

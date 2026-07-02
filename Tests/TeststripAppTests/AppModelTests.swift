@@ -162,6 +162,43 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 501)
     }
 
+    func testLoadMoreAssetsAppendsNextCatalogPage() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-load-more")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        for index in 0..<501 {
+            try repository.upsert(Asset(
+                id: AssetID(rawValue: "asset-\(index)"),
+                originalURL: URL(fileURLWithPath: "/Photos/\(index).jpg"),
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: Int64(index + 1), modificationDate: Date(timeIntervalSince1970: TimeInterval(index + 1))),
+                availability: .online,
+                metadata: AssetMetadata()
+            ))
+        }
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        XCTAssertEqual(model.assets.count, 500)
+        XCTAssertTrue(model.hasMoreAssets)
+
+        try model.loadMoreAssets()
+
+        XCTAssertEqual(model.assets.count, 501)
+        XCTAssertEqual(model.assets.last?.id, AssetID(rawValue: "asset-500"))
+        XCTAssertEqual(model.totalAssetCount, 501)
+        XCTAssertFalse(model.hasMoreAssets)
+    }
+
     func testLoadingEmptyRepositoryLeavesSelectionEmpty() throws {
         let directory = try makeTemporaryDirectory(named: "empty-app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

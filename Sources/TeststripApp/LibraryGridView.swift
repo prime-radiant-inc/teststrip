@@ -99,6 +99,17 @@ struct LibraryGridView: View {
                     .lineLimit(1)
             }
             Spacer()
+            if model.hasMoreAssets {
+                Button {
+                    loadMoreAssets()
+                } label: {
+                    Label("Load More", systemImage: "arrow.down.circle")
+                }
+                .font(.caption)
+                .buttonStyle(.borderless)
+                .disabled(isImporting)
+                .help("Load next photo page")
+            }
         }
         .padding(.horizontal, 12)
         .frame(height: 34)
@@ -116,6 +127,14 @@ struct LibraryGridView: View {
 
     private func importFolder(_ folderURL: URL) {
         model.beginImportFolder(folderURL)
+    }
+
+    private func loadMoreAssets() {
+        do {
+            try model.loadMoreAssets()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 }
 
