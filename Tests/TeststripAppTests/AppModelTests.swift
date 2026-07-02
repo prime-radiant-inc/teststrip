@@ -119,6 +119,29 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .reject)
     }
 
+    func testRatingCullingCommandUpdatesSelectedAsset() throws {
+        let (model, repository, asset) = try makeModelWithCatalogAsset(named: "rating-command")
+
+        try model.applyCullingCommand(.rating(5))
+
+        XCTAssertEqual(model.selectedAsset?.metadata.rating, 5)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.rating, 5)
+    }
+
+    func testFlagCullingCommandUpdatesSelectedAsset() throws {
+        let (model, repository, asset) = try makeModelWithCatalogAsset(named: "flag-command")
+
+        try model.applyCullingCommand(.pick)
+        XCTAssertEqual(model.selectedAsset?.metadata.flag, .pick)
+
+        try model.applyCullingCommand(.clearFlag)
+        XCTAssertNil(model.selectedAsset?.metadata.flag)
+
+        try model.applyCullingCommand(.reject)
+        XCTAssertEqual(model.selectedAsset?.metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .reject)
+    }
+
     func testLoadsAssetsFromCatalogRepository() throws {
         let directory = try makeTemporaryDirectory(named: "app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -327,6 +350,32 @@ final class AppModelTests: XCTestCase {
     private func writeTestPNG(to url: URL) throws {
         let base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
         try XCTUnwrap(Data(base64Encoded: base64)).write(to: url)
+    }
+
+    private func makeModelWithCatalogAsset(named name: String) throws -> (AppModel, CatalogRepository, Asset) {
+        let directory = try makeTemporaryDirectory(named: name)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: name),
+            originalURL: URL(fileURLWithPath: "/Photos/\(name).jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        return (try AppModel.load(catalog: catalog), repository, asset)
     }
 
     @MainActor

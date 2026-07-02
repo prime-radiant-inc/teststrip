@@ -11,6 +11,13 @@ public enum LibraryViewMode: String, Sendable {
     case people
 }
 
+public enum CullingCommand: Equatable, Sendable {
+    case rating(Int)
+    case pick
+    case reject
+    case clearFlag
+}
+
 public struct SidebarSection: Identifiable, Equatable {
     public var id: String { title }
     public var title: String
@@ -170,6 +177,19 @@ public final class AppModel {
 
     public func select(_ assetID: AssetID) {
         selectedAssetID = assetID
+    }
+
+    public func applyCullingCommand(_ command: CullingCommand) throws {
+        switch command {
+        case .rating(let rating):
+            try setRatingForSelectedAsset(rating)
+        case .pick:
+            try setFlagForSelectedAsset(.pick)
+        case .reject:
+            try setFlagForSelectedAsset(.reject)
+        case .clearFlag:
+            try setFlagForSelectedAsset(nil)
+        }
     }
 
     public func setRatingForSelectedAsset(_ rating: Int) throws {
