@@ -340,6 +340,84 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(result, .completed("evaluated asset-1 with apple-vision"))
     }
 
+    func testRuntimeConfigurationRegistersLocalHTTPModelProviderWhenConfigured() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-runtime-local-http-model")
+        let source = root.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1200, height: 800)
+        let catalogURL = root.appendingPathComponent("catalog.sqlite")
+        let database = try CatalogDatabase.open(at: catalogURL)
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+        try FileManager.default.createDirectory(at: previewURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try TestDirectories.writeTestJPEG(to: previewURL, width: 512, height: 340)
+        let transport = RecordingLocalHTTPModelTransport(response: .success(LocalHTTPModelHTTPResponse(
+            statusCode: 200,
+            data: try chatCompletionData(content: """
+            {"signals":[{"kind":"aesthetics","label":"portfolio","confidence":0.71}]}
+            """)
+        )))
+        let executor = try WorkerCommandExecutor(
+            configuration: WorkerRuntimeConfiguration(
+                catalogURL: catalogURL,
+                previewCacheRoot: previewCache.root,
+                localHTTPModel: LocalHTTPModelProviderConfiguration(
+                    endpoint: URL(string: "http://localhost:1234/v1/chat/completions")!,
+                    model: "llava",
+                    timeout: 6
+                )
+            ),
+            localHTTPModelTransport: transport
+        )
+
+        let result = try executor.execute(.runEvaluation(assetID: asset.id, provider: "local-http-model"))
+
+        XCTAssertEqual(result, .completed("evaluated asset-1 with local-http-model"))
+        XCTAssertEqual(try repository.evaluationSignals(assetID: asset.id), [
+            EvaluationSignal(
+                assetID: asset.id,
+                kind: .aesthetics,
+                value: .label("portfolio"),
+                confidence: 0.71,
+                provenance: ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+            )
+        ])
+        let request = try XCTUnwrap(transport.requests().first)
+        XCTAssertEqual(request.url?.absoluteString, "http://localhost:1234/v1/chat/completions")
+        XCTAssertEqual(request.timeoutInterval, 6)
+    }
+
+    func testRuntimeConfigurationParsesOptionalLocalHTTPModelArguments() throws {
+        let configuration = try WorkerRuntimeConfiguration(arguments: [
+            "--catalog",
+            "/tmp/catalog.sqlite",
+            "--preview-cache",
+            "/tmp/previews",
+            "--local-http-model-endpoint",
+            "http://localhost:1234/v1/chat/completions",
+            "--local-http-model",
+            "llava",
+            "--local-http-model-timeout",
+            "6"
+        ])
+
+        XCTAssertEqual(configuration.localHTTPModel, LocalHTTPModelProviderConfiguration(
+            endpoint: URL(string: "http://localhost:1234/v1/chat/completions")!,
+            model: "llava",
+            timeout: 6
+        ))
+    }
+
     private func makeMetadataSyncSetup(
         named name: String,
         metadata: AssetMetadata
@@ -388,4 +466,39 @@ private struct PreviewPathEvaluationProvider: EvaluationProvider {
             )
         ]
     }
+}
+
+private final class RecordingLocalHTTPModelTransport: LocalHTTPModelTransport, @unchecked Sendable {
+    private let response: Result<LocalHTTPModelHTTPResponse, Error>
+    private let lock = NSLock()
+    private var recordedRequests: [URLRequest] = []
+
+    init(response: Result<LocalHTTPModelHTTPResponse, Error>) {
+        self.response = response
+    }
+
+    func response(for request: URLRequest) throws -> LocalHTTPModelHTTPResponse {
+        lock.lock()
+        recordedRequests.append(request)
+        lock.unlock()
+        return try response.get()
+    }
+
+    func requests() -> [URLRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedRequests
+    }
+}
+
+private func chatCompletionData(content: String) throws -> Data {
+    try JSONSerialization.data(withJSONObject: [
+        "choices": [
+            [
+                "message": [
+                    "content": content
+                ]
+            ]
+        ]
+    ])
 }

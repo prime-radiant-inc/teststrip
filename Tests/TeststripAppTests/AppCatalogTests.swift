@@ -47,6 +47,29 @@ final class AppCatalogTests: XCTestCase {
         )
     }
 
+    func testWorkerArgumentsIncludeConfiguredLocalHTTPModelProvider() {
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: URL(fileURLWithPath: "/tmp/Application Support", isDirectory: true))
+
+        let arguments = AppCatalog.workerArguments(paths: paths, environment: [
+            AppCatalog.localHTTPModelEndpointEnvironmentKey: "http://localhost:1234/v1/chat/completions",
+            AppCatalog.localHTTPModelNameEnvironmentKey: "llava",
+            AppCatalog.localHTTPModelTimeoutEnvironmentKey: "6"
+        ])
+
+        XCTAssertEqual(arguments, [
+            "--catalog",
+            paths.catalogURL.path,
+            "--preview-cache",
+            paths.previewCacheRoot.path,
+            "--local-http-model-endpoint",
+            "http://localhost:1234/v1/chat/completions",
+            "--local-http-model",
+            "llava",
+            "--local-http-model-timeout",
+            "6"
+        ])
+    }
+
     func testLoadModelWithWorkerExecutableDispatchesPreviewRequestThroughWorkerProcess() throws {
         let root = try makeTemporaryDirectory(named: "app-catalog-worker")
         let paths = AppCatalog.defaultPaths(

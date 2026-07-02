@@ -15,6 +15,9 @@ public struct AppCatalogPaths: Equatable, Sendable {
 
 public struct AppCatalog {
     public static let applicationSupportDirectoryEnvironmentKey = "TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY"
+    public static let localHTTPModelEndpointEnvironmentKey = "TESTSTRIP_LOCAL_HTTP_MODEL_ENDPOINT"
+    public static let localHTTPModelNameEnvironmentKey = "TESTSTRIP_LOCAL_HTTP_MODEL"
+    public static let localHTTPModelTimeoutEnvironmentKey = "TESTSTRIP_LOCAL_HTTP_MODEL_TIMEOUT"
 
     public var paths: AppCatalogPaths
     public var repository: CatalogRepository
@@ -85,25 +88,55 @@ public struct AppCatalog {
             .appendingPathComponent("TeststripWorker")
     }
 
-    public static func loadModel(paths: AppCatalogPaths, workerExecutableURL: URL? = nil) throws -> AppModel {
+    public static func loadModel(
+        paths: AppCatalogPaths,
+        workerExecutableURL: URL? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) throws -> AppModel {
         let workerSupervisor: WorkerSupervisor? = workerExecutableURL.flatMap { executableURL -> WorkerSupervisor? in
             guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
                 return nil
             }
             return WorkerSupervisor(transport: FoundationWorkerTransport(
                 executableURL: executableURL,
-                arguments: workerArguments(paths: paths)
+                arguments: workerArguments(paths: paths, environment: environment)
             ))
         }
         return try AppModel.load(catalog: open(paths: paths), workerSupervisor: workerSupervisor)
     }
 
-    public static func workerArguments(paths: AppCatalogPaths) -> [String] {
-        [
+    public static func workerArguments(
+        paths: AppCatalogPaths,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String] {
+        var arguments = [
             "--catalog",
             paths.catalogURL.path,
             "--preview-cache",
             paths.previewCacheRoot.path
         ]
+        if let endpoint = configuredEnvironmentValue(environment[localHTTPModelEndpointEnvironmentKey]),
+           let model = configuredEnvironmentValue(environment[localHTTPModelNameEnvironmentKey]) {
+            arguments.append(contentsOf: [
+                "--local-http-model-endpoint",
+                endpoint,
+                "--local-http-model",
+                model
+            ])
+            if let timeout = configuredEnvironmentValue(environment[localHTTPModelTimeoutEnvironmentKey]) {
+                arguments.append(contentsOf: [
+                    "--local-http-model-timeout",
+                    timeout
+                ])
+            }
+        }
+        return arguments
+    }
+
+    private static func configuredEnvironmentValue(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
     }
 }

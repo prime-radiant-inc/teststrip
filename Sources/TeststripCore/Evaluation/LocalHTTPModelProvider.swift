@@ -14,6 +14,18 @@ public protocol LocalHTTPModelTransport: Sendable {
     func response(for request: URLRequest) throws -> LocalHTTPModelHTTPResponse
 }
 
+public struct LocalHTTPModelProviderConfiguration: Equatable, Sendable {
+    public var endpoint: URL
+    public var model: String
+    public var timeout: TimeInterval
+
+    public init(endpoint: URL, model: String, timeout: TimeInterval = 30) {
+        self.endpoint = endpoint
+        self.model = model
+        self.timeout = timeout
+    }
+}
+
 public struct URLSessionLocalHTTPModelTransport: LocalHTTPModelTransport {
     public init() {}
 
@@ -62,10 +74,25 @@ public struct LocalHTTPModelProvider: EvaluationProvider {
         self.transport = transport
     }
 
+    public init(
+        configuration: LocalHTTPModelProviderConfiguration,
+        prompt: String = LocalHTTPModelProvider.defaultPrompt,
+        transport: any LocalHTTPModelTransport = URLSessionLocalHTTPModelTransport()
+    ) {
+        self.init(
+            endpoint: configuration.endpoint,
+            model: configuration.model,
+            prompt: prompt,
+            timeout: configuration.timeout,
+            transport: transport
+        )
+    }
+
     public func request(for imageURL: URL, prompt: String) throws -> URLRequest {
         var request = URLRequest(url: endpoint, timeoutInterval: timeout)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        let dataURL = try Self.dataURL(forImageAt: imageURL)
         let body: [String: Any] = [
             "model": model,
             "messages": [
@@ -73,7 +100,7 @@ public struct LocalHTTPModelProvider: EvaluationProvider {
                     "role": "user",
                     "content": [
                         ["type": "text", "text": prompt],
-                        ["type": "text", "text": "image_path:\(imageURL.path)"]
+                        ["type": "image_url", "image_url": ["url": dataURL]]
                     ]
                 ]
             ]
@@ -100,6 +127,24 @@ public struct LocalHTTPModelProvider: EvaluationProvider {
     Evaluate this photo for culling. Return only JSON shaped as {"signals":[{"kind":"aesthetics","label":"keeper","confidence":0.0},{"kind":"focus","score":0.0,"confidence":0.0}]}.
     Use Teststrip signal kinds when possible: focus, motionBlur, exposure, aesthetics, object, faceQuality, ocrText, colorPalette, novelty.
     """
+
+    private static func dataURL(forImageAt url: URL) throws -> String {
+        let data = try Data(contentsOf: url)
+        return "data:\(mimeType(for: url));base64,\(data.base64EncodedString())"
+    }
+
+    private static func mimeType(for url: URL) -> String {
+        switch url.pathExtension.lowercased() {
+        case "jpg", "jpeg":
+            return "image/jpeg"
+        case "png":
+            return "image/png"
+        case "webp":
+            return "image/webp"
+        default:
+            return "application/octet-stream"
+        }
+    }
 }
 
 private final class URLSessionResponseBox: @unchecked Sendable {

@@ -9,15 +9,24 @@ public enum WorkerCommandResult: Equatable, Sendable {
 public struct WorkerRuntimeConfiguration: Equatable, Sendable {
     public var catalogURL: URL
     public var previewCacheRoot: URL
+    public var localHTTPModel: LocalHTTPModelProviderConfiguration?
 
-    public init(catalogURL: URL, previewCacheRoot: URL) {
+    public init(
+        catalogURL: URL,
+        previewCacheRoot: URL,
+        localHTTPModel: LocalHTTPModelProviderConfiguration? = nil
+    ) {
         self.catalogURL = catalogURL
         self.previewCacheRoot = previewCacheRoot
+        self.localHTTPModel = localHTTPModel
     }
 
     public init(arguments: [String]) throws {
         var catalogPath: String?
         var previewCachePath: String?
+        var localHTTPModelEndpoint: URL?
+        var localHTTPModelName: String?
+        var localHTTPModelTimeout: TimeInterval?
         var index = arguments.startIndex
 
         while index < arguments.endIndex {
@@ -36,6 +45,34 @@ public struct WorkerRuntimeConfiguration: Equatable, Sendable {
                 }
                 previewCachePath = arguments[valueIndex]
                 index = arguments.index(after: valueIndex)
+            case "--local-http-model-endpoint":
+                guard valueIndex < arguments.endIndex else {
+                    throw TeststripError.invalidState("missing value for --local-http-model-endpoint")
+                }
+                guard let endpoint = URL(string: arguments[valueIndex]), endpoint.scheme != nil else {
+                    throw TeststripError.invalidState("invalid value for --local-http-model-endpoint")
+                }
+                localHTTPModelEndpoint = endpoint
+                index = arguments.index(after: valueIndex)
+            case "--local-http-model":
+                guard valueIndex < arguments.endIndex else {
+                    throw TeststripError.invalidState("missing value for --local-http-model")
+                }
+                let model = arguments[valueIndex].trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !model.isEmpty else {
+                    throw TeststripError.invalidState("invalid value for --local-http-model")
+                }
+                localHTTPModelName = model
+                index = arguments.index(after: valueIndex)
+            case "--local-http-model-timeout":
+                guard valueIndex < arguments.endIndex else {
+                    throw TeststripError.invalidState("missing value for --local-http-model-timeout")
+                }
+                guard let timeout = TimeInterval(arguments[valueIndex]), timeout > 0 else {
+                    throw TeststripError.invalidState("invalid value for --local-http-model-timeout")
+                }
+                localHTTPModelTimeout = timeout
+                index = arguments.index(after: valueIndex)
             default:
                 throw TeststripError.invalidState("unknown worker argument \(argument)")
             }
@@ -47,6 +84,18 @@ public struct WorkerRuntimeConfiguration: Equatable, Sendable {
 
         self.catalogURL = URL(fileURLWithPath: catalogPath)
         self.previewCacheRoot = URL(fileURLWithPath: previewCachePath, isDirectory: true)
+        if localHTTPModelEndpoint != nil || localHTTPModelName != nil || localHTTPModelTimeout != nil {
+            guard let endpoint = localHTTPModelEndpoint, let model = localHTTPModelName else {
+                throw TeststripError.invalidState("local HTTP model requires endpoint and model")
+            }
+            self.localHTTPModel = LocalHTTPModelProviderConfiguration(
+                endpoint: endpoint,
+                model: model,
+                timeout: localHTTPModelTimeout ?? 30
+            )
+        } else {
+            self.localHTTPModel = nil
+        }
     }
 }
 
@@ -75,13 +124,26 @@ public struct WorkerCommandExecutor {
         self.evaluationProviders = providersByName
     }
 
-    public init(configuration: WorkerRuntimeConfiguration) throws {
+    public init(
+        configuration: WorkerRuntimeConfiguration,
+        localHTTPModelTransport: (any LocalHTTPModelTransport)? = nil
+    ) throws {
         let database = try CatalogDatabase.open(at: configuration.catalogURL)
         try database.migrate()
+        var evaluationProviders: [any EvaluationProvider] = [
+            LocalImageMetricsEvaluationProvider(),
+            AppleVisionEvaluationProvider()
+        ]
+        if let localHTTPModel = configuration.localHTTPModel {
+            evaluationProviders.append(LocalHTTPModelProvider(
+                configuration: localHTTPModel,
+                transport: localHTTPModelTransport ?? URLSessionLocalHTTPModelTransport()
+            ))
+        }
         self.init(
             repository: CatalogRepository(database: database),
             previewCache: PreviewCache(root: configuration.previewCacheRoot),
-            evaluationProviders: [LocalImageMetricsEvaluationProvider(), AppleVisionEvaluationProvider()]
+            evaluationProviders: evaluationProviders
         )
     }
 

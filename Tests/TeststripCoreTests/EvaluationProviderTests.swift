@@ -20,13 +20,17 @@ final class EvaluationProviderTests: XCTestCase {
     }
 
     func testLocalHTTPProviderBuildsOpenAICompatibleRequest() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "local-http-request")
+        let previewURL = directory.appendingPathComponent("frame.jpg")
+        let previewData = Data("preview bytes".utf8)
+        try previewData.write(to: previewURL)
         let provider = LocalHTTPModelProvider(
             endpoint: URL(string: "http://localhost:11434/v1/chat/completions")!,
             model: "llava",
             timeout: 12
         )
 
-        let request = try provider.request(for: URL(fileURLWithPath: "/tmp/frame.jpg"), prompt: "Describe culling signals")
+        let request = try provider.request(for: previewURL, prompt: "Describe culling signals")
 
         XCTAssertEqual(request.url?.absoluteString, "http://localhost:11434/v1/chat/completions")
         XCTAssertEqual(request.httpMethod, "POST")
@@ -44,10 +48,16 @@ final class EvaluationProviderTests: XCTestCase {
         let content = try XCTUnwrap(firstMessage["content"] as? [[String: Any]])
         let textValues = content.compactMap { $0["text"] as? String }
         XCTAssertTrue(textValues.contains("Describe culling signals"))
-        XCTAssertTrue(textValues.contains { $0.contains("/tmp/frame.jpg") })
+        let imageURL = try XCTUnwrap(content.compactMap { $0["image_url"] as? [String: Any] }.first)
+        let dataURL = try XCTUnwrap(imageURL["url"] as? String)
+        XCTAssertTrue(dataURL.hasPrefix("data:image/jpeg;base64,"))
+        XCTAssertEqual(Data(base64Encoded: String(dataURL.dropFirst("data:image/jpeg;base64,".count))), previewData)
     }
 
     func testLocalHTTPProviderEvaluatesOpenAICompatibleResponse() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "local-http-evaluate")
+        let previewURL = directory.appendingPathComponent("frame.jpg")
+        try Data("preview bytes".utf8).write(to: previewURL)
         let transport = RecordingLocalHTTPTransport(response: .success(LocalHTTPModelHTTPResponse(
             statusCode: 200,
             data: try chatCompletionData(content: """
@@ -61,7 +71,7 @@ final class EvaluationProviderTests: XCTestCase {
         )
         let assetID = AssetID(rawValue: "asset-1")
 
-        let signals = try provider.evaluate(assetID: assetID, previewURL: URL(fileURLWithPath: "/tmp/frame.jpg"))
+        let signals = try provider.evaluate(assetID: assetID, previewURL: previewURL)
 
         XCTAssertEqual(signals, [
             EvaluationSignal(
@@ -85,6 +95,9 @@ final class EvaluationProviderTests: XCTestCase {
     }
 
     func testLocalHTTPProviderReportsHTTPFailure() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "local-http-failure")
+        let previewURL = directory.appendingPathComponent("frame.jpg")
+        try Data("preview bytes".utf8).write(to: previewURL)
         let provider = LocalHTTPModelProvider(
             endpoint: URL(string: "http://localhost:1234/v1/chat/completions")!,
             model: "llava",
@@ -96,7 +109,7 @@ final class EvaluationProviderTests: XCTestCase {
 
         XCTAssertThrowsError(try provider.evaluate(
             assetID: AssetID(rawValue: "asset-1"),
-            previewURL: URL(fileURLWithPath: "/tmp/frame.jpg")
+            previewURL: previewURL
         )) { error in
             XCTAssertTrue(error.localizedDescription.contains("HTTP model request failed"))
         }
