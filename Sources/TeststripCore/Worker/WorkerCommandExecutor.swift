@@ -85,7 +85,8 @@ public struct WorkerCommandExecutor {
         try database.migrate()
         self.init(
             repository: CatalogRepository(database: database),
-            previewCache: PreviewCache(root: configuration.previewCacheRoot)
+            previewCache: PreviewCache(root: configuration.previewCacheRoot),
+            evaluationProviders: [LocalImageMetricsEvaluationProvider()]
         )
     }
 
