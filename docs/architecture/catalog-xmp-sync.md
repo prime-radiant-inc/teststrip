@@ -9,6 +9,7 @@ The first implemented sidecar convention is collision-safe: append `.xmp` to the
 ## Current Behavior
 
 - Supported portable fields are ratings, color labels, pick/reject flags, keywords, captions, creator, and copyright.
+- Sidecars are RDF/XMP packets using Adobe-compatible properties where they exist: `xmp:Rating`, `xmp:Label`, `dc:subject`, `dc:description`, `dc:creator`, and `dc:rights`. Pick/reject uses Teststrip's namespace because there is no common XMP pick-flag property.
 - Successful sidecar writes store the last written XMP fingerprint in the catalog.
 - Failed sidecar writes do not roll back or block the catalog metadata edit.
 - Failed sidecar writes are recorded as pending sync items with the asset ID, sidecar path, catalog generation, and last synced fingerprint if one exists.
@@ -16,6 +17,6 @@ The first implemented sidecar convention is collision-safe: append `.xmp` to the
 
 ## Next Work
 
-- Route app metadata-sync work through the supervised worker queue.
 - Surface conflicted XMP sync state in the UI.
+- Merge Teststrip-managed properties into existing sidecars instead of overwriting unrelated XMP properties.
 - Revisit sidecar filename compatibility before shipping import/export interoperability guarantees.

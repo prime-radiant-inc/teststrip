@@ -4,14 +4,14 @@ import XCTest
 final class MetadataSyncTests: XCTestCase {
     func testXMPPacketParseThrowsForInvalidColorLabel() {
         assertParseInvalidState(
-            xmpData("<colorLabel>orange</colorLabel>"),
-            .invalidState("invalid XMP color label: orange")
+            standardXMP(attributes: "xmp:Label=\"Orange\""),
+            .invalidState("invalid XMP color label: Orange")
         )
     }
 
     func testXMPPacketParseThrowsForInvalidFlag() {
         assertParseInvalidState(
-            xmpData("<flag>favorite</flag>"),
+            standardXMP(attributes: "ts:Pick=\"favorite\""),
             .invalidState("invalid XMP flag: favorite")
         )
     }
@@ -25,14 +25,14 @@ final class MetadataSyncTests: XCTestCase {
 
     func testXMPPacketParseThrowsForNonNumericRating() {
         assertParseInvalidState(
-            xmpData("<rating>unrated</rating>"),
+            standardXMP(attributes: "xmp:Rating=\"unrated\""),
             .invalidState("invalid XMP rating: unrated")
         )
     }
 
     func testXMPPacketParseThrowsForOutOfRangeRating() {
         assertParseInvalidState(
-            xmpData("<rating>9</rating>"),
+            standardXMP(attributes: "xmp:Rating=\"9\""),
             .invalidState("rating must be between 0 and 5")
         )
     }
@@ -58,6 +58,72 @@ final class MetadataSyncTests: XCTestCase {
         XCTAssertEqual(parsed.metadata.caption, "Fitz Roy sunrise")
         XCTAssertEqual(parsed.metadata.creator, "Jesse")
         XCTAssertEqual(parsed.metadata.copyright, "Copyright Jesse")
+    }
+
+    func testXMPPacketParsesStandardRDFSidecarMetadata() throws {
+        let xml = standardXMP(
+            attributes: "xmp:Rating=\"5\" xmp:Label=\"Green\" ts:Pick=\"pick\"",
+            body: """
+            <dc:subject>
+              <rdf:Bag>
+                <rdf:li>Patagonia</rdf:li>
+                <rdf:li>mountains</rdf:li>
+              </rdf:Bag>
+            </dc:subject>
+            <dc:description>
+              <rdf:Alt>
+                <rdf:li xml:lang="x-default">Fitz Roy sunrise</rdf:li>
+              </rdf:Alt>
+            </dc:description>
+            <dc:creator>
+              <rdf:Seq>
+                <rdf:li>Jesse</rdf:li>
+              </rdf:Seq>
+            </dc:creator>
+            <dc:rights>
+              <rdf:Alt>
+                <rdf:li xml:lang="x-default">Copyright Jesse</rdf:li>
+              </rdf:Alt>
+            </dc:rights>
+            """
+        )
+
+        let parsed = try XMPPacket.parse(xml)
+
+        XCTAssertEqual(parsed.metadata.rating, 5)
+        XCTAssertEqual(parsed.metadata.colorLabel, .green)
+        XCTAssertEqual(parsed.metadata.flag, .pick)
+        XCTAssertEqual(parsed.metadata.keywords, ["Patagonia", "mountains"])
+        XCTAssertEqual(parsed.metadata.caption, "Fitz Roy sunrise")
+        XCTAssertEqual(parsed.metadata.creator, "Jesse")
+        XCTAssertEqual(parsed.metadata.copyright, "Copyright Jesse")
+    }
+
+    func testXMPPacketWritesAdobeCompatibleRDFProperties() throws {
+        let metadata = AssetMetadata(
+            rating: 5,
+            colorLabel: .green,
+            flag: .reject,
+            keywords: ["Patagonia", "mountains"],
+            caption: "Fitz Roy sunrise",
+            creator: "Jesse",
+            copyright: "Copyright Jesse"
+        )
+
+        let xml = try XMPPacket(metadata: metadata).xmlData()
+        let document = try XMLDocument(data: xml)
+        let root = try XCTUnwrap(document.rootElement())
+        let description = try rdfDescription(in: document)
+
+        XCTAssertEqual(root.localName, "xmpmeta")
+        XCTAssertEqual(root.uri, xmpMetaNamespace)
+        XCTAssertEqual(attribute(description, localName: "Rating", uri: xmpNamespace), "5")
+        XCTAssertEqual(attribute(description, localName: "Label", uri: xmpNamespace), "Green")
+        XCTAssertEqual(attribute(description, localName: "Pick", uri: teststripNamespace), "reject")
+        XCTAssertEqual(rdfContainerValues(in: description, propertyLocalName: "subject", containerLocalName: "Bag"), ["Patagonia", "mountains"])
+        XCTAssertEqual(rdfContainerValues(in: description, propertyLocalName: "description", containerLocalName: "Alt"), ["Fitz Roy sunrise"])
+        XCTAssertEqual(rdfContainerValues(in: description, propertyLocalName: "creator", containerLocalName: "Seq"), ["Jesse"])
+        XCTAssertEqual(rdfContainerValues(in: description, propertyLocalName: "rights", containerLocalName: "Alt"), ["Copyright Jesse"])
     }
 
     func testSidecarStoreWritesPortableMetadataBesideOriginal() throws {
@@ -282,7 +348,64 @@ final class MetadataSyncTests: XCTestCase {
         }
     }
 
-    private func xmpData(_ body: String) -> Data {
-        Data("<xmpmeta>\(body)</xmpmeta>".utf8)
+    private func standardXMP(attributes: String = "", body: String = "") -> Data {
+        Data("""
+        <x:xmpmeta xmlns:x="\(xmpMetaNamespace)">
+          <rdf:RDF xmlns:rdf="\(rdfNamespace)">
+            <rdf:Description rdf:about=""
+              xmlns:xmp="\(xmpNamespace)"
+              xmlns:dc="\(dcNamespace)"
+              xmlns:ts="\(teststripNamespace)"
+              \(attributes)>
+              \(body)
+            </rdf:Description>
+          </rdf:RDF>
+        </x:xmpmeta>
+        """.utf8)
+    }
+
+    private var xmpMetaNamespace: String { "adobe:ns:meta/" }
+    private var rdfNamespace: String { "http://www.w3.org/1999/02/22-rdf-syntax-ns#" }
+    private var xmpNamespace: String { "http://ns.adobe.com/xap/1.0/" }
+    private var dcNamespace: String { "http://purl.org/dc/elements/1.1/" }
+    private var teststripNamespace: String { "https://teststrip.app/xmp/1.0/" }
+
+    private func rdfDescription(in document: XMLDocument) throws -> XMLElement {
+        let root = try XCTUnwrap(document.rootElement())
+        let rdf = try XCTUnwrap(child(root, localName: "RDF", uri: rdfNamespace))
+        return try XCTUnwrap(child(rdf, localName: "Description", uri: rdfNamespace))
+    }
+
+    private func child(_ element: XMLElement, localName: String, uri: String? = nil) -> XMLElement? {
+        element.children?.compactMap { $0 as? XMLElement }.first {
+            $0.localName == localName && (uri == nil || $0.uri == uri)
+        }
+    }
+
+    private func attribute(_ element: XMLElement, localName: String, uri: String) -> String? {
+        element.attributes?.first {
+            $0.localName == localName && $0.uri == uri
+        }?.stringValue
+    }
+
+    private func rdfContainerValues(
+        in description: XMLElement,
+        propertyLocalName: String,
+        containerLocalName: String
+    ) -> [String] {
+        guard let property = child(description, localName: propertyLocalName, uri: dcNamespace),
+              let container = child(property, localName: containerLocalName, uri: rdfNamespace)
+        else {
+            return []
+        }
+        return container.children?.compactMap { child in
+            guard let element = child as? XMLElement,
+                  element.localName == "li",
+                  element.uri == rdfNamespace
+            else {
+                return nil
+            }
+            return element.stringValue
+        } ?? []
     }
 }
