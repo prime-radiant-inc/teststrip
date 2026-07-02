@@ -3,8 +3,12 @@ import TeststripCore
 
 let arguments = CommandLine.arguments
 let count = Int(arguments.dropFirst().first ?? "10000") ?? 10000
-let root = FileManager.default.temporaryDirectory.appendingPathComponent("teststrip-bench", isDirectory: true)
-try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+let fileManager = FileManager.default
+let root = fileManager.temporaryDirectory.appendingPathComponent("teststrip-bench", isDirectory: true)
+if fileManager.fileExists(atPath: root.path) {
+    try fileManager.removeItem(at: root)
+}
+try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
 let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
 try database.migrate()
 let repository = CatalogRepository(database: database)
