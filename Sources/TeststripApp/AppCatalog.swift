@@ -1,7 +1,7 @@
 import Foundation
 import TeststripCore
 
-public struct AppCatalogPaths: Equatable {
+public struct AppCatalogPaths: Equatable, Sendable {
     public var root: URL
     public var catalogURL: URL
     public var previewCacheRoot: URL

@@ -96,8 +96,12 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
+        replaceAssets(try catalog.repository.allAssets(limit: 500))
+    }
+
+    private func replaceAssets(_ loadedAssets: [Asset]) {
         let previousSelection = selectedAssetID
-        assets = try catalog.repository.allAssets(limit: 500)
+        assets = loadedAssets
         if let previousSelection, assets.contains(where: { $0.id == previousSelection }) {
             selectedAssetID = previousSelection
         } else {
@@ -114,12 +118,46 @@ public final class AppModel {
         statusMessage = "Importing \(folderURL.lastPathComponent)..."
         let result = try catalog.importService.addFolderInPlace(folderURL, repository: catalog.repository)
         try reload()
+        updateImportStatus(with: result)
+        return result
+    }
+
+    @discardableResult
+    @MainActor
+    public func importFolderInBackground(_ folderURL: URL) async throws -> LibraryImportResult {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        errorMessage = nil
+        statusMessage = "Importing \(folderURL.lastPathComponent)..."
+        let paths = catalog.paths
+        let output = try await Task.detached(priority: .userInitiated) {
+            let backgroundCatalog = try AppCatalog.open(paths: paths)
+            let result = try backgroundCatalog.importService.addFolderInPlace(folderURL, repository: backgroundCatalog.repository)
+            let assets = try backgroundCatalog.repository.allAssets(limit: 500)
+            return BackgroundImportOutput(result: result, assets: assets)
+        }.value
+        replaceAssets(output.assets)
+        updateImportStatus(with: output.result)
+        return output.result
+    }
+
+    private func updateImportStatus(with result: LibraryImportResult) {
         let photoLabel = result.importedAssets.count == 1 ? "photo" : "photos"
         statusMessage = "Imported \(result.importedAssets.count) \(photoLabel)"
         if !result.previewFailures.isEmpty {
             statusMessage?.append(" (\(result.previewFailures.count) preview failures)")
         }
-        return result
+    }
+
+    private struct BackgroundImportOutput: Sendable {
+        var result: LibraryImportResult
+        var assets: [Asset]
+
+        init(result: LibraryImportResult, assets: [Asset]) {
+            self.result = result
+            self.assets = assets
+        }
     }
 
     public func gridPreviewURL(for assetID: AssetID) -> URL? {

@@ -27,6 +27,9 @@ struct LibraryGridView: View {
                             )
                         }
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
+                        .contentShape(Rectangle())
+                        .accessibilityLabel(asset.originalURL.lastPathComponent)
                     }
                 }
                 .padding(12)
@@ -110,18 +113,20 @@ struct LibraryGridView: View {
 
     private func importFolder(_ folderURL: URL) {
         isImporting = true
-        let didAccess = folderURL.startAccessingSecurityScopedResource()
-        defer {
-            if didAccess {
-                folderURL.stopAccessingSecurityScopedResource()
+        Task { @MainActor in
+            let didAccess = folderURL.startAccessingSecurityScopedResource()
+            defer {
+                if didAccess {
+                    folderURL.stopAccessingSecurityScopedResource()
+                }
+                isImporting = false
             }
-            isImporting = false
-        }
-        do {
-            _ = try model.importFolder(folderURL)
-        } catch {
-            model.statusMessage = nil
-            model.errorMessage = error.localizedDescription
+            do {
+                _ = try await model.importFolderInBackground(folderURL)
+            } catch {
+                model.statusMessage = nil
+                model.errorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -132,30 +137,35 @@ private struct AssetGridCell: View {
     var isSelected: Bool
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            thumbnail
-                .aspectRatio(3.0 / 2.0, contentMode: .fill)
-                .frame(maxWidth: .infinity)
-                .clipped()
-            LinearGradient(
-                colors: [.clear, .black.opacity(0.62)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .allowsHitTesting(false)
-            metadataOverlay
-                .padding(6)
-            if isSelected {
-                RoundedRectangle(cornerRadius: 5)
-                    .stroke(Color.orange, lineWidth: 2)
+        GeometryReader { geometry in
+            ZStack(alignment: .bottomLeading) {
+                thumbnail
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.62)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .allowsHitTesting(false)
+                metadataOverlay
+                    .padding(6)
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .overlay {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(Color.orange, lineWidth: 2)
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.gray.opacity(0.35))
+            )
         }
         .aspectRatio(3.0 / 2.0, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 5))
-        .background(
-            RoundedRectangle(cornerRadius: 5)
-                .fill(Color.gray.opacity(0.35))
-        )
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder
