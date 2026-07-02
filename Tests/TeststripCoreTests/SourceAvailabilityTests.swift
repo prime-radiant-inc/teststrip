@@ -14,6 +14,20 @@ final class SourceAvailabilityTests: XCTestCase {
         XCTAssertEqual(availability, .online)
     }
 
+    func testProbeTreatsCatalogRoundTripFingerprintAsOnline() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "source-catalog-round-trip")
+        let originalURL = directory.appendingPathComponent("frame.jpg")
+        try Data("image bytes".utf8).write(to: originalURL)
+        let modificationDate = Date(timeIntervalSince1970: 1_783_024_454.8119888)
+        try FileManager.default.setAttributes([.modificationDate: modificationDate], ofItemAtPath: originalURL.path)
+        let fingerprint = try catalogRoundTrippedFingerprint(try fileFingerprint(for: originalURL))
+        let asset = makeAsset(originalURL: originalURL, fingerprint: fingerprint)
+
+        let availability = SourceAvailabilityProbe().availability(for: asset)
+
+        XCTAssertEqual(availability, .online)
+    }
+
     func testProbeMarksChangedOriginalStale() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "source-stale")
         let originalURL = directory.appendingPathComponent("frame.jpg")
@@ -73,5 +87,14 @@ final class SourceAvailabilityTests: XCTestCase {
             size: (attributes[.size] as? NSNumber)?.int64Value ?? 0,
             modificationDate: attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0)
         )
+    }
+
+    private func catalogRoundTrippedFingerprint(_ fingerprint: FileFingerprint) throws -> FileFingerprint {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        let data = try encoder.encode(fingerprint)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        return try decoder.decode(FileFingerprint.self, from: data)
     }
 }

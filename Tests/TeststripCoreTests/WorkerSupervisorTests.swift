@@ -95,6 +95,75 @@ final class WorkerSupervisorTests: XCTestCase {
         })
     }
 
+    func testProgressWorkerEventUpdatesDispatchedItem() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let item = BackgroundWorkItem(
+            id: WorkSessionID(rawValue: "import"),
+            kind: .ingest,
+            title: "Import photos",
+            detail: "Importing from photos",
+            completedUnitCount: 0,
+            totalUnitCount: nil
+        )
+        try supervisor.enqueue(item, command: .importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true)))
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
+            itemID: item.id,
+            completedUnitCount: 3,
+            totalUnitCount: 8,
+            detail: "Cataloged 3 photos"
+        )))
+
+        XCTAssertTrue(waitUntil {
+            supervisor.queue.item(id: item.id)?.status == .running &&
+                supervisor.queue.item(id: item.id)?.detail == "Cataloged 3 photos" &&
+                supervisor.queue.item(id: item.id)?.completedUnitCount == 3 &&
+            supervisor.queue.item(id: item.id)?.totalUnitCount == 8
+        })
+    }
+
+    func testProgressWorkerEventReschedulesCommandTimeout() throws {
+        let transport = RecordingWorkerTransport()
+        let timeoutScheduler = ManualWorkerTimeoutScheduler()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport,
+            commandTimeout: 30,
+            timeoutScheduler: timeoutScheduler
+        )
+        let item = BackgroundWorkItem(
+            id: WorkSessionID(rawValue: "import"),
+            kind: .ingest,
+            title: "Import photos",
+            detail: "Importing from photos",
+            completedUnitCount: 0,
+            totalUnitCount: nil
+        )
+        try supervisor.enqueue(item, command: .importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true)))
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
+            itemID: item.id,
+            completedUnitCount: 3,
+            totalUnitCount: 8,
+            detail: "Cataloged 3 photos"
+        )))
+        XCTAssertTrue(waitUntil {
+            supervisor.queue.item(id: item.id)?.detail == "Cataloged 3 photos"
+        })
+
+        timeoutScheduler.fireNext()
+        XCTAssertEqual(transport.terminateCount, 0)
+        XCTAssertEqual(supervisor.queue.item(id: item.id)?.status, .running)
+
+        timeoutScheduler.fireNext()
+        XCTAssertEqual(transport.terminateCount, 1)
+        XCTAssertEqual(supervisor.queue.item(id: item.id)?.status, .failed)
+    }
+
     func testDispatchedWorkerCommandCarriesWorkItemID() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

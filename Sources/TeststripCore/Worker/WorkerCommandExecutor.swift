@@ -147,13 +147,14 @@ public struct WorkerCommandExecutor {
         )
     }
 
-    public func execute(_ command: WorkerCommand) throws -> WorkerCommandResult {
+    public func execute(_ command: WorkerCommand, progress: LibraryImportProgressHandler? = nil) throws -> WorkerCommandResult {
         switch command {
         case .importFolder(let root):
             let result = try importService.addFolderInPlace(
                 root,
                 repository: repository,
-                previewPolicy: .deferGeneration
+                previewPolicy: .deferGeneration,
+                progress: progress
             )
             return .completedImport(
                 "imported \(Self.photoCountDescription(result.importedAssets.count)) from \(root.lastPathComponent)",
@@ -164,7 +165,8 @@ public struct WorkerCommandExecutor {
                 source: source,
                 destinationRoot: destinationRoot,
                 repository: repository,
-                previewPolicy: .deferGeneration
+                previewPolicy: .deferGeneration,
+                progress: progress
             )
             return .completedImport(
                 "imported \(Self.photoCountDescription(result.importedAssets.count)) from \(source.lastPathComponent) to \(destinationRoot.lastPathComponent)",

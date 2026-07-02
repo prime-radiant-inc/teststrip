@@ -1064,7 +1064,7 @@ public final class AppModel {
             invalidateEvaluationSignalsIfNeeded(itemID: itemID)
         case .completedImport(let itemID, _, let importedAssetIDs):
             handleWorkerImportCompleted(itemID: itemID, importedAssetIDs: importedAssetIDs)
-        case .accepted, .failed:
+        case .accepted, .progress, .failed:
             return
         }
     }

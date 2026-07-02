@@ -1357,6 +1357,34 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testWorkerImportProgressRefreshesVisibleBackgroundWork() async throws {
+        let directory = try makeTemporaryDirectory(named: "worker-import-progress-refresh")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+        let itemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
+            itemID: itemID,
+            completedUnitCount: 3,
+            totalUnitCount: 8,
+            detail: "Cataloged 3 photos"
+        )))
+
+        try await waitForVisibleWorkDetail("Cataloged 3 photos", in: model)
+        XCTAssertEqual(model.visibleWorkActivity?.completedUnitCount, 3)
+        XCTAssertEqual(model.visibleWorkActivity?.totalUnitCount, 8)
+    }
+
+    @MainActor
     func testWorkerFailureRefreshesVisibleBackgroundWork() async throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -2154,6 +2182,17 @@ final class AppModelTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTFail("timed out waiting for visible work status \(status.rawValue)")
+    }
+
+    @MainActor
+    private func waitForVisibleWorkDetail(_ detail: String, in model: AppModel) async throws {
+        for _ in 0..<100 {
+            if model.visibleWorkActivity?.detail == detail {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTFail("timed out waiting for visible work detail \(detail)")
     }
 
     @MainActor

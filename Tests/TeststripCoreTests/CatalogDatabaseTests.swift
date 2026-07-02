@@ -16,6 +16,32 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(fetched, asset)
     }
 
+    func testSecondConnectionWaitsForBusyWriter() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-busy-timeout")
+        let catalogURL = directory.appendingPathComponent("catalog.sqlite")
+        let writer = try CatalogDatabase.open(at: catalogURL)
+        try writer.migrate()
+        let contendingWriter = try CatalogDatabase.open(at: catalogURL)
+        try contendingWriter.migrate()
+        let releasedLock = expectation(description: "released write lock")
+        try writer.execute("BEGIN IMMEDIATE TRANSACTION")
+        defer { try? writer.execute("ROLLBACK") }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+            try? writer.execute("COMMIT")
+            releasedLock.fulfill()
+        }
+
+        try contendingWriter.execute(
+            "INSERT OR REPLACE INTO catalog_meta (key, value) VALUES ('busy_timeout_probe', 'ok')"
+        )
+
+        wait(for: [releasedLock], timeout: 1)
+        let rows = try contendingWriter.rows(
+            "SELECT value FROM catalog_meta WHERE key = 'busy_timeout_probe'"
+        )
+        XCTAssertEqual(rows.first?["value"], "ok")
+    }
+
     func testMigratesAndPersistsAssetTechnicalMetadata() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-metadata")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

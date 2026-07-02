@@ -79,6 +79,13 @@ public struct BackgroundWorkQueue: Equatable, Sendable {
         activateRunnableItems()
     }
 
+    public mutating func updateProgress(id: WorkSessionID, completedUnitCount: Int, totalUnitCount: Int?, detail: String) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        items[index].completedUnitCount = completedUnitCount
+        items[index].totalUnitCount = totalUnitCount
+        items[index].detail = detail
+    }
+
     public mutating func markFailed(id: WorkSessionID, detail: String) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].status = .failed

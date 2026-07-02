@@ -8,7 +8,7 @@ while let line = readLine() {
     do {
         let request = try WorkerProtocolEncoder.decodeRequest(line)
         do {
-            let result = try execute(request.command)
+            let result = try execute(request.command, itemID: request.itemID)
             try write(result.event(itemID: request.itemID))
         } catch {
             try write(.failed(itemID: request.itemID, message: error.localizedDescription))
@@ -19,7 +19,7 @@ while let line = readLine() {
 }
 
 @MainActor
-private func execute(_ command: WorkerCommand) throws -> WorkerCommandResult {
+private func execute(_ command: WorkerCommand, itemID: WorkSessionID?) throws -> WorkerCommandResult {
     if let controlKind = command.controlKind {
         return .accepted(controlKind.rawValue)
     }
@@ -27,7 +27,15 @@ private func execute(_ command: WorkerCommand) throws -> WorkerCommandResult {
     if executor == nil {
         executor = try WorkerCommandExecutor(configuration: WorkerRuntimeConfiguration(arguments: runtimeArguments))
     }
-    return try executor!.execute(command)
+    return try executor!.execute(command) { progress in
+        guard let itemID else { return }
+        try? write(.progress(
+            itemID: itemID,
+            completedUnitCount: progress.completedUnitCount,
+            totalUnitCount: progress.totalUnitCount,
+            detail: progress.detail
+        ))
+    }
 }
 
 private extension WorkerCommandResult {

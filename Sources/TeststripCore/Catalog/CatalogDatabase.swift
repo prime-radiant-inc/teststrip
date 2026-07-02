@@ -2,6 +2,8 @@ import Foundation
 import SQLite3
 
 public final class CatalogDatabase: @unchecked Sendable {
+    private static let busyTimeoutMilliseconds: Int32 = 5_000
+
     private let handle: OpaquePointer
 
     private init(handle: OpaquePointer) {
@@ -17,6 +19,11 @@ public final class CatalogDatabase: @unchecked Sendable {
         var handle: OpaquePointer?
         guard sqlite3_open(url.path, &handle) == SQLITE_OK, let handle else {
             throw CatalogError.sqlite("unable to open catalog database")
+        }
+        guard sqlite3_busy_timeout(handle, busyTimeoutMilliseconds) == SQLITE_OK else {
+            let message = String(cString: sqlite3_errmsg(handle))
+            sqlite3_close(handle)
+            throw CatalogError.sqlite(message)
         }
         return CatalogDatabase(handle: handle)
     }

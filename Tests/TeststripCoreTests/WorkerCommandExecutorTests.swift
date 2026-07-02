@@ -81,6 +81,34 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)).path))
     }
 
+    func testImportFolderCommandReportsProgress() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-import-folder-progress")
+        let sourceRoot = root.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+        try TestDirectories.writeTestJPEG(to: sourceRoot.appendingPathComponent("source.jpg"), width: 1600, height: 1000)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
+        let recorder = ImportProgressRecorder()
+
+        _ = try executor.execute(.importFolder(root: sourceRoot), progress: recorder.append)
+
+        let updates = recorder.values()
+        XCTAssertTrue(updates.contains(LibraryImportProgress(
+            completedUnitCount: 0,
+            totalUnitCount: nil,
+            detail: "Scanning photos"
+        )))
+        XCTAssertTrue(updates.contains { progress in
+            progress.detail == "Cataloged 1 photo" &&
+                progress.completedUnitCount == 1 &&
+                progress.totalUnitCount == 1 &&
+                progress.catalogedAssetIDs.count == 1
+        })
+    }
+
     func testImportCardCommandCopiesAssetsAndDefersPreviewGeneration() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-import-card")
         let sourceRoot = root.appendingPathComponent("DCIM", isDirectory: true)
@@ -488,6 +516,23 @@ private final class RecordingLocalHTTPModelTransport: LocalHTTPModelTransport, @
         lock.lock()
         defer { lock.unlock() }
         return recordedRequests
+    }
+}
+
+private final class ImportProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var updates: [LibraryImportProgress] = []
+
+    func append(_ progress: LibraryImportProgress) {
+        lock.lock()
+        updates.append(progress)
+        lock.unlock()
+    }
+
+    func values() -> [LibraryImportProgress] {
+        lock.lock()
+        defer { lock.unlock() }
+        return updates
     }
 }
 

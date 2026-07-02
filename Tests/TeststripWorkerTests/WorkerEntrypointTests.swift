@@ -50,6 +50,58 @@ final class WorkerEntrypointTests: XCTestCase {
         ])
     }
 
+    func testImportFolderCommandWithItemIDReportsProgressThroughWorkerProcess() throws {
+        let root = try makeTemporaryDirectory(named: "worker-entrypoint-import-progress")
+        let photoRoot = root.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoRoot, withIntermediateDirectories: true)
+        let source = photoRoot.appendingPathComponent("source.jpg")
+        try Data("jpg".utf8).write(to: source)
+        let catalogURL = root.appendingPathComponent("catalog.sqlite")
+        let previewCacheRoot = root.appendingPathComponent("previews", isDirectory: true)
+        let workerURL = try builtWorkerExecutableURL()
+        let process = Process()
+        let inputPipe = Pipe()
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.executableURL = workerURL
+        process.arguments = [
+            "--catalog",
+            catalogURL.path,
+            "--preview-cache",
+            previewCacheRoot.path
+        ]
+        process.standardInput = inputPipe
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+        let itemID = WorkSessionID(rawValue: "import-work")
+
+        try process.run()
+        inputPipe.fileHandleForWriting.write(Data(try WorkerProtocolEncoder.encode(.importFolder(root: photoRoot), itemID: itemID).utf8))
+        inputPipe.fileHandleForWriting.closeFile()
+        process.waitUntilExit()
+
+        let stdout = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let stderr = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        XCTAssertEqual(stderr, "")
+        let events = try stdout
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map { try WorkerProtocolEncoder.decodeEvent(String($0)) }
+        XCTAssertTrue(events.contains { event in
+            if case .progress(let progressItemID, _, _, _) = event {
+                return progressItemID == itemID
+            }
+            return false
+        })
+        let completion = try XCTUnwrap(events.last)
+        if case .completedImport(let completionItemID, let message, let importedAssetIDs) = completion {
+            XCTAssertEqual(completionItemID, itemID)
+            XCTAssertEqual(message, "imported 1 photo from photos")
+            XCTAssertEqual(importedAssetIDs.count, 1)
+        } else {
+            XCTFail("expected import completion event")
+        }
+    }
+
     func testMalformedCommandWritesUnstructuredErrorToStderr() throws {
         let workerURL = try builtWorkerExecutableURL()
         let process = Process()

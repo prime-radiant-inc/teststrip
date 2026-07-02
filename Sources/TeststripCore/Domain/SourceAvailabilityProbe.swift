@@ -1,6 +1,8 @@
 import Foundation
 
 public struct SourceAvailabilityProbe: Sendable {
+    private static let modificationDateTolerance: TimeInterval = 0.001
+
     public init() {}
 
     public func availability(for asset: Asset) -> SourceAvailability {
@@ -10,7 +12,8 @@ public struct SourceAvailabilityProbe: Sendable {
 
         let currentSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
         let currentModificationDate = attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0)
-        if currentSize != asset.fingerprint.size || currentModificationDate != asset.fingerprint.modificationDate {
+        let modificationDateDelta = abs(currentModificationDate.timeIntervalSince(asset.fingerprint.modificationDate))
+        if currentSize != asset.fingerprint.size || modificationDateDelta > Self.modificationDateTolerance {
             return .stale
         }
         return .online

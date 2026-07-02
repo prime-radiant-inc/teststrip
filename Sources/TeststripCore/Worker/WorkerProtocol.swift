@@ -12,20 +12,29 @@ public struct WorkerCommandRequest: Equatable, Sendable {
 
 public enum WorkerEvent: Equatable, Sendable {
     case accepted(itemID: WorkSessionID?, message: String)
+    case progress(itemID: WorkSessionID?, completedUnitCount: Int, totalUnitCount: Int?, detail: String)
     case completed(itemID: WorkSessionID?, message: String)
     case completedImport(itemID: WorkSessionID?, message: String, importedAssetIDs: [AssetID])
     case failed(itemID: WorkSessionID?, message: String)
 
     public var itemID: WorkSessionID? {
         switch self {
-        case .accepted(let itemID, _), .completed(let itemID, _), .completedImport(let itemID, _, _), .failed(let itemID, _):
+        case .accepted(let itemID, _),
+             .progress(let itemID, _, _, _),
+             .completed(let itemID, _),
+             .completedImport(let itemID, _, _),
+             .failed(let itemID, _):
             return itemID
         }
     }
 
     public var message: String {
         switch self {
-        case .accepted(_, let message), .completed(_, let message), .completedImport(_, let message, _), .failed(_, let message):
+        case .accepted(_, let message),
+             .progress(_, _, _, let message),
+             .completed(_, let message),
+             .completedImport(_, let message, _),
+             .failed(_, let message):
             return message
         }
     }
@@ -110,18 +119,22 @@ public enum WorkerProtocolEncoder {
         let envelope: WorkerEventEnvelope
         switch event {
         case .accepted(let itemID, let message):
-            envelope = WorkerEventEnvelope(event: "accepted", itemID: itemID?.rawValue, message: message, importedAssetIDs: nil)
+            envelope = WorkerEventEnvelope(event: "accepted", itemID: itemID?.rawValue, message: message, importedAssetIDs: nil, completedUnitCount: nil, totalUnitCount: nil)
+        case .progress(let itemID, let completedUnitCount, let totalUnitCount, let detail):
+            envelope = WorkerEventEnvelope(event: "progress", itemID: itemID?.rawValue, message: detail, importedAssetIDs: nil, completedUnitCount: completedUnitCount, totalUnitCount: totalUnitCount)
         case .completed(let itemID, let message):
-            envelope = WorkerEventEnvelope(event: "completed", itemID: itemID?.rawValue, message: message, importedAssetIDs: nil)
+            envelope = WorkerEventEnvelope(event: "completed", itemID: itemID?.rawValue, message: message, importedAssetIDs: nil, completedUnitCount: nil, totalUnitCount: nil)
         case .completedImport(let itemID, let message, let importedAssetIDs):
             envelope = WorkerEventEnvelope(
                 event: "completed",
                 itemID: itemID?.rawValue,
                 message: message,
-                importedAssetIDs: importedAssetIDs.map(\.rawValue)
+                importedAssetIDs: importedAssetIDs.map(\.rawValue),
+                completedUnitCount: nil,
+                totalUnitCount: nil
             )
         case .failed(let itemID, let message):
-            envelope = WorkerEventEnvelope(event: "failed", itemID: itemID?.rawValue, message: message, importedAssetIDs: nil)
+            envelope = WorkerEventEnvelope(event: "failed", itemID: itemID?.rawValue, message: message, importedAssetIDs: nil, completedUnitCount: nil, totalUnitCount: nil)
         }
 
         let data = try encoder.encode(envelope)
@@ -180,6 +193,13 @@ public enum WorkerProtocolEncoder {
         switch envelope.event {
         case "accepted":
             return .accepted(itemID: itemID, message: envelope.message)
+        case "progress":
+            return .progress(
+                itemID: itemID,
+                completedUnitCount: try envelope.requiredCompletedUnitCount(),
+                totalUnitCount: envelope.totalUnitCount,
+                detail: envelope.message
+            )
         case "completed":
             if let importedAssetIDs = envelope.importedAssetIDs {
                 return .completedImport(
@@ -260,5 +280,19 @@ public enum WorkerProtocolEncoder {
         var itemID: String?
         var message: String
         var importedAssetIDs: [String]?
+        var completedUnitCount: Int?
+        var totalUnitCount: Int?
+
+        func requiredCompletedUnitCount() throws -> Int {
+            guard let completedUnitCount else {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.completedUnitCount],
+                        debugDescription: "Missing completedUnitCount"
+                    )
+                )
+            }
+            return completedUnitCount
+        }
     }
 }

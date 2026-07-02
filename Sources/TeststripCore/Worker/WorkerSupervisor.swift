@@ -161,6 +161,14 @@ public final class WorkerSupervisor: @unchecked Sendable {
         switch event {
         case .accepted:
             return
+        case .progress(let itemID, let completedUnitCount, let totalUnitCount, let detail):
+            guard let itemID else { return }
+            updateDispatchedItemProgress(
+                id: itemID,
+                completedUnitCount: completedUnitCount,
+                totalUnitCount: totalUnitCount,
+                detail: detail
+            )
         case .completed(let itemID, let message):
             guard let itemID else { return }
             completeDispatchedItem(id: itemID, detail: message, event: event)
@@ -171,6 +179,18 @@ public final class WorkerSupervisor: @unchecked Sendable {
             guard let itemID else { return }
             failDispatchedItem(id: itemID, detail: message)
         }
+    }
+
+    private func updateDispatchedItemProgress(id itemID: WorkSessionID, completedUnitCount: Int, totalUnitCount: Int?, detail: String) {
+        guard dispatchedItemIDs.contains(itemID) else { return }
+        queue.updateProgress(
+            id: itemID,
+            completedUnitCount: completedUnitCount,
+            totalUnitCount: totalUnitCount,
+            detail: detail
+        )
+        scheduleTimeout(for: itemID)
+        notifyQueueChanged()
     }
 
     private func completeDispatchedItem(id itemID: WorkSessionID, detail: String, event: WorkerEvent) {
