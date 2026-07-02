@@ -514,6 +514,70 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.hasMoreAssets)
     }
 
+    func testPagingSynthetic100kCatalogKeepsLoadedAssetWindowBounded() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-100k-window")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try seedCatalogAssets(count: 100_000, repository: repository)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        XCTAssertEqual(model.assets.count, 500)
+        XCTAssertEqual(model.totalAssetCount, 100_000)
+
+        for _ in 0..<20 {
+            try model.loadMoreAssets()
+        }
+
+        XCTAssertEqual(model.assets.count, 1_000)
+        XCTAssertEqual(model.assets.first?.id, AssetID(rawValue: "asset-9500"))
+        XCTAssertEqual(model.assets.last?.id, AssetID(rawValue: "asset-10499"))
+        XCTAssertEqual(model.totalAssetCount, 100_000)
+        XCTAssertTrue(model.hasPreviousAssets)
+        XCTAssertTrue(model.hasMoreAssets)
+        XCTAssertEqual(model.libraryCountText, "Showing 9501-10500 of 100000 photographs")
+    }
+
+    func testLoadPreviousAssetsKeepsLoadedAssetWindowBounded() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-previous-window")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try seedCatalogAssets(count: 2_500, repository: repository)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        for _ in 0..<3 {
+            try model.loadMoreAssets()
+        }
+
+        try model.loadPreviousAssets()
+
+        XCTAssertEqual(model.assets.count, 1_000)
+        XCTAssertEqual(model.assets.first?.id, AssetID(rawValue: "asset-500"))
+        XCTAssertEqual(model.assets.last?.id, AssetID(rawValue: "asset-1499"))
+        XCTAssertEqual(model.totalAssetCount, 2_500)
+        XCTAssertTrue(model.hasPreviousAssets)
+        XCTAssertTrue(model.hasMoreAssets)
+        XCTAssertEqual(model.libraryCountText, "Showing 501-1500 of 2500 photographs")
+    }
+
     func testApplyingLibraryFiltersLoadsMatchingCatalogAssets() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-filter")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -1311,6 +1375,27 @@ final class AppModelTests: XCTestCase {
     private func writePreviewPlaceholder(to url: URL) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("preview".utf8).write(to: url)
+    }
+
+    private func seedCatalogAssets(count: Int, repository: CatalogRepository) throws {
+        let batchSize = 1_000
+        for batchStart in stride(from: 0, to: count, by: batchSize) {
+            let batchEnd = min(batchStart + batchSize, count)
+            let assets = (batchStart..<batchEnd).map { index in
+                Asset(
+                    id: AssetID(rawValue: "asset-\(index)"),
+                    originalURL: URL(fileURLWithPath: "/Volumes/NAS/Photos/frame-\(index).dng"),
+                    volumeIdentifier: "NAS",
+                    fingerprint: FileFingerprint(
+                        size: Int64(index + 1),
+                        modificationDate: Date(timeIntervalSince1970: TimeInterval(index))
+                    ),
+                    availability: index.isMultiple(of: 2) ? .online : .offline,
+                    metadata: AssetMetadata(rating: index % 6)
+                )
+            }
+            try repository.upsert(assets)
+        }
     }
 
     private func makeAsset(id: String, size: Int64) -> Asset {

@@ -222,6 +222,7 @@ public final class AppModel {
 
     public static let defaultEvaluationProviderName = "local-image-metrics"
     private static let assetPageSize = 500
+    private static let loadedAssetWindowSize = assetPageSize * 2
     private static let pendingPreviewRecoveryBatchSize = 200
 
     public var selectedAsset: Asset? {
@@ -915,6 +916,7 @@ public final class AppModel {
             loadedAssets = try catalog.repository.allAssets(limit: Self.assetPageSize, offset: offset)
         }
         assets.append(contentsOf: loadedAssets)
+        enforceLoadedAssetWindow(dropping: .leading)
         totalAssetCount = try currentLibraryAssetCount(repository: catalog.repository)
         if selectedAssetID == nil {
             selectedAssetID = assets.first?.id
@@ -948,6 +950,7 @@ public final class AppModel {
         }
         assets.insert(contentsOf: filteredPreviousAssets, at: 0)
         assetPageOffset = previousOffset
+        enforceLoadedAssetWindow(dropping: .trailing)
         totalAssetCount = try currentLibraryAssetCount(repository: catalog.repository)
         if selectedAssetID == nil {
             selectedAssetID = assets.first?.id
@@ -981,6 +984,29 @@ public final class AppModel {
             return
         }
         assets[index] = updatedAsset
+    }
+
+    private enum LoadedAssetWindowDropEdge {
+        case leading
+        case trailing
+    }
+
+    private func enforceLoadedAssetWindow(dropping edge: LoadedAssetWindowDropEdge) {
+        let overflowCount = assets.count - Self.loadedAssetWindowSize
+        guard overflowCount > 0 else { return }
+
+        switch edge {
+        case .leading:
+            assets.removeFirst(overflowCount)
+            assetPageOffset += overflowCount
+        case .trailing:
+            assets.removeLast(overflowCount)
+        }
+
+        if let selectedAssetID, assets.contains(where: { $0.id == selectedAssetID }) {
+            return
+        }
+        selectedAssetID = assets.first?.id
     }
 
     private func replaceAssets(
