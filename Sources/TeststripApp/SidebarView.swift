@@ -7,12 +7,37 @@ struct SidebarView: View {
         List {
             ForEach(model.sidebarSections) { section in
                 Section(section.title) {
-                    ForEach(section.rows, id: \.self) { row in
-                        Text(row)
+                    ForEach(section.rows) { row in
+                        Button {
+                            select(row)
+                        } label: {
+                            Label(row.title, systemImage: iconName(for: row.target))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!row.isSelectable)
                     }
                 }
             }
         }
         .navigationTitle("Teststrip")
+    }
+
+    private func select(_ row: SidebarRow) {
+        do {
+            try model.selectSidebarRow(row)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func iconName(for target: SidebarRowTarget) -> String {
+        switch target {
+        case .allPhotographs:
+            return "photo.on.rectangle"
+        case .assetSet:
+            return "rectangle.stack"
+        case .placeholder:
+            return "circle"
+        }
     }
 }

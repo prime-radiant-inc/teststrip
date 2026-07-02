@@ -55,12 +55,46 @@ public enum CullingShortcutKey: Equatable, Sendable {
     case character(String)
 }
 
+public enum SidebarRowTarget: Equatable, Sendable {
+    case allPhotographs
+    case placeholder
+    case assetSet(AssetSetID)
+}
+
+public struct SidebarRow: Identifiable, Equatable, Sendable {
+    public var id: String
+    public var title: String
+    public var target: SidebarRowTarget
+
+    public init(id: String, title: String, target: SidebarRowTarget = .placeholder) {
+        self.id = id
+        self.title = title
+        self.target = target
+    }
+
+    public var isSelectable: Bool {
+        target != .placeholder
+    }
+}
+
 public struct SidebarSection: Identifiable, Equatable {
     public var id: String { title }
     public var title: String
-    public var rows: [String]
+    public var rows: [SidebarRow]
+
+    public var rowTitles: [String] {
+        rows.map(\.title)
+    }
 
     public init(title: String, rows: [String]) {
+        self.title = title
+        let sectionTitle = title
+        self.rows = rows.enumerated().map { index, title in
+            SidebarRow(id: "\(sectionTitle)-\(index)-\(title)", title: title)
+        }
+    }
+
+    public init(title: String, rows: [SidebarRow]) {
         self.title = title
         self.rows = rows
     }
@@ -153,6 +187,8 @@ public final class AppModel {
     public var librarySearchText: String
     public var minimumRatingFilter: Int?
     public var flagFilter: PickFlag?
+    public var savedAssetSets: [AssetSet]
+    public var selectedAssetSetID: AssetSetID?
 
     @ObservationIgnored
     private var catalog: AppCatalog?
@@ -226,6 +262,10 @@ public final class AppModel {
         backgroundWorkQueue.items.contains { [.queued, .running, .paused].contains($0.status) }
     }
 
+    public var starredAssetSets: [AssetSet] {
+        savedAssetSets.filter(\.starred)
+    }
+
     public init(
         sidebarSections: [SidebarSection],
         selectedView: LibraryViewMode,
@@ -239,10 +279,12 @@ public final class AppModel {
         pendingMetadataSyncItems: [MetadataSyncItem] = [],
         metadataSyncConflictItems: [MetadataSyncItem] = [],
         backgroundWorkQueue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
+        savedAssetSets: [AssetSet] = [],
+        selectedAssetSetID: AssetSetID? = nil,
         workerSupervisor: WorkerSupervisor? = nil,
         importTaskFactory: AppImportTaskFactory? = nil
     ) {
-        self.sidebarSections = sidebarSections
+        self.sidebarSections = sidebarSections.isEmpty ? Self.defaultSidebarSections(savedAssetSets: savedAssetSets) : sidebarSections
         self.selectedView = selectedView
         self.assets = assets
         self.totalAssetCount = totalAssetCount ?? assets.count
@@ -257,6 +299,8 @@ public final class AppModel {
         self.librarySearchText = ""
         self.minimumRatingFilter = nil
         self.flagFilter = nil
+        self.savedAssetSets = savedAssetSets
+        self.selectedAssetSetID = selectedAssetSetID
         self.catalog = catalog
         self.workerSupervisor = workerSupervisor
         self.importTaskFactory = importTaskFactory ?? Self.defaultImportTask
@@ -287,11 +331,13 @@ public final class AppModel {
 
     public static func load(repository: CatalogRepository) throws -> AppModel {
         let assets = try repository.allAssets(limit: Self.assetPageSize)
+        let savedAssetSets = try repository.assetSets()
         return AppModel(
-            sidebarSections: defaultSidebarSections(),
+            sidebarSections: defaultSidebarSections(savedAssetSets: savedAssetSets),
             selectedView: .grid,
             assets: assets,
-            totalAssetCount: try repository.assetCount()
+            totalAssetCount: try repository.assetCount(),
+            savedAssetSets: savedAssetSets
         )
     }
 
@@ -301,14 +347,16 @@ public final class AppModel {
         workerSupervisor: WorkerSupervisor? = nil
     ) throws -> AppModel {
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
+        let savedAssetSets = try catalog.repository.assetSets()
         return AppModel(
-            sidebarSections: defaultSidebarSections(),
+            sidebarSections: defaultSidebarSections(savedAssetSets: savedAssetSets),
             selectedView: .grid,
             assets: assets,
             totalAssetCount: try catalog.repository.assetCount(),
             catalog: catalog,
             pendingMetadataSyncItems: try catalog.repository.pendingMetadataSyncItems(),
             metadataSyncConflictItems: try catalog.repository.metadataSyncConflictItems(),
+            savedAssetSets: savedAssetSets,
             workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory
         )
@@ -316,6 +364,43 @@ public final class AppModel {
 
     public func select(_ assetID: AssetID) {
         selectedAssetID = assetID
+    }
+
+    public func selectSidebarRow(_ row: SidebarRow) throws {
+        switch row.target {
+        case .allPhotographs:
+            selectedAssetSetID = nil
+            try clearLibraryFilters()
+        case .assetSet(let id):
+            try applyAssetSet(id: id)
+        case .placeholder:
+            break
+        }
+    }
+
+    public func applyAssetSet(id: AssetSetID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let assetSet = try assetSetForSelection(id: id, repository: catalog.repository)
+        if !savedAssetSets.contains(where: { $0.id == assetSet.id }) {
+            savedAssetSets.append(assetSet)
+            rebuildSidebarSections()
+        }
+        selectedAssetSetID = id
+        librarySearchText = ""
+        minimumRatingFilter = nil
+        flagFilter = nil
+        selectedView = .grid
+        try reload()
+    }
+
+    public func refreshSavedAssetSets() throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        savedAssetSets = try catalog.repository.assetSets()
+        rebuildSidebarSections()
     }
 
     public func openAssetInLoupe(_ assetID: AssetID) {
@@ -615,6 +700,12 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
+        if let explicitAssetIDs = selectedExplicitAssetIDs {
+            let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, limit: Self.assetPageSize)
+            replaceAssets(loadedAssets, pageOffset: 0)
+            totalAssetCount = try catalog.repository.assetCount(ids: explicitAssetIDs)
+            return
+        }
         let loadedAssets: [Asset]
         let count: Int
         if let query = currentLibraryQuery() {
@@ -635,7 +726,9 @@ public final class AppModel {
         guard hasMoreAssets else { return }
         let offset = assetPageOffset + assets.count
         let loadedAssets: [Asset]
-        if let query = currentLibraryQuery() {
+        if let explicitAssetIDs = selectedExplicitAssetIDs {
+            loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, limit: Self.assetPageSize, offset: offset)
+        } else if let query = currentLibraryQuery() {
             loadedAssets = try catalog.repository.allAssets(matching: query, limit: Self.assetPageSize, offset: offset)
         } else {
             loadedAssets = try catalog.repository.allAssets(limit: Self.assetPageSize, offset: offset)
@@ -654,7 +747,13 @@ public final class AppModel {
         guard hasPreviousAssets else { return }
         let previousOffset = max(0, assetPageOffset - Self.assetPageSize)
         let filteredPreviousAssets: [Asset]
-        if let query = currentLibraryQuery() {
+        if let explicitAssetIDs = selectedExplicitAssetIDs {
+            filteredPreviousAssets = try catalog.repository.assets(
+                ids: explicitAssetIDs,
+                limit: assetPageOffset - previousOffset,
+                offset: previousOffset
+            )
+        } else if let query = currentLibraryQuery() {
             filteredPreviousAssets = try catalog.repository.allAssets(
                 matching: query,
                 limit: assetPageOffset - previousOffset,
@@ -679,6 +778,7 @@ public final class AppModel {
     }
 
     public func clearLibraryFilters() throws {
+        selectedAssetSetID = nil
         librarySearchText = ""
         minimumRatingFilter = nil
         flagFilter = nil
@@ -734,6 +834,9 @@ public final class AppModel {
 
     private func currentLibraryQuery() -> SetQuery? {
         var predicates: [SetQuery.Predicate] = []
+        if let selectedDynamicSetQuery {
+            predicates.append(contentsOf: selectedDynamicSetQuery.predicates)
+        }
         let trimmedSearch = librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedSearch.isEmpty {
             predicates.append(.text(trimmedSearch))
@@ -748,10 +851,47 @@ public final class AppModel {
     }
 
     private func currentLibraryAssetCount(repository: CatalogRepository) throws -> Int {
+        if let explicitAssetIDs = selectedExplicitAssetIDs {
+            return try repository.assetCount(ids: explicitAssetIDs)
+        }
         if let query = currentLibraryQuery() {
             return try repository.assetCount(matching: query)
         }
         return try repository.assetCount()
+    }
+
+    private var selectedAssetSet: AssetSet? {
+        guard let selectedAssetSetID else { return nil }
+        return savedAssetSets.first { $0.id == selectedAssetSetID }
+    }
+
+    private var selectedDynamicSetQuery: SetQuery? {
+        guard let selectedAssetSet else { return nil }
+        if case .dynamic(let query) = selectedAssetSet.membership {
+            return query
+        }
+        return nil
+    }
+
+    private var selectedExplicitAssetIDs: [AssetID]? {
+        guard let selectedAssetSet else { return nil }
+        switch selectedAssetSet.membership {
+        case .manual(let ids), .snapshot(let ids):
+            return ids
+        case .dynamic:
+            return nil
+        }
+    }
+
+    private func assetSetForSelection(id: AssetSetID, repository: CatalogRepository) throws -> AssetSet {
+        if let assetSet = savedAssetSets.first(where: { $0.id == id }) {
+            return assetSet
+        }
+        return try repository.assetSet(id: id)
+    }
+
+    private func rebuildSidebarSections() {
+        sidebarSections = Self.defaultSidebarSections(savedAssetSets: savedAssetSets)
     }
 
     @discardableResult
@@ -1021,11 +1161,31 @@ public final class AppModel {
         return nil
     }
 
-    private static func defaultSidebarSections() -> [SidebarSection] {
-        [
-            SidebarSection(title: "Library", rows: ["All Photographs", "Folders", "People"]),
-            SidebarSection(title: "Work", rows: ["Recent", "Starred"])
+    private static func defaultSidebarSections(savedAssetSets: [AssetSet] = []) -> [SidebarSection] {
+        var sections = [
+            SidebarSection(title: "Library", rows: [
+                SidebarRow(id: "library-all", title: "All Photographs", target: .allPhotographs),
+                SidebarRow(id: "library-folders", title: "Folders"),
+                SidebarRow(id: "library-people", title: "People")
+            ])
         ]
+        let starredRows = savedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0) }
+        if !starredRows.isEmpty {
+            sections.append(SidebarSection(title: "Starred", rows: starredRows))
+        }
+        if !savedAssetSets.isEmpty {
+            sections.append(SidebarSection(title: "Saved Sets", rows: savedAssetSets.map { Self.sidebarRow(for: $0) }))
+        }
+        sections.append(SidebarSection(title: "Work", rows: ["Recent", "Starred"]))
+        return sections
+    }
+
+    private static func sidebarRow(for assetSet: AssetSet) -> SidebarRow {
+        SidebarRow(
+            id: "asset-set-\(assetSet.id.rawValue)",
+            title: assetSet.name,
+            target: .assetSet(assetSet.id)
+        )
     }
 }
 

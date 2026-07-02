@@ -16,7 +16,7 @@ final class AppModelTests: XCTestCase {
         let section = SidebarSection(title: "Library", rows: ["All Photographs"])
 
         XCTAssertEqual(section.title, "Library")
-        XCTAssertEqual(section.rows, ["All Photographs"])
+        XCTAssertEqual(section.rowTitles, ["All Photographs"])
     }
 
     func testSelectingAssetUpdatesInspector() {
@@ -567,6 +567,99 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.libraryCountText, "1 photograph")
     }
 
+    func testLoadExposesSavedAndStarredAssetSetsInSidebar() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-saved-sets")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let starred = AssetSet(
+            id: AssetSetID(rawValue: "starred"),
+            name: "Portfolio Shortlist",
+            membership: .dynamic(SetQuery(predicates: [.ratingAtLeast(5)])),
+            starred: true
+        )
+        let saved = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "saved"),
+            name: "Ceremony Picks",
+            query: SetQuery(predicates: [.text("ceremony"), .flag(.pick)])
+        )
+        try repository.upsert(starred)
+        try repository.upsert(saved)
+
+        let model = try AppModel.load(repository: repository)
+
+        XCTAssertEqual(model.savedAssetSets.map(\.id), [starred.id, saved.id])
+        XCTAssertEqual(model.starredAssetSets.map(\.id), [starred.id])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, [starred.name])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, [starred.name, saved.name])
+    }
+
+    func testApplyingDynamicSavedSetLoadsMatchingCatalogAssets() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-dynamic-set")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let keeper = makeAsset(id: "keeper", path: "/Photos/Wedding/ceremony-keeper.jpg", rating: 5, flag: .pick)
+        let reject = makeAsset(id: "reject", path: "/Photos/Wedding/ceremony-blink.jpg", rating: 1, flag: .reject)
+        try repository.upsert([keeper, reject])
+        let set = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "ceremony-picks"),
+            name: "Ceremony Picks",
+            query: SetQuery(predicates: [.text("ceremony"), .ratingAtLeast(4), .flag(.pick)])
+        )
+        try repository.upsert(set)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        try model.applyAssetSet(id: set.id)
+
+        XCTAssertEqual(model.selectedAssetSetID, set.id)
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+        XCTAssertEqual(model.selectedView, .grid)
+    }
+
+    func testApplyingSnapshotSavedSetLoadsCatalogAssetsInSavedOrder() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-snapshot-set")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let first = makeAsset(id: "first", path: "/Photos/first.jpg", rating: 1)
+        let second = makeAsset(id: "second", path: "/Photos/second.jpg", rating: 2)
+        let third = makeAsset(id: "third", path: "/Photos/third.jpg", rating: 3)
+        try repository.upsert([first, second, third])
+        let set = AssetSet(
+            id: AssetSetID(rawValue: "portfolio"),
+            name: "Portfolio",
+            membership: .snapshot([third.id, first.id])
+        )
+        try repository.upsert(set)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        try model.applyAssetSet(id: set.id)
+
+        XCTAssertEqual(model.selectedAssetSetID, set.id)
+        XCTAssertEqual(model.assets.map(\.id), [third.id, first.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
+    }
+
     func testLoadingEmptyRepositoryLeavesSelectionEmpty() throws {
         let directory = try makeTemporaryDirectory(named: "empty-app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -976,6 +1069,22 @@ final class AppModelTests: XCTestCase {
             fingerprint: FileFingerprint(size: size, modificationDate: Date(timeIntervalSince1970: TimeInterval(size))),
             availability: .online,
             metadata: AssetMetadata()
+        )
+    }
+
+    private func makeAsset(
+        id: String,
+        path: String,
+        rating: Int,
+        flag: PickFlag? = nil
+    ) -> Asset {
+        Asset(
+            id: AssetID(rawValue: id),
+            originalURL: URL(fileURLWithPath: path),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: Int64(rating + 1), modificationDate: Date(timeIntervalSince1970: TimeInterval(rating + 1))),
+            availability: .online,
+            metadata: AssetMetadata(rating: rating, flag: flag)
         )
     }
 

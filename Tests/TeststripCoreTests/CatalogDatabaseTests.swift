@@ -193,6 +193,27 @@ final class CatalogDatabaseTests: XCTestCase {
         )
     }
 
+    func testFetchesAssetsForExplicitSetMembershipInSavedOrder() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-set-assets")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let first = Asset.testAsset(id: AssetID(rawValue: "first"), path: "/Volumes/NAS/Job/first.cr2", rating: 1)
+        let second = Asset.testAsset(id: AssetID(rawValue: "second"), path: "/Volumes/NAS/Job/second.cr2", rating: 2)
+        let third = Asset.testAsset(id: AssetID(rawValue: "third"), path: "/Volumes/NAS/Job/third.cr2", rating: 3)
+        try repository.upsert([first, second, third])
+
+        let assets = try repository.assets(ids: [
+            second.id,
+            AssetID(rawValue: "missing"),
+            first.id,
+            third.id
+        ], limit: 2)
+
+        XCTAssertEqual(assets.map(\.id), [second.id, first.id])
+        XCTAssertEqual(try repository.assetCount(ids: [second.id, AssetID(rawValue: "missing"), first.id]), 2)
+    }
+
     func testFetchesAllAssetsInInsertionOrderWhenCreatedAtTies() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

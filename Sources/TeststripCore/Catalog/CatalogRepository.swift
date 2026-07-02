@@ -81,6 +81,51 @@ public final class CatalogRepository {
         return try rows.map(decodeAsset)
     }
 
+    public func assets(ids: [AssetID], limit: Int, offset: Int = 0) throws -> [Asset] {
+        guard limit > 0 else { return [] }
+        var skippedAssetCount = 0
+        var loadedAssets: [Asset] = []
+        for chunk in Self.chunks(ids, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try database.rows(
+                "SELECT * FROM assets WHERE id IN (\(placeholders))",
+                bindings: chunk.map(\.rawValue)
+            )
+            var assetsByID: [AssetID: Asset] = [:]
+            for asset in try rows.map(decodeAsset) {
+                assetsByID[asset.id] = asset
+            }
+            for id in chunk {
+                guard let asset = assetsByID[id] else { continue }
+                if skippedAssetCount < offset {
+                    skippedAssetCount += 1
+                    continue
+                }
+                loadedAssets.append(asset)
+                if loadedAssets.count == limit {
+                    return loadedAssets
+                }
+            }
+        }
+        return loadedAssets
+    }
+
+    public func assetCount(ids: [AssetID]) throws -> Int {
+        var count = 0
+        for chunk in Self.chunks(ids, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try database.rows(
+                "SELECT COUNT(*) AS count FROM assets WHERE id IN (\(placeholders))",
+                bindings: chunk.map(\.rawValue)
+            )
+            guard let countString = rows.first?["count"], let chunkCount = Int(countString) else {
+                throw CatalogError.sqlite("asset ID count query returned no count")
+            }
+            count += chunkCount
+        }
+        return count
+    }
+
     public func assetOffset(id: AssetID) throws -> Int {
         let rowIDRows = try database.rows("SELECT rowid FROM assets WHERE id = ?", bindings: [id.rawValue])
         guard let rowID = rowIDRows.first?["rowid"] else {
@@ -341,6 +386,12 @@ public final class CatalogRepository {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "%", with: "\\%")
             .replacingOccurrences(of: "_", with: "\\_")
+    }
+
+    private static func chunks<T>(_ values: [T], size: Int) -> [[T]] {
+        stride(from: 0, to: values.count, by: size).map { start in
+            Array(values[start..<Swift.min(start + size, values.count)])
+        }
     }
 
     private func upsertMetadataSyncState(_ item: MetadataSyncItem, status: String) throws {
