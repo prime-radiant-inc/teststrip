@@ -9,10 +9,8 @@ struct ActivityView: View {
             Text("Activity")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            if let activeWork = model.activeWork {
-                activityRow(activeWork)
-            } else if let recentWork = model.recentWork.first {
-                activityRow(recentWork)
+            if let activity = model.visibleWorkActivity {
+                activityRow(activity)
             } else {
                 Text("No active work")
                     .font(.caption)
@@ -36,7 +34,7 @@ struct ActivityView: View {
                 Text(label(for: activity.status))
                     .font(.caption2)
                     .foregroundStyle(color(for: activity.status))
-                if activity.status == .running {
+                if model.activeWork?.id == activity.id && activity.status == .running {
                     Button {
                         model.cancelActiveWork()
                     } label: {
@@ -44,6 +42,34 @@ struct ActivityView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Cancel work")
+                } else {
+                    if model.canPauseBackgroundWork {
+                        Button {
+                            model.pauseBackgroundWork()
+                        } label: {
+                            Image(systemName: "pause.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .help("Pause background work")
+                    }
+                    if model.canResumeBackgroundWork {
+                        Button {
+                            model.resumeBackgroundWork()
+                        } label: {
+                            Image(systemName: "play.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .help("Resume background work")
+                    }
+                    if model.canCancelBackgroundWork {
+                        Button {
+                            model.cancelBackgroundWork()
+                        } label: {
+                            Image(systemName: "xmark.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .help("Cancel background work")
+                    }
                 }
             }
             Text(activity.detail)

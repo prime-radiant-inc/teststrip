@@ -260,6 +260,49 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(CullingShortcut(key: .character("a")))
     }
 
+    func testBackgroundWorkQueueIsVisibleAndBounded() {
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: [],
+            backgroundWorkQueue: BackgroundWorkQueue(maxRunningCount: 1)
+        )
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let second = BackgroundWorkItem.testItem(id: "second")
+
+        model.enqueueBackgroundWork(first)
+        model.enqueueBackgroundWork(second)
+
+        XCTAssertEqual(model.backgroundWorkQueue.runningItems.map(\.id), [first.id])
+        XCTAssertEqual(model.backgroundWorkQueue.queuedItems.map(\.id), [second.id])
+        XCTAssertEqual(model.visibleWorkActivity?.id, first.id.rawValue)
+        XCTAssertEqual(model.visibleWorkActivity?.title, "Generate previews")
+        XCTAssertEqual(model.visibleWorkActivity?.status, .running)
+        XCTAssertTrue(model.canPauseBackgroundWork)
+    }
+
+    func testBackgroundWorkCanPauseResumeAndCancel() {
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: [],
+            backgroundWorkQueue: BackgroundWorkQueue(maxRunningCount: 1)
+        )
+        let item = BackgroundWorkItem.testItem(id: "pause-target")
+        model.enqueueBackgroundWork(item)
+
+        model.pauseBackgroundWork()
+        XCTAssertEqual(model.visibleWorkActivity?.status, .paused)
+        XCTAssertTrue(model.canResumeBackgroundWork)
+
+        model.resumeBackgroundWork()
+        XCTAssertEqual(model.visibleWorkActivity?.status, .running)
+
+        model.cancelBackgroundWork()
+        XCTAssertEqual(model.visibleWorkActivity?.status, .cancelled)
+        XCTAssertFalse(model.canPauseBackgroundWork)
+    }
+
     func testUndoMetadataChangeRestoresLoadedAssetAndCatalog() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "undo-rating")
 
@@ -606,5 +649,18 @@ final class AppModelTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTFail("timed out waiting for activity status \(status.rawValue)")
+    }
+}
+
+private extension BackgroundWorkItem {
+    static func testItem(id: String) -> BackgroundWorkItem {
+        BackgroundWorkItem(
+            id: WorkSessionID(rawValue: id),
+            kind: .previewGeneration,
+            title: "Generate previews",
+            detail: "Rendering cached previews",
+            completedUnitCount: 0,
+            totalUnitCount: 10
+        )
     }
 }

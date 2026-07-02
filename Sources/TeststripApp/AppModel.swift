@@ -67,7 +67,7 @@ public struct SidebarSection: Identifiable, Equatable {
 }
 
 public struct AppWorkActivity: Identifiable, Equatable, Sendable {
-    public var id: UUID
+    public var id: String
     public var kind: WorkSessionKind
     public var status: WorkSessionStatus
     public var title: String
@@ -77,7 +77,7 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
     public var failureCount: Int
 
     public init(
-        id: UUID = UUID(),
+        id: String = UUID().uuidString,
         kind: WorkSessionKind,
         status: WorkSessionStatus,
         title: String,
@@ -94,6 +94,19 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
         self.completedUnitCount = completedUnitCount
         self.totalUnitCount = totalUnitCount
         self.failureCount = failureCount
+    }
+
+    public init(workItem: BackgroundWorkItem) {
+        self.init(
+            id: workItem.id.rawValue,
+            kind: workItem.kind,
+            status: workItem.status,
+            title: workItem.title,
+            detail: workItem.detail,
+            completedUnitCount: workItem.completedUnitCount,
+            totalUnitCount: workItem.totalUnitCount,
+            failureCount: 0
+        )
     }
 }
 
@@ -129,6 +142,7 @@ public final class AppModel {
     public var activeWork: AppWorkActivity?
     public var recentWork: [AppWorkActivity]
     public var pendingMetadataSyncItems: [MetadataSyncItem]
+    public var backgroundWorkQueue: BackgroundWorkQueue
 
     @ObservationIgnored
     private var catalog: AppCatalog?
@@ -167,6 +181,28 @@ public final class AppModel {
         !metadataRedoStack.isEmpty
     }
 
+    public var visibleWorkActivity: AppWorkActivity? {
+        if let activeWork {
+            return activeWork
+        }
+        if let backgroundItem = visibleBackgroundWorkItem {
+            return AppWorkActivity(workItem: backgroundItem)
+        }
+        return recentWork.first
+    }
+
+    public var canPauseBackgroundWork: Bool {
+        !backgroundWorkQueue.runningItems.isEmpty
+    }
+
+    public var canResumeBackgroundWork: Bool {
+        backgroundWorkQueue.isPaused
+    }
+
+    public var canCancelBackgroundWork: Bool {
+        backgroundWorkQueue.items.contains { [.queued, .running, .paused].contains($0.status) }
+    }
+
     public init(
         sidebarSections: [SidebarSection],
         selectedView: LibraryViewMode,
@@ -178,6 +214,7 @@ public final class AppModel {
         activeWork: AppWorkActivity? = nil,
         recentWork: [AppWorkActivity] = [],
         pendingMetadataSyncItems: [MetadataSyncItem] = [],
+        backgroundWorkQueue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
         importTaskFactory: AppImportTaskFactory? = nil
     ) {
         self.sidebarSections = sidebarSections
@@ -190,6 +227,7 @@ public final class AppModel {
         self.activeWork = activeWork
         self.recentWork = recentWork
         self.pendingMetadataSyncItems = pendingMetadataSyncItems
+        self.backgroundWorkQueue = backgroundWorkQueue
         self.catalog = catalog
         self.importTaskFactory = importTaskFactory ?? Self.defaultImportTask
         self.metadataUndoStack = []
@@ -397,6 +435,30 @@ public final class AppModel {
         pendingMetadataSyncItems.append(item)
     }
 
+    public func enqueueBackgroundWork(_ item: BackgroundWorkItem) {
+        backgroundWorkQueue.enqueue(item)
+        backgroundWorkQueue.activateRunnableItems()
+    }
+
+    public func pauseBackgroundWork() {
+        backgroundWorkQueue.pause()
+    }
+
+    public func resumeBackgroundWork() {
+        backgroundWorkQueue.resume()
+    }
+
+    public func cancelBackgroundWork() {
+        backgroundWorkQueue.cancelAll()
+    }
+
+    private var visibleBackgroundWorkItem: BackgroundWorkItem? {
+        backgroundWorkQueue.runningItems.first ??
+            backgroundWorkQueue.items.first { $0.status == .paused } ??
+            backgroundWorkQueue.queuedItems.first ??
+            backgroundWorkQueue.items.last { [.cancelled, .failed, .completed].contains($0.status) }
+    }
+
     public func reload() throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
@@ -566,7 +628,7 @@ public final class AppModel {
     private func completeImportActivity(folderURL: URL, result: LibraryImportResult) {
         let photoLabel = result.importedAssets.count == 1 ? "photo" : "photos"
         let activity = AppWorkActivity(
-            id: activeWork?.id ?? UUID(),
+            id: activeWork?.id ?? UUID().uuidString,
             kind: .ingest,
             status: .completed,
             title: "Import photos",
@@ -581,7 +643,7 @@ public final class AppModel {
 
     private func failImportActivity(folderURL: URL, error: Error) {
         let activity = AppWorkActivity(
-            id: activeWork?.id ?? UUID(),
+            id: activeWork?.id ?? UUID().uuidString,
             kind: .ingest,
             status: .failed,
             title: "Import photos",
@@ -596,7 +658,7 @@ public final class AppModel {
 
     private func cancelImportActivity(folderURL: URL) {
         let activity = AppWorkActivity(
-            id: activeWork?.id ?? UUID(),
+            id: activeWork?.id ?? UUID().uuidString,
             kind: .ingest,
             status: .cancelled,
             title: "Import photos",
