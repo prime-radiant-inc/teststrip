@@ -24,6 +24,7 @@ struct TeststripApplication: App {
                 InspectorView(model: model)
             }
             .frame(minWidth: 1100, minHeight: 720)
+            .preferredColorScheme(.dark)
         }
         .commands {
             MetadataHistoryCommands(model: model)
