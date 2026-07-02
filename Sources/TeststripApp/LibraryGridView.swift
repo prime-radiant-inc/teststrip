@@ -439,10 +439,8 @@ private struct LoupeView: View {
 
     @ViewBuilder
     private func loupeContent(for asset: Asset) -> some View {
-        if let previewURL = model.loupePreviewURL(for: asset.id), let image = NSImage(contentsOf: previewURL) {
-            Image(nsImage: image)
-                .resizable()
-                .scaledToFit()
+        if let previewURL = model.loupePreviewURL(for: asset.id) {
+            CachedPreviewImage(previewURL: previewURL, scaling: .fit)
                 .padding(16)
                 .overlay(alignment: .bottomLeading) {
                     loupeOverlay(for: asset)
@@ -569,14 +567,7 @@ private struct AssetGridCell: View {
 
     @ViewBuilder
     private var thumbnail: some View {
-        if let previewURL, let image = NSImage(contentsOf: previewURL) {
-            Image(nsImage: image)
-                .resizable()
-                .scaledToFill()
-        } else {
-            RoundedRectangle(cornerRadius: 5)
-                .fill(Color.gray.opacity(0.35))
-        }
+        CachedPreviewImage(previewURL: previewURL, scaling: .fill)
     }
 
     private var metadataOverlay: some View {
