@@ -698,7 +698,7 @@ private struct CompareView: View {
     }
 
     private var comparePreviewTaskID: String {
-        model.compareAssets().map(\.id.rawValue).joined(separator: "\n")
+        ComparePreviewRequestID.make(for: model)
     }
 
     private func requestComparePreviews() {
@@ -707,6 +707,16 @@ private struct CompareView: View {
         } catch {
             model.errorMessage = error.localizedDescription
         }
+    }
+}
+
+enum ComparePreviewRequestID {
+    static func make(for model: AppModel) -> String {
+        [
+            model.compareAssets().map(\.id.rawValue).joined(separator: "\n"),
+            model.selectedAssetID?.rawValue ?? "",
+            model.selectedAssetID.map { String(model.previewCacheGeneration(for: $0)) } ?? "0"
+        ].joined(separator: "\n")
     }
 }
 

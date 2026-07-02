@@ -1,6 +1,6 @@
 import XCTest
 import TeststripCore
-import TeststripApp
+@testable import TeststripApp
 
 final class AppModelTests: XCTestCase {
     func testAppModelStartsWithStudioLayoutSections() {
@@ -123,6 +123,17 @@ final class AppModelTests: XCTestCase {
         model.select(assets[3].id)
 
         XCTAssertEqual(model.compareAssets().map(\.id), assets[2..<6].map(\.id))
+    }
+
+    func testComparePreviewRequestIDChangesWhenSelectionChangesInsideSameWindow() {
+        let assets = (0..<6).map { makeAsset(id: "asset-\($0)", size: Int64($0 + 1)) }
+        let model = AppModel(sidebarSections: [], selectedView: .compare, assets: assets)
+        let initialRequestID = ComparePreviewRequestID.make(for: model)
+
+        model.select(assets[1].id)
+
+        XCTAssertEqual(model.compareAssets().map(\.id), assets[0..<4].map(\.id))
+        XCTAssertNotEqual(ComparePreviewRequestID.make(for: model), initialRequestID)
     }
 
     func testLibraryCountTextShowsLoadedAndTotalWhenGridIsLimited() {
@@ -1688,6 +1699,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try transport.commands(), [
             .generatePreview(assetID: first.id, level: .large)
         ])
+    }
+
+    @MainActor
+    func testComparePreviewRequestIDChangesWhenSelectedPreviewGenerationChanges() async throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, previewCache, first, _) = try makeComparePreviewModel(
+            named: "compare-request-id-preview-generation",
+            workerSupervisor: supervisor
+        )
+        let initialRequestID = ComparePreviewRequestID.make(for: model)
+
+        try model.requestPreview(assetID: first.id, level: .medium)
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: first.id, level: .medium)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: WorkSessionID(rawValue: "preview-\(first.id.rawValue)-medium"),
+            message: "generated medium preview"
+        )))
+
+        try await waitForPreviewCacheGeneration(1, for: first.id, in: model)
+        XCTAssertNotEqual(ComparePreviewRequestID.make(for: model), initialRequestID)
     }
 
     func testVisibleGridPreviewRequestsGridPreviewWhenMissing() throws {
