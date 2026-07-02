@@ -73,15 +73,15 @@ enum FolderSelectionPanel {
     }
 
     static func rememberImportFolder(_ folderURL: URL, defaults: UserDefaults = .standard) {
-        rememberParent(of: folderURL, for: importFolderParentKey, defaults: defaults)
+        rememberDirectory(folderURL, for: importFolderParentKey, defaults: defaults)
     }
 
     static func rememberCardSourceFolder(_ folderURL: URL, defaults: UserDefaults = .standard) {
-        rememberParent(of: folderURL, for: cardSourceParentKey, defaults: defaults)
+        rememberDirectory(folderURL, for: cardSourceParentKey, defaults: defaults)
     }
 
     static func rememberCardDestinationFolder(_ folderURL: URL, defaults: UserDefaults = .standard) {
-        rememberParent(of: folderURL, for: cardDestinationParentKey, defaults: defaults)
+        rememberDirectory(folderURL, for: cardDestinationParentKey, defaults: defaults)
     }
 
     private static func configureDirectoryPanel(
@@ -101,8 +101,8 @@ enum FolderSelectionPanel {
         panel.directoryURL = startingDirectory
     }
 
-    private static func rememberParent(of folderURL: URL, for key: String, defaults: UserDefaults) {
-        defaults.set(folderURL.standardizedFileURL.deletingLastPathComponent().path, forKey: key)
+    private static func rememberDirectory(_ folderURL: URL, for key: String, defaults: UserDefaults) {
+        defaults.set(folderURL.standardizedFileURL.path, forKey: key)
     }
 
     private static func rememberedDirectory(for key: String, defaults: UserDefaults) -> URL? {
