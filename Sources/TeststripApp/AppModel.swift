@@ -1218,7 +1218,14 @@ public final class AppModel {
         backgroundWorkQueue.runningItems.first ??
             backgroundWorkQueue.items.first { $0.status == .paused } ??
             backgroundWorkQueue.queuedItems.first ??
-            backgroundWorkQueue.items.last { [.cancelled, .failed, .completed].contains($0.status) }
+            backgroundWorkQueue.items.last { isVisibleInactiveBackgroundWork($0) }
+    }
+
+    private func isVisibleInactiveBackgroundWork(_ item: BackgroundWorkItem) -> Bool {
+        guard [.cancelled, .failed, .completed].contains(item.status) else {
+            return false
+        }
+        return !(item.status == .completed && item.kind == .xmpSync && item.title == "Check XMP")
     }
 
     public func reload() throws {

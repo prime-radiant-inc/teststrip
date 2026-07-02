@@ -414,6 +414,32 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try transport.commands(), [.syncMetadata(assetID: second.id)])
     }
 
+    @MainActor
+    func testCompletedSelectionMetadataCheckDoesNotReplaceVisibleActivity() async throws {
+        let first = makeAsset(id: "completed-selection-xmp-first", size: 1)
+        let second = makeAsset(id: "completed-selection-xmp-second", size: 2)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "completed-selection-worker-xmp-check",
+            assets: [first, second],
+            workerSupervisor: supervisor
+        )
+
+        model.select(second.id)
+        let itemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: itemID,
+            message: "metadata up to date for second.jpg"
+        )))
+
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+        XCTAssertNil(model.visibleWorkActivity)
+    }
+
     func testLoadQueuesPendingMetadataSyncWhenSupervisorConfigured() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-pending-worker-xmp")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -2313,6 +2339,21 @@ final class AppModelTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTFail("timed out waiting for visible work status \(status.rawValue)")
+    }
+
+    @MainActor
+    private func waitForBackgroundWorkStatus(
+        _ status: WorkSessionStatus,
+        itemID: WorkSessionID,
+        in model: AppModel
+    ) async throws {
+        for _ in 0..<100 {
+            if model.backgroundWorkQueue.item(id: itemID)?.status == status {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTFail("timed out waiting for background work status \(status.rawValue)")
     }
 
     @MainActor
