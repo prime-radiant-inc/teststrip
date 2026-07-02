@@ -610,13 +610,21 @@ public final class AppModel {
         case .nextPhoto:
             selectNextAsset()
         case .rating(let rating):
-            try applyCullingCommand(.rating(rating))
+            try applyCullingCommandAndAdvance(.rating(rating))
         case .pick:
-            try applyCullingCommand(.pick)
+            try applyCullingCommandAndAdvance(.pick)
         case .reject:
-            try applyCullingCommand(.reject)
+            try applyCullingCommandAndAdvance(.reject)
         case .clearFlag:
-            try applyCullingCommand(.clearFlag)
+            try applyCullingCommandAndAdvance(.clearFlag)
+        }
+    }
+
+    private func applyCullingCommandAndAdvance(_ command: CullingCommand) throws {
+        let originalSelection = selectedAssetID
+        try applyCullingCommand(command)
+        if selectedAssetID == originalSelection {
+            selectNextAsset()
         }
     }
 

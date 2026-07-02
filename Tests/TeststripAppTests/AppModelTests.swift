@@ -399,6 +399,31 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .reject)
     }
 
+    func testCullingShortcutAdvancesAfterRatingSelectedAsset() throws {
+        let directory = try makeTemporaryDirectory(named: "culling-shortcut-advance")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try seedCatalogAssets(count: 2, repository: repository)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        let firstID = AssetID(rawValue: "asset-0")
+        let secondID = AssetID(rawValue: "asset-1")
+
+        try model.applyCullingShortcut(.rating(5))
+
+        XCTAssertEqual(try repository.asset(id: firstID).metadata.rating, 5)
+        XCTAssertEqual(model.selectedAssetID, secondID)
+    }
+
     func testCullingShortcutInterpretsKeyboardKeys() {
         XCTAssertEqual(CullingShortcut(key: .rightArrow), .nextPhoto)
         XCTAssertEqual(CullingShortcut(key: .leftArrow), .previousPhoto)
