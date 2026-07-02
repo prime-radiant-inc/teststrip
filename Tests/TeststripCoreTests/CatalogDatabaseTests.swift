@@ -51,6 +51,17 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(assets.map(\.id), [first.id, second.id])
     }
 
+    func testCountsAssetsWithoutLoadingRows() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(Asset.testAsset(path: "/Volumes/NAS/Job/a.cr2", rating: 2))
+        try repository.upsert(Asset.testAsset(path: "/Volumes/NAS/Job/b.cr2", rating: 5))
+
+        XCTAssertEqual(try repository.assetCount(), 2)
+    }
+
     func testFetchesAllAssetsInInsertionOrderWhenCreatedAtTies() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

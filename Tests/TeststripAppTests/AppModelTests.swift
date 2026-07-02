@@ -45,6 +45,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAsset?.id, second.id)
     }
 
+    func testLibraryCountTextShowsLoadedAndTotalWhenGridIsLimited() {
+        let asset = Asset(
+            id: AssetID(rawValue: "first"),
+            originalURL: URL(fileURLWithPath: "/Photos/first.jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [asset], totalAssetCount: 3)
+
+        XCTAssertEqual(model.libraryCountText, "Showing 1 of 3 photographs")
+    }
+
     func testRatingSelectedAssetUpdatesCatalogAndLoadedAsset() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-rating")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -126,6 +140,28 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAsset?.id, asset.id)
     }
 
+    func testLoadKeepsTotalAssetCountWhenGridIsLimited() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-count")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        for index in 0..<501 {
+            try repository.upsert(Asset(
+                id: AssetID(rawValue: "asset-\(index)"),
+                originalURL: URL(fileURLWithPath: "/Photos/\(index).jpg"),
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: Int64(index + 1), modificationDate: Date(timeIntervalSince1970: TimeInterval(index + 1))),
+                availability: .online,
+                metadata: AssetMetadata()
+            ))
+        }
+
+        let model = try AppModel.load(repository: repository)
+
+        XCTAssertEqual(model.assets.count, 500)
+        XCTAssertEqual(model.totalAssetCount, 501)
+    }
+
     func testLoadingEmptyRepositoryLeavesSelectionEmpty() throws {
         let directory = try makeTemporaryDirectory(named: "empty-app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -154,6 +190,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(result.importedAssets.count, 1)
         XCTAssertEqual(model.assets.map(\.originalURL), [image])
         XCTAssertEqual(model.selectedAssetID, result.importedAssets[0].id)
+        XCTAssertEqual(model.totalAssetCount, 1)
         let previewURL = try XCTUnwrap(model.gridPreviewURL(for: result.importedAssets[0].id))
         XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
         XCTAssertEqual(model.statusMessage, "Imported 1 photo")
@@ -176,6 +213,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(result.importedAssets.count, 1)
         XCTAssertEqual(model.assets.map(\.originalURL), [image])
         XCTAssertEqual(model.selectedAssetID, result.importedAssets[0].id)
+        XCTAssertEqual(model.totalAssetCount, 1)
         let previewURL = try XCTUnwrap(model.gridPreviewURL(for: result.importedAssets[0].id))
         XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
         XCTAssertEqual(model.statusMessage, "Imported 1 photo")
@@ -220,7 +258,8 @@ final class AppModelTests: XCTestCase {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
                         result: LibraryImportResult(importedAssets: [], previewFailures: []),
-                        assets: []
+                        assets: [],
+                        totalAssetCount: 0
                     )
                 }
             }

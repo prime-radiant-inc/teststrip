@@ -56,10 +56,12 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
 public struct AppImportOutput: Sendable {
     public var result: LibraryImportResult
     public var assets: [Asset]
+    public var totalAssetCount: Int
 
-    public init(result: LibraryImportResult, assets: [Asset]) {
+    public init(result: LibraryImportResult, assets: [Asset], totalAssetCount: Int) {
         self.result = result
         self.assets = assets
+        self.totalAssetCount = totalAssetCount
     }
 }
 
@@ -70,6 +72,7 @@ public final class AppModel {
     public var sidebarSections: [SidebarSection]
     public var selectedView: LibraryViewMode
     public var assets: [Asset]
+    public var totalAssetCount: Int
     public var selectedAssetID: AssetID?
     public var statusMessage: String?
     public var errorMessage: String?
@@ -89,10 +92,18 @@ public final class AppModel {
         assets.first { $0.id == selectedAssetID }
     }
 
+    public var libraryCountText: String {
+        if totalAssetCount > assets.count {
+            return "Showing \(assets.count) of \(totalAssetCount) photographs"
+        }
+        return "\(assets.count) \(assets.count == 1 ? "photograph" : "photographs")"
+    }
+
     public init(
         sidebarSections: [SidebarSection],
         selectedView: LibraryViewMode,
         assets: [Asset],
+        totalAssetCount: Int? = nil,
         catalog: AppCatalog? = nil,
         statusMessage: String? = nil,
         errorMessage: String? = nil,
@@ -103,6 +114,7 @@ public final class AppModel {
         self.sidebarSections = sidebarSections
         self.selectedView = selectedView
         self.assets = assets
+        self.totalAssetCount = totalAssetCount ?? assets.count
         self.selectedAssetID = assets.first?.id
         self.statusMessage = statusMessage
         self.errorMessage = errorMessage
@@ -129,18 +141,22 @@ public final class AppModel {
     }
 
     public static func load(repository: CatalogRepository) throws -> AppModel {
-        AppModel(
+        let assets = try repository.allAssets(limit: 500)
+        return AppModel(
             sidebarSections: defaultSidebarSections(),
             selectedView: .grid,
-            assets: try repository.allAssets(limit: 500)
+            assets: assets,
+            totalAssetCount: try repository.assetCount()
         )
     }
 
     public static func load(catalog: AppCatalog, importTaskFactory: AppImportTaskFactory? = nil) throws -> AppModel {
-        AppModel(
+        let assets = try catalog.repository.allAssets(limit: 500)
+        return AppModel(
             sidebarSections: defaultSidebarSections(),
             selectedView: .grid,
-            assets: try catalog.repository.allAssets(limit: 500),
+            assets: assets,
+            totalAssetCount: try catalog.repository.assetCount(),
             catalog: catalog,
             importTaskFactory: importTaskFactory
         )
@@ -190,7 +206,10 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        replaceAssets(try catalog.repository.allAssets(limit: 500))
+        let loadedAssets = try catalog.repository.allAssets(limit: 500)
+        let count = try catalog.repository.assetCount()
+        replaceAssets(loadedAssets)
+        totalAssetCount = count
     }
 
     private func replaceAssets(_ loadedAssets: [Asset]) {
@@ -236,6 +255,7 @@ public final class AppModel {
         do {
             let output = try await importTaskFactory(paths, folderURL).value
             replaceAssets(output.assets)
+            totalAssetCount = output.totalAssetCount
             updateImportStatus(with: output.result)
             completeImportActivity(folderURL: folderURL, result: output.result)
             return output.result
@@ -273,6 +293,7 @@ public final class AppModel {
                 let output = try await task.value
                 guard let self, self.activeWork?.id == activityID else { return }
                 self.replaceAssets(output.assets)
+                self.totalAssetCount = output.totalAssetCount
                 self.updateImportStatus(with: output.result)
                 self.completeImportActivity(folderURL: folderURL, result: output.result)
                 self.activeImportTask = nil
@@ -371,7 +392,8 @@ public final class AppModel {
             let result = try backgroundCatalog.importService.addFolderInPlace(folderURL, repository: backgroundCatalog.repository)
             try Task.checkCancellation()
             let assets = try backgroundCatalog.repository.allAssets(limit: 500)
-            return AppImportOutput(result: result, assets: assets)
+            let count = try backgroundCatalog.repository.assetCount()
+            return AppImportOutput(result: result, assets: assets, totalAssetCount: count)
         }
     }
 

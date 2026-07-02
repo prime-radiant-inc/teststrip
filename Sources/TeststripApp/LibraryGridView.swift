@@ -78,7 +78,7 @@ struct LibraryGridView: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            Text("\(model.assets.count) photographs")
+            Text(model.libraryCountText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if isImporting {

@@ -63,6 +63,14 @@ public final class CatalogRepository {
         return try rows.map(decodeAsset)
     }
 
+    public func assetCount() throws -> Int {
+        let rows = try database.rows("SELECT COUNT(*) AS count FROM assets")
+        guard let countString = rows.first?["count"], let count = Int(countString) else {
+            throw CatalogError.sqlite("asset count query returned no count")
+        }
+        return count
+    }
+
     public func updateMetadata(assetID: AssetID, _ update: (inout AssetMetadata) throws -> Void) throws {
         var asset = try asset(id: assetID)
         try update(&asset.metadata)
