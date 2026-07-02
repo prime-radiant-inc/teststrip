@@ -436,6 +436,7 @@ public final class AppModel {
             importTaskFactory: importTaskFactory
         )
         try model.enqueuePendingPreviewGeneration()
+        try model.enqueuePendingMetadataSync()
         return model
     }
 
@@ -812,6 +813,26 @@ public final class AppModel {
                 continue
             }
             try requestPreview(assetID: item.assetID, level: item.level)
+        }
+    }
+
+    private func enqueuePendingMetadataSync() throws {
+        guard let catalog, let workerSupervisor else { return }
+        for pendingItem in try catalog.repository.pendingMetadataSyncItems() {
+            let itemID = WorkSessionID(rawValue: "xmp-\(pendingItem.assetID.rawValue)-\(pendingItem.catalogGeneration)")
+            if backgroundWorkQueue.item(id: itemID) != nil {
+                continue
+            }
+            let item = BackgroundWorkItem(
+                id: itemID,
+                kind: .xmpSync,
+                title: "Sync XMP",
+                detail: "Writing XMP sidecar",
+                completedUnitCount: 0,
+                totalUnitCount: 1
+            )
+            try workerSupervisor.enqueue(item, command: .syncMetadata(assetID: pendingItem.assetID))
+            syncBackgroundWorkQueueFromSupervisor()
         }
     }
 

@@ -70,6 +70,61 @@ final class FolderImportTests: XCTestCase {
         XCTAssertEqual(fetched.availability, .online)
     }
 
+    func testIngestServiceImportsAdjacentSidecarMetadata() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "ingest-sidecar")
+        let image = root.appendingPathComponent("one.jpg")
+        try Data("jpg".utf8).write(to: image)
+        let sidecarMetadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["keeper"])
+        let sidecarData = try XMPPacket(metadata: sidecarMetadata).xmlData()
+        try sidecarData.write(to: image.appendingPathExtension("xmp"))
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["jpg"]))
+
+        let imported = try service.ingest(plan: IngestPlanner.addFolder(root), repository: repository)
+
+        XCTAssertEqual(imported.count, 1)
+        let fetched = try repository.asset(id: imported[0].id)
+        XCTAssertEqual(fetched.metadata, sidecarMetadata)
+        XCTAssertEqual(
+            try repository.lastMetadataSyncFingerprint(assetID: fetched.id),
+            XMPSidecarStore.fingerprint(for: sidecarData)
+        )
+        XCTAssertEqual(try repository.pendingMetadataSyncItems(), [])
+    }
+
+    func testReingestingWithLocalAndSidecarMetadataChangesRecordsConflict() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "ingest-sidecar-conflict")
+        let image = root.appendingPathComponent("one.jpg")
+        try Data("jpg".utf8).write(to: image)
+        let sidecarURL = image.appendingPathExtension("xmp")
+        try XMPPacket(metadata: AssetMetadata(rating: 2)).xmlData().write(to: sidecarURL)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["jpg"]))
+        let imported = try service.ingest(plan: IngestPlanner.addFolder(root), repository: repository)
+        let assetID = imported[0].id
+        let lastSyncedFingerprint = try XCTUnwrap(try repository.lastMetadataSyncFingerprint(assetID: assetID))
+        try repository.updateMetadata(assetID: assetID) { metadata in
+            metadata.rating = 4
+        }
+        try XMPPacket(metadata: AssetMetadata(rating: 5)).xmlData().write(to: sidecarURL)
+
+        _ = try service.ingest(plan: IngestPlanner.addFolder(root), repository: repository)
+
+        XCTAssertEqual(try repository.asset(id: assetID).metadata.rating, 4)
+        XCTAssertEqual(try repository.metadataSyncConflictItems(), [
+            MetadataSyncItem(
+                assetID: assetID,
+                sidecarURL: sidecarURL,
+                catalogGeneration: 2,
+                lastSyncedFingerprint: lastSyncedFingerprint
+            )
+        ])
+    }
+
     func testReingestingFolderPreservesAssetIdentityAndMetadata() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "ingest-idempotent")
         let image = root.appendingPathComponent("one.jpg")

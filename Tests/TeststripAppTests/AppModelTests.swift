@@ -306,6 +306,52 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.visibleWorkActivity?.detail, "Writing XMP sidecar")
     }
 
+    func testLoadQueuesPendingMetadataSyncWhenSupervisorConfigured() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-pending-worker-xmp")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "pending-worker-xmp-target"),
+            originalURL: URL(fileURLWithPath: "/Volumes/NAS/frame.cr2"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata(rating: 4)
+        )
+        try repository.upsert(asset)
+        let pending = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: asset.originalURL.appendingPathExtension("xmp"),
+            catalogGeneration: 1,
+            lastSyncedFingerprint: nil
+        )
+        try repository.recordMetadataSyncPending(pending)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+
+        let model = try AppModel.load(
+            catalog: AppCatalog(
+                paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+                repository: repository,
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+                importService: LibraryImportService(
+                    ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                    previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+                )
+            ),
+            workerSupervisor: supervisor
+        )
+
+        XCTAssertEqual(model.pendingMetadataSyncItems, [pending])
+        XCTAssertEqual(try transport.commands(), [.syncMetadata(assetID: asset.id)])
+        XCTAssertEqual(model.visibleWorkActivity?.kind, .xmpSync)
+        XCTAssertEqual(model.visibleWorkActivity?.detail, "Writing XMP sidecar")
+    }
+
     func testRatingCullingCommandUpdatesSelectedAsset() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "rating-command")
 

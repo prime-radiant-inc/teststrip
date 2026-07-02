@@ -19,23 +19,77 @@ public struct IngestService: Sendable {
 
     public func ingest(files sourceFiles: [URL], plan: IngestPlan, repository: CatalogRepository) throws -> [Asset] {
         var assets: [Asset] = []
+        var importedSidecars: [ImportedSidecarSync] = []
+        var sidecarConflicts: [SidecarSyncConflict] = []
+        let sidecarStore = XMPSidecarStore()
         for sourceFile in sourceFiles {
             try Task.checkCancellation()
             let originalURL = try originalURL(for: sourceFile, plan: plan)
             let existingAsset = try repository.asset(originalURL: originalURL)
+            let assetID = existingAsset?.id ?? .new()
             try prepareOriginalFile(sourceFile: sourceFile, originalURL: originalURL, plan: plan, existingAsset: existingAsset)
             let fingerprint = try fingerprint(for: originalURL)
+            var metadata = existingAsset?.metadata ?? AssetMetadata()
+            let sidecarURL = sidecarStore.sidecarURL(forOriginalAt: originalURL)
+            if FileManager.default.fileExists(atPath: sidecarURL.path) {
+                let sidecarData = try Data(contentsOf: sidecarURL)
+                let catalogGeneration: Int
+                let lastSynced: MetadataSyncItem?
+                if existingAsset != nil {
+                    catalogGeneration = try repository.catalogGeneration(assetID: assetID)
+                    lastSynced = try repository.metadataSyncItem(assetID: assetID)
+                } else {
+                    catalogGeneration = 1
+                    lastSynced = nil
+                }
+                let decision = try MetadataSyncPlanner().decision(
+                    catalogMetadata: metadata,
+                    catalogGeneration: catalogGeneration,
+                    lastSynced: lastSynced,
+                    sidecarData: sidecarData
+                )
+                if case .importSidecar(let sidecarMetadata) = decision {
+                    metadata = sidecarMetadata
+                    importedSidecars.append(ImportedSidecarSync(
+                        assetID: assetID,
+                        sidecarURL: sidecarURL,
+                        sidecarData: sidecarData
+                    ))
+                } else if case .conflict = decision {
+                    sidecarConflicts.append(SidecarSyncConflict(
+                        assetID: assetID,
+                        sidecarURL: sidecarURL,
+                        lastSyncedFingerprint: try repository.lastMetadataSyncFingerprint(assetID: assetID)
+                    ))
+                }
+            }
             let asset = Asset(
-                id: existingAsset?.id ?? .new(),
+                id: assetID,
                 originalURL: originalURL,
                 volumeIdentifier: volumeIdentifier(for: originalURL),
                 fingerprint: fingerprint,
                 availability: .online,
-                metadata: existingAsset?.metadata ?? AssetMetadata()
+                metadata: metadata
             )
             assets.append(asset)
         }
         try repository.upsert(assets)
+        for importedSidecar in importedSidecars {
+            try repository.markMetadataSynced(
+                assetID: importedSidecar.assetID,
+                sidecarURL: importedSidecar.sidecarURL,
+                catalogGeneration: repository.catalogGeneration(assetID: importedSidecar.assetID),
+                fingerprint: XMPSidecarStore.fingerprint(for: importedSidecar.sidecarData)
+            )
+        }
+        for sidecarConflict in sidecarConflicts {
+            try repository.recordMetadataSyncConflict(MetadataSyncItem(
+                assetID: sidecarConflict.assetID,
+                sidecarURL: sidecarConflict.sidecarURL,
+                catalogGeneration: repository.catalogGeneration(assetID: sidecarConflict.assetID),
+                lastSyncedFingerprint: sidecarConflict.lastSyncedFingerprint
+            ))
+        }
         return assets
     }
 
@@ -121,4 +175,16 @@ public struct IngestService: Sendable {
         }
         return String(describing: identifier)
     }
+}
+
+private struct ImportedSidecarSync {
+    var assetID: AssetID
+    var sidecarURL: URL
+    var sidecarData: Data
+}
+
+private struct SidecarSyncConflict {
+    var assetID: AssetID
+    var sidecarURL: URL
+    var lastSyncedFingerprint: String?
 }
