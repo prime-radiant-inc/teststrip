@@ -122,6 +122,7 @@ final class MetadataSyncTests: XCTestCase {
             catalogGeneration: 3,
             lastSyncedFingerprint: nil
         )
+        let beforeSync = Date()
 
         try repository.recordMetadataSyncPending(pending)
         try repository.markMetadataSynced(
@@ -130,9 +131,14 @@ final class MetadataSyncTests: XCTestCase {
             catalogGeneration: 3,
             fingerprint: "written"
         )
+        let afterSync = Date()
 
         XCTAssertEqual(try repository.pendingMetadataSyncItems(), [])
         XCTAssertEqual(try repository.lastMetadataSyncFingerprint(assetID: assetID), "written")
+        let syncedItem = try XCTUnwrap(try repository.metadataSyncItem(assetID: assetID))
+        let lastSyncedAt = try XCTUnwrap(syncedItem.lastSyncedAt)
+        XCTAssertGreaterThanOrEqual(lastSyncedAt.timeIntervalSince1970, beforeSync.timeIntervalSince1970)
+        XCTAssertLessThanOrEqual(lastSyncedAt.timeIntervalSince1970, afterSync.timeIntervalSince1970)
     }
 
     func testPlannerImportsSidecarWhenOnlySidecarChanged() throws {
@@ -157,6 +163,28 @@ final class MetadataSyncTests: XCTestCase {
         XCTAssertEqual(decision, .importSidecar(sidecarMetadata))
     }
 
+    func testPlannerImportsSidecarWhenSidecarModificationDateIsNewerThanCheckpoint() throws {
+        let metadata = AssetMetadata(rating: 4, keywords: ["external"])
+        let sidecarData = try XMPPacket(metadata: metadata).xmlData()
+        let lastSynced = MetadataSyncItem(
+            assetID: AssetID(rawValue: "asset-1"),
+            sidecarURL: URL(fileURLWithPath: "/Photos/frame.cr2.xmp"),
+            catalogGeneration: 3,
+            lastSyncedFingerprint: XMPSidecarStore.fingerprint(for: sidecarData),
+            lastSyncedAt: Date(timeIntervalSince1970: 100)
+        )
+
+        let decision = try MetadataSyncPlanner().decision(
+            catalogMetadata: metadata,
+            catalogGeneration: 3,
+            lastSynced: lastSynced,
+            sidecarData: sidecarData,
+            sidecarModificationDate: Date(timeIntervalSince1970: 200)
+        )
+
+        XCTAssertEqual(decision, .importSidecar(metadata))
+    }
+
     func testPlannerWritesCatalogWhenOnlyCatalogGenerationChanged() throws {
         let metadata = AssetMetadata(rating: 4)
         let sidecarData = try XMPPacket(metadata: metadata).xmlData()
@@ -172,6 +200,29 @@ final class MetadataSyncTests: XCTestCase {
             catalogGeneration: 4,
             lastSynced: lastSynced,
             sidecarData: sidecarData
+        )
+
+        XCTAssertEqual(decision, .writeCatalog)
+    }
+
+    func testPlannerWritesCatalogWhenCatalogChangedAndSidecarOnlyHasNewerTimestamp() throws {
+        let previousMetadata = AssetMetadata(rating: 2)
+        let catalogMetadata = AssetMetadata(rating: 5)
+        let sidecarData = try XMPPacket(metadata: previousMetadata).xmlData()
+        let lastSynced = MetadataSyncItem(
+            assetID: AssetID(rawValue: "asset-1"),
+            sidecarURL: URL(fileURLWithPath: "/Photos/frame.cr2.xmp"),
+            catalogGeneration: 3,
+            lastSyncedFingerprint: XMPSidecarStore.fingerprint(for: sidecarData),
+            lastSyncedAt: Date(timeIntervalSince1970: 100)
+        )
+
+        let decision = try MetadataSyncPlanner().decision(
+            catalogMetadata: catalogMetadata,
+            catalogGeneration: 4,
+            lastSynced: lastSynced,
+            sidecarData: sidecarData,
+            sidecarModificationDate: Date(timeIntervalSince1970: 200)
         )
 
         XCTAssertEqual(decision, .writeCatalog)

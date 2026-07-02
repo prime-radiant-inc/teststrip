@@ -131,6 +131,32 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try setup.repository.pendingMetadataSyncItems(), [])
     }
 
+    func testSyncMetadataCommandRefreshesNewerSidecarCheckpointWhenContentsMatch() throws {
+        let metadata = AssetMetadata(rating: 2)
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-newer-sidecar-checkpoint", metadata: metadata)
+        let initialWrite = try XMPSidecarStore().write(metadata: metadata, forOriginalAt: setup.asset.originalURL)
+        try setup.repository.markMetadataSynced(
+            assetID: setup.asset.id,
+            sidecarURL: initialWrite.sidecarURL,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id),
+            fingerprint: initialWrite.fingerprint
+        )
+        let initialSync = try XCTUnwrap(try setup.repository.metadataSyncItem(assetID: setup.asset.id)?.lastSyncedAt)
+        Thread.sleep(forTimeInterval: 0.01)
+        let newerModificationDate = Date()
+        try FileManager.default.setAttributes(
+            [.modificationDate: newerModificationDate],
+            ofItemAtPath: setup.sidecarURL.path
+        )
+
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("imported metadata for asset-1"))
+        XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata, metadata)
+        let refreshedSync = try XCTUnwrap(try setup.repository.metadataSyncItem(assetID: setup.asset.id)?.lastSyncedAt)
+        XCTAssertGreaterThan(refreshedSync.timeIntervalSince1970, initialSync.timeIntervalSince1970)
+    }
+
     func testSyncMetadataCommandRecordsConflictWhenCatalogAndSidecarBothChanged() throws {
         let initialMetadata = AssetMetadata(rating: 2)
         let setup = try makeMetadataSyncSetup(named: "worker-sync-conflict", metadata: initialMetadata)

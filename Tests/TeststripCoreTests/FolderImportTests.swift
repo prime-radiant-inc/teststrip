@@ -123,6 +123,31 @@ final class FolderImportTests: XCTestCase {
         XCTAssertEqual(try repository.pendingMetadataSyncItems(), [])
     }
 
+    func testReingestingNewerMatchingSidecarRefreshesSyncCheckpoint() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "ingest-newer-sidecar-checkpoint")
+        let image = root.appendingPathComponent("one.jpg")
+        try Data("jpg".utf8).write(to: image)
+        let sidecarMetadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["keeper"])
+        let sidecarData = try XMPPacket(metadata: sidecarMetadata).xmlData()
+        let sidecarURL = image.appendingPathExtension("xmp")
+        try sidecarData.write(to: sidecarURL)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["jpg"]))
+        let imported = try service.ingest(plan: IngestPlanner.addFolder(root), repository: repository)
+        let assetID = imported[0].id
+        let initialSync = try XCTUnwrap(try repository.metadataSyncItem(assetID: assetID)?.lastSyncedAt)
+        Thread.sleep(forTimeInterval: 0.01)
+        try FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: sidecarURL.path)
+
+        _ = try service.ingest(plan: IngestPlanner.addFolder(root), repository: repository)
+
+        XCTAssertEqual(try repository.asset(id: assetID).metadata, sidecarMetadata)
+        let refreshedSync = try XCTUnwrap(try repository.metadataSyncItem(assetID: assetID)?.lastSyncedAt)
+        XCTAssertGreaterThan(refreshedSync.timeIntervalSince1970, initialSync.timeIntervalSince1970)
+    }
+
     func testReingestingWithLocalAndSidecarMetadataChangesRecordsConflict() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "ingest-sidecar-conflict")
         let image = root.appendingPathComponent("one.jpg")

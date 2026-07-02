@@ -396,7 +396,7 @@ public final class CatalogRepository {
     public func metadataSyncItem(assetID: AssetID) throws -> MetadataSyncItem? {
         let rows = try database.rows(
             """
-            SELECT asset_id, sidecar_path, catalog_generation, last_synced_fingerprint
+            SELECT asset_id, sidecar_path, catalog_generation, last_synced_fingerprint, status, updated_at
             FROM metadata_sync_state
             WHERE asset_id = ?
             LIMIT 1
@@ -715,7 +715,7 @@ public final class CatalogRepository {
     private func metadataSyncItems(status: String) throws -> [MetadataSyncItem] {
         let rows = try database.rows(
             """
-            SELECT asset_id, sidecar_path, catalog_generation, last_synced_fingerprint
+            SELECT asset_id, sidecar_path, catalog_generation, last_synced_fingerprint, status, updated_at
             FROM metadata_sync_state
             WHERE status = ?
             ORDER BY updated_at ASC
@@ -733,11 +733,20 @@ public final class CatalogRepository {
               let fingerprint = row["last_synced_fingerprint"] else {
             throw CatalogError.sqlite("metadata sync row is missing required columns")
         }
+        let lastSyncedAt: Date?
+        if row["status"] == "synced",
+           let updatedAtValue = row["updated_at"],
+           let updatedAt = TimeInterval(updatedAtValue) {
+            lastSyncedAt = Date(timeIntervalSince1970: updatedAt)
+        } else {
+            lastSyncedAt = nil
+        }
         return MetadataSyncItem(
             assetID: AssetID(rawValue: assetID),
             sidecarURL: URL(fileURLWithPath: sidecarPath),
             catalogGeneration: generation,
-            lastSyncedFingerprint: fingerprint.isEmpty ? nil : fingerprint
+            lastSyncedFingerprint: fingerprint.isEmpty ? nil : fingerprint,
+            lastSyncedAt: lastSyncedAt
         )
     }
 

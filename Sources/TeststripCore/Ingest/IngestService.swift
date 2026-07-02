@@ -35,6 +35,7 @@ public struct IngestService: Sendable {
             let sidecarURL = sidecarStore.sidecarURL(forOriginalAt: originalURL)
             if FileManager.default.fileExists(atPath: sidecarURL.path) {
                 let sidecarData = try Data(contentsOf: sidecarURL)
+                let sidecarModificationDate = try sidecarStore.modificationDate(forSidecarAt: sidecarURL)
                 let catalogGeneration: Int
                 let lastSynced: MetadataSyncItem?
                 if existingAsset != nil {
@@ -48,7 +49,8 @@ public struct IngestService: Sendable {
                     catalogMetadata: metadata,
                     catalogGeneration: catalogGeneration,
                     lastSynced: lastSynced,
-                    sidecarData: sidecarData
+                    sidecarData: sidecarData,
+                    sidecarModificationDate: sidecarModificationDate
                 )
                 if case .importSidecar(let sidecarMetadata) = decision {
                     metadata = sidecarMetadata

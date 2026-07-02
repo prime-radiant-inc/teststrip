@@ -25,6 +25,14 @@ public struct XMPSidecarStore: Sendable {
         return XMPSidecarWriteResult(sidecarURL: sidecarURL, fingerprint: Self.fingerprint(for: data))
     }
 
+    public func modificationDate(forSidecarAt sidecarURL: URL) throws -> Date {
+        let attributes = try FileManager.default.attributesOfItem(atPath: sidecarURL.path)
+        guard let modificationDate = attributes[.modificationDate] as? Date else {
+            throw TeststripError.io("missing XMP modification date \(sidecarURL.path)")
+        }
+        return modificationDate
+    }
+
     public static func fingerprint(for data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }

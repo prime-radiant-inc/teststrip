@@ -132,12 +132,19 @@ public struct WorkerCommandExecutor {
         let sidecarStore = XMPSidecarStore()
         let sidecarURL = sidecarStore.sidecarURL(forOriginalAt: asset.originalURL)
         let sidecarData = try? Data(contentsOf: sidecarURL)
+        let sidecarModificationDate: Date?
+        if sidecarData != nil {
+            sidecarModificationDate = try sidecarStore.modificationDate(forSidecarAt: sidecarURL)
+        } else {
+            sidecarModificationDate = nil
+        }
         let catalogGeneration = try repository.catalogGeneration(assetID: assetID)
         let decision = try MetadataSyncPlanner().decision(
             catalogMetadata: asset.metadata,
             catalogGeneration: catalogGeneration,
             lastSynced: try repository.metadataSyncItem(assetID: assetID),
-            sidecarData: sidecarData
+            sidecarData: sidecarData,
+            sidecarModificationDate: sidecarModificationDate
         )
 
         switch decision {
