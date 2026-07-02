@@ -241,7 +241,11 @@ public final class AppModel {
     @ObservationIgnored
     private var workerImportContextsByItemID: [WorkSessionID: WorkerImportContext]
 
+    @ObservationIgnored
+    private var evaluationAssetIDsByItemID: [WorkSessionID: AssetID]
+
     private var previewCacheGenerationsByAssetID: [AssetID: Int]
+    private var evaluationSignalGenerationsByAssetID: [AssetID: Int]
     private var metadataUndoStack: [MetadataChange]
     private var metadataRedoStack: [MetadataChange]
     private var assetPageOffset: Int
@@ -321,6 +325,7 @@ public final class AppModel {
 
     public var selectedEvaluationSignals: [EvaluationSignal] {
         guard let catalog, let selectedAssetID else { return [] }
+        _ = evaluationSignalGeneration(for: selectedAssetID)
         return (try? catalog.repository.evaluationSignals(assetID: selectedAssetID)) ?? []
     }
 
@@ -425,6 +430,8 @@ public final class AppModel {
         self.catalog = catalog
         self.workerSupervisor = workerSupervisor
         self.previewCacheGenerationsByAssetID = [:]
+        self.evaluationAssetIDsByItemID = [:]
+        self.evaluationSignalGenerationsByAssetID = [:]
         let importPreviewPolicy: LibraryImportPreviewPolicy = workerSupervisor == nil ? .generateImmediately : .deferGeneration
         self.importTaskFactory = importTaskFactory ?? { paths, folderURL, progress in
             Self.defaultImportTask(
@@ -451,6 +458,7 @@ public final class AppModel {
             self?.backgroundWorkQueue = queue
             try? self?.refreshMetadataSyncState()
             self?.releaseInactiveWorkerImportContexts(in: queue)
+            self?.releaseInactiveEvaluationContexts(in: queue)
         }
         self.workerSupervisor?.onCommandCompleted = { [weak self] event in
             self?.handleWorkerCommandCompleted(event)
@@ -944,6 +952,10 @@ public final class AppModel {
         previewCacheGenerationsByAssetID[assetID] ?? 0
     }
 
+    public func evaluationSignalGeneration(for assetID: AssetID) -> Int {
+        evaluationSignalGenerationsByAssetID[assetID] ?? 0
+    }
+
     public func requestVisibleLoupePreview(assetID: AssetID) throws {
         let request = PreviewScheduler().request(
             assetID: assetID,
@@ -975,7 +987,13 @@ public final class AppModel {
             completedUnitCount: 0,
             totalUnitCount: 1
         )
-        try workerSupervisor.enqueue(item, command: .runEvaluation(assetID: assetID, provider: provider))
+        evaluationAssetIDsByItemID[itemID] = assetID
+        do {
+            try workerSupervisor.enqueue(item, command: .runEvaluation(assetID: assetID, provider: provider))
+        } catch {
+            evaluationAssetIDsByItemID[itemID] = nil
+            throw error
+        }
         syncBackgroundWorkQueueFromSupervisor()
     }
 
@@ -1040,6 +1058,7 @@ public final class AppModel {
         switch event {
         case .completed(let itemID, _):
             invalidatePreviewCacheIfNeeded(itemID: itemID)
+            invalidateEvaluationSignalsIfNeeded(itemID: itemID)
         case .completedImport(let itemID, _, let importedAssetIDs):
             handleWorkerImportCompleted(itemID: itemID, importedAssetIDs: importedAssetIDs)
         case .accepted, .failed:
@@ -1054,6 +1073,15 @@ public final class AppModel {
             return
         }
         previewCacheGenerationsByAssetID[assetID, default: 0] += 1
+    }
+
+    private func invalidateEvaluationSignalsIfNeeded(itemID: WorkSessionID?) {
+        guard let itemID,
+              backgroundWorkQueue.item(id: itemID)?.kind == .recognition,
+              let assetID = evaluationAssetIDsByItemID.removeValue(forKey: itemID) else {
+            return
+        }
+        evaluationSignalGenerationsByAssetID[assetID, default: 0] += 1
     }
 
     private static func previewAssetID(from itemID: WorkSessionID) -> AssetID? {
@@ -1114,6 +1142,15 @@ public final class AppModel {
                 statusMessage = nil
                 errorMessage = item.detail
             }
+        }
+    }
+
+    private func releaseInactiveEvaluationContexts(in queue: BackgroundWorkQueue) {
+        for itemID in evaluationAssetIDsByItemID.keys {
+            guard let item = queue.item(id: itemID), [.cancelled, .failed].contains(item.status) else {
+                continue
+            }
+            evaluationAssetIDsByItemID[itemID] = nil
         }
     }
 

@@ -1286,6 +1286,56 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testEvaluationCompletionInvalidatesSelectedEvaluationSignals() async throws {
+        let directory = try makeTemporaryDirectory(named: "evaluation-completion-signals")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: directory.appendingPathComponent("asset.jpg"),
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+        let signal = EvaluationSignal(
+            assetID: asset.id,
+            kind: .exposure,
+            value: .score(0.42),
+            confidence: 0.9,
+            provenance: ProviderProvenance(provider: "local-image-metrics", model: "average-preview-metrics", version: "1", settingsHash: "default")
+        )
+
+        try model.requestEvaluation(assetID: asset.id, provider: "local-image-metrics")
+        try repository.recordEvaluationSignals([signal])
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: WorkSessionID(rawValue: "evaluation-\(asset.id.rawValue)-local-image-metrics"),
+            message: "evaluated \(asset.id.rawValue) with local-image-metrics"
+        )))
+
+        try await waitForEvaluationSignalGeneration(1, for: asset.id, in: model)
+        XCTAssertEqual(model.selectedEvaluationSignals, [signal])
+    }
+
+    @MainActor
     func testWorkerCompletionRefreshesVisibleBackgroundWork() async throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -2120,6 +2170,17 @@ final class AppModelTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTFail("timed out waiting for preview cache generation \(generation)")
+    }
+
+    @MainActor
+    private func waitForEvaluationSignalGeneration(_ generation: Int, for assetID: AssetID, in model: AppModel) async throws {
+        for _ in 0..<100 {
+            if model.evaluationSignalGeneration(for: assetID) == generation {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTFail("timed out waiting for evaluation signal generation \(generation)")
     }
 }
 
