@@ -135,6 +135,91 @@ final class MetadataSyncTests: XCTestCase {
         XCTAssertEqual(try repository.lastMetadataSyncFingerprint(assetID: assetID), "written")
     }
 
+    func testPlannerImportsSidecarWhenOnlySidecarChanged() throws {
+        let catalogMetadata = AssetMetadata(rating: 2)
+        let sidecarMetadata = AssetMetadata(rating: 5, keywords: ["external"])
+        let previousSidecarData = try XMPPacket(metadata: catalogMetadata).xmlData()
+        let currentSidecarData = try XMPPacket(metadata: sidecarMetadata).xmlData()
+        let lastSynced = MetadataSyncItem(
+            assetID: AssetID(rawValue: "asset-1"),
+            sidecarURL: URL(fileURLWithPath: "/Photos/frame.cr2.xmp"),
+            catalogGeneration: 3,
+            lastSyncedFingerprint: XMPSidecarStore.fingerprint(for: previousSidecarData)
+        )
+
+        let decision = try MetadataSyncPlanner().decision(
+            catalogMetadata: catalogMetadata,
+            catalogGeneration: 3,
+            lastSynced: lastSynced,
+            sidecarData: currentSidecarData
+        )
+
+        XCTAssertEqual(decision, .importSidecar(sidecarMetadata))
+    }
+
+    func testPlannerWritesCatalogWhenOnlyCatalogGenerationChanged() throws {
+        let metadata = AssetMetadata(rating: 4)
+        let sidecarData = try XMPPacket(metadata: metadata).xmlData()
+        let lastSynced = MetadataSyncItem(
+            assetID: AssetID(rawValue: "asset-1"),
+            sidecarURL: URL(fileURLWithPath: "/Photos/frame.cr2.xmp"),
+            catalogGeneration: 3,
+            lastSyncedFingerprint: XMPSidecarStore.fingerprint(for: sidecarData)
+        )
+
+        let decision = try MetadataSyncPlanner().decision(
+            catalogMetadata: metadata,
+            catalogGeneration: 4,
+            lastSynced: lastSynced,
+            sidecarData: sidecarData
+        )
+
+        XCTAssertEqual(decision, .writeCatalog)
+    }
+
+    func testPlannerReportsConflictWhenCatalogAndSidecarChanged() throws {
+        let catalogMetadata = AssetMetadata(rating: 4)
+        let previousMetadata = AssetMetadata(rating: 2)
+        let sidecarMetadata = AssetMetadata(rating: 5)
+        let previousSidecarData = try XMPPacket(metadata: previousMetadata).xmlData()
+        let currentSidecarData = try XMPPacket(metadata: sidecarMetadata).xmlData()
+        let lastSynced = MetadataSyncItem(
+            assetID: AssetID(rawValue: "asset-1"),
+            sidecarURL: URL(fileURLWithPath: "/Photos/frame.cr2.xmp"),
+            catalogGeneration: 3,
+            lastSyncedFingerprint: XMPSidecarStore.fingerprint(for: previousSidecarData)
+        )
+
+        let decision = try MetadataSyncPlanner().decision(
+            catalogMetadata: catalogMetadata,
+            catalogGeneration: 4,
+            lastSynced: lastSynced,
+            sidecarData: currentSidecarData
+        )
+
+        XCTAssertEqual(decision, .conflict(catalogMetadata: catalogMetadata, sidecarMetadata: sidecarMetadata))
+    }
+
+    func testPlannerTreatsMatchingGenerationAndFingerprintAsUpToDate() throws {
+        let metadata = AssetMetadata(rating: 3)
+        let sidecarData = try XMPPacket(metadata: metadata).xmlData()
+        let lastSynced = MetadataSyncItem(
+            assetID: AssetID(rawValue: "asset-1"),
+            sidecarURL: URL(fileURLWithPath: "/Photos/frame.cr2.xmp"),
+            catalogGeneration: 3,
+            lastSyncedFingerprint: XMPSidecarStore.fingerprint(for: sidecarData)
+        )
+
+        let decision = try MetadataSyncPlanner().decision(
+            catalogMetadata: metadata,
+            catalogGeneration: 3,
+            lastSynced: lastSynced,
+            sidecarData: sidecarData
+        )
+
+        XCTAssertEqual(decision, .upToDate)
+    }
+
     private func assertParseInvalidState(
         _ data: Data,
         _ expectedError: TeststripError,
