@@ -14,6 +14,30 @@ public struct XMPPacket: Equatable, Sendable {
     }
 
     public func xmlData() throws -> Data {
+        let document = Self.emptyDocument()
+        let description = Self.rdfDescription(in: document.rootElement()!)!
+        applyManagedMetadata(to: description)
+        return document.xmlData(options: [.nodePrettyPrint])
+    }
+
+    public func xmlData(mergingInto existingData: Data) throws -> Data {
+        let document = try XMLDocument(data: existingData)
+        guard let root = document.rootElement(),
+              root.localName == "xmpmeta",
+              root.uri == Self.xmpMetaNamespace
+        else {
+            throw TeststripError.invalidState("invalid XMP root element: \(document.rootElement()?.name ?? "missing")")
+        }
+        guard let description = Self.rdfDescription(in: root) else {
+            throw TeststripError.invalidState("invalid XMP RDF description")
+        }
+
+        Self.removeManagedMetadata(from: description)
+        applyManagedMetadata(to: description)
+        return document.xmlData(options: [.nodePrettyPrint])
+    }
+
+    private static func emptyDocument() -> XMLDocument {
         let root = XMLElement(name: "x:xmpmeta")
         root.addNamespace(XMLNode.namespace(withName: "x", stringValue: Self.xmpMetaNamespace) as! XMLNode)
 
@@ -28,7 +52,13 @@ public struct XMPPacket: Equatable, Sendable {
         description.addNamespace(XMLNode.namespace(withName: "dc", stringValue: Self.dcNamespace) as! XMLNode)
         description.addNamespace(XMLNode.namespace(withName: "ts", stringValue: Self.teststripNamespace) as! XMLNode)
         rdf.addChild(description)
+        return document
+    }
 
+    private func applyManagedMetadata(to description: XMLElement) {
+        Self.ensureNamespace(prefix: "xmp", uri: Self.xmpNamespace, in: description)
+        Self.ensureNamespace(prefix: "dc", uri: Self.dcNamespace, in: description)
+        Self.ensureNamespace(prefix: "ts", uri: Self.teststripNamespace, in: description)
         func addAttribute(_ name: String, _ value: String?) {
             guard let value else { return }
             description.addAttribute(XMLNode.attribute(withName: name, stringValue: value) as! XMLNode)
@@ -63,8 +93,6 @@ public struct XMPPacket: Equatable, Sendable {
             languageTagged: true,
             to: description
         )
-
-        return document.xmlData(options: [.nodePrettyPrint])
     }
 
     public static func parse(_ data: Data) throws -> XMPPacket {
@@ -151,6 +179,48 @@ public struct XMPPacket: Equatable, Sendable {
         }
         property.addChild(container)
         description.addChild(property)
+    }
+
+    private static func removeManagedMetadata(from description: XMLElement) {
+        removeAttribute(from: description, localName: "Rating", uri: xmpNamespace)
+        removeAttribute(from: description, localName: "Label", uri: xmpNamespace)
+        removeAttribute(from: description, localName: "Pick", uri: teststripNamespace)
+        removeChild(from: description, localName: "subject", uri: dcNamespace)
+        removeChild(from: description, localName: "description", uri: dcNamespace)
+        removeChild(from: description, localName: "creator", uri: dcNamespace)
+        removeChild(from: description, localName: "rights", uri: dcNamespace)
+    }
+
+    private static func removeAttribute(from element: XMLElement, localName: String, uri: String) {
+        let names = element.attributes?.compactMap { attribute -> String? in
+            guard attribute.localName == localName, attribute.uri == uri else { return nil }
+            return attribute.name
+        } ?? []
+        for name in names {
+            element.removeAttribute(forName: name)
+        }
+    }
+
+    private static func removeChild(from element: XMLElement, localName: String, uri: String) {
+        let indexes = (element.children ?? []).enumerated().compactMap { index, child -> Int? in
+            guard let child = child as? XMLElement,
+                  child.localName == localName,
+                  child.uri == uri
+            else {
+                return nil
+            }
+            return index
+        }
+        for index in indexes.reversed() {
+            element.removeChild(at: index)
+        }
+    }
+
+    private static func ensureNamespace(prefix: String, uri: String, in element: XMLElement) {
+        if element.namespaces?.contains(where: { $0.name == prefix && $0.stringValue == uri }) == true {
+            return
+        }
+        element.addNamespace(XMLNode.namespace(withName: prefix, stringValue: uri) as! XMLNode)
     }
 
     private static func rdfDescription(in root: XMLElement) -> XMLElement? {

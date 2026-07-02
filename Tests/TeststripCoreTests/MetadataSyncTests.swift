@@ -142,6 +142,50 @@ final class MetadataSyncTests: XCTestCase {
         XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata, metadata)
     }
 
+    func testSidecarStorePreservesUnmanagedXMPPropertiesWhenWritingPortableMetadata() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "xmp-sidecar-merge")
+        let originalURL = directory.appendingPathComponent("frame.cr2")
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        try standardXMP(
+            attributes: """
+            xmp:Rating="1" xmp:Label="Red" ts:Pick="reject" photoshop:DateCreated="2024-01-02T03:04:05"
+            """,
+            body: """
+            <dc:title>
+              <rdf:Alt>
+                <rdf:li xml:lang="x-default">External title</rdf:li>
+              </rdf:Alt>
+            </dc:title>
+            <dc:subject>
+              <rdf:Bag>
+                <rdf:li>stale-keyword</rdf:li>
+              </rdf:Bag>
+            </dc:subject>
+            """,
+            extraDescriptionNamespaces: "xmlns:photoshop=\"\(photoshopNamespace)\""
+        ).write(to: sidecarURL)
+        let metadata = AssetMetadata(
+            rating: 4,
+            colorLabel: .green,
+            flag: .pick,
+            keywords: ["keeper"],
+            caption: "Catalog caption"
+        )
+
+        _ = try XMPSidecarStore().write(metadata: metadata, forOriginalAt: originalURL)
+
+        let document = try XMLDocument(data: Data(contentsOf: sidecarURL))
+        let description = try rdfDescription(in: document)
+        XCTAssertEqual(attribute(description, localName: "DateCreated", uri: photoshopNamespace), "2024-01-02T03:04:05")
+        XCTAssertEqual(rdfContainerValues(in: description, propertyLocalName: "title", containerLocalName: "Alt"), ["External title"])
+        XCTAssertEqual(attribute(description, localName: "Rating", uri: xmpNamespace), "4")
+        XCTAssertEqual(attribute(description, localName: "Label", uri: xmpNamespace), "Green")
+        XCTAssertEqual(attribute(description, localName: "Pick", uri: teststripNamespace), "pick")
+        XCTAssertEqual(rdfContainerValues(in: description, propertyLocalName: "subject", containerLocalName: "Bag"), ["keeper"])
+        XCTAssertEqual(rdfContainerValues(in: description, propertyLocalName: "description", containerLocalName: "Alt"), ["Catalog caption"])
+    }
+
     func testSyncQueueTracksPendingWriteWithCatalogGeneration() {
         let item = MetadataSyncItem(
             assetID: AssetID(rawValue: "asset-1"),
@@ -348,7 +392,11 @@ final class MetadataSyncTests: XCTestCase {
         }
     }
 
-    private func standardXMP(attributes: String = "", body: String = "") -> Data {
+    private func standardXMP(
+        attributes: String = "",
+        body: String = "",
+        extraDescriptionNamespaces: String = ""
+    ) -> Data {
         Data("""
         <x:xmpmeta xmlns:x="\(xmpMetaNamespace)">
           <rdf:RDF xmlns:rdf="\(rdfNamespace)">
@@ -356,6 +404,7 @@ final class MetadataSyncTests: XCTestCase {
               xmlns:xmp="\(xmpNamespace)"
               xmlns:dc="\(dcNamespace)"
               xmlns:ts="\(teststripNamespace)"
+              \(extraDescriptionNamespaces)
               \(attributes)>
               \(body)
             </rdf:Description>
@@ -369,6 +418,7 @@ final class MetadataSyncTests: XCTestCase {
     private var xmpNamespace: String { "http://ns.adobe.com/xap/1.0/" }
     private var dcNamespace: String { "http://purl.org/dc/elements/1.1/" }
     private var teststripNamespace: String { "https://teststrip.app/xmp/1.0/" }
+    private var photoshopNamespace: String { "http://ns.adobe.com/photoshop/1.0/" }
 
     private func rdfDescription(in document: XMLDocument) throws -> XMLElement {
         let root = try XCTUnwrap(document.rootElement())
