@@ -33,9 +33,15 @@ public struct WorkSession: Codable, Equatable, Sendable {
     public var id: WorkSessionID
     public var kind: WorkSessionKind
     public var intent: String
+    public var title: String
+    public var detail: String
     public var status: WorkSessionStatus
     public var inputSetIDs: [AssetSetID]
     public var outputSetIDs: [AssetSetID]
+    public var completedUnitCount: Int
+    public var totalUnitCount: Int?
+    public var failureCount: Int
+    public var starred: Bool
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -43,18 +49,30 @@ public struct WorkSession: Codable, Equatable, Sendable {
         id: WorkSessionID,
         kind: WorkSessionKind,
         intent: String,
+        title: String = "",
+        detail: String = "",
         status: WorkSessionStatus,
         inputSetIDs: [AssetSetID],
         outputSetIDs: [AssetSetID],
+        completedUnitCount: Int = 0,
+        totalUnitCount: Int? = nil,
+        failureCount: Int = 0,
+        starred: Bool = false,
         createdAt: Date,
         updatedAt: Date
     ) {
         self.id = id
         self.kind = kind
         self.intent = intent
+        self.title = title
+        self.detail = detail
         self.status = status
         self.inputSetIDs = inputSetIDs
         self.outputSetIDs = outputSetIDs
+        self.completedUnitCount = completedUnitCount
+        self.totalUnitCount = totalUnitCount
+        self.failureCount = failureCount
+        self.starred = starred
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

@@ -142,6 +142,19 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
             failureCount: 0
         )
     }
+
+    public init(workSession: WorkSession) {
+        self.init(
+            id: workSession.id.rawValue,
+            kind: workSession.kind,
+            status: workSession.status,
+            title: workSession.title.isEmpty ? workSession.kind.rawValue : workSession.title,
+            detail: workSession.detail,
+            completedUnitCount: workSession.completedUnitCount,
+            totalUnitCount: workSession.totalUnitCount,
+            failureCount: workSession.failureCount
+        )
+    }
 }
 
 public struct AppImportOutput: Sendable {
@@ -181,6 +194,7 @@ public final class AppModel {
     public var errorMessage: String?
     public var activeWork: AppWorkActivity?
     public var recentWork: [AppWorkActivity]
+    public var starredWork: [AppWorkActivity]
     public var pendingMetadataSyncItems: [MetadataSyncItem]
     public var metadataSyncConflictItems: [MetadataSyncItem]
     public var backgroundWorkQueue: BackgroundWorkQueue
@@ -300,6 +314,7 @@ public final class AppModel {
         errorMessage: String? = nil,
         activeWork: AppWorkActivity? = nil,
         recentWork: [AppWorkActivity] = [],
+        starredWork: [AppWorkActivity] = [],
         pendingMetadataSyncItems: [MetadataSyncItem] = [],
         metadataSyncConflictItems: [MetadataSyncItem] = [],
         backgroundWorkQueue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
@@ -308,7 +323,11 @@ public final class AppModel {
         workerSupervisor: WorkerSupervisor? = nil,
         importTaskFactory: AppImportTaskFactory? = nil
     ) {
-        self.sidebarSections = sidebarSections.isEmpty ? Self.defaultSidebarSections(savedAssetSets: savedAssetSets) : sidebarSections
+        self.sidebarSections = sidebarSections.isEmpty ? Self.defaultSidebarSections(
+            savedAssetSets: savedAssetSets,
+            recentWork: recentWork,
+            starredWork: starredWork
+        ) : sidebarSections
         self.selectedView = selectedView
         self.assets = assets
         self.totalAssetCount = totalAssetCount ?? assets.count
@@ -317,6 +336,7 @@ public final class AppModel {
         self.errorMessage = errorMessage
         self.activeWork = activeWork
         self.recentWork = recentWork
+        self.starredWork = starredWork
         self.pendingMetadataSyncItems = pendingMetadataSyncItems
         self.metadataSyncConflictItems = metadataSyncConflictItems
         self.backgroundWorkQueue = backgroundWorkQueue
@@ -356,11 +376,19 @@ public final class AppModel {
     public static func load(repository: CatalogRepository) throws -> AppModel {
         let assets = try repository.allAssets(limit: Self.assetPageSize)
         let savedAssetSets = try repository.assetSets()
+        let recentWork = try repository.workSessions(limit: 10).map(AppWorkActivity.init)
+        let starredWork = try repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
         return AppModel(
-            sidebarSections: defaultSidebarSections(savedAssetSets: savedAssetSets),
+            sidebarSections: defaultSidebarSections(
+                savedAssetSets: savedAssetSets,
+                recentWork: recentWork,
+                starredWork: starredWork
+            ),
             selectedView: .grid,
             assets: assets,
             totalAssetCount: try repository.assetCount(),
+            recentWork: recentWork,
+            starredWork: starredWork,
             savedAssetSets: savedAssetSets
         )
     }
@@ -372,12 +400,20 @@ public final class AppModel {
     ) throws -> AppModel {
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
         let savedAssetSets = try catalog.repository.assetSets()
+        let recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
+        let starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
         return AppModel(
-            sidebarSections: defaultSidebarSections(savedAssetSets: savedAssetSets),
+            sidebarSections: defaultSidebarSections(
+                savedAssetSets: savedAssetSets,
+                recentWork: recentWork,
+                starredWork: starredWork
+            ),
             selectedView: .grid,
             assets: assets,
             totalAssetCount: try catalog.repository.assetCount(),
             catalog: catalog,
+            recentWork: recentWork,
+            starredWork: starredWork,
             pendingMetadataSyncItems: try catalog.repository.pendingMetadataSyncItems(),
             metadataSyncConflictItems: try catalog.repository.metadataSyncConflictItems(),
             savedAssetSets: savedAssetSets,
@@ -981,7 +1017,11 @@ public final class AppModel {
     }
 
     private func rebuildSidebarSections() {
-        sidebarSections = Self.defaultSidebarSections(savedAssetSets: savedAssetSets)
+        sidebarSections = Self.defaultSidebarSections(
+            savedAssetSets: savedAssetSets,
+            recentWork: recentWork,
+            starredWork: starredWork
+        )
     }
 
     @discardableResult
@@ -996,7 +1036,7 @@ public final class AppModel {
             let result = try catalog.importService.addFolderInPlace(folderURL, repository: catalog.repository)
             try loadCatalogPage(preferredSelection: result.importedAssets.first?.id)
             updateImportStatus(with: result)
-            completeImportActivity(folderURL: folderURL, result: result)
+            recordCompletedImportActivity(folderURL: folderURL, result: result)
             return result
         } catch {
             failImportActivity(folderURL: folderURL, error: error)
@@ -1030,7 +1070,7 @@ public final class AppModel {
             )
             totalAssetCount = output.totalAssetCount
             updateImportStatus(with: output.result)
-            completeImportActivity(folderURL: folderURL, result: output.result)
+            recordCompletedImportActivity(folderURL: folderURL, result: output.result)
             return output.result
         } catch {
             failImportActivity(folderURL: folderURL, error: error)
@@ -1076,7 +1116,7 @@ public final class AppModel {
                 )
                 self.totalAssetCount = output.totalAssetCount
                 self.updateImportStatus(with: output.result)
-                self.completeImportActivity(folderURL: folderURL, result: output.result)
+                self.recordCompletedImportActivity(folderURL: folderURL, result: output.result)
                 self.activeImportTask = nil
             } catch is CancellationError {
                 guard let self, self.activeWork?.id == activityID else { return }
@@ -1134,7 +1174,7 @@ public final class AppModel {
         activeWork = activity
     }
 
-    private func completeImportActivity(folderURL: URL, result: LibraryImportResult) {
+    private func recordCompletedImportActivity(folderURL: URL, result: LibraryImportResult) {
         let photoLabel = result.importedAssets.count == 1 ? "photo" : "photos"
         let activity = AppWorkActivity(
             id: activeWork?.id ?? UUID().uuidString,
@@ -1147,7 +1187,7 @@ public final class AppModel {
             failureCount: result.previewFailures.count
         )
         activeWork = nil
-        recentWork.insert(activity, at: 0)
+        recordRecentActivity(activity)
     }
 
     private func failImportActivity(folderURL: URL, error: Error) {
@@ -1162,7 +1202,7 @@ public final class AppModel {
             failureCount: 1
         )
         activeWork = nil
-        recentWork.insert(activity, at: 0)
+        recordRecentActivity(activity)
     }
 
     private func cancelImportActivity(folderURL: URL) {
@@ -1178,7 +1218,19 @@ public final class AppModel {
         )
         activeWork = nil
         statusMessage = "Cancelled import"
+        recordRecentActivity(activity)
+    }
+
+    private func recordRecentActivity(_ activity: AppWorkActivity) {
+        recentWork.removeAll { $0.id == activity.id }
         recentWork.insert(activity, at: 0)
+        rebuildSidebarSections()
+        guard let catalog else { return }
+        do {
+            try catalog.repository.save(activity.workSession())
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private static func defaultImportTask(
@@ -1251,7 +1303,11 @@ public final class AppModel {
         return nil
     }
 
-    private static func defaultSidebarSections(savedAssetSets: [AssetSet] = []) -> [SidebarSection] {
+    private static func defaultSidebarSections(
+        savedAssetSets: [AssetSet] = [],
+        recentWork: [AppWorkActivity] = [],
+        starredWork: [AppWorkActivity] = []
+    ) -> [SidebarSection] {
         var sections = [
             SidebarSection(title: "Library", rows: [
                 SidebarRow(id: "library-all", title: "All Photographs", target: .allPhotographs),
@@ -1266,7 +1322,12 @@ public final class AppModel {
         if !savedAssetSets.isEmpty {
             sections.append(SidebarSection(title: "Saved Sets", rows: savedAssetSets.map { Self.sidebarRow(for: $0) }))
         }
-        sections.append(SidebarSection(title: "Work", rows: ["Recent", "Starred"]))
+        let workRows = Self.workSidebarRows(recentWork: recentWork, starredWork: starredWork)
+        if workRows.isEmpty {
+            sections.append(SidebarSection(title: "Work", rows: ["Recent", "Starred"]))
+        } else {
+            sections.append(SidebarSection(title: "Work", rows: workRows))
+        }
         return sections
     }
 
@@ -1275,6 +1336,40 @@ public final class AppModel {
             id: "asset-set-\(assetSet.id.rawValue)",
             title: assetSet.name,
             target: .assetSet(assetSet.id)
+        )
+    }
+
+    private static func workSidebarRows(
+        recentWork: [AppWorkActivity],
+        starredWork: [AppWorkActivity]
+    ) -> [SidebarRow] {
+        var rows = recentWork.prefix(5).map { activity in
+            SidebarRow(id: "work-recent-\(activity.id)", title: activity.title)
+        }
+        let recentIDs = Set(recentWork.map(\.id))
+        rows.append(contentsOf: starredWork.prefix(5).filter { !recentIDs.contains($0.id) }.map { activity in
+            SidebarRow(id: "work-starred-\(activity.id)", title: activity.title)
+        })
+        return rows
+    }
+}
+
+private extension AppWorkActivity {
+    func workSession(now: Date = Date()) -> WorkSession {
+        WorkSession(
+            id: WorkSessionID(rawValue: id),
+            kind: kind,
+            intent: title,
+            title: title,
+            detail: detail,
+            status: status,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: completedUnitCount,
+            totalUnitCount: totalUnitCount,
+            failureCount: failureCount,
+            createdAt: now,
+            updatedAt: now
         )
     }
 }

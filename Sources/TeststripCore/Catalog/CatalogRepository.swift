@@ -202,6 +202,84 @@ public final class CatalogRepository {
         return try rows.map(decodeAssetSet)
     }
 
+    public func save(_ session: WorkSession) throws {
+        try database.execute(
+            """
+            INSERT INTO work_sessions (
+                id,
+                kind,
+                intent,
+                title,
+                detail,
+                status,
+                input_set_ids_json,
+                output_set_ids_json,
+                completed_unit_count,
+                total_unit_count,
+                failure_count,
+                starred,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                kind = excluded.kind,
+                intent = excluded.intent,
+                title = excluded.title,
+                detail = excluded.detail,
+                status = excluded.status,
+                input_set_ids_json = excluded.input_set_ids_json,
+                output_set_ids_json = excluded.output_set_ids_json,
+                completed_unit_count = excluded.completed_unit_count,
+                total_unit_count = excluded.total_unit_count,
+                failure_count = excluded.failure_count,
+                starred = excluded.starred,
+                updated_at = excluded.updated_at
+            """,
+            bindings: [
+                session.id.rawValue,
+                session.kind.rawValue,
+                session.intent,
+                session.title,
+                session.detail,
+                session.status.rawValue,
+                try encode(session.inputSetIDs),
+                try encode(session.outputSetIDs),
+                "\(session.completedUnitCount)",
+                session.totalUnitCount.map(String.init) ?? "",
+                "\(session.failureCount)",
+                session.starred ? "1" : "0",
+                "\(session.createdAt.timeIntervalSince1970)",
+                "\(session.updatedAt.timeIntervalSince1970)"
+            ]
+        )
+    }
+
+    public func session(id: WorkSessionID) throws -> WorkSession {
+        let rows = try database.rows("SELECT * FROM work_sessions WHERE id = ?", bindings: [id.rawValue])
+        guard let row = rows.first else {
+            throw CatalogError.notFound(id.rawValue)
+        }
+        return try decodeWorkSession(row)
+    }
+
+    public func workSessions(limit: Int, starredOnly: Bool = false) throws -> [WorkSession] {
+        guard limit > 0 else { return [] }
+        let rows: [[String: String]]
+        if starredOnly {
+            rows = try database.rows(
+                "SELECT * FROM work_sessions WHERE starred = 1 ORDER BY updated_at DESC LIMIT ?",
+                bindings: ["\(limit)"]
+            )
+        } else {
+            rows = try database.rows(
+                "SELECT * FROM work_sessions ORDER BY updated_at DESC LIMIT ?",
+                bindings: ["\(limit)"]
+            )
+        }
+        return try rows.map(decodeWorkSession)
+    }
+
     public func recordEvaluationSignals(_ signals: [EvaluationSignal]) throws {
         guard !signals.isEmpty else { return }
         try database.transaction {
@@ -346,6 +424,53 @@ public final class CatalogRepository {
             name: name,
             membership: try decode(AssetSet.Membership.self, from: membershipJSON),
             starred: starred == "1"
+        )
+    }
+
+    private func decodeWorkSession(_ row: [String: String]) throws -> WorkSession {
+        guard let id = row["id"],
+              let kindRawValue = row["kind"],
+              let kind = WorkSessionKind(rawValue: kindRawValue),
+              let intent = row["intent"],
+              let title = row["title"],
+              let detail = row["detail"],
+              let statusRawValue = row["status"],
+              let status = WorkSessionStatus(rawValue: statusRawValue),
+              let inputSetIDsJSON = row["input_set_ids_json"],
+              let outputSetIDsJSON = row["output_set_ids_json"],
+              let completedUnitCountValue = row["completed_unit_count"],
+              let completedUnitCount = Int(completedUnitCountValue),
+              let totalUnitCountValue = row["total_unit_count"],
+              let failureCountValue = row["failure_count"],
+              let failureCount = Int(failureCountValue),
+              let starred = row["starred"],
+              let createdAtValue = row["created_at"],
+              let createdAtInterval = TimeInterval(createdAtValue),
+              let updatedAtValue = row["updated_at"],
+              let updatedAtInterval = TimeInterval(updatedAtValue) else {
+            throw CatalogError.sqlite("work session row is missing required columns")
+        }
+
+        let totalUnitCount = totalUnitCountValue.isEmpty ? nil : Int(totalUnitCountValue)
+        if !totalUnitCountValue.isEmpty, totalUnitCount == nil {
+            throw CatalogError.sqlite("work session row has invalid total unit count")
+        }
+
+        return WorkSession(
+            id: WorkSessionID(rawValue: id),
+            kind: kind,
+            intent: intent,
+            title: title,
+            detail: detail,
+            status: status,
+            inputSetIDs: try decode([AssetSetID].self, from: inputSetIDsJSON),
+            outputSetIDs: try decode([AssetSetID].self, from: outputSetIDsJSON),
+            completedUnitCount: completedUnitCount,
+            totalUnitCount: totalUnitCount,
+            failureCount: failureCount,
+            starred: starred == "1",
+            createdAt: Date(timeIntervalSince1970: createdAtInterval),
+            updatedAt: Date(timeIntervalSince1970: updatedAtInterval)
         )
     }
 

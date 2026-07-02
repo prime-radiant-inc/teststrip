@@ -594,6 +594,52 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, [starred.name, saved.name])
     }
 
+    func testLoadExposesRecentAndStarredWorkSessionsInSidebar() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-work-sessions")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let recent = WorkSession(
+            id: WorkSessionID(rawValue: "recent-import"),
+            kind: .ingest,
+            intent: "Import photos",
+            title: "Import photos",
+            detail: "Imported 12 photos",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: 12,
+            totalUnitCount: 12,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        )
+        let starred = WorkSession(
+            id: WorkSessionID(rawValue: "starred-cull"),
+            kind: .culling,
+            intent: "One hero per burst",
+            title: "Cull Ceremony",
+            detail: "Reviewing ceremony candidates",
+            status: .paused,
+            inputSetIDs: [AssetSetID(rawValue: "candidates")],
+            outputSetIDs: [],
+            completedUnitCount: 25,
+            totalUnitCount: 100,
+            failureCount: 0,
+            starred: true,
+            createdAt: Date(timeIntervalSince1970: 11),
+            updatedAt: Date(timeIntervalSince1970: 15)
+        )
+        try repository.save(recent)
+        try repository.save(starred)
+
+        let model = try AppModel.load(repository: repository)
+
+        XCTAssertEqual(model.recentWork.map(\.id), [recent.id.rawValue, starred.id.rawValue])
+        XCTAssertEqual(model.starredWork.map(\.id), [starred.id.rawValue])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rowTitles, [recent.title, starred.title])
+    }
+
     func testApplyingDynamicSavedSetLoadsMatchingCatalogAssets() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-dynamic-set")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -1085,6 +1131,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(activity.title, "Import photos")
         XCTAssertEqual(activity.detail, "Imported 1 photo from photos")
         XCTAssertEqual(activity.completedUnitCount, 1)
+        XCTAssertEqual(activity.failureCount, 0)
+    }
+
+    @MainActor
+    func testBackgroundImportPersistsCompletedActivityForReload() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-activity-reload")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(catalog: catalog)
+
+        _ = try await model.importFolderInBackground(photoFolder)
+
+        let reloaded = try AppModel.load(catalog: catalog)
+        let activity = try XCTUnwrap(reloaded.recentWork.first)
+        XCTAssertEqual(activity.kind, .ingest)
+        XCTAssertEqual(activity.status, .completed)
+        XCTAssertEqual(activity.title, "Import photos")
+        XCTAssertEqual(activity.detail, "Imported 1 photo from photos")
+        XCTAssertEqual(activity.completedUnitCount, 1)
+        XCTAssertEqual(activity.totalUnitCount, 1)
         XCTAssertEqual(activity.failureCount, 0)
     }
 

@@ -261,6 +261,51 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.evaluationSignals(assetID: assetID), [replacement])
     }
 
+    func testPersistsAndListsWorkSessionsByRecencyAndStarredState() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-work-sessions")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let older = WorkSession(
+            id: WorkSessionID(rawValue: "older"),
+            kind: .culling,
+            intent: "Cull ceremony",
+            title: "Cull Ceremony",
+            detail: "Reviewing ceremony picks",
+            status: .completed,
+            inputSetIDs: [AssetSetID(rawValue: "input")],
+            outputSetIDs: [AssetSetID(rawValue: "keepers")],
+            completedUnitCount: 4,
+            totalUnitCount: 5,
+            failureCount: 1,
+            starred: true,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        )
+        let newer = WorkSession(
+            id: WorkSessionID(rawValue: "newer"),
+            kind: .ingest,
+            intent: "Import card",
+            title: "Import Photos",
+            detail: "Imported 100 photos",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: 100,
+            totalUnitCount: 100,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 11),
+            updatedAt: Date(timeIntervalSince1970: 30)
+        )
+
+        try repository.save(older)
+        try repository.save(newer)
+
+        XCTAssertEqual(try repository.session(id: older.id), older)
+        XCTAssertEqual(try repository.workSessions(limit: 2).map(\.id), [newer.id, older.id])
+        XCTAssertEqual(try repository.workSessions(limit: 10, starredOnly: true), [older])
+    }
+
     func testFetchesAllAssetsInInsertionOrderWhenCreatedAtTies() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
