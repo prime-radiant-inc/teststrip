@@ -25,6 +25,18 @@ final class FolderImportTests: XCTestCase {
         XCTAssertEqual(files, ["one.CR2", "two.jpg"])
     }
 
+    func testFolderScannerReturnsSupportedFilesInNaturalFilenameOrder() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "scan-order")
+        try Data("ten".utf8).write(to: root.appendingPathComponent("10.jpg"))
+        try Data("two".utf8).write(to: root.appendingPathComponent("2.jpg"))
+        try Data("one".utf8).write(to: root.appendingPathComponent("1.jpg"))
+
+        let scanner = FolderScanner(supportedExtensions: ["jpg"])
+        let files = try scanner.scan(root: root).map(\.lastPathComponent)
+
+        XCTAssertEqual(files, ["1.jpg", "2.jpg", "10.jpg"])
+    }
+
     func testFolderScannerReportsSupportedFileCountWhileScanning() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "scan-progress")
         try Data("raw".utf8).write(to: root.appendingPathComponent("one.CR2"))

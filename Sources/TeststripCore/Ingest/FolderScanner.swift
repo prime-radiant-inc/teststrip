@@ -45,7 +45,9 @@ public struct FolderScanner: Sendable {
                 progress?(FolderScanProgress(supportedFileCount: files.count, url: visibleURL))
             }
         }
-        return files
+        return files.sorted { first, second in
+            first.path.localizedStandardCompare(second.path) == .orderedAscending
+        }
     }
 
     private func visibleURL(for url: URL, resolvedRoot: URL, requestedRoot: URL) -> URL {
