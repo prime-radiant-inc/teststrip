@@ -142,6 +142,48 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertEqual(scanUpdates.map(\.totalUnitCount), [nil, nil, nil, nil, nil])
     }
 
+    func testCopyFromCardCopiesOriginalSidecarAndDefersPreviewGeneration() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-copy-card")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        let sourceFile = source.appendingPathComponent("IMG_0001.jpg")
+        try TestDirectories.writeTestJPEG(to: sourceFile, width: 1200, height: 800)
+        let metadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["keeper"])
+        let sourceSidecar = XMPSidecarStore().sidecarURL(forOriginalAt: sourceFile)
+        let sidecarData = try XMPPacket(metadata: metadata).xmlData()
+        try sidecarData.write(to: sourceSidecar)
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+        let recorder = ImportProgressRecorder()
+
+        let result = try service.copyFromCard(
+            source: source,
+            destinationRoot: destination,
+            repository: repository,
+            previewPolicy: .deferGeneration
+        ) { progress in
+            recorder.append(progress)
+        }
+
+        let destinationFile = destination.appendingPathComponent("IMG_0001.jpg")
+        let destinationSidecar = XMPSidecarStore().sidecarURL(forOriginalAt: destinationFile)
+        let asset = try XCTUnwrap(result.importedAssets.first)
+        XCTAssertEqual(result.importedAssets.map(\.originalURL), [destinationFile])
+        XCTAssertEqual(try Data(contentsOf: sourceFile), try Data(contentsOf: destinationFile))
+        XCTAssertEqual(try Data(contentsOf: sourceSidecar), sidecarData)
+        XCTAssertEqual(try Data(contentsOf: destinationSidecar), sidecarData)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata, metadata)
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: asset.id, level: .grid)
+        ])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)).path))
+        let details = recorder.values().map(\.detail)
+        XCTAssertTrue(details.contains("Copying 1 photo to Library"))
+        XCTAssertTrue(details.contains("Copied 1 photo to Library"))
+    }
+
     func testReimportPreservesAssetIdentityMetadataAndRefreshesPreview() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-reimport")
         let image = root.appendingPathComponent("one.jpg")

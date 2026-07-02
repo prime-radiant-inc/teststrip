@@ -81,19 +81,56 @@ public struct LibraryImportService: Sendable {
         previewPolicy: LibraryImportPreviewPolicy,
         progress: LibraryImportProgressHandler? = nil
     ) throws -> LibraryImportResult {
+        try importAssets(
+            plan: IngestPlanner.addFolder(root),
+            scanRootName: root.lastPathComponent,
+            catalogingDetail: { "Cataloging \(Self.photoCountDescription($0))" },
+            catalogedDetail: { "Cataloged \(Self.photoCountDescription($0))" },
+            repository: repository,
+            previewPolicy: previewPolicy,
+            progress: progress
+        )
+    }
+
+    public func copyFromCard(
+        source: URL,
+        destinationRoot: URL,
+        repository: CatalogRepository,
+        previewPolicy: LibraryImportPreviewPolicy,
+        progress: LibraryImportProgressHandler? = nil
+    ) throws -> LibraryImportResult {
+        try importAssets(
+            plan: IngestPlanner.copyFromCard(source: source, destinationRoot: destinationRoot),
+            scanRootName: source.lastPathComponent,
+            catalogingDetail: { "Copying \(Self.photoCountDescription($0)) to \(destinationRoot.lastPathComponent)" },
+            catalogedDetail: { "Copied \(Self.photoCountDescription($0)) to \(destinationRoot.lastPathComponent)" },
+            repository: repository,
+            previewPolicy: previewPolicy,
+            progress: progress
+        )
+    }
+
+    private func importAssets(
+        plan: IngestPlan,
+        scanRootName: String,
+        catalogingDetail: (Int) -> String,
+        catalogedDetail: (Int) -> String,
+        repository: CatalogRepository,
+        previewPolicy: LibraryImportPreviewPolicy,
+        progress: LibraryImportProgressHandler?
+    ) throws -> LibraryImportResult {
         try Task.checkCancellation()
         progress?(LibraryImportProgress(
             completedUnitCount: 0,
             totalUnitCount: nil,
-            detail: "Scanning \(root.lastPathComponent)"
+            detail: "Scanning \(scanRootName)"
         ))
-        let plan = IngestPlanner.addFolder(root)
         let scanProgressCoalescer = ScanProgressCoalescer(interval: Self.scanProgressInterval)
         let sourceFiles = try ingestService.files(for: plan) { scanProgress in
             if scanProgressCoalescer.shouldReportScanCount(scanProgress.supportedFileCount) {
                 reportScanProgress(
                     count: scanProgress.supportedFileCount,
-                    rootName: root.lastPathComponent,
+                    rootName: scanRootName,
                     progress: progress
                 )
             }
@@ -101,14 +138,14 @@ public struct LibraryImportService: Sendable {
         if scanProgressCoalescer.shouldReportFinalScanCount(sourceFiles.count) {
             reportScanProgress(
                 count: sourceFiles.count,
-                rootName: root.lastPathComponent,
+                rootName: scanRootName,
                 progress: progress
             )
         }
         progress?(LibraryImportProgress(
             completedUnitCount: 0,
             totalUnitCount: sourceFiles.count,
-            detail: "Cataloging \(sourceFiles.count) \(sourceFiles.count == 1 ? "photo" : "photos")"
+            detail: catalogingDetail(sourceFiles.count)
         ))
         let assets = try ingestService.ingest(files: sourceFiles, plan: plan, repository: repository)
         let previewItems = assets.map { PreviewGenerationItem(assetID: $0.id, level: .grid) }
@@ -119,7 +156,7 @@ public struct LibraryImportService: Sendable {
         progress?(LibraryImportProgress(
             completedUnitCount: assets.count,
             totalUnitCount: assets.count,
-            detail: "Cataloged \(assets.count) \(assets.count == 1 ? "photo" : "photos")",
+            detail: catalogedDetail(assets.count),
             catalogedAssetIDs: assets.map(\.id)
         ))
 
@@ -195,8 +232,12 @@ public struct LibraryImportService: Sendable {
         progress?(LibraryImportProgress(
             completedUnitCount: count,
             totalUnitCount: nil,
-            detail: "Scanning \(rootName): found \(count) \(count == 1 ? "photo" : "photos")"
+            detail: "Scanning \(rootName): found \(Self.photoCountDescription(count))"
         ))
+    }
+
+    private static func photoCountDescription(_ count: Int) -> String {
+        "\(count) \(count == 1 ? "photo" : "photos")"
     }
 }
 
