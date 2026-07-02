@@ -39,6 +39,15 @@ public final class CatalogRepository {
         )
     }
 
+    public func upsert(_ assets: [Asset]) throws {
+        guard !assets.isEmpty else { return }
+        try database.transaction {
+            for asset in assets {
+                try upsert(asset)
+            }
+        }
+    }
+
     public func asset(id: AssetID) throws -> Asset {
         let rows = try database.rows("SELECT * FROM assets WHERE id = ?", bindings: [id.rawValue])
         guard let row = rows.first else {

@@ -112,6 +112,37 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.allAssets(limit: 100).map(\.id), [first.id])
     }
 
+    func testBulkUpsertPersistsAssets() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-bulk")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assets = (0..<3).map {
+            Asset.testAsset(path: "/Volumes/NAS/Job/frame-\($0).cr2", rating: $0)
+        }
+
+        try repository.upsert(assets)
+
+        XCTAssertEqual(try repository.assetCount(), 3)
+        XCTAssertEqual(try repository.allAssets(limit: 10).map(\.originalURL.path), assets.map(\.originalURL.path))
+    }
+
+    func testBulkUpsertRollsBackWhenAnyAssetFails() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-bulk-rollback")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let first = Asset.testAsset(id: AssetID(rawValue: "first"), path: "/Volumes/NAS/Job/duplicate.cr2", rating: 1)
+        let duplicate = Asset.testAsset(id: AssetID(rawValue: "second"), path: "/Volumes/NAS/Job/duplicate.cr2", rating: 2)
+
+        XCTAssertThrowsError(try repository.upsert([first, duplicate])) { error in
+            guard case CatalogError.sqlite = error else {
+                return XCTFail("expected sqlite error, got \(error)")
+            }
+        }
+        XCTAssertEqual(try repository.assetCount(), 0)
+    }
+
     func testRowsThrowsWhenSQLiteStepFails() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

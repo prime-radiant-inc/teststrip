@@ -43,6 +43,17 @@ public final class CatalogDatabase: @unchecked Sendable {
         }
     }
 
+    func transaction(_ work: () throws -> Void) throws {
+        try execute("BEGIN IMMEDIATE TRANSACTION")
+        do {
+            try work()
+            try execute("COMMIT")
+        } catch {
+            try? execute("ROLLBACK")
+            throw error
+        }
+    }
+
     func rows(_ sql: String, bindings: [String] = []) throws -> [[String: String]] {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
