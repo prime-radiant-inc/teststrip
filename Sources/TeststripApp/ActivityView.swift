@@ -36,6 +36,15 @@ struct ActivityView: View {
                 Text(label(for: activity.status))
                     .font(.caption2)
                     .foregroundStyle(color(for: activity.status))
+                if activity.status == .running {
+                    Button {
+                        model.cancelActiveWork()
+                    } label: {
+                        Image(systemName: "xmark.circle")
+                    }
+                    .buttonStyle(.plain)
+                    .help("Cancel work")
+                }
             }
             Text(activity.detail)
                 .font(.caption)

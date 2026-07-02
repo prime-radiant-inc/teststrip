@@ -146,6 +146,39 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(activity.failureCount, 0)
     }
 
+    @MainActor
+    func testCancellingActiveImportRecordsCancelledActivity() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-cancel-import")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(
+            catalog: catalog,
+            importTaskFactory: { _, _ in
+                Task {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: []
+                    )
+                }
+            }
+        )
+
+        model.beginImportFolder(photoFolder)
+        XCTAssertEqual(model.activeWork?.status, .running)
+
+        model.cancelActiveWork()
+        try await waitForActivityStatus(.cancelled, in: model)
+
+        XCTAssertNil(model.activeWork)
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.status, .cancelled)
+        XCTAssertEqual(activity.detail, "Cancelled import from photos")
+        XCTAssertEqual(model.statusMessage, "Cancelled import")
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-app-tests", isDirectory: true)
@@ -158,5 +191,16 @@ final class AppModelTests: XCTestCase {
     private func writeTestPNG(to url: URL) throws {
         let base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
         try XCTUnwrap(Data(base64Encoded: base64)).write(to: url)
+    }
+
+    @MainActor
+    private func waitForActivityStatus(_ status: WorkSessionStatus, in model: AppModel) async throws {
+        for _ in 0..<100 {
+            if model.recentWork.first?.status == status {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTFail("timed out waiting for activity status \(status.rawValue)")
     }
 }

@@ -53,6 +53,18 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct AppImportOutput: Sendable {
+    public var result: LibraryImportResult
+    public var assets: [Asset]
+
+    public init(result: LibraryImportResult, assets: [Asset]) {
+        self.result = result
+        self.assets = assets
+    }
+}
+
+public typealias AppImportTaskFactory = @Sendable (AppCatalogPaths, URL) -> Task<AppImportOutput, Error>
+
 @Observable
 public final class AppModel {
     public var sidebarSections: [SidebarSection]
@@ -67,6 +79,12 @@ public final class AppModel {
     @ObservationIgnored
     private var catalog: AppCatalog?
 
+    @ObservationIgnored
+    private let importTaskFactory: AppImportTaskFactory
+
+    @ObservationIgnored
+    private var activeImportTask: Task<AppImportOutput, Error>?
+
     public var selectedAsset: Asset? {
         assets.first { $0.id == selectedAssetID }
     }
@@ -79,7 +97,8 @@ public final class AppModel {
         statusMessage: String? = nil,
         errorMessage: String? = nil,
         activeWork: AppWorkActivity? = nil,
-        recentWork: [AppWorkActivity] = []
+        recentWork: [AppWorkActivity] = [],
+        importTaskFactory: AppImportTaskFactory? = nil
     ) {
         self.sidebarSections = sidebarSections
         self.selectedView = selectedView
@@ -90,6 +109,7 @@ public final class AppModel {
         self.activeWork = activeWork
         self.recentWork = recentWork
         self.catalog = catalog
+        self.importTaskFactory = importTaskFactory ?? Self.defaultImportTask
     }
 
     public static func demo() -> AppModel {
@@ -116,12 +136,13 @@ public final class AppModel {
         )
     }
 
-    public static func load(catalog: AppCatalog) throws -> AppModel {
+    public static func load(catalog: AppCatalog, importTaskFactory: AppImportTaskFactory? = nil) throws -> AppModel {
         AppModel(
             sidebarSections: defaultSidebarSections(),
             selectedView: .grid,
             assets: try catalog.repository.allAssets(limit: 500),
-            catalog: catalog
+            catalog: catalog,
+            importTaskFactory: importTaskFactory
         )
     }
 
@@ -177,12 +198,7 @@ public final class AppModel {
         startImportActivity(folderURL: folderURL)
         let paths = catalog.paths
         do {
-            let output = try await Task.detached(priority: .userInitiated) {
-                let backgroundCatalog = try AppCatalog.open(paths: paths)
-                let result = try backgroundCatalog.importService.addFolderInPlace(folderURL, repository: backgroundCatalog.repository)
-                let assets = try backgroundCatalog.repository.allAssets(limit: 500)
-                return BackgroundImportOutput(result: result, assets: assets)
-            }.value
+            let output = try await importTaskFactory(paths, folderURL).value
             replaceAssets(output.assets)
             updateImportStatus(with: output.result)
             completeImportActivity(folderURL: folderURL, result: output.result)
@@ -191,6 +207,58 @@ public final class AppModel {
             failImportActivity(folderURL: folderURL, error: error)
             throw error
         }
+    }
+
+    @MainActor
+    public func beginImportFolder(_ folderURL: URL) {
+        guard let catalog else {
+            errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
+            return
+        }
+        guard activeImportTask == nil else {
+            errorMessage = "Another import is already running"
+            return
+        }
+        errorMessage = nil
+        statusMessage = "Importing \(folderURL.lastPathComponent)..."
+        startImportActivity(folderURL: folderURL)
+        guard let activityID = activeWork?.id else { return }
+
+        let didAccess = folderURL.startAccessingSecurityScopedResource()
+        let task = importTaskFactory(catalog.paths, folderURL)
+        activeImportTask = task
+        Task { @MainActor [weak self] in
+            defer {
+                if didAccess {
+                    folderURL.stopAccessingSecurityScopedResource()
+                }
+            }
+            do {
+                let output = try await task.value
+                guard let self, self.activeWork?.id == activityID else { return }
+                self.replaceAssets(output.assets)
+                self.updateImportStatus(with: output.result)
+                self.completeImportActivity(folderURL: folderURL, result: output.result)
+                self.activeImportTask = nil
+            } catch is CancellationError {
+                guard let self, self.activeWork?.id == activityID else { return }
+                self.cancelImportActivity(folderURL: folderURL)
+                self.activeImportTask = nil
+            } catch {
+                guard let self, self.activeWork?.id == activityID else { return }
+                self.statusMessage = nil
+                self.errorMessage = error.localizedDescription
+                self.failImportActivity(folderURL: folderURL, error: error)
+                self.activeImportTask = nil
+            }
+        }
+    }
+
+    @MainActor
+    public func cancelActiveWork() {
+        guard let activeImportTask else { return }
+        statusMessage = "Cancelling import..."
+        activeImportTask.cancel()
     }
 
     private func updateImportStatus(with result: LibraryImportResult) {
@@ -244,13 +312,30 @@ public final class AppModel {
         recentWork.insert(activity, at: 0)
     }
 
-    private struct BackgroundImportOutput: Sendable {
-        var result: LibraryImportResult
-        var assets: [Asset]
+    private func cancelImportActivity(folderURL: URL) {
+        let activity = AppWorkActivity(
+            id: activeWork?.id ?? UUID(),
+            kind: .ingest,
+            status: .cancelled,
+            title: "Import photos",
+            detail: "Cancelled import from \(folderURL.lastPathComponent)",
+            completedUnitCount: activeWork?.completedUnitCount ?? 0,
+            totalUnitCount: activeWork?.totalUnitCount,
+            failureCount: 0
+        )
+        activeWork = nil
+        statusMessage = "Cancelled import"
+        recentWork.insert(activity, at: 0)
+    }
 
-        init(result: LibraryImportResult, assets: [Asset]) {
-            self.result = result
-            self.assets = assets
+    private static func defaultImportTask(paths: AppCatalogPaths, folderURL: URL) -> Task<AppImportOutput, Error> {
+        Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            let backgroundCatalog = try AppCatalog.open(paths: paths)
+            let result = try backgroundCatalog.importService.addFolderInPlace(folderURL, repository: backgroundCatalog.repository)
+            try Task.checkCancellation()
+            let assets = try backgroundCatalog.repository.allAssets(limit: 500)
+            return AppImportOutput(result: result, assets: assets)
         }
     }
 

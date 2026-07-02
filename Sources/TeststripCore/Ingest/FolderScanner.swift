@@ -19,6 +19,7 @@ public struct FolderScanner: Sendable {
 
         var files: [URL] = []
         for case let url as URL in enumerator {
+            try Task.checkCancellation()
             let values: URLResourceValues
             do {
                 values = try url.resourceValues(forKeys: [.isRegularFileKey])

@@ -6,9 +6,12 @@ import UniformTypeIdentifiers
 struct LibraryGridView: View {
     var model: AppModel
     @State private var isImportingFolder = false
-    @State private var isImporting = false
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
+
+    private var isImporting: Bool {
+        model.activeWork?.kind == .ingest && model.activeWork?.status == .running
+    }
 
     var body: some View {
         ScrollView {
@@ -112,22 +115,7 @@ struct LibraryGridView: View {
     }
 
     private func importFolder(_ folderURL: URL) {
-        isImporting = true
-        Task { @MainActor in
-            let didAccess = folderURL.startAccessingSecurityScopedResource()
-            defer {
-                if didAccess {
-                    folderURL.stopAccessingSecurityScopedResource()
-                }
-                isImporting = false
-            }
-            do {
-                _ = try await model.importFolderInBackground(folderURL)
-            } catch {
-                model.statusMessage = nil
-                model.errorMessage = error.localizedDescription
-            }
-        }
+        model.beginImportFolder(folderURL)
     }
 }
 

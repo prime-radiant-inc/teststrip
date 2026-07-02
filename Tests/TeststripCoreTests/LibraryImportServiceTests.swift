@@ -67,6 +67,34 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
     }
 
+    func testAddFolderStopsBeforeCatalogWritesWhenTaskIsCancelled() async throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-cancelled")
+        let image = root.appendingPathComponent("one.jpg")
+        try TestDirectories.writeTestJPEG(to: image, width: 1200, height: 800)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+        let catalogURL = root.appendingPathComponent("catalog.sqlite")
+        let task = Task {
+            while !Task.isCancelled {
+                await Task.yield()
+            }
+            let database = try CatalogDatabase.open(at: catalogURL)
+            try database.migrate()
+            let repository = CatalogRepository(database: database)
+            return try service.addFolderInPlace(root, repository: repository)
+        }
+
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            XCTFail("cancelled import unexpectedly completed")
+        } catch is CancellationError {
+            let repository = try makeRepository(in: root)
+            XCTAssertEqual(try repository.allAssets(limit: 10), [])
+        }
+    }
+
     private func makeRepository(in root: URL) throws -> CatalogRepository {
         let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
         try database.migrate()

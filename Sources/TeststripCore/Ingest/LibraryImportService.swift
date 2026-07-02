@@ -38,10 +38,12 @@ public struct LibraryImportService: Sendable {
     }
 
     public func addFolderInPlace(_ root: URL, repository: CatalogRepository) throws -> LibraryImportResult {
+        try Task.checkCancellation()
         let assets = try ingestService.ingest(plan: IngestPlanner.addFolder(root), repository: repository)
         var failures: [LibraryPreviewFailure] = []
 
         for asset in assets {
+            try Task.checkCancellation()
             do {
                 try renderer.render(
                     sourceURL: asset.originalURL,

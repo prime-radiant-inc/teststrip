@@ -8,13 +8,15 @@ public struct IngestService: Sendable {
     }
 
     public func files(for plan: IngestPlan) throws -> [URL] {
-        try scanner.scan(root: plan.sourceRoot)
+        try Task.checkCancellation()
+        return try scanner.scan(root: plan.sourceRoot)
     }
 
     public func ingest(plan: IngestPlan, repository: CatalogRepository) throws -> [Asset] {
         let sourceFiles = try files(for: plan)
         var assets: [Asset] = []
         for sourceFile in sourceFiles {
+            try Task.checkCancellation()
             let originalURL = try originalURL(for: sourceFile, plan: plan)
             let existingAsset = try repository.asset(originalURL: originalURL)
             try prepareOriginalFile(sourceFile: sourceFile, originalURL: originalURL, plan: plan, existingAsset: existingAsset)
