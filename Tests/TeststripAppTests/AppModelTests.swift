@@ -1709,6 +1709,35 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testVisibleGridPreviewDoesNotDispatchForKnownUnavailableOriginals() throws {
+        for availability in [SourceAvailability.offline, .missing] {
+            let transport = RecordingWorkerTransport()
+            let supervisor = WorkerSupervisor(
+                queue: BackgroundWorkQueue(maxRunningCount: 1),
+                transport: transport
+            )
+            let directory = try makeTemporaryDirectory(named: "grid-known-\(availability.rawValue)")
+            let asset = Asset(
+                id: AssetID(rawValue: "known-\(availability.rawValue)"),
+                originalURL: directory.appendingPathComponent("unavailable.jpg"),
+                volumeIdentifier: "local",
+                fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
+                availability: availability,
+                metadata: AssetMetadata()
+            )
+            let (model, _) = try makeModelWithCatalogAssets(
+                named: "grid-known-\(availability.rawValue)",
+                assets: [asset],
+                workerSupervisor: supervisor
+            )
+
+            try model.requestVisibleGridPreview(assetID: asset.id)
+
+            XCTAssertEqual(try transport.commands(), [], "unexpected grid preview command for \(availability.rawValue) asset")
+            XCTAssertEqual(model.backgroundWorkQueue.items, [], "unexpected grid preview work for \(availability.rawValue) asset")
+        }
+    }
+
     @MainActor
     func testPreviewCompletionInvalidatesPreviewCacheGeneration() async throws {
         let directory = try makeTemporaryDirectory(named: "preview-completion-invalidation")

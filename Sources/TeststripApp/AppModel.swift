@@ -992,6 +992,11 @@ public final class AppModel {
     }
 
     public func requestVisibleGridPreview(assetID: AssetID) throws {
+        if let asset = assets.first(where: { $0.id == assetID }),
+           [.offline, .missing].contains(asset.availability) {
+            return
+        }
+
         let request = PreviewScheduler().request(
             assetID: assetID,
             context: .grid(distanceFromViewport: 0)
