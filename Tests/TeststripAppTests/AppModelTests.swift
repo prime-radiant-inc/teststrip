@@ -1475,6 +1475,110 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBeginImportFolderWithWorkerEnqueuesManagedImportAndReloadsOnCompletion() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-folder-import")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        XCTAssertNil(model.activeWork)
+        XCTAssertTrue(model.isImporting)
+        XCTAssertEqual(importItem.kind, .ingest)
+        XCTAssertEqual(importItem.title, "Import photos")
+        XCTAssertEqual(importItem.detail, "Importing from photos")
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder)])
+
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "worker-imported"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        try catalog.repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: importedAsset.id, level: .grid))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [importedAsset.id]
+        )))
+
+        try await waitForSelectedAsset(importedAsset.id, in: model)
+        XCTAssertEqual(model.assets.map(\.id), [importedAsset.id])
+        XCTAssertFalse(model.isImporting)
+        XCTAssertEqual(model.statusMessage, "Imported 1 photo")
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.kind, .ingest)
+        XCTAssertEqual(activity.status, .completed)
+        XCTAssertEqual(activity.detail, "Imported 1 photo from photos")
+        XCTAssertEqual(try transport.commands(), [
+            .importFolder(root: photoFolder),
+            .generatePreview(assetID: importedAsset.id, level: .grid)
+        ])
+    }
+
+    @MainActor
+    func testBeginImportCardWithWorkerEnqueuesManagedCopyAndRecordsDestination() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-card-import")
+        let source = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let destinationRoot = directory.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        let sourceImage = source.appendingPathComponent("one.png")
+        try writeTestPNG(to: sourceImage)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportCard(source: source, destinationRoot: destinationRoot)
+
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        XCTAssertTrue(model.isImporting)
+        XCTAssertEqual(importItem.kind, .ingest)
+        XCTAssertEqual(importItem.detail, "Importing from DCIM to Library")
+        XCTAssertEqual(try transport.commands(), [.importCard(source: source, destinationRoot: destinationRoot)])
+
+        let destinationImage = destinationRoot.appendingPathComponent("one.png")
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "worker-card-imported"),
+            originalURL: destinationImage,
+            volumeIdentifier: "Library",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from DCIM to Library",
+            importedAssetIDs: [importedAsset.id]
+        )))
+
+        try await waitForSelectedAsset(importedAsset.id, in: model)
+        XCTAssertEqual(model.assets.map(\.originalURL), [destinationImage])
+        XCTAssertEqual(model.statusMessage, "Imported 1 photo")
+        XCTAssertEqual(model.recentWork.first?.detail, "Imported 1 photo from DCIM to Library")
+        XCTAssertFalse(model.isImporting)
+    }
+
+    @MainActor
     func testBackgroundImportWithMissingWorkerExecutableGeneratesPreviewLocally() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-background-import-missing-worker")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)

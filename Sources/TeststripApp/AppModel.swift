@@ -190,6 +190,13 @@ private struct MetadataChange: Equatable {
     var after: AssetMetadata
 }
 
+private struct WorkerImportContext {
+    var source: URL
+    var destinationRoot: URL?
+    var didAccessSource: Bool
+    var didAccessDestination: Bool
+}
+
 @Observable
 public final class AppModel {
     public var sidebarSections: [SidebarSection]
@@ -230,6 +237,9 @@ public final class AppModel {
 
     @ObservationIgnored
     private var activeImportTask: Task<AppImportOutput, Error>?
+
+    @ObservationIgnored
+    private var workerImportContextsByItemID: [WorkSessionID: WorkerImportContext]
 
     private var metadataUndoStack: [MetadataChange]
     private var metadataRedoStack: [MetadataChange]
@@ -293,6 +303,15 @@ public final class AppModel {
 
     public var canCancelBackgroundWork: Bool {
         backgroundWorkQueue.items.contains { [.queued, .running, .paused].contains($0.status) }
+    }
+
+    public var isImporting: Bool {
+        if activeWork?.kind == .ingest, let status = activeWork?.status, [.queued, .running, .paused].contains(status) {
+            return true
+        }
+        return backgroundWorkQueue.items.contains { item in
+            item.kind == .ingest && [.queued, .running, .paused].contains(item.status)
+        }
     }
 
     public var canRequestSelectedAssetEvaluation: Bool {
@@ -425,9 +444,14 @@ public final class AppModel {
         self.metadataUndoStack = []
         self.metadataRedoStack = []
         self.assetPageOffset = 0
+        self.workerImportContextsByItemID = [:]
         self.workerSupervisor?.onQueueChanged = { [weak self] queue in
             self?.backgroundWorkQueue = queue
             try? self?.refreshMetadataSyncState()
+            self?.releaseInactiveWorkerImportContexts(in: queue)
+        }
+        self.workerSupervisor?.onCommandCompleted = { [weak self] event in
+            self?.handleWorkerCommandCompleted(event)
         }
     }
 
@@ -835,8 +859,13 @@ public final class AppModel {
 
     public func cancelBackgroundWork() {
         do {
+            let hadWorkerImport = !workerImportContextsByItemID.isEmpty
             if let workerSupervisor {
                 try workerSupervisor.cancelAll()
+                cancelWorkerImportContexts()
+                if hadWorkerImport {
+                    statusMessage = "Cancelled import"
+                }
                 syncBackgroundWorkQueueFromSupervisor()
             } else {
                 backgroundWorkQueue.cancelAll()
@@ -963,6 +992,104 @@ public final class AppModel {
     private func syncBackgroundWorkQueueFromSupervisor() {
         if let workerSupervisor {
             backgroundWorkQueue = workerSupervisor.queue
+        }
+    }
+
+    private func enqueueWorkerImport(
+        source: URL,
+        destinationRoot: URL?,
+        command: WorkerCommand
+    ) {
+        guard let workerSupervisor else { return }
+        let itemID = WorkSessionID(rawValue: "import-\(UUID().uuidString)")
+        let didAccessSource = source.startAccessingSecurityScopedResource()
+        let didAccessDestination = destinationRoot?.startAccessingSecurityScopedResource() ?? false
+        let context = WorkerImportContext(
+            source: source,
+            destinationRoot: destinationRoot,
+            didAccessSource: didAccessSource,
+            didAccessDestination: didAccessDestination
+        )
+        let item = BackgroundWorkItem(
+            id: itemID,
+            kind: .ingest,
+            title: "Import photos",
+            detail: "Importing from \(importSourceDescription(folderURL: source, destinationRoot: destinationRoot))",
+            completedUnitCount: 0,
+            totalUnitCount: nil
+        )
+        workerImportContextsByItemID[itemID] = context
+        do {
+            try workerSupervisor.enqueue(item, command: command)
+            syncBackgroundWorkQueueFromSupervisor()
+        } catch {
+            workerImportContextsByItemID[itemID] = nil
+            stopAccessingWorkerImportResources(context)
+            statusMessage = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func handleWorkerCommandCompleted(_ event: WorkerEvent) {
+        guard case .completedImport(let itemID, _, let importedAssetIDs) = event,
+              let itemID,
+              let context = workerImportContextsByItemID.removeValue(forKey: itemID) else {
+            return
+        }
+        defer {
+            stopAccessingWorkerImportResources(context)
+        }
+        guard let catalog else {
+            errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
+            return
+        }
+        do {
+            try loadCatalogPage(preferredSelection: importedAssetIDs.first)
+            try enqueuePendingPreviewGeneration()
+            let importedAssets = try catalog.repository.assets(ids: importedAssetIDs, limit: importedAssetIDs.count)
+            let result = LibraryImportResult(importedAssets: importedAssets, previewFailures: [])
+            updateImportStatus(with: result)
+            recordCompletedImportActivity(
+                id: itemID.rawValue,
+                folderURL: context.source,
+                destinationRoot: context.destinationRoot,
+                result: result
+            )
+        } catch {
+            statusMessage = nil
+            errorMessage = error.localizedDescription
+            failImportActivity(id: itemID.rawValue, folderURL: context.source, destinationRoot: context.destinationRoot, error: error)
+        }
+    }
+
+    private func releaseInactiveWorkerImportContexts(in queue: BackgroundWorkQueue) {
+        for itemID in workerImportContextsByItemID.keys {
+            guard let item = queue.item(id: itemID), [.cancelled, .failed].contains(item.status) else {
+                continue
+            }
+            if let context = workerImportContextsByItemID.removeValue(forKey: itemID) {
+                stopAccessingWorkerImportResources(context)
+            }
+            if item.status == .failed {
+                statusMessage = nil
+                errorMessage = item.detail
+            }
+        }
+    }
+
+    private func cancelWorkerImportContexts() {
+        for context in workerImportContextsByItemID.values {
+            stopAccessingWorkerImportResources(context)
+        }
+        workerImportContextsByItemID.removeAll()
+    }
+
+    private func stopAccessingWorkerImportResources(_ context: WorkerImportContext) {
+        if context.didAccessSource {
+            context.source.stopAccessingSecurityScopedResource()
+        }
+        if context.didAccessDestination {
+            context.destinationRoot?.stopAccessingSecurityScopedResource()
         }
     }
 
@@ -1327,12 +1454,16 @@ public final class AppModel {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
             return
         }
-        guard activeImportTask == nil else {
+        guard !isImporting else {
             errorMessage = "Another import is already running"
             return
         }
         errorMessage = nil
         statusMessage = "Importing \(folderURL.lastPathComponent)..."
+        if workerSupervisor != nil {
+            enqueueWorkerImport(source: folderURL, destinationRoot: nil, command: .importFolder(root: folderURL))
+            return
+        }
         startImportActivity(folderURL: folderURL)
         guard let activityID = activeWork?.id else { return }
 
@@ -1382,12 +1513,20 @@ public final class AppModel {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
             return
         }
-        guard activeImportTask == nil else {
+        guard !isImporting else {
             errorMessage = "Another import is already running"
             return
         }
         errorMessage = nil
         statusMessage = "Importing \(source.lastPathComponent)..."
+        if workerSupervisor != nil {
+            enqueueWorkerImport(
+                source: source,
+                destinationRoot: destinationRoot,
+                command: .importCard(source: source, destinationRoot: destinationRoot)
+            )
+            return
+        }
         startImportActivity(folderURL: source, destinationRoot: destinationRoot)
         guard let activityID = activeWork?.id else { return }
 
@@ -1486,13 +1625,14 @@ public final class AppModel {
     }
 
     private func recordCompletedImportActivity(
+        id: String? = nil,
         folderURL: URL,
         destinationRoot: URL? = nil,
         result: LibraryImportResult
     ) {
         let photoLabel = result.importedAssets.count == 1 ? "photo" : "photos"
         let activity = AppWorkActivity(
-            id: activeWork?.id ?? UUID().uuidString,
+            id: id ?? activeWork?.id ?? UUID().uuidString,
             kind: .ingest,
             status: .completed,
             title: "Import photos",
@@ -1505,9 +1645,9 @@ public final class AppModel {
         recordRecentActivity(activity)
     }
 
-    private func failImportActivity(folderURL: URL, destinationRoot: URL? = nil, error: Error) {
+    private func failImportActivity(id: String? = nil, folderURL: URL, destinationRoot: URL? = nil, error: Error) {
         let activity = AppWorkActivity(
-            id: activeWork?.id ?? UUID().uuidString,
+            id: id ?? activeWork?.id ?? UUID().uuidString,
             kind: .ingest,
             status: .failed,
             title: "Import photos",

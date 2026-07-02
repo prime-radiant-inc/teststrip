@@ -15,7 +15,7 @@ struct LibraryGridView: View {
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
 
     private var isImporting: Bool {
-        model.activeWork?.kind == .ingest && model.activeWork?.status == .running
+        model.isImporting
     }
 
     var body: some View {
