@@ -13,6 +13,18 @@ final class AppCatalogTests: XCTestCase {
         XCTAssertEqual(paths.previewCacheRoot, paths.root.appendingPathComponent("Previews", isDirectory: true))
     }
 
+    func testDefaultPathsCanUseEnvironmentApplicationSupportOverride() throws {
+        let applicationSupport = URL(fileURLWithPath: "/tmp/Isolated Teststrip", isDirectory: true)
+
+        let paths = try AppCatalog.defaultPaths(environment: [
+            AppCatalog.applicationSupportDirectoryEnvironmentKey: applicationSupport.path
+        ])
+
+        XCTAssertEqual(paths.root, applicationSupport.appendingPathComponent("Teststrip", isDirectory: true))
+        XCTAssertEqual(paths.catalogURL, paths.root.appendingPathComponent("catalog.sqlite"))
+        XCTAssertEqual(paths.previewCacheRoot, paths.root.appendingPathComponent("Previews", isDirectory: true))
+    }
+
     func testLoadModelCreatesEmptyCatalogAndPreviewCache() throws {
         let root = try makeTemporaryDirectory(named: "app-catalog")
         let paths = AppCatalog.defaultPaths(applicationSupportDirectory: root)

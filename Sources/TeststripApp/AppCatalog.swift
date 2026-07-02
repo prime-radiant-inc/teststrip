@@ -14,6 +14,8 @@ public struct AppCatalogPaths: Equatable, Sendable {
 }
 
 public struct AppCatalog {
+    public static let applicationSupportDirectoryEnvironmentKey = "TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY"
+
     public var paths: AppCatalogPaths
     public var repository: CatalogRepository
     public var previewCache: PreviewCache
@@ -35,6 +37,15 @@ public struct AppCatalog {
     }
 
     public static func defaultPaths() throws -> AppCatalogPaths {
+        try defaultPaths(environment: ProcessInfo.processInfo.environment)
+    }
+
+    public static func defaultPaths(environment: [String: String]) throws -> AppCatalogPaths {
+        if let override = environment[applicationSupportDirectoryEnvironmentKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !override.isEmpty {
+            return defaultPaths(applicationSupportDirectory: URL(fileURLWithPath: override, isDirectory: true))
+        }
+
         let applicationSupportDirectory = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,

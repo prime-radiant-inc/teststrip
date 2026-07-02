@@ -7,6 +7,9 @@ WORKER_PRODUCT_NAME="TeststripWorker"
 APP_NAME="Teststrip"
 BUNDLE_ID="com.teststrip.app"
 MIN_SYSTEM_VERSION="14.0"
+APPLICATION_SUPPORT_ENV_KEY="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY"
+ISOLATED=0
+ISOLATED_APPLICATION_SUPPORT=""
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -19,7 +22,7 @@ WORKER_BINARY="$APP_HELPERS/$WORKER_PRODUCT_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 
 usage() {
-  echo "usage: $0 [run|--verify|--debug|--logs|--telemetry]" >&2
+  echo "usage: $0 [run|--verify|--isolated|--verify-isolated|--debug|--logs|--telemetry]" >&2
 }
 
 stop_running_app() {
@@ -77,7 +80,12 @@ PLIST
 }
 
 open_app() {
-  /usr/bin/open -n "$APP_BUNDLE"
+  local open_args=(-n "$APP_BUNDLE")
+  if [[ "$ISOLATED" == "1" ]]; then
+    prepare_isolated_catalog
+    open_args=(--env "$APPLICATION_SUPPORT_ENV_KEY=$ISOLATED_APPLICATION_SUPPORT" "${open_args[@]}")
+  fi
+  /usr/bin/open "${open_args[@]}"
 }
 
 verify_app() {
@@ -90,6 +98,9 @@ verify_app() {
   for _ in {1..40}; do
     if pgrep -x "$APP_NAME" >/dev/null; then
       echo "$APP_NAME is running from $APP_BUNDLE"
+      if [[ "$ISOLATED" == "1" ]]; then
+        echo "$APP_NAME is using isolated application support at $ISOLATED_APPLICATION_SUPPORT"
+      fi
       return 0
     fi
     sleep 0.25
@@ -98,8 +109,22 @@ verify_app() {
   return 1
 }
 
+prepare_isolated_catalog() {
+  if [[ -z "$ISOLATED_APPLICATION_SUPPORT" ]]; then
+    ISOLATED_APPLICATION_SUPPORT="$(mktemp -d "${TMPDIR:-/tmp}/teststrip-app-support.XXXXXX")"
+  fi
+}
+
 case "$MODE" in
   run|--verify|verify|--debug|debug|--logs|logs|--telemetry|telemetry)
+    ;;
+  --isolated|isolated)
+    MODE="run"
+    ISOLATED=1
+    ;;
+  --verify-isolated|verify-isolated)
+    MODE="--verify"
+    ISOLATED=1
     ;;
   --help|help|-h)
     usage
