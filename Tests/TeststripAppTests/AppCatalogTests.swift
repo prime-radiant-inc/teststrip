@@ -58,6 +58,8 @@ final class AppCatalogTests: XCTestCase {
 
         try model.requestPreview(assetID: asset.id, level: .large)
 
+        XCTAssertTrue(waitUntil { file(workerOutputURL, contains: "--catalog \(paths.catalogURL.path)") })
+        XCTAssertTrue(file(workerOutputURL, contains: "--preview-cache \(paths.previewCacheRoot.path)"))
         XCTAssertTrue(waitUntil { file(workerOutputURL, contains: "\"command\":\"generatePreview\"") })
         XCTAssertTrue(file(workerOutputURL, contains: "\"assetID\":\"worker-asset\""))
         XCTAssertTrue(file(workerOutputURL, contains: "\"level\":\"large\""))
@@ -76,8 +78,9 @@ final class AppCatalogTests: XCTestCase {
         let script = """
         #!/usr/bin/env bash
         set -euo pipefail
+        printf 'args:%s\\n' "$*" > "\(outputURL.path)"
         IFS= read -r line
-        printf '%s\\n' "$line" > "\(outputURL.path)"
+        printf '%s\\n' "$line" >> "\(outputURL.path)"
         """
         try script.write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)

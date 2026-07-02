@@ -2,7 +2,7 @@
 
 ## Decision
 
-Teststrip models background work through a bounded queue before attaching real process execution. The queue is the source of truth for what may run, what is paused, and what can be cancelled.
+Teststrip models background work through a bounded queue and dispatches runnable work to a supervised helper process. The queue is the source of truth for what may run, what is paused, and what can be cancelled.
 
 The UI must not start unbounded detached work silently. Any long-running preview, XMP, source-scan, import, or recognition task should have a visible `BackgroundWorkItem` or import activity record.
 
@@ -17,10 +17,11 @@ The UI must not start unbounded detached work silently. Any long-running preview
 - `FoundationWorkerTransport` is the concrete local process adapter for launching a worker executable and writing commands to its standard input.
 - The packaged macOS app stages `TeststripWorker` as a signed helper at `Contents/Helpers/TeststripWorker`; app startup injects that helper URL into `AppCatalog.loadModel`.
 - Explicit preview requests dispatch missing preview work through `WorkerSupervisor` and surface it through the app model's background queue projection.
+- `TeststripWorker` opens the app catalog from `--catalog`, writes cached previews under `--preview-cache`, and executes `generatePreview` with `PreviewRenderer`.
 
 ## Next Work
 
 - Move XMP sync and recognition requests through `WorkerSupervisor`.
 - Persist queue state across app relaunches.
 - Emit structured worker events for progress, completion, failure, and cancellation.
-- Add per-kind throttles for NAS/source scans, preview rendering, XMP sync, and recognition.
+- Add per-kind throttles for NAS/source scans, XMP sync, and recognition.

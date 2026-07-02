@@ -73,8 +73,17 @@ public struct AppCatalog {
 
     public static func loadModel(paths: AppCatalogPaths, workerExecutableURL: URL? = nil) throws -> AppModel {
         let workerSupervisor = workerExecutableURL.map {
-            WorkerSupervisor(transport: FoundationWorkerTransport(executableURL: $0))
+            WorkerSupervisor(transport: FoundationWorkerTransport(executableURL: $0, arguments: workerArguments(paths: paths)))
         }
         return try AppModel.load(catalog: open(paths: paths), workerSupervisor: workerSupervisor)
+    }
+
+    public static func workerArguments(paths: AppCatalogPaths) -> [String] {
+        [
+            "--catalog",
+            paths.catalogURL.path,
+            "--preview-cache",
+            paths.previewCacheRoot.path
+        ]
     }
 }
