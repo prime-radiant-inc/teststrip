@@ -150,6 +150,42 @@ public final class AppModel {
         selectedAssetID = assetID
     }
 
+    public func setRatingForSelectedAsset(_ rating: Int) throws {
+        guard (0...5).contains(rating) else {
+            throw TeststripError.invalidState("rating must be between 0 and 5")
+        }
+        try updateSelectedAssetMetadata { metadata in
+            metadata.rating = rating
+        }
+    }
+
+    public func setFlagForSelectedAsset(_ flag: PickFlag?) throws {
+        try updateSelectedAssetMetadata { metadata in
+            metadata.flag = flag
+        }
+    }
+
+    public func setColorLabelForSelectedAsset(_ colorLabel: ColorLabel?) throws {
+        try updateSelectedAssetMetadata { metadata in
+            metadata.colorLabel = colorLabel
+        }
+    }
+
+    private func updateSelectedAssetMetadata(_ update: (inout AssetMetadata) throws -> Void) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard let selectedAssetID else {
+            throw TeststripError.invalidState("no selected asset")
+        }
+        try catalog.repository.updateMetadata(assetID: selectedAssetID, update)
+        let updatedAsset = try catalog.repository.asset(id: selectedAssetID)
+        guard let index = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
+            return
+        }
+        assets[index] = updatedAsset
+    }
+
     public func reload() throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")

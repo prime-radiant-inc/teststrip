@@ -45,6 +45,66 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAsset?.id, second.id)
     }
 
+    func testRatingSelectedAssetUpdatesCatalogAndLoadedAsset() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-rating")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "rating-target"),
+            originalURL: URL(fileURLWithPath: "/Photos/rating.jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+
+        try model.setRatingForSelectedAsset(4)
+
+        XCTAssertEqual(model.selectedAsset?.metadata.rating, 4)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.rating, 4)
+    }
+
+    func testFlagSelectedAssetUpdatesCatalogAndLoadedAsset() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-flag")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "flag-target"),
+            originalURL: URL(fileURLWithPath: "/Photos/flag.jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+
+        try model.setFlagForSelectedAsset(.reject)
+
+        XCTAssertEqual(model.selectedAsset?.metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .reject)
+    }
+
     func testLoadsAssetsFromCatalogRepository() throws {
         let directory = try makeTemporaryDirectory(named: "app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
