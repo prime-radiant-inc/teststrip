@@ -79,6 +79,27 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.selectedAsset)
     }
 
+    func testImportFolderReloadsAssetsAndExposesGridPreviewURL() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(catalog: catalog)
+
+        let result = try model.importFolder(photoFolder)
+
+        XCTAssertEqual(result.importedAssets.count, 1)
+        XCTAssertEqual(model.assets.map(\.originalURL), [image])
+        XCTAssertEqual(model.selectedAssetID, result.importedAssets[0].id)
+        let previewURL = try XCTUnwrap(model.gridPreviewURL(for: result.importedAssets[0].id))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
+        XCTAssertEqual(model.statusMessage, "Imported 1 photo")
+        XCTAssertNil(model.errorMessage)
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-app-tests", isDirectory: true)
@@ -86,5 +107,10 @@ final class AppModelTests: XCTestCase {
             .appendingPathComponent(name, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         return root
+    }
+
+    private func writeTestPNG(to url: URL) throws {
+        let base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+        try XCTUnwrap(Data(base64Encoded: base64)).write(to: url)
     }
 }
