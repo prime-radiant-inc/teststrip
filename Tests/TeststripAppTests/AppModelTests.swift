@@ -1945,6 +1945,39 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testCancellingVisibleWorkerImportPreservesOtherBackgroundWork() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-targeted-cancel")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+        let previewItem = BackgroundWorkItem.testItem(id: "preview")
+        let previewCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
+
+        model.beginImportFolder(photoFolder)
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        try supervisor.enqueue(previewItem, command: previewCommand)
+
+        model.cancelImportWork()
+
+        XCTAssertFalse(model.isImporting)
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: importItem.id)?.status, .cancelled)
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: previewItem.id)?.status, .running)
+        XCTAssertEqual(model.statusMessage, "Cancelled import")
+        XCTAssertEqual(try transport.commands(), [
+            .importFolder(root: photoFolder),
+            .cancelAll,
+            previewCommand
+        ])
+    }
+
+    @MainActor
     func testBeginImportCardWithWorkerEnqueuesManagedCopyAndRecordsDestination() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-card-import")
         let source = directory.appendingPathComponent("DCIM", isDirectory: true)

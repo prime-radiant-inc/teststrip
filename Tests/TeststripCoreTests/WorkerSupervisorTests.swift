@@ -371,6 +371,28 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(try transport.commands(), [command, .pause, .resume, .cancelAll])
     }
 
+    func testCancellingDispatchedItemPreservesQueuedWork() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let importItem = BackgroundWorkItem.testItem(id: "import")
+        let previewItem = BackgroundWorkItem.testItem(id: "preview")
+        let importCommand = WorkerCommand.importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true))
+        let previewCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
+        try supervisor.enqueue(importItem, command: importCommand)
+        try supervisor.enqueue(previewItem, command: previewCommand)
+
+        try supervisor.cancel(id: importItem.id)
+
+        XCTAssertEqual(supervisor.queue.item(id: importItem.id)?.status, .cancelled)
+        XCTAssertEqual(supervisor.queue.item(id: previewItem.id)?.status, .running)
+        XCTAssertEqual(transport.launchCount, 2)
+        XCTAssertEqual(transport.terminateCount, 1)
+        XCTAssertEqual(try transport.commands(), [importCommand, .cancelAll, previewCommand])
+    }
+
     func testFoundationTransportLaunchesWritesAndTerminatesProcess() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-transport")
         let scriptURL = root.appendingPathComponent("record-worker.sh")

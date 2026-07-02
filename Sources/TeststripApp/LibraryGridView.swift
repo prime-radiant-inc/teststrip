@@ -525,11 +525,7 @@ struct LibraryGridView: View {
     }
 
     private func cancelImport() {
-        if model.activeWork?.kind == .ingest {
-            model.cancelActiveWork()
-        } else {
-            model.cancelBackgroundWork()
-        }
+        model.cancelImportWork()
     }
 
     private func loadMoreAssets() {

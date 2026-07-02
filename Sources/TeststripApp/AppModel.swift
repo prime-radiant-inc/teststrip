@@ -936,6 +936,25 @@ public final class AppModel {
         }
     }
 
+    @MainActor
+    public func cancelImportWork() {
+        if activeWork?.kind == .ingest || activeImportTask != nil {
+            cancelActiveWork()
+            return
+        }
+
+        do {
+            guard let workerSupervisor, !workerImportContextsByItemID.isEmpty else { return }
+            for itemID in Array(workerImportContextsByItemID.keys) {
+                try workerSupervisor.cancel(id: itemID)
+            }
+            statusMessage = "Cancelled import"
+            syncBackgroundWorkQueueFromSupervisor()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     public func requestPreview(assetID: AssetID, level: PreviewLevel) throws {
         if previewURL(for: assetID, levels: [level]) != nil {
             return

@@ -111,4 +111,13 @@ public struct BackgroundWorkQueue: Equatable, Sendable {
             items[index].status = .cancelled
         }
     }
+
+    public mutating func cancel(id: WorkSessionID) {
+        guard let index = items.firstIndex(where: { $0.id == id }),
+              [.queued, .running, .paused].contains(items[index].status) else {
+            return
+        }
+        items[index].status = .cancelled
+        activateRunnableItems()
+    }
 }

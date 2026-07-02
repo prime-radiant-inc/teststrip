@@ -95,6 +95,21 @@ final class BackgroundWorkQueueTests: XCTestCase {
         XCTAssertEqual(queue.runningItems, [])
         XCTAssertEqual(queue.queuedItems, [])
     }
+
+    func testCancellingOneItemStartsNextQueuedItem() {
+        var queue = BackgroundWorkQueue(maxRunningCount: 1)
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let second = BackgroundWorkItem.testItem(id: "second")
+        queue.enqueue(first)
+        queue.enqueue(second)
+        queue.activateRunnableItems()
+
+        queue.cancel(id: first.id)
+
+        XCTAssertEqual(queue.item(id: first.id)?.status, .cancelled)
+        XCTAssertEqual(queue.item(id: second.id)?.status, .running)
+        XCTAssertEqual(queue.runningItems.map(\.id), [second.id])
+    }
 }
 
 private extension BackgroundWorkItem {

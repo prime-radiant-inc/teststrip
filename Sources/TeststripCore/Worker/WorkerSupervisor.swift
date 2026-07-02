@@ -128,6 +128,37 @@ public final class WorkerSupervisor: @unchecked Sendable {
         }
     }
 
+    public func cancel(id itemID: WorkSessionID) throws {
+        guard queue.item(id: itemID) != nil else { return }
+        var sendError: Error?
+        let stoppedDispatchedItemIDs: [WorkSessionID]
+        if dispatchedItemIDs.contains(itemID) {
+            stoppedDispatchedItemIDs = dispatchedItemIDs
+            if transport.isRunning {
+                do {
+                    try send(.cancelAll)
+                } catch {
+                    sendError = error
+                }
+                transport.terminate()
+            }
+            dispatchedItemIDs.removeAll()
+        } else {
+            stoppedDispatchedItemIDs = []
+        }
+
+        commandsByItemID[itemID] = nil
+        for stoppedItemID in stoppedDispatchedItemIDs {
+            cancelTimeout(for: stoppedItemID)
+        }
+        queue.cancel(id: itemID)
+        try dispatchRunnableItems()
+        notifyQueueChanged()
+        if let sendError {
+            throw sendError
+        }
+    }
+
     private func dispatchRunnableItems() throws {
         for item in queue.runningItems where !dispatchedItemIDs.contains(item.id) {
             guard dispatchedItemIDs.count < maxDispatchedCommandCount else {
