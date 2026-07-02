@@ -71,69 +71,69 @@ private struct CullingCommands: Commands {
     var body: some Commands {
         CommandMenu("Culling") {
             Button("Previous Photo") {
-                model.selectPreviousAsset()
+                applyShortcut(.previousPhoto)
             }
-            .keyboardShortcut(.leftArrow, modifiers: [.option])
+            .keyboardShortcut(.leftArrow, modifiers: [])
 
             Button("Next Photo") {
-                model.selectNextAsset()
+                applyShortcut(.nextPhoto)
             }
-            .keyboardShortcut(.rightArrow, modifiers: [.option])
+            .keyboardShortcut(.rightArrow, modifiers: [])
 
             Divider()
 
             Button("Clear Rating") {
-                apply(.rating(0))
+                applyShortcut(.rating(0))
             }
-            .keyboardShortcut("0", modifiers: [.option])
+            .keyboardShortcut("0", modifiers: [])
 
             Button("1 Star") {
-                apply(.rating(1))
+                applyShortcut(.rating(1))
             }
-            .keyboardShortcut("1", modifiers: [.option])
+            .keyboardShortcut("1", modifiers: [])
 
             Button("2 Stars") {
-                apply(.rating(2))
+                applyShortcut(.rating(2))
             }
-            .keyboardShortcut("2", modifiers: [.option])
+            .keyboardShortcut("2", modifiers: [])
 
             Button("3 Stars") {
-                apply(.rating(3))
+                applyShortcut(.rating(3))
             }
-            .keyboardShortcut("3", modifiers: [.option])
+            .keyboardShortcut("3", modifiers: [])
 
             Button("4 Stars") {
-                apply(.rating(4))
+                applyShortcut(.rating(4))
             }
-            .keyboardShortcut("4", modifiers: [.option])
+            .keyboardShortcut("4", modifiers: [])
 
             Button("5 Stars") {
-                apply(.rating(5))
+                applyShortcut(.rating(5))
             }
-            .keyboardShortcut("5", modifiers: [.option])
+            .keyboardShortcut("5", modifiers: [])
 
             Divider()
 
             Button("Pick") {
-                apply(.pick)
+                applyShortcut(.pick)
             }
-            .keyboardShortcut("p", modifiers: [.option])
+            .keyboardShortcut("p", modifiers: [])
 
             Button("Reject") {
-                apply(.reject)
+                applyShortcut(.reject)
             }
-            .keyboardShortcut("x", modifiers: [.option])
+            .keyboardShortcut("x", modifiers: [])
 
             Button("Clear Flag") {
-                apply(.clearFlag)
+                applyShortcut(.clearFlag)
             }
-            .keyboardShortcut("u", modifiers: [.option])
+            .keyboardShortcut("u", modifiers: [])
         }
     }
 
-    private func apply(_ command: CullingCommand) {
+    private func applyShortcut(_ shortcut: CullingShortcut) {
         do {
-            try model.applyCullingCommand(command)
+            try model.applyCullingShortcut(shortcut)
         } catch {
             model.errorMessage = error.localizedDescription
         }

@@ -344,6 +344,24 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
     }
 
+    func testLoupePreviewURLPrefersLargePreviewOverGridPreview() throws {
+        let (model, previewCache, asset) = try makeModelWithPreviewCache(named: "loupe-large")
+        let gridPreview = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+        let largePreview = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large))
+        try writePreviewPlaceholder(to: gridPreview)
+        try writePreviewPlaceholder(to: largePreview)
+
+        XCTAssertEqual(model.loupePreviewURL(for: asset.id), largePreview)
+    }
+
+    func testLoupePreviewURLFallsBackToGridPreview() throws {
+        let (model, previewCache, asset) = try makeModelWithPreviewCache(named: "loupe-grid")
+        let gridPreview = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+        try writePreviewPlaceholder(to: gridPreview)
+
+        XCTAssertEqual(model.loupePreviewURL(for: asset.id), gridPreview)
+    }
+
     @MainActor
     func testBackgroundImportReloadsAssetsAndExposesGridPreviewURL() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-background-import")
@@ -439,6 +457,11 @@ final class AppModelTests: XCTestCase {
         try XCTUnwrap(Data(base64Encoded: base64)).write(to: url)
     }
 
+    private func writePreviewPlaceholder(to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("preview".utf8).write(to: url)
+    }
+
     private func makeAsset(id: String, size: Int64) -> Asset {
         Asset(
             id: AssetID(rawValue: id),
@@ -448,6 +471,33 @@ final class AppModelTests: XCTestCase {
             availability: .online,
             metadata: AssetMetadata()
         )
+    }
+
+    private func makeModelWithPreviewCache(named name: String) throws -> (AppModel, PreviewCache, Asset) {
+        let directory = try makeTemporaryDirectory(named: name)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: name),
+            originalURL: URL(fileURLWithPath: "/Photos/\(name).jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        return (try AppModel.load(catalog: catalog), previewCache, asset)
     }
 
     private func makeModelWithCatalogAsset(named name: String) throws -> (AppModel, CatalogRepository, Asset) {

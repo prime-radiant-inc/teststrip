@@ -14,32 +14,33 @@ struct LibraryGridView: View {
     }
 
     var body: some View {
-        ScrollView {
+        Group {
             if model.assets.isEmpty {
-                emptyLibraryView
-            } else {
-                LazyVGrid(columns: columns, spacing: 8) {
-                    ForEach(model.assets, id: \.id.rawValue) { asset in
-                        Button {
-                            model.select(asset.id)
-                        } label: {
-                            AssetGridCell(
-                                asset: asset,
-                                previewURL: model.gridPreviewURL(for: asset.id),
-                                isSelected: model.selectedAssetID == asset.id
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .focusEffectDisabled()
-                        .contentShape(Rectangle())
-                        .accessibilityLabel(asset.originalURL.lastPathComponent)
-                    }
+                ScrollView {
+                    emptyLibraryView
                 }
-                .padding(12)
+            } else if model.selectedView == .loupe {
+                LoupeView(model: model)
+            } else {
+                ScrollView {
+                    assetGrid
+                }
             }
         }
         .navigationTitle("All Photographs")
         .toolbar {
+            Picker("View", selection: Binding(
+                get: { model.selectedView },
+                set: { model.selectedView = $0 }
+            )) {
+                Label("Grid", systemImage: "square.grid.3x3.fill")
+                    .tag(LibraryViewMode.grid)
+                Label("Loupe", systemImage: "rectangle.inset.filled")
+                    .tag(LibraryViewMode.loupe)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
             Button {
                 isImportingFolder = true
             } label: {
@@ -56,11 +57,27 @@ struct LibraryGridView: View {
         .safeAreaInset(edge: .bottom) {
             footer
         }
-        .background {
-            CullingKeyCaptureView { shortcut in
-                handleCullingShortcut(shortcut)
+    }
+
+    private var assetGrid: some View {
+        LazyVGrid(columns: columns, spacing: 8) {
+            ForEach(model.assets, id: \.id.rawValue) { asset in
+                Button {
+                    model.select(asset.id)
+                } label: {
+                    AssetGridCell(
+                        asset: asset,
+                        previewURL: model.gridPreviewURL(for: asset.id),
+                        isSelected: model.selectedAssetID == asset.id
+                    )
+                }
+                .buttonStyle(.plain)
+                .focusEffectDisabled()
+                .contentShape(Rectangle())
+                .accessibilityLabel(asset.originalURL.lastPathComponent)
             }
         }
+        .padding(12)
     }
 
     private var emptyLibraryView: some View {
@@ -151,77 +168,68 @@ struct LibraryGridView: View {
     }
 }
 
-private struct CullingKeyCaptureView: NSViewRepresentable {
-    var onShortcut: (CullingShortcut) -> Void
+private struct LoupeView: View {
+    var model: AppModel
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onShortcut: onShortcut)
-    }
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        context.coordinator.view = view
-        context.coordinator.installMonitor()
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.view = nsView
-        context.coordinator.onShortcut = onShortcut
-        context.coordinator.installMonitor()
-    }
-
-    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
-        coordinator.removeMonitor()
-    }
-
-    @MainActor
-    final class Coordinator {
-        weak var view: NSView?
-        var onShortcut: (CullingShortcut) -> Void
-        private var monitor: Any?
-
-        init(onShortcut: @escaping (CullingShortcut) -> Void) {
-            self.onShortcut = onShortcut
-        }
-
-        func installMonitor() {
-            guard monitor == nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                self?.handle(event) ?? event
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.28)
+            if let asset = model.selectedAsset {
+                loupeContent(for: asset)
+            } else {
+                unavailableView(title: "No photo selected", systemImage: "photo")
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 
-        func removeMonitor() {
-            if let monitor {
-                NSEvent.removeMonitor(monitor)
-            }
-            monitor = nil
-        }
-
-        private func handle(_ event: NSEvent) -> NSEvent? {
-            guard let view, event.window === view.window else { return event }
-            guard event.window?.firstResponder is NSTextView == false else { return event }
-            guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return event }
-            guard let key = shortcutKey(for: event), let shortcut = CullingShortcut(key: key) else {
-                return event
-            }
-            onShortcut(shortcut)
-            return nil
-        }
-
-        private func shortcutKey(for event: NSEvent) -> CullingShortcutKey? {
-            switch event.keyCode {
-            case 123:
-                return .leftArrow
-            case 124:
-                return .rightArrow
-            default:
-                guard let character = event.charactersIgnoringModifiers, character.count == 1 else {
-                    return nil
+    @ViewBuilder
+    private func loupeContent(for asset: Asset) -> some View {
+        if let previewURL = model.loupePreviewURL(for: asset.id), let image = NSImage(contentsOf: previewURL) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
+                .padding(16)
+                .overlay(alignment: .bottomLeading) {
+                    loupeOverlay(for: asset)
                 }
-                return .character(character)
+        } else {
+            unavailableView(title: "No cached preview", systemImage: "photo.badge.exclamationmark")
+                .overlay(alignment: .bottomLeading) {
+                    loupeOverlay(for: asset)
+                }
+        }
+    }
+
+    private func loupeOverlay(for asset: Asset) -> some View {
+        HStack(spacing: 10) {
+            Text(asset.originalURL.lastPathComponent)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+            Text("Rating: \(asset.metadata.rating)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let flag = asset.metadata.flag {
+                Text(flag.rawValue.capitalized)
+                    .font(.caption)
+                    .foregroundStyle(flag == .pick ? .green : .red)
             }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .padding(12)
+    }
+
+    private func unavailableView(title: String, systemImage: String) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 34))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.secondary)
         }
     }
 }

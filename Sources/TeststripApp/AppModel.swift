@@ -568,10 +568,22 @@ public final class AppModel {
     }
 
     public func gridPreviewURL(for assetID: AssetID) -> URL? {
+        previewURL(for: assetID, levels: [.grid])
+    }
+
+    public func loupePreviewURL(for assetID: AssetID) -> URL? {
+        previewURL(for: assetID, levels: [.large, .medium, .grid])
+    }
+
+    public func previewURL(for assetID: AssetID, levels: [PreviewLevel]) -> URL? {
         guard let catalog else { return nil }
-        let url = catalog.previewCache.url(for: PreviewCacheKey(assetID: assetID, level: .grid))
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        return url
+        for level in levels {
+            let url = catalog.previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
+            if FileManager.default.fileExists(atPath: url.path) {
+                return url
+            }
+        }
+        return nil
     }
 
     private static func defaultSidebarSections() -> [SidebarSection] {
