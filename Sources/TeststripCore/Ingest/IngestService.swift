@@ -29,9 +29,9 @@ public struct IngestService: Sendable {
                 availability: .online,
                 metadata: existingAsset?.metadata ?? AssetMetadata()
             )
-            try repository.upsert(asset)
             assets.append(asset)
         }
+        try repository.upsert(assets)
         return assets
     }
 

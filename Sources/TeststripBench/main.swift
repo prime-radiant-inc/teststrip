@@ -13,6 +13,8 @@ let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog
 try database.migrate()
 let repository = CatalogRepository(database: database)
 
+var assets: [Asset] = []
+assets.reserveCapacity(count)
 let start = Date()
 for index in 0..<count {
     let asset = Asset(
@@ -23,8 +25,9 @@ for index in 0..<count {
         availability: index.isMultiple(of: 2) ? .online : .offline,
         metadata: AssetMetadata(rating: index % 6)
     )
-    try repository.upsert(asset)
+    assets.append(asset)
 }
+try repository.upsert(assets)
 
 let elapsed = Date().timeIntervalSince(start)
 print("inserted \(count) assets in \(String(format: "%.3f", elapsed))s")
