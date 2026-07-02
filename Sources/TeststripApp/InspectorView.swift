@@ -15,7 +15,7 @@ struct InspectorView: View {
                 Text("No selection")
             }
             Spacer()
-            ActivityView()
+            ActivityView(model: model)
         }
         .padding()
         .frame(minWidth: 260)

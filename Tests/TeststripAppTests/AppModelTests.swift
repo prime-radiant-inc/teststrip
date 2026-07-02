@@ -122,6 +122,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
     }
 
+    @MainActor
+    func testBackgroundImportRecordsCompletedActivity() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-activity")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(catalog: catalog)
+
+        let result = try await model.importFolderInBackground(photoFolder)
+
+        XCTAssertEqual(result.importedAssets.count, 1)
+        XCTAssertNil(model.activeWork)
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.kind, .ingest)
+        XCTAssertEqual(activity.status, .completed)
+        XCTAssertEqual(activity.title, "Import photos")
+        XCTAssertEqual(activity.detail, "Imported 1 photo from photos")
+        XCTAssertEqual(activity.completedUnitCount, 1)
+        XCTAssertEqual(activity.failureCount, 0)
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-app-tests", isDirectory: true)

@@ -1,9 +1,72 @@
 import SwiftUI
+import TeststripCore
 
 struct ActivityView: View {
+    var model: AppModel
+
     var body: some View {
-        Text("No active work")
-            .foregroundStyle(.secondary)
-            .padding()
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Activity")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if let activeWork = model.activeWork {
+                activityRow(activeWork)
+            } else if let recentWork = model.recentWork.first {
+                activityRow(recentWork)
+            } else {
+                Text("No active work")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 8)
+    }
+
+    private func activityRow(_ activity: AppWorkActivity) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                if activity.status == .running {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Text(activity.title)
+                    .font(.caption.weight(.semibold))
+                Spacer(minLength: 0)
+                Text(label(for: activity.status))
+                    .font(.caption2)
+                    .foregroundStyle(color(for: activity.status))
+            }
+            Text(activity.detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            if let total = activity.totalUnitCount {
+                ProgressView(value: Double(activity.completedUnitCount), total: Double(max(total, 1)))
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    private func label(for status: WorkSessionStatus) -> String {
+        switch status {
+        case .queued: "Queued"
+        case .running: "Running"
+        case .paused: "Paused"
+        case .completed: "Done"
+        case .failed: "Failed"
+        case .cancelled: "Cancelled"
+        }
+    }
+
+    private func color(for status: WorkSessionStatus) -> Color {
+        switch status {
+        case .queued, .running, .paused:
+            .secondary
+        case .completed:
+            .green
+        case .failed, .cancelled:
+            .red
+        }
     }
 }

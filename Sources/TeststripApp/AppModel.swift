@@ -22,6 +22,37 @@ public struct SidebarSection: Identifiable, Equatable {
     }
 }
 
+public struct AppWorkActivity: Identifiable, Equatable, Sendable {
+    public var id: UUID
+    public var kind: WorkSessionKind
+    public var status: WorkSessionStatus
+    public var title: String
+    public var detail: String
+    public var completedUnitCount: Int
+    public var totalUnitCount: Int?
+    public var failureCount: Int
+
+    public init(
+        id: UUID = UUID(),
+        kind: WorkSessionKind,
+        status: WorkSessionStatus,
+        title: String,
+        detail: String,
+        completedUnitCount: Int,
+        totalUnitCount: Int?,
+        failureCount: Int
+    ) {
+        self.id = id
+        self.kind = kind
+        self.status = status
+        self.title = title
+        self.detail = detail
+        self.completedUnitCount = completedUnitCount
+        self.totalUnitCount = totalUnitCount
+        self.failureCount = failureCount
+    }
+}
+
 @Observable
 public final class AppModel {
     public var sidebarSections: [SidebarSection]
@@ -30,6 +61,8 @@ public final class AppModel {
     public var selectedAssetID: AssetID?
     public var statusMessage: String?
     public var errorMessage: String?
+    public var activeWork: AppWorkActivity?
+    public var recentWork: [AppWorkActivity]
 
     @ObservationIgnored
     private var catalog: AppCatalog?
@@ -44,7 +77,9 @@ public final class AppModel {
         assets: [Asset],
         catalog: AppCatalog? = nil,
         statusMessage: String? = nil,
-        errorMessage: String? = nil
+        errorMessage: String? = nil,
+        activeWork: AppWorkActivity? = nil,
+        recentWork: [AppWorkActivity] = []
     ) {
         self.sidebarSections = sidebarSections
         self.selectedView = selectedView
@@ -52,6 +87,8 @@ public final class AppModel {
         self.selectedAssetID = assets.first?.id
         self.statusMessage = statusMessage
         self.errorMessage = errorMessage
+        self.activeWork = activeWork
+        self.recentWork = recentWork
         self.catalog = catalog
     }
 
@@ -116,10 +153,17 @@ public final class AppModel {
         }
         errorMessage = nil
         statusMessage = "Importing \(folderURL.lastPathComponent)..."
-        let result = try catalog.importService.addFolderInPlace(folderURL, repository: catalog.repository)
-        try reload()
-        updateImportStatus(with: result)
-        return result
+        startImportActivity(folderURL: folderURL)
+        do {
+            let result = try catalog.importService.addFolderInPlace(folderURL, repository: catalog.repository)
+            try reload()
+            updateImportStatus(with: result)
+            completeImportActivity(folderURL: folderURL, result: result)
+            return result
+        } catch {
+            failImportActivity(folderURL: folderURL, error: error)
+            throw error
+        }
     }
 
     @discardableResult
@@ -130,16 +174,23 @@ public final class AppModel {
         }
         errorMessage = nil
         statusMessage = "Importing \(folderURL.lastPathComponent)..."
+        startImportActivity(folderURL: folderURL)
         let paths = catalog.paths
-        let output = try await Task.detached(priority: .userInitiated) {
-            let backgroundCatalog = try AppCatalog.open(paths: paths)
-            let result = try backgroundCatalog.importService.addFolderInPlace(folderURL, repository: backgroundCatalog.repository)
-            let assets = try backgroundCatalog.repository.allAssets(limit: 500)
-            return BackgroundImportOutput(result: result, assets: assets)
-        }.value
-        replaceAssets(output.assets)
-        updateImportStatus(with: output.result)
-        return output.result
+        do {
+            let output = try await Task.detached(priority: .userInitiated) {
+                let backgroundCatalog = try AppCatalog.open(paths: paths)
+                let result = try backgroundCatalog.importService.addFolderInPlace(folderURL, repository: backgroundCatalog.repository)
+                let assets = try backgroundCatalog.repository.allAssets(limit: 500)
+                return BackgroundImportOutput(result: result, assets: assets)
+            }.value
+            replaceAssets(output.assets)
+            updateImportStatus(with: output.result)
+            completeImportActivity(folderURL: folderURL, result: output.result)
+            return output.result
+        } catch {
+            failImportActivity(folderURL: folderURL, error: error)
+            throw error
+        }
     }
 
     private func updateImportStatus(with result: LibraryImportResult) {
@@ -148,6 +199,49 @@ public final class AppModel {
         if !result.previewFailures.isEmpty {
             statusMessage?.append(" (\(result.previewFailures.count) preview failures)")
         }
+    }
+
+    private func startImportActivity(folderURL: URL) {
+        activeWork = AppWorkActivity(
+            kind: .ingest,
+            status: .running,
+            title: "Import photos",
+            detail: "Importing from \(folderURL.lastPathComponent)",
+            completedUnitCount: 0,
+            totalUnitCount: nil,
+            failureCount: 0
+        )
+    }
+
+    private func completeImportActivity(folderURL: URL, result: LibraryImportResult) {
+        let photoLabel = result.importedAssets.count == 1 ? "photo" : "photos"
+        let activity = AppWorkActivity(
+            id: activeWork?.id ?? UUID(),
+            kind: .ingest,
+            status: .completed,
+            title: "Import photos",
+            detail: "Imported \(result.importedAssets.count) \(photoLabel) from \(folderURL.lastPathComponent)",
+            completedUnitCount: result.importedAssets.count,
+            totalUnitCount: result.importedAssets.count,
+            failureCount: result.previewFailures.count
+        )
+        activeWork = nil
+        recentWork.insert(activity, at: 0)
+    }
+
+    private func failImportActivity(folderURL: URL, error: Error) {
+        let activity = AppWorkActivity(
+            id: activeWork?.id ?? UUID(),
+            kind: .ingest,
+            status: .failed,
+            title: "Import photos",
+            detail: "Import failed from \(folderURL.lastPathComponent): \(error.localizedDescription)",
+            completedUnitCount: 0,
+            totalUnitCount: nil,
+            failureCount: 1
+        )
+        activeWork = nil
+        recentWork.insert(activity, at: 0)
     }
 
     private struct BackgroundImportOutput: Sendable {
