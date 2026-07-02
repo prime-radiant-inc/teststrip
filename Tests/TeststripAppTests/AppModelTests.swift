@@ -1224,6 +1224,25 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try transport.commands(), [.runEvaluation(assetID: asset.id, provider: "local-image-metrics")])
     }
 
+    func testRequestSelectedAssetEvaluationsDispatchesDefaultLocalProviders() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 2),
+            transport: transport
+        )
+        let (model, _, asset) = try makeModelWithPreviewCache(
+            named: "request-selected-evaluations",
+            workerSupervisor: supervisor
+        )
+
+        try model.requestSelectedAssetEvaluations()
+
+        XCTAssertEqual(try transport.commands(), [
+            .runEvaluation(assetID: asset.id, provider: "local-image-metrics"),
+            .runEvaluation(assetID: asset.id, provider: "apple-vision")
+        ])
+    }
+
     func testCanRequestSelectedAssetEvaluationRequiresSelectionAndWorker() throws {
         let (modelWithoutWorker, _, _) = try makeModelWithPreviewCache(named: "evaluation-without-worker")
         XCTAssertFalse(modelWithoutWorker.canRequestSelectedAssetEvaluation)

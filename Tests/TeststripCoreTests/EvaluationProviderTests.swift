@@ -72,6 +72,41 @@ final class EvaluationProviderTests: XCTestCase {
         XCTAssertEqual(exposure, 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2], accuracy: 0.0001)
     }
 
+    func testAppleVisionProviderMapsAnalysisToSignals() throws {
+        let provider = AppleVisionEvaluationProvider(analyzer: FakeAppleVisionAnalyzer(analysis: AppleVisionAnalysis(
+            faceQualityScores: [0.6, 0.9],
+            recognizedText: ["Invoice 123", "Total 45"],
+            classificationLabels: [AppleVisionLabel(identifier: "document", confidence: 0.82)]
+        )))
+        let assetID = AssetID(rawValue: "asset-1")
+
+        let signals = try provider.evaluate(assetID: assetID, previewURL: URL(fileURLWithPath: "/tmp/preview.jpg"))
+
+        XCTAssertEqual(signals, [
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .faceQuality,
+                value: .score(0.75),
+                confidence: 0.9,
+                provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+            ),
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .ocrText,
+                value: .text("Invoice 123\nTotal 45"),
+                confidence: 1.0,
+                provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+            ),
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .object,
+                value: .label("document"),
+                confidence: 0.82,
+                provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+            )
+        ])
+    }
+
     func testEvaluationValuesRoundTripThroughJSON() throws {
         let values: [EvaluationValue] = [
             .score(0.92),
@@ -101,6 +136,14 @@ final class EvaluationProviderTests: XCTestCase {
         let decoded = try JSONDecoder().decode(EvaluationSignal.self, from: data)
 
         XCTAssertEqual(decoded, signal)
+    }
+}
+
+private struct FakeAppleVisionAnalyzer: AppleVisionAnalyzing {
+    var analysis: AppleVisionAnalysis
+
+    func analyze(previewURL: URL) throws -> AppleVisionAnalysis {
+        analysis
     }
 }
 

@@ -226,6 +226,7 @@ public final class AppModel {
     private var assetPageOffset: Int
 
     public static let defaultEvaluationProviderName = "local-image-metrics"
+    public static let defaultEvaluationProviderNames = [defaultEvaluationProviderName, "apple-vision"]
     private static let assetPageSize = 500
     private static let loadedAssetWindowSize = assetPageSize * 2
     private static let pendingPreviewRecoveryBatchSize = 200
@@ -926,6 +927,15 @@ public final class AppModel {
             throw TeststripError.invalidState("no selected asset")
         }
         try requestEvaluation(assetID: selectedAssetID, provider: provider)
+    }
+
+    public func requestSelectedAssetEvaluations(providers: [String] = AppModel.defaultEvaluationProviderNames) throws {
+        guard let selectedAssetID else {
+            throw TeststripError.invalidState("no selected asset")
+        }
+        for provider in providers {
+            try requestEvaluation(assetID: selectedAssetID, provider: provider)
+        }
     }
 
     private func syncBackgroundWorkQueueFromSupervisor() {

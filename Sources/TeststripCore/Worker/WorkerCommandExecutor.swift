@@ -77,7 +77,7 @@ public struct WorkerCommandExecutor {
         self.init(
             repository: CatalogRepository(database: database),
             previewCache: PreviewCache(root: configuration.previewCacheRoot),
-            evaluationProviders: [LocalImageMetricsEvaluationProvider()]
+            evaluationProviders: [LocalImageMetricsEvaluationProvider(), AppleVisionEvaluationProvider()]
         )
     }
 

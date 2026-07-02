@@ -505,7 +505,7 @@ struct LibraryGridView: View {
 
     private func evaluateSelectedAsset() {
         do {
-            try model.requestSelectedAssetEvaluation()
+            try model.requestSelectedAssetEvaluations()
         } catch {
             model.errorMessage = error.localizedDescription
         }
