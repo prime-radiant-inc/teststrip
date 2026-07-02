@@ -776,6 +776,22 @@ final class AppModelTests: XCTestCase {
         XCTAssertThrowsError(try model.saveSelectedAssetAsManualSet(named: "No Selection"))
     }
 
+    func testManualSetSaveAffordancesReflectSelectionAndCatalog() throws {
+        let (model, _, asset) = try makeModelWithCatalogAsset(named: "manual-set-photo")
+
+        XCTAssertTrue(model.canSaveSelectedAssetAsManualSet)
+        XCTAssertEqual(model.suggestedManualSetName, "manual-set-photo")
+
+        model.selectedAssetID = nil
+
+        XCTAssertFalse(model.canSaveSelectedAssetAsManualSet)
+        XCTAssertEqual(model.suggestedManualSetName, "Selection")
+
+        let uncatalogedModel = AppModel(sidebarSections: [], selectedView: .grid, assets: [asset])
+
+        XCTAssertFalse(uncatalogedModel.canSaveSelectedAssetAsManualSet)
+    }
+
     func testLoadingEmptyRepositoryLeavesSelectionEmpty() throws {
         let directory = try makeTemporaryDirectory(named: "empty-app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

@@ -290,6 +290,10 @@ public final class AppModel {
         currentLibraryQuery() != nil
     }
 
+    public var canSaveSelectedAssetAsManualSet: Bool {
+        catalog != nil && selectedAssetID != nil
+    }
+
     public var suggestedSavedSearchName: String {
         var parts: [String] = []
         let trimmedSearch = librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -303,6 +307,15 @@ public final class AppModel {
             parts.append(flagFilter.rawValue.capitalized)
         }
         return parts.isEmpty ? "Saved Search" : parts.joined(separator: " ")
+    }
+
+    public var suggestedManualSetName: String {
+        guard let selectedAsset else {
+            return "Selection"
+        }
+        let filename = selectedAsset.originalURL.deletingPathExtension().lastPathComponent
+        let trimmedFilename = filename.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedFilename.isEmpty ? "Selection" : trimmedFilename
     }
 
     public init(

@@ -7,8 +7,11 @@ struct LibraryGridView: View {
     var model: AppModel
     @State private var isImportingFolder = false
     @State private var isSavingSearch = false
+    @State private var isSavingManualSet = false
     @State private var savedSearchName = ""
     @State private var savedSearchStarred = false
+    @State private var manualSetName = ""
+    @State private var manualSetStarred = false
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
 
@@ -136,6 +139,20 @@ struct LibraryGridView: View {
                 saveSearchPopover
             }
 
+            Button {
+                manualSetName = model.suggestedManualSetName
+                manualSetStarred = false
+                isSavingManualSet = true
+            } label: {
+                Image(systemName: "rectangle.stack.badge.plus")
+            }
+            .buttonStyle(.borderless)
+            .disabled(!model.canSaveSelectedAssetAsManualSet)
+            .help("Save selected photo as set")
+            .popover(isPresented: $isSavingManualSet) {
+                saveManualSetPopover
+            }
+
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12)
@@ -144,25 +161,53 @@ struct LibraryGridView: View {
     }
 
     private var saveSearchPopover: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Save Search")
-                .font(.headline)
-            TextField("Name", text: $savedSearchName)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 240)
-            Toggle("Starred", isOn: $savedSearchStarred)
-            HStack {
-                Spacer()
-                Button("Cancel") {
-                    isSavingSearch = false
+        SaveSetPopover(
+            title: "Save Search",
+            name: $savedSearchName,
+            starred: $savedSearchStarred,
+            cancel: { isSavingSearch = false },
+            save: saveCurrentSearch
+        )
+    }
+
+    private var saveManualSetPopover: some View {
+        SaveSetPopover(
+            title: "Save Selection",
+            name: $manualSetName,
+            starred: $manualSetStarred,
+            cancel: { isSavingManualSet = false },
+            save: saveSelectedManualSet
+        )
+    }
+
+    private struct SaveSetPopover: View {
+        var title: String
+        @Binding var name: String
+        @Binding var starred: Bool
+        var cancel: () -> Void
+        var save: () -> Void
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(title)
+                    .font(.headline)
+                TextField("Name", text: $name)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 240)
+                Toggle("Starred", isOn: $starred)
+                HStack {
+                    Spacer()
+                    Button("Cancel") {
+                        cancel()
+                    }
+                    Button("Save") {
+                        save()
+                    }
+                    .keyboardShortcut(.defaultAction)
                 }
-                Button("Save") {
-                    saveCurrentSearch()
-                }
-                .keyboardShortcut(.defaultAction)
             }
+            .padding(14)
         }
-        .padding(14)
     }
 
     private var minimumRatingBinding: Binding<Int> {
@@ -349,6 +394,15 @@ struct LibraryGridView: View {
         do {
             try model.saveCurrentLibraryQuery(named: savedSearchName, starred: savedSearchStarred)
             isSavingSearch = false
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func saveSelectedManualSet() {
+        do {
+            try model.saveSelectedAssetAsManualSet(named: manualSetName, starred: manualSetStarred)
+            isSavingManualSet = false
         } catch {
             model.errorMessage = error.localizedDescription
         }
