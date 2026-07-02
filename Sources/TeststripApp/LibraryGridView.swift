@@ -445,12 +445,12 @@ struct LibraryGridView: View {
             if isImporting {
                 ProgressView()
                     .controlSize(.small)
-                Text(model.activeWork?.detail ?? "Importing")
+                Text(importActivityDetail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Button {
-                    model.cancelActiveWork()
+                    cancelImport()
                 } label: {
                     Image(systemName: "xmark.circle")
                 }
@@ -513,6 +513,24 @@ struct LibraryGridView: View {
 
     private func importCard(source: URL, destinationRoot: URL) {
         model.beginImportCard(source: source, destinationRoot: destinationRoot)
+    }
+
+    private var importActivityDetail: String {
+        if let activeWork = model.activeWork, activeWork.kind == .ingest {
+            return activeWork.detail
+        }
+        if let visibleWorkActivity = model.visibleWorkActivity, visibleWorkActivity.kind == .ingest {
+            return visibleWorkActivity.detail
+        }
+        return "Importing"
+    }
+
+    private func cancelImport() {
+        if model.activeWork?.kind == .ingest {
+            model.cancelActiveWork()
+        } else {
+            model.cancelBackgroundWork()
+        }
     }
 
     private func loadMoreAssets() {

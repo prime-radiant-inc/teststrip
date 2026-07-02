@@ -1531,6 +1531,34 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testCancellingWorkerImportCancelsManagedBackgroundWork() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-cancel")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+        XCTAssertTrue(model.isImporting)
+
+        model.cancelBackgroundWork()
+
+        XCTAssertFalse(model.isImporting)
+        XCTAssertEqual(model.backgroundWorkQueue.items.first?.status, .cancelled)
+        XCTAssertEqual(model.statusMessage, "Cancelled import")
+        XCTAssertEqual(try transport.commands(), [
+            .importFolder(root: photoFolder),
+            .cancelAll
+        ])
+    }
+
+    @MainActor
     func testBeginImportCardWithWorkerEnqueuesManagedCopyAndRecordsDestination() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-card-import")
         let source = directory.appendingPathComponent("DCIM", isDirectory: true)
