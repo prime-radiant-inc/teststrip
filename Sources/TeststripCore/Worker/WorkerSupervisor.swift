@@ -109,20 +109,20 @@ public final class WorkerSupervisor: @unchecked Sendable {
         switch event {
         case .accepted:
             return
-        case .completed(let itemID, _):
+        case .completed(let itemID, let message):
             guard let itemID else { return }
-            completeDispatchedItem(id: itemID)
+            completeDispatchedItem(id: itemID, detail: message)
         case .failed(let itemID, let message):
             guard let itemID else { return }
             failDispatchedItem(id: itemID, detail: message)
         }
     }
 
-    private func completeDispatchedItem(id itemID: WorkSessionID) {
+    private func completeDispatchedItem(id itemID: WorkSessionID, detail: String) {
         guard dispatchedItemIDs.contains(itemID) else { return }
         dispatchedItemIDs.removeAll { $0 == itemID }
         commandsByItemID[itemID] = nil
-        queue.markCompleted(id: itemID)
+        queue.markCompleted(id: itemID, detail: detail)
         try? dispatchRunnableItems()
         notifyQueueChanged()
     }

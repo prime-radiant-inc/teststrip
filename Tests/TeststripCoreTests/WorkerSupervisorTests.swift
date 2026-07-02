@@ -64,6 +64,7 @@ final class WorkerSupervisorTests: XCTestCase {
 
         XCTAssertTrue(waitUntil {
             supervisor.queue.item(id: first.id)?.status == .completed &&
+                supervisor.queue.item(id: first.id)?.detail == "generated medium preview for asset-1" &&
                 supervisor.queue.item(id: second.id)?.status == .running
         })
         XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])

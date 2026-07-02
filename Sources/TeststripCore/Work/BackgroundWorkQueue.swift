@@ -67,9 +67,12 @@ public struct BackgroundWorkQueue: Equatable, Sendable {
         }
     }
 
-    public mutating func markCompleted(id: WorkSessionID) {
+    public mutating func markCompleted(id: WorkSessionID, detail: String? = nil) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].status = .completed
+        if let detail {
+            items[index].detail = detail
+        }
         if let totalUnitCount = items[index].totalUnitCount {
             items[index].completedUnitCount = totalUnitCount
         }
