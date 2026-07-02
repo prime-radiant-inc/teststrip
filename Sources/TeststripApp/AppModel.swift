@@ -302,6 +302,16 @@ public final class AppModel {
         return recentWork.first
     }
 
+    public var visibleImportActivity: AppWorkActivity? {
+        if let activeWork, activeWork.kind == .ingest, [.queued, .running, .paused].contains(activeWork.status) {
+            return activeWork
+        }
+        if let backgroundItem = activeBackgroundImportItem {
+            return AppWorkActivity(workItem: backgroundItem)
+        }
+        return nil
+    }
+
     public var canPauseBackgroundWork: Bool {
         !backgroundWorkQueue.runningItems.isEmpty
     }
@@ -1219,6 +1229,12 @@ public final class AppModel {
             backgroundWorkQueue.items.first { $0.status == .paused } ??
             backgroundWorkQueue.queuedItems.first ??
             backgroundWorkQueue.items.last { isVisibleInactiveBackgroundWork($0) }
+    }
+
+    private var activeBackgroundImportItem: BackgroundWorkItem? {
+        backgroundWorkQueue.runningItems.first { $0.kind == .ingest } ??
+            backgroundWorkQueue.items.first { $0.kind == .ingest && $0.status == .paused } ??
+            backgroundWorkQueue.queuedItems.first { $0.kind == .ingest }
     }
 
     private func isVisibleInactiveBackgroundWork(_ item: BackgroundWorkItem) -> Bool {

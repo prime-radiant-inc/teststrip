@@ -1519,6 +1519,40 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testVisibleImportActivityUsesWorkerImportProgress() async throws {
+        let directory = try makeTemporaryDirectory(named: "visible-import-progress")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+        let itemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        XCTAssertEqual(model.visibleImportActivity?.detail, "Importing from photos")
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
+            itemID: itemID,
+            completedUnitCount: 3,
+            totalUnitCount: 8,
+            detail: "Cataloged 3 photos"
+        )))
+
+        try await waitForVisibleWorkDetail("Cataloged 3 photos", in: model)
+        let activity = try XCTUnwrap(model.visibleImportActivity)
+        XCTAssertEqual(activity.kind, .ingest)
+        XCTAssertEqual(activity.detail, "Cataloged 3 photos")
+        XCTAssertEqual(activity.completedUnitCount, 3)
+        XCTAssertEqual(activity.totalUnitCount, 8)
+        XCTAssertTrue(activity.showsProgress)
+    }
+
+    @MainActor
     func testWorkerFailureRefreshesVisibleBackgroundWork() async throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

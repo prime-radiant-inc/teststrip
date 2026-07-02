@@ -215,21 +215,21 @@ struct LibraryGridView: View {
             importProgressIndicator
                 .controlSize(.small)
             VStack(alignment: .leading, spacing: 2) {
-                Text(model.activeWork?.title ?? "Import photos")
+                Text(importActivity?.title ?? "Import photos")
                     .font(.caption.weight(.semibold))
-                Text(model.activeWork?.detail ?? "Importing")
+                Text(importActivityDetail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            if let activeWork = model.activeWork, let total = activeWork.totalUnitCount {
-                Text("\(activeWork.completedUnitCount) of \(total)")
+            if let importActivity, let total = importActivity.totalUnitCount {
+                Text("\(importActivity.completedUnitCount) of \(total)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             Button {
-                model.cancelActiveWork()
+                cancelImport()
             } label: {
                 Image(systemName: "xmark.circle")
             }
@@ -243,8 +243,8 @@ struct LibraryGridView: View {
 
     @ViewBuilder
     private var importProgressIndicator: some View {
-        if let activeWork = model.activeWork, let total = activeWork.totalUnitCount {
-            ProgressView(value: Double(activeWork.completedUnitCount), total: Double(max(total, 1)))
+        if let importActivity, let total = importActivity.totalUnitCount {
+            ProgressView(value: Double(importActivity.completedUnitCount), total: Double(max(total, 1)))
                 .frame(width: 96)
         } else {
             ProgressView()
@@ -516,14 +516,12 @@ struct LibraryGridView: View {
         model.beginImportCard(source: source, destinationRoot: destinationRoot)
     }
 
+    private var importActivity: AppWorkActivity? {
+        model.visibleImportActivity
+    }
+
     private var importActivityDetail: String {
-        if let activeWork = model.activeWork, activeWork.kind == .ingest {
-            return activeWork.detail
-        }
-        if let visibleWorkActivity = model.visibleWorkActivity, visibleWorkActivity.kind == .ingest {
-            return visibleWorkActivity.detail
-        }
-        return "Importing"
+        importActivity?.detail ?? "Importing"
     }
 
     private func cancelImport() {
