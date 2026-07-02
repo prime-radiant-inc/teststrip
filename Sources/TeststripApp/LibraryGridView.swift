@@ -106,9 +106,17 @@ struct LibraryGridView: View {
             if isImporting {
                 ProgressView()
                     .controlSize(.small)
-                Text("Importing")
+                Text(model.activeWork?.detail ?? "Importing")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Button {
+                    model.cancelActiveWork()
+                } label: {
+                    Image(systemName: "xmark.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("Cancel import")
             } else if let errorMessage = model.errorMessage {
                 Text(errorMessage)
                     .font(.caption)
