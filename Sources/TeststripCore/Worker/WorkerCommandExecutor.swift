@@ -62,15 +62,22 @@ public struct WorkerCommandExecutor {
     private let repository: CatalogRepository
     private let previewCache: PreviewCache
     private let renderer: PreviewRenderer
+    private let evaluationProviders: [String: any EvaluationProvider]
 
     public init(
         repository: CatalogRepository,
         previewCache: PreviewCache,
-        renderer: PreviewRenderer = PreviewRenderer()
+        renderer: PreviewRenderer = PreviewRenderer(),
+        evaluationProviders: [any EvaluationProvider] = []
     ) {
         self.repository = repository
         self.previewCache = previewCache
         self.renderer = renderer
+        var providersByName: [String: any EvaluationProvider] = [:]
+        for provider in evaluationProviders {
+            providersByName[provider.name] = provider
+        }
+        self.evaluationProviders = providersByName
     }
 
     public init(configuration: WorkerRuntimeConfiguration) throws {
@@ -95,7 +102,7 @@ public struct WorkerCommandExecutor {
         case .syncMetadata(let assetID):
             return try syncMetadata(assetID: assetID)
         case .runEvaluation(let assetID, let provider):
-            return .accepted("runEvaluation \(assetID.rawValue) \(provider)")
+            return try runEvaluation(assetID: assetID, providerName: provider)
         case .pause:
             return .accepted("pause")
         case .resume:
@@ -103,6 +110,28 @@ public struct WorkerCommandExecutor {
         case .cancelAll:
             return .accepted("cancelAll")
         }
+    }
+
+    private func runEvaluation(assetID: AssetID, providerName: String) throws -> WorkerCommandResult {
+        _ = try repository.asset(id: assetID)
+        guard let provider = evaluationProviders[providerName] else {
+            throw TeststripError.invalidState("unknown evaluation provider \(providerName)")
+        }
+        guard let previewURL = cachedPreviewURL(for: assetID) else {
+            throw TeststripError.invalidState("no cached preview for \(assetID.rawValue)")
+        }
+        try repository.recordEvaluationSignals(try provider.evaluate(assetID: assetID, previewURL: previewURL))
+        return .completed("evaluated \(assetID.rawValue) with \(providerName)")
+    }
+
+    private func cachedPreviewURL(for assetID: AssetID) -> URL? {
+        for level in [PreviewLevel.large, .medium, .grid, .micro] {
+            let url = previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
+            if FileManager.default.fileExists(atPath: url.path) {
+                return url
+            }
+        }
+        return nil
     }
 
     private func syncMetadata(assetID: AssetID) throws -> WorkerCommandResult {

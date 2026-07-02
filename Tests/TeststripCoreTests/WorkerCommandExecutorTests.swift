@@ -94,6 +94,46 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try setup.repository.metadataSyncConflictItems().map(\.assetID), [setup.asset.id])
     }
 
+    func testRunEvaluationPersistsSignalsFromNamedProviderUsingCachedPreview() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-evaluation")
+        let source = root.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1200, height: 800)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+        try FileManager.default.createDirectory(at: previewURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("cached preview".utf8).write(to: previewURL)
+        let executor = WorkerCommandExecutor(
+            repository: repository,
+            previewCache: previewCache,
+            evaluationProviders: [PreviewPathEvaluationProvider(name: "local")]
+        )
+
+        let result = try executor.execute(.runEvaluation(assetID: asset.id, provider: "local"))
+
+        XCTAssertEqual(result, .completed("evaluated asset-1 with local"))
+        XCTAssertEqual(try repository.evaluationSignals(assetID: asset.id), [
+            EvaluationSignal(
+                assetID: asset.id,
+                kind: .aesthetics,
+                value: .text(previewURL.path),
+                confidence: 1.0,
+                provenance: ProviderProvenance(provider: "local", model: "preview-path", version: "1", settingsHash: "default")
+            )
+        ])
+    }
+
     private func makeMetadataSyncSetup(
         named name: String,
         metadata: AssetMetadata
@@ -125,5 +165,21 @@ final class WorkerCommandExecutorTests: XCTestCase {
             asset: asset,
             sidecarURL: originalURL.appendingPathExtension("xmp")
         )
+    }
+}
+
+private struct PreviewPathEvaluationProvider: EvaluationProvider {
+    var name: String
+
+    func evaluate(assetID: AssetID, previewURL: URL) throws -> [EvaluationSignal] {
+        [
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .aesthetics,
+                value: .text(previewURL.path),
+                confidence: 1.0,
+                provenance: ProviderProvenance(provider: name, model: "preview-path", version: "1", settingsHash: "default")
+            )
+        ]
     }
 }
