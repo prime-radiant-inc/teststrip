@@ -964,6 +964,9 @@ public final class AppModel {
         if previewURL(for: assetID, levels: [request.level]) != nil {
             return
         }
+        if try refreshAvailability(for: assetID) == .missing {
+            return
+        }
         if request.level == .large, previewURL(for: assetID, levels: [.medium]) == nil {
             try requestPreview(assetID: assetID, level: .medium)
         }
@@ -1267,20 +1270,25 @@ public final class AppModel {
     }
 
     public func refreshSelectedAssetAvailability() throws {
-        guard let catalog else {
-            throw TeststripError.invalidState("app model has no catalog")
-        }
         guard let selectedAssetID else {
             throw TeststripError.invalidState("no selected asset")
         }
-        let asset = try catalog.repository.asset(id: selectedAssetID)
-        let availability = SourceAvailabilityProbe().availability(for: asset)
-        try catalog.repository.updateAvailability(assetID: selectedAssetID, availability: availability)
-        let updatedAsset = try catalog.repository.asset(id: selectedAssetID)
-        guard let index = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
-            return
+        _ = try refreshAvailability(for: selectedAssetID)
+    }
+
+    @discardableResult
+    private func refreshAvailability(for assetID: AssetID) throws -> SourceAvailability {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
         }
-        assets[index] = updatedAsset
+        let asset = try catalog.repository.asset(id: assetID)
+        let availability = SourceAvailabilityProbe().availability(for: asset)
+        try catalog.repository.updateAvailability(assetID: assetID, availability: availability)
+        let updatedAsset = try catalog.repository.asset(id: assetID)
+        if let index = assets.firstIndex(where: { $0.id == assetID }) {
+            assets[index] = updatedAsset
+        }
+        return availability
     }
 
     private enum LoadedAssetWindowDropEdge {

@@ -1386,7 +1386,8 @@ final class AppModelTests: XCTestCase {
         )
         let (model, _, asset) = try makeModelWithPreviewCache(
             named: "loupe-progressive-preview",
-            workerSupervisor: supervisor
+            workerSupervisor: supervisor,
+            sourceIsPresent: true
         )
 
         try model.requestVisibleLoupePreview(assetID: asset.id)
@@ -1424,6 +1425,26 @@ final class AppModelTests: XCTestCase {
 
         try model.requestVisibleLoupePreview(assetID: asset.id)
 
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(model.backgroundWorkQueue.items, [])
+    }
+
+    func testVisibleLoupePreviewUsesCachedPreviewWhenOriginalIsMissing() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, previewCache, asset) = try makeModelWithPreviewCache(
+            named: "loupe-progressive-missing-original",
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
+
+        try model.requestVisibleLoupePreview(assetID: asset.id)
+
+        XCTAssertEqual(model.selectedAsset?.availability, .missing)
+        XCTAssertEqual(model.loupePreviewURL(for: asset.id), previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
         XCTAssertEqual(try transport.commands(), [])
         XCTAssertEqual(model.backgroundWorkQueue.items, [])
     }
@@ -1985,6 +2006,14 @@ final class AppModelTests: XCTestCase {
         try Data("preview".utf8).write(to: url)
     }
 
+    private func fileFingerprint(for url: URL) throws -> FileFingerprint {
+        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        return FileFingerprint(
+            size: (attributes[.size] as? NSNumber)?.int64Value ?? 0,
+            modificationDate: attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0)
+        )
+    }
+
     private func seedCatalogAssets(count: Int, repository: CatalogRepository) throws {
         let batchSize = 1_000
         for batchStart in stride(from: 0, to: count, by: batchSize) {
@@ -2038,17 +2067,27 @@ final class AppModelTests: XCTestCase {
     private func makeModelWithPreviewCache(
         named name: String,
         workerSupervisor: WorkerSupervisor? = nil,
-        pendingPreviewLevel: PreviewLevel? = nil
+        pendingPreviewLevel: PreviewLevel? = nil,
+        sourceIsPresent: Bool = false
     ) throws -> (AppModel, PreviewCache, Asset) {
         let directory = try makeTemporaryDirectory(named: name)
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
         let repository = CatalogRepository(database: database)
+        let originalURL = sourceIsPresent
+            ? directory.appendingPathComponent("\(name).jpg")
+            : URL(fileURLWithPath: "/Photos/\(name).jpg")
+        if sourceIsPresent {
+            try Data("original".utf8).write(to: originalURL)
+        }
+        let originalFingerprint = sourceIsPresent
+            ? try fileFingerprint(for: originalURL)
+            : FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10))
         let asset = Asset(
             id: AssetID(rawValue: name),
-            originalURL: URL(fileURLWithPath: "/Photos/\(name).jpg"),
+            originalURL: originalURL,
             volumeIdentifier: "Photos",
-            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            fingerprint: originalFingerprint,
             availability: .online,
             metadata: AssetMetadata()
         )
