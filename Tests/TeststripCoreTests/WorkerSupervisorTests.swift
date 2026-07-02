@@ -70,6 +70,31 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
     }
 
+    func testCompletedWorkerEventReportsStructuredEventForDispatchedItem() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        var completedEvents: [WorkerEvent] = []
+        supervisor.onCommandCompleted = { completedEvents.append($0) }
+        let item = BackgroundWorkItem.testItem(id: "import")
+        let command = WorkerCommand.importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true))
+        let event = WorkerEvent.completedImport(
+            itemID: item.id,
+            message: "imported 1 photo from Photos",
+            importedAssetIDs: [AssetID(rawValue: "asset-1")]
+        )
+        try supervisor.enqueue(item, command: command)
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(event))
+
+        XCTAssertTrue(waitUntil {
+            completedEvents == [event] &&
+                supervisor.queue.item(id: item.id)?.status == .completed
+        })
+    }
+
     func testDispatchedWorkerCommandCarriesWorkItemID() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

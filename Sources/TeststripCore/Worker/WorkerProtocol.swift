@@ -13,18 +13,19 @@ public struct WorkerCommandRequest: Equatable, Sendable {
 public enum WorkerEvent: Equatable, Sendable {
     case accepted(itemID: WorkSessionID?, message: String)
     case completed(itemID: WorkSessionID?, message: String)
+    case completedImport(itemID: WorkSessionID?, message: String, importedAssetIDs: [AssetID])
     case failed(itemID: WorkSessionID?, message: String)
 
     public var itemID: WorkSessionID? {
         switch self {
-        case .accepted(let itemID, _), .completed(let itemID, _), .failed(let itemID, _):
+        case .accepted(let itemID, _), .completed(let itemID, _), .completedImport(let itemID, _, _), .failed(let itemID, _):
             return itemID
         }
     }
 
     public var message: String {
         switch self {
-        case .accepted(_, let message), .completed(_, let message), .failed(_, let message):
+        case .accepted(_, let message), .completed(_, let message), .completedImport(_, let message, _), .failed(_, let message):
             return message
         }
     }
@@ -109,11 +110,18 @@ public enum WorkerProtocolEncoder {
         let envelope: WorkerEventEnvelope
         switch event {
         case .accepted(let itemID, let message):
-            envelope = WorkerEventEnvelope(event: "accepted", itemID: itemID?.rawValue, message: message)
+            envelope = WorkerEventEnvelope(event: "accepted", itemID: itemID?.rawValue, message: message, importedAssetIDs: nil)
         case .completed(let itemID, let message):
-            envelope = WorkerEventEnvelope(event: "completed", itemID: itemID?.rawValue, message: message)
+            envelope = WorkerEventEnvelope(event: "completed", itemID: itemID?.rawValue, message: message, importedAssetIDs: nil)
+        case .completedImport(let itemID, let message, let importedAssetIDs):
+            envelope = WorkerEventEnvelope(
+                event: "completed",
+                itemID: itemID?.rawValue,
+                message: message,
+                importedAssetIDs: importedAssetIDs.map(\.rawValue)
+            )
         case .failed(let itemID, let message):
-            envelope = WorkerEventEnvelope(event: "failed", itemID: itemID?.rawValue, message: message)
+            envelope = WorkerEventEnvelope(event: "failed", itemID: itemID?.rawValue, message: message, importedAssetIDs: nil)
         }
 
         let data = try encoder.encode(envelope)
@@ -173,6 +181,13 @@ public enum WorkerProtocolEncoder {
         case "accepted":
             return .accepted(itemID: itemID, message: envelope.message)
         case "completed":
+            if let importedAssetIDs = envelope.importedAssetIDs {
+                return .completedImport(
+                    itemID: itemID,
+                    message: envelope.message,
+                    importedAssetIDs: importedAssetIDs.map(AssetID.init(rawValue:))
+                )
+            }
             return .completed(itemID: itemID, message: envelope.message)
         case "failed":
             return .failed(itemID: itemID, message: envelope.message)
@@ -244,5 +259,6 @@ public enum WorkerProtocolEncoder {
         var event: String
         var itemID: String?
         var message: String
+        var importedAssetIDs: [String]?
     }
 }

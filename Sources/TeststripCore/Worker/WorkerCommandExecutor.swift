@@ -3,6 +3,7 @@ import Foundation
 public enum WorkerCommandResult: Equatable, Sendable {
     case accepted(String)
     case completed(String)
+    case completedImport(String, importedAssetIDs: [AssetID])
 }
 
 public struct WorkerRuntimeConfiguration: Equatable, Sendable {
@@ -92,7 +93,10 @@ public struct WorkerCommandExecutor {
                 repository: repository,
                 previewPolicy: .deferGeneration
             )
-            return .completed("imported \(Self.photoCountDescription(result.importedAssets.count)) from \(root.lastPathComponent)")
+            return .completedImport(
+                "imported \(Self.photoCountDescription(result.importedAssets.count)) from \(root.lastPathComponent)",
+                importedAssetIDs: result.importedAssets.map(\.id)
+            )
         case .importCard(let source, let destinationRoot):
             let result = try importService.copyFromCard(
                 source: source,
@@ -100,7 +104,10 @@ public struct WorkerCommandExecutor {
                 repository: repository,
                 previewPolicy: .deferGeneration
             )
-            return .completed("imported \(Self.photoCountDescription(result.importedAssets.count)) from \(source.lastPathComponent) to \(destinationRoot.lastPathComponent)")
+            return .completedImport(
+                "imported \(Self.photoCountDescription(result.importedAssets.count)) from \(source.lastPathComponent) to \(destinationRoot.lastPathComponent)",
+                importedAssetIDs: result.importedAssets.map(\.id)
+            )
         case .generatePreview(let assetID, let level):
             let asset = try repository.asset(id: assetID)
             try renderer.render(

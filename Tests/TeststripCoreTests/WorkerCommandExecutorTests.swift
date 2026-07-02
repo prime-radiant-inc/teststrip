@@ -73,8 +73,8 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
         let imported = try repository.allAssets(limit: 10)
         let asset = try XCTUnwrap(imported.first)
-        XCTAssertEqual(result, .completed("imported 1 photo from photos"))
         XCTAssertEqual(imported.map(\.originalURL), [source])
+        XCTAssertEqual(result, .completedImport("imported 1 photo from photos", importedAssetIDs: [asset.id]))
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
             PreviewGenerationItem(assetID: asset.id, level: .grid)
         ])
@@ -103,8 +103,8 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let destination = destinationRoot.appendingPathComponent("source.jpg")
         let imported = try repository.allAssets(limit: 10)
         let asset = try XCTUnwrap(imported.first)
-        XCTAssertEqual(result, .completed("imported 1 photo from DCIM to Library"))
         XCTAssertEqual(imported.map(\.originalURL), [destination])
+        XCTAssertEqual(result, .completedImport("imported 1 photo from DCIM to Library", importedAssetIDs: [asset.id]))
         XCTAssertEqual(try repository.asset(id: asset.id).metadata, metadata)
         XCTAssertEqual(try Data(contentsOf: XMPSidecarStore().sidecarURL(forOriginalAt: destination)), sidecarData)
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [

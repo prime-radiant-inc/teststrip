@@ -37,6 +37,8 @@ private extension WorkerCommandResult {
             return .accepted(itemID: itemID, message: message)
         case .completed(let message):
             return .completed(itemID: itemID, message: message)
+        case .completedImport(let message, let importedAssetIDs):
+            return .completedImport(itemID: itemID, message: message, importedAssetIDs: importedAssetIDs)
         }
     }
 }

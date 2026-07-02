@@ -34,12 +34,16 @@ final class WorkerEntrypointTests: XCTestCase {
         let stdout = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         let stderr = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         XCTAssertEqual(stderr, "")
-        XCTAssertEqual(try WorkerProtocolEncoder.decodeEvent(stdout), .completed(itemID: nil, message: "imported 1 photo from photos"))
         let database = try CatalogDatabase.open(at: catalogURL)
         try database.migrate()
         let repository = CatalogRepository(database: database)
         let assets = try repository.allAssets(limit: 10)
         let asset = try XCTUnwrap(assets.first)
+        XCTAssertEqual(try WorkerProtocolEncoder.decodeEvent(stdout), .completedImport(
+            itemID: nil,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [asset.id]
+        ))
         XCTAssertEqual(assets.map(\.originalURL), [source])
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
             PreviewGenerationItem(assetID: asset.id, level: .grid)

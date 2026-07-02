@@ -35,6 +35,7 @@ private final class DispatchWorkerTimeoutCancellation: WorkerTimeoutCancellation
 public final class WorkerSupervisor: @unchecked Sendable {
     public private(set) var queue: BackgroundWorkQueue
     public var onQueueChanged: ((BackgroundWorkQueue) -> Void)?
+    public var onCommandCompleted: ((WorkerEvent) -> Void)?
 
     private let transport: WorkerTransport
     private let commandTimeout: TimeInterval?
@@ -162,14 +163,17 @@ public final class WorkerSupervisor: @unchecked Sendable {
             return
         case .completed(let itemID, let message):
             guard let itemID else { return }
-            completeDispatchedItem(id: itemID, detail: message)
+            completeDispatchedItem(id: itemID, detail: message, event: event)
+        case .completedImport(let itemID, let message, _):
+            guard let itemID else { return }
+            completeDispatchedItem(id: itemID, detail: message, event: event)
         case .failed(let itemID, let message):
             guard let itemID else { return }
             failDispatchedItem(id: itemID, detail: message)
         }
     }
 
-    private func completeDispatchedItem(id itemID: WorkSessionID, detail: String) {
+    private func completeDispatchedItem(id itemID: WorkSessionID, detail: String, event: WorkerEvent) {
         guard dispatchedItemIDs.contains(itemID) else { return }
         dispatchedItemIDs.removeAll { $0 == itemID }
         commandsByItemID[itemID] = nil
@@ -177,6 +181,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         queue.markCompleted(id: itemID, detail: detail)
         try? dispatchRunnableItems()
         notifyQueueChanged()
+        onCommandCompleted?(event)
     }
 
     private func failDispatchedItem(id itemID: WorkSessionID, detail: String) {
