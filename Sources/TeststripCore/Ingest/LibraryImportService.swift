@@ -59,6 +59,8 @@ public struct LibraryImportProgress: Equatable, Sendable {
 public typealias LibraryImportProgressHandler = @Sendable (LibraryImportProgress) -> Void
 
 public struct LibraryImportService: Sendable {
+    private static let scanProgressInterval = 100
+
     public var ingestService: IngestService
     public var previewCache: PreviewCache
     public var renderer: PreviewRenderer
@@ -86,12 +88,22 @@ public struct LibraryImportService: Sendable {
             detail: "Scanning \(root.lastPathComponent)"
         ))
         let plan = IngestPlanner.addFolder(root)
+        let scanProgressCoalescer = ScanProgressCoalescer(interval: Self.scanProgressInterval)
         let sourceFiles = try ingestService.files(for: plan) { scanProgress in
-            progress?(LibraryImportProgress(
-                completedUnitCount: scanProgress.supportedFileCount,
-                totalUnitCount: nil,
-                detail: "Scanning \(root.lastPathComponent): found \(scanProgress.supportedFileCount) \(scanProgress.supportedFileCount == 1 ? "photo" : "photos")"
-            ))
+            if scanProgressCoalescer.shouldReportScanCount(scanProgress.supportedFileCount) {
+                reportScanProgress(
+                    count: scanProgress.supportedFileCount,
+                    rootName: root.lastPathComponent,
+                    progress: progress
+                )
+            }
+        }
+        if scanProgressCoalescer.shouldReportFinalScanCount(sourceFiles.count) {
+            reportScanProgress(
+                count: sourceFiles.count,
+                rootName: root.lastPathComponent,
+                progress: progress
+            )
         }
         progress?(LibraryImportProgress(
             completedUnitCount: 0,
@@ -173,5 +185,47 @@ public struct LibraryImportService: Sendable {
         }
 
         return LibraryPreviewGenerationResult(generatedCount: generatedCount, previewFailures: failures)
+    }
+
+    private func reportScanProgress(
+        count: Int,
+        rootName: String,
+        progress: LibraryImportProgressHandler?
+    ) {
+        progress?(LibraryImportProgress(
+            completedUnitCount: count,
+            totalUnitCount: nil,
+            detail: "Scanning \(rootName): found \(count) \(count == 1 ? "photo" : "photos")"
+        ))
+    }
+}
+
+private final class ScanProgressCoalescer: @unchecked Sendable {
+    private let interval: Int
+    private let lock = NSLock()
+    private var lastReportedCount = 0
+
+    init(interval: Int) {
+        self.interval = interval
+    }
+
+    func shouldReportScanCount(_ count: Int) -> Bool {
+        lock.withLock {
+            guard count == 1 || count.isMultiple(of: interval) else {
+                return false
+            }
+            lastReportedCount = count
+            return true
+        }
+    }
+
+    func shouldReportFinalScanCount(_ count: Int) -> Bool {
+        lock.withLock {
+            guard count > 0, count != lastReportedCount else {
+                return false
+            }
+            lastReportedCount = count
+            return true
+        }
     }
 }

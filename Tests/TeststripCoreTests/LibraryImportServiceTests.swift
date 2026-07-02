@@ -121,6 +121,27 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertEqual(scanUpdates.map(\.totalUnitCount), [nil, nil, nil])
     }
 
+    func testAddFolderCoalescesScanProgressForLargeFolders() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-coalesced-scan-progress")
+        for index in 0..<250 {
+            try Data("jpg-\(index)".utf8).write(to: root.appendingPathComponent("image-\(index).jpg"))
+        }
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+        let recorder = ImportProgressRecorder()
+
+        _ = try service.addFolderInPlace(root, repository: repository, previewPolicy: .deferGeneration) { progress in
+            recorder.append(progress)
+        }
+
+        let updates = recorder.values()
+        let catalogingIndex = try XCTUnwrap(updates.firstIndex { $0.totalUnitCount == 250 })
+        let scanUpdates = updates[..<catalogingIndex]
+        XCTAssertEqual(scanUpdates.map(\.completedUnitCount), [0, 1, 100, 200, 250])
+        XCTAssertEqual(scanUpdates.map(\.totalUnitCount), [nil, nil, nil, nil, nil])
+    }
+
     func testReimportPreservesAssetIdentityMetadataAndRefreshesPreview() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-reimport")
         let image = root.appendingPathComponent("one.jpg")
