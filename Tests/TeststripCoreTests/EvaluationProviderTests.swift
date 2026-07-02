@@ -22,13 +22,15 @@ final class EvaluationProviderTests: XCTestCase {
     func testLocalHTTPProviderBuildsOpenAICompatibleRequest() throws {
         let provider = LocalHTTPModelProvider(
             endpoint: URL(string: "http://localhost:11434/v1/chat/completions")!,
-            model: "llava"
+            model: "llava",
+            timeout: 12
         )
 
         let request = try provider.request(for: URL(fileURLWithPath: "/tmp/frame.jpg"), prompt: "Describe culling signals")
 
         XCTAssertEqual(request.url?.absoluteString, "http://localhost:11434/v1/chat/completions")
         XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.timeoutInterval, 12)
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
 
         let body = try XCTUnwrap(request.httpBody)
@@ -43,6 +45,61 @@ final class EvaluationProviderTests: XCTestCase {
         let textValues = content.compactMap { $0["text"] as? String }
         XCTAssertTrue(textValues.contains("Describe culling signals"))
         XCTAssertTrue(textValues.contains { $0.contains("/tmp/frame.jpg") })
+    }
+
+    func testLocalHTTPProviderEvaluatesOpenAICompatibleResponse() throws {
+        let transport = RecordingLocalHTTPTransport(response: .success(LocalHTTPModelHTTPResponse(
+            statusCode: 200,
+            data: try chatCompletionData(content: """
+            {"signals":[{"kind":"aesthetics","label":"keeper","confidence":0.74},{"kind":"focus","score":0.91,"confidence":0.82}]}
+            """)
+        )))
+        let provider = LocalHTTPModelProvider(
+            endpoint: URL(string: "http://localhost:1234/v1/chat/completions")!,
+            model: "llava",
+            transport: transport
+        )
+        let assetID = AssetID(rawValue: "asset-1")
+
+        let signals = try provider.evaluate(assetID: assetID, previewURL: URL(fileURLWithPath: "/tmp/frame.jpg"))
+
+        XCTAssertEqual(signals, [
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .aesthetics,
+                value: .label("keeper"),
+                confidence: 0.74,
+                provenance: ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+            ),
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .focus,
+                value: .score(0.91),
+                confidence: 0.82,
+                provenance: ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+            )
+        ])
+        let request = try XCTUnwrap(transport.requests().first)
+        XCTAssertEqual(request.url?.absoluteString, "http://localhost:1234/v1/chat/completions")
+        XCTAssertNotNil(request.httpBody)
+    }
+
+    func testLocalHTTPProviderReportsHTTPFailure() throws {
+        let provider = LocalHTTPModelProvider(
+            endpoint: URL(string: "http://localhost:1234/v1/chat/completions")!,
+            model: "llava",
+            transport: RecordingLocalHTTPTransport(response: .success(LocalHTTPModelHTTPResponse(
+                statusCode: 500,
+                data: Data("server error".utf8)
+            )))
+        )
+
+        XCTAssertThrowsError(try provider.evaluate(
+            assetID: AssetID(rawValue: "asset-1"),
+            previewURL: URL(fileURLWithPath: "/tmp/frame.jpg")
+        )) { error in
+            XCTAssertTrue(error.localizedDescription.contains("HTTP model request failed"))
+        }
     }
 
     func testLocalImageMetricsProviderEmitsExposureAndColorSignalsFromPreview() throws {
@@ -145,6 +202,41 @@ private struct FakeAppleVisionAnalyzer: AppleVisionAnalyzing {
     func analyze(previewURL: URL) throws -> AppleVisionAnalysis {
         analysis
     }
+}
+
+private final class RecordingLocalHTTPTransport: LocalHTTPModelTransport, @unchecked Sendable {
+    private let response: Result<LocalHTTPModelHTTPResponse, Error>
+    private let lock = NSLock()
+    private var recordedRequests: [URLRequest] = []
+
+    init(response: Result<LocalHTTPModelHTTPResponse, Error>) {
+        self.response = response
+    }
+
+    func response(for request: URLRequest) throws -> LocalHTTPModelHTTPResponse {
+        lock.lock()
+        recordedRequests.append(request)
+        lock.unlock()
+        return try response.get()
+    }
+
+    func requests() -> [URLRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedRequests
+    }
+}
+
+private func chatCompletionData(content: String) throws -> Data {
+    try JSONSerialization.data(withJSONObject: [
+        "choices": [
+            [
+                "message": [
+                    "content": content
+                ]
+            ]
+        ]
+    ])
 }
 
 private func writeSolidPNG(to url: URL, width: Int, height: Int, red: CGFloat, green: CGFloat, blue: CGFloat) throws {
