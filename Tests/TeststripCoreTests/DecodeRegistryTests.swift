@@ -30,6 +30,42 @@ final class DecodeRegistryTests: XCTestCase {
         XCTAssertEqual(dimensions.pixelHeight, 80)
     }
 
+    func testImageIOTechnicalMetadataReadsCameraLensISOAndCaptureDate() throws {
+        let provenance = ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = TimeZone(secondsFromGMT: 0)
+        components.year = 2026
+        components.month = 1
+        components.day = 2
+        components.hour = 3
+        components.minute = 4
+        components.second = 5
+
+        let metadata = try ImageIODecodeProvider.metadata(from: [
+            kCGImagePropertyPixelWidth: 6000,
+            kCGImagePropertyPixelHeight: 4000,
+            kCGImagePropertyTIFFDictionary: [
+                kCGImagePropertyTIFFMake: "Canon",
+                kCGImagePropertyTIFFModel: "EOS R5"
+            ],
+            kCGImagePropertyExifDictionary: [
+                kCGImagePropertyExifLensModel: "RF 50mm F1.2L USM",
+                kCGImagePropertyExifISOSpeedRatings: [800],
+                kCGImagePropertyExifDateTimeOriginal: "2026:01:02 03:04:05"
+            ]
+        ], provenance: provenance, filename: "photo.cr3")
+
+        XCTAssertEqual(metadata.pixelWidth, 6000)
+        XCTAssertEqual(metadata.pixelHeight, 4000)
+        XCTAssertEqual(metadata.cameraMake, "Canon")
+        XCTAssertEqual(metadata.cameraModel, "EOS R5")
+        XCTAssertEqual(metadata.lensModel, "RF 50mm F1.2L USM")
+        XCTAssertEqual(metadata.isoSpeed, 800)
+        XCTAssertEqual(metadata.capturedAt, components.date)
+        XCTAssertEqual(metadata.provenance, provenance)
+    }
+
     func testImageIOSupportedExtensionsArePublicForIngestComposition() {
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("jpg"))
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("dng"))

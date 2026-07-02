@@ -15,14 +15,15 @@ public final class CatalogRepository {
         let now = "\(Date().timeIntervalSince1970)"
         try database.execute(
             """
-            INSERT INTO assets (id, original_path, volume_identifier, fingerprint_json, availability, metadata_json, catalog_generation, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+            INSERT INTO assets (id, original_path, volume_identifier, fingerprint_json, availability, metadata_json, technical_metadata_json, catalog_generation, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 original_path = excluded.original_path,
                 volume_identifier = excluded.volume_identifier,
                 fingerprint_json = excluded.fingerprint_json,
                 availability = excluded.availability,
                 metadata_json = excluded.metadata_json,
+                technical_metadata_json = excluded.technical_metadata_json,
                 catalog_generation = CASE
                     WHEN assets.metadata_json = excluded.metadata_json THEN assets.catalog_generation
                     ELSE assets.catalog_generation + 1
@@ -36,6 +37,7 @@ public final class CatalogRepository {
                 try encode(asset.fingerprint),
                 asset.availability.rawValue,
                 try encode(asset.metadata),
+                try asset.technicalMetadata.map(encode) ?? "",
                 now,
                 now
             ]
@@ -452,7 +454,8 @@ public final class CatalogRepository {
             volumeIdentifier: row["volume_identifier"].flatMap { $0.isEmpty ? nil : $0 },
             fingerprint: try decode(FileFingerprint.self, from: fingerprintJSON),
             availability: availability,
-            metadata: try decode(AssetMetadata.self, from: metadataJSON)
+            metadata: try decode(AssetMetadata.self, from: metadataJSON),
+            technicalMetadata: try decodeTechnicalMetadata(row["technical_metadata_json"])
         )
     }
 
@@ -721,5 +724,10 @@ public final class CatalogRepository {
 
     private func decode<T: Decodable>(_ type: T.Type, from string: String) throws -> T {
         try decoder.decode(type, from: Data(string.utf8))
+    }
+
+    private func decodeTechnicalMetadata(_ string: String?) throws -> AssetTechnicalMetadata? {
+        guard let string, !string.isEmpty else { return nil }
+        return try decode(AssetTechnicalMetadata.self, from: string)
     }
 }

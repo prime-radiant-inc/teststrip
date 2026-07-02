@@ -16,6 +16,74 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(fetched, asset)
     }
 
+    func testMigratesAndPersistsAssetTechnicalMetadata() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-metadata")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let technicalMetadata = AssetTechnicalMetadata(
+            pixelWidth: 6000,
+            pixelHeight: 4000,
+            cameraMake: "Canon",
+            cameraModel: "EOS R5",
+            lensModel: "RF 50mm F1.2L USM",
+            isoSpeed: 800,
+            capturedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+        )
+        let asset = Asset.testAsset(
+            path: "/Volumes/NAS/Job/frame.cr2",
+            rating: 3,
+            technicalMetadata: technicalMetadata
+        )
+
+        try repository.upsert(asset)
+
+        let fetched = try repository.asset(id: asset.id)
+        XCTAssertEqual(fetched.technicalMetadata, technicalMetadata)
+    }
+
+    func testMigrationAddsTechnicalMetadataStorageToExistingCatalog() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-metadata-migration")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.execute(
+            """
+            CREATE TABLE assets (
+                id TEXT PRIMARY KEY NOT NULL,
+                original_path TEXT NOT NULL,
+                volume_identifier TEXT,
+                fingerprint_json TEXT NOT NULL,
+                availability TEXT NOT NULL,
+                metadata_json TEXT NOT NULL,
+                catalog_generation INTEGER NOT NULL DEFAULT 1,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            )
+            """
+        )
+        let legacyAsset = Asset.testAsset(id: AssetID(rawValue: "legacy"), path: "/Volumes/NAS/Job/legacy.cr2", rating: 2)
+        try database.insertTestAsset(legacyAsset, createdAt: "1")
+
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        var refreshedAsset = try repository.asset(id: legacyAsset.id)
+        XCTAssertNil(refreshedAsset.technicalMetadata)
+        refreshedAsset.technicalMetadata = AssetTechnicalMetadata(
+            pixelWidth: 8256,
+            pixelHeight: 5504,
+            cameraMake: "Fujifilm",
+            cameraModel: "GFX 100S",
+            lensModel: "GF80mmF1.7 R WR",
+            isoSpeed: 400,
+            capturedAt: Date(timeIntervalSince1970: 1_800_000_100),
+            provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+        )
+
+        try repository.upsert(refreshedAsset)
+
+        XCTAssertEqual(try repository.asset(id: legacyAsset.id), refreshedAsset)
+    }
+
     func testMetadataUpdateIncrementsCatalogGeneration() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -441,18 +509,34 @@ final class CatalogDatabaseTests: XCTestCase {
 }
 
 private extension Asset {
-    static func testAsset(id: AssetID = .new(), path: String, rating: Int) -> Asset {
-        testAsset(id: id, path: path, metadata: AssetMetadata(rating: rating))
+    static func testAsset(
+        id: AssetID = .new(),
+        path: String,
+        rating: Int,
+        technicalMetadata: AssetTechnicalMetadata? = nil
+    ) -> Asset {
+        testAsset(
+            id: id,
+            path: path,
+            metadata: AssetMetadata(rating: rating),
+            technicalMetadata: technicalMetadata
+        )
     }
 
-    static func testAsset(id: AssetID = .new(), path: String, metadata: AssetMetadata) -> Asset {
+    static func testAsset(
+        id: AssetID = .new(),
+        path: String,
+        metadata: AssetMetadata,
+        technicalMetadata: AssetTechnicalMetadata? = nil
+    ) -> Asset {
         Asset(
             id: id,
             originalURL: URL(fileURLWithPath: path),
             volumeIdentifier: "NAS",
             fingerprint: FileFingerprint(size: 100, modificationDate: Date(timeIntervalSince1970: 1.25), contentHash: "hash"),
             availability: .online,
-            metadata: metadata
+            metadata: metadata,
+            technicalMetadata: technicalMetadata
         )
     }
 }

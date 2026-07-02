@@ -15,6 +15,7 @@ public struct Asset: Codable, Equatable, Sendable {
     public var fingerprint: FileFingerprint
     public var availability: SourceAvailability
     public var metadata: AssetMetadata
+    public var technicalMetadata: AssetTechnicalMetadata?
 
     public init(
         id: AssetID,
@@ -22,7 +23,8 @@ public struct Asset: Codable, Equatable, Sendable {
         volumeIdentifier: String?,
         fingerprint: FileFingerprint,
         availability: SourceAvailability,
-        metadata: AssetMetadata
+        metadata: AssetMetadata,
+        technicalMetadata: AssetTechnicalMetadata? = nil
     ) {
         self.id = id
         self.originalURL = originalURL
@@ -30,5 +32,6 @@ public struct Asset: Codable, Equatable, Sendable {
         self.fingerprint = fingerprint
         self.availability = availability
         self.metadata = metadata
+        self.technicalMetadata = technicalMetadata
     }
 }

@@ -59,7 +59,10 @@ public struct AppCatalog {
         try database.migrate()
         let repository = CatalogRepository(database: database)
         let previewCache = PreviewCache(root: paths.previewCacheRoot)
-        let ingestService = IngestService(scanner: FolderScanner(supportedExtensions: ImageIODecodeProvider.supportedExtensions))
+        let ingestService = IngestService(
+            scanner: FolderScanner(supportedExtensions: ImageIODecodeProvider.supportedExtensions),
+            decodeRegistry: DecodeRegistry(providers: [ImageIODecodeProvider()])
+        )
         let importService = LibraryImportService(ingestService: ingestService, previewCache: previewCache)
         return AppCatalog(paths: paths, repository: repository, previewCache: previewCache, importService: importService)
     }

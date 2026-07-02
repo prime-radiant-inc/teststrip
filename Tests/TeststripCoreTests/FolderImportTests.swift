@@ -70,6 +70,35 @@ final class FolderImportTests: XCTestCase {
         XCTAssertEqual(fetched.availability, .online)
     }
 
+    func testIngestServiceCatalogsDecodeTechnicalMetadata() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "ingest-technical-metadata")
+        let image = root.appendingPathComponent("one.jpg")
+        try Data("jpg".utf8).write(to: image)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let technicalMetadata = AssetTechnicalMetadata(
+            pixelWidth: 6000,
+            pixelHeight: 4000,
+            cameraMake: "Canon",
+            cameraModel: "EOS R5",
+            lensModel: "RF 50mm F1.2L USM",
+            isoSpeed: 800,
+            capturedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            provenance: ProviderProvenance(provider: "fake-decode", model: "fake", version: "1", settingsHash: "default")
+        )
+        let service = IngestService(
+            scanner: FolderScanner(supportedExtensions: ["jpg"]),
+            decodeRegistry: DecodeRegistry(providers: [FakeDecodeProvider(technicalMetadata: technicalMetadata)])
+        )
+
+        let imported = try service.ingest(plan: IngestPlanner.addFolder(root), repository: repository)
+
+        XCTAssertEqual(imported.count, 1)
+        let fetched = try repository.asset(id: imported[0].id)
+        XCTAssertEqual(fetched.technicalMetadata, technicalMetadata)
+    }
+
     func testIngestServiceImportsAdjacentSidecarMetadata() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "ingest-sidecar")
         let image = root.appendingPathComponent("one.jpg")
@@ -261,5 +290,27 @@ final class FolderImportTests: XCTestCase {
             }
         }
         XCTAssertEqual(try String(contentsOf: destinationFile, encoding: .utf8), "existing")
+    }
+}
+
+private struct FakeDecodeProvider: DecodeProvider {
+    let name = "fake-decode"
+    var technicalMetadata: AssetTechnicalMetadata
+
+    func canDecode(url: URL) -> Bool {
+        url.pathExtension.lowercased() == "jpg"
+    }
+
+    func metadata(for url: URL) throws -> DecodeMetadata {
+        DecodeMetadata(
+            pixelWidth: technicalMetadata.pixelWidth,
+            pixelHeight: technicalMetadata.pixelHeight,
+            cameraMake: technicalMetadata.cameraMake,
+            cameraModel: technicalMetadata.cameraModel,
+            lensModel: technicalMetadata.lensModel,
+            isoSpeed: technicalMetadata.isoSpeed,
+            capturedAt: technicalMetadata.capturedAt,
+            provenance: technicalMetadata.provenance
+        )
     }
 }

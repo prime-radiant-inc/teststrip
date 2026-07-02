@@ -2,9 +2,11 @@ import Foundation
 
 public struct IngestService: Sendable {
     public var scanner: FolderScanner
+    public var decodeRegistry: DecodeRegistry?
 
-    public init(scanner: FolderScanner) {
+    public init(scanner: FolderScanner, decodeRegistry: DecodeRegistry? = nil) {
         self.scanner = scanner
+        self.decodeRegistry = decodeRegistry
     }
 
     public func files(for plan: IngestPlan) throws -> [URL] {
@@ -69,7 +71,8 @@ public struct IngestService: Sendable {
                 volumeIdentifier: volumeIdentifier(for: originalURL),
                 fingerprint: fingerprint,
                 availability: .online,
-                metadata: metadata
+                metadata: metadata,
+                technicalMetadata: technicalMetadata(for: originalURL) ?? existingAsset?.technicalMetadata
             )
             assets.append(asset)
         }
@@ -174,6 +177,15 @@ public struct IngestService: Sendable {
             return string
         }
         return String(describing: identifier)
+    }
+
+    private func technicalMetadata(for url: URL) -> AssetTechnicalMetadata? {
+        guard let decodeRegistry,
+              let provider = try? decodeRegistry.provider(for: url),
+              let metadata = try? provider.metadata(for: url) else {
+            return nil
+        }
+        return metadata.assetTechnicalMetadata
     }
 }
 

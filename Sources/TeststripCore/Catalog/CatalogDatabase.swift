@@ -25,6 +25,7 @@ public final class CatalogDatabase: @unchecked Sendable {
         for statement in CatalogMigrations.statements {
             try execute(statement)
         }
+        try addColumnIfMissing(table: "assets", column: "technical_metadata_json", definition: "TEXT")
         try execute(
             "INSERT OR REPLACE INTO catalog_meta (key, value) VALUES ('schema_version', ?)",
             bindings: ["\(CatalogMigrations.version)"]
@@ -92,5 +93,11 @@ public final class CatalogDatabase: @unchecked Sendable {
 
     private var lastError: String {
         String(cString: sqlite3_errmsg(handle))
+    }
+
+    private func addColumnIfMissing(table: String, column: String, definition: String) throws {
+        let columns = try rows("PRAGMA table_info(\(table))")
+        guard !columns.contains(where: { $0["name"] == column }) else { return }
+        try execute("ALTER TABLE \(table) ADD COLUMN \(column) \(definition)")
     }
 }
