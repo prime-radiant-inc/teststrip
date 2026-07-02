@@ -12,12 +12,29 @@ final class AppModelTests: XCTestCase {
     }
 
     func testSelectingAssetUpdatesInspector() {
-        let model = AppModel.demo()
-        let asset = model.assets[0]
+        let first = Asset(
+            id: AssetID(rawValue: "first"),
+            originalURL: URL(fileURLWithPath: "/Photos/first.jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let second = Asset(
+            id: AssetID(rawValue: "second"),
+            originalURL: URL(fileURLWithPath: "/Photos/second.jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 2, modificationDate: Date(timeIntervalSince1970: 2)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [first, second])
 
-        model.select(asset.id)
+        XCTAssertEqual(model.selectedAsset?.id, first.id)
 
-        XCTAssertEqual(model.selectedAsset?.id, asset.id)
+        model.select(second.id)
+
+        XCTAssertEqual(model.selectedAsset?.id, second.id)
     }
 
     func testLoadsAssetsFromCatalogRepository() throws {
