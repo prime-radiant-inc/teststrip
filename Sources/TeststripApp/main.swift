@@ -5,7 +5,10 @@ struct TeststripApplication: App {
 
     init() {
         do {
-            _model = State(initialValue: try AppCatalog.loadModel(paths: AppCatalog.defaultPaths()))
+            _model = State(initialValue: try AppCatalog.loadModel(
+                paths: AppCatalog.defaultPaths(),
+                workerExecutableURL: AppCatalog.bundledWorkerExecutableURL()
+            ))
         } catch {
             fatalError("Unable to open Teststrip catalog: \(error.localizedDescription)")
         }

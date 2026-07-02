@@ -64,7 +64,17 @@ public struct AppCatalog {
         return AppCatalog(paths: paths, repository: repository, previewCache: previewCache, importService: importService)
     }
 
-    public static func loadModel(paths: AppCatalogPaths) throws -> AppModel {
-        try AppModel.load(catalog: open(paths: paths))
+    public static func bundledWorkerExecutableURL(bundleURL: URL = Bundle.main.bundleURL) -> URL {
+        bundleURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Helpers", isDirectory: true)
+            .appendingPathComponent("TeststripWorker")
+    }
+
+    public static func loadModel(paths: AppCatalogPaths, workerExecutableURL: URL? = nil) throws -> AppModel {
+        let workerSupervisor = workerExecutableURL.map {
+            WorkerSupervisor(transport: FoundationWorkerTransport(executableURL: $0))
+        }
+        return try AppModel.load(catalog: open(paths: paths), workerSupervisor: workerSupervisor)
     }
 }
