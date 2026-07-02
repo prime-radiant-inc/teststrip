@@ -1025,8 +1025,15 @@ public final class AppModel {
     }
 
     public func requestVisibleComparePreviews() throws {
-        for asset in compareAssets() {
-            try requestVisibleLoupePreview(assetID: asset.id)
+        let compareAssets = compareAssets()
+        if let selectedAssetID,
+           compareAssets.contains(where: { $0.id == selectedAssetID }),
+           previewURL(for: selectedAssetID, levels: [.medium]) != nil {
+            try requestPreview(assetID: selectedAssetID, level: .large)
+        }
+
+        for asset in compareAssets {
+            try requestPreview(assetID: asset.id, level: .medium)
         }
     }
 

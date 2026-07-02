@@ -1645,36 +1645,14 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items, [])
     }
 
-    func testVisibleComparePreviewsRequestMediumThenLargeForCompareAssets() throws {
-        let directory = try makeTemporaryDirectory(named: "compare-progressive-previews")
-        let firstURL = directory.appendingPathComponent("first.jpg")
-        let secondURL = directory.appendingPathComponent("second.jpg")
-        try writeTestPNG(to: firstURL)
-        try writeTestPNG(to: secondURL)
-        let first = Asset(
-            id: AssetID(rawValue: "first"),
-            originalURL: firstURL,
-            volumeIdentifier: "local",
-            fingerprint: try fileFingerprint(for: firstURL),
-            availability: .online,
-            metadata: AssetMetadata()
-        )
-        let second = Asset(
-            id: AssetID(rawValue: "second"),
-            originalURL: secondURL,
-            volumeIdentifier: "local",
-            fingerprint: try fileFingerprint(for: secondURL),
-            availability: .online,
-            metadata: AssetMetadata()
-        )
+    func testVisibleComparePreviewsRequestMediumForCompareAssetsBeforeLarge() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
             queue: BackgroundWorkQueue(maxRunningCount: 4),
             transport: transport
         )
-        let (model, _) = try makeModelWithCatalogAssets(
+        let (model, _, first, _) = try makeComparePreviewModel(
             named: "compare-progressive-previews",
-            assets: [first, second],
             workerSupervisor: supervisor
         )
 
@@ -1682,12 +1660,33 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.map(\.id.rawValue), [
             "preview-first-medium",
-            "preview-first-large",
-            "preview-second-medium",
-            "preview-second-large"
+            "preview-second-medium"
         ])
         XCTAssertEqual(try transport.commands(), [
             .generatePreview(assetID: first.id, level: .medium)
+        ])
+    }
+
+    func testVisibleComparePreviewsPromoteSelectedAssetToLargeWhenMediumIsCached() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: transport
+        )
+        let (model, previewCache, first, _) = try makeComparePreviewModel(
+            named: "compare-progressive-selected-large",
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: first.id, level: .medium)))
+
+        try model.requestVisibleComparePreviews()
+
+        XCTAssertEqual(model.backgroundWorkQueue.runningItems.map(\.id.rawValue), [
+            "preview-first-large",
+            "preview-second-medium"
+        ])
+        XCTAssertEqual(try transport.commands(), [
+            .generatePreview(assetID: first.id, level: .large)
         ])
     }
 
@@ -2381,6 +2380,19 @@ final class AppModelTests: XCTestCase {
         assets: [Asset],
         workerSupervisor: WorkerSupervisor? = nil
     ) throws -> (AppModel, CatalogRepository) {
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: name,
+            assets: assets,
+            workerSupervisor: workerSupervisor
+        )
+        return (result.model, result.repository)
+    }
+
+    private func makeModelWithCatalogAssetsAndPreviewCache(
+        named name: String,
+        assets: [Asset],
+        workerSupervisor: WorkerSupervisor? = nil
+    ) throws -> (model: AppModel, repository: CatalogRepository, previewCache: PreviewCache) {
         let directory = try makeTemporaryDirectory(named: name)
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
@@ -2396,7 +2408,40 @@ final class AppModelTests: XCTestCase {
                 previewCache: previewCache
             )
         )
-        return (try AppModel.load(catalog: catalog, workerSupervisor: workerSupervisor), repository)
+        return (try AppModel.load(catalog: catalog, workerSupervisor: workerSupervisor), repository, previewCache)
+    }
+
+    private func makeComparePreviewModel(
+        named name: String,
+        workerSupervisor: WorkerSupervisor? = nil
+    ) throws -> (AppModel, PreviewCache, Asset, Asset) {
+        let directory = try makeTemporaryDirectory(named: name)
+        let firstURL = directory.appendingPathComponent("first.jpg")
+        let secondURL = directory.appendingPathComponent("second.jpg")
+        try writeTestPNG(to: firstURL)
+        try writeTestPNG(to: secondURL)
+        let first = Asset(
+            id: AssetID(rawValue: "first"),
+            originalURL: firstURL,
+            volumeIdentifier: "local",
+            fingerprint: try fileFingerprint(for: firstURL),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let second = Asset(
+            id: AssetID(rawValue: "second"),
+            originalURL: secondURL,
+            volumeIdentifier: "local",
+            fingerprint: try fileFingerprint(for: secondURL),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: name,
+            assets: [first, second],
+            workerSupervisor: workerSupervisor
+        )
+        return (result.model, result.previewCache, first, second)
     }
 
     @MainActor
