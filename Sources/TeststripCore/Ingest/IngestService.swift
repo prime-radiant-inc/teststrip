@@ -120,11 +120,15 @@ public struct IngestService: Sendable {
         case .addInPlace:
             return
         case .copyToDestination:
-            guard !FileManager.default.fileExists(atPath: originalURL.path) else {
+            if FileManager.default.fileExists(atPath: originalURL.path) {
                 if existingAsset != nil {
                     return
                 }
-                throw TeststripError.io("ingest destination already exists \(originalURL.path)")
+                guard FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: originalURL.path) else {
+                    throw TeststripError.io("ingest destination already exists \(originalURL.path)")
+                }
+                try copyAdjacentSidecar(sourceFile: sourceFile, originalURL: originalURL)
+                return
             }
 
             let destinationDirectory = originalURL.deletingLastPathComponent()
@@ -150,8 +154,11 @@ public struct IngestService: Sendable {
         }
 
         let destinationSidecarURL = sidecarStore.sidecarURL(forOriginalAt: originalURL)
-        guard !FileManager.default.fileExists(atPath: destinationSidecarURL.path) else {
-            throw TeststripError.io("ingest sidecar destination already exists \(destinationSidecarURL.path)")
+        if FileManager.default.fileExists(atPath: destinationSidecarURL.path) {
+            guard FileManager.default.contentsEqual(atPath: sourceSidecarURL.path, andPath: destinationSidecarURL.path) else {
+                throw TeststripError.io("ingest sidecar destination already exists \(destinationSidecarURL.path)")
+            }
+            return
         }
         do {
             try FileManager.default.copyItem(at: sourceSidecarURL, to: destinationSidecarURL)

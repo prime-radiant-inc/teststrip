@@ -308,6 +308,43 @@ final class FolderImportTests: XCTestCase {
         )
     }
 
+    func testCopyFromCardResumesWhenDestinationOriginalAndSidecarAlreadyExistUncataloged() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-resume")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let sourceFile = source.appendingPathComponent("IMG_0001.CR2")
+        try Data("raw bytes".utf8).write(to: sourceFile)
+        let metadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["keeper"])
+        let sourceSidecar = sourceFile.appendingPathExtension("xmp")
+        let sidecarData = try XMPPacket(metadata: metadata).xmlData()
+        try sidecarData.write(to: sourceSidecar)
+        let destinationFile = destination.appendingPathComponent("IMG_0001.CR2")
+        let destinationSidecar = destinationFile.appendingPathExtension("xmp")
+        try Data(contentsOf: sourceFile).write(to: destinationFile)
+        try sidecarData.write(to: destinationSidecar)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["cr2"]))
+
+        let imported = try service.ingest(
+            plan: IngestPlanner.copyFromCard(source: source, destinationRoot: destination),
+            repository: repository
+        )
+
+        XCTAssertEqual(imported.map(\.originalURL), [destinationFile])
+        XCTAssertEqual(try Data(contentsOf: destinationFile), Data("raw bytes".utf8))
+        XCTAssertEqual(try Data(contentsOf: destinationSidecar), sidecarData)
+        let fetched = try repository.asset(id: imported[0].id)
+        XCTAssertEqual(fetched.metadata, metadata)
+        XCTAssertEqual(
+            try repository.lastMetadataSyncFingerprint(assetID: fetched.id),
+            XMPSidecarStore.fingerprint(for: sidecarData)
+        )
+    }
+
     func testReingestingCopiedCardAssetReusesCatalogedDestination() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "card-reingest")
         let source = root.appendingPathComponent("DCIM", isDirectory: true)
