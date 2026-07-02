@@ -723,6 +723,14 @@ public final class AppModel {
         syncBackgroundWorkQueueFromSupervisor()
     }
 
+    public func requestVisibleGridPreview(assetID: AssetID) throws {
+        let request = PreviewScheduler().request(
+            assetID: assetID,
+            context: .grid(distanceFromViewport: 0)
+        )
+        try requestPreview(assetID: request.assetID, level: request.level)
+    }
+
     public func requestVisibleLoupePreview(assetID: AssetID) throws {
         let request = PreviewScheduler().request(
             assetID: assetID,

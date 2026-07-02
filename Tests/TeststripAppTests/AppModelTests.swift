@@ -997,6 +997,25 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items, [])
     }
 
+    func testVisibleGridPreviewRequestsGridPreviewWhenMissing() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, _, asset) = try makeModelWithPreviewCache(
+            named: "grid-visible-preview",
+            workerSupervisor: supervisor
+        )
+
+        try model.requestVisibleGridPreview(assetID: asset.id)
+
+        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: asset.id, level: .grid)])
+        XCTAssertEqual(model.backgroundWorkQueue.runningItems.map(\.id.rawValue), [
+            "preview-\(asset.id.rawValue)-grid"
+        ])
+    }
+
     func testBackgroundControlsForwardToWorkerSupervisor() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

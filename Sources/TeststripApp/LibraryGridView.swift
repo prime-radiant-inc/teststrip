@@ -211,6 +211,13 @@ struct LibraryGridView: View {
                 .simultaneousGesture(TapGesture(count: 2).onEnded {
                     model.openAssetInLoupe(asset.id)
                 })
+                .task(id: asset.id.rawValue) {
+                    do {
+                        try model.requestVisibleGridPreview(assetID: asset.id)
+                    } catch {
+                        model.errorMessage = error.localizedDescription
+                    }
+                }
             }
         }
         .padding(12)
