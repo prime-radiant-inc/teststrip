@@ -266,6 +266,25 @@ public final class AppModel {
         savedAssetSets.filter(\.starred)
     }
 
+    public var canSaveCurrentLibraryQuery: Bool {
+        currentLibraryQuery() != nil
+    }
+
+    public var suggestedSavedSearchName: String {
+        var parts: [String] = []
+        let trimmedSearch = librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedSearch.isEmpty {
+            parts.append(trimmedSearch)
+        }
+        if let minimumRatingFilter {
+            parts.append("\(minimumRatingFilter)+ Stars")
+        }
+        if let flagFilter {
+            parts.append(flagFilter.rawValue.capitalized)
+        }
+        return parts.isEmpty ? "Saved Search" : parts.joined(separator: " ")
+    }
+
     public init(
         sidebarSections: [SidebarSection],
         selectedView: LibraryViewMode,
@@ -401,6 +420,36 @@ public final class AppModel {
         }
         savedAssetSets = try catalog.repository.assetSets()
         rebuildSidebarSections()
+    }
+
+    @discardableResult
+    public func saveCurrentLibraryQuery(named name: String, starred: Bool = false) throws -> AssetSet {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw TeststripError.invalidState("saved search name is required")
+        }
+        guard let query = currentLibraryQuery() else {
+            throw TeststripError.invalidState("there is no active search to save")
+        }
+        let assetSet = AssetSet(
+            id: .new(),
+            name: trimmedName,
+            membership: .dynamic(query),
+            starred: starred
+        )
+        try catalog.repository.upsert(assetSet)
+        savedAssetSets = try catalog.repository.assetSets()
+        selectedAssetSetID = assetSet.id
+        librarySearchText = ""
+        minimumRatingFilter = nil
+        flagFilter = nil
+        rebuildSidebarSections()
+        try reload()
+        statusMessage = "Saved \(trimmedName)"
+        return assetSet
     }
 
     public func openAssetInLoupe(_ assetID: AssetID) {

@@ -660,6 +660,51 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 2)
     }
 
+    func testSavingCurrentLibraryQueryCreatesSelectedStarredSet() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-save-search")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let keeper = makeAsset(id: "keeper", path: "/Photos/Wedding/ceremony-keeper.jpg", rating: 5, flag: .pick)
+        let reject = makeAsset(id: "reject", path: "/Photos/Wedding/ceremony-blink.jpg", rating: 1, flag: .reject)
+        try repository.upsert([keeper, reject])
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        model.librarySearchText = "ceremony"
+        model.minimumRatingFilter = 4
+        model.flagFilter = .pick
+        try model.applyLibraryFilters()
+
+        let savedSet = try model.saveCurrentLibraryQuery(named: " Ceremony Picks ", starred: true)
+
+        XCTAssertEqual(savedSet.name, "Ceremony Picks")
+        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [.text("ceremony"), .ratingAtLeast(4), .flag(.pick)])))
+        XCTAssertEqual(try repository.assetSet(id: savedSet.id), savedSet)
+        XCTAssertEqual(model.savedAssetSets, [savedSet])
+        XCTAssertEqual(model.starredAssetSets, [savedSet])
+        XCTAssertEqual(model.selectedAssetSetID, savedSet.id)
+        XCTAssertEqual(model.librarySearchText, "")
+        XCTAssertNil(model.minimumRatingFilter)
+        XCTAssertNil(model.flagFilter)
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, ["Ceremony Picks"])
+    }
+
+    func testSavingCurrentLibraryQueryRequiresActiveQuery() throws {
+        let (model, _, _) = try makeModelWithCatalogAsset(named: "empty-save-search")
+
+        XCTAssertFalse(model.canSaveCurrentLibraryQuery)
+        XCTAssertThrowsError(try model.saveCurrentLibraryQuery(named: "No Filter"))
+    }
+
     func testLoadingEmptyRepositoryLeavesSelectionEmpty() throws {
         let directory = try makeTemporaryDirectory(named: "empty-app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

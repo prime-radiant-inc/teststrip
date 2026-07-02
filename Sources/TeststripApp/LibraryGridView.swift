@@ -6,6 +6,9 @@ import UniformTypeIdentifiers
 struct LibraryGridView: View {
     var model: AppModel
     @State private var isImportingFolder = false
+    @State private var isSavingSearch = false
+    @State private var savedSearchName = ""
+    @State private var savedSearchStarred = false
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
 
@@ -111,11 +114,47 @@ struct LibraryGridView: View {
                 .help("Clear filters")
             }
 
+            Button {
+                savedSearchName = model.suggestedSavedSearchName
+                savedSearchStarred = false
+                isSavingSearch = true
+            } label: {
+                Image(systemName: "bookmark")
+            }
+            .buttonStyle(.borderless)
+            .disabled(!model.canSaveCurrentLibraryQuery)
+            .help("Save search")
+            .popover(isPresented: $isSavingSearch) {
+                saveSearchPopover
+            }
+
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(.bar)
+    }
+
+    private var saveSearchPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Save Search")
+                .font(.headline)
+            TextField("Name", text: $savedSearchName)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 240)
+            Toggle("Starred", isOn: $savedSearchStarred)
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    isSavingSearch = false
+                }
+                Button("Save") {
+                    saveCurrentSearch()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(14)
     }
 
     private var minimumRatingBinding: Binding<Int> {
@@ -141,7 +180,8 @@ struct LibraryGridView: View {
     private var hasActiveFilters: Bool {
         !model.librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
             model.minimumRatingFilter != nil ||
-            model.flagFilter != nil
+            model.flagFilter != nil ||
+            model.selectedAssetSetID != nil
     }
 
     private var assetGrid: some View {
@@ -285,6 +325,15 @@ struct LibraryGridView: View {
     private func clearLibraryFilters() {
         do {
             try model.clearLibraryFilters()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func saveCurrentSearch() {
+        do {
+            try model.saveCurrentLibraryQuery(named: savedSearchName, starred: savedSearchStarred)
+            isSavingSearch = false
         } catch {
             model.errorMessage = error.localizedDescription
         }
