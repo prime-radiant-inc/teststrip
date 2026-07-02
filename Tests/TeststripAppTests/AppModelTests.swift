@@ -751,6 +751,31 @@ final class AppModelTests: XCTestCase {
         XCTAssertThrowsError(try model.saveCurrentLibraryQuery(named: "No Filter"))
     }
 
+    func testSavingSelectedAssetCreatesSelectedManualSet() throws {
+        let (model, repository, asset) = try makeModelWithCatalogAsset(named: "manual-set-photo")
+
+        let savedSet = try model.saveSelectedAssetAsManualSet(named: " Keeper ", starred: true)
+
+        XCTAssertEqual(savedSet.name, "Keeper")
+        XCTAssertEqual(savedSet.membership, .manual([asset.id]))
+        XCTAssertEqual(try repository.assetSet(id: savedSet.id), savedSet)
+        XCTAssertEqual(model.savedAssetSets, [savedSet])
+        XCTAssertEqual(model.starredAssetSets, [savedSet])
+        XCTAssertEqual(model.selectedAssetSetID, savedSet.id)
+        XCTAssertEqual(model.assets.map(\.id), [asset.id])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, ["Keeper"])
+    }
+
+    func testSavingSelectedAssetAsManualSetRequiresSelection() throws {
+        let directory = try makeTemporaryDirectory(named: "manual-set-no-selection")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let model = try AppModel.load(repository: repository)
+
+        XCTAssertThrowsError(try model.saveSelectedAssetAsManualSet(named: "No Selection"))
+    }
+
     func testLoadingEmptyRepositoryLeavesSelectionEmpty() throws {
         let directory = try makeTemporaryDirectory(named: "empty-app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

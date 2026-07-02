@@ -468,7 +468,7 @@ public final class AppModel {
 
     @discardableResult
     public func saveCurrentLibraryQuery(named name: String, starred: Bool = false) throws -> AssetSet {
-        guard let catalog else {
+        guard catalog != nil else {
             throw TeststripError.invalidState("app model has no catalog")
         }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -484,6 +484,34 @@ public final class AppModel {
             membership: .dynamic(query),
             starred: starred
         )
+        return try saveAndSelect(assetSet)
+    }
+
+    @discardableResult
+    public func saveSelectedAssetAsManualSet(named name: String, starred: Bool = false) throws -> AssetSet {
+        guard catalog != nil else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard let selectedAssetID else {
+            throw TeststripError.invalidState("no selected asset")
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw TeststripError.invalidState("manual set name is required")
+        }
+        let assetSet = AssetSet(
+            id: .new(),
+            name: trimmedName,
+            membership: .manual([selectedAssetID]),
+            starred: starred
+        )
+        return try saveAndSelect(assetSet)
+    }
+
+    private func saveAndSelect(_ assetSet: AssetSet) throws -> AssetSet {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
         try catalog.repository.upsert(assetSet)
         savedAssetSets = try catalog.repository.assetSets()
         selectedAssetSetID = assetSet.id
@@ -492,7 +520,7 @@ public final class AppModel {
         flagFilter = nil
         rebuildSidebarSections()
         try reload()
-        statusMessage = "Saved \(trimmedName)"
+        statusMessage = "Saved \(assetSet.name)"
         return assetSet
     }
 
