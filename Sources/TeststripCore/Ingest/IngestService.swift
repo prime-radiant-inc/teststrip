@@ -9,9 +9,9 @@ public struct IngestService: Sendable {
         self.decodeRegistry = decodeRegistry
     }
 
-    public func files(for plan: IngestPlan) throws -> [URL] {
+    public func files(for plan: IngestPlan, progress: FolderScanProgressHandler? = nil) throws -> [URL] {
         try Task.checkCancellation()
-        return try scanner.scan(root: plan.sourceRoot)
+        return try scanner.scan(root: plan.sourceRoot, progress: progress)
     }
 
     public func ingest(plan: IngestPlan, repository: CatalogRepository) throws -> [Asset] {

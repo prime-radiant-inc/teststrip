@@ -83,19 +83,42 @@ final class LibraryImportServiceTests: XCTestCase {
 
         XCTAssertEqual(result.importedAssets.count, 2)
         let updates = recorder.values()
-        XCTAssertEqual(updates.map(\.completedUnitCount), [0, 0, 2, 0, 1, 2])
-        XCTAssertEqual(updates.map(\.totalUnitCount), [nil, 2, 2, 2, 2, 2])
+        XCTAssertEqual(updates.map(\.completedUnitCount), [0, 1, 2, 0, 2, 0, 1, 2])
+        XCTAssertEqual(updates.map(\.totalUnitCount), [nil, nil, nil, 2, 2, 2, 2, 2])
         XCTAssertEqual(updates.map(\.detail), [
             "Scanning library-import-progress",
+            "Scanning library-import-progress: found 1 photo",
+            "Scanning library-import-progress: found 2 photos",
             "Cataloging 2 photos",
             "Cataloged 2 photos",
             "Generating previews",
             "Generated 1 of 2 previews",
             "Generated 2 of 2 previews"
         ])
-        XCTAssertEqual(updates.map(\.catalogedAssetIDs.count), [0, 0, 2, 0, 0, 0])
-        XCTAssertEqual(updates[2].catalogedAssetIDs, result.importedAssets.map(\.id))
+        XCTAssertEqual(updates.map(\.catalogedAssetIDs.count), [0, 0, 0, 0, 2, 0, 0, 0])
+        let catalogedUpdate = try XCTUnwrap(updates.first { !$0.catalogedAssetIDs.isEmpty })
+        XCTAssertEqual(catalogedUpdate.catalogedAssetIDs, result.importedAssets.map(\.id))
         XCTAssertEqual(updates.last?.detail, "Generated 2 of 2 previews")
+    }
+
+    func testAddFolderReportsScanProgressBeforeCataloging() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-scan-progress")
+        try TestDirectories.writeTestJPEG(to: root.appendingPathComponent("one.jpg"), width: 1200, height: 800)
+        try TestDirectories.writeTestJPEG(to: root.appendingPathComponent("two.jpg"), width: 800, height: 1200)
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+        let recorder = ImportProgressRecorder()
+
+        _ = try service.addFolderInPlace(root, repository: repository, previewPolicy: .deferGeneration) { progress in
+            recorder.append(progress)
+        }
+
+        let updates = recorder.values()
+        let catalogingIndex = try XCTUnwrap(updates.firstIndex { $0.totalUnitCount == 2 })
+        let scanUpdates = updates[..<catalogingIndex]
+        XCTAssertEqual(scanUpdates.map(\.completedUnitCount), [0, 1, 2])
+        XCTAssertEqual(scanUpdates.map(\.totalUnitCount), [nil, nil, nil])
     }
 
     func testReimportPreservesAssetIdentityMetadataAndRefreshesPreview() throws {

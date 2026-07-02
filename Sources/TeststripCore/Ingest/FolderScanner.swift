@@ -1,5 +1,17 @@
 import Foundation
 
+public struct FolderScanProgress: Equatable, Sendable {
+    public var supportedFileCount: Int
+    public var url: URL
+
+    public init(supportedFileCount: Int, url: URL) {
+        self.supportedFileCount = supportedFileCount
+        self.url = url
+    }
+}
+
+public typealias FolderScanProgressHandler = @Sendable (FolderScanProgress) -> Void
+
 public struct FolderScanner: Sendable {
     private let supportedExtensions: Set<String>
 
@@ -7,7 +19,7 @@ public struct FolderScanner: Sendable {
         self.supportedExtensions = Set(supportedExtensions.map { $0.lowercased() })
     }
 
-    public func scan(root: URL) throws -> [URL] {
+    public func scan(root: URL, progress: FolderScanProgressHandler? = nil) throws -> [URL] {
         let resolvedRoot = root.resolvingSymlinksInPath()
         guard let enumerator = FileManager.default.enumerator(
             at: root,
@@ -28,7 +40,9 @@ public struct FolderScanner: Sendable {
             }
             guard values.isRegularFile == true else { continue }
             if supportedExtensions.contains(url.pathExtension.lowercased()) {
-                files.append(visibleURL(for: url, resolvedRoot: resolvedRoot, requestedRoot: root))
+                let visibleURL = visibleURL(for: url, resolvedRoot: resolvedRoot, requestedRoot: root)
+                files.append(visibleURL)
+                progress?(FolderScanProgress(supportedFileCount: files.count, url: visibleURL))
             }
         }
         return files

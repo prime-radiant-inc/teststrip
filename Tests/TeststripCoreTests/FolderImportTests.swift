@@ -25,6 +25,23 @@ final class FolderImportTests: XCTestCase {
         XCTAssertEqual(files, ["one.CR2", "two.jpg"])
     }
 
+    func testFolderScannerReportsSupportedFileCountWhileScanning() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "scan-progress")
+        try Data("raw".utf8).write(to: root.appendingPathComponent("one.CR2"))
+        try Data("jpg".utf8).write(to: root.appendingPathComponent("two.jpg"))
+        try Data("txt".utf8).write(to: root.appendingPathComponent("notes.txt"))
+        let recorder = FolderScanProgressRecorder()
+
+        let scanner = FolderScanner(supportedExtensions: ["cr2", "jpg"])
+        let files = try scanner.scan(root: root) { progress in
+            recorder.append(progress)
+        }
+
+        XCTAssertEqual(files.map(\.lastPathComponent).sorted(), ["one.CR2", "two.jpg"])
+        XCTAssertEqual(recorder.values().map(\.supportedFileCount), [1, 2])
+        XCTAssertEqual(recorder.values().map(\.url.lastPathComponent).sorted(), ["one.CR2", "two.jpg"])
+    }
+
     func testFolderScannerNormalizesSupportedExtensions() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "scan-normalized")
         try Data("jpg".utf8).write(to: root.appendingPathComponent("one.jpg"))
@@ -315,6 +332,23 @@ final class FolderImportTests: XCTestCase {
             }
         }
         XCTAssertEqual(try String(contentsOf: destinationFile, encoding: .utf8), "existing")
+    }
+}
+
+private final class FolderScanProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var updates: [FolderScanProgress] = []
+
+    func append(_ progress: FolderScanProgress) {
+        lock.withLock {
+            updates.append(progress)
+        }
+    }
+
+    func values() -> [FolderScanProgress] {
+        lock.withLock {
+            updates
+        }
     }
 }
 

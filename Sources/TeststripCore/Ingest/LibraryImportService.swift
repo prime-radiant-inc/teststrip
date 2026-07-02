@@ -86,7 +86,13 @@ public struct LibraryImportService: Sendable {
             detail: "Scanning \(root.lastPathComponent)"
         ))
         let plan = IngestPlanner.addFolder(root)
-        let sourceFiles = try ingestService.files(for: plan)
+        let sourceFiles = try ingestService.files(for: plan) { scanProgress in
+            progress?(LibraryImportProgress(
+                completedUnitCount: scanProgress.supportedFileCount,
+                totalUnitCount: nil,
+                detail: "Scanning \(root.lastPathComponent): found \(scanProgress.supportedFileCount) \(scanProgress.supportedFileCount == 1 ? "photo" : "photos")"
+            ))
+        }
         progress?(LibraryImportProgress(
             completedUnitCount: 0,
             totalUnitCount: sourceFiles.count,
