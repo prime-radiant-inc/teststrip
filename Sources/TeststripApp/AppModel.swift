@@ -283,6 +283,11 @@ public final class AppModel {
         selectedAssetID != nil && workerSupervisor != nil
     }
 
+    public var selectedEvaluationSignals: [EvaluationSignal] {
+        guard let catalog, let selectedAssetID else { return [] }
+        return (try? catalog.repository.evaluationSignals(assetID: selectedAssetID)) ?? []
+    }
+
     public var starredAssetSets: [AssetSet] {
         savedAssetSets.filter(\.starred)
     }

@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import TeststripCore
 
@@ -23,6 +24,10 @@ struct InspectorView: View {
                         .foregroundStyle(.red)
                 }
                 metadataControls(for: asset)
+                let signals = model.selectedEvaluationSignals
+                if !signals.isEmpty {
+                    evaluationSignals(signals)
+                }
             } else {
                 Text("No selection")
             }
@@ -108,6 +113,25 @@ struct InspectorView: View {
         }
     }
 
+    private func evaluationSignals(_ signals: [EvaluationSignal]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Signals")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(Array(signals.enumerated()), id: \.offset) { _, signal in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(title(for: signal.kind)): \(valueText(for: signal.value))")
+                        .font(.caption)
+                        .lineLimit(1)
+                    Text("\(confidenceText(signal.confidence)) - \(signal.provenance.provider)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
     private func apply(_ action: () throws -> Void) {
         do {
             try action()
@@ -124,5 +148,36 @@ struct InspectorView: View {
         case .blue: .blue
         case .purple: .purple
         }
+    }
+
+    private func title(for kind: EvaluationKind) -> String {
+        switch kind {
+        case .focus: "Focus"
+        case .motionBlur: "Motion blur"
+        case .exposure: "Exposure"
+        case .aesthetics: "Aesthetics"
+        case .object: "Object"
+        case .faceQuality: "Face quality"
+        case .ocrText: "OCR"
+        case .colorPalette: "Color"
+        case .novelty: "Novelty"
+        }
+    }
+
+    private func valueText(for value: EvaluationValue) -> String {
+        switch value {
+        case .score(let score):
+            String(format: "%.2f", score)
+        case .label(let label):
+            label
+        case .text(let text):
+            text
+        case .vector(let values):
+            values.prefix(3).map { String(format: "%.2f", $0) }.joined(separator: ", ")
+        }
+    }
+
+    private func confidenceText(_ confidence: Double) -> String {
+        "\(Int((confidence * 100).rounded()))%"
     }
 }

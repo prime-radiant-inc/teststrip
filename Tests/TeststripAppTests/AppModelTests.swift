@@ -1158,6 +1158,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.canRequestSelectedAssetEvaluation)
     }
 
+    func testSelectedEvaluationSignalsLoadFromCatalog() throws {
+        let (model, repository, asset) = try makeModelWithCatalogAsset(named: "selected-signals")
+        let signal = EvaluationSignal(
+            assetID: asset.id,
+            kind: .exposure,
+            value: .score(0.72),
+            confidence: 0.9,
+            provenance: ProviderProvenance(provider: "local-image-metrics", model: "average-preview-metrics", version: "1", settingsHash: "default")
+        )
+        try repository.recordEvaluationSignals([signal])
+
+        XCTAssertEqual(model.selectedEvaluationSignals, [signal])
+    }
+
     @MainActor
     func testWorkerCompletionRefreshesVisibleBackgroundWork() async throws {
         let transport = RecordingWorkerTransport()
