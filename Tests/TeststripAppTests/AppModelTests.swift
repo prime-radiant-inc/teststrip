@@ -476,6 +476,86 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.loupePreviewURL(for: asset.id), gridPreview)
     }
 
+    func testRequestMissingPreviewDispatchesWorkerPreviewCommand() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, _, asset) = try makeModelWithPreviewCache(
+            named: "request-preview",
+            workerSupervisor: supervisor
+        )
+
+        try model.requestPreview(assetID: asset.id, level: .large)
+
+        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: asset.id, level: .large)])
+        XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
+        XCTAssertEqual(model.visibleWorkActivity?.kind, .previewGeneration)
+        XCTAssertEqual(model.visibleWorkActivity?.status, .running)
+    }
+
+    func testRequestCachedPreviewDoesNotDispatchWorkerPreviewCommand() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, previewCache, asset) = try makeModelWithPreviewCache(
+            named: "request-cached-preview",
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+
+        try model.requestPreview(assetID: asset.id, level: .large)
+
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(model.backgroundWorkQueue.items, [])
+    }
+
+    func testRequestMissingPreviewDoesNotDispatchDuplicateInFlightWork() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, _, asset) = try makeModelWithPreviewCache(
+            named: "request-preview-dedup",
+            workerSupervisor: supervisor
+        )
+
+        try model.requestPreview(assetID: asset.id, level: .large)
+        try model.requestPreview(assetID: asset.id, level: .large)
+
+        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: asset.id, level: .large)])
+        XCTAssertEqual(model.backgroundWorkQueue.items.count, 1)
+    }
+
+    func testBackgroundControlsForwardToWorkerSupervisor() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, _, asset) = try makeModelWithPreviewCache(
+            named: "preview-controls",
+            workerSupervisor: supervisor
+        )
+        try model.requestPreview(assetID: asset.id, level: .medium)
+
+        model.pauseBackgroundWork()
+        model.resumeBackgroundWork()
+        model.cancelBackgroundWork()
+
+        XCTAssertEqual(try transport.commands(), [
+            .generatePreview(assetID: asset.id, level: .medium),
+            .pause,
+            .resume,
+            .cancelAll
+        ])
+        XCTAssertEqual(model.visibleWorkActivity?.status, .cancelled)
+    }
+
     @MainActor
     func testBackgroundImportReloadsAssetsAndExposesGridPreviewURL() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-background-import")
@@ -587,7 +667,10 @@ final class AppModelTests: XCTestCase {
         )
     }
 
-    private func makeModelWithPreviewCache(named name: String) throws -> (AppModel, PreviewCache, Asset) {
+    private func makeModelWithPreviewCache(
+        named name: String,
+        workerSupervisor: WorkerSupervisor? = nil
+    ) throws -> (AppModel, PreviewCache, Asset) {
         let directory = try makeTemporaryDirectory(named: name)
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
@@ -611,7 +694,7 @@ final class AppModelTests: XCTestCase {
                 previewCache: previewCache
             )
         )
-        return (try AppModel.load(catalog: catalog), previewCache, asset)
+        return (try AppModel.load(catalog: catalog, workerSupervisor: workerSupervisor), previewCache, asset)
     }
 
     private func makeModelWithCatalogAsset(named name: String) throws -> (AppModel, CatalogRepository, Asset) {
@@ -662,5 +745,26 @@ private extension BackgroundWorkItem {
             completedUnitCount: 0,
             totalUnitCount: 10
         )
+    }
+}
+
+private final class RecordingWorkerTransport: WorkerTransport {
+    private(set) var lines: [String] = []
+    private(set) var isRunning = false
+
+    func launch() throws {
+        isRunning = true
+    }
+
+    func writeLine(_ line: String) throws {
+        lines.append(line)
+    }
+
+    func terminate() {
+        isRunning = false
+    }
+
+    func commands() throws -> [WorkerCommand] {
+        try lines.map { try WorkerProtocolEncoder.decode($0) }
     }
 }

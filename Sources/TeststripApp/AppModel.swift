@@ -151,6 +151,9 @@ public final class AppModel {
     private let importTaskFactory: AppImportTaskFactory
 
     @ObservationIgnored
+    private let workerSupervisor: WorkerSupervisor?
+
+    @ObservationIgnored
     private var activeImportTask: Task<AppImportOutput, Error>?
 
     private var metadataUndoStack: [MetadataChange]
@@ -215,6 +218,7 @@ public final class AppModel {
         recentWork: [AppWorkActivity] = [],
         pendingMetadataSyncItems: [MetadataSyncItem] = [],
         backgroundWorkQueue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
+        workerSupervisor: WorkerSupervisor? = nil,
         importTaskFactory: AppImportTaskFactory? = nil
     ) {
         self.sidebarSections = sidebarSections
@@ -229,6 +233,7 @@ public final class AppModel {
         self.pendingMetadataSyncItems = pendingMetadataSyncItems
         self.backgroundWorkQueue = backgroundWorkQueue
         self.catalog = catalog
+        self.workerSupervisor = workerSupervisor
         self.importTaskFactory = importTaskFactory ?? Self.defaultImportTask
         self.metadataUndoStack = []
         self.metadataRedoStack = []
@@ -260,7 +265,11 @@ public final class AppModel {
         )
     }
 
-    public static func load(catalog: AppCatalog, importTaskFactory: AppImportTaskFactory? = nil) throws -> AppModel {
+    public static func load(
+        catalog: AppCatalog,
+        importTaskFactory: AppImportTaskFactory? = nil,
+        workerSupervisor: WorkerSupervisor? = nil
+    ) throws -> AppModel {
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
         return AppModel(
             sidebarSections: defaultSidebarSections(),
@@ -269,6 +278,7 @@ public final class AppModel {
             totalAssetCount: try catalog.repository.assetCount(),
             catalog: catalog,
             pendingMetadataSyncItems: try catalog.repository.pendingMetadataSyncItems(),
+            workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory
         )
     }
@@ -441,15 +451,72 @@ public final class AppModel {
     }
 
     public func pauseBackgroundWork() {
-        backgroundWorkQueue.pause()
+        do {
+            if let workerSupervisor {
+                try workerSupervisor.pause()
+                syncBackgroundWorkQueueFromSupervisor()
+            } else {
+                backgroundWorkQueue.pause()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     public func resumeBackgroundWork() {
-        backgroundWorkQueue.resume()
+        do {
+            if let workerSupervisor {
+                try workerSupervisor.resume()
+                syncBackgroundWorkQueueFromSupervisor()
+            } else {
+                backgroundWorkQueue.resume()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     public func cancelBackgroundWork() {
-        backgroundWorkQueue.cancelAll()
+        do {
+            if let workerSupervisor {
+                try workerSupervisor.cancelAll()
+                syncBackgroundWorkQueueFromSupervisor()
+            } else {
+                backgroundWorkQueue.cancelAll()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    public func requestPreview(assetID: AssetID, level: PreviewLevel) throws {
+        if previewURL(for: assetID, levels: [level]) != nil {
+            return
+        }
+        guard let workerSupervisor else {
+            throw TeststripError.invalidState("worker supervisor is not configured")
+        }
+        let itemID = WorkSessionID(rawValue: "preview-\(assetID.rawValue)-\(level.rawValue)")
+        if backgroundWorkQueue.item(id: itemID) != nil {
+            return
+        }
+
+        let item = BackgroundWorkItem(
+            id: itemID,
+            kind: .previewGeneration,
+            title: "Generate preview",
+            detail: "Rendering \(level.rawValue) preview",
+            completedUnitCount: 0,
+            totalUnitCount: 1
+        )
+        try workerSupervisor.enqueue(item, command: .generatePreview(assetID: assetID, level: level))
+        syncBackgroundWorkQueueFromSupervisor()
+    }
+
+    private func syncBackgroundWorkQueueFromSupervisor() {
+        if let workerSupervisor {
+            backgroundWorkQueue = workerSupervisor.queue
+        }
     }
 
     private var visibleBackgroundWorkItem: BackgroundWorkItem? {
