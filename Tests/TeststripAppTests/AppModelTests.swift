@@ -167,6 +167,34 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .reject)
     }
 
+    func testUndoMetadataChangeRestoresLoadedAssetAndCatalog() throws {
+        let (model, repository, asset) = try makeModelWithCatalogAsset(named: "undo-rating")
+
+        try model.setRatingForSelectedAsset(4)
+        XCTAssertTrue(model.canUndoMetadataChange)
+        XCTAssertFalse(model.canRedoMetadataChange)
+
+        try model.undoMetadataChange()
+
+        XCTAssertEqual(model.selectedAsset?.metadata.rating, 0)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.rating, 0)
+        XCTAssertFalse(model.canUndoMetadataChange)
+        XCTAssertTrue(model.canRedoMetadataChange)
+    }
+
+    func testRedoMetadataChangeReappliesLoadedAssetAndCatalog() throws {
+        let (model, repository, asset) = try makeModelWithCatalogAsset(named: "redo-flag")
+
+        try model.setFlagForSelectedAsset(.pick)
+        try model.undoMetadataChange()
+        try model.redoMetadataChange()
+
+        XCTAssertEqual(model.selectedAsset?.metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .pick)
+        XCTAssertTrue(model.canUndoMetadataChange)
+        XCTAssertFalse(model.canRedoMetadataChange)
+    }
+
     func testLoadsAssetsFromCatalogRepository() throws {
         let directory = try makeTemporaryDirectory(named: "app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

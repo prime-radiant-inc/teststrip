@@ -74,6 +74,12 @@ public struct AppImportOutput: Sendable {
 
 public typealias AppImportTaskFactory = @Sendable (AppCatalogPaths, URL) -> Task<AppImportOutput, Error>
 
+private struct MetadataChange: Equatable {
+    var assetID: AssetID
+    var before: AssetMetadata
+    var after: AssetMetadata
+}
+
 @Observable
 public final class AppModel {
     public var sidebarSections: [SidebarSection]
@@ -95,6 +101,9 @@ public final class AppModel {
     @ObservationIgnored
     private var activeImportTask: Task<AppImportOutput, Error>?
 
+    private var metadataUndoStack: [MetadataChange]
+    private var metadataRedoStack: [MetadataChange]
+
     private static let assetPageSize = 500
 
     public var selectedAsset: Asset? {
@@ -110,6 +119,14 @@ public final class AppModel {
             return "Showing \(assets.count) of \(totalAssetCount) photographs"
         }
         return "\(assets.count) \(assets.count == 1 ? "photograph" : "photographs")"
+    }
+
+    public var canUndoMetadataChange: Bool {
+        !metadataUndoStack.isEmpty
+    }
+
+    public var canRedoMetadataChange: Bool {
+        !metadataRedoStack.isEmpty
     }
 
     public init(
@@ -135,6 +152,8 @@ public final class AppModel {
         self.recentWork = recentWork
         self.catalog = catalog
         self.importTaskFactory = importTaskFactory ?? Self.defaultImportTask
+        self.metadataUndoStack = []
+        self.metadataRedoStack = []
     }
 
     public static func demo() -> AppModel {
@@ -239,6 +258,18 @@ public final class AppModel {
         }
     }
 
+    public func undoMetadataChange() throws {
+        guard let change = metadataUndoStack.popLast() else { return }
+        try applyMetadataSnapshot(assetID: change.assetID, metadata: change.before)
+        metadataRedoStack.append(change)
+    }
+
+    public func redoMetadataChange() throws {
+        guard let change = metadataRedoStack.popLast() else { return }
+        try applyMetadataSnapshot(assetID: change.assetID, metadata: change.after)
+        metadataUndoStack.append(change)
+    }
+
     private func updateSelectedAssetMetadata(_ update: (inout AssetMetadata) throws -> Void) throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
@@ -246,9 +277,29 @@ public final class AppModel {
         guard let selectedAssetID else {
             throw TeststripError.invalidState("no selected asset")
         }
-        try catalog.repository.updateMetadata(assetID: selectedAssetID, update)
-        let updatedAsset = try catalog.repository.asset(id: selectedAssetID)
-        guard let index = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
+        let originalAsset = try catalog.repository.asset(id: selectedAssetID)
+        var updatedMetadata = originalAsset.metadata
+        try update(&updatedMetadata)
+        guard updatedMetadata != originalAsset.metadata else { return }
+
+        try applyMetadataSnapshot(assetID: selectedAssetID, metadata: updatedMetadata)
+        metadataUndoStack.append(MetadataChange(
+            assetID: selectedAssetID,
+            before: originalAsset.metadata,
+            after: updatedMetadata
+        ))
+        metadataRedoStack.removeAll()
+    }
+
+    private func applyMetadataSnapshot(assetID: AssetID, metadata: AssetMetadata) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        try catalog.repository.updateMetadata(assetID: assetID) { currentMetadata in
+            currentMetadata = metadata
+        }
+        let updatedAsset = try catalog.repository.asset(id: assetID)
+        guard let index = assets.firstIndex(where: { $0.id == assetID }) else {
             return
         }
         assets[index] = updatedAsset

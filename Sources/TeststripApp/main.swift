@@ -23,7 +23,44 @@ struct TeststripApplication: App {
             .frame(minWidth: 1100, minHeight: 720)
         }
         .commands {
+            MetadataHistoryCommands(model: model)
             CullingCommands(model: model)
+        }
+    }
+}
+
+private struct MetadataHistoryCommands: Commands {
+    var model: AppModel
+
+    var body: some Commands {
+        CommandGroup(replacing: .undoRedo) {
+            Button("Undo Metadata Change") {
+                undo()
+            }
+            .keyboardShortcut("z", modifiers: [.command])
+            .disabled(!model.canUndoMetadataChange)
+
+            Button("Redo Metadata Change") {
+                redo()
+            }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            .disabled(!model.canRedoMetadataChange)
+        }
+    }
+
+    private func undo() {
+        do {
+            try model.undoMetadataChange()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func redo() {
+        do {
+            try model.redoMetadataChange()
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 }
