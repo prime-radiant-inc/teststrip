@@ -421,6 +421,18 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.loupePreviewURL(for: asset.id), gridPreview)
     }
 
+    func testRefreshSelectedAvailabilityKeepsCachedPreviewsForMissingOriginal() throws {
+        let (model, previewCache, asset) = try makeModelWithPreviewCache(named: "offline-preview")
+        let gridPreview = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+        try writePreviewPlaceholder(to: gridPreview)
+
+        try model.refreshSelectedAssetAvailability()
+
+        XCTAssertEqual(model.selectedAsset?.availability, .missing)
+        XCTAssertEqual(model.gridPreviewURL(for: asset.id), gridPreview)
+        XCTAssertEqual(model.loupePreviewURL(for: asset.id), gridPreview)
+    }
+
     @MainActor
     func testBackgroundImportReloadsAssetsAndExposesGridPreviewURL() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-background-import")

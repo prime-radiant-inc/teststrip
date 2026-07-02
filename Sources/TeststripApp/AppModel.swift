@@ -420,6 +420,23 @@ public final class AppModel {
         }
     }
 
+    public func refreshSelectedAssetAvailability() throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard let selectedAssetID else {
+            throw TeststripError.invalidState("no selected asset")
+        }
+        let asset = try catalog.repository.asset(id: selectedAssetID)
+        let availability = SourceAvailabilityProbe().availability(for: asset)
+        try catalog.repository.updateAvailability(assetID: selectedAssetID, availability: availability)
+        let updatedAsset = try catalog.repository.asset(id: selectedAssetID)
+        guard let index = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
+            return
+        }
+        assets[index] = updatedAsset
+    }
+
     private func replaceAssets(_ loadedAssets: [Asset]) {
         let previousSelection = selectedAssetID
         assets = loadedAssets

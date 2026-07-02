@@ -77,6 +77,24 @@ public final class CatalogRepository {
         try upsert(asset)
     }
 
+    public func updateAvailability(assetID: AssetID, availability: SourceAvailability) throws {
+        _ = try asset(id: assetID)
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            UPDATE assets
+            SET availability = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            bindings: [
+                availability.rawValue,
+                now,
+                assetID.rawValue
+            ]
+        )
+    }
+
     public func catalogGeneration(assetID: AssetID) throws -> Int {
         let rows = try database.rows("SELECT catalog_generation FROM assets WHERE id = ?", bindings: [assetID.rawValue])
         guard let value = rows.first?["catalog_generation"], let intValue = Int(value) else {
