@@ -468,6 +468,59 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.hasMoreAssets)
     }
 
+    func testApplyingLibraryFiltersLoadsMatchingCatalogAssets() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-filter")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert([
+            Asset(
+                id: AssetID(rawValue: "keeper"),
+                originalURL: URL(fileURLWithPath: "/Photos/Wedding/ceremony-keeper.jpg"),
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
+                availability: .online,
+                metadata: AssetMetadata(rating: 5, flag: .pick)
+            ),
+            Asset(
+                id: AssetID(rawValue: "reject"),
+                originalURL: URL(fileURLWithPath: "/Photos/Wedding/ceremony-blink.jpg"),
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: 2, modificationDate: Date(timeIntervalSince1970: 2)),
+                availability: .online,
+                metadata: AssetMetadata(rating: 1, flag: .reject)
+            ),
+            Asset(
+                id: AssetID(rawValue: "travel"),
+                originalURL: URL(fileURLWithPath: "/Photos/Travel/mountain.jpg"),
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: 3, modificationDate: Date(timeIntervalSince1970: 3)),
+                availability: .online,
+                metadata: AssetMetadata(rating: 5)
+            )
+        ])
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        model.librarySearchText = "CEREMONY"
+        model.minimumRatingFilter = 4
+        model.flagFilter = .pick
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.assets.map(\.id), [AssetID(rawValue: "keeper")])
+        XCTAssertEqual(model.selectedAssetID, AssetID(rawValue: "keeper"))
+        XCTAssertEqual(model.totalAssetCount, 1)
+        XCTAssertEqual(model.libraryCountText, "1 photograph")
+    }
+
     func testLoadingEmptyRepositoryLeavesSelectionEmpty() throws {
         let directory = try makeTemporaryDirectory(named: "empty-app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

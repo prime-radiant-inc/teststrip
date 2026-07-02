@@ -54,9 +54,90 @@ struct LibraryGridView: View {
             allowsMultipleSelection: false,
             onCompletion: handleImportSelection
         )
+        .safeAreaInset(edge: .top) {
+            filterBar
+        }
         .safeAreaInset(edge: .bottom) {
             footer
         }
+    }
+
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            TextField("Search filenames", text: Binding(
+                get: { model.librarySearchText },
+                set: { model.librarySearchText = $0 }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 220)
+            .onSubmit {
+                applyLibraryFilters()
+            }
+
+            Button {
+                applyLibraryFilters()
+            } label: {
+                Image(systemName: "magnifyingglass")
+            }
+            .buttonStyle(.borderless)
+            .help("Search")
+
+            Picker("Rating", selection: minimumRatingBinding) {
+                Text("Any Rating").tag(0)
+                ForEach(Array(1...5), id: \.self) { rating in
+                    Text("\(rating)+").tag(rating)
+                }
+            }
+            .frame(width: 118)
+
+            Picker("Flag", selection: flagFilterBinding) {
+                Text("Any Flag").tag("")
+                Text("Pick").tag(PickFlag.pick.rawValue)
+                Text("Reject").tag(PickFlag.reject.rawValue)
+            }
+            .frame(width: 112)
+
+            if hasActiveFilters {
+                Button {
+                    clearLibraryFilters()
+                } label: {
+                    Image(systemName: "xmark.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("Clear filters")
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.bar)
+    }
+
+    private var minimumRatingBinding: Binding<Int> {
+        Binding(
+            get: { model.minimumRatingFilter ?? 0 },
+            set: { value in
+                model.minimumRatingFilter = value == 0 ? nil : value
+                applyLibraryFilters()
+            }
+        )
+    }
+
+    private var flagFilterBinding: Binding<String> {
+        Binding(
+            get: { model.flagFilter?.rawValue ?? "" },
+            set: { value in
+                model.flagFilter = PickFlag(rawValue: value)
+                applyLibraryFilters()
+            }
+        )
+    }
+
+    private var hasActiveFilters: Bool {
+        !model.librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            model.minimumRatingFilter != nil ||
+            model.flagFilter != nil
     }
 
     private var assetGrid: some View {
@@ -184,6 +265,22 @@ struct LibraryGridView: View {
     private func loadPreviousAssets() {
         do {
             try model.loadPreviousAssets()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyLibraryFilters() {
+        do {
+            try model.applyLibraryFilters()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func clearLibraryFilters() {
+        do {
+            try model.clearLibraryFilters()
         } catch {
             model.errorMessage = error.localizedDescription
         }

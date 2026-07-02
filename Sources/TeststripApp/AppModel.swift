@@ -149,6 +149,9 @@ public final class AppModel {
     public var recentWork: [AppWorkActivity]
     public var pendingMetadataSyncItems: [MetadataSyncItem]
     public var backgroundWorkQueue: BackgroundWorkQueue
+    public var librarySearchText: String
+    public var minimumRatingFilter: Int?
+    public var flagFilter: PickFlag?
 
     @ObservationIgnored
     private var catalog: AppCatalog?
@@ -248,6 +251,9 @@ public final class AppModel {
         self.recentWork = recentWork
         self.pendingMetadataSyncItems = pendingMetadataSyncItems
         self.backgroundWorkQueue = backgroundWorkQueue
+        self.librarySearchText = ""
+        self.minimumRatingFilter = nil
+        self.flagFilter = nil
         self.catalog = catalog
         self.workerSupervisor = workerSupervisor
         self.importTaskFactory = importTaskFactory ?? Self.defaultImportTask
@@ -586,8 +592,15 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        let loadedAssets = try catalog.repository.allAssets(limit: Self.assetPageSize)
-        let count = try catalog.repository.assetCount()
+        let loadedAssets: [Asset]
+        let count: Int
+        if let query = currentLibraryQuery() {
+            loadedAssets = try catalog.repository.allAssets(matching: query, limit: Self.assetPageSize)
+            count = try catalog.repository.assetCount(matching: query)
+        } else {
+            loadedAssets = try catalog.repository.allAssets(limit: Self.assetPageSize)
+            count = try catalog.repository.assetCount()
+        }
         replaceAssets(loadedAssets, pageOffset: 0)
         totalAssetCount = count
     }
@@ -597,12 +610,15 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         guard hasMoreAssets else { return }
-        let loadedAssets = try catalog.repository.allAssets(
-            limit: Self.assetPageSize,
-            offset: assetPageOffset + assets.count
-        )
+        let offset = assetPageOffset + assets.count
+        let loadedAssets: [Asset]
+        if let query = currentLibraryQuery() {
+            loadedAssets = try catalog.repository.allAssets(matching: query, limit: Self.assetPageSize, offset: offset)
+        } else {
+            loadedAssets = try catalog.repository.allAssets(limit: Self.assetPageSize, offset: offset)
+        }
         assets.append(contentsOf: loadedAssets)
-        totalAssetCount = try catalog.repository.assetCount()
+        totalAssetCount = try currentLibraryAssetCount(repository: catalog.repository)
         if selectedAssetID == nil {
             selectedAssetID = assets.first?.id
         }
@@ -614,16 +630,36 @@ public final class AppModel {
         }
         guard hasPreviousAssets else { return }
         let previousOffset = max(0, assetPageOffset - Self.assetPageSize)
-        let previousAssets = try catalog.repository.allAssets(
-            limit: assetPageOffset - previousOffset,
-            offset: previousOffset
-        )
-        assets.insert(contentsOf: previousAssets, at: 0)
+        let filteredPreviousAssets: [Asset]
+        if let query = currentLibraryQuery() {
+            filteredPreviousAssets = try catalog.repository.allAssets(
+                matching: query,
+                limit: assetPageOffset - previousOffset,
+                offset: previousOffset
+            )
+        } else {
+            filteredPreviousAssets = try catalog.repository.allAssets(
+                limit: assetPageOffset - previousOffset,
+                offset: previousOffset
+            )
+        }
+        assets.insert(contentsOf: filteredPreviousAssets, at: 0)
         assetPageOffset = previousOffset
-        totalAssetCount = try catalog.repository.assetCount()
+        totalAssetCount = try currentLibraryAssetCount(repository: catalog.repository)
         if selectedAssetID == nil {
             selectedAssetID = assets.first?.id
         }
+    }
+
+    public func applyLibraryFilters() throws {
+        try reload()
+    }
+
+    public func clearLibraryFilters() throws {
+        librarySearchText = ""
+        minimumRatingFilter = nil
+        flagFilter = nil
+        try reload()
     }
 
     public func refreshSelectedAssetAvailability() throws {
@@ -664,9 +700,35 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        let page = try Self.catalogPage(containing: preferredSelection, repository: catalog.repository)
+        let page = try Self.catalogPage(
+            containing: preferredSelection,
+            repository: catalog.repository,
+            query: currentLibraryQuery()
+        )
         replaceAssets(page.assets, pageOffset: page.offset, preferredSelection: preferredSelection)
         totalAssetCount = page.totalAssetCount
+    }
+
+    private func currentLibraryQuery() -> SetQuery? {
+        var predicates: [SetQuery.Predicate] = []
+        let trimmedSearch = librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedSearch.isEmpty {
+            predicates.append(.text(trimmedSearch))
+        }
+        if let minimumRatingFilter {
+            predicates.append(.ratingAtLeast(minimumRatingFilter))
+        }
+        if let flagFilter {
+            predicates.append(.flag(flagFilter))
+        }
+        return predicates.isEmpty ? nil : SetQuery(predicates: predicates)
+    }
+
+    private func currentLibraryAssetCount(repository: CatalogRepository) throws -> Int {
+        if let query = currentLibraryQuery() {
+            return try repository.assetCount(matching: query)
+        }
+        return try repository.assetCount()
     }
 
     @discardableResult
@@ -882,7 +944,8 @@ public final class AppModel {
             try Task.checkCancellation()
             let page = try Self.catalogPage(
                 containing: result.importedAssets.first?.id,
-                repository: backgroundCatalog.repository
+                repository: backgroundCatalog.repository,
+                query: nil
             )
             return AppImportOutput(
                 result: result,
@@ -895,8 +958,15 @@ public final class AppModel {
 
     private static func catalogPage(
         containing preferredAssetID: AssetID?,
-        repository: CatalogRepository
+        repository: CatalogRepository,
+        query: SetQuery?
     ) throws -> (assets: [Asset], offset: Int, totalAssetCount: Int) {
+        if let query {
+            let assets = try repository.allAssets(matching: query, limit: assetPageSize)
+            let totalAssetCount = try repository.assetCount(matching: query)
+            return (assets, 0, totalAssetCount)
+        }
+
         let offset: Int
         if let preferredAssetID {
             let assetOffset = try repository.assetOffset(id: preferredAssetID)

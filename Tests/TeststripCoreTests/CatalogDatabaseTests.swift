@@ -96,6 +96,36 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.assetOffset(id: third.id), 2)
     }
 
+    func testSearchesAssetsWithCatalogBackedPredicates() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-search")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let keeper = Asset.testAsset(
+            id: AssetID(rawValue: "keeper"),
+            path: "/Volumes/NAS/Wedding/ceremony-keeper.jpg",
+            metadata: AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["ceremony"])
+        )
+        let reject = Asset.testAsset(
+            id: AssetID(rawValue: "reject"),
+            path: "/Volumes/NAS/Wedding/ceremony-blink.jpg",
+            metadata: AssetMetadata(rating: 1, colorLabel: .red, flag: .reject, keywords: ["ceremony"])
+        )
+        let landscape = Asset.testAsset(
+            id: AssetID(rawValue: "landscape"),
+            path: "/Volumes/NAS/Travel/mountain.jpg",
+            metadata: AssetMetadata(rating: 4, colorLabel: .green, flag: nil, keywords: ["patagonia"])
+        )
+        try repository.upsert([keeper, reject, landscape])
+
+        let pickQuery = SetQuery(predicates: [.text("CEREMONY"), .ratingAtLeast(4), .flag(.pick)])
+        XCTAssertEqual(try repository.allAssets(matching: pickQuery, limit: 10).map(\.id), [keeper.id])
+        XCTAssertEqual(try repository.assetCount(matching: pickQuery), 1)
+
+        let colorKeywordQuery = SetQuery(predicates: [.colorLabel(.green), .keyword("patagonia")])
+        XCTAssertEqual(try repository.allAssets(matching: colorKeywordQuery, limit: 10).map(\.id), [landscape.id])
+    }
+
     func testFetchesAllAssetsInInsertionOrderWhenCreatedAtTies() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -174,13 +204,17 @@ final class CatalogDatabaseTests: XCTestCase {
 
 private extension Asset {
     static func testAsset(id: AssetID = .new(), path: String, rating: Int) -> Asset {
+        testAsset(id: id, path: path, metadata: AssetMetadata(rating: rating))
+    }
+
+    static func testAsset(id: AssetID = .new(), path: String, metadata: AssetMetadata) -> Asset {
         Asset(
             id: id,
             originalURL: URL(fileURLWithPath: path),
             volumeIdentifier: "NAS",
             fingerprint: FileFingerprint(size: 100, modificationDate: Date(timeIntervalSince1970: 1.25), contentHash: "hash"),
             availability: .online,
-            metadata: AssetMetadata(rating: rating)
+            metadata: metadata
         )
     }
 }

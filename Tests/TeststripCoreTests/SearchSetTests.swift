@@ -16,7 +16,10 @@ final class SearchSetTests: XCTestCase {
 
     func testDynamicSetStoresStructuredQuery() {
         let query = SetQuery(predicates: [
+            .text("Patagonia"),
             .ratingAtLeast(4),
+            .flag(.pick),
+            .colorLabel(.green),
             .keyword("Patagonia"),
             .availability(.online)
         ])

@@ -72,6 +72,15 @@ public final class CatalogRepository {
         return try rows.map(decodeAsset)
     }
 
+    public func allAssets(matching query: SetQuery, limit: Int, offset: Int = 0) throws -> [Asset] {
+        let compiledQuery = try compile(query)
+        let rows = try database.rows(
+            "SELECT * FROM assets\(compiledQuery.whereSQL) ORDER BY rowid ASC LIMIT ? OFFSET ?",
+            bindings: compiledQuery.bindings + ["\(limit)", "\(offset)"]
+        )
+        return try rows.map(decodeAsset)
+    }
+
     public func assetOffset(id: AssetID) throws -> Int {
         let rowIDRows = try database.rows("SELECT rowid FROM assets WHERE id = ?", bindings: [id.rawValue])
         guard let rowID = rowIDRows.first?["rowid"] else {
@@ -89,6 +98,18 @@ public final class CatalogRepository {
 
     public func assetCount() throws -> Int {
         let rows = try database.rows("SELECT COUNT(*) AS count FROM assets")
+        guard let countString = rows.first?["count"], let count = Int(countString) else {
+            throw CatalogError.sqlite("asset count query returned no count")
+        }
+        return count
+    }
+
+    public func assetCount(matching query: SetQuery) throws -> Int {
+        let compiledQuery = try compile(query)
+        let rows = try database.rows(
+            "SELECT COUNT(*) AS count FROM assets\(compiledQuery.whereSQL)",
+            bindings: compiledQuery.bindings
+        )
         guard let countString = rows.first?["count"], let count = Int(countString) else {
             throw CatalogError.sqlite("asset count query returned no count")
         }
@@ -202,6 +223,67 @@ public final class CatalogRepository {
             availability: availability,
             metadata: try decode(AssetMetadata.self, from: metadataJSON)
         )
+    }
+
+    private func compile(_ query: SetQuery) throws -> (whereSQL: String, bindings: [String]) {
+        var clauses: [String] = []
+        var bindings: [String] = []
+
+        for predicate in query.predicates {
+            switch predicate {
+            case .text(let text):
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                clauses.append("LOWER(original_path) LIKE LOWER(?) ESCAPE '\\'")
+                bindings.append(Self.likePattern(containing: trimmed))
+            case .ratingAtLeast(let rating):
+                clauses.append("CAST(json_extract(metadata_json, '$.rating') AS INTEGER) >= ?")
+                bindings.append("\(rating)")
+            case .flag(let flag):
+                clauses.append("json_extract(metadata_json, '$.flag') = ?")
+                bindings.append(flag.rawValue)
+            case .colorLabel(let colorLabel):
+                clauses.append("json_extract(metadata_json, '$.colorLabel') = ?")
+                bindings.append(colorLabel.rawValue)
+            case .keyword(let keyword):
+                let trimmed = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                clauses.append(
+                    "EXISTS (SELECT 1 FROM json_each(metadata_json, '$.keywords') WHERE LOWER(value) = LOWER(?))"
+                )
+                bindings.append(trimmed)
+            case .availability(let availability):
+                clauses.append("availability = ?")
+                bindings.append(availability.rawValue)
+            case .folderPrefix(let prefix):
+                let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                clauses.append("original_path LIKE ? ESCAPE '\\'")
+                bindings.append(Self.likePattern(prefix: trimmed))
+            case .importBatch:
+                throw TeststripError.invalidState("import batch queries are not catalog-backed yet")
+            }
+        }
+
+        guard !clauses.isEmpty else {
+            return ("", [])
+        }
+        return (" WHERE " + clauses.joined(separator: " AND "), bindings)
+    }
+
+    private static func likePattern(containing text: String) -> String {
+        "%\(escapeLike(text))%"
+    }
+
+    private static func likePattern(prefix text: String) -> String {
+        "\(escapeLike(text))%"
+    }
+
+    private static func escapeLike(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
     }
 
     private func upsertMetadataSyncState(_ item: MetadataSyncItem, status: String) throws {
