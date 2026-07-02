@@ -1,21 +1,61 @@
 import Foundation
 
+public protocol WorkerTimeoutCancellation: Sendable {
+    func cancel()
+}
+
+public protocol WorkerTimeoutScheduling: Sendable {
+    func schedule(after interval: TimeInterval, _ action: @escaping @Sendable () -> Void) -> any WorkerTimeoutCancellation
+}
+
+public struct DispatchWorkerTimeoutScheduler: WorkerTimeoutScheduling {
+    public init() {}
+
+    public func schedule(after interval: TimeInterval, _ action: @escaping @Sendable () -> Void) -> any WorkerTimeoutCancellation {
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + interval)
+        timer.setEventHandler(handler: action)
+        timer.resume()
+        return DispatchWorkerTimeoutCancellation(timer: timer)
+    }
+}
+
+private final class DispatchWorkerTimeoutCancellation: WorkerTimeoutCancellation, @unchecked Sendable {
+    private let timer: DispatchSourceTimer
+
+    init(timer: DispatchSourceTimer) {
+        self.timer = timer
+    }
+
+    func cancel() {
+        timer.cancel()
+    }
+}
+
 public final class WorkerSupervisor: @unchecked Sendable {
     public private(set) var queue: BackgroundWorkQueue
     public var onQueueChanged: ((BackgroundWorkQueue) -> Void)?
 
     private let transport: WorkerTransport
+    private let commandTimeout: TimeInterval?
+    private let timeoutScheduler: any WorkerTimeoutScheduling
     private var commandsByItemID: [WorkSessionID: WorkerCommand]
     private var dispatchedItemIDs: [WorkSessionID]
+    private var timeoutsByItemID: [WorkSessionID: any WorkerTimeoutCancellation]
 
     public init(
         queue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
-        transport: WorkerTransport
+        transport: WorkerTransport,
+        commandTimeout: TimeInterval? = 120,
+        timeoutScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler()
     ) {
         self.queue = queue
         self.transport = transport
+        self.commandTimeout = commandTimeout
+        self.timeoutScheduler = timeoutScheduler
         self.commandsByItemID = [:]
         self.dispatchedItemIDs = []
+        self.timeoutsByItemID = [:]
         self.transport.outputHandler = { [weak self] line in
             DispatchQueue.main.async { [weak self] in
                 self?.handleOutputLine(line)
@@ -39,6 +79,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
     public func markCompleted(id: WorkSessionID) throws {
         commandsByItemID[id] = nil
         dispatchedItemIDs.removeAll { $0 == id }
+        cancelTimeout(for: id)
         queue.markCompleted(id: id)
         try dispatchRunnableItems()
         notifyQueueChanged()
@@ -48,6 +89,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         if transport.isRunning {
             try send(.pause)
         }
+        cancelAllTimeouts()
         queue.pause()
         notifyQueueChanged()
     }
@@ -57,6 +99,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
             try send(.resume)
         }
         queue.resume()
+        scheduleTimeoutsForDispatchedRunningItems()
         try dispatchRunnableItems()
         notifyQueueChanged()
     }
@@ -74,6 +117,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         queue.cancelAll()
         commandsByItemID.removeAll()
         dispatchedItemIDs.removeAll()
+        cancelAllTimeouts()
         notifyQueueChanged()
         if let sendError {
             throw sendError
@@ -88,6 +132,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
             try ensureRunning()
             try send(command, itemID: item.id)
             dispatchedItemIDs.append(item.id)
+            scheduleTimeout(for: item.id)
         }
     }
 
@@ -122,6 +167,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         guard dispatchedItemIDs.contains(itemID) else { return }
         dispatchedItemIDs.removeAll { $0 == itemID }
         commandsByItemID[itemID] = nil
+        cancelTimeout(for: itemID)
         queue.markCompleted(id: itemID, detail: detail)
         try? dispatchRunnableItems()
         notifyQueueChanged()
@@ -131,6 +177,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         guard dispatchedItemIDs.contains(itemID) else { return }
         dispatchedItemIDs.removeAll { $0 == itemID }
         commandsByItemID[itemID] = nil
+        cancelTimeout(for: itemID)
         queue.markFailed(id: itemID, detail: detail)
         try? dispatchRunnableItems()
         notifyQueueChanged()
@@ -142,9 +189,60 @@ public final class WorkerSupervisor: @unchecked Sendable {
         }
         let itemID = dispatchedItemIDs.removeFirst()
         commandsByItemID[itemID] = nil
+        cancelTimeout(for: itemID)
         queue.markFailed(id: itemID, detail: line)
         try? dispatchRunnableItems()
         notifyQueueChanged()
+    }
+
+    private func scheduleTimeout(for itemID: WorkSessionID) {
+        guard let commandTimeout else { return }
+        cancelTimeout(for: itemID)
+        timeoutsByItemID[itemID] = timeoutScheduler.schedule(after: commandTimeout) { [weak self] in
+            self?.handleCommandTimeout(itemID: itemID, timeout: commandTimeout)
+        }
+    }
+
+    private func scheduleTimeoutsForDispatchedRunningItems() {
+        for itemID in dispatchedItemIDs where queue.item(id: itemID)?.status == .running {
+            scheduleTimeout(for: itemID)
+        }
+    }
+
+    private func cancelTimeout(for itemID: WorkSessionID) {
+        timeoutsByItemID[itemID]?.cancel()
+        timeoutsByItemID[itemID] = nil
+    }
+
+    private func cancelAllTimeouts() {
+        for timeout in timeoutsByItemID.values {
+            timeout.cancel()
+        }
+        timeoutsByItemID.removeAll()
+    }
+
+    private func handleCommandTimeout(itemID: WorkSessionID, timeout: TimeInterval) {
+        guard dispatchedItemIDs.contains(itemID) else { return }
+        let timedOutItemIDs = dispatchedItemIDs
+        dispatchedItemIDs.removeAll()
+        cancelAllTimeouts()
+        transport.terminate()
+        for timedOutItemID in timedOutItemIDs {
+            commandsByItemID[timedOutItemID] = nil
+            let detail = timedOutItemID == itemID
+                ? "Worker command timed out after \(Self.timeoutText(timeout))"
+                : "Worker stopped because another command timed out"
+            queue.markFailed(id: timedOutItemID, detail: detail)
+        }
+        try? dispatchRunnableItems()
+        notifyQueueChanged()
+    }
+
+    private static func timeoutText(_ timeout: TimeInterval) -> String {
+        if timeout.rounded() == timeout {
+            return "\(Int(timeout)) seconds"
+        }
+        return "\(timeout) seconds"
     }
 
     private func notifyQueueChanged() {

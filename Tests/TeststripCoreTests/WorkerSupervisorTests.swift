@@ -157,6 +157,85 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
     }
 
+    func testTimedOutWorkerCommandTerminatesWorkerFailsDispatchedWorkAndStartsNextQueuedWork() throws {
+        let transport = RecordingWorkerTransport()
+        let timeoutScheduler = ManualWorkerTimeoutScheduler()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport,
+            commandTimeout: 30,
+            timeoutScheduler: timeoutScheduler
+        )
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let second = BackgroundWorkItem.testItem(id: "second")
+        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        try supervisor.enqueue(first, command: firstCommand)
+        try supervisor.enqueue(second, command: secondCommand)
+
+        timeoutScheduler.fireNext()
+
+        XCTAssertEqual(transport.terminateCount, 1)
+        XCTAssertEqual(transport.launchCount, 2)
+        XCTAssertEqual(supervisor.queue.item(id: first.id)?.status, .failed)
+        XCTAssertEqual(supervisor.queue.item(id: first.id)?.detail, "Worker command timed out after 30 seconds")
+        XCTAssertEqual(supervisor.queue.item(id: second.id)?.status, .running)
+        XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
+    }
+
+    func testCompletingWorkerCommandCancelsTimeout() throws {
+        let transport = RecordingWorkerTransport()
+        let timeoutScheduler = ManualWorkerTimeoutScheduler()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport,
+            commandTimeout: 30,
+            timeoutScheduler: timeoutScheduler
+        )
+        let item = BackgroundWorkItem.testItem(id: "preview")
+        let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        try supervisor.enqueue(item, command: command)
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: item.id,
+            message: "generated medium preview"
+        )))
+        XCTAssertTrue(waitUntil {
+            supervisor.queue.item(id: item.id)?.status == .completed
+        })
+        timeoutScheduler.fireNext()
+
+        XCTAssertEqual(transport.terminateCount, 0)
+        XCTAssertEqual(supervisor.queue.item(id: item.id)?.status, .completed)
+        XCTAssertEqual(supervisor.queue.item(id: item.id)?.detail, "generated medium preview")
+    }
+
+    func testPausingWorkerCommandCancelsTimeoutUntilResume() throws {
+        let transport = RecordingWorkerTransport()
+        let timeoutScheduler = ManualWorkerTimeoutScheduler()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport,
+            commandTimeout: 30,
+            timeoutScheduler: timeoutScheduler
+        )
+        let item = BackgroundWorkItem.testItem(id: "preview")
+        let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        try supervisor.enqueue(item, command: command)
+
+        try supervisor.pause()
+        timeoutScheduler.fireNext()
+
+        XCTAssertEqual(transport.terminateCount, 0)
+        XCTAssertEqual(supervisor.queue.item(id: item.id)?.status, .paused)
+
+        try supervisor.resume()
+        timeoutScheduler.fireNext()
+
+        XCTAssertEqual(transport.terminateCount, 1)
+        XCTAssertEqual(supervisor.queue.item(id: item.id)?.status, .failed)
+    }
+
     func testPauseResumeAndCancelSendExplicitControlCommands() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -287,6 +366,39 @@ private final class RecordingWorkerTransport: WorkerTransport {
 
     func emitErrorLine(_ line: String) {
         errorHandler?(line)
+    }
+}
+
+private final class ManualWorkerTimeoutScheduler: WorkerTimeoutScheduling, @unchecked Sendable {
+    private var scheduled: [ManualWorkerTimeoutCancellation] = []
+
+    func schedule(after interval: TimeInterval, _ action: @escaping @Sendable () -> Void) -> any WorkerTimeoutCancellation {
+        let cancellation = ManualWorkerTimeoutCancellation(action: action)
+        scheduled.append(cancellation)
+        return cancellation
+    }
+
+    func fireNext() {
+        guard !scheduled.isEmpty else { return }
+        scheduled.removeFirst().fire()
+    }
+}
+
+private final class ManualWorkerTimeoutCancellation: WorkerTimeoutCancellation, @unchecked Sendable {
+    private var isCancelled = false
+    private let action: @Sendable () -> Void
+
+    init(action: @escaping @Sendable () -> Void) {
+        self.action = action
+    }
+
+    func cancel() {
+        isCancelled = true
+    }
+
+    func fire() {
+        guard !isCancelled else { return }
+        action()
     }
 }
 

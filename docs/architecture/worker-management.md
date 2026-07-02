@@ -18,6 +18,7 @@ The UI must not start unbounded detached work silently. Any long-running preview
 - The packaged macOS app stages `TeststripWorker` as a signed helper at `Contents/Helpers/TeststripWorker`; app startup injects that helper URL into `AppCatalog.loadModel`.
 - Explicit preview requests dispatch missing preview work through `WorkerSupervisor` and surface it through the app model's background queue projection.
 - Worker stderr marks the oldest dispatched work item failed and keeps the queue moving.
+- Dispatched worker commands have a supervisor-level timeout. If a worker command stops responding, the supervisor terminates the helper process, fails the in-flight dispatched work, and relaunches the helper for queued work. Pausing background work cancels active timeout timers until the work is resumed.
 - `TeststripWorker` opens the app catalog from `--catalog`, writes cached previews under `--preview-cache`, executes `generatePreview` with `PreviewRenderer`, and executes `syncMetadata` through the catalog/XMP sync planner.
 
 ## Next Work
@@ -26,4 +27,5 @@ The UI must not start unbounded detached work silently. Any long-running preview
 - Move recognition requests through `WorkerSupervisor`.
 - Persist queue state across app relaunches.
 - Emit structured worker events for progress and cancellation.
+- Surface timeout failures with enough command context for recovery decisions.
 - Add per-kind throttles for NAS/source scans, XMP sync, and recognition.
