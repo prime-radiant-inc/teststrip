@@ -436,6 +436,23 @@ public final class AppModel {
             catalogGeneration: generation,
             lastSyncedFingerprint: lastFingerprint
         )
+        if let workerSupervisor {
+            let itemID = WorkSessionID(rawValue: "xmp-\(asset.id.rawValue)-\(generation)")
+            if backgroundWorkQueue.item(id: itemID) != nil {
+                return
+            }
+            let item = BackgroundWorkItem(
+                id: itemID,
+                kind: .xmpSync,
+                title: "Sync XMP",
+                detail: "Writing XMP sidecar",
+                completedUnitCount: 0,
+                totalUnitCount: 1
+            )
+            try workerSupervisor.enqueue(item, command: .syncMetadata(assetID: asset.id))
+            syncBackgroundWorkQueueFromSupervisor()
+            return
+        }
         do {
             let result = try catalog.metadataSidecarStore.write(metadata: asset.metadata, forOriginalAt: asset.originalURL)
             try catalog.repository.markMetadataSynced(
