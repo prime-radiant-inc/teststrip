@@ -12,10 +12,10 @@ The first implemented sidecar convention is collision-safe: append `.xmp` to the
 - Successful sidecar writes store the last written XMP fingerprint in the catalog.
 - Failed sidecar writes do not roll back or block the catalog metadata edit.
 - Failed sidecar writes are recorded as pending sync items with the asset ID, sidecar path, catalog generation, and last synced fingerprint if one exists.
+- `TeststripWorker` can execute `syncMetadata` for one asset: write missing/outdated sidecars from catalog metadata, import externally changed sidecars when the catalog generation is unchanged, and record conflicts when both catalog and sidecar changed.
 
 ## Next Work
 
-- Read newer external sidecars into the catalog when there are no unsynced local edits.
-- Detect conflicts using stored fingerprints and catalog generations, not mtime alone.
-- Surface pending/conflicted XMP sync state in the UI and worker queue.
+- Route app metadata-sync work through the supervised worker queue.
+- Surface conflicted XMP sync state in the UI.
 - Revisit sidecar filename compatibility before shipping import/export interoperability guarantees.

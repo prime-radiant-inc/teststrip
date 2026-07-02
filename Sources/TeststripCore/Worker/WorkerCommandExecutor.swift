@@ -93,7 +93,7 @@ public struct WorkerCommandExecutor {
             )
             return .completed("generated \(level.rawValue) preview for \(assetID.rawValue)")
         case .syncMetadata(let assetID):
-            return .accepted("syncMetadata \(assetID.rawValue)")
+            return try syncMetadata(assetID: assetID)
         case .runEvaluation(let assetID, let provider):
             return .accepted("runEvaluation \(assetID.rawValue) \(provider)")
         case .pause:
@@ -102,6 +102,60 @@ public struct WorkerCommandExecutor {
             return .accepted("resume")
         case .cancelAll:
             return .accepted("cancelAll")
+        }
+    }
+
+    private func syncMetadata(assetID: AssetID) throws -> WorkerCommandResult {
+        let asset = try repository.asset(id: assetID)
+        let sidecarStore = XMPSidecarStore()
+        let sidecarURL = sidecarStore.sidecarURL(forOriginalAt: asset.originalURL)
+        let sidecarData = try? Data(contentsOf: sidecarURL)
+        let catalogGeneration = try repository.catalogGeneration(assetID: assetID)
+        let decision = try MetadataSyncPlanner().decision(
+            catalogMetadata: asset.metadata,
+            catalogGeneration: catalogGeneration,
+            lastSynced: try repository.metadataSyncItem(assetID: assetID),
+            sidecarData: sidecarData
+        )
+
+        switch decision {
+        case .upToDate:
+            return .completed("metadata up to date for \(assetID.rawValue)")
+        case .writeCatalog:
+            let result = try sidecarStore.write(metadata: asset.metadata, forOriginalAt: asset.originalURL)
+            try repository.markMetadataSynced(
+                assetID: assetID,
+                sidecarURL: result.sidecarURL,
+                catalogGeneration: catalogGeneration,
+                fingerprint: result.fingerprint
+            )
+            return .completed("synced metadata for \(assetID.rawValue)")
+        case .importSidecar(let metadata):
+            try repository.updateMetadata(assetID: assetID) { catalogMetadata in
+                catalogMetadata = metadata
+            }
+            let importedGeneration = try repository.catalogGeneration(assetID: assetID)
+            let importedData: Data
+            if let sidecarData {
+                importedData = sidecarData
+            } else {
+                importedData = try Data(contentsOf: sidecarURL)
+            }
+            try repository.markMetadataSynced(
+                assetID: assetID,
+                sidecarURL: sidecarURL,
+                catalogGeneration: importedGeneration,
+                fingerprint: XMPSidecarStore.fingerprint(for: importedData)
+            )
+            return .completed("imported metadata for \(assetID.rawValue)")
+        case .conflict:
+            try repository.recordMetadataSyncConflict(MetadataSyncItem(
+                assetID: assetID,
+                sidecarURL: sidecarURL,
+                catalogGeneration: catalogGeneration,
+                lastSyncedFingerprint: try repository.lastMetadataSyncFingerprint(assetID: assetID)
+            ))
+            return .completed("metadata conflict for \(assetID.rawValue)")
         }
     }
 }

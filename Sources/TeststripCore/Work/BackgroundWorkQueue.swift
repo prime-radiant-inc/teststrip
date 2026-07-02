@@ -73,6 +73,13 @@ public struct BackgroundWorkQueue: Equatable, Sendable {
         activateRunnableItems()
     }
 
+    public mutating func markFailed(id: WorkSessionID, detail: String) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        items[index].status = .failed
+        items[index].detail = detail
+        activateRunnableItems()
+    }
+
     public mutating func pause() {
         isPaused = true
         for index in items.indices where items[index].status == .running {

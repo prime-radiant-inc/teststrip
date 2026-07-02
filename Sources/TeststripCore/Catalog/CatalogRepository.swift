@@ -117,15 +117,24 @@ public final class CatalogRepository {
     }
 
     public func pendingMetadataSyncItems() throws -> [MetadataSyncItem] {
+        try metadataSyncItems(status: "pending")
+    }
+
+    public func metadataSyncConflictItems() throws -> [MetadataSyncItem] {
+        try metadataSyncItems(status: "conflict")
+    }
+
+    public func metadataSyncItem(assetID: AssetID) throws -> MetadataSyncItem? {
         let rows = try database.rows(
             """
             SELECT asset_id, sidecar_path, catalog_generation, last_synced_fingerprint
             FROM metadata_sync_state
-            WHERE status = 'pending'
-            ORDER BY updated_at ASC
-            """
+            WHERE asset_id = ?
+            LIMIT 1
+            """,
+            bindings: [assetID.rawValue]
         )
-        return try rows.map(decodeMetadataSyncItem)
+        return try rows.first.map(decodeMetadataSyncItem)
     }
 
     public func markMetadataSynced(
@@ -143,6 +152,10 @@ public final class CatalogRepository {
             ),
             status: "synced"
         )
+    }
+
+    public func recordMetadataSyncConflict(_ item: MetadataSyncItem) throws {
+        try upsertMetadataSyncState(item, status: "conflict")
     }
 
     public func lastMetadataSyncFingerprint(assetID: AssetID) throws -> String? {
@@ -205,6 +218,19 @@ public final class CatalogRepository {
                 now
             ]
         )
+    }
+
+    private func metadataSyncItems(status: String) throws -> [MetadataSyncItem] {
+        let rows = try database.rows(
+            """
+            SELECT asset_id, sidecar_path, catalog_generation, last_synced_fingerprint
+            FROM metadata_sync_state
+            WHERE status = ?
+            ORDER BY updated_at ASC
+            """,
+            bindings: [status]
+        )
+        return try rows.map(decodeMetadataSyncItem)
     }
 
     private func decodeMetadataSyncItem(_ row: [String: String]) throws -> MetadataSyncItem {

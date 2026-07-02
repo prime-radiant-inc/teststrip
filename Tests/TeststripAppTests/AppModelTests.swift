@@ -560,6 +560,25 @@ final class AppModelTests: XCTestCase {
         try await waitForVisibleWorkStatus(.completed, in: model)
     }
 
+    @MainActor
+    func testWorkerFailureRefreshesVisibleBackgroundWork() async throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, _, asset) = try makeModelWithPreviewCache(
+            named: "preview-failure-refresh",
+            workerSupervisor: supervisor
+        )
+        try model.requestPreview(assetID: asset.id, level: .large)
+
+        transport.emitErrorLine("error could not render preview")
+
+        try await waitForVisibleWorkStatus(.failed, in: model)
+        XCTAssertEqual(model.visibleWorkActivity?.detail, "error could not render preview")
+    }
+
     func testVisibleLoupePreviewRequestsMediumThenLargeWhenNeitherIsCached() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -887,6 +906,7 @@ private extension BackgroundWorkItem {
 
 private final class RecordingWorkerTransport: WorkerTransport {
     var outputHandler: ((String) -> Void)?
+    var errorHandler: ((String) -> Void)?
 
     private(set) var lines: [String] = []
     private(set) var isRunning = false
@@ -909,5 +929,9 @@ private final class RecordingWorkerTransport: WorkerTransport {
 
     func emitOutputLine(_ line: String) {
         outputHandler?(line)
+    }
+
+    func emitErrorLine(_ line: String) {
+        errorHandler?(line)
     }
 }

@@ -21,6 +21,11 @@ public final class WorkerSupervisor: @unchecked Sendable {
                 self?.handleOutputLine(line)
             }
         }
+        self.transport.errorHandler = { [weak self] line in
+            DispatchQueue.main.async { [weak self] in
+                self?.handleErrorLine(line)
+            }
+        }
     }
 
     public func enqueue(_ item: BackgroundWorkItem, command: WorkerCommand) throws {
@@ -103,6 +108,17 @@ public final class WorkerSupervisor: @unchecked Sendable {
         let itemID = dispatchedItemIDs.removeFirst()
         commandsByItemID[itemID] = nil
         queue.markCompleted(id: itemID)
+        try? dispatchRunnableItems()
+        notifyQueueChanged()
+    }
+
+    private func handleErrorLine(_ line: String) {
+        guard !dispatchedItemIDs.isEmpty else {
+            return
+        }
+        let itemID = dispatchedItemIDs.removeFirst()
+        commandsByItemID[itemID] = nil
+        queue.markFailed(id: itemID, detail: line)
         try? dispatchRunnableItems()
         notifyQueueChanged()
     }

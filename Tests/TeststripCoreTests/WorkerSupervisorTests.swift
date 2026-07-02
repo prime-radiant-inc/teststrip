@@ -66,6 +66,29 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
     }
 
+    func testWorkerErrorOutputFailsOldestDispatchedItemAndStartsNextQueuedWork() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let second = BackgroundWorkItem.testItem(id: "second")
+        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        try supervisor.enqueue(first, command: firstCommand)
+        try supervisor.enqueue(second, command: secondCommand)
+
+        transport.emitErrorLine("error could not render preview")
+
+        XCTAssertTrue(waitUntil {
+            supervisor.queue.item(id: first.id)?.status == .failed &&
+                supervisor.queue.item(id: first.id)?.detail == "error could not render preview" &&
+                supervisor.queue.item(id: second.id)?.status == .running
+        })
+        XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
+    }
+
     func testPauseResumeAndCancelSendExplicitControlCommands() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -135,10 +158,33 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertTrue(waitUntil { outputLines == ["completed hello worker"] })
         transport.terminate()
     }
+
+    func testFoundationTransportReportsWorkerErrorLines() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-transport-error")
+        let scriptURL = root.appendingPathComponent("error-worker.sh")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          printf 'error %s\\n' "$line" >&2
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        chmod(scriptURL.path, 0o755)
+        let transport = FoundationWorkerTransport(executableURL: scriptURL)
+        var errorLines: [String] = []
+        transport.errorHandler = { errorLines.append($0) }
+
+        try transport.launch()
+        try transport.writeLine("bad preview\n")
+
+        XCTAssertTrue(waitUntil { errorLines == ["error bad preview"] })
+        transport.terminate()
+    }
 }
 
 private final class RecordingWorkerTransport: WorkerTransport {
     var outputHandler: ((String) -> Void)?
+    var errorHandler: ((String) -> Void)?
 
     private(set) var launchCount = 0
     private(set) var terminateCount = 0
@@ -165,6 +211,10 @@ private final class RecordingWorkerTransport: WorkerTransport {
 
     func emitOutputLine(_ line: String) {
         outputHandler?(line)
+    }
+
+    func emitErrorLine(_ line: String) {
+        errorHandler?(line)
     }
 }
 

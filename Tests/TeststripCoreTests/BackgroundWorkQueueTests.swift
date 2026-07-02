@@ -33,6 +33,21 @@ final class BackgroundWorkQueueTests: XCTestCase {
         XCTAssertEqual(queue.item(id: second.id)?.status, .running)
     }
 
+    func testFailingRunningItemRecordsDetailAndStartsNextQueuedItem() {
+        var queue = BackgroundWorkQueue(maxRunningCount: 1)
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let second = BackgroundWorkItem.testItem(id: "second")
+        queue.enqueue(first)
+        queue.enqueue(second)
+        queue.activateRunnableItems()
+
+        queue.markFailed(id: first.id, detail: "Preview render failed")
+
+        XCTAssertEqual(queue.item(id: first.id)?.status, .failed)
+        XCTAssertEqual(queue.item(id: first.id)?.detail, "Preview render failed")
+        XCTAssertEqual(queue.item(id: second.id)?.status, .running)
+    }
+
     func testPauseAndResumeControlRunningWork() {
         var queue = BackgroundWorkQueue(maxRunningCount: 2)
         let first = BackgroundWorkItem.testItem(id: "first")
