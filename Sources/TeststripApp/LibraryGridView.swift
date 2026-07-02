@@ -54,6 +54,14 @@ struct LibraryGridView: View {
                 Label("Import Folder", systemImage: "square.and.arrow.down")
             }
             .disabled(isImporting)
+
+            Button {
+                evaluateSelectedAsset()
+            } label: {
+                Label("Evaluate", systemImage: "sparkles")
+            }
+            .disabled(isImporting || !model.canRequestSelectedAssetEvaluation)
+            .help("Evaluate selected photo")
         }
         .fileImporter(
             isPresented: $isImportingFolder,
@@ -334,6 +342,14 @@ struct LibraryGridView: View {
         do {
             try model.saveCurrentLibraryQuery(named: savedSearchName, starred: savedSearchStarred)
             isSavingSearch = false
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func evaluateSelectedAsset() {
+        do {
+            try model.requestSelectedAssetEvaluation()
         } catch {
             model.errorMessage = error.localizedDescription
         }

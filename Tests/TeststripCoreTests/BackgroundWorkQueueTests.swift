@@ -33,6 +33,17 @@ final class BackgroundWorkQueueTests: XCTestCase {
         XCTAssertEqual(queue.item(id: second.id)?.status, .running)
     }
 
+    func testCompletingItemMarksProgressComplete() {
+        var queue = BackgroundWorkQueue(maxRunningCount: 1)
+        let item = BackgroundWorkItem.testItem(id: "first")
+        queue.enqueue(item)
+        queue.activateRunnableItems()
+
+        queue.markCompleted(id: item.id)
+
+        XCTAssertEqual(queue.item(id: item.id)?.completedUnitCount, item.totalUnitCount)
+    }
+
     func testFailingRunningItemRecordsDetailAndStartsNextQueuedItem() {
         var queue = BackgroundWorkQueue(maxRunningCount: 1)
         let first = BackgroundWorkItem.testItem(id: "first")

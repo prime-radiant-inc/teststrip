@@ -865,6 +865,60 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items.count, 1)
     }
 
+    func testRequestEvaluationDispatchesWorkerRecognitionCommand() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, _, asset) = try makeModelWithPreviewCache(
+            named: "request-evaluation",
+            workerSupervisor: supervisor
+        )
+
+        try model.requestEvaluation(assetID: asset.id, provider: "local-image-metrics")
+
+        XCTAssertEqual(try transport.commands(), [.runEvaluation(assetID: asset.id, provider: "local-image-metrics")])
+        XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
+        XCTAssertEqual(model.visibleWorkActivity?.kind, .recognition)
+        XCTAssertEqual(model.visibleWorkActivity?.status, .running)
+    }
+
+    func testRequestSelectedAssetEvaluationUsesDefaultLocalProvider() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, _, asset) = try makeModelWithPreviewCache(
+            named: "request-selected-evaluation",
+            workerSupervisor: supervisor
+        )
+
+        try model.requestSelectedAssetEvaluation()
+
+        XCTAssertEqual(try transport.commands(), [.runEvaluation(assetID: asset.id, provider: "local-image-metrics")])
+    }
+
+    func testCanRequestSelectedAssetEvaluationRequiresSelectionAndWorker() throws {
+        let (modelWithoutWorker, _, _) = try makeModelWithPreviewCache(named: "evaluation-without-worker")
+        XCTAssertFalse(modelWithoutWorker.canRequestSelectedAssetEvaluation)
+
+        let modelWithoutSelection = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        XCTAssertFalse(modelWithoutSelection.canRequestSelectedAssetEvaluation)
+
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: RecordingWorkerTransport()
+        )
+        let (model, _, _) = try makeModelWithPreviewCache(
+            named: "evaluation-available",
+            workerSupervisor: supervisor
+        )
+
+        XCTAssertTrue(model.canRequestSelectedAssetEvaluation)
+    }
+
     @MainActor
     func testWorkerCompletionRefreshesVisibleBackgroundWork() async throws {
         let transport = RecordingWorkerTransport()

@@ -206,6 +206,7 @@ public final class AppModel {
     private var metadataRedoStack: [MetadataChange]
     private var assetPageOffset: Int
 
+    public static let defaultEvaluationProviderName = "local-image-metrics"
     private static let assetPageSize = 500
 
     public var selectedAsset: Asset? {
@@ -260,6 +261,10 @@ public final class AppModel {
 
     public var canCancelBackgroundWork: Bool {
         backgroundWorkQueue.items.contains { [.queued, .running, .paused].contains($0.status) }
+    }
+
+    public var canRequestSelectedAssetEvaluation: Bool {
+        selectedAssetID != nil && workerSupervisor != nil
     }
 
     public var starredAssetSets: [AssetSet] {
@@ -730,6 +735,34 @@ public final class AppModel {
             try requestPreview(assetID: assetID, level: .medium)
         }
         try requestPreview(assetID: assetID, level: request.level)
+    }
+
+    public func requestEvaluation(assetID: AssetID, provider: String = AppModel.defaultEvaluationProviderName) throws {
+        guard let workerSupervisor else {
+            throw TeststripError.invalidState("worker supervisor is not configured")
+        }
+        let itemID = WorkSessionID(rawValue: "evaluation-\(assetID.rawValue)-\(provider)")
+        if backgroundWorkQueue.item(id: itemID) != nil {
+            return
+        }
+
+        let item = BackgroundWorkItem(
+            id: itemID,
+            kind: .recognition,
+            title: "Evaluate photo",
+            detail: "Running \(provider)",
+            completedUnitCount: 0,
+            totalUnitCount: 1
+        )
+        try workerSupervisor.enqueue(item, command: .runEvaluation(assetID: assetID, provider: provider))
+        syncBackgroundWorkQueueFromSupervisor()
+    }
+
+    public func requestSelectedAssetEvaluation(provider: String = AppModel.defaultEvaluationProviderName) throws {
+        guard let selectedAssetID else {
+            throw TeststripError.invalidState("no selected asset")
+        }
+        try requestEvaluation(assetID: selectedAssetID, provider: provider)
     }
 
     private func syncBackgroundWorkQueueFromSupervisor() {
