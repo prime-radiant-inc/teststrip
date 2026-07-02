@@ -86,7 +86,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
                 throw TeststripError.invalidState("missing worker command for \(item.id.rawValue)")
             }
             try ensureRunning()
-            try send(command)
+            try send(command, itemID: item.id)
             dispatchedItemIDs.append(item.id)
         }
     }
@@ -97,17 +97,41 @@ public final class WorkerSupervisor: @unchecked Sendable {
         }
     }
 
-    private func send(_ command: WorkerCommand) throws {
-        try transport.writeLine(try WorkerProtocolEncoder.encode(command))
+    private func send(_ command: WorkerCommand, itemID: WorkSessionID? = nil) throws {
+        try transport.writeLine(try WorkerProtocolEncoder.encode(command, itemID: itemID))
     }
 
     private func handleOutputLine(_ line: String) {
-        guard line.hasPrefix("completed "), !dispatchedItemIDs.isEmpty else {
+        guard let event = try? WorkerProtocolEncoder.decodeEvent(line) else {
             return
         }
-        let itemID = dispatchedItemIDs.removeFirst()
+
+        switch event {
+        case .accepted:
+            return
+        case .completed(let itemID, _):
+            guard let itemID else { return }
+            completeDispatchedItem(id: itemID)
+        case .failed(let itemID, let message):
+            guard let itemID else { return }
+            failDispatchedItem(id: itemID, detail: message)
+        }
+    }
+
+    private func completeDispatchedItem(id itemID: WorkSessionID) {
+        guard dispatchedItemIDs.contains(itemID) else { return }
+        dispatchedItemIDs.removeAll { $0 == itemID }
         commandsByItemID[itemID] = nil
         queue.markCompleted(id: itemID)
+        try? dispatchRunnableItems()
+        notifyQueueChanged()
+    }
+
+    private func failDispatchedItem(id itemID: WorkSessionID, detail: String) {
+        guard dispatchedItemIDs.contains(itemID) else { return }
+        dispatchedItemIDs.removeAll { $0 == itemID }
+        commandsByItemID[itemID] = nil
+        queue.markFailed(id: itemID, detail: detail)
         try? dispatchRunnableItems()
         notifyQueueChanged()
     }

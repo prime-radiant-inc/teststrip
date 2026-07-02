@@ -34,6 +34,30 @@ final class WorkerProtocolTests: XCTestCase {
         XCTAssertEqual(json["provider"] as? String, "local")
     }
 
+    func testCommandRequestRoundTripsItemID() throws {
+        let itemID = WorkSessionID(rawValue: "work-1")
+        let command = WorkerCommand.runEvaluation(assetID: AssetID(rawValue: "asset-1"), provider: "local")
+
+        let request = try WorkerProtocolEncoder.decodeRequest(try WorkerProtocolEncoder.encode(command, itemID: itemID))
+
+        XCTAssertEqual(request.command, command)
+        XCTAssertEqual(request.itemID, itemID)
+    }
+
+    func testWorkerEventRoundTripsThroughJSONLine() throws {
+        let event = WorkerEvent.completed(
+            itemID: WorkSessionID(rawValue: "work-1"),
+            message: "generated grid preview"
+        )
+
+        let line = try WorkerProtocolEncoder.encode(event)
+        let decoded = try WorkerProtocolEncoder.decodeEvent(line)
+
+        XCTAssertEqual(line.filter { $0 == "\n" }.count, 1)
+        XCTAssertTrue(line.hasSuffix("\n"))
+        XCTAssertEqual(decoded, event)
+    }
+
     func testWorkerCommandRoundTripsThroughJSONLine() throws {
         let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .large)
 

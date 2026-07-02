@@ -3,15 +3,6 @@ import Foundation
 public enum WorkerCommandResult: Equatable, Sendable {
     case accepted(String)
     case completed(String)
-
-    public var responseLine: String {
-        switch self {
-        case .accepted(let message):
-            "accepted \(message)"
-        case .completed(let message):
-            "completed \(message)"
-        }
-    }
 }
 
 public struct WorkerRuntimeConfiguration: Equatable, Sendable {

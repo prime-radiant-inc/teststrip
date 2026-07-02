@@ -978,7 +978,10 @@ final class AppModelTests: XCTestCase {
         )
         try model.requestPreview(assetID: asset.id, level: .large)
 
-        transport.emitOutputLine("completed generated large preview for \(asset.id.rawValue)")
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-large"),
+            message: "generated large preview for \(asset.id.rawValue)"
+        )))
 
         try await waitForVisibleWorkStatus(.completed, in: model)
     }
@@ -996,10 +999,13 @@ final class AppModelTests: XCTestCase {
         )
         try model.requestPreview(assetID: asset.id, level: .large)
 
-        transport.emitErrorLine("error could not render preview")
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.failed(
+            itemID: WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-large"),
+            message: "could not render preview"
+        )))
 
         try await waitForVisibleWorkStatus(.failed, in: model)
-        XCTAssertEqual(model.visibleWorkActivity?.detail, "error could not render preview")
+        XCTAssertEqual(model.visibleWorkActivity?.detail, "could not render preview")
     }
 
     func testVisibleLoupePreviewRequestsMediumThenLargeWhenNeitherIsCached() throws {

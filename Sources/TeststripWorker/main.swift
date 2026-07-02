@@ -6,12 +6,15 @@ var executor: WorkerCommandExecutor?
 
 while let line = readLine() {
     do {
-        let command = try WorkerProtocolEncoder.decode(line)
-        let result = try execute(command)
-        FileHandle.standardOutput.write(Data((result.responseLine + "\n").utf8))
+        let request = try WorkerProtocolEncoder.decodeRequest(line)
+        do {
+            let result = try execute(request.command)
+            try write(result.event(itemID: request.itemID))
+        } catch {
+            try write(.failed(itemID: request.itemID, message: error.localizedDescription))
+        }
     } catch {
-        let response = "error \(error)\n"
-        FileHandle.standardError.write(Data(response.utf8))
+        writeError(error)
     }
 }
 
@@ -25,4 +28,23 @@ private func execute(_ command: WorkerCommand) throws -> WorkerCommandResult {
         executor = try WorkerCommandExecutor(configuration: WorkerRuntimeConfiguration(arguments: runtimeArguments))
     }
     return try executor!.execute(command)
+}
+
+private extension WorkerCommandResult {
+    func event(itemID: WorkSessionID?) -> WorkerEvent {
+        switch self {
+        case .accepted(let message):
+            return .accepted(itemID: itemID, message: message)
+        case .completed(let message):
+            return .completed(itemID: itemID, message: message)
+        }
+    }
+}
+
+private func write(_ event: WorkerEvent) throws {
+    FileHandle.standardOutput.write(Data(try WorkerProtocolEncoder.encode(event).utf8))
+}
+
+private func writeError(_ error: Error) {
+    FileHandle.standardError.write(Data("error \(error.localizedDescription)\n".utf8))
 }

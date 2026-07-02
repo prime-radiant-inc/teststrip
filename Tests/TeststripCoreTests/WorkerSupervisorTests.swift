@@ -44,7 +44,7 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(supervisor.queue.item(id: second.id)?.status, .running)
     }
 
-    func testCompletedWorkerOutputCompletesOldestDispatchedItemAndStartsNextQueuedWork() throws {
+    func testCompletedWorkerEventCompletesDispatchedItemAndStartsNextQueuedWork() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
             queue: BackgroundWorkQueue(maxRunningCount: 1),
@@ -57,11 +57,78 @@ final class WorkerSupervisorTests: XCTestCase {
         try supervisor.enqueue(first, command: firstCommand)
         try supervisor.enqueue(second, command: secondCommand)
 
-        transport.emitOutputLine("completed generated medium preview for asset-1")
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: first.id,
+            message: "generated medium preview for asset-1"
+        )))
 
         XCTAssertTrue(waitUntil {
             supervisor.queue.item(id: first.id)?.status == .completed &&
                 supervisor.queue.item(id: second.id)?.status == .running
+        })
+        XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
+    }
+
+    func testDispatchedWorkerCommandCarriesWorkItemID() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let item = BackgroundWorkItem.testItem(id: "preview-work")
+        let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+
+        try supervisor.enqueue(item, command: command)
+
+        let request = try XCTUnwrap(try transport.requests().first)
+        XCTAssertEqual(request.command, command)
+        XCTAssertEqual(request.itemID, item.id)
+    }
+
+    func testCompletedWorkerEventCompletesMatchingDispatchedItemOutOfOrder() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 2),
+            transport: transport
+        )
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let second = BackgroundWorkItem.testItem(id: "second")
+        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        try supervisor.enqueue(first, command: firstCommand)
+        try supervisor.enqueue(second, command: secondCommand)
+
+        transport.emitOutputLine(#"{"event":"completed","itemID":"second","message":"generated large preview"}"#)
+
+        XCTAssertTrue(waitUntil {
+            supervisor.queue.item(id: first.id)?.status == .running &&
+                supervisor.queue.item(id: second.id)?.status == .completed
+        })
+        XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
+    }
+
+    func testFailedWorkerEventFailsMatchingDispatchedItemOutOfOrder() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 2),
+            transport: transport
+        )
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let second = BackgroundWorkItem.testItem(id: "second")
+        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        try supervisor.enqueue(first, command: firstCommand)
+        try supervisor.enqueue(second, command: secondCommand)
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.failed(
+            itemID: second.id,
+            message: "could not render preview"
+        )))
+
+        XCTAssertTrue(waitUntil {
+            supervisor.queue.item(id: first.id)?.status == .running &&
+                supervisor.queue.item(id: second.id)?.status == .failed &&
+                supervisor.queue.item(id: second.id)?.detail == "could not render preview"
         })
         XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
     }
@@ -207,6 +274,10 @@ private final class RecordingWorkerTransport: WorkerTransport {
 
     func commands() throws -> [WorkerCommand] {
         try lines.map { try WorkerProtocolEncoder.decode($0) }
+    }
+
+    func requests() throws -> [WorkerCommandRequest] {
+        try lines.map { try WorkerProtocolEncoder.decodeRequest($0) }
     }
 
     func emitOutputLine(_ line: String) {
