@@ -4,10 +4,12 @@ import ImageIO
 public struct ImageIODecodeProvider: DecodeProvider {
     public let name = "ImageIO"
 
-    private let extensions: Set<String> = [
+    public static let supportedExtensions: Set<String> = [
         "jpg", "jpeg", "heic", "tif", "tiff", "png",
         "dng", "cr2", "cr3", "nef", "arw", "raf", "rw2", "orf"
     ]
+
+    private let extensions = Self.supportedExtensions
 
     public init() {}
 

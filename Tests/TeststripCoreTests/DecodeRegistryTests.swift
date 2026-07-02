@@ -30,6 +30,20 @@ final class DecodeRegistryTests: XCTestCase {
         XCTAssertEqual(dimensions.pixelHeight, 80)
     }
 
+    func testImageIOSupportedExtensionsArePublicForIngestComposition() {
+        XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("jpg"))
+        XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("dng"))
+        XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("raf"))
+    }
+
+    func testImageIOCanDecodeUsesSharedSupportedExtensions() {
+        let provider = ImageIODecodeProvider()
+
+        for fileExtension in ImageIODecodeProvider.supportedExtensions {
+            XCTAssertTrue(provider.canDecode(url: URL(fileURLWithPath: "/tmp/photo.\(fileExtension)")))
+        }
+    }
+
     func testImageIODimensionsRejectUnreadablePixelSize() {
         let invalidProperties: [[CFString: Any]] = [
             [kCGImagePropertyPixelHeight: 80],
