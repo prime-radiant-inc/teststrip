@@ -1024,6 +1024,12 @@ public final class AppModel {
         try requestPreview(assetID: assetID, level: request.level)
     }
 
+    public func requestVisibleComparePreviews() throws {
+        for asset in compareAssets() {
+            try requestVisibleLoupePreview(assetID: asset.id)
+        }
+    }
+
     public func requestEvaluation(assetID: AssetID, provider: String = AppModel.defaultEvaluationProviderName) throws {
         guard let workerSupervisor else {
             throw TeststripError.invalidState("worker supervisor is not configured")

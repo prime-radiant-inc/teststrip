@@ -1645,6 +1645,52 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items, [])
     }
 
+    func testVisibleComparePreviewsRequestMediumThenLargeForCompareAssets() throws {
+        let directory = try makeTemporaryDirectory(named: "compare-progressive-previews")
+        let firstURL = directory.appendingPathComponent("first.jpg")
+        let secondURL = directory.appendingPathComponent("second.jpg")
+        try writeTestPNG(to: firstURL)
+        try writeTestPNG(to: secondURL)
+        let first = Asset(
+            id: AssetID(rawValue: "first"),
+            originalURL: firstURL,
+            volumeIdentifier: "local",
+            fingerprint: try fileFingerprint(for: firstURL),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let second = Asset(
+            id: AssetID(rawValue: "second"),
+            originalURL: secondURL,
+            volumeIdentifier: "local",
+            fingerprint: try fileFingerprint(for: secondURL),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: transport
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "compare-progressive-previews",
+            assets: [first, second],
+            workerSupervisor: supervisor
+        )
+
+        try model.requestVisibleComparePreviews()
+
+        XCTAssertEqual(model.backgroundWorkQueue.runningItems.map(\.id.rawValue), [
+            "preview-first-medium",
+            "preview-first-large",
+            "preview-second-medium",
+            "preview-second-large"
+        ])
+        XCTAssertEqual(try transport.commands(), [
+            .generatePreview(assetID: first.id, level: .medium)
+        ])
+    }
+
     func testVisibleGridPreviewRequestsGridPreviewWhenMissing() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

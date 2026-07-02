@@ -696,6 +696,21 @@ private struct CompareView: View {
             .padding(12)
         }
         .background(Color.black.opacity(0.24))
+        .task(id: comparePreviewTaskID) {
+            requestComparePreviews()
+        }
+    }
+
+    private var comparePreviewTaskID: String {
+        model.compareAssets().map(\.id.rawValue).joined(separator: "\n")
+    }
+
+    private func requestComparePreviews() {
+        do {
+            try model.requestVisibleComparePreviews()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 }
 
