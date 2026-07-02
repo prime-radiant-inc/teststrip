@@ -1617,6 +1617,41 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testCancellingActiveCardImportRecordsCancelledActivity() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-cancel-card-import")
+        let source = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = directory.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(
+            catalog: catalog,
+            cardImportTaskFactory: { _, _, _, _ in
+                Task {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            }
+        )
+
+        model.beginImportCard(source: source, destinationRoot: destination)
+        XCTAssertEqual(model.activeWork?.detail, "Importing from DCIM to Library")
+
+        model.cancelActiveWork()
+        try await waitForActivityStatus(.cancelled, in: model)
+
+        XCTAssertNil(model.activeWork)
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.status, .cancelled)
+        XCTAssertEqual(activity.detail, "Cancelled import from DCIM to Library")
+        XCTAssertEqual(model.statusMessage, "Cancelled import")
+    }
+
+    @MainActor
     func testBackgroundImportAppliesProgressUpdatesBeforeCompletion() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-progress")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)

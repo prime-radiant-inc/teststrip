@@ -58,6 +58,13 @@ struct LibraryGridView: View {
             .disabled(isImporting)
 
             Button {
+                showImportCardPanel()
+            } label: {
+                Label("Import Card", systemImage: "externaldrive.badge.plus")
+            }
+            .disabled(isImporting)
+
+            Button {
                 evaluateSelectedAsset()
             } label: {
                 Label("Evaluate", systemImage: "sparkles")
@@ -419,6 +426,12 @@ struct LibraryGridView: View {
                 Label("Import Folder", systemImage: "square.and.arrow.down")
             }
             .disabled(isImporting)
+            Button {
+                showImportCardPanel()
+            } label: {
+                Label("Import Card", systemImage: "externaldrive.badge.plus")
+            }
+            .disabled(isImporting)
         }
         .frame(maxWidth: .infinity, minHeight: 360)
         .padding(32)
@@ -488,8 +501,18 @@ struct LibraryGridView: View {
         importFolder(folderURL)
     }
 
+    private func showImportCardPanel() {
+        guard let source = FolderSelectionPanel.chooseCardSourceFolder() else { return }
+        guard let destinationRoot = FolderSelectionPanel.chooseCardDestinationFolder() else { return }
+        importCard(source: source, destinationRoot: destinationRoot)
+    }
+
     private func importFolder(_ folderURL: URL) {
         model.beginImportFolder(folderURL)
+    }
+
+    private func importCard(source: URL, destinationRoot: URL) {
+        model.beginImportCard(source: source, destinationRoot: destinationRoot)
     }
 
     private func loadMoreAssets() {

@@ -1377,6 +1377,66 @@ public final class AppModel {
     }
 
     @MainActor
+    public func beginImportCard(source: URL, destinationRoot: URL) {
+        guard let catalog else {
+            errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
+            return
+        }
+        guard activeImportTask == nil else {
+            errorMessage = "Another import is already running"
+            return
+        }
+        errorMessage = nil
+        statusMessage = "Importing \(source.lastPathComponent)..."
+        startImportActivity(folderURL: source, destinationRoot: destinationRoot)
+        guard let activityID = activeWork?.id else { return }
+
+        let didAccessSource = source.startAccessingSecurityScopedResource()
+        let didAccessDestination = destinationRoot.startAccessingSecurityScopedResource()
+        let task = cardImportTaskFactory(
+            catalog.paths,
+            source,
+            destinationRoot,
+            importProgressHandler(activityID: activityID)
+        )
+        activeImportTask = task
+        Task { @MainActor [weak self] in
+            defer {
+                if didAccessSource {
+                    source.stopAccessingSecurityScopedResource()
+                }
+                if didAccessDestination {
+                    destinationRoot.stopAccessingSecurityScopedResource()
+                }
+            }
+            do {
+                let output = try await task.value
+                guard let self, self.activeWork?.id == activityID else { return }
+                self.replaceAssets(
+                    output.assets,
+                    pageOffset: output.assetPageOffset,
+                    preferredSelection: output.result.importedAssets.first?.id
+                )
+                self.totalAssetCount = output.totalAssetCount
+                try self.enqueuePendingPreviewGeneration()
+                self.updateImportStatus(with: output.result)
+                self.recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
+                self.activeImportTask = nil
+            } catch is CancellationError {
+                guard let self, self.activeWork?.id == activityID else { return }
+                self.cancelImportActivity(folderURL: source, destinationRoot: destinationRoot)
+                self.activeImportTask = nil
+            } catch {
+                guard let self, self.activeWork?.id == activityID else { return }
+                self.statusMessage = nil
+                self.errorMessage = error.localizedDescription
+                self.failImportActivity(folderURL: source, destinationRoot: destinationRoot, error: error)
+                self.activeImportTask = nil
+            }
+        }
+    }
+
+    @MainActor
     public func cancelActiveWork() {
         guard let activeImportTask else { return }
         statusMessage = "Cancelling import..."
@@ -1460,13 +1520,13 @@ public final class AppModel {
         recordRecentActivity(activity)
     }
 
-    private func cancelImportActivity(folderURL: URL) {
+    private func cancelImportActivity(folderURL: URL, destinationRoot: URL? = nil) {
         let activity = AppWorkActivity(
             id: activeWork?.id ?? UUID().uuidString,
             kind: .ingest,
             status: .cancelled,
             title: "Import photos",
-            detail: "Cancelled import from \(folderURL.lastPathComponent)",
+            detail: "Cancelled import from \(importSourceDescription(folderURL: folderURL, destinationRoot: destinationRoot))",
             completedUnitCount: activeWork?.completedUnitCount ?? 0,
             totalUnitCount: activeWork?.totalUnitCount,
             failureCount: 0
