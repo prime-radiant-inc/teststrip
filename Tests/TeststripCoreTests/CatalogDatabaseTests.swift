@@ -36,6 +36,37 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(generation, 2)
     }
 
+    func testNonMetadataAssetRefreshDoesNotIncrementCatalogGeneration() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-generation-refresh")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset.testAsset(path: "/Volumes/NAS/Job/frame.cr2", rating: 4)
+        try repository.upsert(asset)
+        let refreshedFingerprint = FileFingerprint(
+            size: 200,
+            modificationDate: Date(timeIntervalSince1970: 2.5),
+            contentHash: "new-hash"
+        )
+        let refreshedAsset = Asset(
+            id: asset.id,
+            originalURL: asset.originalURL,
+            volumeIdentifier: asset.volumeIdentifier,
+            fingerprint: refreshedFingerprint,
+            availability: .stale,
+            metadata: asset.metadata
+        )
+
+        try repository.upsert(refreshedAsset)
+
+        let fetched = try repository.asset(id: asset.id)
+        let generation = try repository.catalogGeneration(assetID: asset.id)
+        XCTAssertEqual(fetched.fingerprint, refreshedFingerprint)
+        XCTAssertEqual(fetched.availability, .stale)
+        XCTAssertEqual(fetched.metadata, asset.metadata)
+        XCTAssertEqual(generation, 1)
+    }
+
     func testFetchesAllAssetsForGridLoading() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

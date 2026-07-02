@@ -23,7 +23,10 @@ public final class CatalogRepository {
                 fingerprint_json = excluded.fingerprint_json,
                 availability = excluded.availability,
                 metadata_json = excluded.metadata_json,
-                catalog_generation = assets.catalog_generation + 1,
+                catalog_generation = CASE
+                    WHEN assets.metadata_json = excluded.metadata_json THEN assets.catalog_generation
+                    ELSE assets.catalog_generation + 1
+                END,
                 updated_at = excluded.updated_at
             """,
             bindings: [
