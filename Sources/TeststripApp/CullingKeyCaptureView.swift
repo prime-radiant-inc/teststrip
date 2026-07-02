@@ -25,8 +25,18 @@ struct CullingKeyCaptureView: NSViewRepresentable {
 final class CullingKeyCaptureNSView: NSView {
     var lastFocusRequest = 0
     var onShortcut: ((CullingShortcut) -> Void)?
+    private var localKeyMonitor: Any?
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            removeLocalKeyMonitor()
+        } else {
+            installLocalKeyMonitor()
+        }
+    }
 
     override func keyDown(with event: NSEvent) {
         guard let shortcut = CullingShortcut(event: event) else {
@@ -34,6 +44,55 @@ final class CullingKeyCaptureNSView: NSView {
             return
         }
         onShortcut?(shortcut)
+    }
+
+    func handleLocalKeyDown(_ event: NSEvent) -> NSEvent? {
+        guard let window else { return event }
+        return handleLocalKeyDown(
+            event,
+            targetWindowNumber: window.windowNumber,
+            targetWindowIsKey: window.isKeyWindow,
+            firstResponder: window.firstResponder
+        )
+    }
+
+    func handleLocalKeyDown(
+        _ event: NSEvent,
+        targetWindowNumber: Int,
+        targetWindowIsKey: Bool,
+        firstResponder: NSResponder?
+    ) -> NSEvent? {
+        guard eventTargetsWindow(event, targetWindowNumber: targetWindowNumber, targetWindowIsKey: targetWindowIsKey),
+              !firstResponder.isTextEditor,
+              let shortcut = CullingShortcut(event: event) else {
+            return event
+        }
+        onShortcut?(shortcut)
+        return nil
+    }
+
+    private func installLocalKeyMonitor() {
+        guard localKeyMonitor == nil else { return }
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handleLocalKeyDown(event) ?? event
+        }
+    }
+
+    private func removeLocalKeyMonitor() {
+        guard let localKeyMonitor else { return }
+        NSEvent.removeMonitor(localKeyMonitor)
+        self.localKeyMonitor = nil
+    }
+
+    private func eventTargetsWindow(
+        _ event: NSEvent,
+        targetWindowNumber: Int,
+        targetWindowIsKey: Bool
+    ) -> Bool {
+        if event.windowNumber == targetWindowNumber {
+            return true
+        }
+        return event.windowNumber == 0 && targetWindowIsKey
     }
 }
 
@@ -62,4 +121,15 @@ extension CullingShortcut {
 private enum MacKeyCode {
     static let leftArrow: UInt16 = 123
     static let rightArrow: UInt16 = 124
+}
+
+private extension Optional where Wrapped == NSResponder {
+    var isTextEditor: Bool {
+        switch self {
+        case .some(let responder):
+            return responder is NSTextView
+        case .none:
+            return false
+        }
+    }
 }

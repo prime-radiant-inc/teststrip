@@ -37,18 +37,69 @@ final class CullingKeyCaptureTests: XCTestCase {
         XCTAssertNil(CullingShortcut(event: event))
     }
 
+    @MainActor
+    func testKeyCaptureHandlesShortcutWhenAnotherControlHasFocus() throws {
+        let view = CullingKeyCaptureNSView()
+        let button = NSButton(title: "Focused", target: nil, action: nil)
+        var shortcuts: [CullingShortcut] = []
+        view.onShortcut = { shortcuts.append($0) }
+
+        let event = try makeKeyEvent(characters: "3", charactersIgnoringModifiers: "3", windowNumber: 42)
+
+        XCTAssertNil(view.handleLocalKeyDown(event, targetWindowNumber: 42, targetWindowIsKey: true, firstResponder: button))
+        XCTAssertEqual(shortcuts, [.rating(3)])
+    }
+
+    @MainActor
+    func testKeyCaptureHandlesWindowlessShortcutWhenTargetWindowIsKey() throws {
+        let view = CullingKeyCaptureNSView()
+        var shortcuts: [CullingShortcut] = []
+        view.onShortcut = { shortcuts.append($0) }
+
+        let event = try makeKeyEvent(characters: "3", charactersIgnoringModifiers: "3", windowNumber: 0)
+
+        XCTAssertNil(view.handleLocalKeyDown(event, targetWindowNumber: 42, targetWindowIsKey: true, firstResponder: nil))
+        XCTAssertEqual(shortcuts, [.rating(3)])
+    }
+
+    @MainActor
+    func testKeyCaptureLeavesWindowlessShortcutAloneWhenTargetWindowIsNotKey() throws {
+        let view = CullingKeyCaptureNSView()
+        var shortcuts: [CullingShortcut] = []
+        view.onShortcut = { shortcuts.append($0) }
+
+        let event = try makeKeyEvent(characters: "3", charactersIgnoringModifiers: "3", windowNumber: 0)
+
+        XCTAssertIdentical(view.handleLocalKeyDown(event, targetWindowNumber: 42, targetWindowIsKey: false, firstResponder: nil), event)
+        XCTAssertEqual(shortcuts, [])
+    }
+
+    @MainActor
+    func testKeyCaptureLeavesTextEditingEventsAlone() throws {
+        let view = CullingKeyCaptureNSView()
+        let textView = NSTextView(frame: .zero)
+        var shortcuts: [CullingShortcut] = []
+        view.onShortcut = { shortcuts.append($0) }
+
+        let event = try makeKeyEvent(characters: "3", charactersIgnoringModifiers: "3", windowNumber: 42)
+
+        XCTAssertIdentical(view.handleLocalKeyDown(event, targetWindowNumber: 42, targetWindowIsKey: true, firstResponder: textView), event)
+        XCTAssertEqual(shortcuts, [])
+    }
+
     private func makeKeyEvent(
         characters: String,
         charactersIgnoringModifiers: String,
         modifierFlags: NSEvent.ModifierFlags = [],
-        keyCode: UInt16 = 0
+        keyCode: UInt16 = 0,
+        windowNumber: Int = 0
     ) throws -> NSEvent {
         try XCTUnwrap(NSEvent.keyEvent(
             with: .keyDown,
             location: .zero,
             modifierFlags: modifierFlags,
             timestamp: 0,
-            windowNumber: 0,
+            windowNumber: windowNumber,
             context: nil,
             characters: characters,
             charactersIgnoringModifiers: charactersIgnoringModifiers,
