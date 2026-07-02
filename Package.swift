@@ -40,6 +40,10 @@ let package = Package(
         .testTarget(
             name: "TeststripAppTests",
             dependencies: ["TeststripCore", "TeststripApp"]
+        ),
+        .testTarget(
+            name: "TeststripBenchTests",
+            dependencies: ["TeststripBench"]
         )
     ]
 )
