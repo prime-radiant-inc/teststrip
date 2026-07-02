@@ -542,6 +542,65 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items.count, 1)
     }
 
+    @MainActor
+    func testWorkerCompletionRefreshesVisibleBackgroundWork() async throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, _, asset) = try makeModelWithPreviewCache(
+            named: "preview-completion-refresh",
+            workerSupervisor: supervisor
+        )
+        try model.requestPreview(assetID: asset.id, level: .large)
+
+        transport.emitOutputLine("completed generated large preview for \(asset.id.rawValue)")
+
+        try await waitForVisibleWorkStatus(.completed, in: model)
+    }
+
+    func testVisibleLoupePreviewRequestsMediumThenLargeWhenNeitherIsCached() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 2),
+            transport: transport
+        )
+        let (model, _, asset) = try makeModelWithPreviewCache(
+            named: "loupe-progressive-preview",
+            workerSupervisor: supervisor
+        )
+
+        try model.requestVisibleLoupePreview(assetID: asset.id)
+
+        XCTAssertEqual(try transport.commands(), [
+            .generatePreview(assetID: asset.id, level: .medium),
+            .generatePreview(assetID: asset.id, level: .large)
+        ])
+        XCTAssertEqual(model.backgroundWorkQueue.runningItems.map(\.id.rawValue), [
+            "preview-\(asset.id.rawValue)-medium",
+            "preview-\(asset.id.rawValue)-large"
+        ])
+    }
+
+    func testVisibleLoupePreviewDoesNotDispatchWhenLargePreviewIsCached() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, previewCache, asset) = try makeModelWithPreviewCache(
+            named: "loupe-progressive-cached-large",
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+
+        try model.requestVisibleLoupePreview(assetID: asset.id)
+
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(model.backgroundWorkQueue.items, [])
+    }
+
     func testBackgroundControlsForwardToWorkerSupervisor() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -784,6 +843,17 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    private func waitForVisibleWorkStatus(_ status: WorkSessionStatus, in model: AppModel) async throws {
+        for _ in 0..<100 {
+            if model.visibleWorkActivity?.status == status {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTFail("timed out waiting for visible work status \(status.rawValue)")
+    }
+
+    @MainActor
     private func waitForActiveWorkProgress(
         completedUnitCount: Int,
         totalUnitCount: Int?,
@@ -816,6 +886,8 @@ private extension BackgroundWorkItem {
 }
 
 private final class RecordingWorkerTransport: WorkerTransport {
+    var outputHandler: ((String) -> Void)?
+
     private(set) var lines: [String] = []
     private(set) var isRunning = false
 
@@ -833,5 +905,9 @@ private final class RecordingWorkerTransport: WorkerTransport {
 
     func commands() throws -> [WorkerCommand] {
         try lines.map { try WorkerProtocolEncoder.decode($0) }
+    }
+
+    func emitOutputLine(_ line: String) {
+        outputHandler?(line)
     }
 }

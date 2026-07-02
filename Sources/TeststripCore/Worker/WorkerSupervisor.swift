@@ -1,11 +1,12 @@
 import Foundation
 
-public final class WorkerSupervisor {
+public final class WorkerSupervisor: @unchecked Sendable {
     public private(set) var queue: BackgroundWorkQueue
+    public var onQueueChanged: ((BackgroundWorkQueue) -> Void)?
 
     private let transport: WorkerTransport
     private var commandsByItemID: [WorkSessionID: WorkerCommand]
-    private var dispatchedItemIDs: Set<WorkSessionID>
+    private var dispatchedItemIDs: [WorkSessionID]
 
     public init(
         queue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
@@ -15,6 +16,11 @@ public final class WorkerSupervisor {
         self.transport = transport
         self.commandsByItemID = [:]
         self.dispatchedItemIDs = []
+        self.transport.outputHandler = { [weak self] line in
+            DispatchQueue.main.async { [weak self] in
+                self?.handleOutputLine(line)
+            }
+        }
     }
 
     public func enqueue(_ item: BackgroundWorkItem, command: WorkerCommand) throws {
@@ -22,13 +28,15 @@ public final class WorkerSupervisor {
         queue.enqueue(item)
         queue.activateRunnableItems()
         try dispatchRunnableItems()
+        notifyQueueChanged()
     }
 
     public func markCompleted(id: WorkSessionID) throws {
         commandsByItemID[id] = nil
-        dispatchedItemIDs.remove(id)
+        dispatchedItemIDs.removeAll { $0 == id }
         queue.markCompleted(id: id)
         try dispatchRunnableItems()
+        notifyQueueChanged()
     }
 
     public func pause() throws {
@@ -36,6 +44,7 @@ public final class WorkerSupervisor {
             try send(.pause)
         }
         queue.pause()
+        notifyQueueChanged()
     }
 
     public func resume() throws {
@@ -44,6 +53,7 @@ public final class WorkerSupervisor {
         }
         queue.resume()
         try dispatchRunnableItems()
+        notifyQueueChanged()
     }
 
     public func cancelAll() throws {
@@ -59,6 +69,7 @@ public final class WorkerSupervisor {
         queue.cancelAll()
         commandsByItemID.removeAll()
         dispatchedItemIDs.removeAll()
+        notifyQueueChanged()
         if let sendError {
             throw sendError
         }
@@ -71,7 +82,7 @@ public final class WorkerSupervisor {
             }
             try ensureRunning()
             try send(command)
-            dispatchedItemIDs.insert(item.id)
+            dispatchedItemIDs.append(item.id)
         }
     }
 
@@ -83,5 +94,20 @@ public final class WorkerSupervisor {
 
     private func send(_ command: WorkerCommand) throws {
         try transport.writeLine(try WorkerProtocolEncoder.encode(command))
+    }
+
+    private func handleOutputLine(_ line: String) {
+        guard line.hasPrefix("completed "), !dispatchedItemIDs.isEmpty else {
+            return
+        }
+        let itemID = dispatchedItemIDs.removeFirst()
+        commandsByItemID[itemID] = nil
+        queue.markCompleted(id: itemID)
+        try? dispatchRunnableItems()
+        notifyQueueChanged()
+    }
+
+    private func notifyQueueChanged() {
+        onQueueChanged?(queue)
     }
 }

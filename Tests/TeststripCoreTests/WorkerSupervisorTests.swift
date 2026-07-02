@@ -44,6 +44,28 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(supervisor.queue.item(id: second.id)?.status, .running)
     }
 
+    func testCompletedWorkerOutputCompletesOldestDispatchedItemAndStartsNextQueuedWork() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let second = BackgroundWorkItem.testItem(id: "second")
+        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        try supervisor.enqueue(first, command: firstCommand)
+        try supervisor.enqueue(second, command: secondCommand)
+
+        transport.emitOutputLine("completed generated medium preview for asset-1")
+
+        XCTAssertTrue(waitUntil {
+            supervisor.queue.item(id: first.id)?.status == .completed &&
+                supervisor.queue.item(id: second.id)?.status == .running
+        })
+        XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
+    }
+
     func testPauseResumeAndCancelSendExplicitControlCommands() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -91,9 +113,33 @@ final class WorkerSupervisorTests: XCTestCase {
 
         XCTAssertTrue(waitUntil { !transport.isRunning })
     }
+
+    func testFoundationTransportReportsWorkerOutputLines() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-transport-output")
+        let scriptURL = root.appendingPathComponent("echo-worker.sh")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          printf 'completed %s\\n' "$line"
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        chmod(scriptURL.path, 0o755)
+        let transport = FoundationWorkerTransport(executableURL: scriptURL)
+        var outputLines: [String] = []
+        transport.outputHandler = { outputLines.append($0) }
+
+        try transport.launch()
+        try transport.writeLine("hello worker\n")
+
+        XCTAssertTrue(waitUntil { outputLines == ["completed hello worker"] })
+        transport.terminate()
+    }
 }
 
 private final class RecordingWorkerTransport: WorkerTransport {
+    var outputHandler: ((String) -> Void)?
+
     private(set) var launchCount = 0
     private(set) var terminateCount = 0
     private(set) var lines: [String] = []
@@ -115,6 +161,10 @@ private final class RecordingWorkerTransport: WorkerTransport {
 
     func commands() throws -> [WorkerCommand] {
         try lines.map { try WorkerProtocolEncoder.decode($0) }
+    }
+
+    func emitOutputLine(_ line: String) {
+        outputHandler?(line)
     }
 }
 

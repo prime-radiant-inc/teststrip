@@ -241,6 +241,9 @@ public final class AppModel {
         self.importTaskFactory = importTaskFactory ?? Self.defaultImportTask
         self.metadataUndoStack = []
         self.metadataRedoStack = []
+        self.workerSupervisor?.onQueueChanged = { [weak self] queue in
+            self?.backgroundWorkQueue = queue
+        }
     }
 
     public static func demo() -> AppModel {
@@ -520,6 +523,20 @@ public final class AppModel {
         )
         try workerSupervisor.enqueue(item, command: .generatePreview(assetID: assetID, level: level))
         syncBackgroundWorkQueueFromSupervisor()
+    }
+
+    public func requestVisibleLoupePreview(assetID: AssetID) throws {
+        let request = PreviewScheduler().request(
+            assetID: assetID,
+            context: .loupe(isVisible: true, requestedFullResolution: false)
+        )
+        if previewURL(for: assetID, levels: [request.level]) != nil {
+            return
+        }
+        if request.level == .large, previewURL(for: assetID, levels: [.medium]) == nil {
+            try requestPreview(assetID: assetID, level: .medium)
+        }
+        try requestPreview(assetID: assetID, level: request.level)
     }
 
     private func syncBackgroundWorkQueueFromSupervisor() {

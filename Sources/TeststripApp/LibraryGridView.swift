@@ -187,6 +187,13 @@ private struct LoupeView: View {
             Color.black.opacity(0.28)
             if let asset = model.selectedAsset {
                 loupeContent(for: asset)
+                    .task(id: asset.id.rawValue) {
+                        do {
+                            try model.requestVisibleLoupePreview(assetID: asset.id)
+                        } catch {
+                            model.errorMessage = error.localizedDescription
+                        }
+                    }
             } else {
                 unavailableView(title: "No photo selected", systemImage: "photo")
             }
