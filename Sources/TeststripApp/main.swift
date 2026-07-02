@@ -33,6 +33,18 @@ private struct CullingCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Culling") {
+            Button("Previous Photo") {
+                model.selectPreviousAsset()
+            }
+            .keyboardShortcut(.leftArrow, modifiers: [.option])
+
+            Button("Next Photo") {
+                model.selectNextAsset()
+            }
+            .keyboardShortcut(.rightArrow, modifiers: [.option])
+
+            Divider()
+
             Button("Clear Rating") {
                 apply(.rating(0))
             }

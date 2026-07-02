@@ -45,6 +45,31 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAsset?.id, second.id)
     }
 
+    func testSelectNextAssetMovesSelectionForwardThroughLoadedAssets() {
+        let first = makeAsset(id: "first", size: 1)
+        let second = makeAsset(id: "second", size: 2)
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [first, second])
+
+        model.selectNextAsset()
+        XCTAssertEqual(model.selectedAsset?.id, second.id)
+
+        model.selectNextAsset()
+        XCTAssertEqual(model.selectedAsset?.id, second.id)
+    }
+
+    func testSelectPreviousAssetMovesSelectionBackwardThroughLoadedAssets() {
+        let first = makeAsset(id: "first", size: 1)
+        let second = makeAsset(id: "second", size: 2)
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [first, second])
+        model.select(second.id)
+
+        model.selectPreviousAsset()
+        XCTAssertEqual(model.selectedAsset?.id, first.id)
+
+        model.selectPreviousAsset()
+        XCTAssertEqual(model.selectedAsset?.id, first.id)
+    }
+
     func testLibraryCountTextShowsLoadedAndTotalWhenGridIsLimited() {
         let asset = Asset(
             id: AssetID(rawValue: "first"),
@@ -350,6 +375,17 @@ final class AppModelTests: XCTestCase {
     private func writeTestPNG(to url: URL) throws {
         let base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
         try XCTUnwrap(Data(base64Encoded: base64)).write(to: url)
+    }
+
+    private func makeAsset(id: String, size: Int64) -> Asset {
+        Asset(
+            id: AssetID(rawValue: id),
+            originalURL: URL(fileURLWithPath: "/Photos/\(id).jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: size, modificationDate: Date(timeIntervalSince1970: TimeInterval(size))),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
     }
 
     private func makeModelWithCatalogAsset(named name: String) throws -> (AppModel, CatalogRepository, Asset) {

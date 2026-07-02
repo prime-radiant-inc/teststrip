@@ -179,6 +179,32 @@ public final class AppModel {
         selectedAssetID = assetID
     }
 
+    public func selectNextAsset() {
+        guard !assets.isEmpty else {
+            selectedAssetID = nil
+            return
+        }
+        guard let currentSelection = selectedAssetID,
+              let index = assets.firstIndex(where: { $0.id == currentSelection }) else {
+            selectedAssetID = assets.first?.id
+            return
+        }
+        selectedAssetID = assets[min(index + 1, assets.count - 1)].id
+    }
+
+    public func selectPreviousAsset() {
+        guard !assets.isEmpty else {
+            selectedAssetID = nil
+            return
+        }
+        guard let currentSelection = selectedAssetID,
+              let index = assets.firstIndex(where: { $0.id == currentSelection }) else {
+            selectedAssetID = assets.first?.id
+            return
+        }
+        selectedAssetID = assets[max(index - 1, 0)].id
+    }
+
     public func applyCullingCommand(_ command: CullingCommand) throws {
         switch command {
         case .rating(let rating):
