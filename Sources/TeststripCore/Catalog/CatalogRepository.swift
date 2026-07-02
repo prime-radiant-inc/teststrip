@@ -202,6 +202,28 @@ public final class CatalogRepository {
         return try rows.map(decodeAssetSet)
     }
 
+    public func recordEvaluationSignals(_ signals: [EvaluationSignal]) throws {
+        guard !signals.isEmpty else { return }
+        try database.transaction {
+            for signal in signals {
+                try recordEvaluationSignal(signal)
+            }
+        }
+    }
+
+    public func evaluationSignals(assetID: AssetID) throws -> [EvaluationSignal] {
+        let rows = try database.rows(
+            """
+            SELECT asset_id, kind, value_json, confidence, provenance_json
+            FROM evaluation_signals
+            WHERE asset_id = ?
+            ORDER BY rowid ASC
+            """,
+            bindings: [assetID.rawValue]
+        )
+        return try rows.map(decodeEvaluationSignal)
+    }
+
     public func updateMetadata(assetID: AssetID, _ update: (inout AssetMetadata) throws -> Void) throws {
         var asset = try asset(id: assetID)
         try update(&asset.metadata)
@@ -324,6 +346,66 @@ public final class CatalogRepository {
             name: name,
             membership: try decode(AssetSet.Membership.self, from: membershipJSON),
             starred: starred == "1"
+        )
+    }
+
+    private func recordEvaluationSignal(_ signal: EvaluationSignal) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT INTO evaluation_signals (
+                asset_id,
+                kind,
+                value_json,
+                confidence,
+                provenance_json,
+                provider,
+                model,
+                version,
+                settings_hash,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(asset_id, kind, provider, model, version, settings_hash) DO UPDATE SET
+                value_json = excluded.value_json,
+                confidence = excluded.confidence,
+                provenance_json = excluded.provenance_json,
+                updated_at = excluded.updated_at
+            """,
+            bindings: [
+                signal.assetID.rawValue,
+                signal.kind.rawValue,
+                try encode(signal.value),
+                "\(signal.confidence)",
+                try encode(signal.provenance),
+                signal.provenance.provider,
+                signal.provenance.model,
+                signal.provenance.version,
+                signal.provenance.settingsHash,
+                now,
+                now
+            ]
+        )
+    }
+
+    private func decodeEvaluationSignal(_ row: [String: String]) throws -> EvaluationSignal {
+        guard let assetID = row["asset_id"],
+              let kindRawValue = row["kind"],
+              let kind = EvaluationKind(rawValue: kindRawValue),
+              let valueJSON = row["value_json"],
+              let confidenceValue = row["confidence"],
+              let confidence = Double(confidenceValue),
+              let provenanceJSON = row["provenance_json"] else {
+            throw CatalogError.sqlite("evaluation signal row is missing required columns")
+        }
+
+        return EvaluationSignal(
+            assetID: AssetID(rawValue: assetID),
+            kind: kind,
+            value: try decode(EvaluationValue.self, from: valueJSON),
+            confidence: confidence,
+            provenance: try decode(ProviderProvenance.self, from: provenanceJSON)
         )
     }
 

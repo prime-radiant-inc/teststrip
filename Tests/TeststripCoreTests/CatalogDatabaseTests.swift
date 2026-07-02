@@ -214,6 +214,53 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(ids: [second.id, AssetID(rawValue: "missing"), first.id]), 2)
     }
 
+    func testPersistsEvaluationSignalsForAsset() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-signals")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assetID = AssetID(rawValue: "asset-1")
+        let signal = EvaluationSignal(
+            assetID: assetID,
+            kind: .focus,
+            value: .score(0.92),
+            confidence: 0.81,
+            provenance: ProviderProvenance(provider: "LocalVision", model: "focus", version: "1", settingsHash: "default")
+        )
+
+        try repository.recordEvaluationSignals([signal])
+
+        XCTAssertEqual(try repository.evaluationSignals(assetID: assetID), [signal])
+    }
+
+    func testRecordingEvaluationSignalReplacesSameProviderSignal() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-upsert")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assetID = AssetID(rawValue: "asset-1")
+        let provenance = ProviderProvenance(provider: "LocalVision", model: "focus", version: "1", settingsHash: "default")
+        let first = EvaluationSignal(
+            assetID: assetID,
+            kind: .focus,
+            value: .score(0.4),
+            confidence: 0.5,
+            provenance: provenance
+        )
+        let replacement = EvaluationSignal(
+            assetID: assetID,
+            kind: .focus,
+            value: .score(0.9),
+            confidence: 0.8,
+            provenance: provenance
+        )
+
+        try repository.recordEvaluationSignals([first])
+        try repository.recordEvaluationSignals([replacement])
+
+        XCTAssertEqual(try repository.evaluationSignals(assetID: assetID), [replacement])
+    }
+
     func testFetchesAllAssetsInInsertionOrderWhenCreatedAtTies() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
