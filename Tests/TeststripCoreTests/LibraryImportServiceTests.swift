@@ -56,8 +56,15 @@ final class LibraryImportServiceTests: XCTestCase {
 
         XCTAssertEqual(result.importedAssets.count, 2)
         let updates = recorder.values()
-        XCTAssertEqual(updates.map(\.completedUnitCount), [0, 0, 1, 2])
-        XCTAssertEqual(updates.map(\.totalUnitCount), [nil, 2, 2, 2])
+        XCTAssertEqual(updates.map(\.completedUnitCount), [0, 0, 0, 1, 2])
+        XCTAssertEqual(updates.map(\.totalUnitCount), [nil, 2, 2, 2, 2])
+        XCTAssertEqual(updates.map(\.detail), [
+            "Scanning library-import-progress",
+            "Cataloging 2 photos",
+            "Generating previews",
+            "Generated 1 of 2 previews",
+            "Generated 2 of 2 previews"
+        ])
         XCTAssertEqual(updates.last?.detail, "Generated 2 of 2 previews")
     }
 

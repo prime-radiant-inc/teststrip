@@ -14,6 +14,10 @@ public struct IngestService: Sendable {
 
     public func ingest(plan: IngestPlan, repository: CatalogRepository) throws -> [Asset] {
         let sourceFiles = try files(for: plan)
+        return try ingest(files: sourceFiles, plan: plan, repository: repository)
+    }
+
+    public func ingest(files sourceFiles: [URL], plan: IngestPlan, repository: CatalogRepository) throws -> [Asset] {
         var assets: [Asset] = []
         for sourceFile in sourceFiles {
             try Task.checkCancellation()

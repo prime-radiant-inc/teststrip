@@ -62,7 +62,14 @@ public struct LibraryImportService: Sendable {
             totalUnitCount: nil,
             detail: "Scanning \(root.lastPathComponent)"
         ))
-        let assets = try ingestService.ingest(plan: IngestPlanner.addFolder(root), repository: repository)
+        let plan = IngestPlanner.addFolder(root)
+        let sourceFiles = try ingestService.files(for: plan)
+        progress?(LibraryImportProgress(
+            completedUnitCount: 0,
+            totalUnitCount: sourceFiles.count,
+            detail: "Cataloging \(sourceFiles.count) \(sourceFiles.count == 1 ? "photo" : "photos")"
+        ))
+        let assets = try ingestService.ingest(files: sourceFiles, plan: plan, repository: repository)
         var failures: [LibraryPreviewFailure] = []
         progress?(LibraryImportProgress(
             completedUnitCount: 0,
