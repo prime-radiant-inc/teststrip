@@ -536,7 +536,17 @@ public final class AppModel {
     }
 
     public func select(_ assetID: AssetID) {
+        selectAssetID(assetID)
+    }
+
+    private func selectAssetID(_ assetID: AssetID?) {
         selectedAssetID = assetID
+        guard let assetID else { return }
+        do {
+            try enqueueMetadataSyncCheck(for: assetID)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     public func selectSidebarRow(_ row: SidebarRow) throws {
@@ -649,28 +659,28 @@ public final class AppModel {
 
     public func selectNextAsset() {
         guard !assets.isEmpty else {
-            selectedAssetID = nil
+            selectAssetID(nil)
             return
         }
         guard let currentSelection = selectedAssetID,
               let index = assets.firstIndex(where: { $0.id == currentSelection }) else {
-            selectedAssetID = assets.first?.id
+            selectAssetID(assets.first?.id)
             return
         }
-        selectedAssetID = assets[min(index + 1, assets.count - 1)].id
+        selectAssetID(assets[min(index + 1, assets.count - 1)].id)
     }
 
     public func selectPreviousAsset() {
         guard !assets.isEmpty else {
-            selectedAssetID = nil
+            selectAssetID(nil)
             return
         }
         guard let currentSelection = selectedAssetID,
               let index = assets.firstIndex(where: { $0.id == currentSelection }) else {
-            selectedAssetID = assets.first?.id
+            selectAssetID(assets.first?.id)
             return
         }
-        selectedAssetID = assets[max(index - 1, 0)].id
+        selectAssetID(assets[max(index - 1, 0)].id)
     }
 
     public func applyCullingCommand(_ command: CullingCommand) throws {
@@ -822,6 +832,33 @@ public final class AppModel {
             try catalog.repository.recordMetadataSyncPending(pendingItem)
             upsertPendingMetadataSyncItem(pendingItem)
             statusMessage = "XMP write pending for \(asset.originalURL.lastPathComponent)"
+        }
+    }
+
+    private func enqueueMetadataSyncCheck(for assetID: AssetID) throws {
+        guard let catalog, let workerSupervisor else { return }
+        let generation = try catalog.repository.catalogGeneration(assetID: assetID)
+        guard !hasActiveMetadataSyncWork(assetID: assetID, generation: generation) else { return }
+        let itemID = WorkSessionID(rawValue: "xmp-check-\(assetID.rawValue)-\(generation)-\(UUID().uuidString)")
+        let item = BackgroundWorkItem(
+            id: itemID,
+            kind: .xmpSync,
+            title: "Check XMP",
+            detail: "Checking XMP sidecar",
+            completedUnitCount: 0,
+            totalUnitCount: 1
+        )
+        try workerSupervisor.enqueue(item, command: .syncMetadata(assetID: assetID))
+        syncBackgroundWorkQueueFromSupervisor()
+    }
+
+    private func hasActiveMetadataSyncWork(assetID: AssetID, generation: Int) -> Bool {
+        let writeSyncID = "xmp-\(assetID.rawValue)-\(generation)"
+        let selectionCheckPrefix = "xmp-check-\(assetID.rawValue)-\(generation)-"
+        return backgroundWorkQueue.items.contains { item in
+            item.kind == .xmpSync
+                && [.queued, .running, .paused].contains(item.status)
+                && (item.id.rawValue == writeSyncID || item.id.rawValue.hasPrefix(selectionCheckPrefix))
         }
     }
 

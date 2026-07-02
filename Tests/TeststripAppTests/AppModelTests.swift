@@ -306,6 +306,81 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.visibleWorkActivity?.detail, "Writing XMP sidecar")
     }
 
+    func testSelectingAssetQueuesWorkerMetadataSyncCheckWhenSupervisorConfigured() throws {
+        let first = makeAsset(id: "selection-xmp-first", size: 1)
+        let second = makeAsset(id: "selection-xmp-second", size: 2)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "selection-worker-xmp-check",
+            assets: [first, second],
+            workerSupervisor: supervisor
+        )
+
+        model.select(second.id)
+
+        XCTAssertEqual(model.selectedAssetID, second.id)
+        XCTAssertEqual(try transport.commands(), [.syncMetadata(assetID: second.id)])
+        XCTAssertEqual(model.visibleWorkActivity?.kind, .xmpSync)
+        XCTAssertEqual(model.visibleWorkActivity?.detail, "Checking XMP sidecar")
+    }
+
+    func testSelectingAssetDoesNotSynchronouslyWriteXmpWithoutWorker() throws {
+        let directory = try makeTemporaryDirectory(named: "selection-no-worker-xmp")
+        let firstURL = directory.appendingPathComponent("first.dng")
+        let secondURL = directory.appendingPathComponent("second.dng")
+        try Data("first original".utf8).write(to: firstURL)
+        try Data("second original".utf8).write(to: secondURL)
+        let first = Asset(
+            id: AssetID(rawValue: "selection-no-worker-first"),
+            originalURL: firstURL,
+            volumeIdentifier: "Photos",
+            fingerprint: try fileFingerprint(for: firstURL),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let second = Asset(
+            id: AssetID(rawValue: "selection-no-worker-second"),
+            originalURL: secondURL,
+            volumeIdentifier: "Photos",
+            fingerprint: try fileFingerprint(for: secondURL),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "selection-no-worker-xmp-catalog",
+            assets: [first, second]
+        )
+
+        model.select(second.id)
+
+        XCTAssertEqual(model.selectedAssetID, second.id)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: secondURL.appendingPathExtension("xmp").path))
+    }
+
+    func testSelectingAssetDoesNotQueueDuplicateActiveMetadataSyncCheck() throws {
+        let first = makeAsset(id: "duplicate-selection-xmp-first", size: 1)
+        let second = makeAsset(id: "duplicate-selection-xmp-second", size: 2)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "duplicate-selection-worker-xmp-check",
+            assets: [first, second],
+            workerSupervisor: supervisor
+        )
+
+        model.select(second.id)
+        model.select(second.id)
+
+        XCTAssertEqual(try transport.commands(), [.syncMetadata(assetID: second.id)])
+    }
+
     func testLoadQueuesPendingMetadataSyncWhenSupervisorConfigured() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-pending-worker-xmp")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -2160,6 +2235,29 @@ final class AppModelTests: XCTestCase {
             )
         )
         return (try AppModel.load(catalog: catalog), repository, asset)
+    }
+
+    private func makeModelWithCatalogAssets(
+        named name: String,
+        assets: [Asset],
+        workerSupervisor: WorkerSupervisor? = nil
+    ) throws -> (AppModel, CatalogRepository) {
+        let directory = try makeTemporaryDirectory(named: name)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(assets)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        return (try AppModel.load(catalog: catalog, workerSupervisor: workerSupervisor), repository)
     }
 
     @MainActor
