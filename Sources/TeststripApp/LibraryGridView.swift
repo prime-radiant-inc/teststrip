@@ -240,22 +240,12 @@ struct LibraryGridView: View {
     private var assetGrid: some View {
         LazyVGrid(columns: columns, spacing: 8) {
             ForEach(model.assets, id: \.id.rawValue) { asset in
-                Button {
-                    model.select(asset.id)
-                } label: {
-                    AssetGridCell(
-                        asset: asset,
-                        previewURL: model.gridPreviewURL(for: asset.id),
-                        isSelected: model.selectedAssetID == asset.id
-                    )
-                }
-                .buttonStyle(.plain)
-                .focusEffectDisabled()
-                .contentShape(Rectangle())
-                .accessibilityLabel(asset.originalURL.lastPathComponent)
-                .simultaneousGesture(TapGesture(count: 2).onEnded {
-                    model.openAssetInLoupe(asset.id)
-                })
+                AssetGridCell(
+                    asset: asset,
+                    previewURL: model.gridPreviewURL(for: asset.id),
+                    isSelected: model.selectedAssetID == asset.id
+                )
+                .assetActivation(for: asset, model: model)
                 .task(id: asset.id.rawValue) {
                     do {
                         try model.requestVisibleGridPreview(assetID: asset.id)
@@ -507,27 +497,36 @@ private struct CompareView: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 10) {
                 ForEach(model.compareAssets(), id: \.id.rawValue) { asset in
-                    Button {
-                        model.select(asset.id)
-                    } label: {
-                        AssetGridCell(
-                            asset: asset,
-                            previewURL: model.loupePreviewURL(for: asset.id),
-                            isSelected: model.selectedAssetID == asset.id
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .focusEffectDisabled()
-                    .contentShape(Rectangle())
-                    .accessibilityLabel(asset.originalURL.lastPathComponent)
-                    .simultaneousGesture(TapGesture(count: 2).onEnded {
-                        model.openAssetInLoupe(asset.id)
-                    })
+                    AssetGridCell(
+                        asset: asset,
+                        previewURL: model.loupePreviewURL(for: asset.id),
+                        isSelected: model.selectedAssetID == asset.id
+                    )
+                    .assetActivation(for: asset, model: model)
                 }
             }
             .padding(12)
         }
         .background(Color.black.opacity(0.24))
+    }
+}
+
+private extension View {
+    func assetActivation(for asset: Asset, model: AppModel) -> some View {
+        let doubleClick = TapGesture(count: 2).onEnded {
+            model.openAssetInLoupe(asset.id)
+        }
+        let singleClick = TapGesture(count: 1).onEnded {
+            model.select(asset.id)
+        }
+        return contentShape(Rectangle())
+            .gesture(doubleClick.exclusively(before: singleClick))
+            .accessibilityElement()
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(asset.originalURL.lastPathComponent)
+            .accessibilityAction {
+                model.select(asset.id)
+            }
     }
 }
 
