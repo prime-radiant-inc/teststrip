@@ -122,7 +122,11 @@ public struct AppImportOutput: Sendable {
     }
 }
 
-public typealias AppImportTaskFactory = @Sendable (AppCatalogPaths, URL) -> Task<AppImportOutput, Error>
+public typealias AppImportTaskFactory = @Sendable (
+    AppCatalogPaths,
+    URL,
+    @escaping LibraryImportProgressHandler
+) -> Task<AppImportOutput, Error>
 
 private struct MetadataChange: Equatable {
     var assetID: AssetID
@@ -610,9 +614,16 @@ public final class AppModel {
         errorMessage = nil
         statusMessage = "Importing \(folderURL.lastPathComponent)..."
         startImportActivity(folderURL: folderURL)
+        guard let activityID = activeWork?.id else {
+            throw TeststripError.invalidState("import activity was not created")
+        }
         let paths = catalog.paths
         do {
-            let output = try await importTaskFactory(paths, folderURL).value
+            let output = try await importTaskFactory(
+                paths,
+                folderURL,
+                importProgressHandler(activityID: activityID)
+            ).value
             replaceAssets(output.assets)
             totalAssetCount = output.totalAssetCount
             updateImportStatus(with: output.result)
@@ -640,7 +651,11 @@ public final class AppModel {
         guard let activityID = activeWork?.id else { return }
 
         let didAccess = folderURL.startAccessingSecurityScopedResource()
-        let task = importTaskFactory(catalog.paths, folderURL)
+        let task = importTaskFactory(
+            catalog.paths,
+            folderURL,
+            importProgressHandler(activityID: activityID)
+        )
         activeImportTask = task
         Task { @MainActor [weak self] in
             defer {
@@ -697,6 +712,21 @@ public final class AppModel {
         )
     }
 
+    private func importProgressHandler(activityID: String) -> LibraryImportProgressHandler {
+        let sink = AppImportProgressSink(model: self, activityID: activityID)
+        return { progress in
+            sink.handle(progress)
+        }
+    }
+
+    fileprivate func applyImportProgress(_ progress: LibraryImportProgress) {
+        guard var activity = activeWork else { return }
+        activity.detail = progress.detail
+        activity.completedUnitCount = progress.completedUnitCount
+        activity.totalUnitCount = progress.totalUnitCount
+        activeWork = activity
+    }
+
     private func completeImportActivity(folderURL: URL, result: LibraryImportResult) {
         let photoLabel = result.importedAssets.count == 1 ? "photo" : "photos"
         let activity = AppWorkActivity(
@@ -744,11 +774,19 @@ public final class AppModel {
         recentWork.insert(activity, at: 0)
     }
 
-    private static func defaultImportTask(paths: AppCatalogPaths, folderURL: URL) -> Task<AppImportOutput, Error> {
+    private static func defaultImportTask(
+        paths: AppCatalogPaths,
+        folderURL: URL,
+        progress: @escaping LibraryImportProgressHandler
+    ) -> Task<AppImportOutput, Error> {
         Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
             let backgroundCatalog = try AppCatalog.open(paths: paths)
-            let result = try backgroundCatalog.importService.addFolderInPlace(folderURL, repository: backgroundCatalog.repository)
+            let result = try backgroundCatalog.importService.addFolderInPlace(
+                folderURL,
+                repository: backgroundCatalog.repository,
+                progress: progress
+            )
             try Task.checkCancellation()
             let assets = try backgroundCatalog.repository.allAssets(limit: Self.assetPageSize)
             let count = try backgroundCatalog.repository.assetCount()
@@ -780,5 +818,27 @@ public final class AppModel {
             SidebarSection(title: "Library", rows: ["All Photographs", "Folders", "People"]),
             SidebarSection(title: "Work", rows: ["Recent", "Starred"])
         ]
+    }
+}
+
+private final class AppImportProgressSink: @unchecked Sendable {
+    private weak var model: AppModel?
+    private let activityID: String
+
+    init(model: AppModel, activityID: String) {
+        self.model = model
+        self.activityID = activityID
+    }
+
+    func handle(_ progress: LibraryImportProgress) {
+        Task { @MainActor in
+            self.apply(progress)
+        }
+    }
+
+    @MainActor
+    private func apply(_ progress: LibraryImportProgress) {
+        guard let model, model.activeWork?.id == activityID else { return }
+        model.applyImportProgress(progress)
     }
 }

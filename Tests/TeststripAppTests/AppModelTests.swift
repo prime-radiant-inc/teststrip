@@ -623,7 +623,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _ in
+            importTaskFactory: { _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -646,6 +646,44 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(activity.status, .cancelled)
         XCTAssertEqual(activity.detail, "Cancelled import from photos")
         XCTAssertEqual(model.statusMessage, "Cancelled import")
+    }
+
+    @MainActor
+    func testBackgroundImportAppliesProgressUpdatesBeforeCompletion() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-progress")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(
+            catalog: catalog,
+            importTaskFactory: { _, _, progress in
+                Task {
+                    progress(LibraryImportProgress(
+                        completedUnitCount: 1,
+                        totalUnitCount: 2,
+                        detail: "Generated 1 of 2 previews"
+                    ))
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            }
+        )
+
+        model.beginImportFolder(photoFolder)
+
+        try await waitForActiveWorkProgress(
+            completedUnitCount: 1,
+            totalUnitCount: 2,
+            detail: "Generated 1 of 2 previews",
+            in: model
+        )
+        model.cancelActiveWork()
+        try await waitForActivityStatus(.cancelled, in: model)
     }
 
     private func makeTemporaryDirectory(named name: String) throws -> URL {
@@ -743,6 +781,24 @@ final class AppModelTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTFail("timed out waiting for activity status \(status.rawValue)")
+    }
+
+    @MainActor
+    private func waitForActiveWorkProgress(
+        completedUnitCount: Int,
+        totalUnitCount: Int?,
+        detail: String,
+        in model: AppModel
+    ) async throws {
+        for _ in 0..<100 {
+            if model.activeWork?.completedUnitCount == completedUnitCount,
+               model.activeWork?.totalUnitCount == totalUnitCount,
+               model.activeWork?.detail == detail {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTFail("timed out waiting for active import progress")
     }
 }
 

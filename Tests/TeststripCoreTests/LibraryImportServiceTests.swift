@@ -41,6 +41,26 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertEqual(try repository.allAssets(limit: 10).map(\.originalURL), [invalidImage])
     }
 
+    func testAddFolderReportsPreviewProgress() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-progress")
+        try TestDirectories.writeTestJPEG(to: root.appendingPathComponent("one.jpg"), width: 1200, height: 800)
+        try TestDirectories.writeTestJPEG(to: root.appendingPathComponent("two.jpg"), width: 800, height: 1200)
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+        let recorder = ImportProgressRecorder()
+
+        let result = try service.addFolderInPlace(root, repository: repository) { progress in
+            recorder.append(progress)
+        }
+
+        XCTAssertEqual(result.importedAssets.count, 2)
+        let updates = recorder.values()
+        XCTAssertEqual(updates.map(\.completedUnitCount), [0, 0, 1, 2])
+        XCTAssertEqual(updates.map(\.totalUnitCount), [nil, 2, 2, 2])
+        XCTAssertEqual(updates.last?.detail, "Generated 2 of 2 previews")
+    }
+
     func testReimportPreservesAssetIdentityMetadataAndRefreshesPreview() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-reimport")
         let image = root.appendingPathComponent("one.jpg")
@@ -107,5 +127,22 @@ final class LibraryImportServiceTests: XCTestCase {
             previewCache: previewCache,
             renderer: PreviewRenderer()
         )
+    }
+}
+
+private final class ImportProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var updates: [LibraryImportProgress] = []
+
+    func append(_ progress: LibraryImportProgress) {
+        lock.withLock {
+            updates.append(progress)
+        }
+    }
+
+    func values() -> [LibraryImportProgress] {
+        lock.withLock {
+            updates
+        }
     }
 }

@@ -22,6 +22,20 @@ public struct LibraryImportResult: Sendable {
     }
 }
 
+public struct LibraryImportProgress: Equatable, Sendable {
+    public var completedUnitCount: Int
+    public var totalUnitCount: Int?
+    public var detail: String
+
+    public init(completedUnitCount: Int, totalUnitCount: Int?, detail: String) {
+        self.completedUnitCount = completedUnitCount
+        self.totalUnitCount = totalUnitCount
+        self.detail = detail
+    }
+}
+
+public typealias LibraryImportProgressHandler = @Sendable (LibraryImportProgress) -> Void
+
 public struct LibraryImportService: Sendable {
     public var ingestService: IngestService
     public var previewCache: PreviewCache
@@ -37,12 +51,26 @@ public struct LibraryImportService: Sendable {
         self.renderer = renderer
     }
 
-    public func addFolderInPlace(_ root: URL, repository: CatalogRepository) throws -> LibraryImportResult {
+    public func addFolderInPlace(
+        _ root: URL,
+        repository: CatalogRepository,
+        progress: LibraryImportProgressHandler? = nil
+    ) throws -> LibraryImportResult {
         try Task.checkCancellation()
+        progress?(LibraryImportProgress(
+            completedUnitCount: 0,
+            totalUnitCount: nil,
+            detail: "Scanning \(root.lastPathComponent)"
+        ))
         let assets = try ingestService.ingest(plan: IngestPlanner.addFolder(root), repository: repository)
         var failures: [LibraryPreviewFailure] = []
+        progress?(LibraryImportProgress(
+            completedUnitCount: 0,
+            totalUnitCount: assets.count,
+            detail: "Generating previews"
+        ))
 
-        for asset in assets {
+        for (index, asset) in assets.enumerated() {
             try Task.checkCancellation()
             do {
                 try renderer.render(
@@ -57,6 +85,12 @@ public struct LibraryImportService: Sendable {
                     message: error.localizedDescription
                 ))
             }
+            let completedCount = index + 1
+            progress?(LibraryImportProgress(
+                completedUnitCount: completedCount,
+                totalUnitCount: assets.count,
+                detail: "Generated \(completedCount) of \(assets.count) previews"
+            ))
         }
 
         return LibraryImportResult(importedAssets: assets, previewFailures: failures)
