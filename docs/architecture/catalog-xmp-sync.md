@@ -18,5 +18,4 @@ The first implemented sidecar convention is collision-safe: append `.xmp` to the
 
 ## Next Work
 
-- Surface conflicted XMP sync state in the UI.
 - Revisit sidecar filename compatibility before shipping import/export interoperability guarantees.
