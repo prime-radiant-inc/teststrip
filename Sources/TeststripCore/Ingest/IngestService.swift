@@ -138,6 +138,25 @@ public struct IngestService: Sendable {
             } catch {
                 throw TeststripError.io("could not copy \(sourceFile.path) to \(originalURL.path): \(error.localizedDescription)")
             }
+            try copyAdjacentSidecar(sourceFile: sourceFile, originalURL: originalURL)
+        }
+    }
+
+    private func copyAdjacentSidecar(sourceFile: URL, originalURL: URL) throws {
+        let sidecarStore = XMPSidecarStore()
+        let sourceSidecarURL = sidecarStore.sidecarURL(forOriginalAt: sourceFile)
+        guard FileManager.default.fileExists(atPath: sourceSidecarURL.path) else {
+            return
+        }
+
+        let destinationSidecarURL = sidecarStore.sidecarURL(forOriginalAt: originalURL)
+        guard !FileManager.default.fileExists(atPath: destinationSidecarURL.path) else {
+            throw TeststripError.io("ingest sidecar destination already exists \(destinationSidecarURL.path)")
+        }
+        do {
+            try FileManager.default.copyItem(at: sourceSidecarURL, to: destinationSidecarURL)
+        } catch {
+            throw TeststripError.io("could not copy \(sourceSidecarURL.path) to \(destinationSidecarURL.path): \(error.localizedDescription)")
         }
     }
 
