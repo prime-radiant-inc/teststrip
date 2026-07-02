@@ -30,6 +30,33 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertLessThanOrEqual(max(dimensions.width, dimensions.height), PreviewLevel.medium.maxPixelDimension!)
     }
 
+    func testGeneratePreviewCommandClearsPendingPreviewGeneration() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-preview-queue-clear")
+        let source = root.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1600, height: 1000)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .grid))
+        let executor = WorkerCommandExecutor(
+            repository: repository,
+            previewCache: PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        )
+
+        _ = try executor.execute(.generatePreview(assetID: asset.id, level: .grid))
+
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
+    }
+
     func testSyncMetadataCommandWritesMissingSidecarFromCatalogMetadata() throws {
         let setup = try makeMetadataSyncSetup(named: "worker-sync-write", metadata: AssetMetadata(rating: 4, flag: .pick))
 

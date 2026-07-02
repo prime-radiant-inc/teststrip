@@ -222,6 +222,7 @@ public final class AppModel {
 
     public static let defaultEvaluationProviderName = "local-image-metrics"
     private static let assetPageSize = 500
+    private static let pendingPreviewRecoveryBatchSize = 200
 
     public var selectedAsset: Asset? {
         assets.first { $0.id == selectedAssetID }
@@ -402,7 +403,7 @@ public final class AppModel {
         let savedAssetSets = try catalog.repository.assetSets()
         let recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
-        return AppModel(
+        let model = AppModel(
             sidebarSections: defaultSidebarSections(
                 savedAssetSets: savedAssetSets,
                 recentWork: recentWork,
@@ -420,6 +421,8 @@ public final class AppModel {
             workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory
         )
+        try model.enqueuePendingPreviewGeneration()
+        return model
     }
 
     public func select(_ assetID: AssetID) {
@@ -757,6 +760,17 @@ public final class AppModel {
         )
         try workerSupervisor.enqueue(item, command: .generatePreview(assetID: assetID, level: level))
         syncBackgroundWorkQueueFromSupervisor()
+    }
+
+    private func enqueuePendingPreviewGeneration() throws {
+        guard let catalog, workerSupervisor != nil else { return }
+        for item in try catalog.repository.pendingPreviewGenerationItems(limit: Self.pendingPreviewRecoveryBatchSize) {
+            if previewURL(for: item.assetID, levels: [item.level]) != nil {
+                try catalog.repository.markPreviewGenerated(assetID: item.assetID, level: item.level)
+                continue
+            }
+            try requestPreview(assetID: item.assetID, level: item.level)
+        }
     }
 
     public func requestVisibleGridPreview(assetID: AssetID) throws {

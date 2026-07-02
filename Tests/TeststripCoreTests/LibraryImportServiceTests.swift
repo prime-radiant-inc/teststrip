@@ -39,6 +39,9 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertEqual(result.previewFailures[0].assetID, result.importedAssets[0].id)
         XCTAssertEqual(result.previewFailures[0].sourceURL, invalidImage)
         XCTAssertEqual(try repository.allAssets(limit: 10).map(\.originalURL), [invalidImage])
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: result.importedAssets[0].id, level: .grid)
+        ])
     }
 
     func testAddFolderReportsPreviewProgress() throws {
@@ -92,6 +95,33 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertEqual(fetched.metadata.rating, 4)
         XCTAssertEqual(fetched.metadata.keywords, ["keeper"])
         XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
+    }
+
+    func testResumePendingPreviewsGeneratesGridPreviewAndClearsQueue() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-resume-previews")
+        let image = root.appendingPathComponent("one.jpg")
+        try TestDirectories.writeTestJPEG(to: image, width: 1200, height: 800)
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: image,
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .grid))
+        let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+
+        let result = try service.resumePendingPreviews(repository: repository)
+
+        XCTAssertEqual(result.generatedCount, 1)
+        XCTAssertEqual(result.previewFailures, [])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
     }
 
     func testAddFolderStopsBeforeCatalogWritesWhenTaskIsCancelled() async throws {

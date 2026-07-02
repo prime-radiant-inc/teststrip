@@ -90,6 +90,7 @@ public struct WorkerCommandExecutor {
                 level: level,
                 destinationURL: previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
             )
+            try repository.markPreviewGenerated(assetID: assetID, level: level)
             return .completed("generated \(level.rawValue) preview for \(assetID.rawValue)")
         case .syncMetadata(let assetID):
             return try syncMetadata(assetID: assetID)

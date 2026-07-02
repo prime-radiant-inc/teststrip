@@ -22,6 +22,16 @@ public struct LibraryImportResult: Sendable {
     }
 }
 
+public struct LibraryPreviewGenerationResult: Sendable {
+    public var generatedCount: Int
+    public var previewFailures: [LibraryPreviewFailure]
+
+    public init(generatedCount: Int, previewFailures: [LibraryPreviewFailure]) {
+        self.generatedCount = generatedCount
+        self.previewFailures = previewFailures
+    }
+}
+
 public struct LibraryImportProgress: Equatable, Sendable {
     public var completedUnitCount: Int
     public var totalUnitCount: Int?
@@ -70,21 +80,53 @@ public struct LibraryImportService: Sendable {
             detail: "Cataloging \(sourceFiles.count) \(sourceFiles.count == 1 ? "photo" : "photos")"
         ))
         let assets = try ingestService.ingest(files: sourceFiles, plan: plan, repository: repository)
-        var failures: [LibraryPreviewFailure] = []
+        let previewItems = assets.map { PreviewGenerationItem(assetID: $0.id, level: .grid) }
+        for item in previewItems {
+            try repository.recordPreviewGenerationPending(item)
+        }
+
         progress?(LibraryImportProgress(
             completedUnitCount: 0,
             totalUnitCount: assets.count,
             detail: "Generating previews"
         ))
 
-        for (index, asset) in assets.enumerated() {
+        let previewResult = try generatePreviews(for: previewItems, repository: repository, progress: progress)
+        return LibraryImportResult(importedAssets: assets, previewFailures: previewResult.previewFailures)
+    }
+
+    public func resumePendingPreviews(
+        repository: CatalogRepository,
+        progress: LibraryImportProgressHandler? = nil
+    ) throws -> LibraryPreviewGenerationResult {
+        let items = try repository.pendingPreviewGenerationItems()
+        progress?(LibraryImportProgress(
+            completedUnitCount: 0,
+            totalUnitCount: items.count,
+            detail: "Generating pending previews"
+        ))
+        return try generatePreviews(for: items, repository: repository, progress: progress)
+    }
+
+    private func generatePreviews(
+        for items: [PreviewGenerationItem],
+        repository: CatalogRepository,
+        progress: LibraryImportProgressHandler?
+    ) throws -> LibraryPreviewGenerationResult {
+        var generatedCount = 0
+        var failures: [LibraryPreviewFailure] = []
+
+        for (index, item) in items.enumerated() {
             try Task.checkCancellation()
+            let asset = try repository.asset(id: item.assetID)
             do {
                 try renderer.render(
                     sourceURL: asset.originalURL,
-                    level: .grid,
-                    destinationURL: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+                    level: item.level,
+                    destinationURL: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: item.level))
                 )
+                try repository.markPreviewGenerated(assetID: asset.id, level: item.level)
+                generatedCount += 1
             } catch {
                 failures.append(LibraryPreviewFailure(
                     assetID: asset.id,
@@ -95,11 +137,11 @@ public struct LibraryImportService: Sendable {
             let completedCount = index + 1
             progress?(LibraryImportProgress(
                 completedUnitCount: completedCount,
-                totalUnitCount: assets.count,
-                detail: "Generated \(completedCount) of \(assets.count) previews"
+                totalUnitCount: items.count,
+                detail: "Generated \(completedCount) of \(items.count) previews"
             ))
         }
 
-        return LibraryImportResult(importedAssets: assets, previewFailures: failures)
+        return LibraryPreviewGenerationResult(generatedCount: generatedCount, previewFailures: failures)
     }
 }

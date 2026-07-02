@@ -342,6 +342,48 @@ public final class CatalogRepository {
         try metadataSyncItems(status: "pending")
     }
 
+    public func recordPreviewGenerationPending(_ item: PreviewGenerationItem) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT INTO preview_generation_queue (asset_id, level, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(asset_id, level) DO UPDATE SET
+                updated_at = excluded.updated_at
+            """,
+            bindings: [
+                item.assetID.rawValue,
+                item.level.rawValue,
+                now
+            ]
+        )
+    }
+
+    public func markPreviewGenerated(assetID: AssetID, level: PreviewLevel) throws {
+        try database.execute(
+            "DELETE FROM preview_generation_queue WHERE asset_id = ? AND level = ?",
+            bindings: [assetID.rawValue, level.rawValue]
+        )
+    }
+
+    public func pendingPreviewGenerationItems(limit: Int? = nil) throws -> [PreviewGenerationItem] {
+        if let limit, limit <= 0 {
+            return []
+        }
+        var sql = """
+        SELECT asset_id, level
+        FROM preview_generation_queue
+        ORDER BY updated_at ASC
+        """
+        var bindings: [String] = []
+        if let limit {
+            sql += " LIMIT ?"
+            bindings.append("\(limit)")
+        }
+        let rows = try database.rows(sql, bindings: bindings)
+        return try rows.map(decodePreviewGenerationItem)
+    }
+
     public func metadataSyncConflictItems() throws -> [MetadataSyncItem] {
         try metadataSyncItems(status: "conflict")
     }
@@ -659,6 +701,15 @@ public final class CatalogRepository {
             catalogGeneration: generation,
             lastSyncedFingerprint: fingerprint.isEmpty ? nil : fingerprint
         )
+    }
+
+    private func decodePreviewGenerationItem(_ row: [String: String]) throws -> PreviewGenerationItem {
+        guard let assetID = row["asset_id"],
+              let levelRawValue = row["level"],
+              let level = PreviewLevel(rawValue: levelRawValue) else {
+            throw CatalogError.sqlite("preview generation row is missing required columns")
+        }
+        return PreviewGenerationItem(assetID: AssetID(rawValue: assetID), level: level)
     }
 
     private func encode<T: Encodable>(_ value: T) throws -> String {

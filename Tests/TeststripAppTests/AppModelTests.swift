@@ -911,6 +911,23 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items.count, 1)
     }
 
+    func testLoadEnqueuesPendingPreviewGenerationWithWorker() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, _, asset) = try makeModelWithPreviewCache(
+            named: "pending-preview",
+            workerSupervisor: supervisor,
+            pendingPreviewLevel: .grid
+        )
+
+        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: asset.id, level: .grid)])
+        XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
+        XCTAssertEqual(model.visibleWorkActivity?.kind, .previewGeneration)
+    }
+
     func testRequestEvaluationDispatchesWorkerRecognitionCommand() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -1284,7 +1301,8 @@ final class AppModelTests: XCTestCase {
 
     private func makeModelWithPreviewCache(
         named name: String,
-        workerSupervisor: WorkerSupervisor? = nil
+        workerSupervisor: WorkerSupervisor? = nil,
+        pendingPreviewLevel: PreviewLevel? = nil
     ) throws -> (AppModel, PreviewCache, Asset) {
         let directory = try makeTemporaryDirectory(named: name)
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -1299,6 +1317,9 @@ final class AppModelTests: XCTestCase {
             metadata: AssetMetadata()
         )
         try repository.upsert(asset)
+        if let pendingPreviewLevel {
+            try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: pendingPreviewLevel))
+        }
         let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
         let catalog = AppCatalog(
             paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
