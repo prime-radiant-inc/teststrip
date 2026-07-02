@@ -45,6 +45,40 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try setup.repository.pendingMetadataSyncItems(), [])
     }
 
+    func testSyncMetadataCommandRecordsPendingWhenSidecarCannotBeWritten() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-sync-pending")
+        let originalURL = root
+            .appendingPathComponent("offline", isDirectory: true)
+            .appendingPathComponent("asset.raw")
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: originalURL,
+            volumeIdentifier: "offline-volume",
+            fingerprint: FileFingerprint(size: 14, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .missing,
+            metadata: AssetMetadata(rating: 4, flag: .pick)
+        )
+        try repository.upsert(asset)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
+        let catalogGeneration = try repository.catalogGeneration(assetID: asset.id)
+
+        let result = try executor.execute(.syncMetadata(assetID: asset.id))
+
+        XCTAssertEqual(result, .completed("metadata pending for asset-1"))
+        XCTAssertEqual(try repository.pendingMetadataSyncItems(), [
+            MetadataSyncItem(
+                assetID: asset.id,
+                sidecarURL: originalURL.appendingPathExtension("xmp"),
+                catalogGeneration: catalogGeneration,
+                lastSyncedFingerprint: nil
+            )
+        ])
+    }
+
     func testSyncMetadataCommandImportsExternallyChangedSidecarWhenCatalogIsUnchanged() throws {
         let catalogMetadata = AssetMetadata(rating: 2)
         let setup = try makeMetadataSyncSetup(named: "worker-sync-import", metadata: catalogMetadata)

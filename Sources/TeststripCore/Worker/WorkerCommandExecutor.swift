@@ -152,14 +152,24 @@ public struct WorkerCommandExecutor {
         case .upToDate:
             return .completed("metadata up to date for \(assetID.rawValue)")
         case .writeCatalog:
-            let result = try sidecarStore.write(metadata: asset.metadata, forOriginalAt: asset.originalURL)
-            try repository.markMetadataSynced(
-                assetID: assetID,
-                sidecarURL: result.sidecarURL,
-                catalogGeneration: catalogGeneration,
-                fingerprint: result.fingerprint
-            )
-            return .completed("synced metadata for \(assetID.rawValue)")
+            do {
+                let result = try sidecarStore.write(metadata: asset.metadata, forOriginalAt: asset.originalURL)
+                try repository.markMetadataSynced(
+                    assetID: assetID,
+                    sidecarURL: result.sidecarURL,
+                    catalogGeneration: catalogGeneration,
+                    fingerprint: result.fingerprint
+                )
+                return .completed("synced metadata for \(assetID.rawValue)")
+            } catch {
+                try repository.recordMetadataSyncPending(MetadataSyncItem(
+                    assetID: assetID,
+                    sidecarURL: sidecarURL,
+                    catalogGeneration: catalogGeneration,
+                    lastSyncedFingerprint: try repository.lastMetadataSyncFingerprint(assetID: assetID)
+                ))
+                return .completed("metadata pending for \(assetID.rawValue)")
+            }
         case .importSidecar(let metadata):
             try repository.updateMetadata(assetID: assetID) { catalogMetadata in
                 catalogMetadata = metadata
