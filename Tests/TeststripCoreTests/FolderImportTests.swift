@@ -146,6 +146,40 @@ final class FolderImportTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: secondDestination, encoding: .utf8), "second")
     }
 
+    func testReingestingCopiedCardAssetReusesCatalogedDestination() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-reingest")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        let sourceDirectory = source.appendingPathComponent("100CANON", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+        let sourceFile = sourceDirectory.appendingPathComponent("IMG_0001.CR2")
+        try Data("source".utf8).write(to: sourceFile)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["cr2"]))
+        let plan = IngestPlanner.copyFromCard(source: source, destinationRoot: destination)
+        let firstImport = try service.ingest(plan: plan, repository: repository)
+        let assetID = firstImport[0].id
+        try repository.updateMetadata(assetID: assetID) { metadata in
+            metadata.rating = 5
+            metadata.flag = .pick
+        }
+
+        let secondImport = try service.ingest(plan: plan, repository: repository)
+
+        let importedDestination = destination
+            .appendingPathComponent("100CANON", isDirectory: true)
+            .appendingPathComponent("IMG_0001.CR2")
+        let assets = try repository.allAssets(limit: 100)
+        XCTAssertEqual(assets.count, 1)
+        XCTAssertEqual(secondImport.map(\.id), [assetID])
+        let fetched = try repository.asset(originalURL: importedDestination)
+        XCTAssertEqual(fetched?.id, assetID)
+        XCTAssertEqual(fetched?.metadata.rating, 5)
+        XCTAssertEqual(fetched?.metadata.flag, .pick)
+    }
+
     func testCopyFromCardThrowsWhenDestinationFileAlreadyExists() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "card-conflict")
         let source = root.appendingPathComponent("DCIM", isDirectory: true)

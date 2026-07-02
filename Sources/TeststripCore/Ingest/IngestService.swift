@@ -15,9 +15,10 @@ public struct IngestService: Sendable {
         let sourceFiles = try files(for: plan)
         var assets: [Asset] = []
         for sourceFile in sourceFiles {
-            let originalURL = try catalogURL(for: sourceFile, plan: plan)
-            let fingerprint = try fingerprint(for: originalURL)
+            let originalURL = try originalURL(for: sourceFile, plan: plan)
             let existingAsset = try repository.asset(originalURL: originalURL)
+            try prepareOriginalFile(sourceFile: sourceFile, originalURL: originalURL, plan: plan, existingAsset: existingAsset)
+            let fingerprint = try fingerprint(for: originalURL)
             let asset = Asset(
                 id: existingAsset?.id ?? .new(),
                 originalURL: originalURL,
@@ -32,7 +33,7 @@ public struct IngestService: Sendable {
         return assets
     }
 
-    private func catalogURL(for sourceFile: URL, plan: IngestPlan) throws -> URL {
+    private func originalURL(for sourceFile: URL, plan: IngestPlan) throws -> URL {
         switch plan.mode {
         case .addInPlace:
             return sourceFile
@@ -40,22 +41,38 @@ public struct IngestService: Sendable {
             guard let destinationRoot = plan.destinationRoot else {
                 throw TeststripError.invalidState("copy ingest requires destination root")
             }
-            let destination = try destinationURL(for: sourceFile, sourceRoot: plan.sourceRoot, destinationRoot: destinationRoot)
-            let destinationDirectory = destination.deletingLastPathComponent()
+            return try destinationURL(for: sourceFile, sourceRoot: plan.sourceRoot, destinationRoot: destinationRoot)
+        }
+    }
+
+    private func prepareOriginalFile(
+        sourceFile: URL,
+        originalURL: URL,
+        plan: IngestPlan,
+        existingAsset: Asset?
+    ) throws {
+        switch plan.mode {
+        case .addInPlace:
+            return
+        case .copyToDestination:
+            guard !FileManager.default.fileExists(atPath: originalURL.path) else {
+                if existingAsset != nil {
+                    return
+                }
+                throw TeststripError.io("ingest destination already exists \(originalURL.path)")
+            }
+
+            let destinationDirectory = originalURL.deletingLastPathComponent()
             do {
                 try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
             } catch {
                 throw TeststripError.io("could not create ingest directory \(destinationDirectory.path): \(error.localizedDescription)")
             }
-            guard !FileManager.default.fileExists(atPath: destination.path) else {
-                throw TeststripError.io("ingest destination already exists \(destination.path)")
-            }
             do {
-                try FileManager.default.copyItem(at: sourceFile, to: destination)
+                try FileManager.default.copyItem(at: sourceFile, to: originalURL)
             } catch {
-                throw TeststripError.io("could not copy \(sourceFile.path) to \(destination.path): \(error.localizedDescription)")
+                throw TeststripError.io("could not copy \(sourceFile.path) to \(originalURL.path): \(error.localizedDescription)")
             }
-            return destination
         }
     }
 
