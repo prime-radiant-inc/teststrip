@@ -32,6 +32,11 @@ public struct LibraryPreviewGenerationResult: Sendable {
     }
 }
 
+public enum LibraryImportPreviewPolicy: Equatable, Sendable {
+    case generateImmediately
+    case deferGeneration
+}
+
 public struct LibraryImportProgress: Equatable, Sendable {
     public var completedUnitCount: Int
     public var totalUnitCount: Int?
@@ -71,6 +76,7 @@ public struct LibraryImportService: Sendable {
     public func addFolderInPlace(
         _ root: URL,
         repository: CatalogRepository,
+        previewPolicy: LibraryImportPreviewPolicy,
         progress: LibraryImportProgressHandler? = nil
     ) throws -> LibraryImportResult {
         try Task.checkCancellation()
@@ -98,6 +104,10 @@ public struct LibraryImportService: Sendable {
             detail: "Cataloged \(assets.count) \(assets.count == 1 ? "photo" : "photos")",
             catalogedAssetIDs: assets.map(\.id)
         ))
+
+        guard previewPolicy == .generateImmediately else {
+            return LibraryImportResult(importedAssets: assets, previewFailures: [])
+        }
 
         progress?(LibraryImportProgress(
             completedUnitCount: 0,

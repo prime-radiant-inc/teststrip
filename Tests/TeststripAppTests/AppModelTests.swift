@@ -1285,6 +1285,35 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBackgroundImportWithWorkerDefersPreviewGenerationToWorker() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-background-import-worker-previews")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        let result = try await model.importFolderInBackground(photoFolder)
+
+        let assetID = result.importedAssets[0].id
+        XCTAssertEqual(result.importedAssets.count, 1)
+        XCTAssertEqual(model.assets.map(\.originalURL), [image])
+        XCTAssertNil(model.gridPreviewURL(for: assetID))
+        XCTAssertEqual(try catalog.repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: assetID, level: .grid)
+        ])
+        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: assetID, level: .grid)])
+        XCTAssertEqual(model.visibleWorkActivity?.kind, .previewGeneration)
+    }
+
+    @MainActor
     func testBackgroundImportRecordsCompletedActivity() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-activity")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)

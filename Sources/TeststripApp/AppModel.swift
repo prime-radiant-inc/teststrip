@@ -362,7 +362,15 @@ public final class AppModel {
         self.selectedAssetSetID = selectedAssetSetID
         self.catalog = catalog
         self.workerSupervisor = workerSupervisor
-        self.importTaskFactory = importTaskFactory ?? Self.defaultImportTask
+        let importPreviewPolicy: LibraryImportPreviewPolicy = workerSupervisor == nil ? .generateImmediately : .deferGeneration
+        self.importTaskFactory = importTaskFactory ?? { paths, folderURL, progress in
+            Self.defaultImportTask(
+                paths: paths,
+                folderURL: folderURL,
+                previewPolicy: importPreviewPolicy,
+                progress: progress
+            )
+        }
         self.metadataUndoStack = []
         self.metadataRedoStack = []
         self.assetPageOffset = 0
@@ -1135,7 +1143,11 @@ public final class AppModel {
         statusMessage = "Importing \(folderURL.lastPathComponent)..."
         startImportActivity(folderURL: folderURL)
         do {
-            let result = try catalog.importService.addFolderInPlace(folderURL, repository: catalog.repository)
+            let result = try catalog.importService.addFolderInPlace(
+                folderURL,
+                repository: catalog.repository,
+                previewPolicy: .generateImmediately
+            )
             try loadCatalogPage(preferredSelection: result.importedAssets.first?.id)
             updateImportStatus(with: result)
             recordCompletedImportActivity(folderURL: folderURL, result: result)
@@ -1171,6 +1183,7 @@ public final class AppModel {
                 preferredSelection: output.result.importedAssets.first?.id
             )
             totalAssetCount = output.totalAssetCount
+            try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
             recordCompletedImportActivity(folderURL: folderURL, result: output.result)
             return output.result
@@ -1217,6 +1230,7 @@ public final class AppModel {
                     preferredSelection: output.result.importedAssets.first?.id
                 )
                 self.totalAssetCount = output.totalAssetCount
+                try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
                 self.recordCompletedImportActivity(folderURL: folderURL, result: output.result)
                 self.activeImportTask = nil
@@ -1345,6 +1359,7 @@ public final class AppModel {
     private static func defaultImportTask(
         paths: AppCatalogPaths,
         folderURL: URL,
+        previewPolicy: LibraryImportPreviewPolicy,
         progress: @escaping LibraryImportProgressHandler
     ) -> Task<AppImportOutput, Error> {
         Task.detached(priority: .userInitiated) {
@@ -1353,6 +1368,7 @@ public final class AppModel {
             let result = try backgroundCatalog.importService.addFolderInPlace(
                 folderURL,
                 repository: backgroundCatalog.repository,
+                previewPolicy: previewPolicy,
                 progress: progress
             )
             try Task.checkCancellation()

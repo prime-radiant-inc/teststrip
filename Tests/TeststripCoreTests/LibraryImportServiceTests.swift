@@ -11,7 +11,7 @@ final class LibraryImportServiceTests: XCTestCase {
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let service = makeService(previewCache: previewCache)
 
-        let result = try service.addFolderInPlace(root, repository: repository)
+        let result = try service.addFolderInPlace(root, repository: repository, previewPolicy: .generateImmediately)
 
         XCTAssertEqual(result.importedAssets.count, 1)
         XCTAssertEqual(result.previewFailures, [])
@@ -24,6 +24,30 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertLessThanOrEqual(max(dimensions.width, dimensions.height), PreviewLevel.grid.maxPixelDimension!)
     }
 
+    func testAddFolderCanDeferPreviewGeneration() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-deferred-preview")
+        let image = root.appendingPathComponent("one.jpg")
+        try TestDirectories.writeTestJPEG(to: image, width: 1200, height: 800)
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+
+        let result = try service.addFolderInPlace(
+            root,
+            repository: repository,
+            previewPolicy: .deferGeneration
+        )
+
+        XCTAssertEqual(result.importedAssets.count, 1)
+        XCTAssertEqual(result.previewFailures, [])
+        let asset = result.importedAssets[0]
+        let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: previewURL.path))
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: asset.id, level: .grid)
+        ])
+    }
+
     func testAddFolderKeepsCatalogedAssetWhenPreviewRenderFails() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-preview-failure")
         let invalidImage = root.appendingPathComponent("broken.jpg")
@@ -32,7 +56,7 @@ final class LibraryImportServiceTests: XCTestCase {
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let service = makeService(previewCache: previewCache)
 
-        let result = try service.addFolderInPlace(root, repository: repository)
+        let result = try service.addFolderInPlace(root, repository: repository, previewPolicy: .generateImmediately)
 
         XCTAssertEqual(result.importedAssets.count, 1)
         XCTAssertEqual(result.previewFailures.count, 1)
@@ -53,7 +77,7 @@ final class LibraryImportServiceTests: XCTestCase {
         let service = makeService(previewCache: previewCache)
         let recorder = ImportProgressRecorder()
 
-        let result = try service.addFolderInPlace(root, repository: repository) { progress in
+        let result = try service.addFolderInPlace(root, repository: repository, previewPolicy: .generateImmediately) { progress in
             recorder.append(progress)
         }
 
@@ -81,7 +105,7 @@ final class LibraryImportServiceTests: XCTestCase {
         let repository = try makeRepository(in: root)
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let service = makeService(previewCache: previewCache)
-        let firstResult = try service.addFolderInPlace(root, repository: repository)
+        let firstResult = try service.addFolderInPlace(root, repository: repository, previewPolicy: .generateImmediately)
         let assetID = firstResult.importedAssets[0].id
         try repository.updateMetadata(assetID: assetID) { metadata in
             metadata.rating = 4
@@ -91,7 +115,7 @@ final class LibraryImportServiceTests: XCTestCase {
         try FileManager.default.removeItem(at: previewURL)
         try TestDirectories.writeTestJPEG(to: image, width: 640, height: 480)
 
-        let secondResult = try service.addFolderInPlace(root, repository: repository)
+        let secondResult = try service.addFolderInPlace(root, repository: repository, previewPolicy: .generateImmediately)
 
         XCTAssertEqual(secondResult.importedAssets.map(\.id), [assetID])
         let fetched = try repository.asset(id: assetID)
@@ -141,7 +165,7 @@ final class LibraryImportServiceTests: XCTestCase {
             let database = try CatalogDatabase.open(at: catalogURL)
             try database.migrate()
             let repository = CatalogRepository(database: database)
-            return try service.addFolderInPlace(root, repository: repository)
+            return try service.addFolderInPlace(root, repository: repository, previewPolicy: .generateImmediately)
         }
 
         task.cancel()
