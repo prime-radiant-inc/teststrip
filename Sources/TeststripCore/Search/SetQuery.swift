@@ -1,3 +1,5 @@
+import Foundation
+
 public struct SetQuery: Codable, Equatable, Sendable {
     public enum Predicate: Codable, Equatable, Sendable {
         case text(String)
@@ -7,6 +9,11 @@ public struct SetQuery: Codable, Equatable, Sendable {
         case keyword(String)
         case availability(SourceAvailability)
         case folderPrefix(String)
+        case camera(String)
+        case lens(String)
+        case isoAtLeast(Int)
+        case capturedAtOrAfter(Date)
+        case capturedBefore(Date)
         case importBatch(String)
     }
 

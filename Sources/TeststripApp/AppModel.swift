@@ -201,6 +201,11 @@ public final class AppModel {
     public var librarySearchText: String
     public var minimumRatingFilter: Int?
     public var flagFilter: PickFlag?
+    public var cameraFilterText: String
+    public var lensFilterText: String
+    public var minimumISOFilter: Int?
+    public var captureDateStartFilter: Date?
+    public var captureDateEndFilter: Date?
     public var savedAssetSets: [AssetSet]
     public var selectedAssetSetID: AssetSetID?
 
@@ -312,6 +317,17 @@ public final class AppModel {
         if let flagFilter {
             parts.append(flagFilter.rawValue.capitalized)
         }
+        let trimmedCamera = cameraFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedCamera.isEmpty {
+            parts.append(trimmedCamera)
+        }
+        let trimmedLens = lensFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedLens.isEmpty {
+            parts.append(trimmedLens)
+        }
+        if let minimumISOFilter {
+            parts.append("ISO \(minimumISOFilter)+")
+        }
         return parts.isEmpty ? "Saved Search" : parts.joined(separator: " ")
     }
 
@@ -363,6 +379,11 @@ public final class AppModel {
         self.librarySearchText = ""
         self.minimumRatingFilter = nil
         self.flagFilter = nil
+        self.cameraFilterText = ""
+        self.lensFilterText = ""
+        self.minimumISOFilter = nil
+        self.captureDateStartFilter = nil
+        self.captureDateEndFilter = nil
         self.savedAssetSets = savedAssetSets
         self.selectedAssetSetID = selectedAssetSetID
         self.catalog = catalog
@@ -479,9 +500,7 @@ public final class AppModel {
             rebuildSidebarSections()
         }
         selectedAssetSetID = id
-        librarySearchText = ""
-        minimumRatingFilter = nil
-        flagFilter = nil
+        clearLibraryQueryFilters()
         selectedView = .grid
         try reload()
     }
@@ -543,9 +562,7 @@ public final class AppModel {
         try catalog.repository.upsert(assetSet)
         savedAssetSets = try catalog.repository.assetSets()
         selectedAssetSetID = assetSet.id
-        librarySearchText = ""
-        minimumRatingFilter = nil
-        flagFilter = nil
+        clearLibraryQueryFilters()
         rebuildSidebarSections()
         try reload()
         statusMessage = "Saved \(assetSet.name)"
@@ -1005,9 +1022,7 @@ public final class AppModel {
 
     public func clearLibraryFilters() throws {
         selectedAssetSetID = nil
-        librarySearchText = ""
-        minimumRatingFilter = nil
-        flagFilter = nil
+        clearLibraryQueryFilters()
         try reload()
     }
 
@@ -1096,7 +1111,35 @@ public final class AppModel {
         if let flagFilter {
             predicates.append(.flag(flagFilter))
         }
+        let trimmedCamera = cameraFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedCamera.isEmpty {
+            predicates.append(.camera(trimmedCamera))
+        }
+        let trimmedLens = lensFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedLens.isEmpty {
+            predicates.append(.lens(trimmedLens))
+        }
+        if let minimumISOFilter, minimumISOFilter > 0 {
+            predicates.append(.isoAtLeast(minimumISOFilter))
+        }
+        if let captureDateStartFilter {
+            predicates.append(.capturedAtOrAfter(captureDateStartFilter))
+        }
+        if let captureDateEndFilter {
+            predicates.append(.capturedBefore(captureDateEndFilter))
+        }
         return predicates.isEmpty ? nil : SetQuery(predicates: predicates)
+    }
+
+    private func clearLibraryQueryFilters() {
+        librarySearchText = ""
+        minimumRatingFilter = nil
+        flagFilter = nil
+        cameraFilterText = ""
+        lensFilterText = ""
+        minimumISOFilter = nil
+        captureDateStartFilter = nil
+        captureDateEndFilter = nil
     }
 
     private func currentLibraryAssetCount(repository: CatalogRepository) throws -> Int {

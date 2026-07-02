@@ -252,6 +252,62 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.allAssets(matching: colorKeywordQuery, limit: 10).map(\.id), [landscape.id])
     }
 
+    func testSearchesAssetsWithTechnicalMetadataPredicates() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-search")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let end = Date(timeIntervalSince1970: 1_800_086_400)
+        let canon = Asset.testAsset(
+            id: AssetID(rawValue: "canon"),
+            path: "/Volumes/NAS/Job/canon.cr3",
+            rating: 4,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 6000,
+                pixelHeight: 4000,
+                cameraMake: "Canon",
+                cameraModel: "EOS R5",
+                lensModel: "RF 50mm F1.2L USM",
+                isoSpeed: 1600,
+                capturedAt: Date(timeIntervalSince1970: 1_800_010_000),
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        )
+        let fuji = Asset.testAsset(
+            id: AssetID(rawValue: "fuji"),
+            path: "/Volumes/NAS/Job/fuji.raf",
+            rating: 5,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 8256,
+                pixelHeight: 5504,
+                cameraMake: "Fujifilm",
+                cameraModel: "GFX 100S",
+                lensModel: "GF80mmF1.7 R WR",
+                isoSpeed: 400,
+                capturedAt: Date(timeIntervalSince1970: 1_800_020_000),
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        )
+        let missingTechnicalMetadata = Asset.testAsset(
+            id: AssetID(rawValue: "missing"),
+            path: "/Volumes/NAS/Job/missing.jpg",
+            rating: 5
+        )
+        try repository.upsert([canon, fuji, missingTechnicalMetadata])
+
+        let query = SetQuery(predicates: [
+            .camera("canon"),
+            .lens("RF 50"),
+            .isoAtLeast(800),
+            .capturedAtOrAfter(start),
+            .capturedBefore(end)
+        ])
+
+        XCTAssertEqual(try repository.allAssets(matching: query, limit: 10).map(\.id), [canon.id])
+        XCTAssertEqual(try repository.assetCount(matching: query), 1)
+    }
+
     func testPersistsDynamicAssetSet() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-sets")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

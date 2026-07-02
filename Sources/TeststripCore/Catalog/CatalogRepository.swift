@@ -617,6 +617,38 @@ public final class CatalogRepository {
                 guard !trimmed.isEmpty else { continue }
                 clauses.append("original_path LIKE ? ESCAPE '\\'")
                 bindings.append(Self.likePattern(prefix: trimmed))
+            case .camera(let camera):
+                let trimmed = camera.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                clauses.append(
+                    """
+                    (json_valid(technical_metadata_json) AND LOWER(COALESCE(json_extract(technical_metadata_json, '$.cameraMake'), '') || ' ' || COALESCE(json_extract(technical_metadata_json, '$.cameraModel'), '')) LIKE LOWER(?) ESCAPE '\\')
+                    """
+                )
+                bindings.append(Self.likePattern(containing: trimmed))
+            case .lens(let lens):
+                let trimmed = lens.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                clauses.append(
+                    "(json_valid(technical_metadata_json) AND LOWER(COALESCE(json_extract(technical_metadata_json, '$.lensModel'), '')) LIKE LOWER(?) ESCAPE '\\')"
+                )
+                bindings.append(Self.likePattern(containing: trimmed))
+            case .isoAtLeast(let iso):
+                guard iso > 0 else { continue }
+                clauses.append(
+                    "(json_valid(technical_metadata_json) AND CAST(json_extract(technical_metadata_json, '$.isoSpeed') AS INTEGER) >= ?)"
+                )
+                bindings.append("\(iso)")
+            case .capturedAtOrAfter(let date):
+                clauses.append(
+                    "(json_valid(technical_metadata_json) AND CAST(json_extract(technical_metadata_json, '$.capturedAt') AS REAL) >= ?)"
+                )
+                bindings.append("\(date.timeIntervalSince1970)")
+            case .capturedBefore(let date):
+                clauses.append(
+                    "(json_valid(technical_metadata_json) AND CAST(json_extract(technical_metadata_json, '$.capturedAt') AS REAL) < ?)"
+                )
+                bindings.append("\(date.timeIntervalSince1970)")
             case .importBatch:
                 throw TeststripError.invalidState("import batch queries are not catalog-backed yet")
             }

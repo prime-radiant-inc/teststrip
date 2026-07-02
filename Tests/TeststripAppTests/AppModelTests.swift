@@ -702,6 +702,75 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.libraryCountText, "1 photograph")
     }
 
+    func testApplyingLibraryFiltersUsesTechnicalMetadata() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-technical-filters")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let end = Date(timeIntervalSince1970: 1_800_086_400)
+        let canon = makeAsset(
+            id: "canon",
+            path: "/Photos/Job/canon.cr3",
+            rating: 4,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 6000,
+                pixelHeight: 4000,
+                cameraMake: "Canon",
+                cameraModel: "EOS R5",
+                lensModel: "RF 50mm F1.2L USM",
+                isoSpeed: 1600,
+                capturedAt: Date(timeIntervalSince1970: 1_800_010_000),
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        )
+        let fuji = makeAsset(
+            id: "fuji",
+            path: "/Photos/Job/fuji.raf",
+            rating: 5,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 8256,
+                pixelHeight: 5504,
+                cameraMake: "Fujifilm",
+                cameraModel: "GFX 100S",
+                lensModel: "GF80mmF1.7 R WR",
+                isoSpeed: 400,
+                capturedAt: Date(timeIntervalSince1970: 1_800_020_000),
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        )
+        try repository.upsert([canon, fuji])
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        model.cameraFilterText = "canon"
+        model.lensFilterText = "RF 50"
+        model.minimumISOFilter = 800
+        model.captureDateStartFilter = start
+        model.captureDateEndFilter = end
+
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.assets.map(\.id), [canon.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+        XCTAssertTrue(model.canSaveCurrentLibraryQuery)
+        let savedSet = try model.saveCurrentLibraryQuery(named: "Canon High ISO")
+        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [
+            .camera("canon"),
+            .lens("RF 50"),
+            .isoAtLeast(800),
+            .capturedAtOrAfter(start),
+            .capturedBefore(end)
+        ])))
+    }
+
     func testLoadExposesSavedAndStarredAssetSetsInSidebar() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-saved-sets")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -1577,7 +1646,8 @@ final class AppModelTests: XCTestCase {
         id: String,
         path: String,
         rating: Int,
-        flag: PickFlag? = nil
+        flag: PickFlag? = nil,
+        technicalMetadata: AssetTechnicalMetadata? = nil
     ) -> Asset {
         Asset(
             id: AssetID(rawValue: id),
@@ -1585,7 +1655,8 @@ final class AppModelTests: XCTestCase {
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: Int64(rating + 1), modificationDate: Date(timeIntervalSince1970: TimeInterval(rating + 1))),
             availability: .online,
-            metadata: AssetMetadata(rating: rating, flag: flag)
+            metadata: AssetMetadata(rating: rating, flag: flag),
+            technicalMetadata: technicalMetadata
         )
     }
 
