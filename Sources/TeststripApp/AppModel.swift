@@ -114,11 +114,13 @@ public struct AppImportOutput: Sendable {
     public var result: LibraryImportResult
     public var assets: [Asset]
     public var totalAssetCount: Int
+    public var assetPageOffset: Int
 
-    public init(result: LibraryImportResult, assets: [Asset], totalAssetCount: Int) {
+    public init(result: LibraryImportResult, assets: [Asset], totalAssetCount: Int, assetPageOffset: Int = 0) {
         self.result = result
         self.assets = assets
         self.totalAssetCount = totalAssetCount
+        self.assetPageOffset = assetPageOffset
     }
 }
 
@@ -162,6 +164,7 @@ public final class AppModel {
 
     private var metadataUndoStack: [MetadataChange]
     private var metadataRedoStack: [MetadataChange]
+    private var assetPageOffset: Int
 
     private static let assetPageSize = 500
 
@@ -170,12 +173,21 @@ public final class AppModel {
     }
 
     public var hasMoreAssets: Bool {
-        assets.count < totalAssetCount
+        assetPageOffset + assets.count < totalAssetCount
+    }
+
+    public var hasPreviousAssets: Bool {
+        assetPageOffset > 0
     }
 
     public var libraryCountText: String {
-        if totalAssetCount > assets.count {
+        if assetPageOffset == 0, totalAssetCount > assets.count {
             return "Showing \(assets.count) of \(totalAssetCount) photographs"
+        }
+        if assetPageOffset > 0 {
+            let start = assetPageOffset + 1
+            let end = assetPageOffset + assets.count
+            return "Showing \(start)-\(end) of \(totalAssetCount) photographs"
         }
         return "\(assets.count) \(assets.count == 1 ? "photograph" : "photographs")"
     }
@@ -241,6 +253,7 @@ public final class AppModel {
         self.importTaskFactory = importTaskFactory ?? Self.defaultImportTask
         self.metadataUndoStack = []
         self.metadataRedoStack = []
+        self.assetPageOffset = 0
         self.workerSupervisor?.onQueueChanged = { [weak self] queue in
             self?.backgroundWorkQueue = queue
         }
@@ -575,7 +588,7 @@ public final class AppModel {
         }
         let loadedAssets = try catalog.repository.allAssets(limit: Self.assetPageSize)
         let count = try catalog.repository.assetCount()
-        replaceAssets(loadedAssets)
+        replaceAssets(loadedAssets, pageOffset: 0)
         totalAssetCount = count
     }
 
@@ -584,8 +597,29 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         guard hasMoreAssets else { return }
-        let loadedAssets = try catalog.repository.allAssets(limit: Self.assetPageSize, offset: assets.count)
+        let loadedAssets = try catalog.repository.allAssets(
+            limit: Self.assetPageSize,
+            offset: assetPageOffset + assets.count
+        )
         assets.append(contentsOf: loadedAssets)
+        totalAssetCount = try catalog.repository.assetCount()
+        if selectedAssetID == nil {
+            selectedAssetID = assets.first?.id
+        }
+    }
+
+    public func loadPreviousAssets() throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard hasPreviousAssets else { return }
+        let previousOffset = max(0, assetPageOffset - Self.assetPageSize)
+        let previousAssets = try catalog.repository.allAssets(
+            limit: assetPageOffset - previousOffset,
+            offset: previousOffset
+        )
+        assets.insert(contentsOf: previousAssets, at: 0)
+        assetPageOffset = previousOffset
         totalAssetCount = try catalog.repository.assetCount()
         if selectedAssetID == nil {
             selectedAssetID = assets.first?.id
@@ -609,14 +643,30 @@ public final class AppModel {
         assets[index] = updatedAsset
     }
 
-    private func replaceAssets(_ loadedAssets: [Asset]) {
+    private func replaceAssets(
+        _ loadedAssets: [Asset],
+        pageOffset: Int = 0,
+        preferredSelection: AssetID? = nil
+    ) {
         let previousSelection = selectedAssetID
         assets = loadedAssets
-        if let previousSelection, assets.contains(where: { $0.id == previousSelection }) {
+        assetPageOffset = pageOffset
+        if let preferredSelection, assets.contains(where: { $0.id == preferredSelection }) {
+            selectedAssetID = preferredSelection
+        } else if let previousSelection, assets.contains(where: { $0.id == previousSelection }) {
             selectedAssetID = previousSelection
         } else {
             selectedAssetID = assets.first?.id
         }
+    }
+
+    private func loadCatalogPage(preferredSelection: AssetID?) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let page = try Self.catalogPage(containing: preferredSelection, repository: catalog.repository)
+        replaceAssets(page.assets, pageOffset: page.offset, preferredSelection: preferredSelection)
+        totalAssetCount = page.totalAssetCount
     }
 
     @discardableResult
@@ -629,7 +679,7 @@ public final class AppModel {
         startImportActivity(folderURL: folderURL)
         do {
             let result = try catalog.importService.addFolderInPlace(folderURL, repository: catalog.repository)
-            try reload()
+            try loadCatalogPage(preferredSelection: result.importedAssets.first?.id)
             updateImportStatus(with: result)
             completeImportActivity(folderURL: folderURL, result: result)
             return result
@@ -658,7 +708,11 @@ public final class AppModel {
                 folderURL,
                 importProgressHandler(activityID: activityID)
             ).value
-            replaceAssets(output.assets)
+            replaceAssets(
+                output.assets,
+                pageOffset: output.assetPageOffset,
+                preferredSelection: output.result.importedAssets.first?.id
+            )
             totalAssetCount = output.totalAssetCount
             updateImportStatus(with: output.result)
             completeImportActivity(folderURL: folderURL, result: output.result)
@@ -700,7 +754,11 @@ public final class AppModel {
             do {
                 let output = try await task.value
                 guard let self, self.activeWork?.id == activityID else { return }
-                self.replaceAssets(output.assets)
+                self.replaceAssets(
+                    output.assets,
+                    pageOffset: output.assetPageOffset,
+                    preferredSelection: output.result.importedAssets.first?.id
+                )
                 self.totalAssetCount = output.totalAssetCount
                 self.updateImportStatus(with: output.result)
                 self.completeImportActivity(folderURL: folderURL, result: output.result)
@@ -822,10 +880,33 @@ public final class AppModel {
                 progress: progress
             )
             try Task.checkCancellation()
-            let assets = try backgroundCatalog.repository.allAssets(limit: Self.assetPageSize)
-            let count = try backgroundCatalog.repository.assetCount()
-            return AppImportOutput(result: result, assets: assets, totalAssetCount: count)
+            let page = try Self.catalogPage(
+                containing: result.importedAssets.first?.id,
+                repository: backgroundCatalog.repository
+            )
+            return AppImportOutput(
+                result: result,
+                assets: page.assets,
+                totalAssetCount: page.totalAssetCount,
+                assetPageOffset: page.offset
+            )
         }
+    }
+
+    private static func catalogPage(
+        containing preferredAssetID: AssetID?,
+        repository: CatalogRepository
+    ) throws -> (assets: [Asset], offset: Int, totalAssetCount: Int) {
+        let offset: Int
+        if let preferredAssetID {
+            let assetOffset = try repository.assetOffset(id: preferredAssetID)
+            offset = (assetOffset / assetPageSize) * assetPageSize
+        } else {
+            offset = 0
+        }
+        let assets = try repository.allAssets(limit: assetPageSize, offset: offset)
+        let totalAssetCount = try repository.assetCount()
+        return (assets, offset, totalAssetCount)
     }
 
     public func gridPreviewURL(for assetID: AssetID) -> URL? {

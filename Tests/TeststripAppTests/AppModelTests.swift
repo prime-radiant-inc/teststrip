@@ -503,6 +503,46 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
     }
 
+    @MainActor
+    func testBackgroundImportShowsImportedAssetWhenFirstCatalogPageIsFull() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-page")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("new.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        for index in 0..<500 {
+            try catalog.repository.upsert(Asset(
+                id: AssetID(rawValue: "existing-\(index)"),
+                originalURL: URL(fileURLWithPath: "/Photos/existing-\(index).jpg"),
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: Int64(index + 1), modificationDate: Date(timeIntervalSince1970: TimeInterval(index + 1))),
+                availability: .online,
+                metadata: AssetMetadata()
+            ))
+        }
+        let model = try AppModel.load(catalog: catalog)
+        XCTAssertFalse(model.assets.contains { $0.originalURL == image })
+
+        model.beginImportFolder(photoFolder)
+        try await waitForActivityStatus(.completed, in: model)
+
+        let importedAsset = try XCTUnwrap(model.selectedAsset)
+        XCTAssertTrue(model.assets.contains { $0.id == importedAsset.id })
+        XCTAssertEqual(model.selectedAssetID, importedAsset.id)
+        XCTAssertEqual(importedAsset.originalURL, image)
+        XCTAssertEqual(model.totalAssetCount, 501)
+        XCTAssertEqual(model.libraryCountText, "Showing 501-501 of 501 photographs")
+        XCTAssertTrue(model.hasPreviousAssets)
+
+        try model.loadPreviousAssets()
+
+        XCTAssertEqual(model.assets.first?.id, AssetID(rawValue: "existing-0"))
+        XCTAssertEqual(model.assets.last?.id, importedAsset.id)
+        XCTAssertFalse(model.hasPreviousAssets)
+    }
+
     func testLoupePreviewURLPrefersLargePreviewOverGridPreview() throws {
         let (model, previewCache, asset) = try makeModelWithPreviewCache(named: "loupe-large")
         let gridPreview = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))

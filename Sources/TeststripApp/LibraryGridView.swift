@@ -132,6 +132,17 @@ struct LibraryGridView: View {
                     .lineLimit(1)
             }
             Spacer()
+            if model.hasPreviousAssets {
+                Button {
+                    loadPreviousAssets()
+                } label: {
+                    Label("Load Previous", systemImage: "arrow.up.circle")
+                }
+                .font(.caption)
+                .buttonStyle(.borderless)
+                .disabled(isImporting)
+                .help("Load previous photo page")
+            }
             if model.hasMoreAssets {
                 Button {
                     loadMoreAssets()
@@ -165,6 +176,14 @@ struct LibraryGridView: View {
     private func loadMoreAssets() {
         do {
             try model.loadMoreAssets()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadPreviousAssets() {
+        do {
+            try model.loadPreviousAssets()
         } catch {
             model.errorMessage = error.localizedDescription
         }
