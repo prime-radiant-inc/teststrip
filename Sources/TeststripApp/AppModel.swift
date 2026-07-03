@@ -1509,6 +1509,10 @@ public final class AppModel {
         guard let workerSupervisor else {
             throw TeststripError.invalidState("worker supervisor is not configured")
         }
+        if let catalog {
+            try catalog.repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: assetID, level: level))
+            try refreshPreviewGenerationQueueStates()
+        }
         let itemID = WorkSessionID(rawValue: "preview-\(assetID.rawValue)-\(level.rawValue)")
         if backgroundWorkQueue.item(id: itemID) != nil {
             if placement == .front, try workerSupervisor.promoteQueuedItem(id: itemID) {

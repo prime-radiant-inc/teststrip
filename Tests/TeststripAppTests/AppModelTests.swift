@@ -2176,6 +2176,27 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.visibleWorkActivity?.status, .running)
     }
 
+    func testRequestMissingPreviewRecordsDurablePendingPreviewBeforeDispatch() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let asset = makeAsset(id: "durable-preview", size: 1)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "request-preview-durable-pending",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+
+        try model.requestPreview(assetID: asset.id, level: .large)
+
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: asset.id, level: .large)
+        ])
+        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: asset.id, level: .large)])
+    }
+
     func testRequestCachedPreviewDoesNotDispatchWorkerPreviewCommand() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

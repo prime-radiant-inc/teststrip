@@ -6,9 +6,9 @@ Grid display prefers cached grid previews and falls back to micro previews while
 
 ## Durable Pending Work
 
-Imports write catalog asset rows first, then record pending micro and grid preview work in `preview_generation_queue` before rendering. A successful render deletes the matching queue row. A failed, cancelled, or interrupted render leaves the row pending so recovery can retry later.
+Imports write catalog asset rows first, then record pending micro and grid preview work in `preview_generation_queue` before rendering. Demand-driven grid, medium, and large preview requests also record pending work before dispatching to the worker. A successful render deletes the matching queue row. A failed, cancelled, or interrupted render leaves the row pending so recovery can retry later.
 
-The queue is keyed by `(asset_id, level)`, which keeps retries idempotent and prevents duplicate pending rows for the same cached preview.
+The queue is keyed by `(asset_id, level)`, which keeps retries idempotent and prevents duplicate pending rows for the same cached preview. Queue rows track attempt count, last error text, and last attempted time so the UI can expose retry state without dropping the pending work.
 
 ## Import And Recovery
 
@@ -20,4 +20,4 @@ The app does not synchronously render pending previews on launch. When `AppModel
 
 ## Current Limits
 
-The queue does not yet track attempt count, last error, source volume identity, or retry policy. Corrupt images may remain pending until a later failure policy is added. This is intentional for the first durable recovery slice; it preserves retryability for temporarily offline sources without adding scheduler policy too early.
+The queue does not yet track source volume identity or retry policy. Corrupt images may remain pending until a later failure policy is added. This is intentional for the first durable recovery slice; it preserves retryability for temporarily offline sources without adding scheduler policy too early.
