@@ -666,6 +666,31 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, secondID)
     }
 
+    func testCullingShortcutLoadsNextPageWhenAdvancingPastLoadedAssets() throws {
+        let model = try makeModelWithSeededCatalog(named: "culling-next-page", count: 501)
+        model.select(AssetID(rawValue: "asset-499"))
+
+        try model.applyCullingShortcut(.nextPhoto)
+
+        XCTAssertEqual(model.selectedAssetID, AssetID(rawValue: "asset-500"))
+        XCTAssertEqual(model.assets.last?.id, AssetID(rawValue: "asset-500"))
+        XCTAssertFalse(model.hasMoreAssets)
+    }
+
+    func testCullingShortcutLoadsPreviousPageWhenMovingBeforeLoadedAssets() throws {
+        let model = try makeModelWithSeededCatalog(named: "culling-previous-page", count: 1_500)
+        try model.loadMoreAssets()
+        try model.loadMoreAssets()
+        XCTAssertEqual(model.assets.first?.id, AssetID(rawValue: "asset-500"))
+        model.select(AssetID(rawValue: "asset-500"))
+
+        try model.applyCullingShortcut(.previousPhoto)
+
+        XCTAssertEqual(model.selectedAssetID, AssetID(rawValue: "asset-499"))
+        XCTAssertEqual(model.assets.first?.id, AssetID(rawValue: "asset-0"))
+        XCTAssertTrue(model.hasMoreAssets)
+    }
+
     func testCullingShortcutInterpretsKeyboardKeys() {
         XCTAssertEqual(CullingShortcut(key: .rightArrow), .nextPhoto)
         XCTAssertEqual(CullingShortcut(key: .leftArrow), .previousPhoto)
@@ -2468,6 +2493,25 @@ final class AppModelTests: XCTestCase {
             }
             try repository.upsert(assets)
         }
+    }
+
+    private func makeModelWithSeededCatalog(named name: String, count: Int) throws -> AppModel {
+        let directory = try makeTemporaryDirectory(named: name)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try seedCatalogAssets(count: count, repository: repository)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        return try AppModel.load(catalog: catalog)
     }
 
     private func makeAsset(id: String, size: Int64) -> Asset {

@@ -713,9 +713,9 @@ public final class AppModel {
     public func applyCullingShortcut(_ shortcut: CullingShortcut) throws {
         switch shortcut {
         case .previousPhoto:
-            selectPreviousAsset()
+            try selectPreviousAssetForCulling()
         case .nextPhoto:
-            selectNextAsset()
+            try selectNextAssetForCulling()
         case .rating(let rating):
             try applyCullingCommandAndAdvance(.rating(rating))
         case .pick:
@@ -731,8 +731,52 @@ public final class AppModel {
         let originalSelection = selectedAssetID
         try applyCullingCommand(command)
         if selectedAssetID == originalSelection {
-            selectNextAsset()
+            try selectNextAssetForCulling()
         }
+    }
+
+    private func selectNextAssetForCulling() throws {
+        guard !assets.isEmpty else {
+            selectAssetID(nil)
+            return
+        }
+        guard let currentSelection = selectedAssetID,
+              let index = assets.firstIndex(where: { $0.id == currentSelection }) else {
+            selectAssetID(assets.first?.id)
+            return
+        }
+        if index == assets.count - 1, hasMoreAssets {
+            try loadMoreAssets()
+            guard let reloadedIndex = assets.firstIndex(where: { $0.id == currentSelection }) else {
+                selectAssetID(assets.first?.id)
+                return
+            }
+            selectAssetID(assets[min(reloadedIndex + 1, assets.count - 1)].id)
+            return
+        }
+        selectAssetID(assets[min(index + 1, assets.count - 1)].id)
+    }
+
+    private func selectPreviousAssetForCulling() throws {
+        guard !assets.isEmpty else {
+            selectAssetID(nil)
+            return
+        }
+        guard let currentSelection = selectedAssetID,
+              let index = assets.firstIndex(where: { $0.id == currentSelection }) else {
+            selectAssetID(assets.first?.id)
+            return
+        }
+        if index == 0, hasPreviousAssets {
+            try loadPreviousAssets()
+            guard let reloadedIndex = assets.firstIndex(where: { $0.id == currentSelection }) else {
+                selectAssetID(assets.last?.id)
+                return
+            }
+            selectAssetID(assets[max(reloadedIndex - 1, 0)].id)
+            return
+        }
+        selectAssetID(assets[max(index - 1, 0)].id)
     }
 
     public func setRatingForSelectedAsset(_ rating: Int) throws {
