@@ -588,7 +588,7 @@ public final class AppModel {
         self.pendingMetadataSyncItems = pendingMetadataSyncItems
         self.metadataSyncConflictItems = metadataSyncConflictItems
         self.previewGenerationQueueStates = previewGenerationQueueStates
-        self.backgroundWorkQueue = backgroundWorkQueue
+        self.backgroundWorkQueue = workerSupervisor?.queue ?? backgroundWorkQueue
         self.librarySearchText = ""
         self.keywordFilterText = ""
         self.folderFilterText = ""

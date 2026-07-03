@@ -35,11 +35,13 @@ public enum BackgroundWorkQueuePlacement: Equatable, Sendable {
 
 public struct BackgroundWorkQueue: Equatable, Sendable {
     public private(set) var maxRunningCount: Int
+    public private(set) var kindRunningLimits: [WorkSessionKind: Int]
     public private(set) var items: [BackgroundWorkItem]
     public private(set) var isPaused: Bool
 
-    public init(maxRunningCount: Int, items: [BackgroundWorkItem] = []) {
+    public init(maxRunningCount: Int, kindRunningLimits: [WorkSessionKind: Int] = [:], items: [BackgroundWorkItem] = []) {
         self.maxRunningCount = max(1, maxRunningCount)
+        self.kindRunningLimits = kindRunningLimits.mapValues { max(1, $0) }
         self.items = items
         self.isPaused = false
     }
@@ -85,7 +87,7 @@ public struct BackgroundWorkQueue: Equatable, Sendable {
             items[index].status = .queued
         }
 
-        while runningItems.count < maxRunningCount, let index = items.firstIndex(where: { $0.status == .queued }) {
+        while runningItems.count < maxRunningCount, let index = items.firstIndex(where: { $0.status == .queued && canRun($0) }) {
             items[index].status = .running
         }
     }
@@ -142,5 +144,10 @@ public struct BackgroundWorkQueue: Equatable, Sendable {
         }
         items[index].status = .cancelled
         activateRunnableItems()
+    }
+
+    private func canRun(_ item: BackgroundWorkItem) -> Bool {
+        guard let kindLimit = kindRunningLimits[item.kind] else { return true }
+        return runningItems.filter { $0.kind == item.kind }.count < kindLimit
     }
 }

@@ -70,6 +70,23 @@ final class AppCatalogTests: XCTestCase {
         ])
     }
 
+    func testLoadModelWithWorkerExecutableUsesManagedWorkKindLimits() throws {
+        let root = try makeTemporaryDirectory(named: "app-catalog-worker-limits")
+        let paths = AppCatalog.defaultPaths(
+            applicationSupportDirectory: root.appendingPathComponent("app-support", isDirectory: true)
+        )
+        let workerScriptURL = root.appendingPathComponent("record-worker.sh")
+        let workerOutputURL = root.appendingPathComponent("worker-output.txt")
+        try writeRecordingWorkerScript(to: workerScriptURL, outputURL: workerOutputURL)
+
+        let model = try AppCatalog.loadModel(paths: paths, workerExecutableURL: workerScriptURL)
+
+        XCTAssertEqual(model.backgroundWorkQueue.kindRunningLimits[.sourceScan], 1)
+        XCTAssertEqual(model.backgroundWorkQueue.kindRunningLimits[.xmpSync], 1)
+        XCTAssertEqual(model.backgroundWorkQueue.kindRunningLimits[.recognition], 1)
+        XCTAssertNil(model.backgroundWorkQueue.kindRunningLimits[.previewGeneration])
+    }
+
     func testLoadModelWithWorkerExecutableDispatchesPreviewRequestThroughWorkerProcess() throws {
         let root = try makeTemporaryDirectory(named: "app-catalog-worker")
         let paths = AppCatalog.defaultPaths(

@@ -19,6 +19,40 @@ final class BackgroundWorkQueueTests: XCTestCase {
         XCTAssertEqual(queue.runningItems.map(\.id), [first.id, second.id])
     }
 
+    func testKindLimitSkipsBlockedQueuedItemAndStartsLaterRunnableKind() {
+        var queue = BackgroundWorkQueue(maxRunningCount: 3, kindRunningLimits: [.sourceScan: 1])
+        let firstSourceScan = BackgroundWorkItem.testItem(id: "source-1", kind: .sourceScan)
+        let secondSourceScan = BackgroundWorkItem.testItem(id: "source-2", kind: .sourceScan)
+        let preview = BackgroundWorkItem.testItem(id: "preview", kind: .previewGeneration)
+
+        queue.enqueue(firstSourceScan)
+        queue.enqueue(secondSourceScan)
+        queue.enqueue(preview)
+        queue.activateRunnableItems()
+
+        XCTAssertEqual(queue.item(id: firstSourceScan.id)?.status, .running)
+        XCTAssertEqual(queue.item(id: secondSourceScan.id)?.status, .queued)
+        XCTAssertEqual(queue.item(id: preview.id)?.status, .running)
+        XCTAssertEqual(queue.runningItems.map(\.id), [firstSourceScan.id, preview.id])
+    }
+
+    func testCompletingKindLimitedItemStartsNextQueuedItemOfSameKind() {
+        var queue = BackgroundWorkQueue(maxRunningCount: 3, kindRunningLimits: [.sourceScan: 1])
+        let firstSourceScan = BackgroundWorkItem.testItem(id: "source-1", kind: .sourceScan)
+        let secondSourceScan = BackgroundWorkItem.testItem(id: "source-2", kind: .sourceScan)
+        let preview = BackgroundWorkItem.testItem(id: "preview", kind: .previewGeneration)
+        queue.enqueue(firstSourceScan)
+        queue.enqueue(secondSourceScan)
+        queue.enqueue(preview)
+        queue.activateRunnableItems()
+
+        queue.markCompleted(id: firstSourceScan.id)
+
+        XCTAssertEqual(queue.item(id: firstSourceScan.id)?.status, .completed)
+        XCTAssertEqual(queue.item(id: secondSourceScan.id)?.status, .running)
+        XCTAssertEqual(queue.item(id: preview.id)?.status, .running)
+    }
+
     func testCompletingRunningItemStartsNextQueuedItem() {
         var queue = BackgroundWorkQueue(maxRunningCount: 1)
         let first = BackgroundWorkItem.testItem(id: "first")
@@ -146,10 +180,10 @@ final class BackgroundWorkQueueTests: XCTestCase {
 }
 
 private extension BackgroundWorkItem {
-    static func testItem(id: String) -> BackgroundWorkItem {
+    static func testItem(id: String, kind: WorkSessionKind = .previewGeneration) -> BackgroundWorkItem {
         BackgroundWorkItem(
             id: WorkSessionID(rawValue: id),
-            kind: .previewGeneration,
+            kind: kind,
             title: "Generate previews",
             detail: "Rendering cached previews",
             completedUnitCount: 0,

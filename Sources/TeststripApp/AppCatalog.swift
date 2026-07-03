@@ -18,6 +18,11 @@ public struct AppCatalog {
     public static let localHTTPModelEndpointEnvironmentKey = "TESTSTRIP_LOCAL_HTTP_MODEL_ENDPOINT"
     public static let localHTTPModelNameEnvironmentKey = "TESTSTRIP_LOCAL_HTTP_MODEL"
     public static let localHTTPModelTimeoutEnvironmentKey = "TESTSTRIP_LOCAL_HTTP_MODEL_TIMEOUT"
+    static let managedWorkerKindRunningLimits: [WorkSessionKind: Int] = [
+        .sourceScan: 1,
+        .xmpSync: 1,
+        .recognition: 1
+    ]
 
     public var paths: AppCatalogPaths
     public var repository: CatalogRepository
@@ -97,10 +102,13 @@ public struct AppCatalog {
             guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
                 return nil
             }
-            return WorkerSupervisor(transport: FoundationWorkerTransport(
-                executableURL: executableURL,
-                arguments: workerArguments(paths: paths, environment: environment)
-            ))
+            return WorkerSupervisor(
+                queue: BackgroundWorkQueue(maxRunningCount: 2, kindRunningLimits: managedWorkerKindRunningLimits),
+                transport: FoundationWorkerTransport(
+                    executableURL: executableURL,
+                    arguments: workerArguments(paths: paths, environment: environment)
+                )
+            )
         }
         return try AppModel.load(catalog: open(paths: paths), workerSupervisor: workerSupervisor)
     }

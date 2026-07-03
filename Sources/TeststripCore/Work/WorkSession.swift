@@ -8,7 +8,7 @@ public struct WorkSessionID: StableID {
     }
 }
 
-public enum WorkSessionKind: String, Codable, Sendable {
+public enum WorkSessionKind: String, Codable, Hashable, Sendable {
     case ingest
     case previewGeneration
     case recognition
