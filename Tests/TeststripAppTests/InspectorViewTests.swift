@@ -35,13 +35,49 @@ final class InspectorViewTests: XCTestCase {
         var draft = InspectorMetadataDraft(asset: first)
         draft.caption = "Unsaved typing"
 
-        draft.syncIfSelectionChanged(to: first)
+        draft.sync(to: first)
         XCTAssertEqual(draft.caption, "Unsaved typing")
 
-        draft.syncIfSelectionChanged(to: second)
+        draft.sync(to: second)
         XCTAssertEqual(draft.assetID, second.id)
         XCTAssertEqual(draft.keywords, "second")
         XCTAssertEqual(draft.caption, "Second caption")
+    }
+
+    func testMetadataDraftRefreshesSameSelectionWhenSourceMetadataChanges() {
+        let original = makeAsset(
+            id: "same",
+            metadata: AssetMetadata(keywords: ["first"], caption: "First caption")
+        )
+        let updated = makeAsset(
+            id: "same",
+            metadata: AssetMetadata(keywords: ["updated"], caption: "Updated caption")
+        )
+        var draft = InspectorMetadataDraft(asset: original)
+
+        draft.sync(to: updated)
+
+        XCTAssertEqual(draft.assetID, updated.id)
+        XCTAssertEqual(draft.keywords, "updated")
+        XCTAssertEqual(draft.caption, "Updated caption")
+    }
+
+    func testMetadataDraftTracksAppliedSameSelectionChangesForUndoRefresh() {
+        let original = makeAsset(
+            id: "same",
+            metadata: AssetMetadata(keywords: ["first"], caption: "First caption")
+        )
+        let applied = makeAsset(
+            id: "same",
+            metadata: AssetMetadata(keywords: ["first"], caption: "Applied caption")
+        )
+        var draft = InspectorMetadataDraft(asset: original)
+        draft.caption = "Applied caption"
+
+        draft.sync(to: applied)
+        draft.sync(to: original)
+
+        XCTAssertEqual(draft.caption, "First caption")
     }
 
     private func makeAsset(id: String, metadata: AssetMetadata) -> Asset {

@@ -28,10 +28,10 @@ struct InspectorView: View {
                 }
                 metadataControls(for: asset)
                     .onAppear {
-                        metadataDraft.syncIfSelectionChanged(to: asset)
+                        metadataDraft.sync(to: asset)
                     }
                     .onChange(of: asset.id) { _, _ in
-                        metadataDraft.syncIfSelectionChanged(to: asset)
+                        metadataDraft.sync(to: asset)
                     }
                 let signals = model.selectedEvaluationSignals
                 if !signals.isEmpty {
@@ -140,7 +140,7 @@ struct InspectorView: View {
             }
         }
         .onChange(of: asset.metadata) { _, _ in
-            metadataDraft.syncIfSelectionChanged(to: asset)
+            metadataDraft.sync(to: asset)
         }
     }
 
@@ -280,6 +280,7 @@ struct InspectorView: View {
 
 struct InspectorMetadataDraft: Equatable {
     var assetID: AssetID?
+    var syncedMetadata: AssetMetadata?
     var keywords: String
     var caption: String
     var creator: String
@@ -287,15 +288,37 @@ struct InspectorMetadataDraft: Equatable {
 
     init(asset: Asset? = nil) {
         assetID = asset?.id
+        syncedMetadata = asset?.metadata
         keywords = asset?.metadata.keywords.joined(separator: ", ") ?? ""
         caption = asset?.metadata.caption ?? ""
         creator = asset?.metadata.creator ?? ""
         copyright = asset?.metadata.copyright ?? ""
     }
 
-    mutating func syncIfSelectionChanged(to asset: Asset) {
-        guard assetID != asset.id else { return }
+    mutating func sync(to asset: Asset) {
+        guard assetID == asset.id else {
+            self = InspectorMetadataDraft(asset: asset)
+            return
+        }
+        guard syncedMetadata != asset.metadata else { return }
+        if matches(asset.metadata) {
+            syncedMetadata = asset.metadata
+            return
+        }
+        guard !hasUnsavedChanges else { return }
         self = InspectorMetadataDraft(asset: asset)
+    }
+
+    private var hasUnsavedChanges: Bool {
+        guard let syncedMetadata else { return false }
+        return !matches(syncedMetadata)
+    }
+
+    private func matches(_ metadata: AssetMetadata) -> Bool {
+        keywords == metadata.keywords.joined(separator: ", ")
+            && caption == (metadata.caption ?? "")
+            && creator == (metadata.creator ?? "")
+            && copyright == (metadata.copyright ?? "")
     }
 }
 
