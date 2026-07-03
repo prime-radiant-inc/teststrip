@@ -93,7 +93,7 @@ struct LibraryGridView: View {
         .safeAreaInset(edge: .top) {
             VStack(spacing: 0) {
                 filterBar
-                if isImporting {
+                if isImporting && !model.assets.isEmpty {
                     importProgressBanner
                 }
             }
@@ -548,26 +548,45 @@ struct LibraryGridView: View {
             Image(systemName: "photo.on.rectangle.angled")
                 .font(.system(size: 34))
                 .foregroundStyle(.secondary)
-            Text("No photographs in this catalog")
-                .font(.headline)
-            Button {
-                showImportFolderPanel()
-            } label: {
-                Label("Import Folder", systemImage: "square.and.arrow.down")
+            if isImporting {
+                Text(importActivity?.title ?? "Import photos")
+                    .font(.headline)
+                importProgressIndicator
+                    .controlSize(.small)
+                Text(importActivityDetail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                if let importActivity, let total = importActivity.totalUnitCount {
+                    Text("\(importActivity.completedUnitCount) of \(total)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Button {
+                    cancelImport()
+                } label: {
+                    Label("Cancel Import", systemImage: "xmark.circle")
+                }
+            } else {
+                Text("No photographs in this catalog")
+                    .font(.headline)
+                Button {
+                    showImportFolderPanel()
+                } label: {
+                    Label("Import Folder", systemImage: "square.and.arrow.down")
+                }
+                Button {
+                    showImportPathSheet()
+                } label: {
+                    Label("Import Path", systemImage: "folder.badge.plus")
+                }
+                Button {
+                    showImportCardPanel()
+                } label: {
+                    Label("Import Card", systemImage: "externaldrive.badge.plus")
+                }
             }
-            .disabled(isImporting)
-            Button {
-                showImportPathSheet()
-            } label: {
-                Label("Import Path", systemImage: "folder.badge.plus")
-            }
-            .disabled(isImporting)
-            Button {
-                showImportCardPanel()
-            } label: {
-                Label("Import Card", systemImage: "externaldrive.badge.plus")
-            }
-            .disabled(isImporting)
         }
         .frame(maxWidth: .infinity, minHeight: 360)
         .padding(32)
