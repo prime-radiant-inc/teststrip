@@ -1354,7 +1354,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.recentWork.map(\.id), [recent.id.rawValue, starred.id.rawValue])
         XCTAssertEqual(model.starredWork.map(\.id), [starred.id.rawValue])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rowTitles, [recent.title, starred.title])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rowTitles, [recent.detail, starred.title])
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rows.map(\.target), [
             .workSession(recent.id),
             .workSession(starred.id)
@@ -3047,6 +3047,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(reloaded.sidebarSections.contains { section in
             section.title == "Saved Sets" && section.rowTitles.contains("Imported 1 photo from photos")
         })
+        XCTAssertEqual(reloaded.sidebarSections.first { $0.title == "Work" }?.rowTitles.first, "Imported 1 photo from photos")
         let session = try catalog.repository.session(id: WorkSessionID(rawValue: activity.id))
         let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
         let outputSet = try catalog.repository.assetSet(id: outputSetID)

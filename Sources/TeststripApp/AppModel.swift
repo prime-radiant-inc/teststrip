@@ -2753,7 +2753,7 @@ public final class AppModel {
         var rows = recentWork.prefix(5).map { activity in
             SidebarRow(
                 id: "work-recent-\(activity.id)",
-                title: activity.title,
+                title: workSidebarTitle(for: activity),
                 target: .workSession(WorkSessionID(rawValue: activity.id))
             )
         }
@@ -2761,11 +2761,20 @@ public final class AppModel {
         rows.append(contentsOf: starredWork.prefix(5).filter { !recentIDs.contains($0.id) }.map { activity in
             SidebarRow(
                 id: "work-starred-\(activity.id)",
-                title: activity.title,
+                title: workSidebarTitle(for: activity),
                 target: .workSession(WorkSessionID(rawValue: activity.id))
             )
         })
         return rows
+    }
+
+    private static func workSidebarTitle(for activity: AppWorkActivity) -> String {
+        let trimmedTitle = activity.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDetail = activity.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedTitle == "Import photos", !trimmedDetail.isEmpty {
+            return trimmedDetail
+        }
+        return trimmedTitle.isEmpty && !trimmedDetail.isEmpty ? trimmedDetail : activity.title
     }
 }
 
