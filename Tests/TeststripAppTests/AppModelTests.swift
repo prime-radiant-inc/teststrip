@@ -1405,6 +1405,15 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.statusMessage, "Reconnected 1 source")
     }
 
+    func testSuggestedReconnectOldRootUsesVisibleUnavailableAssets() {
+        let online = makeAsset(id: "online", path: "/Volumes/Current/Job/online.jpg", rating: 0)
+        let firstMissing = makeAsset(id: "missing-a", path: "/Volumes/Archive/Job/a.jpg", rating: 0, availability: .missing)
+        let secondMissing = makeAsset(id: "missing-b", path: "/Volumes/Archive/Job/Nested/b.jpg", rating: 0, availability: .offline)
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [online, firstMissing, secondMissing])
+
+        XCTAssertEqual(model.suggestedReconnectOldRootPath, "/Volumes/Archive/Job")
+    }
+
     func testLoadExposesRecentAndStarredWorkSessionsInSidebar() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-work-sessions")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

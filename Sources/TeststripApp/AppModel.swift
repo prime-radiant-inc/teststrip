@@ -519,6 +519,13 @@ public final class AppModel {
         return "Catalog Cull"
     }
 
+    public var suggestedReconnectOldRootPath: String {
+        let unavailableFolders = assets
+            .filter { $0.availability != .online }
+            .map { $0.originalURL.deletingLastPathComponent().standardizedFileURL.path }
+        return Self.commonAncestorPath(for: unavailableFolders) ?? ""
+    }
+
     public init(
         sidebarSections: [SidebarSection],
         selectedView: LibraryViewMode,
@@ -2718,6 +2725,25 @@ public final class AppModel {
         let assets = try repository.allAssets(limit: assetPageSize, offset: offset)
         let totalAssetCount = try repository.assetCount()
         return (assets, offset, totalAssetCount)
+    }
+
+    private static func commonAncestorPath(for paths: [String]) -> String? {
+        guard var commonComponents = paths.first.map({ URL(fileURLWithPath: $0).standardizedFileURL.pathComponents }) else {
+            return nil
+        }
+        for path in paths.dropFirst() {
+            let components = URL(fileURLWithPath: path).standardizedFileURL.pathComponents
+            var sharedComponents: [String] = []
+            for (lhs, rhs) in zip(commonComponents, components) {
+                guard lhs == rhs else { break }
+                sharedComponents.append(lhs)
+            }
+            commonComponents = sharedComponents
+        }
+        guard !commonComponents.isEmpty else { return nil }
+        let path = NSString.path(withComponents: commonComponents)
+        guard path != "/", path != "/Volumes" else { return nil }
+        return path
     }
 
     public func gridPreviewURL(for assetID: AssetID) -> URL? {

@@ -758,7 +758,7 @@ struct LibraryGridView: View {
     }
 
     private func showSourceReconnectSheet() {
-        sourceReconnectDraft.reset()
+        sourceReconnectDraft = SourceReconnectPathDraft(oldRootPath: model.suggestedReconnectOldRootPath)
         isShowingSourceReconnectSheet = true
     }
 
