@@ -2143,6 +2143,72 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.availability), [.missing, .stale])
     }
 
+    @MainActor
+    func testRefreshVisibleAvailabilityWithWorkerBatchesLargeSourceScansByVolume() async throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        func sourceAsset(id: String, volume: String) -> Asset {
+            Asset(
+                id: AssetID(rawValue: id),
+                originalURL: URL(fileURLWithPath: "/Volumes/\(volume)/Photos/\(id).jpg"),
+                volumeIdentifier: volume,
+                fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
+                availability: .online,
+                metadata: AssetMetadata()
+            )
+        }
+        let nasAssets = (0...AppModel.sourceAvailabilityBatchSize).map {
+            sourceAsset(id: "nas-\($0)", volume: "NAS")
+        }
+        let archiveAsset = sourceAsset(id: "archive-0", volume: "Archive")
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "worker-visible-availability-batched",
+            assets: [nasAssets[0], archiveAsset] + Array(nasAssets.dropFirst()),
+            workerSupervisor: supervisor
+        )
+
+        try model.refreshVisibleAssetAvailability()
+
+        let firstBatch = Array(nasAssets.prefix(AppModel.sourceAvailabilityBatchSize).map(\.id))
+        let secondBatch = Array(nasAssets.dropFirst(AppModel.sourceAvailabilityBatchSize).map(\.id))
+        let archiveBatch = [archiveAsset.id]
+        let expectedFirstCommands: [WorkerCommand] = [
+            .refreshAvailabilityBatch(assetIDs: firstBatch)
+        ]
+        XCTAssertTrue(waitForCommands(expectedFirstCommands, in: transport), commandDescription(transport))
+        XCTAssertEqual(model.backgroundWorkQueue.runningItems.first?.totalUnitCount, AppModel.sourceAvailabilityBatchSize)
+        XCTAssertEqual(model.backgroundWorkQueue.queuedItems.map(\.totalUnitCount), [1, 1])
+
+        let firstItemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: firstItemID,
+            message: "checked \(AppModel.sourceAvailabilityBatchSize) sources"
+        )))
+        try await waitForBackgroundWorkStatus(.completed, itemID: firstItemID, in: model)
+
+        let expectedSecondCommands: [WorkerCommand] = [
+            .refreshAvailabilityBatch(assetIDs: firstBatch),
+            .refreshAvailabilityBatch(assetIDs: secondBatch)
+        ]
+        XCTAssertTrue(waitForCommands(expectedSecondCommands, in: transport), commandDescription(transport))
+        let secondItemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: secondItemID,
+            message: "checked 1 source"
+        )))
+        try await waitForBackgroundWorkStatus(.completed, itemID: secondItemID, in: model)
+
+        let expectedThirdCommands: [WorkerCommand] = [
+            .refreshAvailabilityBatch(assetIDs: firstBatch),
+            .refreshAvailabilityBatch(assetIDs: secondBatch),
+            .refreshAvailabilityBatch(assetIDs: archiveBatch)
+        ]
+        XCTAssertTrue(waitForCommands(expectedThirdCommands, in: transport), commandDescription(transport))
+    }
+
     func testCanRefreshVisibleAvailabilityRequiresCatalogAndLoadedAssets() throws {
         let (model, _, _) = try makeModelWithPreviewCache(named: "visible-availability-enabled")
 
@@ -4086,6 +4152,10 @@ final class AppModelTests: XCTestCase {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
         }
         return (try? transport.commands()) == expected
+    }
+
+    private func commandDescription(_ transport: RecordingWorkerTransport) -> String {
+        (try? "\(transport.commands())") ?? "could not decode commands"
     }
 
     private func waitForBackgroundWorkItem(

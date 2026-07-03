@@ -21,10 +21,10 @@ The UI must not start unbounded detached work silently. Any long-running preview
 - Worker stderr marks the oldest dispatched work item failed and keeps the queue moving.
 - Dispatched worker commands have a supervisor-level timeout. If a worker command stops responding, the supervisor terminates the helper process, fails the in-flight dispatched work with command-specific context, and relaunches the helper for queued work. Pausing background work gates queue dispatch, but it does not disable timeouts for commands already sent to the synchronous helper.
 - `TeststripWorker` opens the app catalog from `--catalog`, writes cached previews under `--preview-cache`, executes `generatePreview` with `PreviewRenderer`, and executes `syncMetadata` through the catalog/XMP sync planner.
-- Visible source refreshes dispatch one `refreshAvailabilityBatch` worker command so slow volume checks remain a single visible, cancellable `sourceScan` item with progress.
+- Worker progress, completion, import-completion, and failure events are structured JSON-lines events with the originating work item ID.
+- Visible source refreshes dispatch bounded, source-grouped `refreshAvailabilityBatch` worker commands so slow volume checks stay visible, cancellable, and smaller than one full loaded-window scan.
 
 ## Next Work
 
 - Persist queue state across app relaunches.
-- Emit structured worker events for progress and cancellation.
 - Add per-kind throttles for NAS/source scans, XMP sync, and recognition.

@@ -330,6 +330,7 @@ public final class AppModel {
     private static let assetPageSize = 500
     private static let loadedAssetWindowSize = assetPageSize * 2
     private static let pendingPreviewRecoveryBatchSize = 200
+    static let sourceAvailabilityBatchSize = 100
     private static let defaultCompareAssetLimit = 4
 
     public var selectedAsset: Asset? {
@@ -2133,23 +2134,53 @@ public final class AppModel {
         let activeAssetIDs = Set(availabilityAssetIDsByItemID.values.flatMap { $0 })
         let refreshAssetIDs = assetIDs.filter { !activeAssetIDs.contains($0) }
         guard !refreshAssetIDs.isEmpty else { return }
-        let itemID = WorkSessionID(rawValue: "source-\(UUID().uuidString)")
-        let item = BackgroundWorkItem(
-            id: itemID,
-            kind: .sourceScan,
-            title: "Refresh sources",
-            detail: "Checking \(refreshAssetIDs.count) sources",
-            completedUnitCount: 0,
-            totalUnitCount: refreshAssetIDs.count
-        )
-        availabilityAssetIDsByItemID[itemID] = refreshAssetIDs
-        do {
-            try workerSupervisor.enqueue(item, command: .refreshAvailabilityBatch(assetIDs: refreshAssetIDs))
-        } catch {
-            availabilityAssetIDsByItemID[itemID] = nil
-            throw error
+
+        for batch in sourceAvailabilityRefreshBatches(for: refreshAssetIDs) {
+            let itemID = WorkSessionID(rawValue: "source-\(UUID().uuidString)")
+            let item = BackgroundWorkItem(
+                id: itemID,
+                kind: .sourceScan,
+                title: "Refresh sources",
+                detail: "Checking \(Self.sourceCountDescription(batch.count))",
+                completedUnitCount: 0,
+                totalUnitCount: batch.count
+            )
+            availabilityAssetIDsByItemID[itemID] = batch
+            do {
+                try workerSupervisor.enqueue(item, command: .refreshAvailabilityBatch(assetIDs: batch))
+            } catch {
+                availabilityAssetIDsByItemID[itemID] = nil
+                throw error
+            }
         }
         syncBackgroundWorkQueueFromSupervisor()
+    }
+
+    private func sourceAvailabilityRefreshBatches(for assetIDs: [AssetID]) -> [[AssetID]] {
+        let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+        var sourceOrder: [String] = []
+        var assetIDsBySource: [String: [AssetID]] = [:]
+
+        for assetID in assetIDs {
+            let sourceKey = assetsByID[assetID]?.volumeIdentifier ?? ""
+            if assetIDsBySource[sourceKey] == nil {
+                sourceOrder.append(sourceKey)
+                assetIDsBySource[sourceKey] = []
+            }
+            assetIDsBySource[sourceKey]?.append(assetID)
+        }
+
+        return sourceOrder.flatMap { sourceKey -> [[AssetID]] in
+            guard let sourceAssetIDs = assetIDsBySource[sourceKey] else { return [] }
+            return stride(from: 0, to: sourceAssetIDs.count, by: Self.sourceAvailabilityBatchSize).map { start in
+                let end = min(start + Self.sourceAvailabilityBatchSize, sourceAssetIDs.count)
+                return Array(sourceAssetIDs[start..<end])
+            }
+        }
+    }
+
+    private static func sourceCountDescription(_ count: Int) -> String {
+        "\(count) \(count == 1 ? "source" : "sources")"
     }
 
     @discardableResult
