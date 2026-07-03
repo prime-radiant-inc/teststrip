@@ -16,6 +16,8 @@ case .importDeferred(let count):
     try runDeferredImportBenchmark(count: count, root: root)
 case .metadataWrite(let count):
     try runMetadataWriteBenchmark(count: count, root: root)
+case .previewRender(let count):
+    try runPreviewRenderBenchmark(count: count, root: root)
 }
 
 private func runCatalogScaleBenchmark(count: Int, root: URL) throws {
@@ -100,6 +102,17 @@ private func runMetadataWriteBenchmark(count: Int, root: URL) throws {
     print("synced fingerprints: \(result.syncedFingerprintCount)")
     print("pending sync items: \(result.pendingSyncCount)")
     print("unchanged originals: \(result.unchangedOriginalCount)")
+}
+
+private func runPreviewRenderBenchmark(count: Int, root: URL) throws {
+    print("TeststripBench preview render")
+    print("count: \(count)")
+    let result = try measure("preview render") {
+        try PreviewRenderBenchmark(count: count, root: root).run()
+    }
+    print("source images: \(result.sourceImageCount)")
+    print("rendered previews: \(result.renderedPreviewCount)")
+    print("cached previews: \(result.cachedPreviewCount)")
 }
 
 @discardableResult
