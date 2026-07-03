@@ -14,6 +14,10 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "import-deferred", "250"]), .importDeferred(count: 250))
     }
 
+    func testMetadataWriteCommandParsesCount() throws {
+        XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "metadata-write", "250"]), .metadataWrite(count: 250))
+    }
+
     func testDeferredImportBenchmarkCatalogsAssetsAndQueuesPreviewWork() throws {
         let root = try makeTemporaryDirectory(named: "deferred-import-benchmark")
 
@@ -23,6 +27,19 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(result.catalogAssetCount, 250)
         XCTAssertEqual(result.pendingPreviewCount, 250)
         XCTAssertLessThanOrEqual(result.progressEventCount, 8)
+    }
+
+    func testMetadataWriteBenchmarkUpdatesCatalogAndWritesSidecars() throws {
+        let root = try makeTemporaryDirectory(named: "metadata-write-benchmark")
+
+        let result = try MetadataWriteBenchmark(count: 250, root: root).run()
+
+        XCTAssertEqual(result.updatedAssetCount, 250)
+        XCTAssertEqual(result.catalogAssetCount, 250)
+        XCTAssertEqual(result.sidecarCount, 250)
+        XCTAssertEqual(result.syncedFingerprintCount, 250)
+        XCTAssertEqual(result.pendingSyncCount, 0)
+        XCTAssertEqual(result.unchangedOriginalCount, 250)
     }
 
     func testBenchmarkWorkspaceCreatesUniqueTemporaryRoots() {

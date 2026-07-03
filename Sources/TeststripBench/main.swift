@@ -14,6 +14,8 @@ case .catalogScale(let count):
     try runCatalogScaleBenchmark(count: count, root: root)
 case .importDeferred(let count):
     try runDeferredImportBenchmark(count: count, root: root)
+case .metadataWrite(let count):
+    try runMetadataWriteBenchmark(count: count, root: root)
 }
 
 private func runCatalogScaleBenchmark(count: Int, root: URL) throws {
@@ -84,6 +86,20 @@ private func runDeferredImportBenchmark(count: Int, root: URL) throws {
     print("catalog assets: \(result.catalogAssetCount)")
     print("pending previews: \(result.pendingPreviewCount)")
     print("progress events: \(result.progressEventCount)")
+}
+
+private func runMetadataWriteBenchmark(count: Int, root: URL) throws {
+    print("TeststripBench metadata write")
+    print("count: \(count)")
+    let result = try measure("metadata write") {
+        try MetadataWriteBenchmark(count: count, root: root).run()
+    }
+    print("updated assets: \(result.updatedAssetCount)")
+    print("catalog assets: \(result.catalogAssetCount)")
+    print("sidecars: \(result.sidecarCount)")
+    print("synced fingerprints: \(result.syncedFingerprintCount)")
+    print("pending sync items: \(result.pendingSyncCount)")
+    print("unchanged originals: \(result.unchangedOriginalCount)")
 }
 
 @discardableResult
