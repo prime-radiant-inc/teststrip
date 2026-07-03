@@ -635,6 +635,7 @@ public final class AppModel {
             self?.backgroundWorkQueue = queue
             try? self?.refreshMetadataSyncState()
             try? self?.refreshPreviewGenerationQueueStates()
+            self?.refreshVisibleWorkerImportAssetsIfNeeded(in: queue)
             self?.releaseInactiveWorkerImportContexts(in: queue)
             self?.releaseInactiveEvaluationContexts(in: queue)
             self?.releaseInactiveMetadataSyncContexts(in: queue)
@@ -1845,6 +1846,27 @@ public final class AppModel {
             statusMessage = nil
             errorMessage = error.localizedDescription
             failImportActivity(id: itemID.rawValue, folderURL: context.source, destinationRoot: context.destinationRoot, error: error)
+        }
+    }
+
+    private func refreshVisibleWorkerImportAssetsIfNeeded(in queue: BackgroundWorkQueue) {
+        guard let catalog,
+              workerImportContextsByItemID.keys.contains(where: { itemID in
+                  guard let item = queue.item(id: itemID), item.kind == .ingest else {
+                      return false
+                  }
+                  return [.running, .paused].contains(item.status)
+              }) else {
+            return
+        }
+        do {
+            let currentCount = try currentLibraryAssetCount(repository: catalog.repository)
+            guard currentCount > totalAssetCount || (assets.isEmpty && currentCount > 0) else {
+                return
+            }
+            try loadCatalogPage(preferredSelection: selectedAssetID)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

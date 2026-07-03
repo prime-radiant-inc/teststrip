@@ -3210,6 +3210,47 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testWorkerImportProgressShowsCatalogedAssetsBeforeCompletion() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-early-assets")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("early.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+        let itemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "worker-early-import"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
+            itemID: itemID,
+            completedUnitCount: 1,
+            totalUnitCount: 10,
+            detail: "Cataloging 1 of 10 photos"
+        )))
+
+        try await waitForSelectedAsset(importedAsset.id, in: model)
+        XCTAssertEqual(model.assets.map(\.id), [importedAsset.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+        XCTAssertTrue(model.isImporting)
+    }
+
+    @MainActor
     func testFailedWorkerImportRecordsFailedActivityForReload() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-failure-activity")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
