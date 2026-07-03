@@ -12,10 +12,10 @@ Teststrip treats photo evaluation as a provider-backed worker capability. Local 
 - App launch can pass those worker flags from `TESTSTRIP_LOCAL_HTTP_MODEL_ENDPOINT`, `TESTSTRIP_LOCAL_HTTP_MODEL`, and `TESTSTRIP_LOCAL_HTTP_MODEL_TIMEOUT`.
 - HTTP model requests use an OpenAI-compatible chat-completions shape and embed the cached preview as an `image_url` data URL. Providers must not depend on a local filesystem path being visible to the model server.
 - All imported model output is stored as typed `EvaluationSignal` rows with provider, model, version, and settings provenance.
+- `TeststripBench local-http-smoke <endpoint> <model> <image> [timeout]` exercises an OpenAI-compatible local model endpoint such as LM Studio or Ollama against one preview image and reports returned signal kinds.
 
 ## Next Work
 
 - Add cancellation-aware async provider execution so slow model calls can be interrupted without killing unrelated worker state.
 - Add retry/backoff policy for configured HTTP model providers.
-- Add a hidden or developer-only smoke command that exercises a real LM Studio or Ollama endpoint against one selected preview.
 - Promote provider selection into UI only after real model behavior is good enough to be useful.

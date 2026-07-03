@@ -14,6 +14,8 @@ case .catalogScale(let count):
     try runCatalogScaleBenchmark(count: count, root: root)
 case .importDeferred(let count):
     try runDeferredImportBenchmark(count: count, root: root)
+case .localHTTPSmoke(let endpoint, let model, let imagePath, let timeout):
+    try runLocalHTTPModelSmoke(endpoint: endpoint, model: model, imagePath: imagePath, timeout: timeout)
 case .metadataWrite(let count):
     try runMetadataWriteBenchmark(count: count, root: root)
 case .previewRender(let count):
@@ -88,6 +90,27 @@ private func runDeferredImportBenchmark(count: Int, root: URL) throws {
     print("catalog assets: \(result.catalogAssetCount)")
     print("pending previews: \(result.pendingPreviewCount)")
     print("progress events: \(result.progressEventCount)")
+}
+
+private func runLocalHTTPModelSmoke(endpoint: URL, model: String, imagePath: String?, timeout: TimeInterval) throws {
+    guard let imagePath, !imagePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        throw TeststripError.invalidState("local-http-smoke requires an image path")
+    }
+    let imageURL = URL(fileURLWithPath: imagePath)
+    print("TeststripBench local HTTP model smoke")
+    print("endpoint: \(endpoint.absoluteString)")
+    print("model: \(model)")
+    print("image: \(imageURL.path)")
+    let result = try measure("local HTTP model smoke") {
+        try LocalHTTPModelSmoke(
+            endpoint: endpoint,
+            model: model,
+            imageURL: imageURL,
+            timeout: timeout
+        ).run()
+    }
+    print("signals: \(result.signalCount)")
+    print("signal kinds: \(result.signalKinds.map(\.rawValue).joined(separator: ", "))")
 }
 
 private func runMetadataWriteBenchmark(count: Int, root: URL) throws {

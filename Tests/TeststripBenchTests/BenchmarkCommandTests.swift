@@ -1,4 +1,5 @@
 import XCTest
+import TeststripCore
 @testable import TeststripBench
 
 final class BenchmarkCommandTests: XCTestCase {
@@ -20,6 +21,25 @@ final class BenchmarkCommandTests: XCTestCase {
 
     func testPreviewRenderCommandParsesCount() throws {
         XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "preview-render", "250"]), .previewRender(count: 250))
+    }
+
+    func testLocalHTTPModelSmokeCommandParsesConnectionArguments() throws {
+        XCTAssertEqual(
+            BenchmarkCommand.parse([
+                "TeststripBench",
+                "local-http-smoke",
+                "http://localhost:1234/v1/chat/completions",
+                "llava",
+                "/tmp/frame.jpg",
+                "12"
+            ]),
+            .localHTTPSmoke(
+                endpoint: URL(string: "http://localhost:1234/v1/chat/completions")!,
+                model: "llava",
+                imagePath: "/tmp/frame.jpg",
+                timeout: 12
+            )
+        )
     }
 
     func testDeferredImportBenchmarkCatalogsAssetsAndQueuesPreviewWork() throws {
@@ -56,6 +76,26 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(result.cachedPreviewCount, 48)
     }
 
+    func testLocalHTTPModelSmokeEvaluatesOpenAICompatibleEndpoint() throws {
+        let root = try makeTemporaryDirectory(named: "local-http-smoke")
+        let previewURL = root.appendingPathComponent("frame.jpg")
+        try Data("preview".utf8).write(to: previewURL)
+        let endpoint = URL(string: "http://localhost:1234/v1/chat/completions")!
+        let transport = RecordingSmokeTransport()
+
+        let result = try LocalHTTPModelSmoke(
+            endpoint: endpoint,
+            model: "llava",
+            imageURL: previewURL,
+            timeout: 12,
+            transport: transport
+        ).run()
+
+        XCTAssertEqual(result, LocalHTTPModelSmokeResult(signalCount: 1, signalKinds: [.focus]))
+        XCTAssertEqual(transport.request?.url, endpoint)
+        XCTAssertEqual(transport.request?.timeoutInterval, 12)
+    }
+
     func testBenchmarkWorkspaceCreatesUniqueTemporaryRoots() {
         let first = BenchmarkWorkspace.temporaryRoot()
         let second = BenchmarkWorkspace.temporaryRoot()
@@ -72,5 +112,20 @@ final class BenchmarkCommandTests: XCTestCase {
             .appendingPathComponent(name, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         return root
+    }
+}
+
+private final class RecordingSmokeTransport: LocalHTTPModelTransport, @unchecked Sendable {
+    private(set) var request: URLRequest?
+
+    func response(for request: URLRequest) throws -> LocalHTTPModelHTTPResponse {
+        self.request = request
+        let content = #"{"signals":[{"kind":"focus","score":0.91,"confidence":0.82}]}"#
+        let body = try JSONSerialization.data(withJSONObject: [
+            "choices": [
+                ["message": ["content": content]]
+            ]
+        ])
+        return LocalHTTPModelHTTPResponse(statusCode: 200, data: body)
     }
 }
