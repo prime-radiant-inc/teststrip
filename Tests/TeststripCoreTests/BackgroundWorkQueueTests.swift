@@ -33,6 +33,22 @@ final class BackgroundWorkQueueTests: XCTestCase {
         XCTAssertEqual(queue.item(id: second.id)?.status, .running)
     }
 
+    func testFrontQueuedItemStartsBeforeOlderQueuedItems() {
+        var queue = BackgroundWorkQueue(maxRunningCount: 1)
+        let running = BackgroundWorkItem.testItem(id: "running")
+        let olderQueued = BackgroundWorkItem.testItem(id: "older")
+        let visible = BackgroundWorkItem.testItem(id: "visible")
+        queue.enqueue(running)
+        queue.enqueue(olderQueued)
+        queue.activateRunnableItems()
+
+        queue.enqueue(visible, placement: .front)
+        queue.markCompleted(id: running.id)
+
+        XCTAssertEqual(queue.item(id: visible.id)?.status, .running)
+        XCTAssertEqual(queue.item(id: olderQueued.id)?.status, .queued)
+    }
+
     func testCompletingItemMarksProgressComplete() {
         var queue = BackgroundWorkQueue(maxRunningCount: 1)
         let item = BackgroundWorkItem.testItem(id: "first")

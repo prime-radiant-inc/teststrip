@@ -2284,6 +2284,49 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(waitForBackgroundWorkItem(refillItemID, in: model))
     }
 
+    func testVisibleGridPreviewCutsAheadOfPendingPreviewRecoveryBacklog() throws {
+        let directory = try makeTemporaryDirectory(named: "visible-preview-priority")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let recoveryFirst = makeAsset(id: "recovery-first", path: "/Photos/recovery-first.jpg", rating: 0)
+        let recoverySecond = makeAsset(id: "recovery-second", path: "/Photos/recovery-second.jpg", rating: 0)
+        let visible = makeAsset(id: "visible", path: "/Photos/visible.jpg", rating: 0)
+        try repository.upsert([recoveryFirst, recoverySecond, visible])
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: recoveryFirst.id, level: .grid))
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: recoverySecond.id, level: .grid))
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        try model.requestVisibleGridPreview(assetID: visible.id)
+        try repository.markPreviewGenerated(assetID: recoveryFirst.id, level: .grid)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: WorkSessionID(rawValue: "preview-\(recoveryFirst.id.rawValue)-grid"),
+            message: "generated grid preview"
+        )))
+
+        XCTAssertTrue(waitForCommands([
+            .generatePreview(assetID: recoveryFirst.id, level: .grid),
+            .generatePreview(assetID: visible.id, level: .grid)
+        ], in: transport))
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: WorkSessionID(rawValue: "preview-\(visible.id.rawValue)-grid"))?.status, .running)
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: WorkSessionID(rawValue: "preview-\(recoverySecond.id.rawValue)-grid"))?.status, .queued)
+    }
+
     func testRequestEvaluationDispatchesWorkerRecognitionCommand() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

@@ -1479,7 +1479,11 @@ public final class AppModel {
         }
     }
 
-    public func requestPreview(assetID: AssetID, level: PreviewLevel) throws {
+    public func requestPreview(
+        assetID: AssetID,
+        level: PreviewLevel,
+        placement: BackgroundWorkQueuePlacement = .back
+    ) throws {
         if previewURL(for: assetID, levels: [level]) != nil {
             return
         }
@@ -1499,7 +1503,11 @@ public final class AppModel {
             completedUnitCount: 0,
             totalUnitCount: 1
         )
-        try workerSupervisor.enqueue(item, command: .generatePreview(assetID: assetID, level: level))
+        try workerSupervisor.enqueue(
+            item,
+            command: .generatePreview(assetID: assetID, level: level),
+            placement: placement
+        )
         syncBackgroundWorkQueueFromSupervisor()
     }
 
@@ -1545,7 +1553,7 @@ public final class AppModel {
             assetID: assetID,
             context: .grid(distanceFromViewport: 0)
         )
-        try requestPreview(assetID: request.assetID, level: request.level)
+        try requestPreview(assetID: request.assetID, level: request.level, placement: .front)
     }
 
     public func previewCacheGeneration(for assetID: AssetID) -> Int {
@@ -1568,9 +1576,9 @@ public final class AppModel {
             return
         }
         if request.level == .large, previewURL(for: assetID, levels: [.medium]) == nil {
-            try requestPreview(assetID: assetID, level: .medium)
+            try requestPreview(assetID: assetID, level: .medium, placement: .front)
         }
-        try requestPreview(assetID: assetID, level: request.level)
+        try requestPreview(assetID: assetID, level: request.level, placement: .front)
     }
 
     public func requestVisibleComparePreviews() throws {
@@ -1578,11 +1586,11 @@ public final class AppModel {
         if let selectedAssetID,
            compareAssets.contains(where: { $0.id == selectedAssetID }),
            previewURL(for: selectedAssetID, levels: [.medium]) != nil {
-            try requestPreview(assetID: selectedAssetID, level: .large)
+            try requestPreview(assetID: selectedAssetID, level: .large, placement: .front)
         }
 
         for asset in compareAssets {
-            try requestPreview(assetID: asset.id, level: .medium)
+            try requestPreview(assetID: asset.id, level: .medium, placement: .front)
         }
     }
 

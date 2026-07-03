@@ -28,6 +28,11 @@ public struct BackgroundWorkItem: Codable, Equatable, Sendable {
     }
 }
 
+public enum BackgroundWorkQueuePlacement: Equatable, Sendable {
+    case back
+    case front
+}
+
 public struct BackgroundWorkQueue: Equatable, Sendable {
     public private(set) var maxRunningCount: Int
     public private(set) var items: [BackgroundWorkItem]
@@ -47,7 +52,11 @@ public struct BackgroundWorkQueue: Equatable, Sendable {
         items.filter { $0.status == .queued }
     }
 
-    public mutating func enqueue(_ item: BackgroundWorkItem) {
+    public mutating func enqueue(_ item: BackgroundWorkItem, placement: BackgroundWorkQueuePlacement = .back) {
+        if placement == .front, let firstQueuedIndex = items.firstIndex(where: { $0.status == .queued }) {
+            items.insert(item, at: firstQueuedIndex)
+            return
+        }
         items.append(item)
     }
 
