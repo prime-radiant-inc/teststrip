@@ -20,7 +20,7 @@ The app does not synchronously render pending previews on launch. When `AppModel
 
 When a worker-backed source scan completes, `AppModel` refreshes loaded asset availability from the catalog and reruns the same bounded recovery pass. Pending rows for sources that are still offline, missing, or moved remain queued; rows whose originals are now online or stale can resume preview generation without relaunching the app.
 
-Automatic launch-time recovery skips preview rows after three failed render attempts. The queue row remains visible in preview failure state, so corrupt files do not churn the worker on every launch and an explicit user retry can still be added without losing diagnostic context.
+Automatic launch-time recovery skips preview rows after three failed render attempts. The queue row remains visible in preview failure state, so corrupt files do not churn the worker on every launch. The inspector exposes an explicit retry action for the selected asset's failed preview rows; manual retry uses the same bounded worker queue without clearing diagnostic attempt history.
 
 `WorkerCommandExecutor.execute(.generatePreview)` clears the queue row only after the preview file has been written successfully.
 

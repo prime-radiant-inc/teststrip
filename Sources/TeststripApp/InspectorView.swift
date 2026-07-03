@@ -59,6 +59,13 @@ struct InspectorView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
+            Button {
+                apply { try model.retrySelectedPreviewGenerationFailures() }
+            } label: {
+                Label("Retry", systemImage: "arrow.clockwise")
+            }
+            .controlSize(.small)
+            .disabled(!model.canRetrySelectedPreviewGenerationFailures)
         }
     }
 

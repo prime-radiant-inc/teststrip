@@ -2528,6 +2528,50 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(failureState.lastErrorMessage, "render failed 3")
     }
 
+    func testRetrySelectedPreviewGenerationFailureDispatchesWorkerPreview() throws {
+        let directory = try makeTemporaryDirectory(named: "selected-preview-retry")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = makeAsset(id: "retry-selected-preview", size: 1)
+        try repository.upsert(asset)
+        for attempt in 1...3 {
+            try repository.recordPreviewGenerationFailure(
+                assetID: asset.id,
+                level: .grid,
+                errorMessage: "render failed \(attempt)"
+            )
+        }
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertTrue(model.canRetrySelectedPreviewGenerationFailures)
+        XCTAssertEqual(model.selectedPreviewGenerationFailures.first?.attemptCount, 3)
+
+        try model.retrySelectedPreviewGenerationFailures()
+
+        XCTAssertEqual(try transport.commands(), [
+            .generatePreview(assetID: asset.id, level: .grid)
+        ])
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-grid"))?.status, .running)
+        XCTAssertEqual(model.selectedPreviewGenerationFailures.first?.attemptCount, 3)
+    }
+
     func testLoadSkipsAutomaticPreviewRecoveryForOfflineOriginal() throws {
         let directory = try makeTemporaryDirectory(named: "pending-preview-offline-source")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

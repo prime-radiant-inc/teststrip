@@ -412,6 +412,14 @@ public final class AppModel {
         }
     }
 
+    public var canRetrySelectedPreviewGenerationFailures: Bool {
+        guard workerSupervisor != nil,
+              !selectedPreviewGenerationFailures.isEmpty else {
+            return false
+        }
+        return selectedAsset?.availability.requiresCachedPreviewOnly != true
+    }
+
     public var canPauseBackgroundWork: Bool {
         !backgroundWorkQueue.runningItems.isEmpty
     }
@@ -1564,6 +1572,17 @@ public final class AppModel {
             placement: placement
         )
         syncBackgroundWorkQueueFromSupervisor()
+    }
+
+    public func retrySelectedPreviewGenerationFailures() throws {
+        let failures = selectedPreviewGenerationFailures
+        guard !failures.isEmpty else { return }
+        guard selectedAsset?.availability.requiresCachedPreviewOnly != true else {
+            throw TeststripError.invalidState("original is unavailable")
+        }
+        for failure in failures {
+            try requestPreview(assetID: failure.item.assetID, level: failure.item.level, placement: .front)
+        }
     }
 
     private func enqueuePendingPreviewGeneration() throws {
