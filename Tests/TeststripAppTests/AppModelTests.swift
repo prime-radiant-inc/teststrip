@@ -666,6 +666,17 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .reject)
     }
 
+    func testColorLabelCullingCommandUpdatesSelectedAsset() throws {
+        let (model, repository, asset) = try makeModelWithCatalogAsset(named: "color-label-command")
+
+        try model.applyCullingCommand(.colorLabel(.green))
+        XCTAssertEqual(model.selectedAsset?.metadata.colorLabel, .green)
+
+        try model.applyCullingCommand(.colorLabel(nil))
+        XCTAssertNil(model.selectedAsset?.metadata.colorLabel)
+        XCTAssertNil(try repository.asset(id: asset.id).metadata.colorLabel)
+    }
+
     func testCullingShortcutMovesSelectionThroughLoadedAssets() throws {
         let first = makeAsset(id: "first", size: 1)
         let second = makeAsset(id: "second", size: 2)
@@ -684,9 +695,13 @@ final class AppModelTests: XCTestCase {
         try model.applyCullingShortcut(.rating(5))
         XCTAssertEqual(model.selectedAsset?.metadata.rating, 5)
 
+        try model.applyCullingShortcut(.colorLabel(.green))
+        XCTAssertEqual(model.selectedAsset?.metadata.colorLabel, .green)
+
         try model.applyCullingShortcut(.reject)
         XCTAssertEqual(model.selectedAsset?.metadata.flag, .reject)
         XCTAssertEqual(try repository.asset(id: asset.id).metadata.rating, 5)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.colorLabel, .green)
         XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .reject)
     }
 
@@ -744,6 +759,12 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(key: .rightArrow), .nextPhoto)
         XCTAssertEqual(CullingShortcut(key: .leftArrow), .previousPhoto)
         XCTAssertEqual(CullingShortcut(key: .character("5")), .rating(5))
+        XCTAssertEqual(CullingShortcut(key: .character("6")), .colorLabel(.red))
+        XCTAssertEqual(CullingShortcut(key: .character("7")), .colorLabel(.yellow))
+        XCTAssertEqual(CullingShortcut(key: .character("8")), .colorLabel(.green))
+        XCTAssertEqual(CullingShortcut(key: .character("9")), .colorLabel(.blue))
+        XCTAssertEqual(CullingShortcut(key: .character("v")), .colorLabel(.purple))
+        XCTAssertEqual(CullingShortcut(key: .character("-")), .colorLabel(nil))
         XCTAssertEqual(CullingShortcut(key: .character("P")), .pick)
         XCTAssertEqual(CullingShortcut(key: .character("x")), .reject)
         XCTAssertEqual(CullingShortcut(key: .character("u")), .clearFlag)

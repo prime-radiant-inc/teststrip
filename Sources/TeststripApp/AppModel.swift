@@ -13,6 +13,7 @@ public enum LibraryViewMode: String, Sendable {
 
 public enum CullingCommand: Equatable, Sendable {
     case rating(Int)
+    case colorLabel(ColorLabel?)
     case pick
     case reject
     case clearFlag
@@ -22,6 +23,7 @@ public enum CullingShortcut: Equatable, Sendable {
     case previousPhoto
     case nextPhoto
     case rating(Int)
+    case colorLabel(ColorLabel?)
     case pick
     case reject
     case clearFlag
@@ -40,6 +42,12 @@ public enum CullingShortcut: Equatable, Sendable {
             case "3": self = .rating(3)
             case "4": self = .rating(4)
             case "5": self = .rating(5)
+            case "6": self = .colorLabel(.red)
+            case "7": self = .colorLabel(.yellow)
+            case "8": self = .colorLabel(.green)
+            case "9": self = .colorLabel(.blue)
+            case "v": self = .colorLabel(.purple)
+            case "-": self = .colorLabel(nil)
             case "p": self = .pick
             case "x": self = .reject
             case "u": self = .clearFlag
@@ -724,6 +732,8 @@ public final class AppModel {
         switch command {
         case .rating(let rating):
             try setRatingForSelectedAsset(rating)
+        case .colorLabel(let colorLabel):
+            try setColorLabelForSelectedAsset(colorLabel)
         case .pick:
             try setFlagForSelectedAsset(.pick)
         case .reject:
@@ -741,6 +751,8 @@ public final class AppModel {
             try selectNextAssetForCulling()
         case .rating(let rating):
             try applyCullingCommandAndAdvance(.rating(rating))
+        case .colorLabel(let colorLabel):
+            try applyCullingCommandAndAdvance(.colorLabel(colorLabel))
         case .pick:
             try applyCullingCommandAndAdvance(.pick)
         case .reject:

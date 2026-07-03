@@ -118,6 +118,38 @@ private struct CullingCommands: Commands {
 
             Divider()
 
+            Button("Red Label") {
+                applyShortcut(.colorLabel(.red))
+            }
+            .keyboardShortcut("6", modifiers: [])
+
+            Button("Yellow Label") {
+                applyShortcut(.colorLabel(.yellow))
+            }
+            .keyboardShortcut("7", modifiers: [])
+
+            Button("Green Label") {
+                applyShortcut(.colorLabel(.green))
+            }
+            .keyboardShortcut("8", modifiers: [])
+
+            Button("Blue Label") {
+                applyShortcut(.colorLabel(.blue))
+            }
+            .keyboardShortcut("9", modifiers: [])
+
+            Button("Purple Label") {
+                applyShortcut(.colorLabel(.purple))
+            }
+            .keyboardShortcut("v", modifiers: [])
+
+            Button("Clear Label") {
+                applyShortcut(.colorLabel(nil))
+            }
+            .keyboardShortcut("-", modifiers: [])
+
+            Divider()
+
             Button("Pick") {
                 applyShortcut(.pick)
             }
