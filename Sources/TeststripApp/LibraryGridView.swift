@@ -11,7 +11,7 @@ struct LibraryGridView: View {
     @State private var manualSetStarred = false
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
-    @State private var importPathText = ""
+    @State private var importPathDraft = ImportFolderPathDraft()
     @State private var cullingFocusRequest = 0
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
@@ -345,9 +345,14 @@ struct LibraryGridView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Import Folder Path")
                 .font(.headline)
-            TextField("Folder path", text: $importPathText)
+            TextField("Folder path", text: $importPathDraft.path)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 420)
+            if let errorMessage = importPathDraft.errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
             HStack {
                 Spacer()
                 Button("Cancel") {
@@ -357,7 +362,7 @@ struct LibraryGridView: View {
                     importFolderPath()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(importPathText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isImporting)
+                .disabled(importPathDraft.path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isImporting)
             }
         }
         .padding(18)
@@ -544,7 +549,7 @@ struct LibraryGridView: View {
     }
 
     private func showImportPathSheet() {
-        importPathText = ""
+        importPathDraft.reset()
         isShowingImportPathSheet = true
     }
 
@@ -556,12 +561,12 @@ struct LibraryGridView: View {
 
     private func importFolderPath() {
         do {
-            let folderURL = try FolderSelectionPanel.importFolderURL(fromPath: importPathText)
+            let folderURL = try importPathDraft.resolveFolderURL()
             FolderSelectionPanel.rememberImportFolder(folderURL)
             isShowingImportPathSheet = false
             importFolder(folderURL)
         } catch {
-            model.errorMessage = error.localizedDescription
+            return
         }
     }
 
