@@ -22,6 +22,14 @@ The grid activation probe is:
 
 It finds the first visible image thumbnail button, performs `AXPress`, and waits until the inspector exposes that filename as the selected asset. Pass a filename as the second argument to require a specific visible thumbnail.
 
+The Import Path probe is:
+
+```bash
+./script/verify_import_path.sh Teststrip
+```
+
+It creates a temporary PNG folder, opens the Import Path sheet, fills the focused sheet field, presses Import, and waits until the imported thumbnail is visible. Use it after `./script/build_and_run.sh --verify-smoke` when checking the first-run import flow.
+
 ## Seeded Visual Smoke
 
 Use a fresh temporary app-support directory when a screenshot needs real grid content instead of an empty isolated catalog:
