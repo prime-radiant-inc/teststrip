@@ -92,7 +92,7 @@ final class CullingKeyCaptureNSView: NSView {
         if event.windowNumber == targetWindowNumber {
             return true
         }
-        return event.windowNumber == 0 && targetWindowIsKey
+        return targetWindowIsKey
     }
 }
 

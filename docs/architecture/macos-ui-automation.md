@@ -44,7 +44,7 @@ The keyboard culling probe is:
 ./script/verify_keyboard_culling.sh Teststrip
 ```
 
-It selects a visible thumbnail, clears its rating through the Culling menu, sends the `5` key through System Events, and waits until the inspector shows `Rating: 5`.
+It selects a visible thumbnail, clears its rating through the Culling menu, sends the `"5"` keystroke through System Events, and waits until the inspector shows `Rating: 5`. Use character keystrokes rather than raw key codes in these probes; raw key codes are keyboard-layout and synthetic-event-shape fragile.
 
 The selected-photo evaluation probe is:
 

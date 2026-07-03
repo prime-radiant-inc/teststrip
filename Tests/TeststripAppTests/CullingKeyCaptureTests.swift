@@ -63,6 +63,19 @@ final class CullingKeyCaptureTests: XCTestCase {
     }
 
     @MainActor
+    func testKeyCaptureHandlesSyntheticShortcutWhenTargetWindowIsKey() throws {
+        let view = CullingKeyCaptureNSView()
+        let button = NSButton(title: "Focused", target: nil, action: nil)
+        var shortcuts: [CullingShortcut] = []
+        view.onShortcut = { shortcuts.append($0) }
+
+        let event = try makeKeyEvent(characters: "3", charactersIgnoringModifiers: "3", windowNumber: 777)
+
+        XCTAssertNil(view.handleLocalKeyDown(event, targetWindowNumber: 42, targetWindowIsKey: true, firstResponder: button))
+        XCTAssertEqual(shortcuts, [.rating(3)])
+    }
+
+    @MainActor
     func testKeyCaptureLeavesWindowlessShortcutAloneWhenTargetWindowIsNotKey() throws {
         let view = CullingKeyCaptureNSView()
         var shortcuts: [CullingShortcut] = []

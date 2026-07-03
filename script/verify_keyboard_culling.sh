@@ -20,7 +20,7 @@ selected_asset="${selection_output#selected }"
 /usr/bin/osascript \
     -e "tell application \"$APP_NAME\" to activate" \
     -e 'delay 0.2' \
-    -e 'tell application "System Events" to key code 23' \
+    -e 'tell application "System Events" to keystroke "5"' \
     >/dev/null
 
 "$SCRIPT_DIR/verify_grid_activation.sh" "$APP_NAME" "$selected_asset" >/dev/null
