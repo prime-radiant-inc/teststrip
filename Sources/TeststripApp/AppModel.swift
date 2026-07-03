@@ -762,6 +762,24 @@ public final class AppModel {
         }
     }
 
+    public func setCaptionForSelectedAsset(_ caption: String) throws {
+        try updateSelectedAssetMetadata { metadata in
+            metadata.caption = Self.portableText(from: caption)
+        }
+    }
+
+    public func setCreatorForSelectedAsset(_ creator: String) throws {
+        try updateSelectedAssetMetadata { metadata in
+            metadata.creator = Self.portableText(from: creator)
+        }
+    }
+
+    public func setCopyrightForSelectedAsset(_ copyright: String) throws {
+        try updateSelectedAssetMetadata { metadata in
+            metadata.copyright = Self.portableText(from: copyright)
+        }
+    }
+
     public func undoMetadataChange() throws {
         guard let change = metadataUndoStack.popLast() else { return }
         try applyMetadataSnapshot(assetID: change.assetID, metadata: change.before)
@@ -802,6 +820,11 @@ public final class AppModel {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .filter { seen.insert($0).inserted }
+    }
+
+    private static func portableText(from text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func applyMetadataSnapshot(assetID: AssetID, metadata: AssetMetadata) throws {
