@@ -63,6 +63,31 @@ public enum CullingShortcutKey: Equatable, Sendable {
     case character(String)
 }
 
+extension EvaluationKind {
+    var displayName: String {
+        switch self {
+        case .focus:
+            return "Focus"
+        case .motionBlur:
+            return "Motion Blur"
+        case .exposure:
+            return "Exposure"
+        case .aesthetics:
+            return "Aesthetics"
+        case .object:
+            return "Object"
+        case .faceQuality:
+            return "Face Quality"
+        case .ocrText:
+            return "OCR Text"
+        case .colorPalette:
+            return "Color Palette"
+        case .novelty:
+            return "Novelty"
+        }
+    }
+}
+
 public enum SidebarRowTarget: Equatable, Sendable {
     case allPhotographs
     case placeholder
@@ -236,6 +261,7 @@ public final class AppModel {
     public var captureDateStartFilter: Date?
     public var captureDateEndFilter: Date?
     public var availabilityFilter: SourceAvailability?
+    public var evaluationKindFilter: EvaluationKind?
     public var savedAssetSets: [AssetSet]
     public var selectedAssetSetID: AssetSetID?
 
@@ -420,6 +446,9 @@ public final class AppModel {
         if let availabilityFilter {
             parts.append(availabilityFilter.rawValue.capitalized)
         }
+        if let evaluationKindFilter {
+            parts.append("\(evaluationKindFilter.displayName) Signal")
+        }
         return parts.isEmpty ? "Saved Search" : parts.joined(separator: " ")
     }
 
@@ -480,6 +509,7 @@ public final class AppModel {
         self.captureDateStartFilter = nil
         self.captureDateEndFilter = nil
         self.availabilityFilter = nil
+        self.evaluationKindFilter = nil
         self.savedAssetSets = savedAssetSets
         self.selectedAssetSetID = selectedAssetSetID
         self.catalog = catalog
@@ -1762,6 +1792,9 @@ public final class AppModel {
         if let availabilityFilter {
             predicates.append(.availability(availabilityFilter))
         }
+        if let evaluationKindFilter {
+            predicates.append(.evaluationKind(evaluationKindFilter))
+        }
         return predicates.isEmpty ? nil : SetQuery(predicates: predicates)
     }
 
@@ -1777,6 +1810,7 @@ public final class AppModel {
         captureDateStartFilter = nil
         captureDateEndFilter = nil
         availabilityFilter = nil
+        evaluationKindFilter = nil
     }
 
     private func currentLibraryAssetCount(repository: CatalogRepository) throws -> Int {

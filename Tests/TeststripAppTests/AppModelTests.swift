@@ -1136,6 +1136,39 @@ final class AppModelTests: XCTestCase {
         ])))
     }
 
+    func testApplyingLibraryFiltersUsesEvaluationKind() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-evaluation-kind-filter")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let focused = makeAsset(id: "focused", path: "/Photos/Job/focused.jpg", rating: 0)
+        let object = makeAsset(id: "object", path: "/Photos/Job/object.jpg", rating: 0)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.upsert([focused, object])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: focused.id, kind: .focus, value: .score(0.91), confidence: 0.82, provenance: provenance),
+            EvaluationSignal(assetID: object.id, kind: .object, value: .label("camera"), confidence: 0.74, provenance: provenance)
+        ])
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        model.evaluationKindFilter = .focus
+
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.assets.map(\.id), [focused.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+        let savedSet = try model.saveCurrentLibraryQuery(named: "Focused")
+        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [.evaluationKind(.focus)])))
+    }
+
     func testTechnicalFiltersCountAsActiveLibraryFiltersAndClear() throws {
         let (model, _, _) = try makeModelWithCatalogAsset(named: "active-technical-filter")
 

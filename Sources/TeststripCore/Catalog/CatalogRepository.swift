@@ -665,6 +665,11 @@ public final class CatalogRepository {
                     "(json_valid(technical_metadata_json) AND CAST(json_extract(technical_metadata_json, '$.capturedAt') AS REAL) < ?)"
                 )
                 bindings.append("\(date.timeIntervalSince1970)")
+            case .evaluationKind(let kind):
+                clauses.append(
+                    "EXISTS (SELECT 1 FROM evaluation_signals WHERE evaluation_signals.asset_id = assets.id AND kind = ?)"
+                )
+                bindings.append(kind.rawValue)
             case .importBatch:
                 throw TeststripError.invalidState("import batch queries are not catalog-backed yet")
             }

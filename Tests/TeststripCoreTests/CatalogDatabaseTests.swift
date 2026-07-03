@@ -301,6 +301,27 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.allAssets(matching: ocrQuery, limit: 10).map(\.id), [document.id])
     }
 
+    func testSearchesAssetsWithEvaluationKindPredicate() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-kind-search")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let focused = Asset.testAsset(id: AssetID(rawValue: "focused"), path: "/Volumes/NAS/Job/focused.jpg", rating: 0)
+        let object = Asset.testAsset(id: AssetID(rawValue: "object"), path: "/Volumes/NAS/Job/object.jpg", rating: 0)
+        let unevaluated = Asset.testAsset(id: AssetID(rawValue: "unevaluated"), path: "/Volumes/NAS/Job/unevaluated.jpg", rating: 0)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.upsert([focused, object, unevaluated])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: focused.id, kind: .focus, value: .score(0.91), confidence: 0.82, provenance: provenance),
+            EvaluationSignal(assetID: object.id, kind: .object, value: .label("camera"), confidence: 0.74, provenance: provenance)
+        ])
+
+        let focusQuery = SetQuery(predicates: [.evaluationKind(.focus)])
+
+        XCTAssertEqual(try repository.allAssets(matching: focusQuery, limit: 10).map(\.id), [focused.id])
+        XCTAssertEqual(try repository.assetCount(matching: focusQuery), 1)
+    }
+
     func testSearchesAssetsWithTechnicalMetadataPredicates() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-search")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

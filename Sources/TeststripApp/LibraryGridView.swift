@@ -211,6 +211,14 @@ struct LibraryGridView: View {
                 }
                 .frame(width: 126)
 
+                Picker("Signal", selection: evaluationKindFilterBinding) {
+                    Text("Any Signal").tag("")
+                    ForEach(evaluationKindFilterOptions, id: \.rawValue) { kind in
+                        Text(kind.displayName).tag(kind.rawValue)
+                    }
+                }
+                .frame(width: 138)
+
                 Button {
                     refreshVisibleAvailability()
                 } label: {
@@ -483,6 +491,20 @@ struct LibraryGridView: View {
 
     private var availabilityFilterOptions: [SourceAvailability] {
         [.online, .offline, .missing, .moved, .stale]
+    }
+
+    private var evaluationKindFilterBinding: Binding<String> {
+        Binding(
+            get: { model.evaluationKindFilter?.rawValue ?? "" },
+            set: { value in
+                model.evaluationKindFilter = evaluationKindFilterOptions.first { $0.rawValue == value }
+                applyLibraryFilters()
+            }
+        )
+    }
+
+    private var evaluationKindFilterOptions: [EvaluationKind] {
+        [.focus, .motionBlur, .exposure, .aesthetics, .object, .faceQuality, .ocrText, .colorPalette, .novelty]
     }
 
     private var minimumISOTextBinding: Binding<String> {

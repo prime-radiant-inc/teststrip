@@ -14,6 +14,7 @@ public struct SetQuery: Codable, Equatable, Sendable {
         case isoAtLeast(Int)
         case capturedAtOrAfter(Date)
         case capturedBefore(Date)
+        case evaluationKind(EvaluationKind)
         case importBatch(String)
     }
 
