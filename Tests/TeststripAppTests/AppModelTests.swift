@@ -2001,6 +2001,23 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.gridPreviewURL(for: asset.id), microPreview)
     }
 
+    func testOriginalAccessURLReturnsOnlineOriginalOnlyWhenRequested() throws {
+        let (model, _, asset) = try makeModelWithPreviewCache(
+            named: "explicit-original-access",
+            sourceIsPresent: true
+        )
+
+        XCTAssertNil(model.loupePreviewURL(for: asset.id))
+        XCTAssertEqual(try model.originalAccessURL(for: asset.id), asset.originalURL)
+    }
+
+    func testOriginalAccessURLMarksUnavailableOriginalMissing() throws {
+        let (model, _, asset) = try makeModelWithPreviewCache(named: "explicit-original-missing")
+
+        XCTAssertNil(try model.originalAccessURL(for: asset.id))
+        XCTAssertEqual(model.selectedAsset?.availability, .missing)
+    }
+
     func testRefreshSelectedAvailabilityKeepsCachedPreviewsForMissingOriginal() throws {
         let (model, previewCache, asset) = try makeModelWithPreviewCache(named: "offline-preview")
         let gridPreview = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))

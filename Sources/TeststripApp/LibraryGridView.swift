@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import TeststripCore
 
@@ -957,12 +958,35 @@ private struct LoupeView: View {
                     .font(.caption)
                     .foregroundStyle(flag == .pick ? .green : .red)
             }
+            Button {
+                revealOriginal(for: asset)
+            } label: {
+                Image(systemName: "folder")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .disabled(asset.availability.requiresCachedPreviewOnly)
+            .help("Reveal original")
+            .accessibilityLabel("Reveal original")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.thinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 5))
         .padding(12)
+    }
+
+    private func revealOriginal(for asset: Asset) {
+        do {
+            guard let originalURL = try model.originalAccessURL(for: asset.id) else {
+                model.errorMessage = "Original is unavailable"
+                return
+            }
+            NSWorkspace.shared.activateFileViewerSelecting([originalURL])
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     private func unavailableView(title: String, systemImage: String) -> some View {

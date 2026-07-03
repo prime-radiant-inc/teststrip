@@ -2901,6 +2901,16 @@ public final class AppModel {
         previewURL(for: assetID, levels: [.large, .medium, .grid, .micro])
     }
 
+    public func originalAccessURL(for assetID: AssetID) throws -> URL? {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let availability = try refreshAvailability(for: assetID)
+        try refreshSourceAvailabilitySummaries()
+        guard !availability.requiresCachedPreviewOnly else { return nil }
+        return try catalog.repository.asset(id: assetID).originalURL
+    }
+
     public func previewURL(for assetID: AssetID, levels: [PreviewLevel]) -> URL? {
         guard let catalog else { return nil }
         for level in levels {
@@ -3117,7 +3127,7 @@ private extension AppWorkActivity {
     }
 }
 
-private extension SourceAvailability {
+extension SourceAvailability {
     var requiresCachedPreviewOnly: Bool {
         switch self {
         case .offline, .missing, .moved:

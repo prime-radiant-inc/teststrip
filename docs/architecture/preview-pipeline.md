@@ -4,6 +4,8 @@ Teststrip treats cached previews as catalog-adjacent working data. Originals rem
 
 Grid display prefers cached grid previews and falls back to micro previews while grid preview work catches up. Loupe/compare display prefers large, then medium, then grid, then micro previews before reporting that no cached preview is available.
 
+Full original access is explicit. The loupe can reveal an online/stale original in Finder, but normal grid, loupe, compare, and preview recovery paths do not load or cache `PreviewLevel.original`. This keeps large RAW/original reads out of ordinary browsing and culling.
+
 ## Durable Pending Work
 
 Imports write catalog asset rows first, then record pending micro and grid preview work in `preview_generation_queue` before rendering. Demand-driven grid, medium, and large preview requests also record pending work before dispatching to the worker. A successful render deletes the matching queue row. A failed, cancelled, or interrupted render leaves the row pending so recovery can retry later.
