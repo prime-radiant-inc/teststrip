@@ -102,6 +102,57 @@ final class WorkerEntrypointTests: XCTestCase {
         }
     }
 
+    func testRefreshAvailabilityCommandUpdatesCatalogThroughWorkerProcess() throws {
+        let root = try makeTemporaryDirectory(named: "worker-entrypoint-source-scan")
+        let source = root.appendingPathComponent("source.jpg")
+        try Data("original".utf8).write(to: source)
+        let catalogURL = root.appendingPathComponent("catalog.sqlite")
+        let previewCacheRoot = root.appendingPathComponent("previews", isDirectory: true)
+        let database = try CatalogDatabase.open(at: catalogURL)
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try FileManager.default.removeItem(at: source)
+        let workerURL = try builtWorkerExecutableURL()
+        let process = Process()
+        let inputPipe = Pipe()
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        let itemID = WorkSessionID(rawValue: "source-scan")
+        process.executableURL = workerURL
+        process.arguments = [
+            "--catalog",
+            catalogURL.path,
+            "--preview-cache",
+            previewCacheRoot.path
+        ]
+        process.standardInput = inputPipe
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+
+        try process.run()
+        inputPipe.fileHandleForWriting.write(Data(try WorkerProtocolEncoder.encode(.refreshAvailability(assetID: asset.id), itemID: itemID).utf8))
+        inputPipe.fileHandleForWriting.closeFile()
+        process.waitUntilExit()
+
+        let stdout = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let stderr = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        XCTAssertEqual(stderr, "")
+        XCTAssertEqual(try WorkerProtocolEncoder.decodeEvent(stdout), .completed(
+            itemID: itemID,
+            message: "source missing for source.jpg"
+        ))
+        XCTAssertEqual(try repository.asset(id: asset.id).availability, .missing)
+    }
+
     func testMalformedCommandWritesUnstructuredErrorToStderr() throws {
         let workerURL = try builtWorkerExecutableURL()
         let process = Process()
