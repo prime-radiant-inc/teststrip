@@ -340,6 +340,29 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try setup.repository.pendingMetadataSyncItems(), [])
     }
 
+    func testSyncMetadataCommandImportsExistingAdobeStyleSidecarWhenCatalogIsUnchanged() throws {
+        let catalogMetadata = AssetMetadata(rating: 2)
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-import-adobe-style", metadata: catalogMetadata)
+        let sidecarURL = setup.asset.originalURL.deletingPathExtension().appendingPathExtension("xmp")
+        let initialData = try XMPPacket(metadata: catalogMetadata).xmlData()
+        try initialData.write(to: sidecarURL)
+        try setup.repository.markMetadataSynced(
+            assetID: setup.asset.id,
+            sidecarURL: sidecarURL,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id),
+            fingerprint: XMPSidecarStore.fingerprint(for: initialData)
+        )
+        let sidecarMetadata = AssetMetadata(rating: 5, colorLabel: .green, keywords: ["external"])
+        try XMPPacket(metadata: sidecarMetadata).xmlData().write(to: sidecarURL)
+
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("imported metadata for asset.raw"))
+        XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata, sidecarMetadata)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: setup.sidecarURL.path))
+        XCTAssertEqual(try setup.repository.metadataSyncItem(assetID: setup.asset.id)?.sidecarURL, sidecarURL)
+    }
+
     func testSyncMetadataCommandRefreshesNewerSidecarCheckpointWhenContentsMatch() throws {
         let metadata = AssetMetadata(rating: 2)
         let setup = try makeMetadataSyncSetup(named: "worker-sync-newer-sidecar-checkpoint", metadata: metadata)

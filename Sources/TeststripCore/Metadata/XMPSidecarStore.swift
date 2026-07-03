@@ -15,7 +15,25 @@ public struct XMPSidecarStore: Sendable {
     public init() {}
 
     public func sidecarURL(forOriginalAt originalURL: URL) -> URL {
+        existingSidecarURL(forOriginalAt: originalURL) ?? defaultSidecarURL(forOriginalAt: originalURL)
+    }
+
+    public func defaultSidecarURL(forOriginalAt originalURL: URL) -> URL {
         originalURL.appendingPathExtension("xmp")
+    }
+
+    public func existingSidecarURL(forOriginalAt originalURL: URL) -> URL? {
+        let primarySidecarURL = defaultSidecarURL(forOriginalAt: originalURL)
+        if FileManager.default.fileExists(atPath: primarySidecarURL.path) {
+            return primarySidecarURL
+        }
+
+        guard let adobeStyleSidecarURL = unambiguousAdobeStyleSidecarURL(forOriginalAt: originalURL),
+              FileManager.default.fileExists(atPath: adobeStyleSidecarURL.path)
+        else {
+            return nil
+        }
+        return adobeStyleSidecarURL
     }
 
     public func write(metadata: AssetMetadata, forOriginalAt originalURL: URL) throws -> XMPSidecarWriteResult {
@@ -40,5 +58,42 @@ public struct XMPSidecarStore: Sendable {
 
     public static func fingerprint(for data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func unambiguousAdobeStyleSidecarURL(forOriginalAt originalURL: URL) -> URL? {
+        let primarySidecarURL = defaultSidecarURL(forOriginalAt: originalURL)
+        let adobeStyleSidecarURL = originalURL.deletingPathExtension().appendingPathExtension("xmp")
+        guard adobeStyleSidecarURL.path != primarySidecarURL.path else {
+            return nil
+        }
+        guard !hasSiblingWithSameBasename(as: originalURL) else {
+            return nil
+        }
+        return adobeStyleSidecarURL
+    }
+
+    private func hasSiblingWithSameBasename(as originalURL: URL) -> Bool {
+        let fileManager = FileManager.default
+        let directoryURL = originalURL.deletingLastPathComponent()
+        let originalPath = originalURL.standardizedFileURL.path
+        let originalBasename = originalURL.deletingPathExtension().lastPathComponent
+
+        guard let contents = try? fileManager.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else {
+            return true
+        }
+
+        return contents.contains { candidateURL in
+            guard candidateURL.standardizedFileURL.path != originalPath else {
+                return false
+            }
+            guard candidateURL.deletingPathExtension().lastPathComponent == originalBasename else {
+                return false
+            }
+            return candidateURL.pathExtension.lowercased() != "xmp"
+        }
     }
 }
