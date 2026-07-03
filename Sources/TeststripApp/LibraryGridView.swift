@@ -39,7 +39,7 @@ struct LibraryGridView: View {
                 }
             }
         }
-        .navigationTitle("All Photographs")
+        .navigationTitle(model.libraryTitle)
         .toolbar {
             Picker("View", selection: Binding(
                 get: { model.selectedView },

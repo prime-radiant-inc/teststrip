@@ -161,6 +161,27 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.libraryCountText, "Showing 1 of 3 photographs")
     }
 
+    func testLibraryTitleReflectsSelectedCatalogScope() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        XCTAssertEqual(model.libraryTitle, "All Photographs")
+
+        model.folderFilterText = "/Volumes/NAS/Wedding/Ceremony/"
+        XCTAssertEqual(model.libraryTitle, "Ceremony")
+
+        model.evaluationKindFilter = .faceQuality
+        model.folderFilterText = ""
+        XCTAssertEqual(model.libraryTitle, "Face Quality Signal")
+
+        let set = AssetSet.manual(
+            id: AssetSetID(rawValue: "ceremony-picks"),
+            name: "Ceremony Picks",
+            assetIDs: []
+        )
+        model.savedAssetSets = [set]
+        model.selectedAssetSetID = set.id
+        XCTAssertEqual(model.libraryTitle, "Ceremony Picks")
+    }
+
     func testRatingSelectedAssetUpdatesCatalogAndLoadedAsset() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-rating")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

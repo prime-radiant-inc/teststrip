@@ -340,6 +340,16 @@ public final class AppModel {
         return "\(assets.count) \(assets.count == 1 ? "photograph" : "photographs")"
     }
 
+    public var libraryTitle: String {
+        if let selectedAssetSet {
+            return selectedAssetSet.name
+        }
+        if currentLibraryQuery() != nil {
+            return suggestedSavedSearchName
+        }
+        return "All Photographs"
+    }
+
     public var canUndoMetadataChange: Bool {
         !metadataUndoStack.isEmpty
     }
