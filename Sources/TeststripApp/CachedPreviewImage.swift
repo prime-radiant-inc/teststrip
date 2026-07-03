@@ -18,6 +18,15 @@ enum PreviewImageDataLoader {
     }
 }
 
+enum PreviewImageTransition {
+    static func shouldRetainCurrentImage(loadedURL: URL?, nextURL: URL?) -> Bool {
+        guard let loadedURL, let nextURL else { return false }
+        let loadedAssetDirectory = loadedURL.deletingLastPathComponent().standardizedFileURL
+        let nextAssetDirectory = nextURL.deletingLastPathComponent().standardizedFileURL
+        return loadedAssetDirectory == nextAssetDirectory
+    }
+}
+
 struct CachedPreviewImage: View {
     enum Scaling {
         case fill
@@ -68,7 +77,9 @@ struct CachedPreviewImage: View {
             return
         }
         guard loadedURL != previewURL || loadedGeneration != cacheGeneration else { return }
-        image = nil
+        if !PreviewImageTransition.shouldRetainCurrentImage(loadedURL: loadedURL, nextURL: previewURL) {
+            image = nil
+        }
         loadedURL = previewURL
         loadedGeneration = cacheGeneration
         guard let loadedImage = await PreviewImageDataLoader.loadImage(from: previewURL), !Task.isCancelled else {
