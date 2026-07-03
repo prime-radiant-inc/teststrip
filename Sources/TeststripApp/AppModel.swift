@@ -680,6 +680,9 @@ public final class AppModel {
         let session = try catalog.repository.session(id: id)
         if let assetSetID = session.outputSetIDs.first ?? session.inputSetIDs.first {
             try applyAssetSet(id: assetSetID)
+            if session.kind == .culling {
+                selectedView = .compare
+            }
             return
         }
         statusMessage = session.detail.isEmpty ? session.title : session.detail

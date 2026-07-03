@@ -1342,6 +1342,56 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
     }
 
+    func testSelectingCullingWorkSessionReopensCompareView() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-select-culling-work-session")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let keeper = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
+        let reject = makeAsset(id: "reject", path: "/Photos/reject.jpg", rating: 1)
+        try repository.upsert([keeper, reject])
+        let inputSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "cull-input"),
+            name: "Cull Input",
+            query: SetQuery(predicates: [.ratingAtLeast(4)])
+        )
+        try repository.upsert(inputSet)
+        let session = WorkSession(
+            id: WorkSessionID(rawValue: "cull-session"),
+            kind: .culling,
+            intent: "Pick strongest frame",
+            title: "Cull Session",
+            detail: "Pick strongest frame",
+            status: .running,
+            inputSetIDs: [inputSet.id],
+            outputSetIDs: [],
+            completedUnitCount: 0,
+            totalUnitCount: 2,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        )
+        try repository.save(session)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Work" }?.rows.first)
+
+        try model.selectSidebarRow(row)
+
+        XCTAssertEqual(model.selectedAssetSetID, inputSet.id)
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
+        XCTAssertEqual(model.selectedView, .compare)
+    }
+
     func testApplyingDynamicSavedSetLoadsMatchingCatalogAssets() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-dynamic-set")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
