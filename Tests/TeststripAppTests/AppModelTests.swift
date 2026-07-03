@@ -1361,6 +1361,50 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 2)
     }
 
+    func testReconnectSourceRootRefreshesLoadedAssetsAndSourceSidebar() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-source-reconnect")
+        let oldRoot = directory.appendingPathComponent("OfflineArchive", isDirectory: true)
+        let newRoot = directory.appendingPathComponent("MountedArchive", isDirectory: true)
+        let newOriginalURL = newRoot.appendingPathComponent("Job/frame.jpg")
+        try FileManager.default.createDirectory(
+            at: newOriginalURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("same original bytes".utf8).write(to: newOriginalURL)
+        let oldOriginalURL = oldRoot.appendingPathComponent("Job/frame.jpg")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "source-reconnect"),
+            originalURL: oldOriginalURL,
+            volumeIdentifier: "OfflineArchive",
+            fingerprint: try fileFingerprint(for: newOriginalURL),
+            availability: .missing,
+            metadata: AssetMetadata(rating: 4)
+        )
+        try repository.upsert(asset)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Sources" }?.rowTitles, ["Missing Originals (1)"])
+
+        let result = try model.reconnectSourceRoot(from: oldRoot, to: newRoot)
+
+        XCTAssertEqual(result.reconnectedAssetCount, 1)
+        XCTAssertEqual(model.assets.map(\.originalURL), [newOriginalURL])
+        XCTAssertEqual(model.assets.map(\.availability), [.online])
+        XCTAssertNil(model.sidebarSections.first { $0.title == "Sources" })
+        XCTAssertEqual(model.statusMessage, "Reconnected 1 source")
+    }
+
     func testLoadExposesRecentAndStarredWorkSessionsInSidebar() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-work-sessions")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

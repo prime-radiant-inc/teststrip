@@ -70,6 +70,115 @@ final class SourceAvailabilityTests: XCTestCase {
         XCTAssertEqual(try repository.catalogGeneration(assetID: asset.id), 1)
     }
 
+    func testRepositoryReconnectsSourceRootWhenRelativeFileFingerprintMatches() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "source-reconnect-root")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let oldRoot = directory.appendingPathComponent("OfflineArchive", isDirectory: true)
+        let newRoot = directory.appendingPathComponent("MountedArchive", isDirectory: true)
+        let newOriginalURL = newRoot.appendingPathComponent("2024/frame.jpg")
+        try FileManager.default.createDirectory(
+            at: newOriginalURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("same original bytes".utf8).write(to: newOriginalURL)
+        let oldOriginalURL = oldRoot.appendingPathComponent("2024/frame.jpg")
+        let asset = Asset(
+            id: AssetID(rawValue: "source-reconnect-match"),
+            originalURL: oldOriginalURL,
+            volumeIdentifier: "OfflineArchive",
+            fingerprint: try fileFingerprint(for: newOriginalURL),
+            availability: .missing,
+            metadata: AssetMetadata(rating: 4)
+        )
+        try repository.upsert(asset)
+
+        let result = try repository.reconnectSourceRoot(from: oldRoot, to: newRoot)
+
+        XCTAssertEqual(result.scannedAssetCount, 1)
+        XCTAssertEqual(result.reconnectedAssetCount, 1)
+        XCTAssertEqual(result.missingFileCount, 0)
+        XCTAssertEqual(result.fingerprintMismatchCount, 0)
+        let reconnected = try repository.asset(id: asset.id)
+        XCTAssertEqual(reconnected.originalURL, newOriginalURL)
+        XCTAssertEqual(reconnected.availability, .online)
+        XCTAssertEqual(reconnected.metadata.rating, 4)
+        XCTAssertEqual(try repository.catalogGeneration(assetID: asset.id), 1)
+    }
+
+    func testRepositoryDoesNotReconnectSourceRootWhenCandidateFingerprintDiffers() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "source-reconnect-mismatch")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let oldRoot = directory.appendingPathComponent("OfflineArchive", isDirectory: true)
+        let newRoot = directory.appendingPathComponent("MountedArchive", isDirectory: true)
+        let newOriginalURL = newRoot.appendingPathComponent("2024/frame.jpg")
+        try FileManager.default.createDirectory(
+            at: newOriginalURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("different original bytes".utf8).write(to: newOriginalURL)
+        let oldOriginalURL = oldRoot.appendingPathComponent("2024/frame.jpg")
+        let asset = Asset(
+            id: AssetID(rawValue: "source-reconnect-mismatch"),
+            originalURL: oldOriginalURL,
+            volumeIdentifier: "OfflineArchive",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .missing,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+
+        let result = try repository.reconnectSourceRoot(from: oldRoot, to: newRoot)
+
+        XCTAssertEqual(result.scannedAssetCount, 1)
+        XCTAssertEqual(result.reconnectedAssetCount, 0)
+        XCTAssertEqual(result.missingFileCount, 0)
+        XCTAssertEqual(result.fingerprintMismatchCount, 1)
+        let unchanged = try repository.asset(id: asset.id)
+        XCTAssertEqual(unchanged.originalURL, oldOriginalURL)
+        XCTAssertEqual(unchanged.availability, .missing)
+    }
+
+    func testRepositoryReconnectUpdatesMetadataSyncSidecarPath() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "source-reconnect-xmp")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let oldRoot = directory.appendingPathComponent("OfflineArchive", isDirectory: true)
+        let newRoot = directory.appendingPathComponent("MountedArchive", isDirectory: true)
+        let newOriginalURL = newRoot.appendingPathComponent("2024/frame.dng")
+        try FileManager.default.createDirectory(
+            at: newOriginalURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("same raw bytes".utf8).write(to: newOriginalURL)
+        let oldOriginalURL = oldRoot.appendingPathComponent("2024/frame.dng")
+        let asset = Asset(
+            id: AssetID(rawValue: "source-reconnect-xmp"),
+            originalURL: oldOriginalURL,
+            volumeIdentifier: "OfflineArchive",
+            fingerprint: try fileFingerprint(for: newOriginalURL),
+            availability: .missing,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try repository.markMetadataSynced(
+            assetID: asset.id,
+            sidecarURL: oldOriginalURL.appendingPathExtension("xmp"),
+            catalogGeneration: try repository.catalogGeneration(assetID: asset.id),
+            fingerprint: "sidecar-fingerprint"
+        )
+
+        _ = try repository.reconnectSourceRoot(from: oldRoot, to: newRoot)
+
+        let syncItem = try XCTUnwrap(repository.metadataSyncItem(assetID: asset.id))
+        XCTAssertEqual(syncItem.sidecarURL, newOriginalURL.appendingPathExtension("xmp"))
+        XCTAssertEqual(syncItem.lastSyncedFingerprint, "sidecar-fingerprint")
+    }
+
     private func makeAsset(originalURL: URL, fingerprint: FileFingerprint) -> Asset {
         Asset(
             id: AssetID(rawValue: "source-asset"),

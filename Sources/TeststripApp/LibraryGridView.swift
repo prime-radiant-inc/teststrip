@@ -6,6 +6,7 @@ struct LibraryGridView: View {
     @State private var isSavingSearch = false
     @State private var isSavingManualSet = false
     @State private var isStartingCullingSession = false
+    @State private var isShowingSourceReconnectSheet = false
     @State private var savedSearchName = ""
     @State private var savedSearchStarred = false
     @State private var manualSetName = ""
@@ -15,6 +16,7 @@ struct LibraryGridView: View {
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
     @State private var importPathDraft = ImportFolderPathDraft()
+    @State private var sourceReconnectDraft = SourceReconnectPathDraft()
     @State private var cullingFocusRequest = 0
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
@@ -91,6 +93,14 @@ struct LibraryGridView: View {
             .disabled(isImporting)
 
             Button {
+                showSourceReconnectSheet()
+            } label: {
+                Label("Reconnect Sources", systemImage: "externaldrive")
+            }
+            .disabled(isImporting || !model.canRefreshVisibleAssetAvailability)
+            .help("Reconnect moved or mounted source roots")
+
+            Button {
                 evaluateSelectedAsset()
             } label: {
                 Label("Evaluate", systemImage: "sparkles")
@@ -119,6 +129,9 @@ struct LibraryGridView: View {
         }
         .sheet(isPresented: $isShowingImportPathSheet) {
             importPathSheet
+        }
+        .sheet(isPresented: $isShowingSourceReconnectSheet) {
+            sourceReconnectSheet
         }
         .overlay(alignment: .topLeading) {
             CullingKeyCaptureView(focusRequest: cullingFocusRequest, onShortcut: handleCullingShortcut)
@@ -470,6 +483,38 @@ struct LibraryGridView: View {
         .padding(18)
     }
 
+    private var sourceReconnectSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Reconnect Source Root")
+                .font(.headline)
+            TextField("Old root path", text: $sourceReconnectDraft.oldRootPath)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 460)
+            TextField("New mounted root path", text: $sourceReconnectDraft.newRootPath)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 460)
+            if let errorMessage = sourceReconnectDraft.errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    isShowingSourceReconnectSheet = false
+                }
+                Button("Reconnect") {
+                    reconnectSourceRoot()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(sourceReconnectDraft.oldRootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || sourceReconnectDraft.newRootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || isImporting)
+            }
+        }
+        .padding(18)
+    }
+
     private struct SaveSetPopover: View {
         var title: String
         @Binding var name: String
@@ -712,6 +757,11 @@ struct LibraryGridView: View {
         isShowingImportPathSheet = true
     }
 
+    private func showSourceReconnectSheet() {
+        sourceReconnectDraft.reset()
+        isShowingSourceReconnectSheet = true
+    }
+
     private func showImportCardPanel() {
         guard let source = FolderSelectionPanel.chooseCardSourceFolder() else { return }
         guard let destinationRoot = FolderSelectionPanel.chooseCardDestinationFolder() else { return }
@@ -726,6 +776,16 @@ struct LibraryGridView: View {
             importFolder(folderURL)
         } catch {
             return
+        }
+    }
+
+    private func reconnectSourceRoot() {
+        do {
+            let roots = try sourceReconnectDraft.resolveRootURLs()
+            try model.reconnectSourceRoot(from: roots.oldRoot, to: roots.newRoot)
+            isShowingSourceReconnectSheet = false
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 

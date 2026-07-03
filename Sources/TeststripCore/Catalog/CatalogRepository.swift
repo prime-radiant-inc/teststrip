@@ -1,5 +1,24 @@
 import Foundation
 
+public struct SourceRootReconnectResult: Equatable, Sendable {
+    public var scannedAssetCount: Int
+    public var reconnectedAssetCount: Int
+    public var missingFileCount: Int
+    public var fingerprintMismatchCount: Int
+
+    public init(
+        scannedAssetCount: Int = 0,
+        reconnectedAssetCount: Int = 0,
+        missingFileCount: Int = 0,
+        fingerprintMismatchCount: Int = 0
+    ) {
+        self.scannedAssetCount = scannedAssetCount
+        self.reconnectedAssetCount = reconnectedAssetCount
+        self.missingFileCount = missingFileCount
+        self.fingerprintMismatchCount = fingerprintMismatchCount
+    }
+}
+
 public final class CatalogRepository {
     private let database: CatalogDatabase
     private let encoder = JSONEncoder()
@@ -363,6 +382,55 @@ public final class CatalogRepository {
                 assetID.rawValue
             ]
         )
+    }
+
+    public func reconnectSourceRoot(from oldRoot: URL, to newRoot: URL) throws -> SourceRootReconnectResult {
+        let oldRootPath = Self.normalizedDirectoryPath(oldRoot)
+        let newRootPath = Self.normalizedDirectoryPath(newRoot)
+        let rows = try database.rows(
+            """
+            SELECT * FROM assets
+            WHERE original_path = ?
+               OR original_path LIKE ? ESCAPE '\\'
+            ORDER BY rowid ASC
+            """,
+            bindings: [
+                oldRootPath,
+                "\(Self.escapedLikePattern(oldRootPath == "/" ? "/" : oldRootPath + "/"))%"
+            ]
+        )
+        var result = SourceRootReconnectResult(scannedAssetCount: rows.count)
+
+        try database.transaction {
+            for asset in try rows.map(decodeAsset) {
+                guard let relativePath = Self.relativePath(for: asset.originalURL, under: oldRootPath) else {
+                    continue
+                }
+                let candidateURL = URL(fileURLWithPath: newRootPath, isDirectory: true)
+                    .appendingPathComponent(relativePath)
+                guard let candidateFingerprint = Self.fingerprint(for: candidateURL) else {
+                    result.missingFileCount += 1
+                    continue
+                }
+                guard asset.fingerprint.matches(candidateFingerprint) else {
+                    result.fingerprintMismatchCount += 1
+                    continue
+                }
+
+                var reconnectedAsset = asset
+                reconnectedAsset.originalURL = candidateURL
+                reconnectedAsset.volumeIdentifier = Self.volumeIdentifier(for: candidateURL)
+                reconnectedAsset.availability = .online
+                try upsert(reconnectedAsset)
+                try updateMetadataSyncSidecarPathIfPresent(
+                    assetID: asset.id,
+                    sidecarURL: candidateURL.appendingPathExtension("xmp")
+                )
+                result.reconnectedAssetCount += 1
+            }
+        }
+
+        return result
     }
 
     public func catalogGeneration(assetID: AssetID) throws -> Int {
@@ -745,6 +813,60 @@ public final class CatalogRepository {
         return name.isEmpty ? folderPath : name
     }
 
+    private static func normalizedDirectoryPath(_ url: URL) -> String {
+        let path = url.standardizedFileURL.path
+        guard path != "/" else { return path }
+        return path.hasSuffix("/") ? String(path.dropLast()) : path
+    }
+
+    private static func relativePath(for originalURL: URL, under rootPath: String) -> String? {
+        let path = originalURL.standardizedFileURL.path
+        guard path != rootPath else { return "" }
+        let prefix = rootPath == "/" ? "/" : "\(rootPath)/"
+        guard path.hasPrefix(prefix) else { return nil }
+        return String(path.dropFirst(prefix.count))
+    }
+
+    private static func escapedLikePattern(_ value: String) -> String {
+        var escaped = ""
+        for character in value {
+            switch character {
+            case "%", "_", "\\":
+                escaped.append("\\")
+                escaped.append(character)
+            default:
+                escaped.append(character)
+            }
+        }
+        return escaped
+    }
+
+    private static func fingerprint(for url: URL) -> FileFingerprint? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            return nil
+        }
+        return FileFingerprint(
+            size: (attributes[.size] as? NSNumber)?.int64Value ?? 0,
+            modificationDate: attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0)
+        )
+    }
+
+    private static func volumeIdentifier(for url: URL) -> String? {
+        guard let identifier = try? url.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier else {
+            return nil
+        }
+        if let data = identifier as? Data {
+            return data.base64EncodedString()
+        }
+        if let data = identifier as? NSData {
+            return data.base64EncodedString()
+        }
+        if let string = identifier as? String {
+            return string
+        }
+        return String(describing: identifier)
+    }
+
     private static func chunks<T>(_ values: [T], size: Int) -> [[T]] {
         stride(from: 0, to: values.count, by: size).map { start in
             Array(values[start..<Swift.min(start + size, values.count)])
@@ -817,6 +939,23 @@ public final class CatalogRepository {
             catalogGeneration: generation,
             lastSyncedFingerprint: fingerprint.isEmpty ? nil : fingerprint,
             lastSyncedAt: lastSyncedAt
+        )
+    }
+
+    private func updateMetadataSyncSidecarPathIfPresent(assetID: AssetID, sidecarURL: URL) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            UPDATE metadata_sync_state
+            SET sidecar_path = ?,
+                updated_at = ?
+            WHERE asset_id = ?
+            """,
+            bindings: [
+                sidecarURL.path,
+                now,
+                assetID.rawValue
+            ]
         )
     }
 

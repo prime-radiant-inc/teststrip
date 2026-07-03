@@ -1961,6 +1961,22 @@ public final class AppModel {
         try refreshSourceAvailabilitySummaries()
     }
 
+    @discardableResult
+    public func reconnectSourceRoot(from oldRoot: URL, to newRoot: URL) throws -> SourceRootReconnectResult {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let preferredSelection = selectedAssetID
+        let result = try catalog.repository.reconnectSourceRoot(from: oldRoot, to: newRoot)
+        try loadCatalogPage(preferredSelection: preferredSelection)
+        catalogFolders = try catalog.repository.folders()
+        sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
+        rebuildSidebarSections()
+        let sourceLabel = result.reconnectedAssetCount == 1 ? "source" : "sources"
+        statusMessage = "Reconnected \(result.reconnectedAssetCount) \(sourceLabel)"
+        return result
+    }
+
     private func requestAvailabilityRefresh(assetID: AssetID) throws {
         guard let workerSupervisor else {
             throw TeststripError.invalidState("worker supervisor is not configured")
