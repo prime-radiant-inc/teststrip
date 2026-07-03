@@ -59,6 +59,7 @@ public enum SidebarRowTarget: Equatable, Sendable {
     case allPhotographs
     case placeholder
     case assetSet(AssetSetID)
+    case workSession(WorkSessionID)
 }
 
 public struct SidebarRow: Identifiable, Equatable, Sendable {
@@ -570,9 +571,23 @@ public final class AppModel {
             try clearLibraryFilters()
         case .assetSet(let id):
             try applyAssetSet(id: id)
+        case .workSession(let id):
+            try applyWorkSession(id: id)
         case .placeholder:
             break
         }
+    }
+
+    public func applyWorkSession(id: WorkSessionID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let session = try catalog.repository.session(id: id)
+        if let assetSetID = session.outputSetIDs.first ?? session.inputSetIDs.first {
+            try applyAssetSet(id: assetSetID)
+            return
+        }
+        statusMessage = session.detail.isEmpty ? session.title : session.detail
     }
 
     public func applyAssetSet(id: AssetSetID) throws {
@@ -2108,11 +2123,19 @@ public final class AppModel {
         starredWork: [AppWorkActivity]
     ) -> [SidebarRow] {
         var rows = recentWork.prefix(5).map { activity in
-            SidebarRow(id: "work-recent-\(activity.id)", title: activity.title)
+            SidebarRow(
+                id: "work-recent-\(activity.id)",
+                title: activity.title,
+                target: .workSession(WorkSessionID(rawValue: activity.id))
+            )
         }
         let recentIDs = Set(recentWork.map(\.id))
         rows.append(contentsOf: starredWork.prefix(5).filter { !recentIDs.contains($0.id) }.map { activity in
-            SidebarRow(id: "work-starred-\(activity.id)", title: activity.title)
+            SidebarRow(
+                id: "work-starred-\(activity.id)",
+                title: activity.title,
+                target: .workSession(WorkSessionID(rawValue: activity.id))
+            )
         })
         return rows
     }

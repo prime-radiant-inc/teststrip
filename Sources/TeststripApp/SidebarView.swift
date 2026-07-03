@@ -36,6 +36,8 @@ struct SidebarView: View {
             return "photo.on.rectangle"
         case .assetSet:
             return "rectangle.stack"
+        case .workSession:
+            return "clock.arrow.circlepath"
         case .placeholder:
             return "circle"
         }

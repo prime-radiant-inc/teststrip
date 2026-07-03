@@ -1125,6 +1125,60 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.recentWork.map(\.id), [recent.id.rawValue, starred.id.rawValue])
         XCTAssertEqual(model.starredWork.map(\.id), [starred.id.rawValue])
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rowTitles, [recent.title, starred.title])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rows.map(\.target), [
+            .workSession(recent.id),
+            .workSession(starred.id)
+        ])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rows.map(\.isSelectable), [true, true])
+    }
+
+    func testSelectingWorkSessionAppliesAssociatedOutputSet() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-select-work-session")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let keeper = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
+        let reject = makeAsset(id: "reject", path: "/Photos/reject.jpg", rating: 1)
+        try repository.upsert([keeper, reject])
+        let outputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "work-output"),
+            name: "Work Output",
+            assetIDs: [keeper.id]
+        )
+        try repository.upsert(outputSet)
+        let session = WorkSession(
+            id: WorkSessionID(rawValue: "cull-session"),
+            kind: .culling,
+            intent: "Pick strongest frame",
+            title: "Cull Session",
+            detail: "Selected one keeper",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [outputSet.id],
+            completedUnitCount: 2,
+            totalUnitCount: 2,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        )
+        try repository.save(session)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Work" }?.rows.first)
+
+        try model.selectSidebarRow(row)
+
+        XCTAssertEqual(model.selectedAssetSetID, outputSet.id)
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
     }
 
     func testApplyingDynamicSavedSetLoadsMatchingCatalogAssets() throws {
