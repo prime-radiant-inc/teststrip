@@ -756,6 +756,12 @@ public final class AppModel {
         }
     }
 
+    public func setKeywordTextForSelectedAsset(_ keywordText: String) throws {
+        try updateSelectedAssetMetadata { metadata in
+            metadata.keywords = Self.keywords(from: keywordText)
+        }
+    }
+
     public func undoMetadataChange() throws {
         guard let change = metadataUndoStack.popLast() else { return }
         try applyMetadataSnapshot(assetID: change.assetID, metadata: change.before)
@@ -787,6 +793,15 @@ public final class AppModel {
             after: updatedMetadata
         ))
         metadataRedoStack.removeAll()
+    }
+
+    private static func keywords(from keywordText: String) -> [String] {
+        var seen = Set<String>()
+        return keywordText
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .filter { seen.insert($0).inserted }
     }
 
     private func applyMetadataSnapshot(assetID: AssetID, metadata: AssetMetadata) throws {
