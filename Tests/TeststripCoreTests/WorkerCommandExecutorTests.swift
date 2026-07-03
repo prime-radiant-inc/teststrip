@@ -57,6 +57,39 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
     }
 
+    func testGeneratePreviewCommandRecordsFailureStateWhenRenderFails() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-preview-queue-failure")
+        let source = root.appendingPathComponent("source.jpg")
+        try Data("not an image".utf8).write(to: source)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .grid))
+        let executor = WorkerCommandExecutor(
+            repository: repository,
+            previewCache: PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        )
+
+        XCTAssertThrowsError(try executor.execute(.generatePreview(assetID: asset.id, level: .grid)))
+
+        let failureState = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .grid))
+        XCTAssertEqual(failureState.attemptCount, 1)
+        XCTAssertNotNil(failureState.lastErrorMessage)
+        XCTAssertNotNil(failureState.lastAttemptedAt)
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: asset.id, level: .grid)
+        ])
+    }
+
     func testRefreshAvailabilityCommandUpdatesCatalogSourceState() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-refresh-availability")
         let source = root.appendingPathComponent("source.jpg")

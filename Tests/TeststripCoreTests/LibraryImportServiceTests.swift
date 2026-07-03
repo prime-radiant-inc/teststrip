@@ -66,10 +66,27 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertEqual(result.previewFailures[0].assetID, result.importedAssets[0].id)
         XCTAssertEqual(result.previewFailures[0].sourceURL, invalidImage)
         XCTAssertEqual(try repository.allAssets(limit: 10).map(\.originalURL), [invalidImage])
-        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
-            PreviewGenerationItem(assetID: result.importedAssets[0].id, level: .micro),
-            PreviewGenerationItem(assetID: result.importedAssets[0].id, level: .grid)
-        ])
+        let pendingItems = try repository.pendingPreviewGenerationItems()
+        XCTAssertEqual(pendingItems.count, 2)
+        XCTAssertTrue(pendingItems.contains(PreviewGenerationItem(
+            assetID: result.importedAssets[0].id,
+            level: .micro
+        )))
+        XCTAssertTrue(pendingItems.contains(PreviewGenerationItem(
+            assetID: result.importedAssets[0].id,
+            level: .grid
+        )))
+        let failureState = try XCTUnwrap(repository.previewGenerationQueueState(
+            assetID: result.importedAssets[0].id,
+            level: .micro
+        ))
+        XCTAssertEqual(failureState.attemptCount, 1)
+        XCTAssertEqual(failureState.lastErrorMessage, result.previewFailures[0].message)
+        XCTAssertNotNil(failureState.lastAttemptedAt)
+        XCTAssertEqual(
+            try repository.previewGenerationQueueState(assetID: result.importedAssets[0].id, level: .grid)?.attemptCount,
+            0
+        )
     }
 
     func testAddFolderReportsPreviewProgress() throws {

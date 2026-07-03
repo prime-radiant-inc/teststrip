@@ -466,6 +466,39 @@ public final class CatalogRepository {
         )
     }
 
+    public func recordPreviewGenerationFailure(
+        assetID: AssetID,
+        level: PreviewLevel,
+        errorMessage: String
+    ) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT INTO preview_generation_queue (
+                asset_id,
+                level,
+                attempt_count,
+                last_error,
+                last_attempted_at,
+                updated_at
+            )
+            VALUES (?, ?, 1, ?, ?, ?)
+            ON CONFLICT(asset_id, level) DO UPDATE SET
+                attempt_count = preview_generation_queue.attempt_count + 1,
+                last_error = excluded.last_error,
+                last_attempted_at = excluded.last_attempted_at,
+                updated_at = excluded.updated_at
+            """,
+            bindings: [
+                assetID.rawValue,
+                level.rawValue,
+                errorMessage,
+                now,
+                now
+            ]
+        )
+    }
+
     public func markPreviewGenerated(assetID: AssetID, level: PreviewLevel) throws {
         try database.execute(
             "DELETE FROM preview_generation_queue WHERE asset_id = ? AND level = ?",
@@ -489,6 +522,19 @@ public final class CatalogRepository {
         }
         let rows = try database.rows(sql, bindings: bindings)
         return try rows.map(decodePreviewGenerationItem)
+    }
+
+    public func previewGenerationQueueState(assetID: AssetID, level: PreviewLevel) throws -> PreviewGenerationQueueState? {
+        let rows = try database.rows(
+            """
+            SELECT asset_id, level, attempt_count, last_error, last_attempted_at
+            FROM preview_generation_queue
+            WHERE asset_id = ? AND level = ?
+            LIMIT 1
+            """,
+            bindings: [assetID.rawValue, level.rawValue]
+        )
+        return try rows.first.map(decodePreviewGenerationQueueState)
     }
 
     public func metadataSyncConflictItems() throws -> [MetadataSyncItem] {
@@ -966,6 +1012,23 @@ public final class CatalogRepository {
             throw CatalogError.sqlite("preview generation row is missing required columns")
         }
         return PreviewGenerationItem(assetID: AssetID(rawValue: assetID), level: level)
+    }
+
+    private func decodePreviewGenerationQueueState(_ row: [String: String]) throws -> PreviewGenerationQueueState {
+        let item = try decodePreviewGenerationItem(row)
+        guard let attemptCountString = row["attempt_count"],
+              let attemptCount = Int(attemptCountString) else {
+            throw CatalogError.sqlite("preview generation state row is missing attempt_count")
+        }
+        let lastAttemptedAt = row["last_attempted_at"]
+            .flatMap(Double.init)
+            .map(Date.init(timeIntervalSince1970:))
+        return PreviewGenerationQueueState(
+            item: item,
+            attemptCount: attemptCount,
+            lastErrorMessage: row["last_error"],
+            lastAttemptedAt: lastAttemptedAt
+        )
     }
 
     private func encode<T: Encodable>(_ value: T) throws -> String {

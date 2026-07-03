@@ -242,6 +242,11 @@ public struct LibraryImportService: Sendable {
                     generatedCount += 1
                 } catch {
                     failedAssetIDs.insert(asset.id)
+                    try repository.recordPreviewGenerationFailure(
+                        assetID: asset.id,
+                        level: item.level,
+                        errorMessage: error.localizedDescription
+                    )
                     failures.append(LibraryPreviewFailure(
                         assetID: asset.id,
                         sourceURL: asset.originalURL,

@@ -33,6 +33,13 @@ public final class CatalogDatabase: @unchecked Sendable {
             try execute(statement)
         }
         try addColumnIfMissing(table: "assets", column: "technical_metadata_json", definition: "TEXT")
+        try addColumnIfMissing(
+            table: "preview_generation_queue",
+            column: "attempt_count",
+            definition: "INTEGER NOT NULL DEFAULT 0"
+        )
+        try addColumnIfMissing(table: "preview_generation_queue", column: "last_error", definition: "TEXT")
+        try addColumnIfMissing(table: "preview_generation_queue", column: "last_attempted_at", definition: "REAL")
         try execute(
             "INSERT OR REPLACE INTO catalog_meta (key, value) VALUES ('schema_version', ?)",
             bindings: ["\(CatalogMigrations.version)"]

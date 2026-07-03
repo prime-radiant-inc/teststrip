@@ -214,6 +214,66 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(limit: 1).count, 1)
     }
 
+    func testRecordsPreviewGenerationFailureStateWithoutClearingPendingItem() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-failure")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let item = PreviewGenerationItem(assetID: AssetID(rawValue: "asset-1"), level: .grid)
+
+        try repository.recordPreviewGenerationPending(item)
+        try repository.recordPreviewGenerationFailure(
+            assetID: item.assetID,
+            level: item.level,
+            errorMessage: "unsupported image"
+        )
+        try repository.recordPreviewGenerationFailure(
+            assetID: item.assetID,
+            level: item.level,
+            errorMessage: "still unsupported"
+        )
+
+        let state = try XCTUnwrap(repository.previewGenerationQueueState(assetID: item.assetID, level: item.level))
+        XCTAssertEqual(state.item, item)
+        XCTAssertEqual(state.attemptCount, 2)
+        XCTAssertEqual(state.lastErrorMessage, "still unsupported")
+        XCTAssertNotNil(state.lastAttemptedAt)
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [item])
+    }
+
+    func testMigrationAddsPreviewGenerationFailureStateToExistingQueue() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-failure-migration")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.execute(
+            """
+            CREATE TABLE preview_generation_queue (
+                asset_id TEXT NOT NULL,
+                level TEXT NOT NULL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (asset_id, level)
+            )
+            """
+        )
+        try database.execute(
+            """
+            INSERT INTO preview_generation_queue (asset_id, level, updated_at)
+            VALUES ('asset-1', 'grid', '1')
+            """
+        )
+
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        let state = try XCTUnwrap(repository.previewGenerationQueueState(
+            assetID: AssetID(rawValue: "asset-1"),
+            level: .grid
+        ))
+        XCTAssertEqual(state.item, PreviewGenerationItem(assetID: AssetID(rawValue: "asset-1"), level: .grid))
+        XCTAssertEqual(state.attemptCount, 0)
+        XCTAssertNil(state.lastErrorMessage)
+        XCTAssertNil(state.lastAttemptedAt)
+    }
+
     func testFetchesAssetPageWithOffset() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

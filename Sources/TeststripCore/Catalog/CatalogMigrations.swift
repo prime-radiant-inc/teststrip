@@ -1,5 +1,5 @@
 enum CatalogMigrations {
-    static let version = 8
+    static let version = 9
 
     static let statements = [
         """
@@ -39,6 +39,9 @@ enum CatalogMigrations {
         CREATE TABLE IF NOT EXISTS preview_generation_queue (
             asset_id TEXT NOT NULL,
             level TEXT NOT NULL,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            last_attempted_at REAL,
             updated_at REAL NOT NULL,
             PRIMARY KEY (asset_id, level)
         )

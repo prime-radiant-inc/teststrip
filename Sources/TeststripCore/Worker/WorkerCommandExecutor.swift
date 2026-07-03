@@ -174,11 +174,20 @@ public struct WorkerCommandExecutor {
             )
         case .generatePreview(let assetID, let level):
             let asset = try repository.asset(id: assetID)
-            try renderer.render(
-                sourceURL: asset.originalURL,
-                level: level,
-                destinationURL: previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
-            )
+            do {
+                try renderer.render(
+                    sourceURL: asset.originalURL,
+                    level: level,
+                    destinationURL: previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
+                )
+            } catch {
+                try repository.recordPreviewGenerationFailure(
+                    assetID: assetID,
+                    level: level,
+                    errorMessage: error.localizedDescription
+                )
+                throw error
+            }
             try repository.markPreviewGenerated(assetID: assetID, level: level)
             return .completed("generated \(level.rawValue) preview for \(Self.displayName(for: asset))")
         case .syncMetadata(let assetID):
