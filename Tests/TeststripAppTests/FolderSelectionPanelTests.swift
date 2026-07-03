@@ -20,7 +20,7 @@ final class FolderSelectionPanelTests: XCTestCase {
     }
 
     @MainActor
-    func testImportFolderPanelOpensRememberedFolderParent() throws {
+    func testImportFolderPanelOpensRememberedFolder() throws {
         let panel = NSOpenPanel()
         let parent = try makeTemporaryDirectory(named: "remembered-import-parent")
         let rememberedFolder = parent.appendingPathComponent("shoot", isDirectory: true)
@@ -32,7 +32,7 @@ final class FolderSelectionPanelTests: XCTestCase {
             rememberedDirectory: rememberedFolder
         )
 
-        XCTAssertEqual(panel.directoryURL?.standardizedFileURL, parent.standardizedFileURL)
+        XCTAssertEqual(panel.directoryURL?.standardizedFileURL, rememberedFolder.standardizedFileURL)
     }
 
     @MainActor
@@ -68,7 +68,7 @@ final class FolderSelectionPanelTests: XCTestCase {
     }
 
     @MainActor
-    func testRememberedImportFolderStartsNextChooserAtParentDirectory() throws {
+    func testRememberedImportFolderStartsNextChooserAtSelectedDirectory() throws {
         let defaults = try makeDefaults()
         let parent = try makeTemporaryDirectory(named: "remember-import-parent")
         let selectedFolder = parent.appendingPathComponent("shoot", isDirectory: true)
@@ -76,7 +76,7 @@ final class FolderSelectionPanelTests: XCTestCase {
 
         FolderSelectionPanel.rememberImportFolder(selectedFolder, defaults: defaults)
 
-        XCTAssertEqual(FolderSelectionPanel.startingImportDirectory(defaults: defaults)?.standardizedFileURL, parent.standardizedFileURL)
+        XCTAssertEqual(FolderSelectionPanel.startingImportDirectory(defaults: defaults)?.standardizedFileURL, selectedFolder.standardizedFileURL)
     }
 
     @MainActor
@@ -92,8 +92,8 @@ final class FolderSelectionPanelTests: XCTestCase {
         FolderSelectionPanel.rememberCardSourceFolder(source, defaults: defaults)
         FolderSelectionPanel.rememberCardDestinationFolder(destination, defaults: defaults)
 
-        XCTAssertEqual(FolderSelectionPanel.startingCardSourceDirectory(defaults: defaults)?.standardizedFileURL, sourceParent.standardizedFileURL)
-        XCTAssertEqual(FolderSelectionPanel.startingCardDestinationDirectory(defaults: defaults)?.standardizedFileURL, destinationParent.standardizedFileURL)
+        XCTAssertEqual(FolderSelectionPanel.startingCardSourceDirectory(defaults: defaults)?.standardizedFileURL, source.standardizedFileURL)
+        XCTAssertEqual(FolderSelectionPanel.startingCardDestinationDirectory(defaults: defaults)?.standardizedFileURL, destination.standardizedFileURL)
     }
 
     private func makeTemporaryDirectory(named name: String) throws -> URL {

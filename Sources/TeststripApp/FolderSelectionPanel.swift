@@ -88,15 +88,15 @@ enum FolderSelectionPanel {
     }
 
     static func startingImportDirectory(defaults: UserDefaults = .standard) -> URL? {
-        rememberedParentDirectory(for: importFolderParentKey, defaults: defaults) ?? defaultStartingDirectory()
+        rememberedDirectory(for: importFolderParentKey, defaults: defaults) ?? defaultStartingDirectory()
     }
 
     static func startingCardSourceDirectory(defaults: UserDefaults = .standard) -> URL? {
-        rememberedParentDirectory(for: cardSourceParentKey, defaults: defaults) ?? defaultStartingDirectory()
+        rememberedDirectory(for: cardSourceParentKey, defaults: defaults) ?? defaultStartingDirectory()
     }
 
     static func startingCardDestinationDirectory(defaults: UserDefaults = .standard) -> URL? {
-        rememberedParentDirectory(for: cardDestinationParentKey, defaults: defaults) ?? defaultStartingDirectory()
+        rememberedDirectory(for: cardDestinationParentKey, defaults: defaults) ?? defaultStartingDirectory()
     }
 
     static func rememberImportFolder(_ folderURL: URL, defaults: UserDefaults = .standard) {
@@ -127,8 +127,8 @@ enum FolderSelectionPanel {
         panel.prompt = prompt
         panel.message = message
         if let rememberedDirectory,
-           let parent = existingDirectory(rememberedDirectory.deletingLastPathComponent()) {
-            panel.directoryURL = parent
+           let directory = existingDirectory(rememberedDirectory) {
+            panel.directoryURL = directory
         } else {
             panel.directoryURL = startingDirectory
         }
@@ -142,11 +142,6 @@ enum FolderSelectionPanel {
         guard let path = defaults.string(forKey: key), !path.isEmpty else { return nil }
         let url = URL(fileURLWithPath: path, isDirectory: true)
         return existingDirectory(url)
-    }
-
-    private static func rememberedParentDirectory(for key: String, defaults: UserDefaults) -> URL? {
-        guard let rememberedDirectory = rememberedDirectory(for: key, defaults: defaults) else { return nil }
-        return existingDirectory(rememberedDirectory.deletingLastPathComponent())
     }
 
     private static func defaultStartingDirectory() -> URL? {
