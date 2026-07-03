@@ -30,6 +30,14 @@ The Import Path probe is:
 
 It creates a temporary PNG folder, opens the Import Path sheet, fills the focused sheet field, presses Import, and waits until the imported thumbnail is visible. Use it after `./script/build_and_run.sh --verify-smoke` when checking the first-run import flow.
 
+The selected-photo evaluation probe is:
+
+```bash
+./script/verify_evaluation.sh Teststrip
+```
+
+It selects a visible thumbnail, presses Evaluate, and waits until provider signals appear in the inspector. Use it with the seeded smoke catalog, which has cached previews available for local-first evaluation.
+
 ## Seeded Visual Smoke
 
 Use a fresh temporary app-support directory when a screenshot needs real grid content instead of an empty isolated catalog:
