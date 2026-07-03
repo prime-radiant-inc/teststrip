@@ -16,9 +16,9 @@ Normal browsing reads catalog rows and cached previews. It must not probe origin
 - App code can refresh the selected asset or the loaded library window and keep cached grid/loupe previews usable.
 - When the supervised worker is configured, loaded-window refreshes enqueue bounded, source-grouped `sourceScan` batches with progress instead of probing originals on the UI path or filling Activity with one row per visible asset. This keeps a large visible NAS/removable set from becoming one oversized worker command.
 - Catalog load builds a Sources sidebar section for unavailable or questionable originals: offline, missing, moved, and stale. Selecting one of those rows applies the existing source availability filter, so offline/missing sets are reachable without scanning originals on the grid hot path.
-- Source roots can be reconnected from the library toolbar by entering the old cataloged root and the new mounted root. The reconnect sheet pre-fills the old root from the common folder of visible unavailable assets when it can infer one. Reconnect updates only assets whose same relative file exists under the new root and matches the catalog fingerprint. It marks those originals online, keeps metadata generation unchanged, refreshes sidebar/source summaries, and moves XMP sync state to the new sidecar path.
+- Imports record catalog source roots. Add-in-place records the imported folder; card imports record the destination library root.
+- Source roots can be reconnected from the library toolbar by entering the old cataloged root and the new mounted root. The reconnect sheet pre-fills the old root from recorded catalog roots that have unavailable assets, falling back to the common folder of visible unavailable assets when root history is unavailable. Reconnect updates only assets whose same relative file exists under the new root and matches the catalog fingerprint. It marks those originals online, keeps metadata generation unchanged, records the new source root, refreshes sidebar/source summaries, and moves XMP sync state to the new sidecar path.
 
 ## Next Work
 
 - Add configurable per-kind scheduling policy for large NAS/removable-volume scans.
-- Track explicit source roots so reconnect suggestions can be based on import/source history instead of only visible unavailable file paths.

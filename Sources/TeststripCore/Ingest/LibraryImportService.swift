@@ -175,6 +175,9 @@ public struct LibraryImportService: Sendable {
                 ))
             }
         }
+        if !assets.isEmpty {
+            try repository.recordSourceRoot(Self.catalogSourceRoot(for: plan))
+        }
         let previewItems: [PreviewGenerationItem] = assets.flatMap { asset -> [PreviewGenerationItem] in
             guard shouldGenerateGridPreview(for: asset, existingState: existingPreviewStates[asset.id]) else {
                 return []
@@ -204,6 +207,10 @@ public struct LibraryImportService: Sendable {
 
         let previewResult = try generatePreviews(for: previewItems, repository: repository, progress: progress)
         return LibraryImportResult(importedAssets: assets, previewFailures: previewResult.previewFailures)
+    }
+
+    private static func catalogSourceRoot(for plan: IngestPlan) -> URL {
+        plan.destinationRoot ?? plan.sourceRoot
     }
 
     public func resumePendingPreviews(

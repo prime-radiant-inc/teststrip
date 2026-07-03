@@ -1446,6 +1446,36 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.suggestedReconnectOldRootPath, "/Volumes/Archive/Job")
     }
 
+    func testSuggestedReconnectOldRootUsesCatalogSourceRootsBeyondLoadedWindow() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-source-root-history")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try seedCatalogAssets(count: 500, repository: repository)
+        let missingArchiveAsset = makeAsset(
+            id: "archive-missing",
+            path: "/Volumes/Archive/Job/Nested/missing.jpg",
+            rating: 0,
+            availability: .missing
+        )
+        try repository.upsert(missingArchiveAsset)
+        try repository.recordSourceRoot(URL(fileURLWithPath: "/Volumes/Archive/Job", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+
+        let model = try AppModel.load(catalog: catalog)
+
+        XCTAssertFalse(model.assets.contains { $0.id == missingArchiveAsset.id })
+        XCTAssertEqual(model.suggestedReconnectOldRootPath, "/Volumes/Archive/Job")
+    }
+
     func testLoadExposesRecentAndStarredWorkSessionsInSidebar() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-work-sessions")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

@@ -51,6 +51,26 @@ final class LibraryImportServiceTests: XCTestCase {
         ])
     }
 
+    func testAddFolderRecordsCatalogSourceRoot() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-source-root")
+        let image = root.appendingPathComponent("one.jpg")
+        try TestDirectories.writeTestJPEG(to: image, width: 1200, height: 800)
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+
+        _ = try service.addFolderInPlace(root, repository: repository, previewPolicy: .deferGeneration)
+
+        XCTAssertEqual(try repository.sourceRoots(), [
+            CatalogSourceRoot(
+                path: root.standardizedFileURL.path,
+                name: root.lastPathComponent,
+                assetCount: 1,
+                unavailableAssetCount: 0
+            )
+        ])
+    }
+
     func testAddFolderKeepsCatalogedAssetWhenPreviewRenderFails() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-preview-failure")
         let invalidImage = root.appendingPathComponent("broken.jpg")
@@ -228,6 +248,14 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
             PreviewGenerationItem(assetID: asset.id, level: .micro),
             PreviewGenerationItem(assetID: asset.id, level: .grid)
+        ])
+        XCTAssertEqual(try repository.sourceRoots(), [
+            CatalogSourceRoot(
+                path: destination.standardizedFileURL.path,
+                name: destination.lastPathComponent,
+                assetCount: 1,
+                unavailableAssetCount: 0
+            )
         ])
         XCTAssertFalse(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)).path))
         let details = recorder.values().map(\.detail)

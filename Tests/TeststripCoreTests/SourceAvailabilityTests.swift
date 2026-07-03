@@ -120,6 +120,41 @@ final class SourceAvailabilityTests: XCTestCase {
         XCTAssertEqual(try repository.catalogGeneration(assetID: asset.id), 1)
     }
 
+    func testRepositoryReconnectRecordsNewSourceRootAfterFingerprintMatch() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "source-reconnect-root-history")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let oldRoot = directory.appendingPathComponent("OfflineArchive", isDirectory: true)
+        let newRoot = directory.appendingPathComponent("MountedArchive", isDirectory: true)
+        let newOriginalURL = newRoot.appendingPathComponent("2024/frame.jpg")
+        try FileManager.default.createDirectory(
+            at: newOriginalURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("same original bytes".utf8).write(to: newOriginalURL)
+        let asset = Asset(
+            id: AssetID(rawValue: "source-reconnect-root-history"),
+            originalURL: oldRoot.appendingPathComponent("2024/frame.jpg"),
+            volumeIdentifier: "OfflineArchive",
+            fingerprint: try fileFingerprint(for: newOriginalURL),
+            availability: .missing,
+            metadata: AssetMetadata(rating: 4)
+        )
+        try repository.upsert(asset)
+
+        _ = try repository.reconnectSourceRoot(from: oldRoot, to: newRoot)
+
+        XCTAssertEqual(try repository.sourceRoots(), [
+            CatalogSourceRoot(
+                path: newRoot.standardizedFileURL.path,
+                name: newRoot.lastPathComponent,
+                assetCount: 1,
+                unavailableAssetCount: 0
+            )
+        ])
+    }
+
     func testRepositoryDoesNotReconnectSourceRootWhenCandidateFingerprintDiffers() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "source-reconnect-mismatch")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

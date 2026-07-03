@@ -287,6 +287,7 @@ public final class AppModel {
     public var evaluationKindFilter: EvaluationKind?
     public var savedAssetSets: [AssetSet]
     public var catalogFolders: [CatalogFolder]
+    public var sourceRoots: [CatalogSourceRoot]
     public var sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary]
     public var catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary]
     public var selectedAssetSetID: AssetSetID?
@@ -533,6 +534,9 @@ public final class AppModel {
     }
 
     public var suggestedReconnectOldRootPath: String {
+        if let sourceRoot = sourceRoots.first(where: { $0.unavailableAssetCount > 0 }) {
+            return sourceRoot.path
+        }
         let unavailableFolders = assets
             .filter { $0.availability != .online }
             .map { $0.originalURL.deletingLastPathComponent().standardizedFileURL.path }
@@ -556,6 +560,7 @@ public final class AppModel {
         backgroundWorkQueue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
         savedAssetSets: [AssetSet] = [],
         catalogFolders: [CatalogFolder] = [],
+        sourceRoots: [CatalogSourceRoot] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
         selectedAssetSetID: AssetSetID? = nil,
@@ -599,6 +604,7 @@ public final class AppModel {
         self.evaluationKindFilter = nil
         self.savedAssetSets = savedAssetSets
         self.catalogFolders = catalogFolders
+        self.sourceRoots = sourceRoots
         self.sourceAvailabilitySummaries = sourceAvailabilitySummaries
         self.catalogEvaluationKindSummaries = catalogEvaluationKindSummaries
         self.selectedAssetSetID = selectedAssetSetID
@@ -671,6 +677,7 @@ public final class AppModel {
         let assets = try repository.allAssets(limit: Self.assetPageSize)
         let savedAssetSets = try repository.assetSets()
         let catalogFolders = try repository.folders()
+        let sourceRoots = try repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: repository)
         let catalogEvaluationKindSummaries = try repository.evaluationKindSummaries()
         let recentWork = try repository.workSessions(limit: 10).map(AppWorkActivity.init)
@@ -692,6 +699,7 @@ public final class AppModel {
             previewGenerationQueueStates: try repository.previewGenerationQueueStates(),
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
+            sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries
         )
@@ -707,6 +715,7 @@ public final class AppModel {
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
         let savedAssetSets = try catalog.repository.assetSets()
         let catalogFolders = try catalog.repository.folders()
+        let sourceRoots = try catalog.repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         let catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
         let recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
@@ -731,6 +740,7 @@ public final class AppModel {
             previewGenerationQueueStates: try catalog.repository.previewGenerationQueueStates(),
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
+            sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
             workerSupervisor: workerSupervisor,
@@ -1441,6 +1451,7 @@ public final class AppModel {
 
     private func refreshSourceAvailabilitySummaries() throws {
         guard let catalog else { return }
+        sourceRoots = try catalog.repository.sourceRoots()
         sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         rebuildSidebarSections()
     }
@@ -2108,6 +2119,7 @@ public final class AppModel {
         let result = try catalog.repository.reconnectSourceRoot(from: oldRoot, to: newRoot)
         try loadCatalogPage(preferredSelection: preferredSelection)
         catalogFolders = try catalog.repository.folders()
+        sourceRoots = try catalog.repository.sourceRoots()
         sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         rebuildSidebarSections()
         let sourceLabel = result.reconnectedAssetCount == 1 ? "source" : "sources"
@@ -2408,6 +2420,7 @@ public final class AppModel {
         guard let catalog else { return }
         do {
             catalogFolders = try catalog.repository.folders()
+            sourceRoots = try catalog.repository.sourceRoots()
             rebuildSidebarSections()
         } catch {
             errorMessage = error.localizedDescription

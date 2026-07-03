@@ -187,6 +187,48 @@ public final class CatalogRepository {
         }
     }
 
+    public func recordSourceRoot(_ root: URL) throws {
+        let path = Self.normalizedDirectoryPath(root)
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT INTO source_roots (path, name, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(path) DO UPDATE SET
+                name = excluded.name,
+                updated_at = excluded.updated_at
+            """,
+            bindings: [
+                path,
+                Self.folderName(forFolderPath: path),
+                now,
+                now
+            ]
+        )
+    }
+
+    public func sourceRoots() throws -> [CatalogSourceRoot] {
+        let rows = try database.rows(
+            """
+            SELECT path, name
+            FROM source_roots
+            ORDER BY updated_at DESC, path COLLATE NOCASE ASC
+            """
+        )
+        return try rows.map { row in
+            guard let path = row["path"], let name = row["name"] else {
+                throw CatalogError.sqlite("source root row is missing required columns")
+            }
+            let counts = try assetCounts(underSourceRootPath: path)
+            return CatalogSourceRoot(
+                path: path,
+                name: name,
+                assetCount: counts.assetCount,
+                unavailableAssetCount: counts.unavailableAssetCount
+            )
+        }
+    }
+
     public func assetCount(matching query: SetQuery) throws -> Int {
         let compiledQuery = try compile(query)
         let rows = try database.rows(
@@ -443,6 +485,10 @@ public final class CatalogRepository {
                 )
                 result.reconnectedAssetCount += 1
             }
+        }
+
+        if result.reconnectedAssetCount > 0 {
+            try recordSourceRoot(newRoot)
         }
 
         return result
@@ -896,6 +942,32 @@ public final class CatalogRepository {
         let path = url.standardizedFileURL.path
         guard path != "/" else { return path }
         return path.hasSuffix("/") ? String(path.dropLast()) : path
+    }
+
+    private func assetCounts(underSourceRootPath rootPath: String) throws -> (assetCount: Int, unavailableAssetCount: Int) {
+        let rows = try database.rows(
+            """
+            SELECT
+                COUNT(*) AS asset_count,
+                COALESCE(SUM(CASE WHEN availability != ? THEN 1 ELSE 0 END), 0) AS unavailable_asset_count
+            FROM assets
+            WHERE original_path = ?
+               OR original_path LIKE ? ESCAPE '\\'
+            """,
+            bindings: [
+                SourceAvailability.online.rawValue,
+                rootPath,
+                "\(Self.escapedLikePattern(rootPath == "/" ? "/" : rootPath + "/"))%"
+            ]
+        )
+        guard let row = rows.first,
+              let assetCountValue = row["asset_count"],
+              let assetCount = Int(assetCountValue),
+              let unavailableAssetCountValue = row["unavailable_asset_count"],
+              let unavailableAssetCount = Int(unavailableAssetCountValue) else {
+            throw CatalogError.sqlite("source root asset count query returned no count")
+        }
+        return (assetCount, unavailableAssetCount)
     }
 
     private static func relativePath(for originalURL: URL, under rootPath: String) -> String? {
