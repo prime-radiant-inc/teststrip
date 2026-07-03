@@ -142,13 +142,23 @@ public struct LibraryImportService: Sendable {
                 progress: progress
             )
         }
+        let existingPreviewStates = try existingGridPreviewStates(
+            for: sourceFiles,
+            plan: plan,
+            repository: repository
+        )
         progress?(LibraryImportProgress(
             completedUnitCount: 0,
             totalUnitCount: sourceFiles.count,
             detail: catalogingDetail(sourceFiles.count)
         ))
         let assets = try ingestService.ingest(files: sourceFiles, plan: plan, repository: repository)
-        let previewItems = assets.map { PreviewGenerationItem(assetID: $0.id, level: .grid) }
+        let previewItems: [PreviewGenerationItem] = assets.compactMap { asset -> PreviewGenerationItem? in
+            guard shouldGenerateGridPreview(for: asset, existingState: existingPreviewStates[asset.id]) else {
+                return nil
+            }
+            return PreviewGenerationItem(assetID: asset.id, level: .grid)
+        }
         for item in previewItems {
             try repository.recordPreviewGenerationPending(item)
         }
@@ -224,6 +234,33 @@ public struct LibraryImportService: Sendable {
         return LibraryPreviewGenerationResult(generatedCount: generatedCount, previewFailures: failures)
     }
 
+    private func existingGridPreviewStates(
+        for sourceFiles: [URL],
+        plan: IngestPlan,
+        repository: CatalogRepository
+    ) throws -> [AssetID: ExistingGridPreviewState] {
+        var states: [AssetID: ExistingGridPreviewState] = [:]
+        for sourceFile in sourceFiles {
+            let originalURL = try ingestService.originalURL(for: sourceFile, plan: plan)
+            guard let existingAsset = try repository.asset(originalURL: originalURL) else {
+                continue
+            }
+            let previewURL = previewCache.url(for: PreviewCacheKey(assetID: existingAsset.id, level: .grid))
+            states[existingAsset.id] = ExistingGridPreviewState(
+                fingerprint: existingAsset.fingerprint,
+                hasCachedPreview: FileManager.default.fileExists(atPath: previewURL.path)
+            )
+        }
+        return states
+    }
+
+    private func shouldGenerateGridPreview(for asset: Asset, existingState: ExistingGridPreviewState?) -> Bool {
+        guard let existingState else {
+            return true
+        }
+        return !existingState.hasCachedPreview || !existingState.fingerprint.matches(asset.fingerprint)
+    }
+
     private func reportScanProgress(
         count: Int,
         rootName: String,
@@ -239,6 +276,11 @@ public struct LibraryImportService: Sendable {
     private static func photoCountDescription(_ count: Int) -> String {
         "\(count) \(count == 1 ? "photo" : "photos")"
     }
+}
+
+private struct ExistingGridPreviewState {
+    var fingerprint: FileFingerprint
+    var hasCachedPreview: Bool
 }
 
 private final class ScanProgressCoalescer: @unchecked Sendable {

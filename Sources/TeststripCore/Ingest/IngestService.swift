@@ -98,7 +98,7 @@ public struct IngestService: Sendable {
         return assets
     }
 
-    private func originalURL(for sourceFile: URL, plan: IngestPlan) throws -> URL {
+    func originalURL(for sourceFile: URL, plan: IngestPlan) throws -> URL {
         switch plan.mode {
         case .addInPlace:
             return sourceFile

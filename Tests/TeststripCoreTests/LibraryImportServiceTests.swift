@@ -210,6 +210,26 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
     }
 
+    func testReimportUnchangedAssetWithCachedGridPreviewDoesNotQueuePreviewGeneration() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-reimport-unchanged-preview")
+        let image = root.appendingPathComponent("one.jpg")
+        try TestDirectories.writeTestJPEG(to: image, width: 1200, height: 800)
+        let repository = try makeRepository(in: root)
+        let previewRoot = try TestDirectories.makeTemporaryDirectory(named: "library-import-reimport-unchanged-preview-cache")
+        let previewCache = PreviewCache(root: previewRoot)
+        let service = makeService(previewCache: previewCache)
+        let firstResult = try service.addFolderInPlace(root, repository: repository, previewPolicy: .generateImmediately)
+        let assetID = firstResult.importedAssets[0].id
+        let previewURL = previewCache.url(for: PreviewCacheKey(assetID: assetID, level: .grid))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
+
+        let secondResult = try service.addFolderInPlace(root, repository: repository, previewPolicy: .deferGeneration)
+
+        XCTAssertEqual(secondResult.importedAssets.map(\.id), [assetID])
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
+    }
+
     func testResumePendingPreviewsGeneratesGridPreviewAndClearsQueue() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-resume-previews")
         let image = root.appendingPathComponent("one.jpg")
