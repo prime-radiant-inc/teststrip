@@ -91,6 +91,7 @@ extension EvaluationKind {
 public enum SidebarRowTarget: Equatable, Sendable {
     case allPhotographs
     case placeholder
+    case folder(String)
     case assetSet(AssetSetID)
     case workSession(WorkSessionID)
 }
@@ -272,6 +273,7 @@ public final class AppModel {
     public var availabilityFilter: SourceAvailability?
     public var evaluationKindFilter: EvaluationKind?
     public var savedAssetSets: [AssetSet]
+    public var catalogFolders: [CatalogFolder]
     public var selectedAssetSetID: AssetSetID?
 
     @ObservationIgnored
@@ -508,6 +510,7 @@ public final class AppModel {
         metadataSyncConflictItems: [MetadataSyncItem] = [],
         backgroundWorkQueue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
         savedAssetSets: [AssetSet] = [],
+        catalogFolders: [CatalogFolder] = [],
         selectedAssetSetID: AssetSetID? = nil,
         workerSupervisor: WorkerSupervisor? = nil,
         importTaskFactory: AppImportTaskFactory? = nil,
@@ -515,6 +518,7 @@ public final class AppModel {
     ) {
         self.sidebarSections = sidebarSections.isEmpty ? Self.defaultSidebarSections(
             savedAssetSets: savedAssetSets,
+            catalogFolders: catalogFolders,
             recentWork: recentWork,
             starredWork: starredWork
         ) : sidebarSections
@@ -544,6 +548,7 @@ public final class AppModel {
         self.availabilityFilter = nil
         self.evaluationKindFilter = nil
         self.savedAssetSets = savedAssetSets
+        self.catalogFolders = catalogFolders
         self.selectedAssetSetID = selectedAssetSetID
         self.catalog = catalog
         self.workerSupervisor = workerSupervisor
@@ -608,11 +613,13 @@ public final class AppModel {
     public static func load(repository: CatalogRepository) throws -> AppModel {
         let assets = try repository.allAssets(limit: Self.assetPageSize)
         let savedAssetSets = try repository.assetSets()
+        let catalogFolders = try repository.folders()
         let recentWork = try repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
         return AppModel(
             sidebarSections: defaultSidebarSections(
                 savedAssetSets: savedAssetSets,
+                catalogFolders: catalogFolders,
                 recentWork: recentWork,
                 starredWork: starredWork
             ),
@@ -621,7 +628,8 @@ public final class AppModel {
             totalAssetCount: try repository.assetCount(),
             recentWork: recentWork,
             starredWork: starredWork,
-            savedAssetSets: savedAssetSets
+            savedAssetSets: savedAssetSets,
+            catalogFolders: catalogFolders
         )
     }
 
@@ -633,11 +641,13 @@ public final class AppModel {
     ) throws -> AppModel {
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
         let savedAssetSets = try catalog.repository.assetSets()
+        let catalogFolders = try catalog.repository.folders()
         let recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
         let model = AppModel(
             sidebarSections: defaultSidebarSections(
                 savedAssetSets: savedAssetSets,
+                catalogFolders: catalogFolders,
                 recentWork: recentWork,
                 starredWork: starredWork
             ),
@@ -650,6 +660,7 @@ public final class AppModel {
             pendingMetadataSyncItems: try catalog.repository.pendingMetadataSyncItems(),
             metadataSyncConflictItems: try catalog.repository.metadataSyncConflictItems(),
             savedAssetSets: savedAssetSets,
+            catalogFolders: catalogFolders,
             workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory,
             cardImportTaskFactory: cardImportTaskFactory
@@ -679,6 +690,12 @@ public final class AppModel {
         case .allPhotographs:
             selectedAssetSetID = nil
             try clearLibraryFilters()
+        case .folder(let path):
+            selectedAssetSetID = nil
+            clearLibraryQueryFilters()
+            folderFilterText = path
+            selectedView = .grid
+            try reload()
         case .assetSet(let id):
             try applyAssetSet(id: id)
         case .workSession(let id):
@@ -2105,9 +2122,20 @@ public final class AppModel {
     private func rebuildSidebarSections() {
         sidebarSections = Self.defaultSidebarSections(
             savedAssetSets: savedAssetSets,
+            catalogFolders: catalogFolders,
             recentWork: recentWork,
             starredWork: starredWork
         )
+    }
+
+    private func refreshCatalogFolders() {
+        guard let catalog else { return }
+        do {
+            catalogFolders = try catalog.repository.folders()
+            rebuildSidebarSections()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     @discardableResult
@@ -2399,6 +2427,7 @@ public final class AppModel {
             failureCount: result.previewFailures.count
         )
         let outputSetIDs = saveImportOutputSet(for: activity, result: result)
+        refreshCatalogFolders()
         activeWork = nil
         recordRecentActivity(activity, outputSetIDs: outputSetIDs)
     }
@@ -2594,16 +2623,27 @@ public final class AppModel {
 
     private static func defaultSidebarSections(
         savedAssetSets: [AssetSet] = [],
+        catalogFolders: [CatalogFolder] = [],
         recentWork: [AppWorkActivity] = [],
         starredWork: [AppWorkActivity] = []
     ) -> [SidebarSection] {
-        var sections = [
-            SidebarSection(title: "Library", rows: [
-                SidebarRow(id: "library-all", title: "All Photographs", target: .allPhotographs),
-                SidebarRow(id: "library-folders", title: "Folders"),
-                SidebarRow(id: "library-people", title: "People")
-            ])
+        var libraryRows = [
+            SidebarRow(id: "library-all", title: "All Photographs", target: .allPhotographs)
         ]
+        if catalogFolders.isEmpty {
+            libraryRows.append(SidebarRow(id: "library-folders", title: "Folders"))
+        }
+        libraryRows.append(SidebarRow(id: "library-people", title: "People"))
+        var sections = [SidebarSection(title: "Library", rows: libraryRows)]
+        if !catalogFolders.isEmpty {
+            sections.append(SidebarSection(title: "Folders", rows: catalogFolders.prefix(20).map { folder in
+                SidebarRow(
+                    id: "folder-\(folder.path)",
+                    title: folder.name,
+                    target: .folder(folder.path)
+                )
+            }))
+        }
         let visibleSavedAssetSets = Self.visibleSavedAssetSets(savedAssetSets)
         let starredRows = visibleSavedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0) }
         if !starredRows.isEmpty {

@@ -34,6 +34,8 @@ struct SidebarView: View {
         switch target {
         case .allPhotographs:
             return "photo.on.rectangle"
+        case .folder:
+            return "folder"
         case .assetSet:
             return "rectangle.stack"
         case .workSession:

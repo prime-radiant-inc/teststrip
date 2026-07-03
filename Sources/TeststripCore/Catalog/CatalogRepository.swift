@@ -154,6 +154,20 @@ public final class CatalogRepository {
         return count
     }
 
+    public func folders() throws -> [CatalogFolder] {
+        let rows = try database.rows("SELECT original_path FROM assets ORDER BY original_path COLLATE NOCASE ASC")
+        var countsByPath: [String: Int] = [:]
+        for row in rows {
+            guard let originalPath = row["original_path"] else { continue }
+            countsByPath[Self.folderPath(forOriginalPath: originalPath), default: 0] += 1
+        }
+        return countsByPath.keys.sorted { lhs, rhs in
+            lhs.localizedStandardCompare(rhs) == .orderedAscending
+        }.map { path in
+            CatalogFolder(path: path, name: Self.folderName(forFolderPath: path), assetCount: countsByPath[path] ?? 0)
+        }
+    }
+
     public func assetCount(matching query: SetQuery) throws -> Int {
         let compiledQuery = try compile(query)
         let rows = try database.rows(
@@ -694,6 +708,21 @@ public final class CatalogRepository {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "%", with: "\\%")
             .replacingOccurrences(of: "_", with: "\\_")
+    }
+
+    private static func folderPath(forOriginalPath originalPath: String) -> String {
+        let folderURL = URL(fileURLWithPath: originalPath).deletingLastPathComponent()
+        var path = folderURL.path.isEmpty ? "/" : folderURL.path
+        if !path.hasSuffix("/") {
+            path.append("/")
+        }
+        return path
+    }
+
+    private static func folderName(forFolderPath folderPath: String) -> String {
+        let trimmedPath = folderPath == "/" ? folderPath : String(folderPath.dropLast(folderPath.hasSuffix("/") ? 1 : 0))
+        let name = URL(fileURLWithPath: trimmedPath).lastPathComponent
+        return name.isEmpty ? folderPath : name
     }
 
     private static func chunks<T>(_ values: [T], size: Int) -> [[T]] {

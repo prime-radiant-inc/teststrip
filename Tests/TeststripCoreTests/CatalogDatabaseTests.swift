@@ -278,6 +278,23 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.allAssets(matching: colorKeywordQuery, limit: 10).map(\.id), [landscape.id])
     }
 
+    func testListsCatalogFoldersWithAssetCounts() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-folders")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert([
+            Asset.testAsset(id: AssetID(rawValue: "ceremony-1"), path: "/Volumes/NAS/Wedding/Ceremony/frame-1.jpg", rating: 0),
+            Asset.testAsset(id: AssetID(rawValue: "ceremony-2"), path: "/Volumes/NAS/Wedding/Ceremony/frame-2.jpg", rating: 0),
+            Asset.testAsset(id: AssetID(rawValue: "travel"), path: "/Volumes/NAS/Travel/frame-3.jpg", rating: 0)
+        ])
+
+        XCTAssertEqual(try repository.folders(), [
+            CatalogFolder(path: "/Volumes/NAS/Travel/", name: "Travel", assetCount: 1),
+            CatalogFolder(path: "/Volumes/NAS/Wedding/Ceremony/", name: "Ceremony", assetCount: 2)
+        ])
+    }
+
     func testTextSearchMatchesEvaluationLabelsAndText() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-search")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

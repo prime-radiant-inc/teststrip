@@ -1253,6 +1253,27 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, [starred.name, saved.name])
     }
 
+    func testLoadExposesCatalogFoldersInSidebarAndSelectingFolderAppliesFilter() throws {
+        let ceremony = makeAsset(id: "ceremony", path: "/Volumes/NAS/Wedding/Ceremony/frame-1.cr2", rating: 4)
+        let portraits = makeAsset(id: "portraits", path: "/Volumes/NAS/Wedding/Portraits/frame-2.cr2", rating: 5)
+        let travel = makeAsset(id: "travel", path: "/Volumes/NAS/Travel/frame-3.cr2", rating: 5)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-folder-sidebar",
+            assets: [ceremony, portraits, travel]
+        )
+
+        let folderSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Folders" })
+        XCTAssertEqual(folderSection.rowTitles, ["Travel", "Ceremony", "Portraits"])
+        let ceremonyRow = try XCTUnwrap(folderSection.rows.first { $0.title == "Ceremony" })
+
+        try model.selectSidebarRow(ceremonyRow)
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.folderFilterText, "/Volumes/NAS/Wedding/Ceremony/")
+        XCTAssertEqual(model.assets.map(\.id), [ceremony.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
     func testLoadExposesRecentAndStarredWorkSessionsInSidebar() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-work-sessions")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -1728,6 +1749,10 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
         XCTAssertEqual(model.statusMessage, "Imported 1 photo")
         XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.catalogFolders, [
+            CatalogFolder(path: "\(photoFolder.path)/", name: "photos", assetCount: 1)
+        ])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Folders" }?.rowTitles, ["photos"])
     }
 
     @MainActor
