@@ -20,6 +20,7 @@ struct SidebarView: View {
                 }
             }
         }
+        .frame(minWidth: 220)
         .navigationTitle("Teststrip")
     }
 
