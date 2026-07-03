@@ -36,13 +36,11 @@ The app logs also show LaunchServices/AppKit restoring a SwiftUI window while la
 Use a fresh temporary app-support directory when a screenshot needs real grid content instead of an empty isolated catalog:
 
 ```bash
-swift run TeststripBench seed-app-catalog /tmp/teststrip-smoke-app-support 24
-pkill -x Teststrip
-/usr/bin/open --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=/tmp/teststrip-smoke-app-support -n /Users/jesse/git/projects/teststrip/dist/Teststrip.app
+./script/build_and_run.sh --verify-smoke
 ./script/capture_app_window.sh Teststrip /tmp/teststrip-seeded-smoke.png
 ```
 
-`seed-app-catalog` writes generated JPEG originals, catalog rows, and cached micro/grid/medium/large previews under the same `Teststrip/` app-support layout the app uses. It refuses to write over an existing `catalog.sqlite`, so do not point it at a real catalog.
+`--verify-smoke` creates a fresh isolated app-support directory, runs `TeststripBench seed-app-catalog`, launches the app with `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY`, and verifies the process is running. The seeder writes generated JPEG originals, catalog rows, a starred `Smoke Picks` set, and cached micro/grid/medium/large previews under the same `Teststrip/` app-support layout the app uses. It refuses to write over an existing `catalog.sqlite`, so do not point the raw seeder command at a real catalog.
 
 ## Failed Fixes
 

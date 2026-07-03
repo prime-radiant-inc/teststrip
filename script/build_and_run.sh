@@ -4,12 +4,15 @@ set -euo pipefail
 MODE="${1:-run}"
 PRODUCT_NAME="TeststripApp"
 WORKER_PRODUCT_NAME="TeststripWorker"
+BENCH_PRODUCT_NAME="TeststripBench"
 APP_NAME="Teststrip"
 BUNDLE_ID="com.teststrip.app"
 MIN_SYSTEM_VERSION="14.0"
 APPLICATION_SUPPORT_ENV_KEY="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY"
 ISOLATED=0
 ISOLATED_APPLICATION_SUPPORT=""
+SMOKE=0
+SMOKE_ASSET_COUNT="${TESTSTRIP_SMOKE_ASSET_COUNT:-24}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -22,7 +25,7 @@ WORKER_BINARY="$APP_HELPERS/$WORKER_PRODUCT_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 
 usage() {
-  echo "usage: $0 [run|--verify|--isolated|--verify-isolated|--debug|--logs|--telemetry]" >&2
+  echo "usage: $0 [run|--verify|--isolated|--verify-isolated|--smoke|--verify-smoke|--debug|--logs|--telemetry]" >&2
 }
 
 stop_running_app() {
@@ -83,6 +86,9 @@ open_app() {
   local open_args=(-n "$APP_BUNDLE")
   if [[ "$ISOLATED" == "1" ]]; then
     prepare_isolated_catalog
+    if [[ "$SMOKE" == "1" ]]; then
+      seed_smoke_catalog
+    fi
     open_args=(--env "$APPLICATION_SUPPORT_ENV_KEY=$ISOLATED_APPLICATION_SUPPORT" "${open_args[@]}")
   fi
   /usr/bin/open "${open_args[@]}"
@@ -115,6 +121,11 @@ prepare_isolated_catalog() {
   fi
 }
 
+seed_smoke_catalog() {
+  cd "$ROOT_DIR"
+  swift run "$BENCH_PRODUCT_NAME" seed-app-catalog "$ISOLATED_APPLICATION_SUPPORT" "$SMOKE_ASSET_COUNT"
+}
+
 case "$MODE" in
   run|--verify|verify|--debug|debug|--logs|logs|--telemetry|telemetry)
     ;;
@@ -125,6 +136,16 @@ case "$MODE" in
   --verify-isolated|verify-isolated)
     MODE="--verify"
     ISOLATED=1
+    ;;
+  --smoke|smoke)
+    MODE="run"
+    ISOLATED=1
+    SMOKE=1
+    ;;
+  --verify-smoke|verify-smoke)
+    MODE="--verify"
+    ISOLATED=1
+    SMOKE=1
     ;;
   --help|help|-h)
     usage
