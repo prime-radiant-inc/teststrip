@@ -270,6 +270,7 @@ public final class AppModel {
     public var starredWork: [AppWorkActivity]
     public var pendingMetadataSyncItems: [MetadataSyncItem]
     public var metadataSyncConflictItems: [MetadataSyncItem]
+    public var previewGenerationQueueStates: [PreviewGenerationQueueState]
     public var backgroundWorkQueue: BackgroundWorkQueue
     public var librarySearchText: String
     public var keywordFilterText: String
@@ -396,6 +397,13 @@ public final class AppModel {
             return AppWorkActivity(workItem: backgroundItem)
         }
         return nil
+    }
+
+    public var selectedPreviewGenerationFailures: [PreviewGenerationQueueState] {
+        guard let selectedAssetID else { return [] }
+        return previewGenerationQueueStates.filter { state in
+            state.item.assetID == selectedAssetID && state.attemptCount > 0
+        }
     }
 
     public var canPauseBackgroundWork: Bool {
@@ -539,6 +547,7 @@ public final class AppModel {
         starredWork: [AppWorkActivity] = [],
         pendingMetadataSyncItems: [MetadataSyncItem] = [],
         metadataSyncConflictItems: [MetadataSyncItem] = [],
+        previewGenerationQueueStates: [PreviewGenerationQueueState] = [],
         backgroundWorkQueue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
         savedAssetSets: [AssetSet] = [],
         catalogFolders: [CatalogFolder] = [],
@@ -568,6 +577,7 @@ public final class AppModel {
         self.starredWork = starredWork
         self.pendingMetadataSyncItems = pendingMetadataSyncItems
         self.metadataSyncConflictItems = metadataSyncConflictItems
+        self.previewGenerationQueueStates = previewGenerationQueueStates
         self.backgroundWorkQueue = backgroundWorkQueue
         self.librarySearchText = ""
         self.keywordFilterText = ""
@@ -619,6 +629,7 @@ public final class AppModel {
         self.workerSupervisor?.onQueueChanged = { [weak self] queue in
             self?.backgroundWorkQueue = queue
             try? self?.refreshMetadataSyncState()
+            try? self?.refreshPreviewGenerationQueueStates()
             self?.releaseInactiveWorkerImportContexts(in: queue)
             self?.releaseInactiveEvaluationContexts(in: queue)
             self?.releaseInactiveAvailabilityContexts(in: queue)
@@ -669,6 +680,7 @@ public final class AppModel {
             totalAssetCount: try repository.assetCount(),
             recentWork: recentWork,
             starredWork: starredWork,
+            previewGenerationQueueStates: try repository.previewGenerationQueueStates(),
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
@@ -706,6 +718,7 @@ public final class AppModel {
             starredWork: starredWork,
             pendingMetadataSyncItems: try catalog.repository.pendingMetadataSyncItems(),
             metadataSyncConflictItems: try catalog.repository.metadataSyncConflictItems(),
+            previewGenerationQueueStates: try catalog.repository.previewGenerationQueueStates(),
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
@@ -1387,6 +1400,11 @@ public final class AppModel {
         metadataSyncConflictItems = try catalog.repository.metadataSyncConflictItems()
     }
 
+    private func refreshPreviewGenerationQueueStates() throws {
+        guard let catalog else { return }
+        previewGenerationQueueStates = try catalog.repository.previewGenerationQueueStates()
+    }
+
     private func refreshSourceAvailabilitySummaries() throws {
         guard let catalog else { return }
         sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
@@ -1494,6 +1512,7 @@ public final class AppModel {
             }
             try requestPreview(assetID: item.assetID, level: item.level)
         }
+        try refreshPreviewGenerationQueueStates()
     }
 
     private func enqueuePendingMetadataSync() throws {
@@ -2493,6 +2512,7 @@ public final class AppModel {
     }
 
     private func updateImportStatus(with result: LibraryImportResult) {
+        try? refreshPreviewGenerationQueueStates()
         let photoLabel = result.importedAssets.count == 1 ? "photo" : "photos"
         statusMessage = "Imported \(result.importedAssets.count) \(photoLabel)"
         if !result.previewFailures.isEmpty {

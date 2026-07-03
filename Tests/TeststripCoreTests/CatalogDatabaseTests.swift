@@ -241,6 +241,33 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [item])
     }
 
+    func testFetchesPreviewGenerationQueueStates() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-states")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let failed = PreviewGenerationItem(assetID: AssetID(rawValue: "failed"), level: .grid)
+        let pending = PreviewGenerationItem(assetID: AssetID(rawValue: "pending"), level: .large)
+
+        try repository.recordPreviewGenerationPending(failed)
+        try repository.recordPreviewGenerationPending(pending)
+        try repository.recordPreviewGenerationFailure(
+            assetID: failed.assetID,
+            level: failed.level,
+            errorMessage: "could not render preview"
+        )
+
+        let states = try repository.previewGenerationQueueStates()
+
+        XCTAssertEqual(states.count, 2)
+        let failedState = try XCTUnwrap(states.first { $0.item == failed })
+        let pendingState = try XCTUnwrap(states.first { $0.item == pending })
+        XCTAssertEqual(failedState.attemptCount, 1)
+        XCTAssertEqual(failedState.lastErrorMessage, "could not render preview")
+        XCTAssertEqual(pendingState.attemptCount, 0)
+        XCTAssertNil(pendingState.lastErrorMessage)
+    }
+
     func testMigrationAddsPreviewGenerationFailureStateToExistingQueue() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-failure-migration")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

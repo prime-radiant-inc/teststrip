@@ -537,6 +537,24 @@ public final class CatalogRepository {
         return try rows.first.map(decodePreviewGenerationQueueState)
     }
 
+    public func previewGenerationQueueStates(limit: Int? = nil) throws -> [PreviewGenerationQueueState] {
+        if let limit, limit <= 0 {
+            return []
+        }
+        var sql = """
+        SELECT asset_id, level, attempt_count, last_error, last_attempted_at
+        FROM preview_generation_queue
+        ORDER BY updated_at ASC
+        """
+        var bindings: [String] = []
+        if let limit {
+            sql += " LIMIT ?"
+            bindings.append("\(limit)")
+        }
+        let rows = try database.rows(sql, bindings: bindings)
+        return try rows.map(decodePreviewGenerationQueueState)
+    }
+
     public func metadataSyncConflictItems() throws -> [MetadataSyncItem] {
         try metadataSyncItems(status: "conflict")
     }

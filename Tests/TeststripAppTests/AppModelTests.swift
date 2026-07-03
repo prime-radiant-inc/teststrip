@@ -2197,6 +2197,45 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.visibleWorkActivity?.kind, .previewGeneration)
     }
 
+    func testLoadExposesSelectedPreviewGenerationFailures() throws {
+        let directory = try makeTemporaryDirectory(named: "selected-preview-failure")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let failedAsset = makeAsset(id: "failed", path: "/Photos/failed.jpg", rating: 0)
+        let pendingAsset = makeAsset(id: "pending", path: "/Photos/pending.jpg", rating: 0)
+        try repository.upsert([failedAsset, pendingAsset])
+        try repository.recordPreviewGenerationFailure(
+            assetID: failedAsset.id,
+            level: .grid,
+            errorMessage: "could not render preview"
+        )
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: pendingAsset.id, level: .grid))
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+
+        let model = try AppModel.load(catalog: catalog)
+
+        XCTAssertEqual(model.selectedAssetID, failedAsset.id)
+        XCTAssertEqual(model.selectedPreviewGenerationFailures.map(\.item), [
+            PreviewGenerationItem(assetID: failedAsset.id, level: .grid)
+        ])
+        XCTAssertEqual(model.selectedPreviewGenerationFailures.first?.attemptCount, 1)
+        XCTAssertEqual(model.selectedPreviewGenerationFailures.first?.lastErrorMessage, "could not render preview")
+
+        model.select(pendingAsset.id)
+
+        XCTAssertEqual(model.selectedPreviewGenerationFailures, [])
+    }
+
     func testPreviewCompletionRefillsPendingPreviewRecoveryBatch() throws {
         let directory = try makeTemporaryDirectory(named: "pending-preview-refill")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

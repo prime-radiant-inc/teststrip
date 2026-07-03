@@ -24,6 +24,9 @@ struct InspectorView: View {
                 if model.metadataSyncConflictItems.contains(where: { $0.assetID == asset.id }) {
                     metadataConflictControls()
                 }
+                if !model.selectedPreviewGenerationFailures.isEmpty {
+                    previewFailureStatus(model.selectedPreviewGenerationFailures)
+                }
                 metadataControls(for: asset)
                     .onAppear {
                         metadataDraft.sync(to: asset)
@@ -43,6 +46,20 @@ struct InspectorView: View {
         }
         .padding()
         .frame(minWidth: 260)
+    }
+
+    private func previewFailureStatus(_ failures: [PreviewGenerationQueueState]) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Label("Preview retry pending", systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.yellow)
+            ForEach(Array(failures.enumerated()), id: \.offset) { _, failure in
+                Text(previewFailureText(failure))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
     }
 
     private func metadataConflictControls() -> some View {
@@ -246,6 +263,14 @@ struct InspectorView: View {
         } catch {
             model.errorMessage = error.localizedDescription
         }
+    }
+
+    private func previewFailureText(_ failure: PreviewGenerationQueueState) -> String {
+        let attemptText = failure.attemptCount == 1 ? "1 attempt" : "\(failure.attemptCount) attempts"
+        if let message = failure.lastErrorMessage, !message.isEmpty {
+            return "\(failure.item.level.rawValue.capitalized) preview failed after \(attemptText): \(message)"
+        }
+        return "\(failure.item.level.rawValue.capitalized) preview failed after \(attemptText)"
     }
 
     private func cameraText(_ metadata: AssetTechnicalMetadata) -> String? {
