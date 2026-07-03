@@ -2,7 +2,7 @@ import XCTest
 import TeststripCore
 
 final class LibraryImportServiceTests: XCTestCase {
-    func testAddFolderCatalogsSupportedImagesAndGeneratesGridPreview() throws {
+    func testAddFolderCatalogsSupportedImagesAndGeneratesMicroAndGridPreviews() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "library-import")
         let image = root.appendingPathComponent("one.jpg")
         try TestDirectories.writeTestJPEG(to: image, width: 1200, height: 800)
@@ -18,10 +18,12 @@ final class LibraryImportServiceTests: XCTestCase {
         let asset = result.importedAssets[0]
         let fetched = try repository.asset(id: asset.id)
         XCTAssertEqual(fetched.originalURL, image)
-        let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
-        let dimensions = try PreviewRenderer().dimensions(of: previewURL)
-        XCTAssertLessThanOrEqual(max(dimensions.width, dimensions.height), PreviewLevel.grid.maxPixelDimension!)
+        for level in [PreviewLevel.micro, .grid] {
+            let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: level))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
+            let dimensions = try PreviewRenderer().dimensions(of: previewURL)
+            XCTAssertLessThanOrEqual(max(dimensions.width, dimensions.height), level.maxPixelDimension!)
+        }
     }
 
     func testAddFolderCanDeferPreviewGeneration() throws {
@@ -44,6 +46,7 @@ final class LibraryImportServiceTests: XCTestCase {
         let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
         XCTAssertFalse(FileManager.default.fileExists(atPath: previewURL.path))
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: asset.id, level: .micro),
             PreviewGenerationItem(assetID: asset.id, level: .grid)
         ])
     }
@@ -64,6 +67,7 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertEqual(result.previewFailures[0].sourceURL, invalidImage)
         XCTAssertEqual(try repository.allAssets(limit: 10).map(\.originalURL), [invalidImage])
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: result.importedAssets[0].id, level: .micro),
             PreviewGenerationItem(assetID: result.importedAssets[0].id, level: .grid)
         ])
     }
@@ -83,8 +87,8 @@ final class LibraryImportServiceTests: XCTestCase {
 
         XCTAssertEqual(result.importedAssets.count, 2)
         let updates = recorder.values()
-        XCTAssertEqual(updates.map(\.completedUnitCount), [0, 1, 2, 0, 1, 2, 2, 0, 1, 2])
-        XCTAssertEqual(updates.map(\.totalUnitCount), [nil, nil, nil, 2, 2, 2, 2, 2, 2, 2])
+        XCTAssertEqual(updates.map(\.completedUnitCount), [0, 1, 2, 0, 1, 2, 2, 0, 1, 2, 3, 4])
+        XCTAssertEqual(updates.map(\.totalUnitCount), [nil, nil, nil, 2, 2, 2, 2, 4, 4, 4, 4, 4])
         XCTAssertEqual(updates.map(\.detail), [
             "Scanning library-import-progress",
             "Scanning library-import-progress: found 1 photo",
@@ -94,13 +98,15 @@ final class LibraryImportServiceTests: XCTestCase {
             "Cataloging 2 of 2 photos",
             "Cataloged 2 photos",
             "Generating previews",
-            "Generated 1 of 2 previews",
-            "Generated 2 of 2 previews"
+            "Generated 1 of 4 previews",
+            "Generated 2 of 4 previews",
+            "Generated 3 of 4 previews",
+            "Generated 4 of 4 previews"
         ])
-        XCTAssertEqual(updates.map(\.catalogedAssetIDs.count), [0, 0, 0, 0, 0, 0, 2, 0, 0, 0])
+        XCTAssertEqual(updates.map(\.catalogedAssetIDs.count), [0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0])
         let catalogedUpdate = try XCTUnwrap(updates.first { !$0.catalogedAssetIDs.isEmpty })
         XCTAssertEqual(catalogedUpdate.catalogedAssetIDs, result.importedAssets.map(\.id))
-        XCTAssertEqual(updates.last?.detail, "Generated 2 of 2 previews")
+        XCTAssertEqual(updates.last?.detail, "Generated 4 of 4 previews")
     }
 
     func testAddFolderReportsScanProgressBeforeCataloging() throws {
@@ -203,6 +209,7 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: destinationSidecar), sidecarData)
         XCTAssertEqual(try repository.asset(id: asset.id).metadata, metadata)
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: asset.id, level: .micro),
             PreviewGenerationItem(assetID: asset.id, level: .grid)
         ])
         XCTAssertFalse(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)).path))

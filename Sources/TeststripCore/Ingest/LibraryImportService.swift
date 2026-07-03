@@ -62,6 +62,7 @@ public struct LibraryImportService: Sendable {
     private static let scanProgressInterval = 100
     private static let ingestProgressInterval = 500
     private static let eagerIngestProgressLimit = 10
+    private static let importPreviewLevels: [PreviewLevel] = [.micro, .grid]
 
     public var ingestService: IngestService
     public var previewCache: PreviewCache
@@ -131,7 +132,7 @@ public struct LibraryImportService: Sendable {
             detail: "Scanning \(scanRootName)"
         ))
         let scanProgressCoalescer = ScanProgressCoalescer(interval: Self.scanProgressInterval)
-        let sourceFiles = try ingestService.files(for: plan) { scanProgress in
+        let scannedSourceFiles = try ingestService.files(for: plan) { scanProgress in
             if scanProgressCoalescer.shouldReportScanCount(scanProgress.supportedFileCount) {
                 reportScanProgress(
                     count: scanProgress.supportedFileCount,
@@ -140,6 +141,7 @@ public struct LibraryImportService: Sendable {
                 )
             }
         }
+        let sourceFiles = scannedSourceFiles.filter { !isPreviewCacheFile($0) }
         if scanProgressCoalescer.shouldReportFinalScanCount(sourceFiles.count) {
             reportScanProgress(
                 count: sourceFiles.count,
@@ -173,11 +175,11 @@ public struct LibraryImportService: Sendable {
                 ))
             }
         }
-        let previewItems: [PreviewGenerationItem] = assets.compactMap { asset -> PreviewGenerationItem? in
+        let previewItems: [PreviewGenerationItem] = assets.flatMap { asset -> [PreviewGenerationItem] in
             guard shouldGenerateGridPreview(for: asset, existingState: existingPreviewStates[asset.id]) else {
-                return nil
+                return []
             }
-            return PreviewGenerationItem(assetID: asset.id, level: .grid)
+            return Self.importPreviewLevels.map { PreviewGenerationItem(assetID: asset.id, level: $0) }
         }
         for item in previewItems {
             try repository.recordPreviewGenerationPending(item)
@@ -196,7 +198,7 @@ public struct LibraryImportService: Sendable {
 
         progress?(LibraryImportProgress(
             completedUnitCount: 0,
-            totalUnitCount: assets.count,
+            totalUnitCount: previewItems.count,
             detail: "Generating previews"
         ))
 
@@ -224,24 +226,28 @@ public struct LibraryImportService: Sendable {
     ) throws -> LibraryPreviewGenerationResult {
         var generatedCount = 0
         var failures: [LibraryPreviewFailure] = []
+        var failedAssetIDs: Set<AssetID> = []
 
         for (index, item) in items.enumerated() {
             try Task.checkCancellation()
             let asset = try repository.asset(id: item.assetID)
-            do {
-                try renderer.render(
-                    sourceURL: asset.originalURL,
-                    level: item.level,
-                    destinationURL: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: item.level))
-                )
-                try repository.markPreviewGenerated(assetID: asset.id, level: item.level)
-                generatedCount += 1
-            } catch {
-                failures.append(LibraryPreviewFailure(
-                    assetID: asset.id,
-                    sourceURL: asset.originalURL,
-                    message: error.localizedDescription
-                ))
+            if !failedAssetIDs.contains(asset.id) {
+                do {
+                    try renderer.render(
+                        sourceURL: asset.originalURL,
+                        level: item.level,
+                        destinationURL: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: item.level))
+                    )
+                    try repository.markPreviewGenerated(assetID: asset.id, level: item.level)
+                    generatedCount += 1
+                } catch {
+                    failedAssetIDs.insert(asset.id)
+                    failures.append(LibraryPreviewFailure(
+                        assetID: asset.id,
+                        sourceURL: asset.originalURL,
+                        message: error.localizedDescription
+                    ))
+                }
             }
             let completedCount = index + 1
             progress?(LibraryImportProgress(
@@ -279,6 +285,13 @@ public struct LibraryImportService: Sendable {
             return true
         }
         return !existingState.hasCachedPreview || !existingState.fingerprint.matches(asset.fingerprint)
+    }
+
+    private func isPreviewCacheFile(_ url: URL) -> Bool {
+        let cacheRootPath = previewCache.root.resolvingSymlinksInPath().path
+        let cacheRootPrefix = cacheRootPath == "/" ? cacheRootPath : cacheRootPath + "/"
+        let filePath = url.resolvingSymlinksInPath().path
+        return filePath.hasPrefix(cacheRootPrefix)
     }
 
     private func reportScanProgress(

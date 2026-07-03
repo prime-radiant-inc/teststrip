@@ -6,13 +6,13 @@ Grid display prefers cached grid previews and falls back to micro previews while
 
 ## Durable Pending Work
 
-Imports write catalog asset rows first, then record pending grid preview work in `preview_generation_queue` before rendering. A successful render deletes the matching queue row. A failed, cancelled, or interrupted render leaves the row pending so recovery can retry later.
+Imports write catalog asset rows first, then record pending micro and grid preview work in `preview_generation_queue` before rendering. A successful render deletes the matching queue row. A failed, cancelled, or interrupted render leaves the row pending so recovery can retry later.
 
 The queue is keyed by `(asset_id, level)`, which keeps retries idempotent and prevents duplicate pending rows for the same cached preview.
 
 ## Import And Recovery
 
-`LibraryImportService.addFolderInPlace` records `.grid` preview work for imported assets and renders those previews inline for the current import flow. `resumePendingPreviews(repository:)` drains the same queue for non-UI repair or maintenance paths.
+`LibraryImportService.addFolderInPlace` records `.micro` and `.grid` preview work for imported assets and renders those previews inline for the current import flow. Medium and large previews stay demand-driven until the UI needs them. `resumePendingPreviews(repository:)` drains the same queue for non-UI repair or maintenance paths.
 
 The app does not synchronously render pending previews on launch. When `AppModel.load(catalog:workerSupervisor:)` sees pending previews and a worker supervisor is available, it enqueues bounded `.generatePreview` worker jobs through the same background work controls used by visible preview requests. This avoids UI-thread disk reads and avoids pulling originals from NAS or removable media during launch.
 

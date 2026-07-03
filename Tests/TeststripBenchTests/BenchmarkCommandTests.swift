@@ -56,7 +56,7 @@ final class BenchmarkCommandTests: XCTestCase {
 
         XCTAssertEqual(result.importedAssetCount, 250)
         XCTAssertEqual(result.catalogAssetCount, 250)
-        XCTAssertEqual(result.pendingPreviewCount, 250)
+        XCTAssertEqual(result.pendingPreviewCount, 500)
         XCTAssertLessThanOrEqual(result.progressEventCount, 8)
     }
 

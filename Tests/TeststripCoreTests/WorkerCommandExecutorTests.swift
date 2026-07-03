@@ -151,6 +151,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(imported.map(\.originalURL), [source])
         XCTAssertEqual(result, .completedImport("imported 1 photo from photos", importedAssetIDs: [asset.id]))
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: asset.id, level: .micro),
             PreviewGenerationItem(assetID: asset.id, level: .grid)
         ])
         XCTAssertFalse(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)).path))
@@ -211,6 +212,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: asset.id).metadata, metadata)
         XCTAssertEqual(try Data(contentsOf: XMPSidecarStore().sidecarURL(forOriginalAt: destination)), sidecarData)
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: asset.id, level: .micro),
             PreviewGenerationItem(assetID: asset.id, level: .grid)
         ])
         XCTAssertFalse(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)).path))

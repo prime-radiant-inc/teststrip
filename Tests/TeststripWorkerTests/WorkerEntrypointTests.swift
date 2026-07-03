@@ -46,6 +46,7 @@ final class WorkerEntrypointTests: XCTestCase {
         ))
         XCTAssertEqual(assets.map(\.originalURL), [source])
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: asset.id, level: .micro),
             PreviewGenerationItem(assetID: asset.id, level: .grid)
         ])
     }

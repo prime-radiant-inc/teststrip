@@ -2765,9 +2765,10 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.originalURL), [image])
         XCTAssertNil(model.gridPreviewURL(for: assetID))
         XCTAssertEqual(try catalog.repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: assetID, level: .micro),
             PreviewGenerationItem(assetID: assetID, level: .grid)
         ])
-        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: assetID, level: .grid)])
+        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: assetID, level: .micro)])
         XCTAssertEqual(model.visibleWorkActivity?.kind, .previewGeneration)
     }
 
@@ -2806,6 +2807,7 @@ final class AppModelTests: XCTestCase {
             metadata: AssetMetadata()
         )
         try catalog.repository.upsert(importedAsset)
+        try catalog.repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: importedAsset.id, level: .micro))
         try catalog.repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: importedAsset.id, level: .grid))
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
             itemID: importItem.id,
@@ -2823,7 +2825,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(activity.detail, "Imported 1 photo from photos")
         XCTAssertEqual(try transport.commands(), [
             .importFolder(root: photoFolder),
-            .generatePreview(assetID: importedAsset.id, level: .grid)
+            .generatePreview(assetID: importedAsset.id, level: .micro)
         ])
     }
 
