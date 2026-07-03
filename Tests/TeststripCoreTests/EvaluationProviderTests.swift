@@ -115,6 +115,65 @@ final class EvaluationProviderTests: XCTestCase {
         }
     }
 
+    func testLocalHTTPProviderRetriesTransientHTTPFailure() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "local-http-retry-status")
+        let previewURL = directory.appendingPathComponent("frame.jpg")
+        try Data("preview bytes".utf8).write(to: previewURL)
+        let transport = RecordingLocalHTTPTransport(responses: [
+            .success(LocalHTTPModelHTTPResponse(statusCode: 500, data: Data("server busy".utf8))),
+            .success(LocalHTTPModelHTTPResponse(
+                statusCode: 200,
+                data: try chatCompletionData(content: """
+                {"signals":[{"kind":"focus","score":0.88,"confidence":0.91}]}
+                """)
+            ))
+        ])
+        let provider = LocalHTTPModelProvider(
+            endpoint: URL(string: "http://localhost:1234/v1/chat/completions")!,
+            model: "llava",
+            transport: transport
+        )
+        let assetID = AssetID(rawValue: "asset-1")
+
+        let signals = try provider.evaluate(assetID: assetID, previewURL: previewURL)
+
+        XCTAssertEqual(transport.requests().count, 2)
+        XCTAssertEqual(signals, [
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .focus,
+                value: .score(0.88),
+                confidence: 0.91,
+                provenance: ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+            )
+        ])
+    }
+
+    func testLocalHTTPProviderRetriesTransportFailure() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "local-http-retry-transport")
+        let previewURL = directory.appendingPathComponent("frame.jpg")
+        try Data("preview bytes".utf8).write(to: previewURL)
+        let transport = RecordingLocalHTTPTransport(responses: [
+            .failure(TeststripError.io("connection reset")),
+            .success(LocalHTTPModelHTTPResponse(
+                statusCode: 200,
+                data: try chatCompletionData(content: """
+                {"signals":[{"kind":"aesthetics","label":"keeper","confidence":0.73}]}
+                """)
+            ))
+        ])
+        let provider = LocalHTTPModelProvider(
+            endpoint: URL(string: "http://localhost:1234/v1/chat/completions")!,
+            model: "llava",
+            transport: transport
+        )
+
+        let signals = try provider.evaluate(assetID: AssetID(rawValue: "asset-1"), previewURL: previewURL)
+
+        XCTAssertEqual(transport.requests().count, 2)
+        XCTAssertEqual(signals.map(\.kind), [.aesthetics])
+    }
+
     func testLocalImageMetricsProviderEmitsExposureAndColorSignalsFromPreview() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "local-image-metrics")
         let previewURL = directory.appendingPathComponent("preview.png")
@@ -218,17 +277,23 @@ private struct FakeAppleVisionAnalyzer: AppleVisionAnalyzing {
 }
 
 private final class RecordingLocalHTTPTransport: LocalHTTPModelTransport, @unchecked Sendable {
-    private let response: Result<LocalHTTPModelHTTPResponse, Error>
+    private let responses: [Result<LocalHTTPModelHTTPResponse, Error>]
     private let lock = NSLock()
     private var recordedRequests: [URLRequest] = []
 
     init(response: Result<LocalHTTPModelHTTPResponse, Error>) {
-        self.response = response
+        self.responses = [response]
+    }
+
+    init(responses: [Result<LocalHTTPModelHTTPResponse, Error>]) {
+        precondition(!responses.isEmpty)
+        self.responses = responses
     }
 
     func response(for request: URLRequest) throws -> LocalHTTPModelHTTPResponse {
         lock.lock()
         recordedRequests.append(request)
+        let response = responses[min(recordedRequests.count - 1, responses.count - 1)]
         lock.unlock()
         return try response.get()
     }

@@ -52,6 +52,8 @@ public struct URLSessionLocalHTTPModelTransport: LocalHTTPModelTransport {
 }
 
 public struct LocalHTTPModelProvider: EvaluationProvider {
+    private static let maxResponseAttempts = 3
+
     public var endpoint: URL
     public var model: String
     public var prompt: String
@@ -110,10 +112,7 @@ public struct LocalHTTPModelProvider: EvaluationProvider {
     }
 
     public func evaluate(assetID: AssetID, previewURL: URL) throws -> [EvaluationSignal] {
-        let response = try transport.response(for: try request(for: previewURL, prompt: prompt))
-        guard (200..<300).contains(response.statusCode) else {
-            throw TeststripError.io("HTTP model request failed with status \(response.statusCode)")
-        }
+        let response = try response(for: try request(for: previewURL, prompt: prompt))
         let completion = try JSONDecoder().decode(OpenAIChatCompletionResponse.self, from: response.data)
         guard let content = completion.choices.first?.message.content, let contentData = content.data(using: .utf8) else {
             throw TeststripError.invalidState("HTTP model response did not include message content")
@@ -121,6 +120,33 @@ public struct LocalHTTPModelProvider: EvaluationProvider {
         let modelResponse = try JSONDecoder().decode(LocalHTTPModelEvaluationResponse.self, from: contentData)
         let provenance = ProviderProvenance(provider: name, model: model, version: "1", settingsHash: "default")
         return try modelResponse.signals.map { try $0.evaluationSignal(assetID: assetID, provenance: provenance) }
+    }
+
+    private func response(for request: URLRequest) throws -> LocalHTTPModelHTTPResponse {
+        var lastTransportError: Error?
+        for attempt in 1...Self.maxResponseAttempts {
+            let response: LocalHTTPModelHTTPResponse
+            do {
+                response = try transport.response(for: request)
+            } catch {
+                guard attempt < Self.maxResponseAttempts else {
+                    throw error
+                }
+                lastTransportError = error
+                continue
+            }
+            if (200..<300).contains(response.statusCode) {
+                return response
+            }
+            guard Self.shouldRetry(statusCode: response.statusCode), attempt < Self.maxResponseAttempts else {
+                throw TeststripError.io("HTTP model request failed with status \(response.statusCode)")
+            }
+        }
+        throw lastTransportError ?? TeststripError.io("HTTP model request did not return a response")
+    }
+
+    private static func shouldRetry(statusCode: Int) -> Bool {
+        statusCode == 408 || statusCode == 429 || (500..<600).contains(statusCode)
     }
 
     public static let defaultPrompt = """
