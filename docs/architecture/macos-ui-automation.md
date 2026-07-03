@@ -2,34 +2,25 @@
 
 ## Current State
 
-The SwiftPM-built app bundle renders a real Teststrip window, and CoreGraphics can capture it by window id with `script/capture_app_window.sh`.
+The SwiftPM-built app bundle renders a real Teststrip window, CoreGraphics can capture it by window id with `script/capture_app_window.sh`, and Accessibility can drive visible grid thumbnails with `AXPress`.
 
-In the Codex desktop launch context, Accessibility does not currently expose that window:
-
-- `System Events` reports the `Teststrip` process as visible but with `0` windows.
-- Whole-screen `screencapture` does not include the Teststrip window.
-- `screencapture -l <CoreGraphics window id>` captures the rendered app window correctly.
-- Synthetic clicks posted through screen coordinates or to the process id do not change grid selection in this state.
-
-The useful automation path today is visual verification by CoreGraphics window capture, not interactive UI driving through Accessibility or Computer Use.
+Use Accessibility for focused interaction checks and CoreGraphics window capture for visual review. Synthetic screen-coordinate clicks are still less useful because coordinate calibration varies by launch context and window state.
 
 ## Evidence
 
-The repeated probe is:
+The basic visual probe is:
 
 ```bash
-osascript -e 'tell application "System Events" to tell process "Teststrip" to get {frontmost, visible, count of windows}'
 ./script/capture_app_window.sh Teststrip /tmp/teststrip-window.png
 ```
 
-Expected current result in this environment:
+The grid activation probe is:
 
-```text
-false, true, 0
-/tmp/teststrip-window.png
+```bash
+./script/verify_grid_activation.sh Teststrip
 ```
 
-The app logs also show LaunchServices/AppKit restoring a SwiftUI window while later reporting `No windows open yet` through the Accessibility path.
+It finds the first visible image thumbnail button, performs `AXPress`, and waits until the inspector exposes that filename as the selected asset. Pass a filename as the second argument to require a specific visible thumbnail.
 
 ## Seeded Visual Smoke
 
@@ -50,8 +41,8 @@ Do not repeat these without a new hypothesis:
 - Launching with `open -F`.
 - Forcing `System Events` process visibility and `tell application "Teststrip" to activate`.
 - Adding an app launch hook that calls `NSApp.unhide(nil)`, `NSApp.activate(ignoringOtherApps: true)`, and `makeKeyAndOrderFront`.
-- Posting synthetic mouse events with `cliclick` or `CGEvent.postToPid`.
+- Posting synthetic mouse events with `cliclick` or `CGEvent.postToPid` as the primary verification path.
 
 ## Next Work
 
-The likely durable fix is to revisit packaging/window management rather than patching view code blindly. Until then, UI changes should be verified with model tests where possible plus CoreGraphics window captures for visual regressions.
+Keep adding small, scenario-specific Accessibility probes only when they prove user-visible behavior. UI changes should still be verified with model tests where possible plus CoreGraphics window captures for visual regressions.
