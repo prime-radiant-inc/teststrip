@@ -143,6 +143,7 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
     public var completedUnitCount: Int
     public var totalUnitCount: Int?
     public var failureCount: Int
+    public var starred: Bool
 
     public init(
         id: String = UUID().uuidString,
@@ -152,7 +153,8 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
         detail: String,
         completedUnitCount: Int,
         totalUnitCount: Int?,
-        failureCount: Int
+        failureCount: Int,
+        starred: Bool = false
     ) {
         self.id = id
         self.kind = kind
@@ -162,6 +164,7 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
         self.completedUnitCount = completedUnitCount
         self.totalUnitCount = totalUnitCount
         self.failureCount = failureCount
+        self.starred = starred
     }
 
     public var showsProgress: Bool {
@@ -190,7 +193,8 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
             detail: workSession.detail,
             completedUnitCount: workSession.completedUnitCount,
             totalUnitCount: workSession.totalUnitCount,
-            failureCount: workSession.failureCount
+            failureCount: workSession.failureCount,
+            starred: workSession.starred
         )
     }
 }
@@ -688,6 +692,28 @@ public final class AppModel {
         statusMessage = session.detail.isEmpty ? session.title : session.detail
     }
 
+    public func canToggleWorkSessionStarred(_ activity: AppWorkActivity) -> Bool {
+        catalog != nil && persistedWorkActivityIDs.contains(activity.id)
+    }
+
+    public func toggleWorkSessionStarred(id: WorkSessionID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let session = try catalog.repository.session(id: id)
+        try setWorkSessionStarred(id: id, starred: !session.starred)
+    }
+
+    public func setWorkSessionStarred(id: WorkSessionID, starred: Bool) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        var session = try catalog.repository.session(id: id)
+        session.starred = starred
+        try catalog.repository.save(session)
+        try refreshWorkSessions()
+    }
+
     public func applyAssetSet(id: AssetSetID) throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
@@ -708,6 +734,15 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         savedAssetSets = try catalog.repository.assetSets()
+        rebuildSidebarSections()
+    }
+
+    private func refreshWorkSessions() throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
+        starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
         rebuildSidebarSections()
     }
 
@@ -1662,6 +1697,10 @@ public final class AppModel {
         backgroundWorkQueue.items.last { isVisibleInactiveBackgroundWork($0) }
     }
 
+    private var persistedWorkActivityIDs: Set<String> {
+        Set((recentWork + starredWork).map(\.id))
+    }
+
     private var activeBackgroundImportItem: BackgroundWorkItem? {
         backgroundWorkQueue.runningItems.first { $0.kind == .ingest } ??
             backgroundWorkQueue.items.first { $0.kind == .ingest && $0.status == .paused } ??
@@ -2582,6 +2621,7 @@ private extension AppWorkActivity {
             completedUnitCount: completedUnitCount,
             totalUnitCount: totalUnitCount,
             failureCount: failureCount,
+            starred: starred,
             createdAt: now,
             updatedAt: now
         )

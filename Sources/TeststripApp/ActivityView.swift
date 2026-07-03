@@ -42,6 +42,15 @@ struct ActivityView: View {
                 Text(label(for: activity.status))
                     .font(.caption2)
                     .foregroundStyle(color(for: activity.status))
+                if model.canToggleWorkSessionStarred(activity) {
+                    Button {
+                        toggleStarred(activity)
+                    } label: {
+                        Image(systemName: activity.starred ? "star.fill" : "star")
+                    }
+                    .buttonStyle(.plain)
+                    .help(activity.starred ? "Unstar work" : "Star work")
+                }
                 if showsControls, model.activeWork?.id == activity.id && activity.status == .running {
                     Button {
                         model.cancelActiveWork()
@@ -110,6 +119,14 @@ struct ActivityView: View {
             .green
         case .failed, .cancelled:
             .red
+        }
+    }
+
+    private func toggleStarred(_ activity: AppWorkActivity) {
+        do {
+            try model.toggleWorkSessionStarred(id: WorkSessionID(rawValue: activity.id))
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 }
