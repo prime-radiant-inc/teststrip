@@ -30,6 +30,14 @@ The Import Path probe is:
 
 It creates a temporary PNG folder, opens the Import Path sheet, fills the focused sheet field, presses Import, and waits until the imported thumbnail is visible. Use it after `./script/build_and_run.sh --verify-smoke` when checking the first-run import flow.
 
+The keyboard culling probe is:
+
+```bash
+./script/verify_keyboard_culling.sh Teststrip
+```
+
+It selects a visible thumbnail, clears its rating through the Culling menu, sends the `5` key through System Events, and waits until the inspector shows `Rating: 5`.
+
 The selected-photo evaluation probe is:
 
 ```bash
