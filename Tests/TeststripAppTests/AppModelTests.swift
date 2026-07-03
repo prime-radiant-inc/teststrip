@@ -1534,6 +1534,54 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.visibleWorkActivity?.kind, .previewGeneration)
     }
 
+    func testPreviewCompletionRefillsPendingPreviewRecoveryBatch() throws {
+        let directory = try makeTemporaryDirectory(named: "pending-preview-refill")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assets = (0..<201).map { index in
+            makeAsset(id: "asset-\(index)", path: "/Photos/asset-\(index).jpg", rating: 0)
+        }
+        try repository.upsert(assets)
+        for asset in assets {
+            try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .grid))
+        }
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+        let firstItemID = WorkSessionID(rawValue: "preview-asset-0-grid")
+        let refillItemID = WorkSessionID(rawValue: "preview-asset-200-grid")
+
+        XCTAssertEqual(model.backgroundWorkQueue.items.count, 200)
+        XCTAssertNil(model.backgroundWorkQueue.item(id: refillItemID))
+        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: assets[0].id, level: .grid)])
+
+        try repository.markPreviewGenerated(assetID: assets[0].id, level: .grid)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: firstItemID,
+            message: "generated grid preview for asset-0"
+        )))
+
+        XCTAssertTrue(waitForCommands([
+            .generatePreview(assetID: assets[0].id, level: .grid),
+            .generatePreview(assetID: assets[1].id, level: .grid)
+        ], in: transport))
+        XCTAssertTrue(waitForBackgroundWorkItem(refillItemID, in: model))
+    }
+
     func testRequestEvaluationDispatchesWorkerRecognitionCommand() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -2885,6 +2933,21 @@ final class AppModelTests: XCTestCase {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
         }
         return (try? transport.commands()) == expected
+    }
+
+    private func waitForBackgroundWorkItem(
+        _ itemID: WorkSessionID,
+        in model: AppModel,
+        timeout: TimeInterval = 2
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if model.backgroundWorkQueue.item(id: itemID) != nil {
+                return true
+            }
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+        return model.backgroundWorkQueue.item(id: itemID) != nil
     }
 
     @MainActor

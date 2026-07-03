@@ -1253,8 +1253,15 @@ public final class AppModel {
     private func handleWorkerCommandCompleted(_ event: WorkerEvent) {
         switch event {
         case .completed(let itemID, _):
-            invalidatePreviewCacheIfNeeded(itemID: itemID)
+            let completedPreview = invalidatePreviewCacheIfNeeded(itemID: itemID)
             invalidateEvaluationSignalsIfNeeded(itemID: itemID)
+            if completedPreview {
+                do {
+                    try enqueuePendingPreviewGeneration()
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
         case .completedImport(let itemID, _, let importedAssetIDs):
             handleWorkerImportCompleted(itemID: itemID, importedAssetIDs: importedAssetIDs)
         case .accepted, .progress, .failed:
@@ -1262,13 +1269,14 @@ public final class AppModel {
         }
     }
 
-    private func invalidatePreviewCacheIfNeeded(itemID: WorkSessionID?) {
+    private func invalidatePreviewCacheIfNeeded(itemID: WorkSessionID?) -> Bool {
         guard let itemID,
               backgroundWorkQueue.item(id: itemID)?.kind == .previewGeneration,
               let assetID = Self.previewAssetID(from: itemID) else {
-            return
+            return false
         }
         previewCacheGenerationsByAssetID[assetID, default: 0] += 1
+        return true
     }
 
     private func invalidateEvaluationSignalsIfNeeded(itemID: WorkSessionID?) {
