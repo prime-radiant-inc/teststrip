@@ -361,6 +361,10 @@ public final class AppModel {
         !assets.isEmpty && workerSupervisor != nil
     }
 
+    public var canRefreshVisibleAssetAvailability: Bool {
+        catalog != nil && !assets.isEmpty
+    }
+
     public var selectedEvaluationSignals: [EvaluationSignal] {
         guard let catalog, let selectedAssetID else { return [] }
         _ = evaluationSignalGeneration(for: selectedAssetID)
@@ -1636,6 +1640,16 @@ public final class AppModel {
             throw TeststripError.invalidState("no selected asset")
         }
         _ = try refreshAvailability(for: selectedAssetID)
+    }
+
+    public func refreshVisibleAssetAvailability() throws {
+        guard catalog != nil else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let visibleAssetIDs = assets.map(\.id)
+        for assetID in visibleAssetIDs {
+            _ = try refreshAvailability(for: assetID)
+        }
     }
 
     @discardableResult

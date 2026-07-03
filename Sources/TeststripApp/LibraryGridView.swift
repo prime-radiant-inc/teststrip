@@ -211,6 +211,15 @@ struct LibraryGridView: View {
                 }
                 .frame(width: 126)
 
+                Button {
+                    refreshVisibleAvailability()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!model.canRefreshVisibleAssetAvailability)
+                .help("Refresh source status")
+
                 if hasActiveFilters {
                     Button {
                         clearLibraryFilters()
@@ -675,6 +684,14 @@ struct LibraryGridView: View {
     private func clearLibraryFilters() {
         do {
             try model.clearLibraryFilters()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshVisibleAvailability() {
+        do {
+            try model.refreshVisibleAssetAvailability()
         } catch {
             model.errorMessage = error.localizedDescription
         }

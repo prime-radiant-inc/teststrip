@@ -1553,6 +1553,68 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.loupePreviewURL(for: asset.id), gridPreview)
     }
 
+    func testRefreshVisibleAvailabilityUpdatesLoadedAssetsAndCatalog() throws {
+        let directory = try makeTemporaryDirectory(named: "visible-availability")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let onlineURL = photosDirectory.appendingPathComponent("online.jpg")
+        let missingURL = photosDirectory.appendingPathComponent("missing.jpg")
+        try Data("online".utf8).write(to: onlineURL)
+        try Data("missing".utf8).write(to: missingURL)
+        let onlineAsset = Asset(
+            id: AssetID(rawValue: "online"),
+            originalURL: onlineURL,
+            volumeIdentifier: "Photos",
+            fingerprint: try fileFingerprint(for: onlineURL),
+            availability: .missing,
+            metadata: AssetMetadata()
+        )
+        let missingAsset = Asset(
+            id: AssetID(rawValue: "missing"),
+            originalURL: missingURL,
+            volumeIdentifier: "Photos",
+            fingerprint: try fileFingerprint(for: missingURL),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(onlineAsset)
+        try repository.upsert(missingAsset)
+        try FileManager.default.removeItem(at: missingURL)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        try model.refreshVisibleAssetAvailability()
+
+        XCTAssertEqual(model.assets.map(\.availability), [.online, .missing])
+        XCTAssertEqual(try repository.asset(id: onlineAsset.id).availability, .online)
+        XCTAssertEqual(try repository.asset(id: missingAsset.id).availability, .missing)
+    }
+
+    func testCanRefreshVisibleAvailabilityRequiresCatalogAndLoadedAssets() throws {
+        let (model, _, _) = try makeModelWithPreviewCache(named: "visible-availability-enabled")
+
+        XCTAssertTrue(model.canRefreshVisibleAssetAvailability)
+
+        model.assets = []
+        XCTAssertFalse(model.canRefreshVisibleAssetAvailability)
+
+        let localAsset = makeAsset(id: "local-only", size: 1)
+        let localOnlyModel = AppModel(sidebarSections: [], selectedView: .grid, assets: [localAsset])
+
+        XCTAssertFalse(localOnlyModel.canRefreshVisibleAssetAvailability)
+    }
+
     func testRequestMissingPreviewDispatchesWorkerPreviewCommand() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
