@@ -49,8 +49,8 @@ func children(of element: AXUIElement) -> [AXUIElement] {
 
 func accessibleText(_ element: AXUIElement) -> String? {
     stringAttribute(element, kAXTitleAttribute)
-        ?? stringAttribute(element, kAXValueAttribute)
         ?? stringAttribute(element, kAXDescriptionAttribute)
+        ?? stringAttribute(element, kAXValueAttribute)
 }
 
 func walk(_ element: AXUIElement, visit: (AXUIElement) -> Bool) -> AXUIElement? {

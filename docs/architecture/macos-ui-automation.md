@@ -22,6 +22,14 @@ The grid activation probe is:
 
 It finds the first visible image thumbnail button, performs `AXPress`, and waits until the inspector exposes that filename as the selected asset. Pass a filename as the second argument to require a specific visible thumbnail.
 
+The selected-thumbnail feedback probe is:
+
+```bash
+./script/verify_grid_selection_feedback.sh Teststrip
+```
+
+It presses a visible thumbnail and waits until that same thumbnail exposes `Selected` through Accessibility. Use it when changing grid-cell selection visuals or activation behavior.
+
 The Import Path probe is:
 
 ```bash

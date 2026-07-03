@@ -70,18 +70,21 @@ func walk(_ element: AXUIElement, visit: (AXUIElement) -> Bool) -> AXUIElement? 
     return nil
 }
 
-let button = walk(root) { element in
-    guard stringAttribute(element, kAXRoleAttribute) == kAXButtonRole,
-          let text = accessibleText(element) else {
-        return false
-    }
-    if requestedTarget.isEmpty {
+func imageButton(named target: String?) -> AXUIElement? {
+    walk(root) { element in
+        guard stringAttribute(element, kAXRoleAttribute) == kAXButtonRole,
+              let text = accessibleText(element) else {
+            return false
+        }
+        if let target, !target.isEmpty {
+            return text == target
+        }
         return isImageFilename(text)
     }
-    return text == requestedTarget
 }
 
-guard let button, let selectedName = accessibleText(button) else {
+guard let button = imageButton(named: requestedTarget.isEmpty ? nil : requestedTarget),
+      let selectedName = accessibleText(button) else {
     if requestedTarget.isEmpty {
         fputs("Could not find a visible image button in \(appName)\n", stderr)
     } else {
@@ -98,19 +101,14 @@ guard pressResult == .success else {
 
 let deadline = Date().addingTimeInterval(timeout)
 while Date() < deadline {
-    if walk(root, visit: { element in
-        guard stringAttribute(element, kAXRoleAttribute) == kAXStaticTextRole,
-              let text = accessibleText(element) else {
-            return false
-        }
-        return text == selectedName
-    }) != nil {
-        print("selected \(selectedName)")
+    if let selectedButton = imageButton(named: selectedName),
+       stringAttribute(selectedButton, kAXValueAttribute) == "Selected" {
+        print("selected feedback \(selectedName)")
         exit(0)
     }
     RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
 }
 
-fputs("Pressed \(selectedName), but the inspector did not expose that selection within \(timeout)s\n", stderr)
+fputs("Pressed \(selectedName), but the thumbnail did not expose selected feedback within \(timeout)s\n", stderr)
 exit(1)
 '

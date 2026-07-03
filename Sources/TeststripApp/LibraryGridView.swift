@@ -1044,6 +1044,7 @@ private extension View {
             .accessibilityElement()
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(asset.originalURL.lastPathComponent)
+            .accessibilityValue(model.selectedAssetID == asset.id ? "Selected" : "Not selected")
             .accessibilityAction {
                 model.select(asset.id)
             }
@@ -1076,7 +1077,8 @@ private struct AssetGridCell: View {
             .overlay {
                 if isSelected {
                     RoundedRectangle(cornerRadius: 5)
-                        .stroke(Color.orange, lineWidth: 2)
+                        .strokeBorder(Color.orange, lineWidth: 3)
+                        .shadow(color: Color.orange.opacity(0.45), radius: 3)
                 }
             }
             .background(
