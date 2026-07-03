@@ -1681,13 +1681,19 @@ public final class AppModel {
     }
 
     private func releaseInactiveWorkerImportContexts(in queue: BackgroundWorkQueue) {
-        for itemID in workerImportContextsByItemID.keys {
+        for itemID in Array(workerImportContextsByItemID.keys) {
             guard let item = queue.item(id: itemID), [.cancelled, .failed].contains(item.status) else {
                 continue
             }
             if let context = workerImportContextsByItemID.removeValue(forKey: itemID) {
                 stopAccessingWorkerImportResources(context)
-                if item.status == .failed {
+                if item.status == .cancelled {
+                    cancelImportActivity(
+                        id: itemID.rawValue,
+                        folderURL: context.source,
+                        destinationRoot: context.destinationRoot
+                    )
+                } else if item.status == .failed {
                     failImportActivity(
                         id: itemID.rawValue,
                         folderURL: context.source,
@@ -2412,9 +2418,9 @@ public final class AppModel {
         recordRecentActivity(activity)
     }
 
-    private func cancelImportActivity(folderURL: URL, destinationRoot: URL? = nil) {
+    private func cancelImportActivity(id: String? = nil, folderURL: URL, destinationRoot: URL? = nil) {
         let activity = AppWorkActivity(
-            id: activeWork?.id ?? UUID().uuidString,
+            id: id ?? activeWork?.id ?? UUID().uuidString,
             kind: .ingest,
             status: .cancelled,
             title: "Import photos",

@@ -2743,6 +2743,16 @@ final class AppModelTests: XCTestCase {
             .importFolder(root: photoFolder),
             .cancelAll
         ])
+
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.id, model.backgroundWorkQueue.items.first?.id.rawValue)
+        XCTAssertEqual(activity.status, .cancelled)
+        XCTAssertEqual(activity.detail, "Cancelled import from photos")
+
+        let reloaded = try AppModel.load(catalog: catalog)
+        XCTAssertEqual(reloaded.recentWork.first?.id, activity.id)
+        XCTAssertEqual(reloaded.recentWork.first?.status, .cancelled)
+        XCTAssertEqual(reloaded.recentWork.first?.detail, "Cancelled import from photos")
     }
 
     @MainActor
@@ -2776,6 +2786,9 @@ final class AppModelTests: XCTestCase {
             .cancelAll,
             previewCommand
         ])
+        XCTAssertEqual(model.recentWork.first?.id, importItem.id.rawValue)
+        XCTAssertEqual(model.recentWork.first?.status, .cancelled)
+        XCTAssertEqual(model.recentWork.first?.detail, "Cancelled import from photos")
     }
 
     @MainActor
