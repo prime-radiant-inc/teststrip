@@ -22,9 +22,7 @@ struct InspectorView: View {
                         .foregroundStyle(.yellow)
                 }
                 if model.metadataSyncConflictItems.contains(where: { $0.assetID == asset.id }) {
-                    Text("XMP conflict")
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                    metadataConflictControls()
                 }
                 metadataControls(for: asset)
                     .onAppear {
@@ -45,6 +43,30 @@ struct InspectorView: View {
         }
         .padding()
         .frame(minWidth: 260)
+    }
+
+    private func metadataConflictControls() -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("XMP conflict")
+                .font(.caption)
+                .foregroundStyle(.red)
+            HStack(spacing: 8) {
+                Button {
+                    apply { try model.resolveSelectedMetadataConflictUsingCatalog() }
+                } label: {
+                    Label("Use Catalog", systemImage: "internaldrive")
+                }
+                .help("Keep catalog metadata and overwrite the XMP sidecar")
+
+                Button {
+                    apply { try model.resolveSelectedMetadataConflictUsingSidecar() }
+                } label: {
+                    Label("Use XMP", systemImage: "doc.text")
+                }
+                .help("Import XMP sidecar metadata into the catalog")
+            }
+            .controlSize(.small)
+        }
     }
 
     private func metadataControls(for asset: Asset) -> some View {

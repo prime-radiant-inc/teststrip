@@ -401,6 +401,55 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.metadataSyncConflictItems, [conflict])
     }
 
+    func testResolveSelectedMetadataConflictUsingCatalogOverwritesSidecar() throws {
+        let catalogMetadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["catalog"])
+        let sidecarMetadata = AssetMetadata(rating: 2, colorLabel: .red, flag: .reject, keywords: ["sidecar"])
+        let (model, repository, asset, originalURL, sidecarURL) = try makeModelWithXMPConflict(
+            named: "resolve-conflict-catalog",
+            catalogMetadata: catalogMetadata,
+            sidecarMetadata: sidecarMetadata
+        )
+
+        try model.resolveSelectedMetadataConflictUsingCatalog()
+
+        let sidecarData = try Data(contentsOf: sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata, catalogMetadata)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata, catalogMetadata)
+        XCTAssertEqual(try Data(contentsOf: originalURL), Data("original raw bytes".utf8))
+        XCTAssertEqual(try repository.metadataSyncConflictItems(), [])
+        XCTAssertEqual(model.metadataSyncConflictItems, [])
+        XCTAssertEqual(model.pendingMetadataSyncItems, [])
+        XCTAssertEqual(
+            try repository.lastMetadataSyncFingerprint(assetID: asset.id),
+            XMPSidecarStore.fingerprint(for: sidecarData)
+        )
+    }
+
+    func testResolveSelectedMetadataConflictUsingSidecarImportsSidecarMetadata() throws {
+        let catalogMetadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["catalog"])
+        let sidecarMetadata = AssetMetadata(rating: 2, colorLabel: .red, flag: .reject, keywords: ["sidecar"])
+        let (model, repository, asset, originalURL, sidecarURL) = try makeModelWithXMPConflict(
+            named: "resolve-conflict-sidecar",
+            catalogMetadata: catalogMetadata,
+            sidecarMetadata: sidecarMetadata
+        )
+
+        try model.resolveSelectedMetadataConflictUsingSidecar()
+
+        let sidecarData = try Data(contentsOf: sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata, sidecarMetadata)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata, sidecarMetadata)
+        XCTAssertEqual(model.selectedAsset?.metadata, sidecarMetadata)
+        XCTAssertEqual(try Data(contentsOf: originalURL), Data("original raw bytes".utf8))
+        XCTAssertEqual(try repository.metadataSyncConflictItems(), [])
+        XCTAssertEqual(model.metadataSyncConflictItems, [])
+        XCTAssertEqual(model.pendingMetadataSyncItems, [])
+        XCTAssertEqual(
+            try repository.lastMetadataSyncFingerprint(assetID: asset.id),
+            XMPSidecarStore.fingerprint(for: sidecarData)
+        )
+    }
+
     func testRatingSelectedAssetDispatchesWorkerMetadataSyncWhenSupervisorConfigured() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-xmp")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
@@ -2792,6 +2841,50 @@ final class AppModelTests: XCTestCase {
             )
         )
         return (try AppModel.load(catalog: catalog), repository, asset)
+    }
+
+    private func makeModelWithXMPConflict(
+        named name: String,
+        catalogMetadata: AssetMetadata,
+        sidecarMetadata: AssetMetadata
+    ) throws -> (AppModel, CatalogRepository, Asset, URL, URL) {
+        let directory = try makeTemporaryDirectory(named: name)
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: name),
+            originalURL: originalURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: catalogMetadata
+        )
+        try repository.upsert(asset)
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+        let sidecarData = try XMPPacket(metadata: sidecarMetadata).xmlData()
+        try sidecarData.write(to: sidecarURL)
+        let conflict = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: sidecarURL,
+            catalogGeneration: try repository.catalogGeneration(assetID: asset.id),
+            lastSyncedFingerprint: "old"
+        )
+        try repository.recordMetadataSyncConflict(conflict)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        return (try AppModel.load(catalog: catalog), repository, asset, originalURL, sidecarURL)
     }
 
     private func makeModelWithCatalogAssets(

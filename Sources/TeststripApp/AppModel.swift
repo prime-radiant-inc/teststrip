@@ -847,6 +847,20 @@ public final class AppModel {
         }
     }
 
+    public func resolveSelectedMetadataConflictUsingCatalog() throws {
+        guard let selectedAssetID else {
+            throw TeststripError.invalidState("no selected asset")
+        }
+        try resolveMetadataConflictUsingCatalog(assetID: selectedAssetID)
+    }
+
+    public func resolveSelectedMetadataConflictUsingSidecar() throws {
+        guard let selectedAssetID else {
+            throw TeststripError.invalidState("no selected asset")
+        }
+        try resolveMetadataConflictUsingSidecar(assetID: selectedAssetID)
+    }
+
     public func undoMetadataChange() throws {
         guard let change = metadataUndoStack.popLast() else { return }
         try applyMetadataSnapshot(assetID: change.assetID, metadata: change.before)
@@ -952,6 +966,88 @@ public final class AppModel {
             upsertPendingMetadataSyncItem(pendingItem)
             statusMessage = "XMP write pending for \(asset.originalURL.lastPathComponent)"
         }
+    }
+
+    private func resolveMetadataConflictUsingCatalog(assetID: AssetID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let conflict = try metadataSyncConflictItem(assetID: assetID, repository: catalog.repository)
+        let asset = try catalog.repository.asset(id: assetID)
+        let generation = try catalog.repository.catalogGeneration(assetID: assetID)
+        let pendingItem = MetadataSyncItem(
+            assetID: assetID,
+            sidecarURL: conflict.sidecarURL,
+            catalogGeneration: generation,
+            lastSyncedFingerprint: conflict.lastSyncedFingerprint
+        )
+
+        do {
+            let result = try catalog.metadataSidecarStore.write(metadata: asset.metadata, forOriginalAt: asset.originalURL)
+            try catalog.repository.markMetadataSynced(
+                assetID: assetID,
+                sidecarURL: result.sidecarURL,
+                catalogGeneration: generation,
+                fingerprint: result.fingerprint
+            )
+            clearMetadataSyncState(assetID: assetID)
+            statusMessage = "Resolved XMP conflict using catalog metadata"
+        } catch {
+            try catalog.repository.recordMetadataSyncPending(pendingItem)
+            metadataSyncConflictItems.removeAll { $0.assetID == assetID }
+            upsertPendingMetadataSyncItem(pendingItem)
+            statusMessage = "XMP write pending for \(asset.originalURL.lastPathComponent)"
+        }
+    }
+
+    private func resolveMetadataConflictUsingSidecar(assetID: AssetID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let conflict = try metadataSyncConflictItem(assetID: assetID, repository: catalog.repository)
+        let originalAsset = try catalog.repository.asset(id: assetID)
+        let sidecarData = try Data(contentsOf: conflict.sidecarURL)
+        let sidecarMetadata = try XMPPacket.parse(sidecarData).metadata
+
+        try catalog.repository.updateMetadata(assetID: assetID) { metadata in
+            metadata = sidecarMetadata
+        }
+        let updatedAsset = try catalog.repository.asset(id: assetID)
+        let generation = try catalog.repository.catalogGeneration(assetID: assetID)
+        try catalog.repository.markMetadataSynced(
+            assetID: assetID,
+            sidecarURL: conflict.sidecarURL,
+            catalogGeneration: generation,
+            fingerprint: XMPSidecarStore.fingerprint(for: sidecarData)
+        )
+        if let index = assets.firstIndex(where: { $0.id == assetID }) {
+            assets[index] = updatedAsset
+        }
+        if originalAsset.metadata != sidecarMetadata {
+            metadataUndoStack.append(MetadataChange(
+                assetID: assetID,
+                before: originalAsset.metadata,
+                after: sidecarMetadata
+            ))
+            metadataRedoStack.removeAll()
+        }
+        clearMetadataSyncState(assetID: assetID)
+        statusMessage = "Resolved XMP conflict using sidecar metadata"
+    }
+
+    private func metadataSyncConflictItem(assetID: AssetID, repository: CatalogRepository) throws -> MetadataSyncItem {
+        if let item = metadataSyncConflictItems.first(where: { $0.assetID == assetID }) {
+            return item
+        }
+        if let item = try repository.metadataSyncConflictItems().first(where: { $0.assetID == assetID }) {
+            return item
+        }
+        throw TeststripError.invalidState("selected asset has no XMP conflict")
+    }
+
+    private func clearMetadataSyncState(assetID: AssetID) {
+        pendingMetadataSyncItems.removeAll { $0.assetID == assetID }
+        metadataSyncConflictItems.removeAll { $0.assetID == assetID }
     }
 
     private func enqueueMetadataSyncCheck(for assetID: AssetID) throws {
