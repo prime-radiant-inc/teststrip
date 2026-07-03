@@ -55,12 +55,16 @@ public struct SmokeCatalogSeeder {
         let repository = CatalogRepository(database: database)
         let renderer = PreviewRenderer()
         var sourceImageCount = 0
+        var pickAssetIDs: [AssetID] = []
 
         for index in 0..<count {
             let assetID = AssetID(rawValue: "smoke-\(index)")
             let sourceURL = sourceRoot.appendingPathComponent("\(assetID.rawValue).jpg")
             try Self.writeSmokeJPEG(to: sourceURL, index: index)
             sourceImageCount += 1
+            if index % 6 >= 4 {
+                pickAssetIDs.append(assetID)
+            }
 
             try repository.upsert(asset(
                 id: assetID,
@@ -76,6 +80,14 @@ public struct SmokeCatalogSeeder {
                     destinationURL: previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
                 )
             }
+        }
+        if !pickAssetIDs.isEmpty {
+            try repository.upsert(AssetSet(
+                id: AssetSetID(rawValue: "smoke-picks"),
+                name: "Smoke Picks",
+                membership: .manual(pickAssetIDs),
+                starred: true
+            ))
         }
 
         return SmokeCatalogSeederResult(

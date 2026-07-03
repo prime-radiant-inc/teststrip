@@ -128,6 +128,26 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: assets[0].id, level: .grid)).path))
     }
 
+    func testSmokeCatalogSeederCreatesStarredPicksSet() throws {
+        let applicationSupportDirectory = try makeTemporaryDirectory(named: "smoke-picks-app-support")
+
+        let result = try SmokeCatalogSeeder(
+            applicationSupportDirectory: applicationSupportDirectory,
+            count: 8
+        ).run()
+
+        let database = try CatalogDatabase.open(at: result.catalogURL)
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let picks = try XCTUnwrap(try repository.assetSets().first { $0.name == "Smoke Picks" })
+
+        XCTAssertTrue(picks.starred)
+        XCTAssertEqual(picks.membership, .manual([
+            AssetID(rawValue: "smoke-4"),
+            AssetID(rawValue: "smoke-5")
+        ]))
+    }
+
     func testSmokeCatalogSeederRefusesExistingCatalog() throws {
         let applicationSupportDirectory = try makeTemporaryDirectory(named: "existing-smoke-app-support")
         let catalogURL = applicationSupportDirectory
