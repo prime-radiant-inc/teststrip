@@ -20,6 +20,8 @@ case .metadataWrite(let count):
     try runMetadataWriteBenchmark(count: count, root: root)
 case .previewRender(let count):
     try runPreviewRenderBenchmark(count: count, root: root)
+case .seedAppCatalog(let applicationSupportDirectory, let count):
+    try runSeedAppCatalog(applicationSupportDirectory: applicationSupportDirectory, count: count)
 }
 
 private func runCatalogScaleBenchmark(count: Int, root: URL) throws {
@@ -135,6 +137,23 @@ private func runPreviewRenderBenchmark(count: Int, root: URL) throws {
     }
     print("source images: \(result.sourceImageCount)")
     print("rendered previews: \(result.renderedPreviewCount)")
+    print("cached previews: \(result.cachedPreviewCount)")
+}
+
+private func runSeedAppCatalog(applicationSupportDirectory: URL, count: Int) throws {
+    print("TeststripBench seed app catalog")
+    print("application support: \(applicationSupportDirectory.path)")
+    print("count: \(count)")
+    let result = try measure("seed app catalog") {
+        try SmokeCatalogSeeder(
+            applicationSupportDirectory: applicationSupportDirectory,
+            count: count
+        ).run()
+    }
+    print("catalog: \(result.catalogURL.path)")
+    print("preview cache: \(result.previewCacheRoot.path)")
+    print("source images: \(result.sourceImageCount)")
+    print("catalog assets: \(result.assetCount)")
     print("cached previews: \(result.cachedPreviewCount)")
 }
 

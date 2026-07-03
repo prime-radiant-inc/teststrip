@@ -6,6 +6,7 @@ public enum BenchmarkCommand: Equatable {
     case localHTTPSmoke(endpoint: URL, model: String, imagePath: String?, timeout: TimeInterval)
     case metadataWrite(count: Int)
     case previewRender(count: Int)
+    case seedAppCatalog(applicationSupportDirectory: URL, count: Int)
 
     public static func parse(_ arguments: [String]) -> BenchmarkCommand {
         let userArguments = Array(arguments.dropFirst())
@@ -28,6 +29,11 @@ public enum BenchmarkCommand: Equatable {
         }
         if firstArgument == "preview-render" {
             return .previewRender(count: Int(userArguments.dropFirst().first ?? "250") ?? 250)
+        }
+        if firstArgument == "seed-app-catalog" {
+            let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
+            let count = Int(userArguments.dropFirst(2).first ?? "24") ?? 24
+            return .seedAppCatalog(applicationSupportDirectory: URL(fileURLWithPath: directory), count: count)
         }
         return .catalogScale(count: Int(firstArgument) ?? 100_000)
     }

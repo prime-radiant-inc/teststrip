@@ -31,6 +31,19 @@ false, true, 0
 
 The app logs also show LaunchServices/AppKit restoring a SwiftUI window while later reporting `No windows open yet` through the Accessibility path.
 
+## Seeded Visual Smoke
+
+Use a fresh temporary app-support directory when a screenshot needs real grid content instead of an empty isolated catalog:
+
+```bash
+swift run TeststripBench seed-app-catalog /tmp/teststrip-smoke-app-support 24
+pkill -x Teststrip
+/usr/bin/open --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=/tmp/teststrip-smoke-app-support -n /Users/jesse/git/projects/teststrip/dist/Teststrip.app
+./script/capture_app_window.sh Teststrip /tmp/teststrip-seeded-smoke.png
+```
+
+`seed-app-catalog` writes generated JPEG originals, catalog rows, and cached micro/grid/medium/large previews under the same `Teststrip/` app-support layout the app uses. It refuses to write over an existing `catalog.sqlite`, so do not point it at a real catalog.
+
 ## Failed Fixes
 
 Do not repeat these without a new hypothesis:

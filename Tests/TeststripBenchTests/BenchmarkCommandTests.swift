@@ -42,6 +42,13 @@ final class BenchmarkCommandTests: XCTestCase {
         )
     }
 
+    func testSeedAppCatalogCommandParsesApplicationSupportDirectoryAndCount() throws {
+        XCTAssertEqual(
+            BenchmarkCommand.parse(["TeststripBench", "seed-app-catalog", "/tmp/teststrip-smoke", "12"]),
+            .seedAppCatalog(applicationSupportDirectory: URL(fileURLWithPath: "/tmp/teststrip-smoke"), count: 12)
+        )
+    }
+
     func testDeferredImportBenchmarkCatalogsAssetsAndQueuesPreviewWork() throws {
         let root = try makeTemporaryDirectory(named: "deferred-import-benchmark")
 
@@ -94,6 +101,47 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(result, LocalHTTPModelSmokeResult(signalCount: 1, signalKinds: [.focus]))
         XCTAssertEqual(transport.request?.url, endpoint)
         XCTAssertEqual(transport.request?.timeoutInterval, 12)
+    }
+
+    func testSmokeCatalogSeederCreatesAppCatalogAssetsAndPreviews() throws {
+        let applicationSupportDirectory = try makeTemporaryDirectory(named: "smoke-app-support")
+
+        let result = try SmokeCatalogSeeder(
+            applicationSupportDirectory: applicationSupportDirectory,
+            count: 8
+        ).run()
+
+        let database = try CatalogDatabase.open(at: result.catalogURL)
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assets = try repository.allAssets(limit: 20)
+        let previewCache = PreviewCache(root: result.previewCacheRoot)
+
+        XCTAssertEqual(result.assetCount, 8)
+        XCTAssertEqual(result.sourceImageCount, 8)
+        XCTAssertEqual(result.cachedPreviewCount, 32)
+        XCTAssertEqual(try repository.assetCount(), 8)
+        XCTAssertEqual(assets.count, 8)
+        XCTAssertEqual(assets.first?.metadata.rating, 0)
+        XCTAssertEqual(assets.first?.technicalMetadata?.cameraMake, "Teststrip")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: assets[0].originalURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: assets[0].id, level: .grid)).path))
+    }
+
+    func testSmokeCatalogSeederRefusesExistingCatalog() throws {
+        let applicationSupportDirectory = try makeTemporaryDirectory(named: "existing-smoke-app-support")
+        let catalogURL = applicationSupportDirectory
+            .appendingPathComponent("Teststrip", isDirectory: true)
+            .appendingPathComponent("catalog.sqlite")
+        try FileManager.default.createDirectory(at: catalogURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("existing catalog".utf8).write(to: catalogURL)
+
+        XCTAssertThrowsError(try SmokeCatalogSeeder(
+            applicationSupportDirectory: applicationSupportDirectory,
+            count: 1
+        ).run()) { error in
+            XCTAssertTrue(error.localizedDescription.contains("refusing to seed smoke catalog over existing catalog"))
+        }
     }
 
     func testBenchmarkWorkspaceCreatesUniqueTemporaryRoots() {
