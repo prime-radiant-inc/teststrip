@@ -85,6 +85,17 @@ public final class WorkerSupervisor: @unchecked Sendable {
         notifyQueueChanged()
     }
 
+    @discardableResult
+    public func promoteQueuedItem(id itemID: WorkSessionID) throws -> Bool {
+        guard queue.promoteQueuedItem(id: itemID) else {
+            return false
+        }
+        queue.activateRunnableItems()
+        try dispatchRunnableItems()
+        notifyQueueChanged()
+        return true
+    }
+
     public func markCompleted(id: WorkSessionID) throws {
         commandsByItemID[id] = nil
         dispatchedItemIDs.removeAll { $0 == id }

@@ -2844,6 +2844,35 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testVisibleGridPreviewPromotesExistingQueuedPreviewWork() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let running = makeAsset(id: "running", size: 1)
+        let olderQueued = makeAsset(id: "older", size: 2)
+        let visible = makeAsset(id: "visible", size: 3)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "grid-promotes-existing-preview",
+            assets: [running, olderQueued, visible],
+            workerSupervisor: supervisor
+        )
+        try model.requestPreview(assetID: running.id, level: .grid)
+        try model.requestPreview(assetID: olderQueued.id, level: .grid)
+        try model.requestPreview(assetID: visible.id, level: .grid)
+
+        try model.requestVisibleGridPreview(assetID: visible.id)
+
+        XCTAssertEqual(model.backgroundWorkQueue.queuedItems.map(\.id.rawValue), [
+            "preview-\(visible.id.rawValue)-grid",
+            "preview-\(olderQueued.id.rawValue)-grid"
+        ])
+        XCTAssertEqual(try transport.commands(), [
+            .generatePreview(assetID: running.id, level: .grid)
+        ])
+    }
+
     func testVisibleGridPreviewDoesNotDispatchForKnownUnavailableOriginals() throws {
         for availability in [SourceAvailability.offline, .missing] {
             let transport = RecordingWorkerTransport()

@@ -64,6 +64,20 @@ public struct BackgroundWorkQueue: Equatable, Sendable {
         items.first { $0.id == id }
     }
 
+    @discardableResult
+    public mutating func promoteQueuedItem(id: WorkSessionID) -> Bool {
+        guard let index = items.firstIndex(where: { $0.id == id && $0.status == .queued }) else {
+            return false
+        }
+        let item = items.remove(at: index)
+        if let firstQueuedIndex = items.firstIndex(where: { $0.status == .queued }) {
+            items.insert(item, at: firstQueuedIndex)
+        } else {
+            items.append(item)
+        }
+        return true
+    }
+
     public mutating func activateRunnableItems() {
         guard !isPaused else { return }
 

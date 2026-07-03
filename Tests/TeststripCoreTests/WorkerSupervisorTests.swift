@@ -44,6 +44,30 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(supervisor.queue.item(id: second.id)?.status, .running)
     }
 
+    func testPromotingQueuedWorkDispatchesItBeforeOlderQueuedWork() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let olderQueued = BackgroundWorkItem.testItem(id: "older")
+        let visible = BackgroundWorkItem.testItem(id: "visible")
+        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
+        let olderCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .grid)
+        let visibleCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-3"), level: .grid)
+        try supervisor.enqueue(first, command: firstCommand)
+        try supervisor.enqueue(olderQueued, command: olderCommand)
+        try supervisor.enqueue(visible, command: visibleCommand)
+
+        XCTAssertTrue(try supervisor.promoteQueuedItem(id: visible.id))
+        try supervisor.markCompleted(id: first.id)
+
+        XCTAssertEqual(try transport.commands(), [firstCommand, visibleCommand])
+        XCTAssertEqual(supervisor.queue.item(id: visible.id)?.status, .running)
+        XCTAssertEqual(supervisor.queue.item(id: olderQueued.id)?.status, .queued)
+    }
+
     func testCompletedWorkerEventCompletesDispatchedItemAndStartsNextQueuedWork() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

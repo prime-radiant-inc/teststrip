@@ -1492,6 +1492,9 @@ public final class AppModel {
         }
         let itemID = WorkSessionID(rawValue: "preview-\(assetID.rawValue)-\(level.rawValue)")
         if backgroundWorkQueue.item(id: itemID) != nil {
+            if placement == .front, try workerSupervisor.promoteQueuedItem(id: itemID) {
+                syncBackgroundWorkQueueFromSupervisor()
+            }
             return
         }
 
