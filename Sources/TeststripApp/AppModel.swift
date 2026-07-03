@@ -1280,6 +1280,8 @@ public final class AppModel {
             lastSyncedFingerprint: lastFingerprint
         )
         if let workerSupervisor {
+            try catalog.repository.recordMetadataSyncPending(pendingItem)
+            upsertPendingMetadataSyncItem(pendingItem)
             let itemID = WorkSessionID(rawValue: "xmp-\(asset.id.rawValue)-\(generation)")
             if backgroundWorkQueue.item(id: itemID) != nil {
                 return

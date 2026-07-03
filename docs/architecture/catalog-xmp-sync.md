@@ -15,6 +15,7 @@ The default sidecar convention is collision-safe: append `.xmp` to the full orig
 - Successful sidecar writes store the last written XMP fingerprint in the catalog.
 - Failed sidecar writes do not roll back or block the catalog metadata edit.
 - Failed sidecar writes are recorded as pending sync items with the asset ID, sidecar path, catalog generation, and last synced fingerprint if one exists.
+- Worker-backed metadata edits record the pending sync item before enqueueing helper work, so a quit or crash after the catalog edit does not lose the required sidecar write.
 - `TeststripWorker` can execute `syncMetadata` for one asset: write missing/outdated sidecars from catalog metadata, import externally changed sidecars when the catalog generation is unchanged, and record conflicts when both catalog and sidecar changed.
 
 ## Next Work
