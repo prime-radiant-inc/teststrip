@@ -183,6 +183,8 @@ public struct WorkerCommandExecutor {
             return .completed("generated \(level.rawValue) preview for \(Self.displayName(for: asset))")
         case .syncMetadata(let assetID):
             return try syncMetadata(assetID: assetID)
+        case .refreshAvailability(let assetID):
+            return try refreshAvailability(assetID: assetID)
         case .runEvaluation(let assetID, let provider):
             return try runEvaluation(assetID: assetID, providerName: provider)
         case .pause:
@@ -212,6 +214,13 @@ public struct WorkerCommandExecutor {
     private static func displayName(for asset: Asset) -> String {
         let name = asset.originalURL.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? asset.id.rawValue : name
+    }
+
+    private func refreshAvailability(assetID: AssetID) throws -> WorkerCommandResult {
+        let asset = try repository.asset(id: assetID)
+        let availability = SourceAvailabilityProbe().availability(for: asset)
+        try repository.updateAvailability(assetID: assetID, availability: availability)
+        return .completed("source \(availability.rawValue) for \(Self.displayName(for: asset))")
     }
 
     private func runEvaluation(assetID: AssetID, providerName: String) throws -> WorkerCommandResult {

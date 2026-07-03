@@ -13,9 +13,10 @@ Normal browsing reads catalog rows and cached previews. It must not probe origin
 - Existing files with changed attributes are `stale`.
 - Absent files are `missing`.
 - App code can refresh the selected asset or the loaded library window and keep cached grid/loupe previews usable.
+- When the supervised worker is configured, loaded-window refreshes enqueue managed `sourceScan` work instead of probing originals on the UI path.
 
 ## Next Work
 
-- Add worker-driven batch availability scans with throttling and cancellation.
+- Add source-level batch availability scans with throttling and cancellation.
 - Distinguish temporarily offline volumes from truly missing files where the platform gives enough evidence.
 - Surface source-level summaries and reconnect actions without blocking catalog browsing.

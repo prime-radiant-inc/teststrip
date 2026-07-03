@@ -17,6 +17,7 @@ public enum WorkSessionKind: String, Codable, Sendable {
     case searchSort
     case keywording
     case xmpSync
+    case sourceScan
     case export
 }
 

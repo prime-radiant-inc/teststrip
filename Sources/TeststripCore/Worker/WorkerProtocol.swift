@@ -92,6 +92,17 @@ public enum WorkerProtocolEncoder {
                 destinationRootURL: nil,
                 itemID: itemID?.rawValue
             )
+        case .refreshAvailability(let assetID):
+            envelope = WorkerCommandEnvelope(
+                command: "refreshAvailability",
+                assetID: assetID.rawValue,
+                level: nil,
+                provider: nil,
+                rootURL: nil,
+                sourceURL: nil,
+                destinationRootURL: nil,
+                itemID: itemID?.rawValue
+            )
         case .runEvaluation(let assetID, let provider):
             envelope = WorkerCommandEnvelope(
                 command: "runEvaluation",
@@ -164,6 +175,8 @@ public enum WorkerProtocolEncoder {
             command = .generatePreview(assetID: assetID, level: level)
         case "syncMetadata":
             command = .syncMetadata(assetID: try envelope.requiredAssetID())
+        case "refreshAvailability":
+            command = .refreshAvailability(assetID: try envelope.requiredAssetID())
         case "runEvaluation":
             let assetID = try envelope.requiredAssetID()
             let provider = try envelope.requiredProvider()

@@ -286,6 +286,9 @@ public final class AppModel {
     @ObservationIgnored
     private var evaluationAssetIDsByItemID: [WorkSessionID: AssetID]
 
+    @ObservationIgnored
+    private var availabilityAssetIDsByItemID: [WorkSessionID: AssetID]
+
     private var previewCacheGenerationsByAssetID: [AssetID: Int]
     private var evaluationSignalGenerationsByAssetID: [AssetID: Int]
     private var metadataUndoStack: [MetadataChange]
@@ -516,6 +519,7 @@ public final class AppModel {
         self.workerSupervisor = workerSupervisor
         self.previewCacheGenerationsByAssetID = [:]
         self.evaluationAssetIDsByItemID = [:]
+        self.availabilityAssetIDsByItemID = [:]
         self.evaluationSignalGenerationsByAssetID = [:]
         let importPreviewPolicy: LibraryImportPreviewPolicy = workerSupervisor == nil ? .generateImmediately : .deferGeneration
         self.importTaskFactory = importTaskFactory ?? { paths, folderURL, progress in
@@ -544,6 +548,7 @@ public final class AppModel {
             try? self?.refreshMetadataSyncState()
             self?.releaseInactiveWorkerImportContexts(in: queue)
             self?.releaseInactiveEvaluationContexts(in: queue)
+            self?.releaseInactiveAvailabilityContexts(in: queue)
         }
         self.workerSupervisor?.onCommandCompleted = { [weak self] event in
             self?.handleWorkerCommandCompleted(event)
@@ -1428,6 +1433,7 @@ public final class AppModel {
         case .completed(let itemID, _):
             let completedPreview = invalidatePreviewCacheIfNeeded(itemID: itemID)
             invalidateEvaluationSignalsIfNeeded(itemID: itemID)
+            refreshLoadedAssetAvailabilityIfNeeded(itemID: itemID)
             if completedPreview {
                 do {
                     try enqueuePendingPreviewGeneration()
@@ -1439,6 +1445,23 @@ public final class AppModel {
             handleWorkerImportCompleted(itemID: itemID, importedAssetIDs: importedAssetIDs)
         case .accepted, .progress, .failed:
             return
+        }
+    }
+
+    private func refreshLoadedAssetAvailabilityIfNeeded(itemID: WorkSessionID?) {
+        guard let itemID,
+              backgroundWorkQueue.item(id: itemID)?.kind == .sourceScan,
+              let assetID = availabilityAssetIDsByItemID.removeValue(forKey: itemID),
+              let catalog else {
+            return
+        }
+        do {
+            let updatedAsset = try catalog.repository.asset(id: assetID)
+            if let index = assets.firstIndex(where: { $0.id == assetID }) {
+                assets[index] = updatedAsset
+            }
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -1536,6 +1559,15 @@ public final class AppModel {
                 continue
             }
             evaluationAssetIDsByItemID[itemID] = nil
+        }
+    }
+
+    private func releaseInactiveAvailabilityContexts(in queue: BackgroundWorkQueue) {
+        for itemID in availabilityAssetIDsByItemID.keys {
+            guard let item = queue.item(id: itemID), [.cancelled, .failed].contains(item.status) else {
+                continue
+            }
+            availabilityAssetIDsByItemID[itemID] = nil
         }
     }
 
@@ -1676,10 +1708,43 @@ public final class AppModel {
         guard catalog != nil else {
             throw TeststripError.invalidState("app model has no catalog")
         }
+        if workerSupervisor != nil {
+            for assetID in assets.map(\.id) {
+                try requestAvailabilityRefresh(assetID: assetID)
+            }
+            return
+        }
         let visibleAssetIDs = assets.map(\.id)
         for assetID in visibleAssetIDs {
             _ = try refreshAvailability(for: assetID)
         }
+    }
+
+    private func requestAvailabilityRefresh(assetID: AssetID) throws {
+        guard let workerSupervisor else {
+            throw TeststripError.invalidState("worker supervisor is not configured")
+        }
+        if availabilityAssetIDsByItemID.contains(where: { $0.value == assetID }) {
+            return
+        }
+        let itemID = WorkSessionID(rawValue: "source-\(UUID().uuidString)")
+        let assetName = assets.first { $0.id == assetID }?.originalURL.lastPathComponent ?? assetID.rawValue
+        let item = BackgroundWorkItem(
+            id: itemID,
+            kind: .sourceScan,
+            title: "Refresh sources",
+            detail: "Checking \(assetName)",
+            completedUnitCount: 0,
+            totalUnitCount: 1
+        )
+        availabilityAssetIDsByItemID[itemID] = assetID
+        do {
+            try workerSupervisor.enqueue(item, command: .refreshAvailability(assetID: assetID))
+        } catch {
+            availabilityAssetIDsByItemID[itemID] = nil
+            throw error
+        }
+        syncBackgroundWorkQueueFromSupervisor()
     }
 
     @discardableResult

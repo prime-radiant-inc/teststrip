@@ -1634,6 +1634,40 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: missingAsset.id).availability, .missing)
     }
 
+    @MainActor
+    func testRefreshVisibleAvailabilityWithWorkerEnqueuesManagedSourceScans() async throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let first = makeAsset(id: "source-first", size: 1)
+        let second = makeAsset(id: "source-second", size: 2)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "worker-visible-availability",
+            assets: [first, second],
+            workerSupervisor: supervisor
+        )
+
+        try model.refreshVisibleAssetAvailability()
+
+        XCTAssertEqual(try transport.commands(), [.refreshAvailability(assetID: first.id)])
+        XCTAssertEqual(model.backgroundWorkQueue.runningItems.map(\.kind), [.sourceScan])
+        XCTAssertEqual(model.backgroundWorkQueue.queuedItems.map(\.kind), [.sourceScan])
+        XCTAssertEqual(model.visibleWorkActivity?.title, "Refresh sources")
+        XCTAssertEqual(model.assets.map(\.availability), [.online, .online])
+
+        try repository.updateAvailability(assetID: first.id, availability: .missing)
+        let itemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: itemID,
+            message: "source missing for source-first.jpg"
+        )))
+
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+        XCTAssertEqual(model.assets.first?.availability, .missing)
+    }
+
     func testCanRefreshVisibleAvailabilityRequiresCatalogAndLoadedAssets() throws {
         let (model, _, _) = try makeModelWithPreviewCache(named: "visible-availability-enabled")
 

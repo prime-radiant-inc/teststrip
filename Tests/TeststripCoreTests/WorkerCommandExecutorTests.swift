@@ -57,6 +57,34 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
     }
 
+    func testRefreshAvailabilityCommandUpdatesCatalogSourceState() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-refresh-availability")
+        let source = root.appendingPathComponent("source.jpg")
+        try Data("original".utf8).write(to: source)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try FileManager.default.removeItem(at: source)
+        let executor = WorkerCommandExecutor(
+            repository: repository,
+            previewCache: PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        )
+
+        let result = try executor.execute(.refreshAvailability(assetID: asset.id))
+
+        XCTAssertEqual(result, .completed("source missing for source.jpg"))
+        XCTAssertEqual(try repository.asset(id: asset.id).availability, .missing)
+    }
+
     func testImportFolderCommandCatalogsAssetsAndDefersPreviewGeneration() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-import-folder")
         let sourceRoot = root.appendingPathComponent("photos", isDirectory: true)
