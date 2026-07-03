@@ -177,6 +177,14 @@ struct LibraryGridView: View {
                 }
                 .frame(width: 112)
 
+                Picker("Label", selection: colorLabelFilterBinding) {
+                    Text("Any Label").tag("")
+                    ForEach(ColorLabel.allCases, id: \.self) { label in
+                        Text(label.rawValue.capitalized).tag(label.rawValue)
+                    }
+                }
+                .frame(width: 124)
+
                 if hasActiveFilters {
                     Button {
                         clearLibraryFilters()
@@ -413,6 +421,16 @@ struct LibraryGridView: View {
             get: { model.flagFilter?.rawValue ?? "" },
             set: { value in
                 model.flagFilter = PickFlag(rawValue: value)
+                applyLibraryFilters()
+            }
+        )
+    }
+
+    private var colorLabelFilterBinding: Binding<String> {
+        Binding(
+            get: { model.colorLabelFilter?.rawValue ?? "" },
+            set: { value in
+                model.colorLabelFilter = ColorLabel(rawValue: value)
                 applyLibraryFilters()
             }
         )

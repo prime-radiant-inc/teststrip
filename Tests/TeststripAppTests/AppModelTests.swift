@@ -1022,7 +1022,7 @@ final class AppModelTests: XCTestCase {
                 volumeIdentifier: "Photos",
                 fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
                 availability: .online,
-                metadata: AssetMetadata(rating: 5, flag: .pick)
+                metadata: AssetMetadata(rating: 5, colorLabel: .green, flag: .pick)
             ),
             Asset(
                 id: AssetID(rawValue: "reject"),
@@ -1030,7 +1030,7 @@ final class AppModelTests: XCTestCase {
                 volumeIdentifier: "Photos",
                 fingerprint: FileFingerprint(size: 2, modificationDate: Date(timeIntervalSince1970: 2)),
                 availability: .online,
-                metadata: AssetMetadata(rating: 1, flag: .reject)
+                metadata: AssetMetadata(rating: 1, colorLabel: .red, flag: .reject)
             ),
             Asset(
                 id: AssetID(rawValue: "travel"),
@@ -1055,6 +1055,7 @@ final class AppModelTests: XCTestCase {
         model.librarySearchText = "CEREMONY"
         model.minimumRatingFilter = 4
         model.flagFilter = .pick
+        model.colorLabelFilter = .green
         try model.applyLibraryFilters()
 
         XCTAssertEqual(model.assets.map(\.id), [AssetID(rawValue: "keeper")])
@@ -1136,11 +1137,13 @@ final class AppModelTests: XCTestCase {
         let (model, _, _) = try makeModelWithCatalogAsset(named: "active-technical-filter")
 
         model.cameraFilterText = "Canon"
+        model.colorLabelFilter = .green
         XCTAssertTrue(model.hasActiveLibraryFilters)
 
         try model.clearLibraryFilters()
 
         XCTAssertFalse(model.hasActiveLibraryFilters)
+        XCTAssertNil(model.colorLabelFilter)
         XCTAssertEqual(model.cameraFilterText, "")
         XCTAssertEqual(model.lensFilterText, "")
         XCTAssertNil(model.minimumISOFilter)
@@ -1346,8 +1349,8 @@ final class AppModelTests: XCTestCase {
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
         let repository = CatalogRepository(database: database)
-        let keeper = makeAsset(id: "keeper", path: "/Photos/Wedding/ceremony-keeper.jpg", rating: 5, flag: .pick)
-        let reject = makeAsset(id: "reject", path: "/Photos/Wedding/ceremony-blink.jpg", rating: 1, flag: .reject)
+        let keeper = makeAsset(id: "keeper", path: "/Photos/Wedding/ceremony-keeper.jpg", rating: 5, colorLabel: .green, flag: .pick)
+        let reject = makeAsset(id: "reject", path: "/Photos/Wedding/ceremony-blink.jpg", rating: 1, colorLabel: .red, flag: .reject)
         try repository.upsert([keeper, reject])
         let catalog = AppCatalog(
             paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
@@ -1362,12 +1365,13 @@ final class AppModelTests: XCTestCase {
         model.librarySearchText = "ceremony"
         model.minimumRatingFilter = 4
         model.flagFilter = .pick
+        model.colorLabelFilter = .green
         try model.applyLibraryFilters()
 
         let savedSet = try model.saveCurrentLibraryQuery(named: " Ceremony Picks ", starred: true)
 
         XCTAssertEqual(savedSet.name, "Ceremony Picks")
-        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [.text("ceremony"), .ratingAtLeast(4), .flag(.pick)])))
+        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [.text("ceremony"), .ratingAtLeast(4), .flag(.pick), .colorLabel(.green)])))
         XCTAssertEqual(try repository.assetSet(id: savedSet.id), savedSet)
         XCTAssertEqual(model.savedAssetSets, [savedSet])
         XCTAssertEqual(model.starredAssetSets, [savedSet])
@@ -1375,6 +1379,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.librarySearchText, "")
         XCTAssertNil(model.minimumRatingFilter)
         XCTAssertNil(model.flagFilter)
+        XCTAssertNil(model.colorLabelFilter)
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, ["Ceremony Picks"])
     }
@@ -2780,6 +2785,7 @@ final class AppModelTests: XCTestCase {
         id: String,
         path: String,
         rating: Int,
+        colorLabel: ColorLabel? = nil,
         flag: PickFlag? = nil,
         technicalMetadata: AssetTechnicalMetadata? = nil
     ) -> Asset {
@@ -2789,7 +2795,7 @@ final class AppModelTests: XCTestCase {
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: Int64(rating + 1), modificationDate: Date(timeIntervalSince1970: TimeInterval(rating + 1))),
             availability: .online,
-            metadata: AssetMetadata(rating: rating, flag: flag),
+            metadata: AssetMetadata(rating: rating, colorLabel: colorLabel, flag: flag),
             technicalMetadata: technicalMetadata
         )
     }

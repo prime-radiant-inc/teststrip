@@ -228,6 +228,7 @@ public final class AppModel {
     public var librarySearchText: String
     public var minimumRatingFilter: Int?
     public var flagFilter: PickFlag?
+    public var colorLabelFilter: ColorLabel?
     public var cameraFilterText: String
     public var lensFilterText: String
     public var minimumISOFilter: Int?
@@ -388,6 +389,9 @@ public final class AppModel {
         if let flagFilter {
             parts.append(flagFilter.rawValue.capitalized)
         }
+        if let colorLabelFilter {
+            parts.append("\(colorLabelFilter.rawValue.capitalized) Label")
+        }
         let trimmedCamera = cameraFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedCamera.isEmpty {
             parts.append(trimmedCamera)
@@ -451,6 +455,7 @@ public final class AppModel {
         self.librarySearchText = ""
         self.minimumRatingFilter = nil
         self.flagFilter = nil
+        self.colorLabelFilter = nil
         self.cameraFilterText = ""
         self.lensFilterText = ""
         self.minimumISOFilter = nil
@@ -1690,6 +1695,9 @@ public final class AppModel {
         if let flagFilter {
             predicates.append(.flag(flagFilter))
         }
+        if let colorLabelFilter {
+            predicates.append(.colorLabel(colorLabelFilter))
+        }
         let trimmedCamera = cameraFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedCamera.isEmpty {
             predicates.append(.camera(trimmedCamera))
@@ -1714,6 +1722,7 @@ public final class AppModel {
         librarySearchText = ""
         minimumRatingFilter = nil
         flagFilter = nil
+        colorLabelFilter = nil
         cameraFilterText = ""
         lensFilterText = ""
         minimumISOFilter = nil
