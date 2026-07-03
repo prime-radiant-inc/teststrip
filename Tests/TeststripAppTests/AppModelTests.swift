@@ -1140,6 +1140,7 @@ final class AppModelTests: XCTestCase {
         let (model, _, _) = try makeModelWithCatalogAsset(named: "active-technical-filter")
 
         model.cameraFilterText = "Canon"
+        model.keywordFilterText = "portfolio"
         model.colorLabelFilter = .green
         model.availabilityFilter = .offline
         XCTAssertTrue(model.hasActiveLibraryFilters)
@@ -1149,6 +1150,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.hasActiveLibraryFilters)
         XCTAssertNil(model.colorLabelFilter)
         XCTAssertNil(model.availabilityFilter)
+        XCTAssertEqual(model.keywordFilterText, "")
         XCTAssertEqual(model.cameraFilterText, "")
         XCTAssertEqual(model.lensFilterText, "")
         XCTAssertNil(model.minimumISOFilter)
@@ -1354,7 +1356,14 @@ final class AppModelTests: XCTestCase {
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
         let repository = CatalogRepository(database: database)
-        let keeper = makeAsset(id: "keeper", path: "/Photos/Wedding/ceremony-keeper.jpg", rating: 5, colorLabel: .green, flag: .pick)
+        let keeper = makeAsset(
+            id: "keeper",
+            path: "/Photos/Wedding/ceremony-keeper.jpg",
+            rating: 5,
+            colorLabel: .green,
+            flag: .pick,
+            keywords: ["portfolio"]
+        )
         let reject = makeAsset(id: "reject", path: "/Photos/Wedding/ceremony-blink.jpg", rating: 1, colorLabel: .red, flag: .reject)
         try repository.upsert([keeper, reject])
         let catalog = AppCatalog(
@@ -1368,6 +1377,7 @@ final class AppModelTests: XCTestCase {
         )
         let model = try AppModel.load(catalog: catalog)
         model.librarySearchText = "ceremony"
+        model.keywordFilterText = "portfolio"
         model.minimumRatingFilter = 4
         model.flagFilter = .pick
         model.colorLabelFilter = .green
@@ -1376,12 +1386,13 @@ final class AppModelTests: XCTestCase {
         let savedSet = try model.saveCurrentLibraryQuery(named: " Ceremony Picks ", starred: true)
 
         XCTAssertEqual(savedSet.name, "Ceremony Picks")
-        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [.text("ceremony"), .ratingAtLeast(4), .flag(.pick), .colorLabel(.green)])))
+        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [.text("ceremony"), .keyword("portfolio"), .ratingAtLeast(4), .flag(.pick), .colorLabel(.green)])))
         XCTAssertEqual(try repository.assetSet(id: savedSet.id), savedSet)
         XCTAssertEqual(model.savedAssetSets, [savedSet])
         XCTAssertEqual(model.starredAssetSets, [savedSet])
         XCTAssertEqual(model.selectedAssetSetID, savedSet.id)
         XCTAssertEqual(model.librarySearchText, "")
+        XCTAssertEqual(model.keywordFilterText, "")
         XCTAssertNil(model.minimumRatingFilter)
         XCTAssertNil(model.flagFilter)
         XCTAssertNil(model.colorLabelFilter)
@@ -2792,6 +2803,7 @@ final class AppModelTests: XCTestCase {
         rating: Int,
         colorLabel: ColorLabel? = nil,
         flag: PickFlag? = nil,
+        keywords: [String] = [],
         availability: SourceAvailability = .online,
         technicalMetadata: AssetTechnicalMetadata? = nil
     ) -> Asset {
@@ -2801,7 +2813,7 @@ final class AppModelTests: XCTestCase {
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: Int64(rating + 1), modificationDate: Date(timeIntervalSince1970: TimeInterval(rating + 1))),
             availability: availability,
-            metadata: AssetMetadata(rating: rating, colorLabel: colorLabel, flag: flag),
+            metadata: AssetMetadata(rating: rating, colorLabel: colorLabel, flag: flag, keywords: keywords),
             technicalMetadata: technicalMetadata
         )
     }

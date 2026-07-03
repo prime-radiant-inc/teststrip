@@ -226,6 +226,7 @@ public final class AppModel {
     public var metadataSyncConflictItems: [MetadataSyncItem]
     public var backgroundWorkQueue: BackgroundWorkQueue
     public var librarySearchText: String
+    public var keywordFilterText: String
     public var minimumRatingFilter: Int?
     public var flagFilter: PickFlag?
     public var colorLabelFilter: ColorLabel?
@@ -384,6 +385,10 @@ public final class AppModel {
         if !trimmedSearch.isEmpty {
             parts.append(trimmedSearch)
         }
+        let trimmedKeyword = keywordFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedKeyword.isEmpty {
+            parts.append(trimmedKeyword)
+        }
         if let minimumRatingFilter {
             parts.append("\(minimumRatingFilter)+ Stars")
         }
@@ -457,6 +462,7 @@ public final class AppModel {
         self.metadataSyncConflictItems = metadataSyncConflictItems
         self.backgroundWorkQueue = backgroundWorkQueue
         self.librarySearchText = ""
+        self.keywordFilterText = ""
         self.minimumRatingFilter = nil
         self.flagFilter = nil
         self.colorLabelFilter = nil
@@ -1694,6 +1700,10 @@ public final class AppModel {
         if !trimmedSearch.isEmpty {
             predicates.append(.text(trimmedSearch))
         }
+        let trimmedKeyword = keywordFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedKeyword.isEmpty {
+            predicates.append(.keyword(trimmedKeyword))
+        }
         if let minimumRatingFilter {
             predicates.append(.ratingAtLeast(minimumRatingFilter))
         }
@@ -1728,6 +1738,7 @@ public final class AppModel {
 
     private func clearLibraryQueryFilters() {
         librarySearchText = ""
+        keywordFilterText = ""
         minimumRatingFilter = nil
         flagFilter = nil
         colorLabelFilter = nil

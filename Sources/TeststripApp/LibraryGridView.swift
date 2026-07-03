@@ -116,6 +116,16 @@ struct LibraryGridView: View {
                     applyLibraryFilters()
                 }
 
+                TextField("Keyword", text: Binding(
+                    get: { model.keywordFilterText },
+                    set: { model.keywordFilterText = $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 116)
+                .onSubmit {
+                    applyLibraryFilters()
+                }
+
                 TextField("Camera", text: Binding(
                     get: { model.cameraFilterText },
                     set: { model.cameraFilterText = $0 }
