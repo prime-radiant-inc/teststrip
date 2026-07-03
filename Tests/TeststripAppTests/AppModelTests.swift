@@ -722,6 +722,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.canPauseBackgroundWork)
     }
 
+    func testVisibleWorkActivitiesExposeBackgroundQueueShape() {
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: [],
+            backgroundWorkQueue: BackgroundWorkQueue(maxRunningCount: 1)
+        )
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let second = BackgroundWorkItem.testItem(id: "second")
+        let third = BackgroundWorkItem.testItem(id: "third")
+
+        model.enqueueBackgroundWork(first)
+        model.enqueueBackgroundWork(second)
+        model.enqueueBackgroundWork(third)
+
+        XCTAssertEqual(model.visibleWorkActivities.map(\.id), [
+            first.id.rawValue,
+            second.id.rawValue,
+            third.id.rawValue
+        ])
+        XCTAssertEqual(model.visibleWorkActivities.map(\.status), [.running, .queued, .queued])
+        XCTAssertEqual(model.visibleWorkActivity?.id, first.id.rawValue)
+    }
+
     func testBackgroundWorkCanPauseResumeAndCancel() {
         let model = AppModel(
             sidebarSections: [],

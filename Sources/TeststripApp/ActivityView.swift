@@ -9,8 +9,16 @@ struct ActivityView: View {
             Text("Activity")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            if let activity = model.visibleWorkActivity {
-                activityRow(activity)
+            let activities = model.visibleWorkActivities
+            if !activities.isEmpty {
+                ForEach(Array(activities.prefix(4).enumerated()), id: \.element.id) { index, activity in
+                    activityRow(activity, showsControls: index == 0)
+                }
+                if activities.count > 4 {
+                    Text("\(activities.count - 4) more queued")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 Text("No active work")
                     .font(.caption)
@@ -21,7 +29,7 @@ struct ActivityView: View {
         .padding(.top, 8)
     }
 
-    private func activityRow(_ activity: AppWorkActivity) -> some View {
+    private func activityRow(_ activity: AppWorkActivity, showsControls: Bool) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
                 if activity.status == .running {
@@ -34,7 +42,7 @@ struct ActivityView: View {
                 Text(label(for: activity.status))
                     .font(.caption2)
                     .foregroundStyle(color(for: activity.status))
-                if model.activeWork?.id == activity.id && activity.status == .running {
+                if showsControls, model.activeWork?.id == activity.id && activity.status == .running {
                     Button {
                         model.cancelActiveWork()
                     } label: {
@@ -42,7 +50,7 @@ struct ActivityView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Cancel work")
-                } else {
+                } else if showsControls {
                     if model.canPauseBackgroundWork {
                         Button {
                             model.pauseBackgroundWork()

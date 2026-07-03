@@ -294,13 +294,21 @@ public final class AppModel {
     }
 
     public var visibleWorkActivity: AppWorkActivity? {
+        visibleWorkActivities.first
+    }
+
+    public var visibleWorkActivities: [AppWorkActivity] {
         if let activeWork {
-            return activeWork
+            return [activeWork]
         }
-        if let backgroundItem = visibleBackgroundWorkItem {
-            return AppWorkActivity(workItem: backgroundItem)
+        let activeBackgroundItems = visibleActiveBackgroundWorkItems
+        if !activeBackgroundItems.isEmpty {
+            return activeBackgroundItems.map(AppWorkActivity.init)
         }
-        return recentWork.first
+        if let backgroundItem = visibleInactiveBackgroundWorkItem {
+            return [AppWorkActivity(workItem: backgroundItem)]
+        }
+        return recentWork.first.map { [$0] } ?? []
     }
 
     public var visibleImportActivity: AppWorkActivity? {
@@ -1366,11 +1374,12 @@ public final class AppModel {
         }
     }
 
-    private var visibleBackgroundWorkItem: BackgroundWorkItem? {
-        backgroundWorkQueue.runningItems.first ??
-            backgroundWorkQueue.items.first { $0.status == .paused } ??
-            backgroundWorkQueue.queuedItems.first ??
-            backgroundWorkQueue.items.last { isVisibleInactiveBackgroundWork($0) }
+    private var visibleActiveBackgroundWorkItems: [BackgroundWorkItem] {
+        backgroundWorkQueue.items.filter { [.running, .paused, .queued].contains($0.status) }
+    }
+
+    private var visibleInactiveBackgroundWorkItem: BackgroundWorkItem? {
+        backgroundWorkQueue.items.last { isVisibleInactiveBackgroundWork($0) }
     }
 
     private var activeBackgroundImportItem: BackgroundWorkItem? {
