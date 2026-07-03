@@ -2128,6 +2128,41 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testFailedWorkerImportRecordsFailedActivityForReload() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-failure-activity")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.failed(
+            itemID: importItem.id,
+            message: "disk read failed"
+        )))
+
+        try await waitForActivityStatus(.failed, in: model)
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.id, importItem.id.rawValue)
+        XCTAssertEqual(activity.kind, .ingest)
+        XCTAssertEqual(activity.status, .failed)
+        XCTAssertEqual(activity.detail, "Import failed from photos: disk read failed")
+        XCTAssertEqual(activity.failureCount, 1)
+
+        let reloaded = try AppModel.load(catalog: catalog)
+        XCTAssertEqual(reloaded.recentWork.first?.id, importItem.id.rawValue)
+        XCTAssertEqual(reloaded.recentWork.first?.status, .failed)
+        XCTAssertEqual(reloaded.recentWork.first?.detail, "Import failed from photos: disk read failed")
+    }
+
+    @MainActor
     func testCancellingWorkerImportCancelsManagedBackgroundWork() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-cancel")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)

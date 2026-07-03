@@ -1325,6 +1325,14 @@ public final class AppModel {
             }
             if let context = workerImportContextsByItemID.removeValue(forKey: itemID) {
                 stopAccessingWorkerImportResources(context)
+                if item.status == .failed {
+                    failImportActivity(
+                        id: itemID.rawValue,
+                        folderURL: context.source,
+                        destinationRoot: context.destinationRoot,
+                        error: TeststripError.io(item.detail)
+                    )
+                }
             }
             if item.status == .failed {
                 statusMessage = nil
