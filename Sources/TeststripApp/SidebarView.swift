@@ -38,6 +38,8 @@ struct SidebarView: View {
             return "photo.on.rectangle"
         case .folder:
             return "folder"
+        case .sourceAvailability:
+            return "externaldrive.badge.exclamationmark"
         case .evaluationKind(let kind):
             return evaluationKindIconName(kind)
         case .assetSet:

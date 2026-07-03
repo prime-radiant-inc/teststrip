@@ -1332,6 +1332,35 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 
+    func testLoadExposesSourceAvailabilityRowsInSidebarAndSelectingRowAppliesFilter() throws {
+        let online = makeAsset(id: "online", path: "/Volumes/NAS/Job/online.cr2", rating: 4)
+        let offline = makeAsset(id: "offline", path: "/Volumes/NAS/Job/offline.cr2", rating: 4, availability: .offline)
+        let firstMissing = makeAsset(id: "missing-a", path: "/Volumes/NAS/Job/missing-a.cr2", rating: 4, availability: .missing)
+        let secondMissing = makeAsset(id: "missing-b", path: "/Volumes/NAS/Job/missing-b.cr2", rating: 4, availability: .missing)
+        let moved = makeAsset(id: "moved", path: "/Volumes/NAS/Job/moved.cr2", rating: 4, availability: .moved)
+        let stale = makeAsset(id: "stale", path: "/Volumes/NAS/Job/stale.cr2", rating: 4, availability: .stale)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-source-availability-sidebar",
+            assets: [online, offline, firstMissing, secondMissing, moved, stale]
+        )
+
+        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
+        XCTAssertEqual(sourceSection.rowTitles, [
+            "Offline Originals (1)",
+            "Missing Originals (2)",
+            "Moved Originals (1)",
+            "Stale Originals (1)"
+        ])
+        let missingRow = try XCTUnwrap(sourceSection.rows.first { $0.title == "Missing Originals (2)" })
+
+        try model.selectSidebarRow(missingRow)
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.availabilityFilter, .missing)
+        XCTAssertEqual(model.assets.map(\.id), [firstMissing.id, secondMissing.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
+    }
+
     func testLoadExposesRecentAndStarredWorkSessionsInSidebar() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-work-sessions")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -1945,6 +1974,42 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.availability), [.online, .missing])
         XCTAssertEqual(try repository.asset(id: onlineAsset.id).availability, .online)
         XCTAssertEqual(try repository.asset(id: missingAsset.id).availability, .missing)
+    }
+
+    func testRefreshVisibleAvailabilityRefreshesSourceAvailabilitySidebarCounts() throws {
+        let directory = try makeTemporaryDirectory(named: "visible-availability-sidebar")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let imageURL = photosDirectory.appendingPathComponent("online.jpg")
+        try Data("online".utf8).write(to: imageURL)
+        let asset = Asset(
+            id: AssetID(rawValue: "online"),
+            originalURL: imageURL,
+            volumeIdentifier: "Photos",
+            fingerprint: try fileFingerprint(for: imageURL),
+            availability: .missing,
+            metadata: AssetMetadata()
+        )
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(asset)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Sources" }?.rowTitles, ["Missing Originals (1)"])
+
+        try model.refreshVisibleAssetAvailability()
+
+        XCTAssertEqual(model.assets.map(\.availability), [.online])
+        XCTAssertNil(model.sidebarSections.first { $0.title == "Sources" })
     }
 
     @MainActor

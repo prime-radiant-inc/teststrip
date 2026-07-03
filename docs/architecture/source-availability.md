@@ -14,9 +14,10 @@ Normal browsing reads catalog rows and cached previews. It must not probe origin
 - Absent files are `missing`.
 - App code can refresh the selected asset or the loaded library window and keep cached grid/loupe previews usable.
 - When the supervised worker is configured, loaded-window refreshes enqueue one managed batch `sourceScan` work item with progress instead of probing originals on the UI path or filling Activity with one row per visible asset.
+- Catalog load builds a Sources sidebar section for unavailable or questionable originals: offline, missing, moved, and stale. Selecting one of those rows applies the existing source availability filter, so offline/missing sets are reachable without scanning originals on the grid hot path.
 
 ## Next Work
 
 - Add per-source throttling and cancellation policy for large NAS/removable-volume scans.
 - Distinguish temporarily offline volumes from truly missing files where the platform gives enough evidence.
-- Surface source-level summaries and reconnect actions without blocking catalog browsing.
+- Add reconnect actions for unavailable source roots without blocking catalog browsing.

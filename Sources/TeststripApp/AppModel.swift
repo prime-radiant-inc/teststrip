@@ -92,6 +92,7 @@ public enum SidebarRowTarget: Equatable, Sendable {
     case allPhotographs
     case placeholder
     case folder(String)
+    case sourceAvailability(SourceAvailability)
     case evaluationKind(EvaluationKind)
     case assetSet(AssetSetID)
     case workSession(WorkSessionID)
@@ -133,6 +134,16 @@ public struct SidebarSection: Identifiable, Equatable {
     public init(title: String, rows: [SidebarRow]) {
         self.title = title
         self.rows = rows
+    }
+}
+
+public struct CatalogSourceAvailabilitySummary: Equatable, Sendable {
+    public var availability: SourceAvailability
+    public var assetCount: Int
+
+    public init(availability: SourceAvailability, assetCount: Int) {
+        self.availability = availability
+        self.assetCount = assetCount
     }
 }
 
@@ -275,6 +286,7 @@ public final class AppModel {
     public var evaluationKindFilter: EvaluationKind?
     public var savedAssetSets: [AssetSet]
     public var catalogFolders: [CatalogFolder]
+    public var sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary]
     public var catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary]
     public var selectedAssetSetID: AssetSetID?
 
@@ -523,6 +535,7 @@ public final class AppModel {
         backgroundWorkQueue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
         savedAssetSets: [AssetSet] = [],
         catalogFolders: [CatalogFolder] = [],
+        sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
         selectedAssetSetID: AssetSetID? = nil,
         workerSupervisor: WorkerSupervisor? = nil,
@@ -532,6 +545,7 @@ public final class AppModel {
         self.sidebarSections = sidebarSections.isEmpty ? Self.defaultSidebarSections(
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
+            sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
             recentWork: recentWork,
             starredWork: starredWork
@@ -563,6 +577,7 @@ public final class AppModel {
         self.evaluationKindFilter = nil
         self.savedAssetSets = savedAssetSets
         self.catalogFolders = catalogFolders
+        self.sourceAvailabilitySummaries = sourceAvailabilitySummaries
         self.catalogEvaluationKindSummaries = catalogEvaluationKindSummaries
         self.selectedAssetSetID = selectedAssetSetID
         self.catalog = catalog
@@ -629,6 +644,7 @@ public final class AppModel {
         let assets = try repository.allAssets(limit: Self.assetPageSize)
         let savedAssetSets = try repository.assetSets()
         let catalogFolders = try repository.folders()
+        let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: repository)
         let catalogEvaluationKindSummaries = try repository.evaluationKindSummaries()
         let recentWork = try repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
@@ -636,6 +652,7 @@ public final class AppModel {
             sidebarSections: defaultSidebarSections(
                 savedAssetSets: savedAssetSets,
                 catalogFolders: catalogFolders,
+                sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
                 recentWork: recentWork,
                 starredWork: starredWork
@@ -647,6 +664,7 @@ public final class AppModel {
             starredWork: starredWork,
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
+            sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries
         )
     }
@@ -660,6 +678,7 @@ public final class AppModel {
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
         let savedAssetSets = try catalog.repository.assetSets()
         let catalogFolders = try catalog.repository.folders()
+        let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         let catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
         let recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
@@ -667,6 +686,7 @@ public final class AppModel {
             sidebarSections: defaultSidebarSections(
                 savedAssetSets: savedAssetSets,
                 catalogFolders: catalogFolders,
+                sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
                 recentWork: recentWork,
                 starredWork: starredWork
@@ -681,6 +701,7 @@ public final class AppModel {
             metadataSyncConflictItems: try catalog.repository.metadataSyncConflictItems(),
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
+            sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
             workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory,
@@ -715,6 +736,12 @@ public final class AppModel {
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
             folderFilterText = path
+            selectedView = .grid
+            try reload()
+        case .sourceAvailability(let availability):
+            selectedAssetSetID = nil
+            clearLibraryQueryFilters()
+            availabilityFilter = availability
             selectedView = .grid
             try reload()
         case .evaluationKind(let kind):
@@ -1353,6 +1380,12 @@ public final class AppModel {
         metadataSyncConflictItems = try catalog.repository.metadataSyncConflictItems()
     }
 
+    private func refreshSourceAvailabilitySummaries() throws {
+        guard let catalog else { return }
+        sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
+        rebuildSidebarSections()
+    }
+
     public func enqueueBackgroundWork(_ item: BackgroundWorkItem) {
         backgroundWorkQueue.enqueue(item)
         backgroundWorkQueue.activateRunnableItems()
@@ -1656,6 +1689,7 @@ public final class AppModel {
                     assets[index] = updatedAsset
                 }
             }
+            try refreshSourceAvailabilitySummaries()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -1909,6 +1943,7 @@ public final class AppModel {
             throw TeststripError.invalidState("no selected asset")
         }
         _ = try refreshAvailability(for: selectedAssetID)
+        try refreshSourceAvailabilitySummaries()
     }
 
     public func refreshVisibleAssetAvailability() throws {
@@ -1923,6 +1958,7 @@ public final class AppModel {
         for assetID in visibleAssetIDs {
             _ = try refreshAvailability(for: assetID)
         }
+        try refreshSourceAvailabilitySummaries()
     }
 
     private func requestAvailabilityRefresh(assetID: AssetID) throws {
@@ -2177,6 +2213,7 @@ public final class AppModel {
         sidebarSections = Self.defaultSidebarSections(
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
+            sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
             recentWork: recentWork,
             starredWork: starredWork
@@ -2689,6 +2726,7 @@ public final class AppModel {
     private static func defaultSidebarSections(
         savedAssetSets: [AssetSet] = [],
         catalogFolders: [CatalogFolder] = [],
+        sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
         recentWork: [AppWorkActivity] = [],
         starredWork: [AppWorkActivity] = []
@@ -2710,6 +2748,10 @@ public final class AppModel {
                 )
             }))
         }
+        let sourceRows = sourceAvailabilitySidebarRows(sourceAvailabilitySummaries)
+        if !sourceRows.isEmpty {
+            sections.append(SidebarSection(title: "Sources", rows: sourceRows))
+        }
         let evaluationRows = evaluationSignalSidebarRows(catalogEvaluationKindSummaries)
         if !evaluationRows.isEmpty {
             sections.append(SidebarSection(title: "AI", rows: evaluationRows))
@@ -2729,6 +2771,48 @@ public final class AppModel {
             sections.append(SidebarSection(title: "Work", rows: workRows))
         }
         return sections
+    }
+
+    private static func sourceAvailabilitySummaries(repository: CatalogRepository) throws -> [CatalogSourceAvailabilitySummary] {
+        try sourceAvailabilitySidebarOrder.compactMap { availability in
+            let count = try repository.assetCount(matching: SetQuery(predicates: [.availability(availability)]))
+            guard count > 0 else { return nil }
+            return CatalogSourceAvailabilitySummary(availability: availability, assetCount: count)
+        }
+    }
+
+    private static func sourceAvailabilitySidebarRows(_ summaries: [CatalogSourceAvailabilitySummary]) -> [SidebarRow] {
+        let summariesByAvailability = Dictionary(uniqueKeysWithValues: summaries.map { ($0.availability, $0) })
+        return sourceAvailabilitySidebarOrder.compactMap { availability in
+            guard let summary = summariesByAvailability[availability], summary.assetCount > 0 else { return nil }
+            return SidebarRow(
+                id: "source-availability-\(availability.rawValue)",
+                title: "\(sourceAvailabilitySidebarTitle(availability)) (\(summary.assetCount))",
+                target: .sourceAvailability(availability)
+            )
+        }
+    }
+
+    private static let sourceAvailabilitySidebarOrder: [SourceAvailability] = [
+        .offline,
+        .missing,
+        .moved,
+        .stale
+    ]
+
+    private static func sourceAvailabilitySidebarTitle(_ availability: SourceAvailability) -> String {
+        switch availability {
+        case .online:
+            return "Online Originals"
+        case .offline:
+            return "Offline Originals"
+        case .missing:
+            return "Missing Originals"
+        case .moved:
+            return "Moved Originals"
+        case .stale:
+            return "Stale Originals"
+        }
     }
 
     private static func evaluationSignalSidebarRows(_ summaries: [CatalogEvaluationKindSummary]) -> [SidebarRow] {
