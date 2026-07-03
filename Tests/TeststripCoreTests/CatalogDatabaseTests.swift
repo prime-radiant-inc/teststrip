@@ -278,6 +278,29 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.allAssets(matching: colorKeywordQuery, limit: 10).map(\.id), [landscape.id])
     }
 
+    func testTextSearchMatchesEvaluationLabelsAndText() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-search")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let portrait = Asset.testAsset(id: AssetID(rawValue: "portrait"), path: "/Volumes/NAS/Job/frame-001.jpg", rating: 0)
+        let document = Asset.testAsset(id: AssetID(rawValue: "document"), path: "/Volumes/NAS/Job/frame-002.jpg", rating: 0)
+        let untagged = Asset.testAsset(id: AssetID(rawValue: "untagged"), path: "/Volumes/NAS/Job/frame-003.jpg", rating: 0)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.upsert([portrait, document, untagged])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: portrait.id, kind: .object, value: .label("outdoor portrait"), confidence: 0.82, provenance: provenance),
+            EvaluationSignal(assetID: document.id, kind: .ocrText, value: .text("Invoice 123\nTotal 45"), confidence: 1.0, provenance: provenance)
+        ])
+
+        let labelQuery = SetQuery(predicates: [.text("PORTRAIT")])
+        XCTAssertEqual(try repository.allAssets(matching: labelQuery, limit: 10).map(\.id), [portrait.id])
+        XCTAssertEqual(try repository.assetCount(matching: labelQuery), 1)
+
+        let ocrQuery = SetQuery(predicates: [.text("invoice 123")])
+        XCTAssertEqual(try repository.allAssets(matching: ocrQuery, limit: 10).map(\.id), [document.id])
+    }
+
     func testSearchesAssetsWithTechnicalMetadataPredicates() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-search")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

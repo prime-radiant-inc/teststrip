@@ -591,8 +591,24 @@ public final class CatalogRepository {
             case .text(let text):
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { continue }
-                clauses.append("LOWER(original_path) LIKE LOWER(?) ESCAPE '\\'")
-                bindings.append(Self.likePattern(containing: trimmed))
+                let pattern = Self.likePattern(containing: trimmed)
+                clauses.append(
+                    """
+                    (
+                        LOWER(original_path) LIKE LOWER(?) ESCAPE '\\'
+                        OR EXISTS (
+                            SELECT 1
+                            FROM evaluation_signals
+                            WHERE evaluation_signals.asset_id = assets.id
+                              AND (
+                                LOWER(COALESCE(json_extract(value_json, '$.label._0'), '')) LIKE LOWER(?) ESCAPE '\\'
+                                OR LOWER(COALESCE(json_extract(value_json, '$.text._0'), '')) LIKE LOWER(?) ESCAPE '\\'
+                              )
+                        )
+                    )
+                    """
+                )
+                bindings.append(contentsOf: [pattern, pattern, pattern])
             case .ratingAtLeast(let rating):
                 clauses.append("CAST(json_extract(metadata_json, '$.rating') AS INTEGER) >= ?")
                 bindings.append("\(rating)")

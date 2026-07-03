@@ -114,7 +114,7 @@ struct LibraryGridView: View {
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                TextField("Search filenames", text: Binding(
+                TextField("Search catalog", text: Binding(
                     get: { model.librarySearchText },
                     set: { model.librarySearchText = $0 }
                 ))
