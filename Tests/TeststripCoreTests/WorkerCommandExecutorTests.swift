@@ -85,6 +85,53 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: asset.id).availability, .missing)
     }
 
+    func testRefreshAvailabilityBatchCommandUpdatesCatalogAndReportsProgress() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-refresh-availability-batch")
+        let onlineSource = root.appendingPathComponent("online.jpg")
+        let missingSource = root.appendingPathComponent("missing.jpg")
+        try Data("online".utf8).write(to: onlineSource)
+        try Data("missing".utf8).write(to: missingSource)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let onlineAsset = Asset(
+            id: AssetID(rawValue: "online"),
+            originalURL: onlineSource,
+            volumeIdentifier: "local",
+            fingerprint: try fileFingerprint(for: onlineSource),
+            availability: .missing,
+            metadata: AssetMetadata()
+        )
+        let missingAsset = Asset(
+            id: AssetID(rawValue: "missing"),
+            originalURL: missingSource,
+            volumeIdentifier: "local",
+            fingerprint: try fileFingerprint(for: missingSource),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert([onlineAsset, missingAsset])
+        try FileManager.default.removeItem(at: missingSource)
+        let executor = WorkerCommandExecutor(
+            repository: repository,
+            previewCache: PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        )
+        let recorder = ImportProgressRecorder()
+
+        let result = try executor.execute(
+            .refreshAvailabilityBatch(assetIDs: [onlineAsset.id, missingAsset.id]),
+            progress: recorder.append
+        )
+
+        XCTAssertEqual(result, .completed("checked 2 sources"))
+        XCTAssertEqual(try repository.asset(id: onlineAsset.id).availability, .online)
+        XCTAssertEqual(try repository.asset(id: missingAsset.id).availability, .missing)
+        XCTAssertEqual(recorder.values(), [
+            LibraryImportProgress(completedUnitCount: 1, totalUnitCount: 2, detail: "Checked 1 of 2 sources"),
+            LibraryImportProgress(completedUnitCount: 2, totalUnitCount: 2, detail: "Checked 2 of 2 sources")
+        ])
+    }
+
     func testImportFolderCommandCatalogsAssetsAndDefersPreviewGeneration() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-import-folder")
         let sourceRoot = root.appendingPathComponent("photos", isDirectory: true)
@@ -577,6 +624,14 @@ private final class ImportProgressRecorder: @unchecked Sendable {
         defer { lock.unlock() }
         return updates
     }
+}
+
+private func fileFingerprint(for url: URL) throws -> FileFingerprint {
+    let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+    return FileFingerprint(
+        size: (attributes[.size] as? NSNumber)?.int64Value ?? 0,
+        modificationDate: attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0)
+    )
 }
 
 private func chatCompletionData(content: String) throws -> Data {

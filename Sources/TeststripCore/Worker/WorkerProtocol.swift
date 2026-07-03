@@ -103,6 +103,18 @@ public enum WorkerProtocolEncoder {
                 destinationRootURL: nil,
                 itemID: itemID?.rawValue
             )
+        case .refreshAvailabilityBatch(let assetIDs):
+            envelope = WorkerCommandEnvelope(
+                command: "refreshAvailabilityBatch",
+                assetID: nil,
+                level: nil,
+                provider: nil,
+                rootURL: nil,
+                sourceURL: nil,
+                destinationRootURL: nil,
+                itemID: itemID?.rawValue,
+                assetIDs: assetIDs.map(\.rawValue)
+            )
         case .runEvaluation(let assetID, let provider):
             envelope = WorkerCommandEnvelope(
                 command: "runEvaluation",
@@ -177,6 +189,8 @@ public enum WorkerProtocolEncoder {
             command = .syncMetadata(assetID: try envelope.requiredAssetID())
         case "refreshAvailability":
             command = .refreshAvailability(assetID: try envelope.requiredAssetID())
+        case "refreshAvailabilityBatch":
+            command = .refreshAvailabilityBatch(assetIDs: try envelope.requiredAssetIDs())
         case "runEvaluation":
             let assetID = try envelope.requiredAssetID()
             let provider = try envelope.requiredProvider()
@@ -243,9 +257,14 @@ public enum WorkerProtocolEncoder {
         var sourceURL: String?
         var destinationRootURL: String?
         var itemID: String?
+        var assetIDs: [String]? = nil
 
         func requiredAssetID() throws -> AssetID {
             AssetID(rawValue: try requiredField(assetID, key: .assetID))
+        }
+
+        func requiredAssetIDs() throws -> [AssetID] {
+            try requiredField(assetIDs, key: .assetIDs).map(AssetID.init(rawValue:))
         }
 
         func requiredPreviewLevel() throws -> PreviewLevel {
@@ -278,6 +297,16 @@ public enum WorkerProtocolEncoder {
         }
 
         private func requiredField(_ value: String?, key: CodingKeys) throws -> String {
+            guard let value else {
+                throw DecodingError.keyNotFound(
+                    key,
+                    DecodingError.Context(codingPath: [key], debugDescription: "Missing required field: \(key.stringValue)")
+                )
+            }
+            return value
+        }
+
+        private func requiredField(_ value: [String]?, key: CodingKeys) throws -> [String] {
             guard let value else {
                 throw DecodingError.keyNotFound(
                     key,

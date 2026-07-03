@@ -300,7 +300,7 @@ public final class AppModel {
     private var evaluationAssetIDsByItemID: [WorkSessionID: AssetID]
 
     @ObservationIgnored
-    private var availabilityAssetIDsByItemID: [WorkSessionID: AssetID]
+    private var availabilityAssetIDsByItemID: [WorkSessionID: [AssetID]]
 
     private var previewCacheGenerationsByAssetID: [AssetID: Int]
     private var evaluationSignalGenerationsByAssetID: [AssetID: Int]
@@ -1645,14 +1645,16 @@ public final class AppModel {
     private func refreshLoadedAssetAvailabilityIfNeeded(itemID: WorkSessionID?) {
         guard let itemID,
               backgroundWorkQueue.item(id: itemID)?.kind == .sourceScan,
-              let assetID = availabilityAssetIDsByItemID.removeValue(forKey: itemID),
+              let assetIDs = availabilityAssetIDsByItemID.removeValue(forKey: itemID),
               let catalog else {
             return
         }
         do {
-            let updatedAsset = try catalog.repository.asset(id: assetID)
-            if let index = assets.firstIndex(where: { $0.id == assetID }) {
-                assets[index] = updatedAsset
+            for assetID in assetIDs {
+                let updatedAsset = try catalog.repository.asset(id: assetID)
+                if let index = assets.firstIndex(where: { $0.id == assetID }) {
+                    assets[index] = updatedAsset
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -1914,9 +1916,7 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         if workerSupervisor != nil {
-            for assetID in assets.map(\.id) {
-                try requestAvailabilityRefresh(assetID: assetID)
-            }
+            try requestAvailabilityRefresh(assetIDs: assets.map(\.id))
             return
         }
         let visibleAssetIDs = assets.map(\.id)
@@ -1929,7 +1929,7 @@ public final class AppModel {
         guard let workerSupervisor else {
             throw TeststripError.invalidState("worker supervisor is not configured")
         }
-        if availabilityAssetIDsByItemID.contains(where: { $0.value == assetID }) {
+        if availabilityAssetIDsByItemID.contains(where: { $0.value.contains(assetID) }) {
             return
         }
         let itemID = WorkSessionID(rawValue: "source-\(UUID().uuidString)")
@@ -1942,9 +1942,35 @@ public final class AppModel {
             completedUnitCount: 0,
             totalUnitCount: 1
         )
-        availabilityAssetIDsByItemID[itemID] = assetID
+        availabilityAssetIDsByItemID[itemID] = [assetID]
         do {
             try workerSupervisor.enqueue(item, command: .refreshAvailability(assetID: assetID))
+        } catch {
+            availabilityAssetIDsByItemID[itemID] = nil
+            throw error
+        }
+        syncBackgroundWorkQueueFromSupervisor()
+    }
+
+    private func requestAvailabilityRefresh(assetIDs: [AssetID]) throws {
+        guard let workerSupervisor else {
+            throw TeststripError.invalidState("worker supervisor is not configured")
+        }
+        let activeAssetIDs = Set(availabilityAssetIDsByItemID.values.flatMap { $0 })
+        let refreshAssetIDs = assetIDs.filter { !activeAssetIDs.contains($0) }
+        guard !refreshAssetIDs.isEmpty else { return }
+        let itemID = WorkSessionID(rawValue: "source-\(UUID().uuidString)")
+        let item = BackgroundWorkItem(
+            id: itemID,
+            kind: .sourceScan,
+            title: "Refresh sources",
+            detail: "Checking \(refreshAssetIDs.count) sources",
+            completedUnitCount: 0,
+            totalUnitCount: refreshAssetIDs.count
+        )
+        availabilityAssetIDsByItemID[itemID] = refreshAssetIDs
+        do {
+            try workerSupervisor.enqueue(item, command: .refreshAvailabilityBatch(assetIDs: refreshAssetIDs))
         } catch {
             availabilityAssetIDsByItemID[itemID] = nil
             throw error

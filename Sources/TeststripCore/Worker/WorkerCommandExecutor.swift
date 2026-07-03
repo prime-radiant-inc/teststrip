@@ -185,6 +185,8 @@ public struct WorkerCommandExecutor {
             return try syncMetadata(assetID: assetID)
         case .refreshAvailability(let assetID):
             return try refreshAvailability(assetID: assetID)
+        case .refreshAvailabilityBatch(let assetIDs):
+            return try refreshAvailabilityBatch(assetIDs: assetIDs, progress: progress)
         case .runEvaluation(let assetID, let provider):
             return try runEvaluation(assetID: assetID, providerName: provider)
         case .pause:
@@ -221,6 +223,25 @@ public struct WorkerCommandExecutor {
         let availability = SourceAvailabilityProbe().availability(for: asset)
         try repository.updateAvailability(assetID: assetID, availability: availability)
         return .completed("source \(availability.rawValue) for \(Self.displayName(for: asset))")
+    }
+
+    private func refreshAvailabilityBatch(
+        assetIDs: [AssetID],
+        progress: LibraryImportProgressHandler?
+    ) throws -> WorkerCommandResult {
+        for (index, assetID) in assetIDs.enumerated() {
+            try Task.checkCancellation()
+            let asset = try repository.asset(id: assetID)
+            let availability = SourceAvailabilityProbe().availability(for: asset)
+            try repository.updateAvailability(assetID: assetID, availability: availability)
+            let completedCount = index + 1
+            progress?(LibraryImportProgress(
+                completedUnitCount: completedCount,
+                totalUnitCount: assetIDs.count,
+                detail: "Checked \(completedCount) of \(assetIDs.count) sources"
+            ))
+        }
+        return .completed("checked \(assetIDs.count) sources")
     }
 
     private func runEvaluation(assetID: AssetID, providerName: String) throws -> WorkerCommandResult {

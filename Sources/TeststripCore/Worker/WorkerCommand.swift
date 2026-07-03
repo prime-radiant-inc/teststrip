@@ -12,6 +12,7 @@ public enum WorkerCommand: Equatable, Sendable {
     case generatePreview(assetID: AssetID, level: PreviewLevel)
     case syncMetadata(assetID: AssetID)
     case refreshAvailability(assetID: AssetID)
+    case refreshAvailabilityBatch(assetIDs: [AssetID])
     case runEvaluation(assetID: AssetID, provider: String)
     case pause
     case resume
@@ -22,7 +23,7 @@ public enum WorkerCommand: Equatable, Sendable {
         case .pause: return .pause
         case .resume: return .resume
         case .cancelAll: return .cancelAll
-        case .importFolder, .importCard, .generatePreview, .syncMetadata, .refreshAvailability, .runEvaluation: return nil
+        case .importFolder, .importCard, .generatePreview, .syncMetadata, .refreshAvailability, .refreshAvailabilityBatch, .runEvaluation: return nil
         }
     }
 }

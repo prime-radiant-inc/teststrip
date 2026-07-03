@@ -147,6 +147,22 @@ final class WorkerProtocolTests: XCTestCase {
         XCTAssertEqual(json["assetID"] as? String, "asset-1")
     }
 
+    func testRefreshAvailabilityBatchCommandRoundTripsThroughJSONLine() throws {
+        let command = WorkerCommand.refreshAvailabilityBatch(assetIDs: [
+            AssetID(rawValue: "asset-1"),
+            AssetID(rawValue: "asset-2")
+        ])
+
+        let line = try WorkerProtocolEncoder.encode(command)
+        let decoded = try WorkerProtocolEncoder.decode(line)
+
+        XCTAssertEqual(decoded, command)
+        let body = String(line.dropLast())
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
+        XCTAssertEqual(json["command"] as? String, "refreshAvailabilityBatch")
+        XCTAssertEqual(json["assetIDs"] as? [String], ["asset-1", "asset-2"])
+    }
+
     func testPauseResumeAndCancelCommandsAreExplicit() throws {
         XCTAssertEqual(try WorkerProtocolEncoder.decode(try WorkerProtocolEncoder.encode(.pause)).controlKind, .pause)
         XCTAssertEqual(try WorkerProtocolEncoder.decode(try WorkerProtocolEncoder.encode(.resume)).controlKind, .resume)

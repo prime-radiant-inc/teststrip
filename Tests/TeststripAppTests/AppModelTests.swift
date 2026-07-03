@@ -1932,7 +1932,7 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testRefreshVisibleAvailabilityWithWorkerEnqueuesManagedSourceScans() async throws {
+    func testRefreshVisibleAvailabilityWithWorkerEnqueuesManagedBatchSourceScan() async throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
             queue: BackgroundWorkQueue(maxRunningCount: 1),
@@ -1948,21 +1948,33 @@ final class AppModelTests: XCTestCase {
 
         try model.refreshVisibleAssetAvailability()
 
-        XCTAssertEqual(try transport.commands(), [.refreshAvailability(assetID: first.id)])
+        XCTAssertEqual(try transport.commands(), [
+            .refreshAvailabilityBatch(assetIDs: [first.id, second.id])
+        ])
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.map(\.kind), [.sourceScan])
-        XCTAssertEqual(model.backgroundWorkQueue.queuedItems.map(\.kind), [.sourceScan])
+        XCTAssertEqual(model.backgroundWorkQueue.queuedItems.map(\.kind), [])
         XCTAssertEqual(model.visibleWorkActivity?.title, "Refresh sources")
+        XCTAssertEqual(model.visibleWorkActivity?.completedUnitCount, 0)
+        XCTAssertEqual(model.visibleWorkActivity?.totalUnitCount, 2)
         XCTAssertEqual(model.assets.map(\.availability), [.online, .online])
 
         try repository.updateAvailability(assetID: first.id, availability: .missing)
+        try repository.updateAvailability(assetID: second.id, availability: .stale)
         let itemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
+            itemID: itemID,
+            completedUnitCount: 1,
+            totalUnitCount: 2,
+            detail: "Checked 1 of 2 sources"
+        )))
+        try await waitForVisibleWorkDetail("Checked 1 of 2 sources", in: model)
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
             itemID: itemID,
-            message: "source missing for source-first.jpg"
+            message: "checked 2 sources"
         )))
 
         try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
-        XCTAssertEqual(model.assets.first?.availability, .missing)
+        XCTAssertEqual(model.assets.map(\.availability), [.missing, .stale])
     }
 
     func testCanRefreshVisibleAvailabilityRequiresCatalogAndLoadedAssets() throws {
