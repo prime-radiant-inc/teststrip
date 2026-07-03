@@ -416,6 +416,10 @@ public final class AppModel {
         catalog != nil && selectedAssetID != nil
     }
 
+    public var canBeginCullingSession: Bool {
+        catalog != nil && !assets.isEmpty
+    }
+
     public var suggestedSavedSearchName: String {
         var parts: [String] = []
         let trimmedSearch = librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -462,6 +466,16 @@ public final class AppModel {
         let filename = selectedAsset.originalURL.deletingPathExtension().lastPathComponent
         let trimmedFilename = filename.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedFilename.isEmpty ? "Selection" : trimmedFilename
+    }
+
+    public var suggestedCullingSessionName: String {
+        if let selectedAssetSet {
+            return "\(selectedAssetSet.name) Cull"
+        }
+        if currentLibraryQuery() != nil {
+            return "\(suggestedSavedSearchName) Cull"
+        }
+        return "Catalog Cull"
     }
 
     public init(
@@ -742,6 +756,50 @@ public final class AppModel {
         try reload()
         statusMessage = "Saved \(assetSet.name)"
         return assetSet
+    }
+
+    @discardableResult
+    public func beginCullingSession(named name: String, intent: String = "") throws -> WorkSession {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard !assets.isEmpty else {
+            throw TeststripError.invalidState("there are no photos to cull")
+        }
+        let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else {
+            throw TeststripError.invalidState("culling session name is required")
+        }
+        let trimmedIntent = intent.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sessionID = WorkSessionID.new()
+        let totalUnitCount = try currentLibraryAssetCount(repository: catalog.repository)
+        let inputSetID = try cullingInputSetID(sessionID: sessionID, title: title)
+        let previousSelection = selectedAssetID
+
+        try applyAssetSet(id: inputSetID)
+        if let previousSelection, assets.contains(where: { $0.id == previousSelection }) {
+            selectedAssetID = previousSelection
+        }
+        selectedView = .compare
+
+        let detail = trimmedIntent.isEmpty ? "Culling \(Self.photoCountDescription(totalUnitCount))" : trimmedIntent
+        let activity = AppWorkActivity(
+            id: sessionID.rawValue,
+            kind: .culling,
+            status: .running,
+            title: title,
+            detail: detail,
+            completedUnitCount: 0,
+            totalUnitCount: totalUnitCount,
+            failureCount: 0
+        )
+        recordRecentActivity(
+            activity,
+            intent: trimmedIntent.isEmpty ? title : trimmedIntent,
+            inputSetIDs: [inputSetID]
+        )
+        statusMessage = "Started \(title)"
+        return try catalog.repository.session(id: sessionID)
     }
 
     public func openAssetInLoupe(_ assetID: AssetID) {
@@ -1911,6 +1969,25 @@ public final class AppModel {
         }
     }
 
+    private func cullingInputSetID(sessionID: WorkSessionID, title: String) throws -> AssetSetID {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        if let selectedAssetSetID {
+            return selectedAssetSetID
+        }
+        let inputSetID = AssetSetID(rawValue: "work-input-\(sessionID.rawValue)")
+        let inputSet = AssetSet(
+            id: inputSetID,
+            name: "\(title) Input",
+            membership: .dynamic(currentLibraryQuery() ?? SetQuery(predicates: []))
+        )
+        try catalog.repository.upsert(inputSet)
+        savedAssetSets = try catalog.repository.assetSets()
+        rebuildSidebarSections()
+        return inputSetID
+    }
+
     private func assetSetForSelection(id: AssetSetID, repository: CatalogRepository) throws -> AssetSet {
         if let assetSet = savedAssetSets.first(where: { $0.id == id }) {
             return assetSet
@@ -2257,6 +2334,10 @@ public final class AppModel {
         return "\(folderURL.lastPathComponent) to \(destinationRoot.lastPathComponent)"
     }
 
+    private static func photoCountDescription(_ count: Int) -> String {
+        "\(count) \(count == 1 ? "photo" : "photos")"
+    }
+
     private func saveImportOutputSet(for activity: AppWorkActivity, result: LibraryImportResult) -> [AssetSetID] {
         guard let catalog, !result.importedAssets.isEmpty else {
             return []
@@ -2281,6 +2362,7 @@ public final class AppModel {
 
     private func recordRecentActivity(
         _ activity: AppWorkActivity,
+        intent: String? = nil,
         inputSetIDs: [AssetSetID] = [],
         outputSetIDs: [AssetSetID] = []
     ) {
@@ -2289,7 +2371,11 @@ public final class AppModel {
         rebuildSidebarSections()
         guard let catalog else { return }
         do {
-            try catalog.repository.save(activity.workSession(inputSetIDs: inputSetIDs, outputSetIDs: outputSetIDs))
+            try catalog.repository.save(activity.workSession(
+                intent: intent,
+                inputSetIDs: inputSetIDs,
+                outputSetIDs: outputSetIDs
+            ))
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2429,7 +2515,7 @@ public final class AppModel {
     }
 
     private static func visibleSavedAssetSets(_ assetSets: [AssetSet]) -> [AssetSet] {
-        assetSets.filter { !$0.id.rawValue.hasPrefix("work-output-") }
+        assetSets.filter { !$0.id.rawValue.hasPrefix("work-output-") && !$0.id.rawValue.hasPrefix("work-input-") }
     }
 
     private static func sidebarRow(for assetSet: AssetSet) -> SidebarRow {
@@ -2466,13 +2552,14 @@ public final class AppModel {
 private extension AppWorkActivity {
     func workSession(
         now: Date = Date(),
+        intent: String? = nil,
         inputSetIDs: [AssetSetID] = [],
         outputSetIDs: [AssetSetID] = []
     ) -> WorkSession {
         WorkSession(
             id: WorkSessionID(rawValue: id),
             kind: kind,
-            intent: title,
+            intent: intent ?? title,
             title: title,
             detail: detail,
             status: status,

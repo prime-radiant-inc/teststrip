@@ -5,10 +5,13 @@ struct LibraryGridView: View {
     var model: AppModel
     @State private var isSavingSearch = false
     @State private var isSavingManualSet = false
+    @State private var isStartingCullingSession = false
     @State private var savedSearchName = ""
     @State private var savedSearchStarred = false
     @State private var manualSetName = ""
     @State private var manualSetStarred = false
+    @State private var cullingSessionName = ""
+    @State private var cullingSessionIntent = ""
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
     @State private var importPathDraft = ImportFolderPathDraft()
@@ -51,6 +54,19 @@ struct LibraryGridView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+
+            Button {
+                cullingSessionName = model.suggestedCullingSessionName
+                cullingSessionIntent = ""
+                isStartingCullingSession = true
+            } label: {
+                Label("Cull", systemImage: "checkmark.seal")
+            }
+            .disabled(isImporting || !model.canBeginCullingSession)
+            .help("Start culling session")
+            .popover(isPresented: $isStartingCullingSession) {
+                cullingSessionPopover
+            }
 
             Button {
                 showImportFolderPanel()
@@ -390,6 +406,31 @@ struct LibraryGridView: View {
             cancel: { isSavingManualSet = false },
             save: saveSelectedManualSet
         )
+    }
+
+    private var cullingSessionPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Start Culling")
+                .font(.headline)
+            TextField("Name", text: $cullingSessionName)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 260)
+            TextField("Intent", text: $cullingSessionIntent)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 260)
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    isStartingCullingSession = false
+                }
+                Button("Start") {
+                    beginCullingSession()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(cullingSessionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(14)
     }
 
     private var importPathSheet: some View {
@@ -751,6 +792,16 @@ struct LibraryGridView: View {
         do {
             try model.saveSelectedAssetAsManualSet(named: manualSetName, starred: manualSetStarred)
             isSavingManualSet = false
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func beginCullingSession() {
+        do {
+            try model.beginCullingSession(named: cullingSessionName, intent: cullingSessionIntent)
+            isStartingCullingSession = false
+            focusCullingSurface()
         } catch {
             model.errorMessage = error.localizedDescription
         }

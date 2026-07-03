@@ -1481,6 +1481,88 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(uncatalogedModel.canSaveSelectedAssetAsManualSet)
     }
 
+    func testBeginningCullingSessionUsesSelectedAssetSetAsInput() throws {
+        let directory = try makeTemporaryDirectory(named: "culling-session-selected-set")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let keeper = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
+        let reject = makeAsset(id: "reject", path: "/Photos/reject.jpg", rating: 1)
+        try repository.upsert([keeper, reject])
+        let inputSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "five-stars"),
+            name: "Five Stars",
+            query: SetQuery(predicates: [.ratingAtLeast(5)])
+        )
+        try repository.upsert(inputSet)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        try model.applyAssetSet(id: inputSet.id)
+
+        let session = try model.beginCullingSession(named: " Ceremony Cull ", intent: " One hero per burst ")
+
+        XCTAssertTrue(model.canBeginCullingSession)
+        XCTAssertEqual(session.kind, .culling)
+        XCTAssertEqual(session.status, .running)
+        XCTAssertEqual(session.title, "Ceremony Cull")
+        XCTAssertEqual(session.intent, "One hero per burst")
+        XCTAssertEqual(session.inputSetIDs, [inputSet.id])
+        XCTAssertEqual(session.totalUnitCount, 1)
+        XCTAssertEqual(model.selectedView, .compare)
+        XCTAssertEqual(model.recentWork.first?.id, session.id.rawValue)
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rowTitles.first, "Ceremony Cull")
+
+        try model.clearLibraryFilters()
+        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Work" }?.rows.first)
+        try model.selectSidebarRow(row)
+
+        XCTAssertEqual(model.selectedAssetSetID, inputSet.id)
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
+    }
+
+    func testBeginningCullingSessionCreatesHiddenInputSetForAdhocSearch() throws {
+        let keeper = makeAsset(id: "keeper", path: "/Photos/Wedding/keeper.jpg", rating: 5, flag: .pick)
+        let reject = makeAsset(id: "reject", path: "/Photos/Wedding/reject.jpg", rating: 1, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "culling-session-adhoc-search",
+            assets: [keeper, reject]
+        )
+        model.librarySearchText = "Wedding"
+        model.minimumRatingFilter = 4
+        model.flagFilter = .pick
+        try model.applyLibraryFilters()
+
+        let session = try model.beginCullingSession(named: "Wedding Cull")
+
+        let inputSetID = try XCTUnwrap(session.inputSetIDs.first)
+        let inputSet = try repository.assetSet(id: inputSetID)
+        XCTAssertTrue(inputSetID.rawValue.hasPrefix("work-input-"))
+        XCTAssertEqual(inputSet.name, "Wedding Cull Input")
+        XCTAssertEqual(inputSet.membership, .dynamic(SetQuery(predicates: [.text("Wedding"), .ratingAtLeast(4), .flag(.pick)])))
+        XCTAssertEqual(model.selectedAssetSetID, inputSetID)
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
+        XCTAssertEqual(model.selectedView, .compare)
+        XCTAssertFalse(model.sidebarSections.contains { section in
+            section.title == "Saved Sets" && section.rowTitles.contains("Wedding Cull Input")
+        })
+
+        try model.clearLibraryFilters()
+        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Work" }?.rows.first)
+        try model.selectSidebarRow(row)
+
+        XCTAssertEqual(model.selectedAssetSetID, inputSetID)
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
+    }
+
     func testLoadingEmptyRepositoryLeavesSelectionEmpty() throws {
         let directory = try makeTemporaryDirectory(named: "empty-app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
