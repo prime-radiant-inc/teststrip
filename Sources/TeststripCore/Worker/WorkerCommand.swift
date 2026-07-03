@@ -26,4 +26,29 @@ public enum WorkerCommand: Equatable, Sendable {
         case .importFolder, .importCard, .generatePreview, .syncMetadata, .refreshAvailability, .refreshAvailabilityBatch, .runEvaluation: return nil
         }
     }
+
+    public var operationDescription: String {
+        switch self {
+        case .importFolder(let root):
+            return "import folder \(root.lastPathComponent)"
+        case .importCard(let source, let destinationRoot):
+            return "import card \(source.lastPathComponent) to \(destinationRoot.lastPathComponent)"
+        case .generatePreview(let assetID, let level):
+            return "generate \(level.rawValue) preview for \(assetID.rawValue)"
+        case .syncMetadata(let assetID):
+            return "sync metadata for \(assetID.rawValue)"
+        case .refreshAvailability(let assetID):
+            return "refresh source for \(assetID.rawValue)"
+        case .refreshAvailabilityBatch(let assetIDs):
+            return "refresh \(assetIDs.count) sources"
+        case .runEvaluation(let assetID, let provider):
+            return "run \(provider) evaluation for \(assetID.rawValue)"
+        case .pause:
+            return "pause worker"
+        case .resume:
+            return "resume worker"
+        case .cancelAll:
+            return "cancel worker work"
+        }
+    }
 }

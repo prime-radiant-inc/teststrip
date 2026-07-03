@@ -270,7 +270,7 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(transport.terminateCount, 1)
         XCTAssertEqual(transport.launchCount, 2)
         XCTAssertEqual(supervisor.queue.item(id: first.id)?.status, .failed)
-        XCTAssertEqual(supervisor.queue.item(id: first.id)?.detail, "Worker command timed out after 30 seconds")
+        XCTAssertEqual(supervisor.queue.item(id: first.id)?.detail, "Worker command timed out after 30 seconds: generate medium preview for asset-1")
         XCTAssertEqual(supervisor.queue.item(id: second.id)?.status, .running)
         XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
     }
@@ -319,9 +319,30 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(transport.terminateCount, 1)
         XCTAssertEqual(transport.launchCount, 2)
         XCTAssertEqual(supervisor.queue.item(id: first.id)?.status, .failed)
-        XCTAssertEqual(supervisor.queue.item(id: first.id)?.detail, "Worker command timed out after 30 seconds")
+        XCTAssertEqual(supervisor.queue.item(id: first.id)?.detail, "Worker command timed out after 30 seconds: generate medium preview for asset-1")
         XCTAssertEqual(supervisor.queue.item(id: second.id)?.status, .running)
         XCTAssertEqual(try transport.commands(), [firstCommand, secondCommand])
+    }
+
+    func testTimedOutWorkerCommandReportsCommandContext() throws {
+        let transport = RecordingWorkerTransport()
+        let timeoutScheduler = ManualWorkerTimeoutScheduler()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport,
+            commandTimeout: 30,
+            timeoutScheduler: timeoutScheduler
+        )
+        let item = BackgroundWorkItem.testItem(id: "preview")
+        let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        try supervisor.enqueue(item, command: command)
+
+        timeoutScheduler.fireNext()
+
+        XCTAssertEqual(
+            supervisor.queue.item(id: item.id)?.detail,
+            "Worker command timed out after 30 seconds: generate medium preview for asset-1"
+        )
     }
 
     func testCompletingWorkerCommandCancelsTimeout() throws {
@@ -369,7 +390,7 @@ final class WorkerSupervisorTests: XCTestCase {
 
         XCTAssertEqual(transport.terminateCount, 1)
         XCTAssertEqual(supervisor.queue.item(id: item.id)?.status, .failed)
-        XCTAssertEqual(supervisor.queue.item(id: item.id)?.detail, "Worker command timed out after 30 seconds")
+        XCTAssertEqual(supervisor.queue.item(id: item.id)?.detail, "Worker command timed out after 30 seconds: generate medium preview for asset-1")
     }
 
     func testPauseResumeAndCancelSendExplicitControlCommands() throws {

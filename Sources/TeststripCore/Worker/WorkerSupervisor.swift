@@ -310,14 +310,27 @@ public final class WorkerSupervisor: @unchecked Sendable {
         cancelAllTimeouts()
         transport.terminate()
         for timedOutItemID in timedOutItemIDs {
+            let command = commandsByItemID[timedOutItemID]
             commandsByItemID[timedOutItemID] = nil
             let detail = timedOutItemID == itemID
-                ? "Worker command timed out after \(Self.timeoutText(timeout))"
-                : "Worker stopped because another command timed out"
+                ? Self.timeoutDetail(timeout: timeout, command: command)
+                : Self.stoppedBecauseAnotherCommandTimedOutDetail(command: command)
             queue.markFailed(id: timedOutItemID, detail: detail)
         }
         try? dispatchRunnableItems()
         notifyQueueChanged()
+    }
+
+    private static func timeoutDetail(timeout: TimeInterval, command: WorkerCommand?) -> String {
+        let detail = "Worker command timed out after \(timeoutText(timeout))"
+        guard let command else { return detail }
+        return "\(detail): \(command.operationDescription)"
+    }
+
+    private static func stoppedBecauseAnotherCommandTimedOutDetail(command: WorkerCommand?) -> String {
+        let detail = "Worker stopped because another command timed out"
+        guard let command else { return detail }
+        return "\(detail): \(command.operationDescription)"
     }
 
     private static func timeoutText(_ timeout: TimeInterval) -> String {
