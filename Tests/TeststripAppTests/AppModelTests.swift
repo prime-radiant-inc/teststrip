@@ -1736,6 +1736,42 @@ final class AppModelTests: XCTestCase {
         ], in: transport))
     }
 
+    func testRequestVisibleAssetEvaluationsDispatchesForLoadedAssets() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: transport
+        )
+        let first = makeAsset(id: "first", size: 1)
+        let second = makeAsset(id: "second", size: 2)
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: [first, second],
+            workerSupervisor: supervisor
+        )
+
+        XCTAssertTrue(model.canRequestVisibleAssetEvaluations)
+
+        try model.requestVisibleAssetEvaluations(providers: ["local-image-metrics"])
+
+        XCTAssertEqual(model.backgroundWorkQueue.items.map(\.id), [
+            WorkSessionID(rawValue: "evaluation-\(first.id.rawValue)-local-image-metrics"),
+            WorkSessionID(rawValue: "evaluation-\(second.id.rawValue)-local-image-metrics")
+        ])
+        XCTAssertEqual(try transport.commands(), [
+            .runEvaluation(assetID: first.id, provider: "local-image-metrics")
+        ])
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: WorkSessionID(rawValue: "evaluation-\(first.id.rawValue)-local-image-metrics"),
+            message: "completed local-image-metrics"
+        )))
+        XCTAssertTrue(waitForCommands([
+            .runEvaluation(assetID: first.id, provider: "local-image-metrics"),
+            .runEvaluation(assetID: second.id, provider: "local-image-metrics")
+        ], in: transport))
+    }
+
     func testCanRequestSelectedAssetEvaluationRequiresSelectionAndWorker() throws {
         let (modelWithoutWorker, _, _) = try makeModelWithPreviewCache(named: "evaluation-without-worker")
         XCTAssertFalse(modelWithoutWorker.canRequestSelectedAssetEvaluation)
@@ -1753,6 +1789,19 @@ final class AppModelTests: XCTestCase {
         )
 
         XCTAssertTrue(model.canRequestSelectedAssetEvaluation)
+    }
+
+    func testCanRequestVisibleAssetEvaluationsRequiresLoadedAssetsAndWorker() {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let asset = makeAsset(id: "visible", size: 1)
+
+        XCTAssertFalse(AppModel(sidebarSections: [], selectedView: .grid, assets: [asset]).canRequestVisibleAssetEvaluations)
+        XCTAssertFalse(AppModel(sidebarSections: [], selectedView: .grid, assets: [], workerSupervisor: supervisor).canRequestVisibleAssetEvaluations)
+        XCTAssertTrue(AppModel(sidebarSections: [], selectedView: .grid, assets: [asset], workerSupervisor: supervisor).canRequestVisibleAssetEvaluations)
     }
 
     func testSelectedEvaluationSignalsLoadFromCatalog() throws {

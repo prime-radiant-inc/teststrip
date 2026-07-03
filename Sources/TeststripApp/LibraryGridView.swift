@@ -81,6 +81,14 @@ struct LibraryGridView: View {
             }
             .disabled(isImporting || !model.canRequestSelectedAssetEvaluation)
             .help("Evaluate selected photo")
+
+            Button {
+                evaluateVisibleAssets()
+            } label: {
+                Label("Evaluate Visible", systemImage: "sparkles")
+            }
+            .disabled(isImporting || !model.canRequestVisibleAssetEvaluations)
+            .help("Evaluate visible photos")
         }
         .safeAreaInset(edge: .top) {
             VStack(spacing: 0) {
@@ -693,6 +701,14 @@ struct LibraryGridView: View {
     private func evaluateSelectedAsset() {
         do {
             try model.requestSelectedAssetEvaluations()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func evaluateVisibleAssets() {
+        do {
+            try model.requestVisibleAssetEvaluations()
         } catch {
             model.errorMessage = error.localizedDescription
         }

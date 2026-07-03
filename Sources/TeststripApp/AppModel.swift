@@ -357,6 +357,10 @@ public final class AppModel {
         selectedAssetID != nil && workerSupervisor != nil
     }
 
+    public var canRequestVisibleAssetEvaluations: Bool {
+        !assets.isEmpty && workerSupervisor != nil
+    }
+
     public var selectedEvaluationSignals: [EvaluationSignal] {
         guard let catalog, let selectedAssetID else { return [] }
         _ = evaluationSignalGeneration(for: selectedAssetID)
@@ -1330,6 +1334,17 @@ public final class AppModel {
         }
         for provider in providers {
             try requestEvaluation(assetID: selectedAssetID, provider: provider)
+        }
+    }
+
+    public func requestVisibleAssetEvaluations(providers: [String] = AppModel.defaultEvaluationProviderNames) throws {
+        guard !assets.isEmpty else {
+            throw TeststripError.invalidState("no visible assets")
+        }
+        for asset in assets {
+            for provider in providers {
+                try requestEvaluation(assetID: asset.id, provider: provider)
+            }
         }
     }
 
