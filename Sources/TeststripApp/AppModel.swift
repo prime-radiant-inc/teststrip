@@ -428,11 +428,12 @@ public final class AppModel {
     }
 
     public var canRequestSelectedAssetEvaluation: Bool {
-        selectedAssetID != nil && workerSupervisor != nil
+        guard let selectedAssetID, workerSupervisor != nil else { return false }
+        return hasCachedPreview(for: selectedAssetID)
     }
 
     public var canRequestVisibleAssetEvaluations: Bool {
-        !assets.isEmpty && workerSupervisor != nil
+        workerSupervisor != nil && assets.contains { hasCachedPreview(for: $0.id) }
     }
 
     public var canRefreshVisibleAssetAvailability: Bool {
@@ -1602,6 +1603,9 @@ public final class AppModel {
         guard let workerSupervisor else {
             throw TeststripError.invalidState("worker supervisor is not configured")
         }
+        guard hasCachedPreview(for: assetID) else {
+            throw TeststripError.invalidState("no cached preview for \(assetID.rawValue)")
+        }
         let itemID = WorkSessionID(rawValue: "evaluation-\(assetID.rawValue)-\(provider)")
         if backgroundWorkQueue.item(id: itemID) != nil {
             return
@@ -1645,7 +1649,11 @@ public final class AppModel {
         guard !assets.isEmpty else {
             throw TeststripError.invalidState("no visible assets")
         }
-        for asset in assets {
+        let evaluableAssets = assets.filter { hasCachedPreview(for: $0.id) }
+        guard !evaluableAssets.isEmpty else {
+            throw TeststripError.invalidState("no visible assets with cached previews")
+        }
+        for asset in evaluableAssets {
             for provider in providers {
                 try requestEvaluation(assetID: asset.id, provider: provider)
             }
@@ -2795,6 +2803,10 @@ public final class AppModel {
             }
         }
         return nil
+    }
+
+    private func hasCachedPreview(for assetID: AssetID) -> Bool {
+        previewURL(for: assetID, levels: [.large, .medium, .grid, .micro]) != nil
     }
 
     private static func defaultSidebarSections(
