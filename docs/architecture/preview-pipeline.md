@@ -2,6 +2,8 @@
 
 Teststrip treats cached previews as catalog-adjacent working data. Originals remain external, and normal browsing should prefer cached previews over source-file reads.
 
+Grid display prefers cached grid previews and falls back to micro previews while grid preview work catches up. Loupe/compare display prefers large, then medium, then grid, then micro previews before reporting that no cached preview is available.
+
 ## Durable Pending Work
 
 Imports write catalog asset rows first, then record pending grid preview work in `preview_generation_queue` before rendering. A successful render deletes the matching queue row. A failed, cancelled, or interrupted render leaves the row pending so recovery can retry later.

@@ -2668,11 +2668,11 @@ public final class AppModel {
     }
 
     public func gridPreviewURL(for assetID: AssetID) -> URL? {
-        previewURL(for: assetID, levels: [.grid])
+        previewURL(for: assetID, levels: [.grid, .micro])
     }
 
     public func loupePreviewURL(for assetID: AssetID) -> URL? {
-        previewURL(for: assetID, levels: [.large, .medium, .grid])
+        previewURL(for: assetID, levels: [.large, .medium, .grid, .micro])
     }
 
     public func previewURL(for assetID: AssetID, levels: [PreviewLevel]) -> URL? {
