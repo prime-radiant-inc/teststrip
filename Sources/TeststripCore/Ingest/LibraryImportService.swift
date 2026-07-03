@@ -60,6 +60,8 @@ public typealias LibraryImportProgressHandler = @Sendable (LibraryImportProgress
 
 public struct LibraryImportService: Sendable {
     private static let scanProgressInterval = 100
+    private static let ingestProgressInterval = 500
+    private static let eagerIngestProgressLimit = 10
 
     public var ingestService: IngestService
     public var previewCache: PreviewCache
@@ -85,6 +87,7 @@ public struct LibraryImportService: Sendable {
             plan: IngestPlanner.addFolder(root),
             scanRootName: root.lastPathComponent,
             catalogingDetail: { "Cataloging \(Self.photoCountDescription($0))" },
+            perFileDetail: { completed, total in "Cataloging \(completed) of \(total) photos" },
             catalogedDetail: { "Cataloged \(Self.photoCountDescription($0))" },
             repository: repository,
             previewPolicy: previewPolicy,
@@ -103,6 +106,7 @@ public struct LibraryImportService: Sendable {
             plan: IngestPlanner.copyFromCard(source: source, destinationRoot: destinationRoot),
             scanRootName: source.lastPathComponent,
             catalogingDetail: { "Copying \(Self.photoCountDescription($0)) to \(destinationRoot.lastPathComponent)" },
+            perFileDetail: { completed, total in "Copying \(completed) of \(total) photos to \(destinationRoot.lastPathComponent)" },
             catalogedDetail: { "Copied \(Self.photoCountDescription($0)) to \(destinationRoot.lastPathComponent)" },
             repository: repository,
             previewPolicy: previewPolicy,
@@ -114,6 +118,7 @@ public struct LibraryImportService: Sendable {
         plan: IngestPlan,
         scanRootName: String,
         catalogingDetail: (Int) -> String,
+        perFileDetail: @escaping @Sendable (Int, Int) -> String,
         catalogedDetail: (Int) -> String,
         repository: CatalogRepository,
         previewPolicy: LibraryImportPreviewPolicy,
@@ -152,7 +157,22 @@ public struct LibraryImportService: Sendable {
             totalUnitCount: sourceFiles.count,
             detail: catalogingDetail(sourceFiles.count)
         ))
-        let assets = try ingestService.ingest(files: sourceFiles, plan: plan, repository: repository)
+        let ingestProgressCoalescer = IngestProgressCoalescer(
+            interval: Self.ingestProgressInterval,
+            eagerLimit: Self.eagerIngestProgressLimit
+        )
+        let assets = try ingestService.ingest(files: sourceFiles, plan: plan, repository: repository) { ingestProgress in
+            if ingestProgressCoalescer.shouldReport(
+                completedCount: ingestProgress.completedUnitCount,
+                totalCount: ingestProgress.totalUnitCount
+            ) {
+                progress?(LibraryImportProgress(
+                    completedUnitCount: ingestProgress.completedUnitCount,
+                    totalUnitCount: ingestProgress.totalUnitCount,
+                    detail: perFileDetail(ingestProgress.completedUnitCount, ingestProgress.totalUnitCount)
+                ))
+            }
+        }
         let previewItems: [PreviewGenerationItem] = assets.compactMap { asset -> PreviewGenerationItem? in
             guard shouldGenerateGridPreview(for: asset, existingState: existingPreviewStates[asset.id]) else {
                 return nil
@@ -308,6 +328,33 @@ private final class ScanProgressCoalescer: @unchecked Sendable {
                 return false
             }
             lastReportedCount = count
+            return true
+        }
+    }
+}
+
+private final class IngestProgressCoalescer: @unchecked Sendable {
+    private let interval: Int
+    private let eagerLimit: Int
+    private let lock = NSLock()
+    private var lastReportedCount = 0
+
+    init(interval: Int, eagerLimit: Int) {
+        self.interval = interval
+        self.eagerLimit = eagerLimit
+    }
+
+    func shouldReport(completedCount: Int, totalCount: Int) -> Bool {
+        lock.withLock {
+            guard totalCount <= eagerLimit ||
+                completedCount.isMultiple(of: interval) ||
+                completedCount == totalCount else {
+                return false
+            }
+            guard completedCount != lastReportedCount else {
+                return false
+            }
+            lastReportedCount = completedCount
             return true
         }
     }

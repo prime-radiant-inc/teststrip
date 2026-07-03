@@ -1,5 +1,19 @@
 import Foundation
 
+public struct IngestProgress: Equatable, Sendable {
+    public var completedUnitCount: Int
+    public var totalUnitCount: Int
+    public var originalURL: URL
+
+    public init(completedUnitCount: Int, totalUnitCount: Int, originalURL: URL) {
+        self.completedUnitCount = completedUnitCount
+        self.totalUnitCount = totalUnitCount
+        self.originalURL = originalURL
+    }
+}
+
+public typealias IngestProgressHandler = @Sendable (IngestProgress) -> Void
+
 public struct IngestService: Sendable {
     public var scanner: FolderScanner
     public var decodeRegistry: DecodeRegistry?
@@ -19,7 +33,12 @@ public struct IngestService: Sendable {
         return try ingest(files: sourceFiles, plan: plan, repository: repository)
     }
 
-    public func ingest(files sourceFiles: [URL], plan: IngestPlan, repository: CatalogRepository) throws -> [Asset] {
+    public func ingest(
+        files sourceFiles: [URL],
+        plan: IngestPlan,
+        repository: CatalogRepository,
+        progress: IngestProgressHandler? = nil
+    ) throws -> [Asset] {
         var assets: [Asset] = []
         var importedSidecars: [ImportedSidecarSync] = []
         var sidecarConflicts: [SidecarSyncConflict] = []
@@ -77,6 +96,11 @@ public struct IngestService: Sendable {
                 technicalMetadata: technicalMetadata(for: originalURL) ?? existingAsset?.technicalMetadata
             )
             assets.append(asset)
+            progress?(IngestProgress(
+                completedUnitCount: assets.count,
+                totalUnitCount: sourceFiles.count,
+                originalURL: originalURL
+            ))
         }
         try repository.upsert(assets)
         for importedSidecar in importedSidecars {
