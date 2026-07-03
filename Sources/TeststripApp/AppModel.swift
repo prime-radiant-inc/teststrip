@@ -234,6 +234,7 @@ public final class AppModel {
     public var minimumISOFilter: Int?
     public var captureDateStartFilter: Date?
     public var captureDateEndFilter: Date?
+    public var availabilityFilter: SourceAvailability?
     public var savedAssetSets: [AssetSet]
     public var selectedAssetSetID: AssetSetID?
 
@@ -403,6 +404,9 @@ public final class AppModel {
         if let minimumISOFilter {
             parts.append("ISO \(minimumISOFilter)+")
         }
+        if let availabilityFilter {
+            parts.append(availabilityFilter.rawValue.capitalized)
+        }
         return parts.isEmpty ? "Saved Search" : parts.joined(separator: " ")
     }
 
@@ -461,6 +465,7 @@ public final class AppModel {
         self.minimumISOFilter = nil
         self.captureDateStartFilter = nil
         self.captureDateEndFilter = nil
+        self.availabilityFilter = nil
         self.savedAssetSets = savedAssetSets
         self.selectedAssetSetID = selectedAssetSetID
         self.catalog = catalog
@@ -1715,6 +1720,9 @@ public final class AppModel {
         if let captureDateEndFilter {
             predicates.append(.capturedBefore(captureDateEndFilter))
         }
+        if let availabilityFilter {
+            predicates.append(.availability(availabilityFilter))
+        }
         return predicates.isEmpty ? nil : SetQuery(predicates: predicates)
     }
 
@@ -1728,6 +1736,7 @@ public final class AppModel {
         minimumISOFilter = nil
         captureDateStartFilter = nil
         captureDateEndFilter = nil
+        availabilityFilter = nil
     }
 
     private func currentLibraryAssetCount(repository: CatalogRepository) throws -> Int {

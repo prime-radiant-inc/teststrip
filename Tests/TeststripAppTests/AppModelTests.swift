@@ -1075,6 +1075,7 @@ final class AppModelTests: XCTestCase {
             id: "canon",
             path: "/Photos/Job/canon.cr3",
             rating: 4,
+            availability: .offline,
             technicalMetadata: AssetTechnicalMetadata(
                 pixelWidth: 6000,
                 pixelHeight: 4000,
@@ -1117,6 +1118,7 @@ final class AppModelTests: XCTestCase {
         model.minimumISOFilter = 800
         model.captureDateStartFilter = start
         model.captureDateEndFilter = end
+        model.availabilityFilter = .offline
 
         try model.applyLibraryFilters()
 
@@ -1129,7 +1131,8 @@ final class AppModelTests: XCTestCase {
             .lens("RF 50"),
             .isoAtLeast(800),
             .capturedAtOrAfter(start),
-            .capturedBefore(end)
+            .capturedBefore(end),
+            .availability(.offline)
         ])))
     }
 
@@ -1138,12 +1141,14 @@ final class AppModelTests: XCTestCase {
 
         model.cameraFilterText = "Canon"
         model.colorLabelFilter = .green
+        model.availabilityFilter = .offline
         XCTAssertTrue(model.hasActiveLibraryFilters)
 
         try model.clearLibraryFilters()
 
         XCTAssertFalse(model.hasActiveLibraryFilters)
         XCTAssertNil(model.colorLabelFilter)
+        XCTAssertNil(model.availabilityFilter)
         XCTAssertEqual(model.cameraFilterText, "")
         XCTAssertEqual(model.lensFilterText, "")
         XCTAssertNil(model.minimumISOFilter)
@@ -2787,6 +2792,7 @@ final class AppModelTests: XCTestCase {
         rating: Int,
         colorLabel: ColorLabel? = nil,
         flag: PickFlag? = nil,
+        availability: SourceAvailability = .online,
         technicalMetadata: AssetTechnicalMetadata? = nil
     ) -> Asset {
         Asset(
@@ -2794,7 +2800,7 @@ final class AppModelTests: XCTestCase {
             originalURL: URL(fileURLWithPath: path),
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: Int64(rating + 1), modificationDate: Date(timeIntervalSince1970: TimeInterval(rating + 1))),
-            availability: .online,
+            availability: availability,
             metadata: AssetMetadata(rating: rating, colorLabel: colorLabel, flag: flag),
             technicalMetadata: technicalMetadata
         )

@@ -185,6 +185,14 @@ struct LibraryGridView: View {
                 }
                 .frame(width: 124)
 
+                Picker("Source", selection: availabilityFilterBinding) {
+                    Text("Any Source").tag("")
+                    ForEach(availabilityFilterOptions, id: \.rawValue) { availability in
+                        Text(availability.rawValue.capitalized).tag(availability.rawValue)
+                    }
+                }
+                .frame(width: 126)
+
                 if hasActiveFilters {
                     Button {
                         clearLibraryFilters()
@@ -434,6 +442,20 @@ struct LibraryGridView: View {
                 applyLibraryFilters()
             }
         )
+    }
+
+    private var availabilityFilterBinding: Binding<String> {
+        Binding(
+            get: { model.availabilityFilter?.rawValue ?? "" },
+            set: { value in
+                model.availabilityFilter = SourceAvailability(rawValue: value)
+                applyLibraryFilters()
+            }
+        )
+    }
+
+    private var availabilityFilterOptions: [SourceAvailability] {
+        [.online, .offline, .missing, .moved, .stale]
     }
 
     private var minimumISOTextBinding: Binding<String> {
