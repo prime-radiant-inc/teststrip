@@ -12,7 +12,7 @@ Normal browsing reads catalog rows and cached previews. It must not probe origin
 - Matching size and modification date means `online`.
 - Existing files with changed attributes are `stale`.
 - Absent files are `missing`.
-- App code can refresh the selected asset's availability and keep cached grid/loupe previews usable.
+- App code can refresh the selected asset or the loaded library window and keep cached grid/loupe previews usable.
 
 ## Next Work
 
