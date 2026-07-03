@@ -252,6 +252,7 @@ public final class AppModel {
     public var backgroundWorkQueue: BackgroundWorkQueue
     public var librarySearchText: String
     public var keywordFilterText: String
+    public var folderFilterText: String
     public var minimumRatingFilter: Int?
     public var flagFilter: PickFlag?
     public var colorLabelFilter: ColorLabel?
@@ -430,6 +431,10 @@ public final class AppModel {
         if !trimmedKeyword.isEmpty {
             parts.append(trimmedKeyword)
         }
+        let trimmedFolder = folderFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedFolder.isEmpty {
+            parts.append(URL(fileURLWithPath: trimmedFolder).lastPathComponent)
+        }
         if let minimumRatingFilter {
             parts.append("\(minimumRatingFilter)+ Stars")
         }
@@ -517,6 +522,7 @@ public final class AppModel {
         self.backgroundWorkQueue = backgroundWorkQueue
         self.librarySearchText = ""
         self.keywordFilterText = ""
+        self.folderFilterText = ""
         self.minimumRatingFilter = nil
         self.flagFilter = nil
         self.colorLabelFilter = nil
@@ -1886,6 +1892,10 @@ public final class AppModel {
         if !trimmedKeyword.isEmpty {
             predicates.append(.keyword(trimmedKeyword))
         }
+        let trimmedFolder = folderFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedFolder.isEmpty {
+            predicates.append(.folderPrefix(trimmedFolder))
+        }
         if let minimumRatingFilter {
             predicates.append(.ratingAtLeast(minimumRatingFilter))
         }
@@ -1924,6 +1934,7 @@ public final class AppModel {
     private func clearLibraryQueryFilters() {
         librarySearchText = ""
         keywordFilterText = ""
+        folderFilterText = ""
         minimumRatingFilter = nil
         flagFilter = nil
         colorLabelFilter = nil

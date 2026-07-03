@@ -82,6 +82,7 @@ public struct IngestService: Sendable {
                     sidecarConflicts.append(SidecarSyncConflict(
                         assetID: assetID,
                         sidecarURL: sidecarURL,
+                        catalogGeneration: catalogGeneration,
                         lastSyncedFingerprint: try repository.lastMetadataSyncFingerprint(assetID: assetID)
                     ))
                 }
@@ -115,7 +116,7 @@ public struct IngestService: Sendable {
             try repository.recordMetadataSyncConflict(MetadataSyncItem(
                 assetID: sidecarConflict.assetID,
                 sidecarURL: sidecarConflict.sidecarURL,
-                catalogGeneration: repository.catalogGeneration(assetID: sidecarConflict.assetID),
+                catalogGeneration: sidecarConflict.catalogGeneration,
                 lastSyncedFingerprint: sidecarConflict.lastSyncedFingerprint
             ))
         }
@@ -250,5 +251,6 @@ private struct ImportedSidecarSync {
 private struct SidecarSyncConflict {
     var assetID: AssetID
     var sidecarURL: URL
+    var catalogGeneration: Int
     var lastSyncedFingerprint: String?
 }

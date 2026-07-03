@@ -1064,6 +1064,28 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.libraryCountText, "1 photograph")
     }
 
+    func testApplyingLibraryFiltersUsesFolderPrefix() throws {
+        let ceremony = makeAsset(id: "ceremony", path: "/Volumes/NAS/Wedding/Ceremony/frame-1.cr2", rating: 4)
+        let portraits = makeAsset(id: "portraits", path: "/Volumes/NAS/Wedding/Portraits/frame-2.cr2", rating: 5)
+        let travel = makeAsset(id: "travel", path: "/Volumes/NAS/Travel/frame-3.cr2", rating: 5)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-folder-filter",
+            assets: [ceremony, portraits, travel]
+        )
+
+        model.folderFilterText = "/Volumes/NAS/Wedding/"
+        model.minimumRatingFilter = 5
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.assets.map(\.id), [portraits.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+        let savedSet = try model.saveCurrentLibraryQuery(named: "Wedding Five Stars")
+        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [
+            .folderPrefix("/Volumes/NAS/Wedding/"),
+            .ratingAtLeast(5)
+        ])))
+    }
+
     func testApplyingLibraryFiltersUsesTechnicalMetadata() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-technical-filters")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -1173,6 +1195,7 @@ final class AppModelTests: XCTestCase {
         let (model, _, _) = try makeModelWithCatalogAsset(named: "active-technical-filter")
 
         model.cameraFilterText = "Canon"
+        model.folderFilterText = "/Photos/Jobs/"
         model.keywordFilterText = "portfolio"
         model.colorLabelFilter = .green
         model.availabilityFilter = .offline
@@ -1184,6 +1207,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.colorLabelFilter)
         XCTAssertNil(model.availabilityFilter)
         XCTAssertEqual(model.keywordFilterText, "")
+        XCTAssertEqual(model.folderFilterText, "")
         XCTAssertEqual(model.cameraFilterText, "")
         XCTAssertEqual(model.lensFilterText, "")
         XCTAssertNil(model.minimumISOFilter)
