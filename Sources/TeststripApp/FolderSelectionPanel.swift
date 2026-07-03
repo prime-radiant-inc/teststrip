@@ -1,4 +1,5 @@
 import AppKit
+import TeststripCore
 
 @MainActor
 enum FolderSelectionPanel {
@@ -109,6 +110,19 @@ enum FolderSelectionPanel {
 
     static func rememberCardDestinationFolder(_ folderURL: URL, defaults: UserDefaults = .standard) {
         rememberDirectory(folderURL, for: cardDestinationParentKey, defaults: defaults)
+    }
+
+    static func importFolderURL(fromPath path: String) throws -> URL {
+        let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPath.isEmpty else {
+            throw TeststripError.invalidState("Enter a folder path")
+        }
+        let expandedPath = (trimmedPath as NSString).expandingTildeInPath
+        let url = URL(fileURLWithPath: expandedPath, isDirectory: true).standardizedFileURL
+        guard let directory = existingDirectory(url) else {
+            throw TeststripError.invalidState("Folder path does not exist")
+        }
+        return directory.standardizedFileURL
     }
 
     private static func configureDirectoryPanel(

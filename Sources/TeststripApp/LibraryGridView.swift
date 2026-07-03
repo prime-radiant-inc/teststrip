@@ -10,6 +10,8 @@ struct LibraryGridView: View {
     @State private var manualSetName = ""
     @State private var manualSetStarred = false
     @State private var isShowingDateFilters = false
+    @State private var isShowingImportPathSheet = false
+    @State private var importPathText = ""
     @State private var cullingFocusRequest = 0
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
@@ -58,6 +60,14 @@ struct LibraryGridView: View {
             .disabled(isImporting)
 
             Button {
+                showImportPathSheet()
+            } label: {
+                Label("Import Path", systemImage: "folder.badge.plus")
+            }
+            .disabled(isImporting)
+            .help("Import a folder by path")
+
+            Button {
                 showImportCardPanel()
             } label: {
                 Label("Import Card", systemImage: "externaldrive.badge.plus")
@@ -82,6 +92,9 @@ struct LibraryGridView: View {
         }
         .safeAreaInset(edge: .bottom) {
             footer
+        }
+        .sheet(isPresented: $isShowingImportPathSheet) {
+            importPathSheet
         }
         .overlay(alignment: .topLeading) {
             CullingKeyCaptureView(focusRequest: cullingFocusRequest, onShortcut: handleCullingShortcut)
@@ -328,6 +341,28 @@ struct LibraryGridView: View {
         )
     }
 
+    private var importPathSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Import Folder Path")
+                .font(.headline)
+            TextField("Folder path", text: $importPathText)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 420)
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    isShowingImportPathSheet = false
+                }
+                Button("Import") {
+                    importFolderPath()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(importPathText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isImporting)
+            }
+        }
+        .padding(18)
+    }
+
     private struct SaveSetPopover: View {
         var title: String
         @Binding var name: String
@@ -428,6 +463,12 @@ struct LibraryGridView: View {
             }
             .disabled(isImporting)
             Button {
+                showImportPathSheet()
+            } label: {
+                Label("Import Path", systemImage: "folder.badge.plus")
+            }
+            .disabled(isImporting)
+            Button {
                 showImportCardPanel()
             } label: {
                 Label("Import Card", systemImage: "externaldrive.badge.plus")
@@ -502,10 +543,26 @@ struct LibraryGridView: View {
         importFolder(folderURL)
     }
 
+    private func showImportPathSheet() {
+        importPathText = ""
+        isShowingImportPathSheet = true
+    }
+
     private func showImportCardPanel() {
         guard let source = FolderSelectionPanel.chooseCardSourceFolder() else { return }
         guard let destinationRoot = FolderSelectionPanel.chooseCardDestinationFolder() else { return }
         importCard(source: source, destinationRoot: destinationRoot)
+    }
+
+    private func importFolderPath() {
+        do {
+            let folderURL = try FolderSelectionPanel.importFolderURL(fromPath: importPathText)
+            FolderSelectionPanel.rememberImportFolder(folderURL)
+            isShowingImportPathSheet = false
+            importFolder(folderURL)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     private func importFolder(_ folderURL: URL) {

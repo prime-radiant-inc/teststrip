@@ -80,6 +80,28 @@ final class FolderSelectionPanelTests: XCTestCase {
     }
 
     @MainActor
+    func testImportFolderURLFromPathTrimsAndRequiresExistingDirectory() throws {
+        let directory = try makeTemporaryDirectory(named: "path-import")
+        let file = directory.appendingPathComponent("not-a-folder.txt")
+        try Data("not a folder".utf8).write(to: file)
+
+        let resolved = try FolderSelectionPanel.importFolderURL(fromPath: "  \(directory.path)  ")
+
+        XCTAssertEqual(resolved.standardizedFileURL, directory.standardizedFileURL)
+        XCTAssertThrowsError(try FolderSelectionPanel.importFolderURL(fromPath: file.path))
+        XCTAssertThrowsError(try FolderSelectionPanel.importFolderURL(fromPath: directory.appendingPathComponent("missing").path))
+    }
+
+    @MainActor
+    func testImportFolderURLFromPathExpandsHomeDirectory() throws {
+        let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
+
+        let resolved = try FolderSelectionPanel.importFolderURL(fromPath: "~")
+
+        XCTAssertEqual(resolved.standardizedFileURL, home)
+    }
+
+    @MainActor
     func testRememberedCardFoldersStartNextChoosersAtSelectedDirectories() throws {
         let defaults = try makeDefaults()
         let sourceParent = try makeTemporaryDirectory(named: "remember-card-source-parent")
