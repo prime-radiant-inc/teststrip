@@ -18,10 +18,12 @@ The queue is keyed by `(asset_id, level)`, which keeps retries idempotent and pr
 
 The app does not synchronously render pending previews on launch. When `AppModel.load(catalog:workerSupervisor:)` sees pending previews and a worker supervisor is available, it enqueues bounded `.generatePreview` worker jobs through the same background work controls used by visible preview requests. Automatic recovery skips originals the catalog currently marks offline, missing, or moved, so launch does not pull unavailable NAS/removable sources into worker reads.
 
+When a worker-backed source scan completes, `AppModel` refreshes loaded asset availability from the catalog and reruns the same bounded recovery pass. Pending rows for sources that are still offline, missing, or moved remain queued; rows whose originals are now online or stale can resume preview generation without relaunching the app.
+
 Automatic launch-time recovery skips preview rows after three failed render attempts. The queue row remains visible in preview failure state, so corrupt files do not churn the worker on every launch and an explicit user retry can still be added without losing diagnostic context.
 
 `WorkerCommandExecutor.execute(.generatePreview)` clears the queue row only after the preview file has been written successfully.
 
 ## Current Limits
 
-The queue does not yet track source volume identity or source-specific backoff. Temporarily offline NAS or removable sources still share the same retry counter as corrupt files; a later scheduler policy should distinguish transient source unavailability from permanently unreadable media.
+The queue does not yet track source volume identity or source-specific backoff. A later scheduler policy should distinguish transient source unavailability from permanently unreadable media.

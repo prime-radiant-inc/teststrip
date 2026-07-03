@@ -2205,6 +2205,61 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testCompletedSourceScanEnqueuesPendingPreviewWhenOriginalComesOnline() async throws {
+        let directory = try makeTemporaryDirectory(named: "source-scan-recovers-preview")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = makeAsset(
+            id: "restored-source",
+            path: "/Volumes/NAS/Job/restored-source.cr2",
+            rating: 0,
+            availability: .offline
+        )
+        let pendingPreview = PreviewGenerationItem(assetID: asset.id, level: .grid)
+        try repository.upsert(asset)
+        try repository.recordPreviewGenerationPending(pendingPreview)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        XCTAssertEqual(try transport.commands(), [])
+        try model.refreshVisibleAssetAvailability()
+        XCTAssertEqual(try transport.commands(), [
+            .refreshAvailabilityBatch(assetIDs: [asset.id])
+        ])
+        let scanItemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+
+        try repository.updateAvailability(assetID: asset.id, availability: .online)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: scanItemID,
+            message: "checked 1 source"
+        )))
+
+        try await waitForBackgroundWorkStatus(.completed, itemID: scanItemID, in: model)
+        XCTAssertEqual(model.assets.first { $0.id == asset.id }?.availability, .online)
+        XCTAssertTrue(waitForCommands([
+            .refreshAvailabilityBatch(assetIDs: [asset.id]),
+            .generatePreview(assetID: asset.id, level: .grid)
+        ], in: transport), commandDescription(transport))
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-grid"))?.status, .running)
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [pendingPreview])
+    }
+
+    @MainActor
     func testRefreshVisibleAvailabilityWithWorkerBatchesLargeSourceScansByVolume() async throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

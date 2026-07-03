@@ -1802,6 +1802,7 @@ public final class AppModel {
                 }
             }
             try refreshSourceAvailabilitySummaries()
+            try enqueuePendingPreviewGeneration()
         } catch {
             errorMessage = error.localizedDescription
         }
