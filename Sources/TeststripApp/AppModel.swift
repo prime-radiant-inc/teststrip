@@ -353,7 +353,7 @@ public final class AppModel {
     }
 
     public var starredAssetSets: [AssetSet] {
-        savedAssetSets.filter(\.starred)
+        Self.visibleSavedAssetSets(savedAssetSets).filter(\.starred)
     }
 
     public var canSaveCurrentLibraryQuery: Bool {
@@ -2146,12 +2146,13 @@ public final class AppModel {
                 SidebarRow(id: "library-people", title: "People")
             ])
         ]
-        let starredRows = savedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0) }
+        let visibleSavedAssetSets = Self.visibleSavedAssetSets(savedAssetSets)
+        let starredRows = visibleSavedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0) }
         if !starredRows.isEmpty {
             sections.append(SidebarSection(title: "Starred", rows: starredRows))
         }
-        if !savedAssetSets.isEmpty {
-            sections.append(SidebarSection(title: "Saved Sets", rows: savedAssetSets.map { Self.sidebarRow(for: $0) }))
+        if !visibleSavedAssetSets.isEmpty {
+            sections.append(SidebarSection(title: "Saved Sets", rows: visibleSavedAssetSets.map { Self.sidebarRow(for: $0) }))
         }
         let workRows = Self.workSidebarRows(recentWork: recentWork, starredWork: starredWork)
         if workRows.isEmpty {
@@ -2160,6 +2161,10 @@ public final class AppModel {
             sections.append(SidebarSection(title: "Work", rows: workRows))
         }
         return sections
+    }
+
+    private static func visibleSavedAssetSets(_ assetSets: [AssetSet]) -> [AssetSet] {
+        assetSets.filter { !$0.id.rawValue.hasPrefix("work-output-") }
     }
 
     private static func sidebarRow(for assetSet: AssetSet) -> SidebarRow {

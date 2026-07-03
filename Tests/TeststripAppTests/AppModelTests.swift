@@ -2439,6 +2439,9 @@ final class AppModelTests: XCTestCase {
         let model = try AppModel.load(catalog: catalog)
 
         _ = try await model.importFolderInBackground(photoFolder)
+        XCTAssertFalse(model.sidebarSections.contains { section in
+            section.title == "Saved Sets" && section.rowTitles.contains("Imported 1 photo from photos")
+        })
 
         let reloaded = try AppModel.load(catalog: catalog)
         let activity = try XCTUnwrap(reloaded.recentWork.first)
@@ -2449,6 +2452,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(activity.completedUnitCount, 1)
         XCTAssertEqual(activity.totalUnitCount, 1)
         XCTAssertEqual(activity.failureCount, 0)
+        XCTAssertFalse(reloaded.sidebarSections.contains { section in
+            section.title == "Saved Sets" && section.rowTitles.contains("Imported 1 photo from photos")
+        })
         let session = try catalog.repository.session(id: WorkSessionID(rawValue: activity.id))
         let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
         let outputSet = try catalog.repository.assetSet(id: outputSetID)
