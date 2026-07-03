@@ -1202,6 +1202,43 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [.evaluationKind(.focus)])))
     }
 
+    func testLoadExposesEvaluationSignalSidebarAndSelectingSignalAppliesFilter() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-evaluation-sidebar")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let face = makeAsset(id: "face", path: "/Photos/Job/face.jpg", rating: 0)
+        let object = makeAsset(id: "object", path: "/Photos/Job/object.jpg", rating: 0)
+        let unevaluated = makeAsset(id: "unevaluated", path: "/Photos/Job/unevaluated.jpg", rating: 0)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.upsert([face, object, unevaluated])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: face.id, kind: .faceQuality, value: .score(0.82), confidence: 0.82, provenance: provenance),
+            EvaluationSignal(assetID: object.id, kind: .object, value: .label("camera"), confidence: 0.74, provenance: provenance)
+        ])
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        let signalSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "AI" })
+        XCTAssertEqual(signalSection.rowTitles, ["Faces", "Objects"])
+        let faceRow = try XCTUnwrap(signalSection.rows.first { $0.title == "Faces" })
+
+        try model.selectSidebarRow(faceRow)
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.evaluationKindFilter, .faceQuality)
+        XCTAssertEqual(model.assets.map(\.id), [face.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
     func testTechnicalFiltersCountAsActiveLibraryFiltersAndClear() throws {
         let (model, _, _) = try makeModelWithCatalogAsset(named: "active-technical-filter")
 
@@ -2234,6 +2271,40 @@ final class AppModelTests: XCTestCase {
 
         try await waitForEvaluationSignalGeneration(1, for: asset.id, in: model)
         XCTAssertEqual(model.selectedEvaluationSignals, [signal])
+    }
+
+    @MainActor
+    func testEvaluationCompletionRefreshesSignalSidebarRows() async throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let asset = makeAsset(id: "evaluation-sidebar-refresh", path: "/Photos/evaluation-sidebar-refresh.jpg", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "evaluation-sidebar-refresh",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        let signal = EvaluationSignal(
+            assetID: asset.id,
+            kind: .faceQuality,
+            value: .score(0.82),
+            confidence: 0.82,
+            provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        )
+
+        XCTAssertNil(model.sidebarSections.first { $0.title == "AI" })
+
+        try model.requestEvaluation(assetID: asset.id, provider: "apple-vision")
+        try repository.recordEvaluationSignals([signal])
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: WorkSessionID(rawValue: "evaluation-\(asset.id.rawValue)-apple-vision"),
+            message: "evaluated \(asset.id.rawValue) with apple-vision"
+        )))
+
+        try await waitForEvaluationSignalGeneration(1, for: asset.id, in: model)
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "AI" }?.rowTitles, ["Faces"])
     }
 
     @MainActor

@@ -1,5 +1,5 @@
 enum CatalogMigrations {
-    static let version = 7
+    static let version = 8
 
     static let statements = [
         """
@@ -72,6 +72,7 @@ enum CatalogMigrations {
         )
         """,
         "CREATE INDEX IF NOT EXISTS idx_evaluation_signals_asset ON evaluation_signals(asset_id)",
+        "CREATE INDEX IF NOT EXISTS idx_evaluation_signals_kind_asset ON evaluation_signals(kind, asset_id)",
         """
         CREATE TABLE IF NOT EXISTS work_sessions (
             id TEXT PRIMARY KEY NOT NULL,

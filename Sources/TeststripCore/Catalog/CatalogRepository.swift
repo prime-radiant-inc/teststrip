@@ -321,6 +321,26 @@ public final class CatalogRepository {
         return try rows.map(decodeEvaluationSignal)
     }
 
+    public func evaluationKindSummaries() throws -> [CatalogEvaluationKindSummary] {
+        let rows = try database.rows(
+            """
+            SELECT kind, COUNT(DISTINCT asset_id) AS asset_count
+            FROM evaluation_signals
+            GROUP BY kind
+            ORDER BY kind COLLATE NOCASE ASC
+            """
+        )
+        return try rows.map { row in
+            guard let kindRawValue = row["kind"],
+                  let kind = EvaluationKind(rawValue: kindRawValue),
+                  let assetCountValue = row["asset_count"],
+                  let assetCount = Int(assetCountValue) else {
+                throw CatalogError.sqlite("evaluation kind summary row is missing required columns")
+            }
+            return CatalogEvaluationKindSummary(kind: kind, assetCount: assetCount)
+        }
+    }
+
     public func updateMetadata(assetID: AssetID, _ update: (inout AssetMetadata) throws -> Void) throws {
         var asset = try asset(id: assetID)
         try update(&asset.metadata)

@@ -339,6 +339,30 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(matching: focusQuery), 1)
     }
 
+    func testListsEvaluationKindSummariesWithDistinctAssetCounts() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-kind-summary")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let firstFace = Asset.testAsset(id: AssetID(rawValue: "first-face"), path: "/Volumes/NAS/Job/first-face.jpg", rating: 0)
+        let secondFace = Asset.testAsset(id: AssetID(rawValue: "second-face"), path: "/Volumes/NAS/Job/second-face.jpg", rating: 0)
+        let object = Asset.testAsset(id: AssetID(rawValue: "object"), path: "/Volumes/NAS/Job/object.jpg", rating: 0)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        let alternateProvenance = ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+        try repository.upsert([firstFace, secondFace, object])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: firstFace.id, kind: .faceQuality, value: .score(0.8), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: firstFace.id, kind: .faceQuality, value: .score(0.7), confidence: 0.7, provenance: alternateProvenance),
+            EvaluationSignal(assetID: secondFace.id, kind: .faceQuality, value: .score(0.6), confidence: 0.6, provenance: provenance),
+            EvaluationSignal(assetID: object.id, kind: .object, value: .label("camera"), confidence: 0.74, provenance: provenance)
+        ])
+
+        XCTAssertEqual(try repository.evaluationKindSummaries(), [
+            CatalogEvaluationKindSummary(kind: .faceQuality, assetCount: 2),
+            CatalogEvaluationKindSummary(kind: .object, assetCount: 1)
+        ])
+    }
+
     func testSearchesAssetsWithTechnicalMetadataPredicates() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-search")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

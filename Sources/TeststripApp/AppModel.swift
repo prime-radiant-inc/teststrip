@@ -92,6 +92,7 @@ public enum SidebarRowTarget: Equatable, Sendable {
     case allPhotographs
     case placeholder
     case folder(String)
+    case evaluationKind(EvaluationKind)
     case assetSet(AssetSetID)
     case workSession(WorkSessionID)
 }
@@ -274,6 +275,7 @@ public final class AppModel {
     public var evaluationKindFilter: EvaluationKind?
     public var savedAssetSets: [AssetSet]
     public var catalogFolders: [CatalogFolder]
+    public var catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary]
     public var selectedAssetSetID: AssetSetID?
 
     @ObservationIgnored
@@ -511,6 +513,7 @@ public final class AppModel {
         backgroundWorkQueue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
         savedAssetSets: [AssetSet] = [],
         catalogFolders: [CatalogFolder] = [],
+        catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
         selectedAssetSetID: AssetSetID? = nil,
         workerSupervisor: WorkerSupervisor? = nil,
         importTaskFactory: AppImportTaskFactory? = nil,
@@ -519,6 +522,7 @@ public final class AppModel {
         self.sidebarSections = sidebarSections.isEmpty ? Self.defaultSidebarSections(
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
+            catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
             recentWork: recentWork,
             starredWork: starredWork
         ) : sidebarSections
@@ -549,6 +553,7 @@ public final class AppModel {
         self.evaluationKindFilter = nil
         self.savedAssetSets = savedAssetSets
         self.catalogFolders = catalogFolders
+        self.catalogEvaluationKindSummaries = catalogEvaluationKindSummaries
         self.selectedAssetSetID = selectedAssetSetID
         self.catalog = catalog
         self.workerSupervisor = workerSupervisor
@@ -614,12 +619,14 @@ public final class AppModel {
         let assets = try repository.allAssets(limit: Self.assetPageSize)
         let savedAssetSets = try repository.assetSets()
         let catalogFolders = try repository.folders()
+        let catalogEvaluationKindSummaries = try repository.evaluationKindSummaries()
         let recentWork = try repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
         return AppModel(
             sidebarSections: defaultSidebarSections(
                 savedAssetSets: savedAssetSets,
                 catalogFolders: catalogFolders,
+                catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
                 recentWork: recentWork,
                 starredWork: starredWork
             ),
@@ -629,7 +636,8 @@ public final class AppModel {
             recentWork: recentWork,
             starredWork: starredWork,
             savedAssetSets: savedAssetSets,
-            catalogFolders: catalogFolders
+            catalogFolders: catalogFolders,
+            catalogEvaluationKindSummaries: catalogEvaluationKindSummaries
         )
     }
 
@@ -642,12 +650,14 @@ public final class AppModel {
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
         let savedAssetSets = try catalog.repository.assetSets()
         let catalogFolders = try catalog.repository.folders()
+        let catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
         let recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
         let model = AppModel(
             sidebarSections: defaultSidebarSections(
                 savedAssetSets: savedAssetSets,
                 catalogFolders: catalogFolders,
+                catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
                 recentWork: recentWork,
                 starredWork: starredWork
             ),
@@ -661,6 +671,7 @@ public final class AppModel {
             metadataSyncConflictItems: try catalog.repository.metadataSyncConflictItems(),
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
+            catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
             workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory,
             cardImportTaskFactory: cardImportTaskFactory
@@ -694,6 +705,12 @@ public final class AppModel {
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
             folderFilterText = path
+            selectedView = .grid
+            try reload()
+        case .evaluationKind(let kind):
+            selectedAssetSetID = nil
+            clearLibraryQueryFilters()
+            evaluationKindFilter = kind
             selectedView = .grid
             try reload()
         case .assetSet(let id):
@@ -1649,6 +1666,7 @@ public final class AppModel {
             return
         }
         evaluationSignalGenerationsByAssetID[assetID, default: 0] += 1
+        refreshCatalogEvaluationKindSummaries()
     }
 
     private static func previewAssetID(from itemID: WorkSessionID) -> AssetID? {
@@ -2123,6 +2141,7 @@ public final class AppModel {
         sidebarSections = Self.defaultSidebarSections(
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
+            catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
             recentWork: recentWork,
             starredWork: starredWork
         )
@@ -2132,6 +2151,16 @@ public final class AppModel {
         guard let catalog else { return }
         do {
             catalogFolders = try catalog.repository.folders()
+            rebuildSidebarSections()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshCatalogEvaluationKindSummaries() {
+        guard let catalog else { return }
+        do {
+            catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
             rebuildSidebarSections()
         } catch {
             errorMessage = error.localizedDescription
@@ -2624,6 +2653,7 @@ public final class AppModel {
     private static func defaultSidebarSections(
         savedAssetSets: [AssetSet] = [],
         catalogFolders: [CatalogFolder] = [],
+        catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
         recentWork: [AppWorkActivity] = [],
         starredWork: [AppWorkActivity] = []
     ) -> [SidebarSection] {
@@ -2644,6 +2674,10 @@ public final class AppModel {
                 )
             }))
         }
+        let evaluationRows = evaluationSignalSidebarRows(catalogEvaluationKindSummaries)
+        if !evaluationRows.isEmpty {
+            sections.append(SidebarSection(title: "AI", rows: evaluationRows))
+        }
         let visibleSavedAssetSets = Self.visibleSavedAssetSets(savedAssetSets)
         let starredRows = visibleSavedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0) }
         if !starredRows.isEmpty {
@@ -2659,6 +2693,45 @@ public final class AppModel {
             sections.append(SidebarSection(title: "Work", rows: workRows))
         }
         return sections
+    }
+
+    private static func evaluationSignalSidebarRows(_ summaries: [CatalogEvaluationKindSummary]) -> [SidebarRow] {
+        let availableKinds = Set(summaries.map(\.kind))
+        return evaluationKindSidebarOrder.compactMap { kind in
+            guard availableKinds.contains(kind) else { return nil }
+            return SidebarRow(
+                id: "evaluation-kind-\(kind.rawValue)",
+                title: evaluationKindSidebarTitle(kind),
+                target: .evaluationKind(kind)
+            )
+        }
+    }
+
+    private static let evaluationKindSidebarOrder: [EvaluationKind] = [
+        .faceQuality,
+        .object,
+        .ocrText,
+        .focus,
+        .motionBlur,
+        .exposure,
+        .aesthetics,
+        .colorPalette,
+        .novelty
+    ]
+
+    private static func evaluationKindSidebarTitle(_ kind: EvaluationKind) -> String {
+        switch kind {
+        case .faceQuality:
+            return "Faces"
+        case .object:
+            return "Objects"
+        case .ocrText:
+            return "Text"
+        case .colorPalette:
+            return "Color"
+        default:
+            return kind.displayName
+        }
     }
 
     private static func visibleSavedAssetSets(_ assetSets: [AssetSet]) -> [AssetSet] {

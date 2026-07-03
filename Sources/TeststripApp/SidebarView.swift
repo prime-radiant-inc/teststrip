@@ -1,4 +1,5 @@
 import SwiftUI
+import TeststripCore
 
 struct SidebarView: View {
     var model: AppModel
@@ -36,12 +37,37 @@ struct SidebarView: View {
             return "photo.on.rectangle"
         case .folder:
             return "folder"
+        case .evaluationKind(let kind):
+            return evaluationKindIconName(kind)
         case .assetSet:
             return "rectangle.stack"
         case .workSession:
             return "clock.arrow.circlepath"
         case .placeholder:
             return "circle"
+        }
+    }
+
+    private func evaluationKindIconName(_ kind: EvaluationKind) -> String {
+        switch kind {
+        case .faceQuality:
+            return "person.crop.circle"
+        case .object:
+            return "tag"
+        case .ocrText:
+            return "text.viewfinder"
+        case .focus:
+            return "scope"
+        case .motionBlur:
+            return "wind"
+        case .exposure:
+            return "sun.max"
+        case .aesthetics:
+            return "sparkles"
+        case .colorPalette:
+            return "paintpalette"
+        case .novelty:
+            return "wand.and.stars"
         }
     }
 }
