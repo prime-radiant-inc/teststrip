@@ -5,6 +5,10 @@ public struct SourceAvailabilityProbe: Sendable {
 
     public func availability(for asset: Asset) -> SourceAvailability {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: asset.originalURL.path) else {
+            if let volumeRoot = Self.volumeRoot(for: asset.originalURL),
+               !FileManager.default.fileExists(atPath: volumeRoot.path) {
+                return .offline
+            }
             return .missing
         }
 
@@ -15,5 +19,13 @@ public struct SourceAvailabilityProbe: Sendable {
             return .stale
         }
         return .online
+    }
+
+    private static func volumeRoot(for url: URL) -> URL? {
+        let components = url.standardizedFileURL.pathComponents
+        guard components.count >= 3, components[0] == "/", components[1] == "Volumes" else {
+            return nil
+        }
+        return URL(fileURLWithPath: "/Volumes/\(components[2])", isDirectory: true)
     }
 }

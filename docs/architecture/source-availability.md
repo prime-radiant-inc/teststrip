@@ -8,10 +8,11 @@ Normal browsing reads catalog rows and cached previews. It must not probe origin
 
 ## Current Behavior
 
-- `SourceAvailabilityProbe` checks file attributes only.
+- `SourceAvailabilityProbe` checks original file attributes and, for `/Volumes/<name>` paths, whether the source root is mounted.
 - Matching size and modification date means `online`.
 - Existing files with changed attributes are `stale`.
 - Absent files are `missing`.
+- Absent files under an unmounted `/Volumes/<name>` root are `offline`, which lets NAS/removable sources read as temporarily unavailable instead of truly missing.
 - App code can refresh the selected asset or the loaded library window and keep cached grid/loupe previews usable.
 - When the supervised worker is configured, loaded-window refreshes enqueue one managed batch `sourceScan` work item with progress instead of probing originals on the UI path or filling Activity with one row per visible asset.
 - Catalog load builds a Sources sidebar section for unavailable or questionable originals: offline, missing, moved, and stale. Selecting one of those rows applies the existing source availability filter, so offline/missing sets are reachable without scanning originals on the grid hot path.
@@ -20,5 +21,4 @@ Normal browsing reads catalog rows and cached previews. It must not probe origin
 ## Next Work
 
 - Add per-source throttling and cancellation policy for large NAS/removable-volume scans.
-- Distinguish temporarily offline volumes from truly missing files where the platform gives enough evidence.
 - Track explicit source roots so reconnect suggestions can be based on import/source history instead of only visible unavailable file paths.

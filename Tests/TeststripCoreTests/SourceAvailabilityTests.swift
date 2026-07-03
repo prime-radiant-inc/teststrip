@@ -53,6 +53,19 @@ final class SourceAvailabilityTests: XCTestCase {
         XCTAssertEqual(availability, .missing)
     }
 
+    func testProbeMarksOriginalOnUnmountedVolumeOffline() {
+        let volumeName = "TeststripOffline-\(UUID().uuidString)"
+        let originalURL = URL(fileURLWithPath: "/Volumes/\(volumeName)/Job/frame.jpg")
+        let asset = makeAsset(
+            originalURL: originalURL,
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10))
+        )
+
+        let availability = SourceAvailabilityProbe().availability(for: asset)
+
+        XCTAssertEqual(availability, .offline)
+    }
+
     func testRepositoryUpdatesAvailabilityWithoutIncrementingCatalogGeneration() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "source-availability-repository")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
