@@ -1451,6 +1451,59 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.statusMessage, "Reconnected 1 source")
     }
 
+    func testReconnectSourceRootEnqueuesPendingPreviewForRestoredOriginal() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-source-reconnect-preview")
+        let oldRoot = directory.appendingPathComponent("OfflineArchive", isDirectory: true)
+        let newRoot = directory.appendingPathComponent("MountedArchive", isDirectory: true)
+        let newOriginalURL = newRoot.appendingPathComponent("Job/frame.jpg")
+        try FileManager.default.createDirectory(
+            at: newOriginalURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("same original bytes".utf8).write(to: newOriginalURL)
+        let oldOriginalURL = oldRoot.appendingPathComponent("Job/frame.jpg")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "source-reconnect-preview"),
+            originalURL: oldOriginalURL,
+            volumeIdentifier: "OfflineArchive",
+            fingerprint: try fileFingerprint(for: newOriginalURL),
+            availability: .missing,
+            metadata: AssetMetadata(rating: 4)
+        )
+        let pendingPreview = PreviewGenerationItem(assetID: asset.id, level: .grid)
+        try repository.upsert(asset)
+        try repository.recordPreviewGenerationPending(pendingPreview)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        XCTAssertEqual(try transport.commands(), [])
+        let result = try model.reconnectSourceRoot(from: oldRoot, to: newRoot)
+
+        XCTAssertEqual(result.reconnectedAssetCount, 1)
+        XCTAssertEqual(try transport.commands(), [
+            .generatePreview(assetID: asset.id, level: .grid)
+        ])
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-grid"))?.status, .running)
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [pendingPreview])
+    }
+
     func testSuggestedReconnectOldRootUsesVisibleUnavailableAssets() {
         let online = makeAsset(id: "online", path: "/Volumes/Current/Job/online.jpg", rating: 0)
         let firstMissing = makeAsset(id: "missing-a", path: "/Volumes/Archive/Job/a.jpg", rating: 0, availability: .missing)

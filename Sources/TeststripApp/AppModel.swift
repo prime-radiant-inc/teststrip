@@ -2133,6 +2133,9 @@ public final class AppModel {
         sourceRoots = try catalog.repository.sourceRoots()
         sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         rebuildSidebarSections()
+        if result.reconnectedAssetCount > 0 {
+            try enqueuePendingPreviewGeneration()
+        }
         let sourceLabel = result.reconnectedAssetCount == 1 ? "source" : "sources"
         statusMessage = "Reconnected \(result.reconnectedAssetCount) \(sourceLabel)"
         return result
