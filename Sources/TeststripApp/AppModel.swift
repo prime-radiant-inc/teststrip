@@ -1572,6 +1572,10 @@ public final class AppModel {
             limit: Self.pendingPreviewRecoveryBatchSize,
             maximumAttemptCount: Self.previewGenerationMaximumAutomaticAttempts
         ) {
+            let asset = try catalog.repository.asset(id: item.assetID)
+            if asset.availability.requiresCachedPreviewOnly {
+                continue
+            }
             if previewURL(for: item.assetID, levels: [item.level]) != nil {
                 try catalog.repository.markPreviewGenerated(assetID: item.assetID, level: item.level)
                 continue

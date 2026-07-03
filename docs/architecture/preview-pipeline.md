@@ -16,7 +16,7 @@ The queue is keyed by `(asset_id, level)`, which keeps retries idempotent and pr
 
 `LibraryImportService.addFolderInPlace` records `.micro` and `.grid` preview work for imported assets and renders those previews inline for the current import flow. Medium and large previews stay demand-driven until the UI needs them. `resumePendingPreviews(repository:)` drains the same queue for non-UI repair or maintenance paths.
 
-The app does not synchronously render pending previews on launch. When `AppModel.load(catalog:workerSupervisor:)` sees pending previews and a worker supervisor is available, it enqueues bounded `.generatePreview` worker jobs through the same background work controls used by visible preview requests. This avoids UI-thread disk reads and avoids pulling originals from NAS or removable media during launch.
+The app does not synchronously render pending previews on launch. When `AppModel.load(catalog:workerSupervisor:)` sees pending previews and a worker supervisor is available, it enqueues bounded `.generatePreview` worker jobs through the same background work controls used by visible preview requests. Automatic recovery skips originals the catalog currently marks offline, missing, or moved, so launch does not pull unavailable NAS/removable sources into worker reads.
 
 Automatic launch-time recovery skips preview rows after three failed render attempts. The queue row remains visible in preview failure state, so corrupt files do not churn the worker on every launch and an explicit user retry can still be added without losing diagnostic context.
 
