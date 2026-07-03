@@ -313,6 +313,9 @@ public final class AppModel {
     private var evaluationAssetIDsByItemID: [WorkSessionID: AssetID]
 
     @ObservationIgnored
+    private var metadataSyncAssetIDsByItemID: [WorkSessionID: AssetID]
+
+    @ObservationIgnored
     private var availabilityAssetIDsByItemID: [WorkSessionID: [AssetID]]
 
     private var previewCacheGenerationsByAssetID: [AssetID: Int]
@@ -602,6 +605,7 @@ public final class AppModel {
         self.workerSupervisor = workerSupervisor
         self.previewCacheGenerationsByAssetID = [:]
         self.evaluationAssetIDsByItemID = [:]
+        self.metadataSyncAssetIDsByItemID = [:]
         self.availabilityAssetIDsByItemID = [:]
         self.evaluationSignalGenerationsByAssetID = [:]
         let importPreviewPolicy: LibraryImportPreviewPolicy = workerSupervisor == nil ? .generateImmediately : .deferGeneration
@@ -633,6 +637,7 @@ public final class AppModel {
             try? self?.refreshPreviewGenerationQueueStates()
             self?.releaseInactiveWorkerImportContexts(in: queue)
             self?.releaseInactiveEvaluationContexts(in: queue)
+            self?.releaseInactiveMetadataSyncContexts(in: queue)
             self?.releaseInactiveAvailabilityContexts(in: queue)
         }
         self.workerSupervisor?.onCommandCompleted = { [weak self] event in
@@ -1261,7 +1266,13 @@ public final class AppModel {
                 completedUnitCount: 0,
                 totalUnitCount: 1
             )
-            try workerSupervisor.enqueue(item, command: .syncMetadata(assetID: asset.id))
+            metadataSyncAssetIDsByItemID[itemID] = asset.id
+            do {
+                try workerSupervisor.enqueue(item, command: .syncMetadata(assetID: asset.id))
+            } catch {
+                metadataSyncAssetIDsByItemID[itemID] = nil
+                throw error
+            }
             syncBackgroundWorkQueueFromSupervisor()
             return
         }
@@ -1376,7 +1387,13 @@ public final class AppModel {
             completedUnitCount: 0,
             totalUnitCount: 1
         )
-        try workerSupervisor.enqueue(item, command: .syncMetadata(assetID: assetID))
+        metadataSyncAssetIDsByItemID[itemID] = assetID
+        do {
+            try workerSupervisor.enqueue(item, command: .syncMetadata(assetID: assetID))
+        } catch {
+            metadataSyncAssetIDsByItemID[itemID] = nil
+            throw error
+        }
         syncBackgroundWorkQueueFromSupervisor()
     }
 
@@ -1542,7 +1559,13 @@ public final class AppModel {
                 completedUnitCount: 0,
                 totalUnitCount: 1
             )
-            try workerSupervisor.enqueue(item, command: .syncMetadata(assetID: pendingItem.assetID))
+            metadataSyncAssetIDsByItemID[itemID] = pendingItem.assetID
+            do {
+                try workerSupervisor.enqueue(item, command: .syncMetadata(assetID: pendingItem.assetID))
+            } catch {
+                metadataSyncAssetIDsByItemID[itemID] = nil
+                throw error
+            }
             syncBackgroundWorkQueueFromSupervisor()
         }
     }
@@ -1706,6 +1729,7 @@ public final class AppModel {
         case .completed(let itemID, _):
             let completedPreview = invalidatePreviewCacheIfNeeded(itemID: itemID)
             invalidateEvaluationSignalsIfNeeded(itemID: itemID)
+            refreshLoadedAssetMetadataIfNeeded(itemID: itemID)
             refreshLoadedAssetAvailabilityIfNeeded(itemID: itemID)
             if completedPreview {
                 do {
@@ -1736,6 +1760,23 @@ public final class AppModel {
                 }
             }
             try refreshSourceAvailabilitySummaries()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshLoadedAssetMetadataIfNeeded(itemID: WorkSessionID?) {
+        guard let itemID,
+              backgroundWorkQueue.item(id: itemID)?.kind == .xmpSync,
+              let assetID = metadataSyncAssetIDsByItemID.removeValue(forKey: itemID),
+              let catalog else {
+            return
+        }
+        do {
+            let updatedAsset = try catalog.repository.asset(id: assetID)
+            if let index = assets.firstIndex(where: { $0.id == assetID }) {
+                assets[index] = updatedAsset
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -1842,6 +1883,15 @@ public final class AppModel {
                 continue
             }
             evaluationAssetIDsByItemID[itemID] = nil
+        }
+    }
+
+    private func releaseInactiveMetadataSyncContexts(in queue: BackgroundWorkQueue) {
+        for itemID in metadataSyncAssetIDsByItemID.keys {
+            guard let item = queue.item(id: itemID), [.cancelled, .failed].contains(item.status) else {
+                continue
+            }
+            metadataSyncAssetIDsByItemID[itemID] = nil
         }
     }
 

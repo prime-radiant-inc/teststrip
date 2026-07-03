@@ -629,6 +629,38 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.visibleWorkActivity)
     }
 
+    @MainActor
+    func testCompletedMetadataSyncRefreshesLoadedAssetMetadata() async throws {
+        let first = makeAsset(id: "completed-xmp-refresh-first", size: 1)
+        let second = makeAsset(id: "completed-xmp-refresh-second", size: 2)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "completed-xmp-refresh",
+            assets: [first, second],
+            workerSupervisor: supervisor
+        )
+
+        model.select(second.id)
+        let itemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        let sidecarMetadata = AssetMetadata(rating: 5, colorLabel: .green, keywords: ["sidecar"])
+        try repository.updateMetadata(assetID: second.id) { metadata in
+            metadata = sidecarMetadata
+        }
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: itemID,
+            message: "imported metadata for completed-xmp-refresh-second.jpg"
+        )))
+
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+        XCTAssertEqual(model.selectedAsset?.metadata, sidecarMetadata)
+        XCTAssertEqual(model.assets.first { $0.id == second.id }?.metadata, sidecarMetadata)
+    }
+
     func testLoadQueuesPendingMetadataSyncWhenSupervisorConfigured() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-pending-worker-xmp")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
