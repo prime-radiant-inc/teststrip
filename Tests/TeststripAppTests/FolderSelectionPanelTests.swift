@@ -15,8 +15,24 @@ final class FolderSelectionPanelTests: XCTestCase {
         XCTAssertFalse(panel.allowsMultipleSelection)
         XCTAssertFalse(panel.canCreateDirectories)
         XCTAssertEqual(panel.prompt, "Import Folder")
-        XCTAssertEqual(panel.message, "Select a folder of photos. If you open it first, Import Folder uses the current folder.")
+        XCTAssertEqual(panel.message, "Select the folder of photos to import.")
         XCTAssertEqual(panel.directoryURL?.standardizedFileURL, startingDirectory.standardizedFileURL)
+    }
+
+    @MainActor
+    func testImportFolderPanelOpensRememberedFolderParent() throws {
+        let panel = NSOpenPanel()
+        let parent = try makeTemporaryDirectory(named: "remembered-import-parent")
+        let rememberedFolder = parent.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: rememberedFolder, withIntermediateDirectories: true)
+
+        FolderSelectionPanel.configureImportFolderPanel(
+            panel,
+            startingDirectory: nil,
+            rememberedDirectory: rememberedFolder
+        )
+
+        XCTAssertEqual(panel.directoryURL?.standardizedFileURL, parent.standardizedFileURL)
     }
 
     @MainActor
@@ -31,7 +47,7 @@ final class FolderSelectionPanelTests: XCTestCase {
         XCTAssertFalse(panel.allowsMultipleSelection)
         XCTAssertFalse(panel.canCreateDirectories)
         XCTAssertEqual(panel.prompt, "Choose Source")
-        XCTAssertEqual(panel.message, "Select the card or camera folder. If you open it first, Choose Source uses the current folder.")
+        XCTAssertEqual(panel.message, "Select the card or camera folder.")
         XCTAssertEqual(panel.directoryURL?.standardizedFileURL, startingDirectory.standardizedFileURL)
     }
 
@@ -47,12 +63,12 @@ final class FolderSelectionPanelTests: XCTestCase {
         XCTAssertFalse(panel.allowsMultipleSelection)
         XCTAssertTrue(panel.canCreateDirectories)
         XCTAssertEqual(panel.prompt, "Choose Destination")
-        XCTAssertEqual(panel.message, "Select where copied photos should be stored. If you open it first, Choose Destination uses the current folder.")
+        XCTAssertEqual(panel.message, "Select where copied photos should be stored.")
         XCTAssertEqual(panel.directoryURL?.standardizedFileURL, startingDirectory.standardizedFileURL)
     }
 
     @MainActor
-    func testRememberedImportFolderStartsNextChooserAtSelectedDirectory() throws {
+    func testRememberedImportFolderStartsNextChooserAtParentDirectory() throws {
         let defaults = try makeDefaults()
         let parent = try makeTemporaryDirectory(named: "remember-import-parent")
         let selectedFolder = parent.appendingPathComponent("shoot", isDirectory: true)
@@ -60,7 +76,7 @@ final class FolderSelectionPanelTests: XCTestCase {
 
         FolderSelectionPanel.rememberImportFolder(selectedFolder, defaults: defaults)
 
-        XCTAssertEqual(FolderSelectionPanel.startingImportDirectory(defaults: defaults)?.standardizedFileURL, selectedFolder.standardizedFileURL)
+        XCTAssertEqual(FolderSelectionPanel.startingImportDirectory(defaults: defaults)?.standardizedFileURL, parent.standardizedFileURL)
     }
 
     @MainActor
@@ -76,8 +92,8 @@ final class FolderSelectionPanelTests: XCTestCase {
         FolderSelectionPanel.rememberCardSourceFolder(source, defaults: defaults)
         FolderSelectionPanel.rememberCardDestinationFolder(destination, defaults: defaults)
 
-        XCTAssertEqual(FolderSelectionPanel.startingCardSourceDirectory(defaults: defaults)?.standardizedFileURL, source.standardizedFileURL)
-        XCTAssertEqual(FolderSelectionPanel.startingCardDestinationDirectory(defaults: defaults)?.standardizedFileURL, destination.standardizedFileURL)
+        XCTAssertEqual(FolderSelectionPanel.startingCardSourceDirectory(defaults: defaults)?.standardizedFileURL, sourceParent.standardizedFileURL)
+        XCTAssertEqual(FolderSelectionPanel.startingCardDestinationDirectory(defaults: defaults)?.standardizedFileURL, destinationParent.standardizedFileURL)
     }
 
     private func makeTemporaryDirectory(named name: String) throws -> URL {

@@ -8,7 +8,11 @@ enum FolderSelectionPanel {
 
     static func chooseImportFolder(defaults: UserDefaults = .standard) -> URL? {
         let panel = NSOpenPanel()
-        configureImportFolderPanel(panel, startingDirectory: startingImportDirectory(defaults: defaults))
+        configureImportFolderPanel(
+            panel,
+            startingDirectory: defaultStartingDirectory(),
+            rememberedDirectory: rememberedDirectory(for: importFolderParentKey, defaults: defaults)
+        )
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         rememberImportFolder(url, defaults: defaults)
         return url
@@ -16,7 +20,11 @@ enum FolderSelectionPanel {
 
     static func chooseCardSourceFolder(defaults: UserDefaults = .standard) -> URL? {
         let panel = NSOpenPanel()
-        configureCardSourcePanel(panel, startingDirectory: startingCardSourceDirectory(defaults: defaults))
+        configureCardSourcePanel(
+            panel,
+            startingDirectory: defaultStartingDirectory(),
+            rememberedDirectory: rememberedDirectory(for: cardSourceParentKey, defaults: defaults)
+        )
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         rememberCardSourceFolder(url, defaults: defaults)
         return url
@@ -24,52 +32,71 @@ enum FolderSelectionPanel {
 
     static func chooseCardDestinationFolder(defaults: UserDefaults = .standard) -> URL? {
         let panel = NSOpenPanel()
-        configureCardDestinationPanel(panel, startingDirectory: startingCardDestinationDirectory(defaults: defaults))
+        configureCardDestinationPanel(
+            panel,
+            startingDirectory: defaultStartingDirectory(),
+            rememberedDirectory: rememberedDirectory(for: cardDestinationParentKey, defaults: defaults)
+        )
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         rememberCardDestinationFolder(url, defaults: defaults)
         return url
     }
 
-    static func configureImportFolderPanel(_ panel: NSOpenPanel, startingDirectory: URL? = nil) {
+    static func configureImportFolderPanel(
+        _ panel: NSOpenPanel,
+        startingDirectory: URL? = nil,
+        rememberedDirectory: URL? = nil
+    ) {
         configureDirectoryPanel(
             panel,
             startingDirectory: startingDirectory,
+            rememberedDirectory: rememberedDirectory,
             canCreateDirectories: false,
             prompt: "Import Folder",
-            message: "Select a folder of photos. If you open it first, Import Folder uses the current folder."
+            message: "Select the folder of photos to import."
         )
     }
 
-    static func configureCardSourcePanel(_ panel: NSOpenPanel, startingDirectory: URL? = nil) {
+    static func configureCardSourcePanel(
+        _ panel: NSOpenPanel,
+        startingDirectory: URL? = nil,
+        rememberedDirectory: URL? = nil
+    ) {
         configureDirectoryPanel(
             panel,
             startingDirectory: startingDirectory,
+            rememberedDirectory: rememberedDirectory,
             canCreateDirectories: false,
             prompt: "Choose Source",
-            message: "Select the card or camera folder. If you open it first, Choose Source uses the current folder."
+            message: "Select the card or camera folder."
         )
     }
 
-    static func configureCardDestinationPanel(_ panel: NSOpenPanel, startingDirectory: URL? = nil) {
+    static func configureCardDestinationPanel(
+        _ panel: NSOpenPanel,
+        startingDirectory: URL? = nil,
+        rememberedDirectory: URL? = nil
+    ) {
         configureDirectoryPanel(
             panel,
             startingDirectory: startingDirectory,
+            rememberedDirectory: rememberedDirectory,
             canCreateDirectories: true,
             prompt: "Choose Destination",
-            message: "Select where copied photos should be stored. If you open it first, Choose Destination uses the current folder."
+            message: "Select where copied photos should be stored."
         )
     }
 
     static func startingImportDirectory(defaults: UserDefaults = .standard) -> URL? {
-        rememberedDirectory(for: importFolderParentKey, defaults: defaults) ?? defaultStartingDirectory()
+        rememberedParentDirectory(for: importFolderParentKey, defaults: defaults) ?? defaultStartingDirectory()
     }
 
     static func startingCardSourceDirectory(defaults: UserDefaults = .standard) -> URL? {
-        rememberedDirectory(for: cardSourceParentKey, defaults: defaults) ?? defaultStartingDirectory()
+        rememberedParentDirectory(for: cardSourceParentKey, defaults: defaults) ?? defaultStartingDirectory()
     }
 
     static func startingCardDestinationDirectory(defaults: UserDefaults = .standard) -> URL? {
-        rememberedDirectory(for: cardDestinationParentKey, defaults: defaults) ?? defaultStartingDirectory()
+        rememberedParentDirectory(for: cardDestinationParentKey, defaults: defaults) ?? defaultStartingDirectory()
     }
 
     static func rememberImportFolder(_ folderURL: URL, defaults: UserDefaults = .standard) {
@@ -87,6 +114,7 @@ enum FolderSelectionPanel {
     private static func configureDirectoryPanel(
         _ panel: NSOpenPanel,
         startingDirectory: URL?,
+        rememberedDirectory: URL?,
         canCreateDirectories: Bool,
         prompt: String,
         message: String
@@ -98,7 +126,12 @@ enum FolderSelectionPanel {
         panel.resolvesAliases = true
         panel.prompt = prompt
         panel.message = message
-        panel.directoryURL = startingDirectory
+        if let rememberedDirectory,
+           let parent = existingDirectory(rememberedDirectory.deletingLastPathComponent()) {
+            panel.directoryURL = parent
+        } else {
+            panel.directoryURL = startingDirectory
+        }
     }
 
     private static func rememberDirectory(_ folderURL: URL, for key: String, defaults: UserDefaults) {
@@ -109,6 +142,11 @@ enum FolderSelectionPanel {
         guard let path = defaults.string(forKey: key), !path.isEmpty else { return nil }
         let url = URL(fileURLWithPath: path, isDirectory: true)
         return existingDirectory(url)
+    }
+
+    private static func rememberedParentDirectory(for key: String, defaults: UserDefaults) -> URL? {
+        guard let rememberedDirectory = rememberedDirectory(for: key, defaults: defaults) else { return nil }
+        return existingDirectory(rememberedDirectory.deletingLastPathComponent())
     }
 
     private static func defaultStartingDirectory() -> URL? {
