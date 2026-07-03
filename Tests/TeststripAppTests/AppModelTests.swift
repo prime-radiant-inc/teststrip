@@ -2732,6 +2732,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items, [])
     }
 
+    func testVisibleLoupePreviewDoesNotDispatchWhenOriginalVolumeIsOffline() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let asset = makeAsset(
+            id: "offline-loupe",
+            path: "/Volumes/TeststripOfflineVolume/offline-loupe.jpg",
+            rating: 0
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "loupe-progressive-offline-original",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+
+        try model.requestVisibleLoupePreview(assetID: asset.id)
+
+        XCTAssertEqual(model.selectedAsset?.availability, .offline)
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(model.backgroundWorkQueue.items, [])
+    }
+
     func testVisibleComparePreviewsRequestMediumForCompareAssetsBeforeLarge() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

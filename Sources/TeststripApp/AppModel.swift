@@ -1572,7 +1572,7 @@ public final class AppModel {
         if previewURL(for: assetID, levels: [request.level]) != nil {
             return
         }
-        if try refreshAvailability(for: assetID) == .missing {
+        if [.offline, .missing].contains(try refreshAvailability(for: assetID)) {
             return
         }
         if request.level == .large, previewURL(for: assetID, levels: [.medium]) == nil {
