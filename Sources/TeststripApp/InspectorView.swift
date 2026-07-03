@@ -4,6 +4,7 @@ import TeststripCore
 
 struct InspectorView: View {
     var model: AppModel
+    @State private var metadataDraft = InspectorMetadataDraft()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -12,7 +13,6 @@ struct InspectorView: View {
                     .font(.headline)
                 Text("Availability: \(asset.availability.rawValue)")
                 Text("Rating: \(asset.metadata.rating)")
-                Text("Keywords: \(asset.metadata.keywords.joined(separator: ", "))")
                 if let technicalMetadata = asset.technicalMetadata {
                     technicalMetadataView(technicalMetadata)
                 }
@@ -27,6 +27,12 @@ struct InspectorView: View {
                         .foregroundStyle(.red)
                 }
                 metadataControls(for: asset)
+                    .onAppear {
+                        metadataDraft.syncIfSelectionChanged(to: asset)
+                    }
+                    .onChange(of: asset.id) { _, _ in
+                        metadataDraft.syncIfSelectionChanged(to: asset)
+                    }
                 let signals = model.selectedEvaluationSignals
                 if !signals.isEmpty {
                     evaluationSignals(signals)
@@ -112,6 +118,50 @@ struct InspectorView: View {
                     .buttonStyle(.plain)
                     .help(label.rawValue.capitalized)
                 }
+            }
+
+            portableTextControls(for: asset)
+        }
+    }
+
+    private func portableTextControls(for asset: Asset) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            metadataTextField("Keywords", text: $metadataDraft.keywords) {
+                try model.setKeywordTextForSelectedAsset(metadataDraft.keywords)
+            }
+            metadataTextField("Caption", text: $metadataDraft.caption) {
+                try model.setCaptionForSelectedAsset(metadataDraft.caption)
+            }
+            metadataTextField("Creator", text: $metadataDraft.creator) {
+                try model.setCreatorForSelectedAsset(metadataDraft.creator)
+            }
+            metadataTextField("Copyright", text: $metadataDraft.copyright) {
+                try model.setCopyrightForSelectedAsset(metadataDraft.copyright)
+            }
+        }
+        .onChange(of: asset.metadata) { _, _ in
+            metadataDraft.syncIfSelectionChanged(to: asset)
+        }
+    }
+
+    private func metadataTextField(_ title: String, text: Binding<String>, commit: @escaping () throws -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                TextField(title, text: text)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit {
+                        apply(commit)
+                    }
+                Button {
+                    apply(commit)
+                } label: {
+                    Image(systemName: "checkmark.circle")
+                }
+                .buttonStyle(.plain)
+                .help("Apply \(title.lowercased())")
             }
         }
     }
@@ -225,6 +275,27 @@ struct InspectorView: View {
 
     private func confidenceText(_ confidence: Double) -> String {
         "\(Int((confidence * 100).rounded()))%"
+    }
+}
+
+struct InspectorMetadataDraft: Equatable {
+    var assetID: AssetID?
+    var keywords: String
+    var caption: String
+    var creator: String
+    var copyright: String
+
+    init(asset: Asset? = nil) {
+        assetID = asset?.id
+        keywords = asset?.metadata.keywords.joined(separator: ", ") ?? ""
+        caption = asset?.metadata.caption ?? ""
+        creator = asset?.metadata.creator ?? ""
+        copyright = asset?.metadata.copyright ?? ""
+    }
+
+    mutating func syncIfSelectionChanged(to asset: Asset) {
+        guard assetID != asset.id else { return }
+        self = InspectorMetadataDraft(asset: asset)
     }
 }
 
