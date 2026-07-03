@@ -1548,7 +1548,7 @@ public final class AppModel {
 
     public func requestVisibleGridPreview(assetID: AssetID) throws {
         if let asset = assets.first(where: { $0.id == assetID }),
-           [.offline, .missing].contains(asset.availability) {
+           asset.availability.requiresCachedPreviewOnly {
             return
         }
 
@@ -1587,12 +1587,13 @@ public final class AppModel {
     public func requestVisibleComparePreviews() throws {
         let compareAssets = compareAssets()
         if let selectedAssetID,
-           compareAssets.contains(where: { $0.id == selectedAssetID }),
+           compareAssets.contains(where: { $0.id == selectedAssetID && !$0.availability.requiresCachedPreviewOnly }),
            previewURL(for: selectedAssetID, levels: [.medium]) != nil {
             try requestPreview(assetID: selectedAssetID, level: .large, placement: .front)
         }
 
         for asset in compareAssets {
+            guard !asset.availability.requiresCachedPreviewOnly else { continue }
             try requestPreview(assetID: asset.id, level: .medium, placement: .front)
         }
     }
@@ -2994,6 +2995,17 @@ private extension AppWorkActivity {
             createdAt: now,
             updatedAt: now
         )
+    }
+}
+
+private extension SourceAvailability {
+    var requiresCachedPreviewOnly: Bool {
+        switch self {
+        case .offline, .missing, .moved:
+            return true
+        case .online, .stale:
+            return false
+        }
     }
 }
 

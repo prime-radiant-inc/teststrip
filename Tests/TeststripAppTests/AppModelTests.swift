@@ -2801,6 +2801,40 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testVisibleComparePreviewsDoNotDispatchForUnavailableOriginals() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: transport
+        )
+        let offline = makeAsset(
+            id: "offline-compare",
+            path: "/Volumes/TeststripOfflineVolume/offline-compare.jpg",
+            rating: 0,
+            availability: .offline
+        )
+        let missing = makeAsset(
+            id: "missing-compare",
+            path: "/Photos/missing-compare.jpg",
+            rating: 0,
+            availability: .missing
+        )
+        let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "compare-unavailable-originals",
+            assets: [offline, missing],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: offline.id, level: .grid)))
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: missing.id, level: .grid)))
+
+        try model.requestVisibleComparePreviews()
+
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(model.backgroundWorkQueue.items, [])
+        XCTAssertEqual(model.loupePreviewURL(for: offline.id), previewCache.url(for: PreviewCacheKey(assetID: offline.id, level: .grid)))
+        XCTAssertEqual(model.loupePreviewURL(for: missing.id), previewCache.url(for: PreviewCacheKey(assetID: missing.id, level: .grid)))
+    }
+
     @MainActor
     func testComparePreviewRequestIDChangesWhenSelectedPreviewGenerationChanges() async throws {
         let transport = RecordingWorkerTransport()
@@ -2874,7 +2908,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testVisibleGridPreviewDoesNotDispatchForKnownUnavailableOriginals() throws {
-        for availability in [SourceAvailability.offline, .missing] {
+        for availability in [SourceAvailability.offline, .missing, .moved] {
             let transport = RecordingWorkerTransport()
             let supervisor = WorkerSupervisor(
                 queue: BackgroundWorkQueue(maxRunningCount: 1),
