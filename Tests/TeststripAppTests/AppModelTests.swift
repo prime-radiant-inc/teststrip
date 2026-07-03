@@ -2449,6 +2449,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(activity.completedUnitCount, 1)
         XCTAssertEqual(activity.totalUnitCount, 1)
         XCTAssertEqual(activity.failureCount, 0)
+        let session = try catalog.repository.session(id: WorkSessionID(rawValue: activity.id))
+        let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
+        let outputSet = try catalog.repository.assetSet(id: outputSetID)
+        if case .manual(let assetIDs) = outputSet.membership {
+            XCTAssertEqual(assetIDs, [reloaded.assets[0].id])
+        } else {
+            XCTFail("import output set should be manual")
+        }
+
+        let row = try XCTUnwrap(reloaded.sidebarSections.first { $0.title == "Work" }?.rows.first)
+        try reloaded.selectSidebarRow(row)
+
+        XCTAssertEqual(reloaded.selectedAssetSetID, outputSetID)
+        XCTAssertEqual(reloaded.assets.map(\.originalURL), [image])
     }
 
     @MainActor

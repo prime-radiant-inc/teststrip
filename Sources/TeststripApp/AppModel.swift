@@ -1949,8 +1949,9 @@ public final class AppModel {
             totalUnitCount: result.importedAssets.count,
             failureCount: result.previewFailures.count
         )
+        let outputSetIDs = saveImportOutputSet(for: activity, result: result)
         activeWork = nil
-        recordRecentActivity(activity)
+        recordRecentActivity(activity, outputSetIDs: outputSetIDs)
     }
 
     private func failImportActivity(id: String? = nil, folderURL: URL, destinationRoot: URL? = nil, error: Error) {
@@ -1991,13 +1992,39 @@ public final class AppModel {
         return "\(folderURL.lastPathComponent) to \(destinationRoot.lastPathComponent)"
     }
 
-    private func recordRecentActivity(_ activity: AppWorkActivity) {
+    private func saveImportOutputSet(for activity: AppWorkActivity, result: LibraryImportResult) -> [AssetSetID] {
+        guard let catalog, !result.importedAssets.isEmpty else {
+            return []
+        }
+        let outputSetID = AssetSetID(rawValue: "work-output-\(activity.id)")
+        let outputSet = AssetSet.manual(
+            id: outputSetID,
+            name: activity.detail,
+            assetIDs: result.importedAssets.map(\.id)
+        )
+        do {
+            try catalog.repository.upsert(outputSet)
+            if !savedAssetSets.contains(where: { $0.id == outputSetID }) {
+                savedAssetSets.append(outputSet)
+            }
+            return [outputSetID]
+        } catch {
+            errorMessage = error.localizedDescription
+            return []
+        }
+    }
+
+    private func recordRecentActivity(
+        _ activity: AppWorkActivity,
+        inputSetIDs: [AssetSetID] = [],
+        outputSetIDs: [AssetSetID] = []
+    ) {
         recentWork.removeAll { $0.id == activity.id }
         recentWork.insert(activity, at: 0)
         rebuildSidebarSections()
         guard let catalog else { return }
         do {
-            try catalog.repository.save(activity.workSession())
+            try catalog.repository.save(activity.workSession(inputSetIDs: inputSetIDs, outputSetIDs: outputSetIDs))
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2167,7 +2194,11 @@ public final class AppModel {
 }
 
 private extension AppWorkActivity {
-    func workSession(now: Date = Date()) -> WorkSession {
+    func workSession(
+        now: Date = Date(),
+        inputSetIDs: [AssetSetID] = [],
+        outputSetIDs: [AssetSetID] = []
+    ) -> WorkSession {
         WorkSession(
             id: WorkSessionID(rawValue: id),
             kind: kind,
@@ -2175,8 +2206,8 @@ private extension AppWorkActivity {
             title: title,
             detail: detail,
             status: status,
-            inputSetIDs: [],
-            outputSetIDs: [],
+            inputSetIDs: inputSetIDs,
+            outputSetIDs: outputSetIDs,
             completedUnitCount: completedUnitCount,
             totalUnitCount: totalUnitCount,
             failureCount: failureCount,
