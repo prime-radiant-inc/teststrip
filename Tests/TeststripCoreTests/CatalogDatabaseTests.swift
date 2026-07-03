@@ -241,6 +241,39 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [item])
     }
 
+    func testPendingPreviewGenerationItemsCanFilterByAttemptCount() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-attempt-filter")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let exhausted = PreviewGenerationItem(assetID: AssetID(rawValue: "exhausted"), level: .grid)
+        let retryable = PreviewGenerationItem(assetID: AssetID(rawValue: "retryable"), level: .grid)
+        let pending = PreviewGenerationItem(assetID: AssetID(rawValue: "pending"), level: .grid)
+        try repository.recordPreviewGenerationPending(exhausted)
+        try repository.recordPreviewGenerationPending(retryable)
+        try repository.recordPreviewGenerationPending(pending)
+        for attempt in 1...3 {
+            try repository.recordPreviewGenerationFailure(
+                assetID: exhausted.assetID,
+                level: exhausted.level,
+                errorMessage: "exhausted \(attempt)"
+            )
+        }
+        for attempt in 1...2 {
+            try repository.recordPreviewGenerationFailure(
+                assetID: retryable.assetID,
+                level: retryable.level,
+                errorMessage: "retryable \(attempt)"
+            )
+        }
+
+        let allItems = try repository.pendingPreviewGenerationItems()
+        let retryableItems = try repository.pendingPreviewGenerationItems(maximumAttemptCount: 3)
+
+        XCTAssertEqual(allItems.count, 3)
+        XCTAssertEqual(retryableItems.map(\.assetID.rawValue).sorted(), ["pending", "retryable"])
+    }
+
     func testFetchesPreviewGenerationQueueStates() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-states")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

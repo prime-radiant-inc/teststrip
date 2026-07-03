@@ -567,16 +567,32 @@ public final class CatalogRepository {
         )
     }
 
-    public func pendingPreviewGenerationItems(limit: Int? = nil) throws -> [PreviewGenerationItem] {
+    public func pendingPreviewGenerationItems(
+        limit: Int? = nil,
+        maximumAttemptCount: Int? = nil
+    ) throws -> [PreviewGenerationItem] {
         if let limit, limit <= 0 {
+            return []
+        }
+        if let maximumAttemptCount, maximumAttemptCount <= 0 {
             return []
         }
         var sql = """
         SELECT asset_id, level
         FROM preview_generation_queue
-        ORDER BY updated_at ASC
         """
         var bindings: [String] = []
+        if let maximumAttemptCount {
+            sql += """
+
+            WHERE attempt_count < ?
+            """
+            bindings.append("\(maximumAttemptCount)")
+        }
+        sql += """
+
+        ORDER BY updated_at ASC
+        """
         if let limit {
             sql += " LIMIT ?"
             bindings.append("\(limit)")

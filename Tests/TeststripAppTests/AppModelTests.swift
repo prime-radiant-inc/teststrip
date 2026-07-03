@@ -2377,6 +2377,49 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.visibleWorkActivity?.kind, .previewGeneration)
     }
 
+    func testLoadSkipsAutomaticPreviewRetryAfterRepeatedFailures() throws {
+        let directory = try makeTemporaryDirectory(named: "pending-preview-retry-exhausted")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = makeAsset(id: "retry-exhausted", size: 1)
+        let item = PreviewGenerationItem(assetID: asset.id, level: .grid)
+        try repository.upsert(asset)
+        try repository.recordPreviewGenerationPending(item)
+        for attempt in 1...3 {
+            try repository.recordPreviewGenerationFailure(
+                assetID: asset.id,
+                level: .grid,
+                errorMessage: "render failed \(attempt)"
+            )
+        }
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(model.backgroundWorkQueue.items, [])
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [item])
+        let failureState = try XCTUnwrap(model.previewGenerationQueueStates.first)
+        XCTAssertEqual(failureState.item, item)
+        XCTAssertEqual(failureState.attemptCount, 3)
+        XCTAssertEqual(failureState.lastErrorMessage, "render failed 3")
+    }
+
     func testLoadExposesSelectedPreviewGenerationFailures() throws {
         let directory = try makeTemporaryDirectory(named: "selected-preview-failure")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

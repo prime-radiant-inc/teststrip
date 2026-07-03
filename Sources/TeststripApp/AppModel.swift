@@ -331,6 +331,7 @@ public final class AppModel {
     private static let assetPageSize = 500
     private static let loadedAssetWindowSize = assetPageSize * 2
     private static let pendingPreviewRecoveryBatchSize = 200
+    private static let previewGenerationMaximumAutomaticAttempts = 3
     static let sourceAvailabilityBatchSize = 100
     private static let defaultCompareAssetLimit = 4
 
@@ -1567,7 +1568,10 @@ public final class AppModel {
 
     private func enqueuePendingPreviewGeneration() throws {
         guard let catalog, workerSupervisor != nil else { return }
-        for item in try catalog.repository.pendingPreviewGenerationItems(limit: Self.pendingPreviewRecoveryBatchSize) {
+        for item in try catalog.repository.pendingPreviewGenerationItems(
+            limit: Self.pendingPreviewRecoveryBatchSize,
+            maximumAttemptCount: Self.previewGenerationMaximumAutomaticAttempts
+        ) {
             if previewURL(for: item.assetID, levels: [item.level]) != nil {
                 try catalog.repository.markPreviewGenerated(assetID: item.assetID, level: item.level)
                 continue
