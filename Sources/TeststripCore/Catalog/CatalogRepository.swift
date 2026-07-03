@@ -318,6 +318,21 @@ public final class CatalogRepository {
         return try rows.map(decodeWorkSession)
     }
 
+    public func workSessions(kind: WorkSessionKind, statuses: [WorkSessionStatus]) throws -> [WorkSession] {
+        guard !statuses.isEmpty else { return [] }
+        let placeholders = Array(repeating: "?", count: statuses.count).joined(separator: ", ")
+        let rows = try database.rows(
+            """
+            SELECT * FROM work_sessions
+            WHERE kind = ?
+              AND status IN (\(placeholders))
+            ORDER BY updated_at DESC
+            """,
+            bindings: [kind.rawValue] + statuses.map(\.rawValue)
+        )
+        return try rows.map(decodeWorkSession)
+    }
+
     public func recordEvaluationSignals(_ signals: [EvaluationSignal]) throws {
         guard !signals.isEmpty else { return }
         try database.transaction {

@@ -667,6 +667,7 @@ public final class AppModel {
     }
 
     public static func load(repository: CatalogRepository) throws -> AppModel {
+        try reconcileInterruptedIngestWorkSessions(repository: repository)
         let assets = try repository.allAssets(limit: Self.assetPageSize)
         let savedAssetSets = try repository.assetSets()
         let catalogFolders = try repository.folders()
@@ -702,6 +703,7 @@ public final class AppModel {
         cardImportTaskFactory: AppCardImportTaskFactory? = nil,
         workerSupervisor: WorkerSupervisor? = nil
     ) throws -> AppModel {
+        try reconcileInterruptedIngestWorkSessions(repository: catalog.repository)
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
         let savedAssetSets = try catalog.repository.assetSets()
         let catalogFolders = try catalog.repository.folders()
@@ -738,6 +740,18 @@ public final class AppModel {
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
         return model
+    }
+
+    private static func reconcileInterruptedIngestWorkSessions(repository: CatalogRepository) throws {
+        let interruptedStatuses: [WorkSessionStatus] = [.queued, .running, .paused]
+        for session in try repository.workSessions(kind: .ingest, statuses: interruptedStatuses) {
+            var interruptedSession = session
+            interruptedSession.status = .failed
+            interruptedSession.detail = "Import interrupted before completion"
+            interruptedSession.failureCount += 1
+            interruptedSession.updatedAt = Date()
+            try repository.save(interruptedSession)
+        }
     }
 
     public func select(_ assetID: AssetID) {
@@ -1721,6 +1735,7 @@ public final class AppModel {
         workerImportContextsByItemID[itemID] = context
         do {
             try workerSupervisor.enqueue(item, command: command)
+            recordRecentActivity(AppWorkActivity(workItem: workerSupervisor.queue.item(id: itemID) ?? item))
             syncBackgroundWorkQueueFromSupervisor()
         } catch {
             workerImportContextsByItemID[itemID] = nil

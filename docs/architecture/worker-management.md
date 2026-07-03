@@ -23,8 +23,9 @@ The UI must not start unbounded detached work silently. Any long-running preview
 - `TeststripWorker` opens the app catalog from `--catalog`, writes cached previews under `--preview-cache`, executes `generatePreview` with `PreviewRenderer`, and executes `syncMetadata` through the catalog/XMP sync planner.
 - Worker progress, completion, import-completion, and failure events are structured JSON-lines events with the originating work item ID.
 - Visible source refreshes dispatch bounded, source-grouped `refreshAvailabilityBatch` worker commands so slow volume checks stay visible, cancellable, and smaller than one full loaded-window scan.
+- Worker import work is persisted to `work_sessions` when it is queued/running. On the next catalog load, stale queued/running/paused ingest sessions are reconciled as failed with an interruption message instead of disappearing from Work history or falsely appearing active.
 
 ## Next Work
 
-- Persist queue state across app relaunches.
+- Persist resumable command state across app relaunches for worker kinds that can be safely replayed.
 - Add per-kind throttles for NAS/source scans, XMP sync, and recognition.

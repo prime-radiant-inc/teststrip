@@ -3314,6 +3314,37 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testWorkerImportPersistsRunningActivityAndReloadMarksItInterrupted() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-interrupted")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        let runningSession = try catalog.repository.session(id: importItem.id)
+        XCTAssertEqual(runningSession.kind, .ingest)
+        XCTAssertEqual(runningSession.status, .running)
+        XCTAssertEqual(runningSession.detail, "Importing from photos")
+
+        let reloaded = try AppModel.load(catalog: catalog)
+        let interruptedSession = try catalog.repository.session(id: importItem.id)
+        XCTAssertEqual(interruptedSession.status, .failed)
+        XCTAssertEqual(interruptedSession.detail, "Import interrupted before completion")
+        XCTAssertEqual(interruptedSession.failureCount, 1)
+        XCTAssertEqual(reloaded.recentWork.first?.id, importItem.id.rawValue)
+        XCTAssertEqual(reloaded.recentWork.first?.status, .failed)
+    }
+
+    @MainActor
     func testWorkerImportProgressShowsCatalogedAssetsBeforeCompletion() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-early-assets")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
