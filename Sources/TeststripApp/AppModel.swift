@@ -242,7 +242,11 @@ private struct WorkerImportContext {
 @Observable
 public final class AppModel {
     public var sidebarSections: [SidebarSection]
-    public var selectedView: LibraryViewMode
+    public var selectedView: LibraryViewMode {
+        didSet {
+            updateCompareSetAfterViewChange(from: oldValue)
+        }
+    }
     public var assets: [Asset]
     public var totalAssetCount: Int
     public var selectedAssetID: AssetID?
@@ -299,12 +303,14 @@ public final class AppModel {
     private var metadataUndoStack: [MetadataChange]
     private var metadataRedoStack: [MetadataChange]
     private var assetPageOffset: Int
+    private var compareAssetIDs: [AssetID]?
 
     public static let defaultEvaluationProviderName = "local-image-metrics"
     public static let defaultEvaluationProviderNames = [defaultEvaluationProviderName, "apple-vision"]
     private static let assetPageSize = 500
     private static let loadedAssetWindowSize = assetPageSize * 2
     private static let pendingPreviewRecoveryBatchSize = 200
+    private static let defaultCompareAssetLimit = 4
 
     public var selectedAsset: Asset? {
         assets.first { $0.id == selectedAssetID }
@@ -566,6 +572,7 @@ public final class AppModel {
         self.metadataUndoStack = []
         self.metadataRedoStack = []
         self.assetPageOffset = 0
+        self.compareAssetIDs = nil
         self.workerImportContextsByItemID = [:]
         self.workerSupervisor?.onQueueChanged = { [weak self] queue in
             self?.backgroundWorkQueue = queue
@@ -576,6 +583,9 @@ public final class AppModel {
         }
         self.workerSupervisor?.onCommandCompleted = { [weak self] event in
             self?.handleWorkerCommandCompleted(event)
+        }
+        if selectedView == .compare {
+            compareAssetIDs = compareWindowAssetIDs(limit: Self.defaultCompareAssetLimit, anchor: selectedAssetID)
         }
     }
 
@@ -655,6 +665,7 @@ public final class AppModel {
 
     private func selectAssetID(_ assetID: AssetID?) {
         selectedAssetID = assetID
+        updateCompareSetAfterSelectionChange(to: assetID)
         guard let assetID else { return }
         do {
             try enqueueMetadataSyncCheck(for: assetID)
@@ -852,15 +863,52 @@ public final class AppModel {
     }
 
     public func compareAssets(limit: Int = 4) -> [Asset] {
+        let boundedLimit = max(1, limit)
+        if let compareAssetIDs {
+            let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+            let anchoredAssets = compareAssetIDs.compactMap { assetsByID[$0] }
+            if !anchoredAssets.isEmpty {
+                return Array(anchoredAssets.prefix(boundedLimit))
+            }
+        }
+        return compareWindowAssets(limit: boundedLimit, anchor: selectedAssetID)
+    }
+
+    private func compareWindowAssets(limit: Int, anchor: AssetID?) -> [Asset] {
         guard !assets.isEmpty else { return [] }
         let boundedLimit = max(1, limit)
-        let selectedIndex = selectedAssetID.flatMap { selectedID in
+        let selectedIndex = anchor.flatMap { selectedID in
             assets.firstIndex { $0.id == selectedID }
         } ?? 0
         let maximumStartIndex = max(assets.count - boundedLimit, 0)
         let startIndex = min(max(selectedIndex - 1, 0), maximumStartIndex)
         let endIndex = min(startIndex + boundedLimit, assets.count)
         return Array(assets[startIndex..<endIndex])
+    }
+
+    private func compareWindowAssetIDs(limit: Int, anchor: AssetID?) -> [AssetID] {
+        compareWindowAssets(limit: limit, anchor: anchor).map(\.id)
+    }
+
+    private func updateCompareSetAfterViewChange(from previousView: LibraryViewMode) {
+        guard selectedView == .compare else {
+            compareAssetIDs = nil
+            return
+        }
+        guard previousView != .compare else { return }
+        compareAssetIDs = compareWindowAssetIDs(limit: Self.defaultCompareAssetLimit, anchor: selectedAssetID)
+    }
+
+    private func updateCompareSetAfterSelectionChange(to assetID: AssetID?) {
+        guard selectedView == .compare else { return }
+        guard let assetID else {
+            compareAssetIDs = nil
+            return
+        }
+        if let compareAssetIDs, compareAssetIDs.contains(assetID) {
+            return
+        }
+        compareAssetIDs = compareWindowAssetIDs(limit: Self.defaultCompareAssetLimit, anchor: assetID)
     }
 
     public func selectNextAsset() {

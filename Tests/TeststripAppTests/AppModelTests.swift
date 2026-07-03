@@ -114,15 +114,26 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAsset?.id, first.id)
     }
 
-    func testCompareAssetsReturnWindowAroundSelection() {
+    func testCompareAssetsReturnWindowAroundSelectionWhenSelectionLeavesCurrentSet() {
         let assets = (0..<6).map { makeAsset(id: "asset-\($0)", size: Int64($0 + 1)) }
         let model = AppModel(sidebarSections: [], selectedView: .compare, assets: assets)
 
         XCTAssertEqual(model.compareAssets().map(\.id), assets[0..<4].map(\.id))
 
-        model.select(assets[3].id)
+        model.select(assets[5].id)
 
         XCTAssertEqual(model.compareAssets().map(\.id), assets[2..<6].map(\.id))
+    }
+
+    func testCompareAssetsStayStableWhenSelectingAssetInsideCurrentCompareSet() {
+        let assets = (0..<6).map { makeAsset(id: "asset-\($0)", size: Int64($0 + 1)) }
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: assets)
+        model.selectedView = .compare
+        let initialCompareIDs = model.compareAssets().map(\.id)
+
+        model.select(assets[3].id)
+
+        XCTAssertEqual(model.compareAssets().map(\.id), initialCompareIDs)
     }
 
     func testComparePreviewRequestIDChangesWhenSelectionChangesInsideSameWindow() {
