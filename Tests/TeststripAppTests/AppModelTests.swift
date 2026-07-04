@@ -3819,6 +3819,77 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedEvaluationSignals, [signal])
     }
 
+    func testSelectedSuggestedKeywordsComeFromObjectEvaluationLabels() throws {
+        let asset = Asset(
+            id: AssetID(rawValue: "suggested-keywords"),
+            originalURL: URL(fileURLWithPath: "/Photos/suggested-keywords.jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata(keywords: ["camera"])
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(named: "suggested-keywords", assets: [asset])
+        let cameraProvenance = ProviderProvenance(provider: "apple-vision", model: "Vision-camera", version: "1", settingsHash: "default")
+        let mountainProvenance = ProviderProvenance(provider: "apple-vision", model: "Vision-mountain", version: "1", settingsHash: "default")
+        let lakeProvenance = ProviderProvenance(provider: "apple-vision", model: "Vision-lake", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: asset.id, kind: .object, value: .label("camera"), confidence: 0.91, provenance: cameraProvenance),
+            EvaluationSignal(assetID: asset.id, kind: .object, value: .label("mountain"), confidence: 0.84, provenance: mountainProvenance),
+            EvaluationSignal(assetID: asset.id, kind: .aesthetics, value: .label("keeper"), confidence: 0.98, provenance: mountainProvenance),
+            EvaluationSignal(assetID: asset.id, kind: .object, value: .label("  alpine lake  "), confidence: 0.76, provenance: lakeProvenance)
+        ])
+
+        XCTAssertEqual(model.selectedSuggestedKeywords.map(\.keyword), ["mountain", "alpine lake"])
+        XCTAssertEqual(model.selectedSuggestedKeywords.map(\.confidenceText), ["84%", "76%"])
+        XCTAssertEqual(model.selectedSuggestedKeywords.map(\.provenanceText), ["apple-vision/Vision-mountain", "apple-vision/Vision-lake"])
+    }
+
+    func testAcceptSuggestedKeywordForSelectedAssetWritesCatalogAndXmp() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-accept-suggested-keyword")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "accept-suggested-keyword"),
+            originalURL: originalURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        let provenance = ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: asset.id, kind: .object, value: .label("mountain"), confidence: 0.84, provenance: provenance)
+        ])
+
+        XCTAssertEqual(model.selectedSuggestedKeywords.map(\.keyword), ["mountain"])
+
+        try model.acceptSuggestedKeywordForSelectedAsset("mountain")
+
+        let expectedKeywords = ["mountain"]
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+        let sidecarData = try Data(contentsOf: sidecarURL)
+        XCTAssertEqual(model.selectedAsset?.metadata.keywords, expectedKeywords)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.keywords, expectedKeywords)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata.keywords, expectedKeywords)
+        XCTAssertEqual(try Data(contentsOf: originalURL), Data("original raw bytes".utf8))
+        XCTAssertEqual(model.selectedSuggestedKeywords, [])
+    }
+
     @MainActor
     func testEvaluationCompletionInvalidatesSelectedEvaluationSignals() async throws {
         let directory = try makeTemporaryDirectory(named: "evaluation-completion-signals")

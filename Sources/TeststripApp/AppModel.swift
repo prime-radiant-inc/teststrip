@@ -286,6 +286,27 @@ public struct ImportCompletionSummary: Identifiable, Equatable, Sendable {
     public var id: String { activityID }
 }
 
+public struct KeywordSuggestion: Identifiable, Equatable, Sendable {
+    public var keyword: String
+    public var sourceKind: EvaluationKind
+    public var confidence: Double
+    public var providerName: String
+    public var modelName: String
+
+    public var id: String {
+        keyword.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+    }
+
+    public var confidenceText: String {
+        let clamped = min(max(confidence, 0), 1)
+        return "\(Int((clamped * 100).rounded()))%"
+    }
+
+    public var provenanceText: String {
+        "\(providerName)/\(modelName)"
+    }
+}
+
 public struct AppImportOutput: Sendable {
     public var result: LibraryImportResult
     public var assets: [Asset]
@@ -637,6 +658,14 @@ public final class AppModel {
         guard let catalog, let selectedAssetID else { return [] }
         _ = evaluationSignalGeneration(for: selectedAssetID)
         return (try? catalog.repository.evaluationSignals(assetID: selectedAssetID)) ?? []
+    }
+
+    public var selectedSuggestedKeywords: [KeywordSuggestion] {
+        guard let selectedAsset else { return [] }
+        return Self.keywordSuggestions(
+            from: selectedEvaluationSignals,
+            existingKeywords: selectedAsset.metadata.keywords
+        )
     }
 
     public var starredAssetSets: [AssetSet] {
@@ -1557,6 +1586,15 @@ public final class AppModel {
         }
     }
 
+    public func acceptSuggestedKeywordForSelectedAsset(_ keyword: String) throws {
+        let cleanedKeyword = Self.cleanedKeyword(keyword)
+        guard !cleanedKeyword.isEmpty else { return }
+        try updateSelectedAssetMetadata { metadata in
+            guard !Self.keywordList(metadata.keywords, contains: cleanedKeyword) else { return }
+            metadata.keywords.append(cleanedKeyword)
+        }
+    }
+
     public func setCaptionForSelectedAsset(_ caption: String) throws {
         try updateSelectedAssetMetadata { metadata in
             metadata.caption = Self.portableText(from: caption)
@@ -1629,6 +1667,54 @@ public final class AppModel {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .filter { seen.insert($0).inserted }
+    }
+
+    private static func keywordSuggestions(
+        from signals: [EvaluationSignal],
+        existingKeywords: [String]
+    ) -> [KeywordSuggestion] {
+        let candidates = signals.compactMap { signal -> (keyword: String, signal: EvaluationSignal)? in
+            guard signal.kind == .object,
+                  case .label(let label) = signal.value else {
+                return nil
+            }
+            let keyword = cleanedKeyword(label)
+            guard !keyword.isEmpty else { return nil }
+            return (keyword, signal)
+        }
+        .sorted { lhs, rhs in
+            if lhs.signal.confidence != rhs.signal.confidence {
+                return lhs.signal.confidence > rhs.signal.confidence
+            }
+            return lhs.keyword.localizedCaseInsensitiveCompare(rhs.keyword) == .orderedAscending
+        }
+
+        var seen = Set(existingKeywords.map(keywordKey).filter { !$0.isEmpty })
+        return candidates.compactMap { candidate in
+            let key = keywordKey(candidate.keyword)
+            guard seen.insert(key).inserted else { return nil }
+            return KeywordSuggestion(
+                keyword: candidate.keyword,
+                sourceKind: candidate.signal.kind,
+                confidence: candidate.signal.confidence,
+                providerName: candidate.signal.provenance.provider,
+                modelName: candidate.signal.provenance.model
+            )
+        }
+    }
+
+    private static func keywordList(_ keywords: [String], contains keyword: String) -> Bool {
+        let key = keywordKey(keyword)
+        guard !key.isEmpty else { return false }
+        return keywords.contains { keywordKey($0) == key }
+    }
+
+    private static func cleanedKeyword(_ keyword: String) -> String {
+        keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func keywordKey(_ keyword: String) -> String {
+        cleanedKeyword(keyword).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
     }
 
     private static func portableText(from text: String) -> String? {

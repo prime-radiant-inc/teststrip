@@ -420,6 +420,10 @@ struct InspectorView: View {
             if !asset.metadata.keywords.isEmpty {
                 keywordChips(asset.metadata.keywords)
             }
+            let suggestions = model.selectedSuggestedKeywords
+            if !suggestions.isEmpty {
+                suggestedKeywordChips(suggestions)
+            }
             metadataTextField("Keywords", text: $metadataDraft.keywords) {
                 try model.setKeywordTextForSelectedAsset(metadataDraft.keywords)
             }
@@ -449,6 +453,50 @@ struct InspectorView: View {
                     .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
             }
         }
+    }
+
+    private func suggestedKeywordChips(_ suggestions: [KeywordSuggestion]) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Image(systemName: "sparkles")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
+                Text("TESTSTRIP SUGGESTS")
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 5)], alignment: .leading, spacing: 5) {
+                ForEach(suggestions) { suggestion in
+                    Button {
+                        apply { try model.acceptSuggestedKeywordForSelectedAsset(suggestion.keyword) }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.orange)
+                            Text(suggestion.keyword)
+                                .lineLimit(1)
+                            Text(suggestion.confidenceText)
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 5)
+                                .strokeBorder(Color.orange.opacity(0.18))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Accept \(suggestion.keyword)")
+                }
+            }
+        }
+        .padding(8)
+        .background(Color.orange.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func metadataTextField(_ title: String, text: Binding<String>, commit: @escaping () throws -> Void) -> some View {
