@@ -1549,6 +1549,45 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 
+    func testLoadExposesReviewQueuesAndSelectingQueueAppliesFilter() throws {
+        let pick = makeAsset(id: "pick", path: "/Photos/Job/pick.jpg", rating: 4, flag: .pick)
+        let reject = makeAsset(id: "reject", path: "/Photos/Job/reject.jpg", rating: 1, flag: .reject)
+        let fiveStar = makeAsset(id: "five-star", path: "/Photos/Job/five-star.jpg", rating: 5)
+        let unreviewed = makeAsset(id: "unreviewed", path: "/Photos/Job/unreviewed.jpg", rating: 0)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-review-queue-sidebar",
+            assets: [pick, reject, fiveStar, unreviewed]
+        )
+
+        let reviewSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Review" })
+        XCTAssertEqual(reviewSection.rowTitles, ["Picks", "Rejects", "5 Stars"])
+
+        let picksRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Picks" })
+        try model.selectSidebarRow(picksRow)
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.flagFilter, .pick)
+        XCTAssertNil(model.minimumRatingFilter)
+        XCTAssertEqual(model.assets.map(\.id), [pick.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+
+        let rejectsRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Rejects" })
+        try model.selectSidebarRow(rejectsRow)
+
+        XCTAssertEqual(model.flagFilter, .reject)
+        XCTAssertNil(model.minimumRatingFilter)
+        XCTAssertEqual(model.assets.map(\.id), [reject.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+
+        let fiveStarsRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "5 Stars" })
+        try model.selectSidebarRow(fiveStarsRow)
+
+        XCTAssertNil(model.flagFilter)
+        XCTAssertEqual(model.minimumRatingFilter, 5)
+        XCTAssertEqual(model.assets.map(\.id), [fiveStar.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
     func testTechnicalFiltersCountAsActiveLibraryFiltersAndClear() throws {
         let (model, _, _) = try makeModelWithCatalogAsset(named: "active-technical-filter")
 

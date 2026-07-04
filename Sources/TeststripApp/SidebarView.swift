@@ -36,6 +36,8 @@ struct SidebarView: View {
         switch target {
         case .allPhotographs:
             return "photo.on.rectangle"
+        case .reviewQueue(let queue):
+            return reviewQueueIconName(queue)
         case .folder:
             return "folder"
         case .sourceAvailability:
@@ -52,6 +54,17 @@ struct SidebarView: View {
             return "clock.arrow.circlepath"
         case .placeholder:
             return "circle"
+        }
+    }
+
+    private func reviewQueueIconName(_ queue: ReviewQueue) -> String {
+        switch queue {
+        case .picks:
+            return "flag.fill"
+        case .rejects:
+            return "xmark.circle"
+        case .fiveStars:
+            return "star.fill"
         }
     }
 

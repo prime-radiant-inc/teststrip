@@ -63,6 +63,12 @@ public enum CullingShortcutKey: Equatable, Sendable {
     case character(String)
 }
 
+public enum ReviewQueue: String, Equatable, Sendable {
+    case picks
+    case rejects
+    case fiveStars
+}
+
 extension EvaluationKind {
     var displayName: String {
         switch self {
@@ -93,6 +99,7 @@ extension EvaluationKind {
 public enum SidebarRowTarget: Equatable, Sendable {
     case allPhotographs
     case placeholder
+    case reviewQueue(ReviewQueue)
     case folder(String)
     case sourceAvailability(SourceAvailability)
     case evaluationKind(EvaluationKind)
@@ -846,6 +853,8 @@ public final class AppModel {
         case .allPhotographs:
             selectedAssetSetID = nil
             try clearLibraryFilters()
+        case .reviewQueue(let queue):
+            try applyReviewQueue(queue)
         case .folder(let path):
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
@@ -2360,6 +2369,21 @@ public final class AppModel {
         try reload()
     }
 
+    private func applyReviewQueue(_ queue: ReviewQueue) throws {
+        selectedAssetSetID = nil
+        clearLibraryQueryFilters()
+        switch queue {
+        case .picks:
+            flagFilter = .pick
+        case .rejects:
+            flagFilter = .reject
+        case .fiveStars:
+            minimumRatingFilter = 5
+        }
+        selectedView = .grid
+        try reload()
+    }
+
     public func refreshSelectedAssetAvailability() throws {
         guard let selectedAssetID else {
             throw TeststripError.invalidState("no selected asset")
@@ -3285,6 +3309,7 @@ public final class AppModel {
         }
         libraryRows.append(SidebarRow(id: "library-people", title: "People"))
         var sections = [SidebarSection(title: "Library", rows: libraryRows)]
+        sections.append(SidebarSection(title: "Review", rows: reviewQueueSidebarRows()))
         if !catalogFolders.isEmpty {
             sections.append(SidebarSection(title: "Folders", rows: catalogFolders.prefix(20).map { folder in
                 SidebarRow(
@@ -3339,6 +3364,33 @@ public final class AppModel {
             sections.append(SidebarSection(title: "Work", rows: workRows))
         }
         return sections
+    }
+
+    private static func reviewQueueSidebarRows() -> [SidebarRow] {
+        reviewQueueSidebarOrder.map { queue in
+            SidebarRow(
+                id: "review-\(queue.rawValue)",
+                title: reviewQueueTitle(queue),
+                target: .reviewQueue(queue)
+            )
+        }
+    }
+
+    private static let reviewQueueSidebarOrder: [ReviewQueue] = [
+        .picks,
+        .rejects,
+        .fiveStars
+    ]
+
+    private static func reviewQueueTitle(_ queue: ReviewQueue) -> String {
+        switch queue {
+        case .picks:
+            return "Picks"
+        case .rejects:
+            return "Rejects"
+        case .fiveStars:
+            return "5 Stars"
+        }
     }
 
     private static func sourceAvailabilitySummaries(repository: CatalogRepository) throws -> [CatalogSourceAvailabilitySummary] {
