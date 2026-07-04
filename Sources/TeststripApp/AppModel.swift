@@ -4,6 +4,7 @@ import TeststripCore
 
 public enum LibraryViewMode: String, Sendable {
     case grid
+    case search
     case loupe
     case compare
     case timeline
@@ -119,6 +120,7 @@ extension EvaluationKind {
 
 public enum SidebarRowTarget: Equatable, Sendable {
     case allPhotographs
+    case search
     case people
     case placeholder
     case reviewQueue(ReviewQueue)
@@ -471,6 +473,9 @@ public final class AppModel {
     }
 
     public var libraryTitle: String {
+        if selectedView == .search {
+            return "Search"
+        }
         if selectedView == .people {
             return "People"
         }
@@ -1033,6 +1038,9 @@ public final class AppModel {
         case .allPhotographs:
             selectedAssetSetID = nil
             try clearLibraryFilters()
+        case .search:
+            selectedAssetSetID = nil
+            selectedView = .search
         case .people:
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
@@ -3504,6 +3512,14 @@ public final class AppModel {
         var libraryRows = [
             SidebarRow(id: "library-all", title: "All Photographs", target: .allPhotographs)
         ]
+        libraryRows.append(
+            SidebarRow(
+                id: "library-search",
+                title: "Search",
+                target: .search,
+                liveMockupPlaceholder: .agenticSearch
+            )
+        )
         if catalogFolders.isEmpty {
             libraryRows.append(SidebarRow(id: "library-folders", title: "Folders"))
         }

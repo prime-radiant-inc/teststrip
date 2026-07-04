@@ -39,6 +39,8 @@ struct LibraryGridView: View {
         Group {
             if model.selectedView == .people {
                 PeopleView(model: model)
+            } else if model.selectedView == .search {
+                SearchWorkspaceView(model: model, assetGrid: AnyView(assetGrid))
             } else if model.assets.isEmpty {
                 ScrollView {
                     emptyLibraryView
@@ -66,6 +68,8 @@ struct LibraryGridView: View {
             )) {
                 Label("Grid", systemImage: "square.grid.3x3.fill")
                     .tag(LibraryViewMode.grid)
+                Label("Search", systemImage: "magnifyingglass")
+                    .tag(LibraryViewMode.search)
                 Label("Loupe", systemImage: "rectangle.inset.filled")
                     .tag(LibraryViewMode.loupe)
                 Label("Compare", systemImage: "rectangle.grid.2x2")
@@ -187,7 +191,7 @@ struct LibraryGridView: View {
     @ViewBuilder
     private var topInsetContent: some View {
         VStack(spacing: 0) {
-            if model.selectedView == .grid {
+            if model.selectedView == .grid || model.selectedView == .search {
                 filterBar
             }
             if LibraryGridChromePolicy.shouldShowImportProgressBanner(
@@ -1574,6 +1578,87 @@ private extension View {
             .accessibilityAction {
                 model.select(asset.id)
             }
+    }
+}
+
+private struct SearchWorkspaceView: View {
+    var model: AppModel
+    var assetGrid: AnyView
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                searchHeader
+                Divider()
+                if model.assets.isEmpty {
+                    emptySearchResults
+                        .frame(maxWidth: .infinity, minHeight: 280)
+                } else {
+                    assetGrid
+                }
+            }
+        }
+        .background(Color.black.opacity(0.18))
+    }
+
+    private var searchHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Label("Search", systemImage: "sparkles")
+                    .font(.headline)
+                    .foregroundStyle(.orange)
+                Text(model.suggestedSavedSearchName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                searchMetric(title: "Results", value: "\(model.totalAssetCount)")
+                searchMetric(title: "Sets", value: "\(model.savedAssetSets.count)")
+                searchMetric(title: "Starred", value: "\(model.starredAssetSets.count)")
+            }
+            if model.activeLibraryFilterChips.isEmpty {
+                Text("All photographs")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(model.activeLibraryFilterChips, id: \.self) { chip in
+                            Text(chip)
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(.bar)
+        .liveMockupPlaceholder(.searchRefine)
+    }
+
+    private func searchMetric(title: String, value: String) -> some View {
+        HStack(spacing: 4) {
+            Text(value)
+                .font(.caption.monospacedDigit().weight(.semibold))
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var emptySearchResults: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 34))
+                .foregroundStyle(.secondary)
+            Text("No matches")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

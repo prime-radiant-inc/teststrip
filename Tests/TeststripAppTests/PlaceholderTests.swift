@@ -37,6 +37,16 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertEqual(peopleRow.target, .people)
     }
 
+    func testSearchSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
+        let model = AppModel.demo()
+        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
+        let searchRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-search" })
+
+        XCTAssertEqual(searchRow.liveMockupPlaceholder, .agenticSearch)
+        XCTAssertTrue(searchRow.isSelectable)
+        XCTAssertEqual(searchRow.target, .search)
+    }
+
     func testSelectingPeopleSidebarRowOpensPeopleView() throws {
         let model = AppModel.demo()
         let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
@@ -45,6 +55,20 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         try model.selectSidebarRow(peopleRow)
 
         XCTAssertEqual(model.selectedView, .people)
+    }
+
+    func testSelectingSearchSidebarRowOpensSearchViewWithoutClearingQuery() throws {
+        let model = AppModel.demo()
+        model.librarySearchText = "ceremony"
+        model.minimumRatingFilter = 4
+        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
+        let searchRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-search" })
+
+        try model.selectSidebarRow(searchRow)
+
+        XCTAssertEqual(model.selectedView, .search)
+        XCTAssertEqual(model.librarySearchText, "ceremony")
+        XCTAssertEqual(model.minimumRatingFilter, 4)
     }
 
     func testEmptyWorkSidebarRowsAreMarkedAsLiveMockupPlaceholders() throws {
