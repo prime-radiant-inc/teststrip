@@ -64,6 +64,67 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(CompareSurveyPresentation.decisionSummary(for: unreviewed), "Unreviewed")
     }
 
+    func testDecisionBadgesUseRealMetadataWithoutClaimingBest() {
+        let primary = makeAsset(id: "primary")
+        let picked = makeAsset(id: "picked", metadata: AssetMetadata(rating: 5, colorLabel: .red, flag: .pick))
+        let rejected = makeAsset(id: "rejected", metadata: AssetMetadata(flag: .reject))
+        let rated = makeAsset(id: "rated", metadata: AssetMetadata(rating: 4))
+        let labeled = makeAsset(id: "labeled", metadata: AssetMetadata(colorLabel: .blue))
+        let unreviewed = makeAsset(id: "unreviewed")
+        let presentation = CompareSurveyPresentation(
+            assets: [primary, picked, rejected, rated, labeled, unreviewed],
+            selectedAssetID: primary.id
+        )
+
+        XCTAssertEqual(presentation.decisionBadges(for: primary), [
+            CompareDecisionBadge(text: "PRIMARY", tone: .primary)
+        ])
+        XCTAssertEqual(presentation.decisionBadges(for: picked), [
+            CompareDecisionBadge(text: "PICKED", tone: .positive)
+        ])
+        XCTAssertEqual(presentation.decisionBadges(for: rejected), [
+            CompareDecisionBadge(text: "REJECTED", tone: .destructive)
+        ])
+        XCTAssertEqual(presentation.decisionBadges(for: rated), [
+            CompareDecisionBadge(text: "4 STAR", tone: .rating)
+        ])
+        XCTAssertEqual(presentation.decisionBadges(for: labeled), [
+            CompareDecisionBadge(text: "BLUE", tone: .label)
+        ])
+        XCTAssertEqual(presentation.decisionBadges(for: unreviewed), [])
+    }
+
+    func testPrimaryBadgeCombinesWithActualFlagButNotWithRatingOrLabel() {
+        let primary = makeAsset(id: "primary", metadata: AssetMetadata(rating: 5, colorLabel: .red, flag: .pick))
+        let presentation = CompareSurveyPresentation(assets: [primary], selectedAssetID: primary.id)
+
+        XCTAssertEqual(presentation.decisionBadges(for: primary), [
+            CompareDecisionBadge(text: "PRIMARY", tone: .primary),
+            CompareDecisionBadge(text: "PICKED", tone: .positive)
+        ])
+    }
+
+    func testDisabledGroupActionTextDoesNotOverstateStackSupport() {
+        let assets = [
+            makeAsset(id: "primary"),
+            makeAsset(id: "second"),
+            makeAsset(id: "third")
+        ]
+
+        XCTAssertEqual(
+            CompareSurveyPresentation(assets: assets, selectedAssetID: assets[0].id).disabledGroupActionText,
+            "Keep primary · reject 2"
+        )
+        XCTAssertEqual(
+            CompareSurveyPresentation(assets: [assets[0]], selectedAssetID: assets[0].id).disabledGroupActionText,
+            "Keep primary"
+        )
+        XCTAssertEqual(
+            CompareSurveyPresentation(assets: [], selectedAssetID: nil).disabledGroupActionText,
+            "No group action"
+        )
+    }
+
     private func makeAsset(
         id: String,
         metadata: AssetMetadata = AssetMetadata()

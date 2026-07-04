@@ -2117,6 +2117,36 @@ struct CompareSurveyPresentation: Equatable {
         return [primaryAsset] + alternateAssets
     }
 
+    var disabledGroupActionText: String {
+        guard primaryAsset != nil else { return "No group action" }
+        let rejectCount = alternateAssets.count
+        guard rejectCount > 0 else { return "Keep primary" }
+        return "Keep primary · reject \(rejectCount)"
+    }
+
+    func decisionBadges(for asset: Asset) -> [CompareDecisionBadge] {
+        var badges: [CompareDecisionBadge] = []
+        if asset.id == primaryAsset?.id {
+            badges.append(CompareDecisionBadge(text: "PRIMARY", tone: .primary))
+        }
+        if let flag = asset.metadata.flag {
+            switch flag {
+            case .pick:
+                badges.append(CompareDecisionBadge(text: "PICKED", tone: .positive))
+            case .reject:
+                badges.append(CompareDecisionBadge(text: "REJECTED", tone: .destructive))
+            }
+            return badges
+        }
+        if asset.metadata.rating > 0 {
+            badges.append(CompareDecisionBadge(text: "\(asset.metadata.rating) STAR", tone: .rating))
+        }
+        if let colorLabel = asset.metadata.colorLabel {
+            badges.append(CompareDecisionBadge(text: colorLabel.rawValue.uppercased(), tone: .label))
+        }
+        return badges
+    }
+
     static func decisionSummary(for asset: Asset) -> String {
         if let flag = asset.metadata.flag {
             switch flag {
@@ -2133,6 +2163,23 @@ struct CompareSurveyPresentation: Equatable {
             return "\(colorLabel.rawValue.capitalized) label"
         }
         return "Unreviewed"
+    }
+}
+
+struct CompareDecisionBadge: Equatable, Identifiable {
+    enum Tone: String, Equatable {
+        case primary
+        case positive
+        case destructive
+        case rating
+        case label
+    }
+
+    var text: String
+    var tone: Tone
+
+    var id: String {
+        "\(tone.rawValue):\(text)"
     }
 }
 
@@ -2255,7 +2302,7 @@ private struct CompareView: View {
         LazyVGrid(columns: surveyColumns, alignment: .leading, spacing: 14) {
             ForEach(presentation.orderedAssets, id: \.id.rawValue) { asset in
                 VStack(alignment: .leading, spacing: 7) {
-                    compareTile(asset)
+                    compareTile(asset, presentation: presentation)
                     assetCaption(asset, label: surveyLabel(for: asset, presentation: presentation))
                 }
             }
@@ -2270,15 +2317,60 @@ private struct CompareView: View {
         return CompareSurveyPresentation.decisionSummary(for: asset)
     }
 
-    private func compareTile(_ asset: Asset) -> some View {
-        AssetGridCell(
-            asset: asset,
-            previewURL: model.loupePreviewURL(for: asset.id),
-            previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
-            isSelected: model.selectedAssetID == asset.id
-        )
-        .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
-            model.select(assetID)
+    private func compareTile(_ asset: Asset, presentation: CompareSurveyPresentation) -> some View {
+        ZStack(alignment: .topLeading) {
+            AssetGridCell(
+                asset: asset,
+                previewURL: model.loupePreviewURL(for: asset.id),
+                previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
+                isSelected: model.selectedAssetID == asset.id
+            )
+            .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
+                model.select(assetID)
+            }
+            compareDecisionBadges(presentation.decisionBadges(for: asset))
+                .padding(8)
+        }
+    }
+
+    @ViewBuilder
+    private func compareDecisionBadges(_ badges: [CompareDecisionBadge]) -> some View {
+        if !badges.isEmpty {
+            HStack(spacing: 5) {
+                ForEach(badges) { badge in
+                    Text(badge.text)
+                        .font(.caption2.monospaced().weight(.bold))
+                        .foregroundStyle(compareBadgeForeground(for: badge.tone))
+                        .lineLimit(1)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(compareBadgeBackground(for: badge.tone), in: RoundedRectangle(cornerRadius: 4))
+                }
+            }
+        }
+    }
+
+    private func compareBadgeForeground(for tone: CompareDecisionBadge.Tone) -> Color {
+        switch tone {
+        case .primary, .rating:
+            return .black
+        case .positive, .destructive, .label:
+            return .white
+        }
+    }
+
+    private func compareBadgeBackground(for tone: CompareDecisionBadge.Tone) -> Color {
+        switch tone {
+        case .primary:
+            return .orange
+        case .positive:
+            return .green.opacity(0.92)
+        case .destructive:
+            return .red.opacity(0.92)
+        case .rating:
+            return .yellow
+        case .label:
+            return .blue.opacity(0.9)
         }
     }
 
@@ -2328,6 +2420,21 @@ private struct CompareView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
+            Divider()
+                .frame(height: 22)
+            Button(presentation.disabledGroupActionText) {}
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(true)
+                .help("Group actions need real stack membership before they can mutate multiple assets")
+            Button("Keep all") {}
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(true)
+            Button("Choose manually") {}
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(true)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
