@@ -1,6 +1,22 @@
 import Foundation
 import TeststripCore
 
+enum ImportSourcePreflight {
+    static func blockingReason(for sourceURL: URL, fileManager: FileManager = .default) -> String? {
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory) else {
+            return "Source folder is missing"
+        }
+        guard isDirectory.boolValue else {
+            return "Source is not a folder"
+        }
+        guard fileManager.isReadableFile(atPath: sourceURL.path) else {
+            return "Source folder is not readable"
+        }
+        return nil
+    }
+}
+
 struct ImportSourceSummary: Equatable {
     static let defaultScanLimit = 300
     static let defaultEntryLimit = 2_000
@@ -23,15 +39,8 @@ struct ImportSourceSummary: Equatable {
         let boundedLimit = max(1, limit)
         let boundedEntryLimit = max(1, entryLimit)
         let supportedExtensions = Set(supportedExtensions.map { $0.lowercased() })
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory) else {
-            return unavailableSummary(sourceURL: sourceURL, reason: "Source folder is missing", blocksImport: true)
-        }
-        guard isDirectory.boolValue else {
-            return unavailableSummary(sourceURL: sourceURL, reason: "Source is not a folder", blocksImport: true)
-        }
-        guard FileManager.default.isReadableFile(atPath: sourceURL.path) else {
-            return unavailableSummary(sourceURL: sourceURL, reason: "Source folder is not readable", blocksImport: true)
+        if let blockingReason = ImportSourcePreflight.blockingReason(for: sourceURL) {
+            return unavailableSummary(sourceURL: sourceURL, reason: blockingReason, blocksImport: true)
         }
         guard let enumerator = FileManager.default.enumerator(
             at: sourceURL,

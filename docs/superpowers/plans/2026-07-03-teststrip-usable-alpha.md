@@ -432,7 +432,8 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Show clear typed-path file and unreadable-folder errors before import confirmation.
 - [x] Show clear missing/unreadable source preflight errors in the import confirmation sheet.
 - [x] Show clear duplicate import errors while another import is running.
-- [ ] Show clear runtime failed-folder and true panel/security-scope errors.
+- [x] Show clear runtime failed-folder errors before worker/local import starts.
+- [ ] Show clear true panel/security-scope errors.
 - [x] Add model/presentation tests for import state transitions rather than brittle SwiftUI snapshots.
 - [x] Extend AX import verifier to catch apparent no-op after submit and sheet-dismissed-with-no-visible-progress states. Current coverage adds a post-submit visible-feedback gate and `feedback_visible_seconds`.
 - [ ] Add the imported-grid selection/rating AX probe in Slice 3.

@@ -4051,6 +4051,10 @@ public final class AppModel {
             errorMessage = "Another import is already running"
             return
         }
+        if let blockingReason = ImportSourcePreflight.blockingReason(for: folderURL) {
+            failImportBeforeStart(folderURL: folderURL, reason: blockingReason)
+            return
+        }
         errorMessage = nil
         statusMessage = "Importing \(folderURL.lastPathComponent)..."
         if workerSupervisor != nil {
@@ -4209,6 +4213,16 @@ public final class AppModel {
             completedUnitCount: 0,
             totalUnitCount: nil,
             failureCount: 0
+        )
+    }
+
+    private func failImportBeforeStart(folderURL: URL, destinationRoot: URL? = nil, reason: String) {
+        statusMessage = nil
+        errorMessage = reason
+        failImportActivity(
+            folderURL: folderURL,
+            destinationRoot: destinationRoot,
+            error: TeststripError.invalidState(reason)
         )
     }
 
