@@ -111,6 +111,32 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(summary.detailText, "Preview scanned the first 2 files; import will keep scanning")
     }
 
+    func testCompletedEmptySourceSummaryBlocksImportWithClearDetail() throws {
+        let directory = try makeTemporaryDirectory(named: "import-source-summary-empty")
+        try Data("notes".utf8).write(to: directory.appendingPathComponent("notes.txt"))
+
+        let summary = ImportSourceSummary.scan(
+            sourceURL: directory,
+            supportedExtensions: ["jpg"],
+            limit: 20,
+            entryLimit: 20
+        )
+
+        XCTAssertEqual(summary.countText, "No supported photos found")
+        XCTAssertEqual(summary.detailText, "Choose a folder with supported photos before importing")
+        XCTAssertFalse(summary.canStartImport)
+    }
+
+    func testFolderDraftBlocksStartWhenPreflightFindsNoSupportedPhotos() throws {
+        let directory = try makeTemporaryDirectory(named: "import-draft-empty")
+        try Data("notes".utf8).write(to: directory.appendingPathComponent("notes.txt"))
+
+        let draft = ImportConfirmationDraft.folder(directory, supportedExtensions: ["jpg"])
+
+        XCTAssertFalse(draft.canStartImport)
+        XCTAssertEqual(draft.sourceSummary.detailText, "Choose a folder with supported photos before importing")
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-import-confirmation-\(UUID().uuidString)", isDirectory: true)

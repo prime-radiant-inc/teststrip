@@ -93,6 +93,10 @@ struct ImportSourceSummary: Equatable {
         return ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file)
     }
 
+    var canStartImport: Bool {
+        unavailableReason != nil || photoCount > 0 || reachedEntryLimit
+    }
+
     var detailText: String {
         if let unavailableReason {
             return unavailableReason
@@ -103,6 +107,9 @@ struct ImportSourceSummary: Equatable {
         }
         if reachedLimit {
             return "Preview counted the first \(photoCount) supported photos"
+        }
+        if photoCount == 0 {
+            return "Choose a folder with supported photos before importing"
         }
         let sourceName = sourceURL.lastPathComponent.isEmpty ? sourceURL.path : sourceURL.lastPathComponent
         return "Ready to catalog from \(sourceName)"
@@ -128,21 +135,28 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
         ].joined(separator: "|")
     }
 
-    static func folder(_ sourceURL: URL) -> ImportConfirmationDraft {
+    static func folder(
+        _ sourceURL: URL,
+        supportedExtensions: Set<String> = ImageIODecodeProvider.supportedExtensions
+    ) -> ImportConfirmationDraft {
         ImportConfirmationDraft(
             mode: .folder,
             sourceURL: sourceURL,
             destinationRootURL: nil,
-            sourceSummary: ImportSourceSummary.scan(sourceURL: sourceURL)
+            sourceSummary: ImportSourceSummary.scan(sourceURL: sourceURL, supportedExtensions: supportedExtensions)
         )
     }
 
-    static func card(source sourceURL: URL, destinationRoot destinationRootURL: URL) -> ImportConfirmationDraft {
+    static func card(
+        source sourceURL: URL,
+        destinationRoot destinationRootURL: URL,
+        supportedExtensions: Set<String> = ImageIODecodeProvider.supportedExtensions
+    ) -> ImportConfirmationDraft {
         ImportConfirmationDraft(
             mode: .card,
             sourceURL: sourceURL,
             destinationRootURL: destinationRootURL,
-            sourceSummary: ImportSourceSummary.scan(sourceURL: sourceURL)
+            sourceSummary: ImportSourceSummary.scan(sourceURL: sourceURL, supportedExtensions: supportedExtensions)
         )
     }
 
@@ -170,6 +184,10 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
         case .card:
             return "Start Card Import"
         }
+    }
+
+    var canStartImport: Bool {
+        sourceSummary.canStartImport
     }
 
     var planSteps: [ImportPlanStep] {

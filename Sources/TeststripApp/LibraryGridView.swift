@@ -1014,7 +1014,7 @@ struct LibraryGridView: View {
                     confirmImport(draft)
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(isImporting)
+                .disabled(isImporting || !draft.canStartImport)
             }
         }
         .padding(18)
