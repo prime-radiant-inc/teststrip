@@ -39,6 +39,41 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
         ).canCreate)
     }
 
+    func testRuleRowsParseCommonFilterChipShapes() {
+        let presentation = SmartCollectionBuilderPresentation(
+            proposedName: "Filtered",
+            ruleChips: ["Search: Patagonia", "Rating >= 4", "Flag"],
+            matchCount: 12
+        )
+
+        XCTAssertEqual(presentation.ruleRows, [
+            SmartCollectionRuleRow(field: "Search", operation: "matches", value: "Patagonia"),
+            SmartCollectionRuleRow(field: "Rating", operation: "is at least", value: "4"),
+            SmartCollectionRuleRow(field: "Filter", operation: "matches", value: "Flag")
+        ])
+    }
+
+    func testPreviewCountTextCapsAtMatchCount() {
+        let presentation = SmartCollectionBuilderPresentation(
+            proposedName: "Preview",
+            ruleChips: ["Pick"],
+            matchCount: 3
+        )
+
+        XCTAssertEqual(presentation.previewCountText(visibleCount: 18), "showing 3")
+        XCTAssertEqual(presentation.previewCountText(visibleCount: 2), "showing 2")
+    }
+
+    func testPreviewCountTextHandlesNoMatches() {
+        let presentation = SmartCollectionBuilderPresentation(
+            proposedName: "Empty",
+            ruleChips: ["Pick"],
+            matchCount: 0
+        )
+
+        XCTAssertEqual(presentation.previewCountText(visibleCount: 0), "no live preview yet")
+    }
+
     func testSuggestedTemplatesStayStable() {
         XCTAssertEqual(SmartCollectionBuilderPresentation.suggestedTemplates, [
             "Sharp keepers",

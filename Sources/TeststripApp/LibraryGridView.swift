@@ -654,6 +654,9 @@ struct LibraryGridView: View {
                 ruleChips: model.activeLibraryFilterChips,
                 matchCount: model.totalAssetCount
             ),
+            previewAssets: Array(model.assets.prefix(18)),
+            previewURL: { model.gridPreviewURL(for: $0) },
+            previewCacheGeneration: { model.previewCacheGeneration(for: $0) },
             cancel: { isSavingSearch = false },
             save: saveCurrentSearch
         )
@@ -843,19 +846,32 @@ struct LibraryGridView: View {
         @Binding var name: String
         @Binding var starred: Bool
         var presentation: SmartCollectionBuilderPresentation
+        var previewAssets: [Asset]
+        var previewURL: (AssetID) -> URL?
+        var previewCacheGeneration: (AssetID) -> Int
         var cancel: () -> Void
         var save: () -> Void
 
         var body: some View {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Label("New Smart Collection", systemImage: "sparkles")
-                        .font(.headline)
-                    Spacer(minLength: 0)
-                    Text(presentation.matchCountText)
-                        .font(.caption.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(.orange)
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    builderPanel
+                        .frame(width: 360)
+                    Divider()
+                    previewPanel
+                        .frame(width: 420)
                 }
+                Divider()
+                footer
+            }
+            .frame(width: 780, height: 520)
+            .liveMockupPlaceholder(.smartCollectionsBuilder)
+        }
+
+        private var builderPanel: some View {
+            VStack(alignment: .leading, spacing: 16) {
+                Label("New Smart Collection", systemImage: "sparkles")
+                    .font(.headline)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Name")
@@ -865,7 +881,7 @@ struct LibraryGridView: View {
                         .textFieldStyle(.roundedBorder)
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 6) {
                         Text("Match")
                             .font(.caption)
@@ -883,65 +899,148 @@ struct LibraryGridView: View {
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
-                    if presentation.ruleChips.isEmpty {
-                        Text("No active filters")
+                    ruleStack
+                }
+
+                suggestedTemplates
+                Toggle("Starred", isOn: $starred)
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+        }
+
+        private var ruleStack: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                if presentation.ruleRows.isEmpty {
+                    Text("No active filters")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(9)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
+                } else {
+                    ForEach(presentation.ruleRows) { rule in
+                        HStack(spacing: 7) {
+                            Text(rule.field)
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                                .frame(width: 98, alignment: .leading)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 7)
+                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
+                            Text(rule.operation)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 7)
+                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
+                            Text(rule.value)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.orange)
+                                .lineLimit(1)
+                                .frame(width: 82, alignment: .leading)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 7)
+                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
+                        }
+                    }
+                }
+                Label("Add rule", systemImage: "plus")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 7)
+                            .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4]))
+                            .foregroundStyle(.quaternary)
+                    }
+                    .liveMockupPlaceholder(.smartCollectionsBuilder)
+            }
+        }
+
+        private var suggestedTemplates: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Teststrip suggests", systemImage: "sparkles")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 6)], alignment: .leading, spacing: 6) {
+                    ForEach(SmartCollectionBuilderPresentation.suggestedTemplates, id: \.self) { template in
+                        Text(template)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.orange)
+                            .lineLimit(1)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .strokeBorder(Color.orange.opacity(0.24))
+                            }
+                    }
+                }
+            }
+            .padding(10)
+            .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            .liveMockupPlaceholder(.smartCollectionsBuilder)
+        }
+
+        private var previewPanel: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(presentation.matchCountText)
+                        .font(.headline.monospacedDigit())
+                    Text(presentation.previewCountText(visibleCount: previewAssets.count))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+                if previewAssets.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "square.grid.3x3")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                        Text("No preview matches")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                    } else {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 6)], alignment: .leading, spacing: 6) {
-                            ForEach(presentation.ruleChips, id: \.self) { chip in
-                                Text(chip)
-                                    .font(.caption.weight(.medium))
-                                    .lineLimit(1)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
+                            ForEach(previewAssets, id: \.id.rawValue) { asset in
+                                AssetGridCell(
+                                    asset: asset,
+                                    previewURL: previewURL(asset.id),
+                                    previewCacheGeneration: previewCacheGeneration(asset.id),
+                                    isSelected: false
+                                )
+                                .aspectRatio(AssetGridCellLayout.aspectRatio(for: asset), contentMode: .fit)
                             }
                         }
                     }
                 }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Teststrip suggests", systemImage: "sparkles")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.orange)
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 6)], alignment: .leading, spacing: 6) {
-                        ForEach(SmartCollectionBuilderPresentation.suggestedTemplates, id: \.self) { template in
-                            Text(template)
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.orange)
-                                .lineLimit(1)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .strokeBorder(Color.orange.opacity(0.24))
-                                }
-                        }
-                    }
-                }
-                .padding(10)
-                .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-                .liveMockupPlaceholder(.smartCollectionsBuilder)
-
-                Toggle("Starred", isOn: $starred)
-
-                HStack {
-                    Spacer()
-                    Button("Cancel") {
-                        cancel()
-                    }
-                    Button("Create") {
-                        save()
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!presentation.canCreate)
-                }
             }
             .padding(16)
-            .frame(width: 420)
-            .liveMockupPlaceholder(.smartCollectionsBuilder)
+        }
+
+        private var footer: some View {
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    cancel()
+                }
+                Button("Create collection") {
+                    save()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!presentation.canCreate)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(.bar)
         }
     }
 
@@ -2090,12 +2189,65 @@ struct SmartCollectionBuilderPresentation: Equatable {
         "\(ruleChips.count) \(ruleChips.count == 1 ? "rule" : "rules")"
     }
 
+    var ruleRows: [SmartCollectionRuleRow] {
+        ruleChips.map(SmartCollectionRuleRow.init)
+    }
+
     var matchCountText: String {
         "\(matchCount) \(matchCount == 1 ? "match" : "matches")"
     }
 
     var canCreate: Bool {
         !proposedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !ruleChips.isEmpty
+    }
+
+    func previewCountText(visibleCount: Int) -> String {
+        guard matchCount > 0 else { return "no live preview yet" }
+        return "showing \(min(max(visibleCount, 0), matchCount))"
+    }
+}
+
+struct SmartCollectionRuleRow: Equatable, Identifiable {
+    var id: String {
+        "\(field)\n\(operation)\n\(value)"
+    }
+
+    var field: String
+    var operation: String
+    var value: String
+
+    init(field: String, operation: String, value: String) {
+        self.field = field
+        self.operation = operation
+        self.value = value
+    }
+
+    init(chip: String) {
+        let trimmed = chip.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let range = trimmed.range(of: ":") {
+            field = String(trimmed[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            operation = "matches"
+            value = String(trimmed[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if let range = trimmed.range(of: ">=") {
+            field = String(trimmed[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            operation = "is at least"
+            value = String(trimmed[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if let range = trimmed.range(of: "≥") {
+            field = String(trimmed[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            operation = "is at least"
+            value = String(trimmed[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            field = "Filter"
+            operation = "matches"
+            value = trimmed
+        }
+
+        if field.isEmpty {
+            field = "Filter"
+        }
+        if value.isEmpty {
+            value = trimmed.isEmpty ? "Any" : trimmed
+        }
     }
 }
 
