@@ -49,42 +49,18 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.primaryDecisionText, "No frame selected")
     }
 
-    func testPrimaryDecisionTextSummarizesHumanMetadata() {
-        XCTAssertEqual(
-            CompareSurveyPresentation(
-                assets: [makeAsset(id: "pick", metadata: AssetMetadata(flag: .pick))],
-                selectedAssetID: nil
-            ).primaryDecisionText,
-            "Picked"
-        )
-        XCTAssertEqual(
-            CompareSurveyPresentation(
-                assets: [makeAsset(id: "reject", metadata: AssetMetadata(flag: .reject))],
-                selectedAssetID: nil
-            ).primaryDecisionText,
-            "Rejected"
-        )
-        XCTAssertEqual(
-            CompareSurveyPresentation(
-                assets: [makeAsset(id: "rated", metadata: AssetMetadata(rating: 4))],
-                selectedAssetID: nil
-            ).primaryDecisionText,
-            "4 stars"
-        )
-        XCTAssertEqual(
-            CompareSurveyPresentation(
-                assets: [makeAsset(id: "color", metadata: AssetMetadata(colorLabel: .green))],
-                selectedAssetID: nil
-            ).primaryDecisionText,
-            "Green label"
-        )
-        XCTAssertEqual(
-            CompareSurveyPresentation(
-                assets: [makeAsset(id: "unreviewed")],
-                selectedAssetID: nil
-            ).primaryDecisionText,
-            "Unreviewed"
-        )
+    func testDecisionSummaryPrefersFlagThenRatingThenColorLabel() {
+        let pick = makeAsset(id: "pick", metadata: AssetMetadata(rating: 5, colorLabel: .red, flag: .pick))
+        let reject = makeAsset(id: "reject", metadata: AssetMetadata(rating: 5, colorLabel: .yellow, flag: .reject))
+        let rated = makeAsset(id: "rated", metadata: AssetMetadata(rating: 4, colorLabel: .green))
+        let labeled = makeAsset(id: "labeled", metadata: AssetMetadata(colorLabel: .blue))
+        let unreviewed = makeAsset(id: "unreviewed")
+
+        XCTAssertEqual(CompareSurveyPresentation.decisionSummary(for: pick), "Picked")
+        XCTAssertEqual(CompareSurveyPresentation.decisionSummary(for: reject), "Rejected")
+        XCTAssertEqual(CompareSurveyPresentation.decisionSummary(for: rated), "4 stars")
+        XCTAssertEqual(CompareSurveyPresentation.decisionSummary(for: labeled), "Blue label")
+        XCTAssertEqual(CompareSurveyPresentation.decisionSummary(for: unreviewed), "Unreviewed")
     }
 
     private func makeAsset(
