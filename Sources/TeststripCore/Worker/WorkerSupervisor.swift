@@ -79,8 +79,18 @@ public final class WorkerSupervisor: @unchecked Sendable {
         command: WorkerCommand,
         placement: BackgroundWorkQueuePlacement = .back
     ) throws {
-        commandsByItemID[item.id] = command
-        queue.enqueue(item, placement: placement)
+        try enqueue([(item: item, command: command, placement: placement)])
+    }
+
+    public func enqueue(
+        _ requests: [(item: BackgroundWorkItem, command: WorkerCommand, placement: BackgroundWorkQueuePlacement)]
+    ) throws {
+        guard !requests.isEmpty else { return }
+
+        for request in requests {
+            commandsByItemID[request.item.id] = request.command
+            queue.enqueue(request.item, placement: request.placement)
+        }
         queue.activateRunnableItems()
         try dispatchRunnableItems()
         notifyQueueChanged()

@@ -262,6 +262,7 @@ private struct WorkerImportContext {
     var destinationRoot: URL?
     var didAccessSource: Bool
     var didAccessDestination: Bool
+    var displayedCatalogedAssetID: AssetID?
 }
 
 @Observable
@@ -343,9 +344,9 @@ public final class AppModel {
 
     public static let defaultEvaluationProviderName = "local-image-metrics"
     public static let defaultEvaluationProviderNames = [defaultEvaluationProviderName, "apple-vision"]
-    private static let assetPageSize = 500
+    private static let assetPageSize = 120
     private static let loadedAssetWindowSize = assetPageSize * 2
-    private static let pendingPreviewRecoveryBatchSize = 200
+    private static let pendingPreviewRecoveryBatchSize = 40
     private static let pendingMetadataSyncRecoveryBatchSize = 200
     private static let previewGenerationMaximumAutomaticAttempts = 3
     static let sourceAvailabilityBatchSize = 100
@@ -503,12 +504,11 @@ public final class AppModel {
     }
 
     public var canRequestSelectedAssetEvaluation: Bool {
-        guard let selectedAssetID, workerSupervisor != nil else { return false }
-        return hasCachedPreview(for: selectedAssetID)
+        selectedAssetID != nil && workerSupervisor != nil
     }
 
     public var canRequestVisibleAssetEvaluations: Bool {
-        workerSupervisor != nil && assets.contains { hasCachedPreview(for: $0.id) }
+        workerSupervisor != nil && !assets.isEmpty
     }
 
     public var canRefreshVisibleAssetAvailability: Bool {
@@ -794,7 +794,6 @@ public final class AppModel {
             if !Self.failedPreviewGenerationItemIDs(in: queue).isSubset(of: previousPreviewFailureIDs) {
                 try? self?.refreshPreviewGenerationQueueStates()
             }
-            self?.refreshVisibleWorkerImportAssetsIfNeeded(in: queue)
             self?.releaseInactiveWorkerImportContexts(in: queue)
             self?.releaseInactiveEvaluationContexts(in: queue)
             self?.releaseInactiveMetadataSyncContexts(in: queue)
@@ -1816,7 +1815,7 @@ public final class AppModel {
     }
 
     private func enqueuePendingPreviewGeneration() throws {
-        guard let catalog, workerSupervisor != nil else { return }
+        guard let catalog, let workerSupervisor else { return }
         var existingPreviewWorkItemIDs = Self.previewGenerationWorkItemIDs(in: backgroundWorkQueue)
         let availableSlotCount = max(
             0,
@@ -1827,34 +1826,43 @@ public final class AppModel {
             return
         }
         var enqueuedCount = 0
-        for item in try catalog.repository.pendingPreviewGenerationItems(
+        var requests: [(item: BackgroundWorkItem, command: WorkerCommand, placement: BackgroundWorkQueuePlacement)] = []
+        for pendingItem in try catalog.repository.pendingPreviewGenerationItems(
             limit: Self.pendingPreviewRecoveryBatchSize,
             maximumAttemptCount: Self.previewGenerationMaximumAutomaticAttempts
         ) {
-            let itemID = Self.previewWorkItemID(assetID: item.assetID, level: item.level)
+            let itemID = Self.previewWorkItemID(assetID: pendingItem.assetID, level: pendingItem.level)
             if existingPreviewWorkItemIDs.contains(itemID) {
                 continue
             }
-            let asset = try catalog.repository.asset(id: item.assetID)
+            let asset = try catalog.repository.asset(id: pendingItem.assetID)
             if asset.availability.requiresCachedPreviewOnly {
                 continue
             }
-            if previewURL(for: item.assetID, levels: [item.level]) != nil {
-                try catalog.repository.markPreviewGenerated(assetID: item.assetID, level: item.level)
+            if previewURL(for: pendingItem.assetID, levels: [pendingItem.level]) != nil {
+                try catalog.repository.markPreviewGenerated(assetID: pendingItem.assetID, level: pendingItem.level)
                 continue
             }
-            try requestPreview(
-                assetID: item.assetID,
-                level: item.level,
-                recordsPendingPreview: false,
-                refreshesPreviewGenerationQueueState: false
+            let workItem = BackgroundWorkItem(
+                id: itemID,
+                kind: .previewGeneration,
+                title: "Generate preview",
+                detail: "Rendering \(pendingItem.level.rawValue) preview",
+                completedUnitCount: 0,
+                totalUnitCount: 1
             )
+            requests.append((
+                item: workItem,
+                command: .generatePreview(assetID: pendingItem.assetID, level: pendingItem.level),
+                placement: .back
+            ))
             existingPreviewWorkItemIDs.insert(itemID)
             enqueuedCount += 1
             if enqueuedCount >= availableSlotCount {
                 break
             }
         }
+        try workerSupervisor.enqueue(requests)
         try refreshPreviewGenerationQueueStates()
     }
 
@@ -2112,12 +2120,15 @@ public final class AppModel {
     private func handleWorkerCommandProgress(_ event: WorkerEvent) {
         guard case .progress(let itemID, _, _, _, let catalogedAssetIDs) = event,
               let itemID,
-              workerImportContextsByItemID[itemID] != nil,
+              var context = workerImportContextsByItemID[itemID],
+              context.displayedCatalogedAssetID == nil,
               let firstCatalogedAssetID = catalogedAssetIDs.first else {
             return
         }
         do {
             try loadCatalogPage(preferredSelection: firstCatalogedAssetID)
+            context.displayedCatalogedAssetID = firstCatalogedAssetID
+            workerImportContextsByItemID[itemID] = context
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2255,27 +2266,6 @@ public final class AppModel {
             statusMessage = nil
             errorMessage = error.localizedDescription
             failImportActivity(id: itemID.rawValue, folderURL: context.source, destinationRoot: context.destinationRoot, error: error)
-        }
-    }
-
-    private func refreshVisibleWorkerImportAssetsIfNeeded(in queue: BackgroundWorkQueue) {
-        guard let catalog,
-              workerImportContextsByItemID.keys.contains(where: { itemID in
-                  guard let item = queue.item(id: itemID), item.kind == .ingest else {
-                      return false
-                  }
-                  return [.running, .paused].contains(item.status)
-              }) else {
-            return
-        }
-        do {
-            let currentCount = try currentLibraryAssetCount(repository: catalog.repository)
-            guard currentCount > totalAssetCount || (assets.isEmpty && currentCount > 0) else {
-                return
-            }
-            try loadCatalogPage(preferredSelection: selectedAssetID)
-        } catch {
-            errorMessage = error.localizedDescription
         }
     }
 

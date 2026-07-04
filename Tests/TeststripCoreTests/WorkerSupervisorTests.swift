@@ -24,6 +24,31 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(supervisor.queue.item(id: second.id)?.status, .queued)
     }
 
+    func testBatchEnqueueNotifiesQueueChangedOnceAndDispatchesRunnableWork() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        var queueSnapshots: [BackgroundWorkQueue] = []
+        supervisor.onQueueChanged = { queueSnapshots.append($0) }
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let second = BackgroundWorkItem.testItem(id: "second")
+        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
+        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+
+        try supervisor.enqueue([
+            (item: first, command: firstCommand, placement: .back),
+            (item: second, command: secondCommand, placement: .back)
+        ])
+
+        XCTAssertEqual(queueSnapshots.count, 1)
+        XCTAssertEqual(transport.launchCount, 1)
+        XCTAssertEqual(try transport.commands(), [firstCommand])
+        XCTAssertEqual(supervisor.queue.item(id: first.id)?.status, .running)
+        XCTAssertEqual(supervisor.queue.item(id: second.id)?.status, .queued)
+    }
+
     func testCompletingRunningWorkDispatchesNextQueuedCommand() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

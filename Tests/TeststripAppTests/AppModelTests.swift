@@ -1057,26 +1057,26 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCullingShortcutLoadsNextPageWhenAdvancingPastLoadedAssets() throws {
-        let model = try makeModelWithSeededCatalog(named: "culling-next-page", count: 501)
-        model.select(AssetID(rawValue: "asset-499"))
+        let model = try makeModelWithSeededCatalog(named: "culling-next-page", count: 121)
+        model.select(AssetID(rawValue: "asset-119"))
 
         try model.applyCullingShortcut(.nextPhoto)
 
-        XCTAssertEqual(model.selectedAssetID, AssetID(rawValue: "asset-500"))
-        XCTAssertEqual(model.assets.last?.id, AssetID(rawValue: "asset-500"))
+        XCTAssertEqual(model.selectedAssetID, AssetID(rawValue: "asset-120"))
+        XCTAssertEqual(model.assets.last?.id, AssetID(rawValue: "asset-120"))
         XCTAssertFalse(model.hasMoreAssets)
     }
 
     func testCullingShortcutLoadsPreviousPageWhenMovingBeforeLoadedAssets() throws {
-        let model = try makeModelWithSeededCatalog(named: "culling-previous-page", count: 1_500)
+        let model = try makeModelWithSeededCatalog(named: "culling-previous-page", count: 360)
         try model.loadMoreAssets()
         try model.loadMoreAssets()
-        XCTAssertEqual(model.assets.first?.id, AssetID(rawValue: "asset-500"))
-        model.select(AssetID(rawValue: "asset-500"))
+        XCTAssertEqual(model.assets.first?.id, AssetID(rawValue: "asset-120"))
+        model.select(AssetID(rawValue: "asset-120"))
 
         try model.applyCullingShortcut(.previousPhoto)
 
-        XCTAssertEqual(model.selectedAssetID, AssetID(rawValue: "asset-499"))
+        XCTAssertEqual(model.selectedAssetID, AssetID(rawValue: "asset-119"))
         XCTAssertEqual(model.assets.first?.id, AssetID(rawValue: "asset-0"))
         XCTAssertTrue(model.hasMoreAssets)
     }
@@ -1251,8 +1251,9 @@ final class AppModelTests: XCTestCase {
 
         let model = try AppModel.load(repository: repository)
 
-        XCTAssertEqual(model.assets.count, 500)
+        XCTAssertEqual(model.assets.count, 120)
         XCTAssertEqual(model.totalAssetCount, 501)
+        XCTAssertEqual(model.libraryCountText, "Showing 120 of 501 photographs")
     }
 
     func testLoadMoreAssetsAppendsNextCatalogPage() throws {
@@ -1281,15 +1282,16 @@ final class AppModelTests: XCTestCase {
         )
         let model = try AppModel.load(catalog: catalog)
 
-        XCTAssertEqual(model.assets.count, 500)
+        XCTAssertEqual(model.assets.count, 120)
         XCTAssertTrue(model.hasMoreAssets)
 
         try model.loadMoreAssets()
 
-        XCTAssertEqual(model.assets.count, 501)
-        XCTAssertEqual(model.assets.last?.id, AssetID(rawValue: "asset-500"))
+        XCTAssertEqual(model.assets.count, 240)
+        XCTAssertEqual(model.assets.last?.id, AssetID(rawValue: "asset-239"))
         XCTAssertEqual(model.totalAssetCount, 501)
-        XCTAssertFalse(model.hasMoreAssets)
+        XCTAssertTrue(model.hasMoreAssets)
+        XCTAssertEqual(model.libraryCountText, "Showing 240 of 501 photographs")
     }
 
     func testPagingSynthetic100kCatalogKeepsLoadedAssetWindowBounded() throws {
@@ -1309,20 +1311,20 @@ final class AppModelTests: XCTestCase {
         )
         let model = try AppModel.load(catalog: catalog)
 
-        XCTAssertEqual(model.assets.count, 500)
+        XCTAssertEqual(model.assets.count, 120)
         XCTAssertEqual(model.totalAssetCount, 100_000)
 
         for _ in 0..<20 {
             try model.loadMoreAssets()
         }
 
-        XCTAssertEqual(model.assets.count, 1_000)
-        XCTAssertEqual(model.assets.first?.id, AssetID(rawValue: "asset-9500"))
-        XCTAssertEqual(model.assets.last?.id, AssetID(rawValue: "asset-10499"))
+        XCTAssertEqual(model.assets.count, 240)
+        XCTAssertEqual(model.assets.first?.id, AssetID(rawValue: "asset-2280"))
+        XCTAssertEqual(model.assets.last?.id, AssetID(rawValue: "asset-2519"))
         XCTAssertEqual(model.totalAssetCount, 100_000)
         XCTAssertTrue(model.hasPreviousAssets)
         XCTAssertTrue(model.hasMoreAssets)
-        XCTAssertEqual(model.libraryCountText, "Showing 9501-10500 of 100000 photographs")
+        XCTAssertEqual(model.libraryCountText, "Showing 2281-2520 of 100000 photographs")
     }
 
     func testLoadPreviousAssetsKeepsLoadedAssetWindowBounded() throws {
@@ -1330,7 +1332,7 @@ final class AppModelTests: XCTestCase {
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
         let repository = CatalogRepository(database: database)
-        try seedCatalogAssets(count: 2_500, repository: repository)
+        try seedCatalogAssets(count: 600, repository: repository)
         let catalog = AppCatalog(
             paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
             repository: repository,
@@ -1347,13 +1349,13 @@ final class AppModelTests: XCTestCase {
 
         try model.loadPreviousAssets()
 
-        XCTAssertEqual(model.assets.count, 1_000)
-        XCTAssertEqual(model.assets.first?.id, AssetID(rawValue: "asset-500"))
-        XCTAssertEqual(model.assets.last?.id, AssetID(rawValue: "asset-1499"))
-        XCTAssertEqual(model.totalAssetCount, 2_500)
+        XCTAssertEqual(model.assets.count, 240)
+        XCTAssertEqual(model.assets.first?.id, AssetID(rawValue: "asset-120"))
+        XCTAssertEqual(model.assets.last?.id, AssetID(rawValue: "asset-359"))
+        XCTAssertEqual(model.totalAssetCount, 600)
         XCTAssertTrue(model.hasPreviousAssets)
         XCTAssertTrue(model.hasMoreAssets)
-        XCTAssertEqual(model.libraryCountText, "Showing 501-1500 of 2500 photographs")
+        XCTAssertEqual(model.libraryCountText, "Showing 121-360 of 600 photographs")
     }
 
     func testApplyingLibraryFiltersLoadsMatchingCatalogAssets() throws {
@@ -2416,7 +2418,7 @@ final class AppModelTests: XCTestCase {
         try writeTestPNG(to: image)
         let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
         let catalog = try AppCatalog.open(paths: paths)
-        for index in 0..<500 {
+        for index in 0..<120 {
             try catalog.repository.upsert(Asset(
                 id: AssetID(rawValue: "existing-\(index)"),
                 originalURL: URL(fileURLWithPath: "/Photos/existing-\(index).jpg"),
@@ -2436,8 +2438,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.assets.contains { $0.id == importedAsset.id })
         XCTAssertEqual(model.selectedAssetID, importedAsset.id)
         XCTAssertEqual(importedAsset.originalURL, image)
-        XCTAssertEqual(model.totalAssetCount, 501)
-        XCTAssertEqual(model.libraryCountText, "Showing 501-501 of 501 photographs")
+        XCTAssertEqual(model.totalAssetCount, 121)
+        XCTAssertEqual(model.libraryCountText, "Showing 121-121 of 121 photographs")
         XCTAssertTrue(model.hasPreviousAssets)
 
         try model.loadPreviousAssets()
@@ -3054,13 +3056,13 @@ final class AppModelTests: XCTestCase {
         )
         let (model, repository, assets) = try makeModelWithPendingPreviewBacklog(
             named: "pending-preview-refill",
-            assetCount: 201,
+            assetCount: 41,
             workerSupervisor: supervisor
         )
         let firstItemID = WorkSessionID(rawValue: "preview-asset-0-grid")
-        let refillItemID = WorkSessionID(rawValue: "preview-asset-200-grid")
+        let refillItemID = WorkSessionID(rawValue: "preview-asset-40-grid")
 
-        XCTAssertEqual(model.backgroundWorkQueue.items.count, 200)
+        XCTAssertEqual(model.backgroundWorkQueue.items.count, 40)
         XCTAssertNil(model.backgroundWorkQueue.item(id: refillItemID))
         XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: assets[0].id, level: .grid)])
 
@@ -3124,7 +3126,7 @@ final class AppModelTests: XCTestCase {
         )
         let (model, repository, assets) = try makeModelWithPendingPreviewBacklog(
             named: "pending-preview-refill-query-count",
-            assetCount: 201,
+            assetCount: 41,
             workerSupervisor: supervisor
         ) { database in
             database.rowQueryObserver = { sql in
@@ -3138,7 +3140,7 @@ final class AppModelTests: XCTestCase {
             }
         }
         let firstItemID = WorkSessionID(rawValue: "preview-asset-0-grid")
-        let refillItemID = WorkSessionID(rawValue: "preview-asset-200-grid")
+        let refillItemID = WorkSessionID(rawValue: "preview-asset-40-grid")
 
         XCTAssertEqual(queueStateQueryCount, 2)
 
@@ -3164,7 +3166,7 @@ final class AppModelTests: XCTestCase {
         )
         let (model, repository, assets) = try makeModelWithPendingPreviewBacklog(
             named: "pending-preview-refill-xmp-query-count",
-            assetCount: 201,
+            assetCount: 41,
             workerSupervisor: supervisor
         ) { database in
             database.rowQueryObserver = { sql in
@@ -3174,7 +3176,7 @@ final class AppModelTests: XCTestCase {
             }
         }
         let firstItemID = WorkSessionID(rawValue: "preview-asset-0-grid")
-        let refillItemID = WorkSessionID(rawValue: "preview-asset-200-grid")
+        let refillItemID = WorkSessionID(rawValue: "preview-asset-40-grid")
 
         metadataSyncQueryCount = 0
         try repository.markPreviewGenerated(assetID: assets[0].id, level: .grid)
@@ -3411,7 +3413,7 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
-    func testCanRequestSelectedAssetEvaluationRequiresSelectionWorkerAndCachedPreview() throws {
+    func testCanRequestSelectedAssetEvaluationRequiresSelectionAndWorker() throws {
         let (modelWithoutWorker, _, _) = try makeModelWithPreviewCache(named: "evaluation-without-worker")
         XCTAssertFalse(modelWithoutWorker.canRequestSelectedAssetEvaluation)
 
@@ -3422,19 +3424,15 @@ final class AppModelTests: XCTestCase {
             queue: BackgroundWorkQueue(maxRunningCount: 1),
             transport: RecordingWorkerTransport()
         )
-        let (model, previewCache, asset) = try makeModelWithPreviewCache(
+        let (model, _, _) = try makeModelWithPreviewCache(
             named: "evaluation-preview-required",
             workerSupervisor: supervisor
         )
 
-        XCTAssertFalse(model.canRequestSelectedAssetEvaluation)
-
-        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
-
         XCTAssertTrue(model.canRequestSelectedAssetEvaluation)
     }
 
-    func testCanRequestVisibleAssetEvaluationsRequiresLoadedAssetsWorkerAndCachedPreview() throws {
+    func testCanRequestVisibleAssetEvaluationsRequiresLoadedAssetsAndWorker() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
             queue: BackgroundWorkQueue(maxRunningCount: 1),
@@ -3445,14 +3443,11 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(AppModel(sidebarSections: [], selectedView: .grid, assets: [asset]).canRequestVisibleAssetEvaluations)
         XCTAssertFalse(AppModel(sidebarSections: [], selectedView: .grid, assets: [], workerSupervisor: supervisor).canRequestVisibleAssetEvaluations)
 
-        let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+        let (model, _, _) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "visible-evaluation-preview-required",
             assets: [asset],
             workerSupervisor: supervisor
         )
-        XCTAssertFalse(model.canRequestVisibleAssetEvaluations)
-
-        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
 
         XCTAssertTrue(model.canRequestVisibleAssetEvaluations)
     }
@@ -4262,6 +4257,68 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testWorkerImportProgressDoesNotReloadForEveryCatalogedAsset() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-coalesced-early-assets")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let firstImage = photoFolder.appendingPathComponent("first.png")
+        let secondImage = photoFolder.appendingPathComponent("second.png")
+        try writeTestPNG(to: firstImage)
+        try writeTestPNG(to: secondImage)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+        let itemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        let firstAsset = Asset(
+            id: AssetID(rawValue: "worker-early-import-first"),
+            originalURL: firstImage,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let secondAsset = Asset(
+            id: AssetID(rawValue: "worker-early-import-second"),
+            originalURL: secondImage,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 11, modificationDate: Date(timeIntervalSince1970: 11)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(firstAsset)
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
+            itemID: itemID,
+            completedUnitCount: 1,
+            totalUnitCount: 10,
+            detail: "Cataloging 1 of 10 photos",
+            catalogedAssetIDs: [firstAsset.id]
+        )))
+        try await waitForSelectedAsset(firstAsset.id, in: model)
+
+        try catalog.repository.upsert(secondAsset)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
+            itemID: itemID,
+            completedUnitCount: 2,
+            totalUnitCount: 10,
+            detail: "Cataloging 2 of 10 photos",
+            catalogedAssetIDs: [secondAsset.id]
+        )))
+
+        try await waitForVisibleWorkDetail("Cataloging 2 of 10 photos", in: model)
+        XCTAssertEqual(model.selectedAssetID, firstAsset.id)
+        XCTAssertEqual(model.assets.map(\.id), [firstAsset.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
+    @MainActor
     func testWorkerImportProgressPersistsRunningSessionDetail() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-progress-session")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
@@ -4302,7 +4359,7 @@ final class AppModelTests: XCTestCase {
         try writeTestPNG(to: image)
         let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
         let catalog = try AppCatalog.open(paths: paths)
-        for index in 0..<500 {
+        for index in 0..<120 {
             try catalog.repository.upsert(Asset(
                 id: AssetID(rawValue: "existing-\(index)"),
                 originalURL: URL(fileURLWithPath: "/Photos/existing-\(index).jpg"),
@@ -4335,15 +4392,15 @@ final class AppModelTests: XCTestCase {
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
             itemID: itemID,
             completedUnitCount: 1,
-            totalUnitCount: 501,
-            detail: "Cataloging 1 of 501 photos",
+            totalUnitCount: 121,
+            detail: "Cataloging 1 of 121 photos",
             catalogedAssetIDs: [importedAsset.id]
         )))
 
         try await waitForSelectedAsset(importedAsset.id, in: model)
         XCTAssertEqual(model.assets.map(\.id), [importedAsset.id])
-        XCTAssertEqual(model.totalAssetCount, 501)
-        XCTAssertEqual(model.libraryCountText, "Showing 501-501 of 501 photographs")
+        XCTAssertEqual(model.totalAssetCount, 121)
+        XCTAssertEqual(model.libraryCountText, "Showing 121-121 of 121 photographs")
         XCTAssertTrue(model.isImporting)
     }
 
