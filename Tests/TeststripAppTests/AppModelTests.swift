@@ -492,6 +492,25 @@ final class AppModelTests: XCTestCase {
         )
     }
 
+    func testResolvingMetadataConflictRemovesAssetFromConflictFilter() throws {
+        let catalogMetadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["catalog"])
+        let sidecarMetadata = AssetMetadata(rating: 2, colorLabel: .red, flag: .reject, keywords: ["sidecar"])
+        let (model, _, asset, _, _) = try makeModelWithXMPConflict(
+            named: "resolve-conflict-filter",
+            catalogMetadata: catalogMetadata,
+            sidecarMetadata: sidecarMetadata
+        )
+        model.metadataSyncConflictFilter = true
+        try model.reload()
+        XCTAssertEqual(model.assets.map(\.id), [asset.id])
+
+        try model.resolveSelectedMetadataConflictUsingCatalog()
+
+        XCTAssertEqual(model.assets, [])
+        XCTAssertEqual(model.totalAssetCount, 0)
+        XCTAssertNil(model.sidebarSections.first { $0.title == "Sync" })
+    }
+
     func testResolveSelectedMetadataConflictUsingSidecarImportsSidecarMetadata() throws {
         let catalogMetadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["catalog"])
         let sidecarMetadata = AssetMetadata(rating: 2, colorLabel: .red, flag: .reject, keywords: ["sidecar"])

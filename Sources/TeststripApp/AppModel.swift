@@ -1373,11 +1373,13 @@ public final class AppModel {
                 fingerprint: result.fingerprint
             )
             clearMetadataSyncState(assetID: assetID)
+            try refreshAfterMetadataConflictResolution()
             statusMessage = "Resolved XMP conflict using catalog metadata"
         } catch {
             try catalog.repository.recordMetadataSyncPending(pendingItem)
             metadataSyncConflictItems.removeAll { $0.assetID == assetID }
             upsertPendingMetadataSyncItem(pendingItem)
+            try refreshAfterMetadataConflictResolution()
             statusMessage = "XMP write pending for \(asset.originalURL.lastPathComponent)"
         }
     }
@@ -1414,6 +1416,7 @@ public final class AppModel {
             metadataRedoStack.removeAll()
         }
         clearMetadataSyncState(assetID: assetID)
+        try refreshAfterMetadataConflictResolution()
         statusMessage = "Resolved XMP conflict using sidecar metadata"
     }
 
@@ -1430,6 +1433,13 @@ public final class AppModel {
     private func clearMetadataSyncState(assetID: AssetID) {
         pendingMetadataSyncItems.removeAll { $0.assetID == assetID }
         metadataSyncConflictItems.removeAll { $0.assetID == assetID }
+    }
+
+    private func refreshAfterMetadataConflictResolution() throws {
+        rebuildSidebarSections()
+        if metadataSyncConflictFilter {
+            try reload()
+        }
     }
 
     private func enqueueMetadataSyncCheck(for assetID: AssetID) throws {
