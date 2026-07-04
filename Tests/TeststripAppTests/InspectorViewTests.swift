@@ -8,6 +8,46 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(InspectorPreviewLayout.size, CGSize(width: 258, height: 186))
     }
 
+    func testAssetIdentitySplitsFilenameExtensionAndStatus() {
+        let asset = makeAsset(
+            id: "identity",
+            originalURL: URL(fileURLWithPath: "/Photos/Patagonia/frame-001.CR2"),
+            availability: .offline,
+            metadata: AssetMetadata(rating: 4)
+        )
+
+        let identity = InspectorAssetIdentity(asset: asset)
+
+        XCTAssertEqual(identity.fullFilename, "frame-001.CR2")
+        XCTAssertEqual(identity.displayName, "frame-001")
+        XCTAssertEqual(identity.extensionBadge, "CR2")
+        XCTAssertEqual(identity.availabilityText, "Availability: offline")
+        XCTAssertEqual(identity.ratingText, "Rating: 4")
+    }
+
+    func testTechnicalRowsUseCompactCatalogMetadata() {
+        let metadata = AssetTechnicalMetadata(
+            pixelWidth: 8256,
+            pixelHeight: 5504,
+            cameraMake: "Fujifilm",
+            cameraModel: "GFX 100S",
+            lensModel: "GF45-100mmF4",
+            isoSpeed: 800,
+            capturedAt: nil,
+            provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+        )
+
+        XCTAssertEqual(
+            InspectorTechnicalRows(metadata: metadata).rows,
+            [
+                InspectorMetadataRow(title: "Dimensions", value: "8256 x 5504"),
+                InspectorMetadataRow(title: "Camera", value: "Fujifilm GFX 100S"),
+                InspectorMetadataRow(title: "Lens", value: "GF45-100mmF4"),
+                InspectorMetadataRow(title: "ISO", value: "800")
+            ]
+        )
+    }
+
     func testMetadataDraftFormatsPortableMetadataFromAsset() {
         let asset = makeAsset(
             id: "draft-asset",
@@ -85,13 +125,18 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(draft.caption, "First caption")
     }
 
-    private func makeAsset(id: String, metadata: AssetMetadata) -> Asset {
+    private func makeAsset(
+        id: String,
+        originalURL: URL? = nil,
+        availability: SourceAvailability = .online,
+        metadata: AssetMetadata
+    ) -> Asset {
         Asset(
             id: AssetID(rawValue: id),
-            originalURL: URL(fileURLWithPath: "/Photos/\(id).jpg"),
+            originalURL: originalURL ?? URL(fileURLWithPath: "/Photos/\(id).jpg"),
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
-            availability: .online,
+            availability: availability,
             metadata: metadata
         )
     }

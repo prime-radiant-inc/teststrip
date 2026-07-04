@@ -110,7 +110,7 @@ let deadline = Date().addingTimeInterval(timeout)
 while Date() < deadline {
     if walk(root, visit: { element in
         stringAttribute(element, kAXRoleAttribute) == kAXStaticTextRole
-            && accessibleText(element) == "Rating: 5"
+            && accessibleText(element)?.contains("Rating: 5") == true
     }) != nil {
         print("keyboard rating applied to \(ProcessInfo.processInfo.environment["TESTSTRIP_AX_TARGET_ASSET"] ?? "selected asset")")
         exit(0)

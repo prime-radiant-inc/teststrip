@@ -111,7 +111,7 @@ while Date() < deadline {
               let text = accessibleText(element) else {
             return false
         }
-        return text == selectedName
+        return text == selectedName || text.contains(selectedName)
     }) != nil {
         print("selected \(selectedName)")
         exit(0)
