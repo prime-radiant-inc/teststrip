@@ -337,6 +337,7 @@ public final class AppModel {
     private static let assetPageSize = 500
     private static let loadedAssetWindowSize = assetPageSize * 2
     private static let pendingPreviewRecoveryBatchSize = 200
+    private static let pendingMetadataSyncRecoveryBatchSize = 200
     private static let previewGenerationMaximumAutomaticAttempts = 3
     static let sourceAvailabilityBatchSize = 100
     private static let defaultCompareAssetLimit = 4
@@ -1690,7 +1691,15 @@ public final class AppModel {
 
     private func enqueuePendingMetadataSync() throws {
         guard let catalog, let workerSupervisor else { return }
+        var enqueuedCount = 0
         for pendingItem in try catalog.repository.pendingMetadataSyncItems() {
+            guard enqueuedCount < Self.pendingMetadataSyncRecoveryBatchSize else {
+                break
+            }
+            let asset = try catalog.repository.asset(id: pendingItem.assetID)
+            guard canAutomaticallyRetryMetadataSync(for: asset, sidecarURL: pendingItem.sidecarURL) else {
+                continue
+            }
             let itemID = WorkSessionID(rawValue: "xmp-\(pendingItem.assetID.rawValue)-\(pendingItem.catalogGeneration)")
             if backgroundWorkQueue.item(id: itemID) != nil {
                 continue
@@ -1710,8 +1719,17 @@ public final class AppModel {
                 metadataSyncAssetIDsByItemID[itemID] = nil
                 throw error
             }
+            enqueuedCount += 1
             syncBackgroundWorkQueueFromSupervisor()
         }
+    }
+
+    private func canAutomaticallyRetryMetadataSync(for asset: Asset, sidecarURL: URL) -> Bool {
+        guard !asset.availability.requiresCachedPreviewOnly else {
+            return false
+        }
+        let sidecarDirectory = sidecarURL.deletingLastPathComponent()
+        return FileManager.default.isWritableFile(atPath: sidecarDirectory.path)
     }
 
     public func requestVisibleGridPreview(assetID: AssetID) throws {

@@ -814,12 +814,15 @@ final class AppModelTests: XCTestCase {
 
     func testLoadQueuesPendingMetadataSyncWhenSupervisorConfigured() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-pending-worker-xmp")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let originalURL = photoFolder.appendingPathComponent("frame.cr2")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
         let repository = CatalogRepository(database: database)
         let asset = Asset(
             id: AssetID(rawValue: "pending-worker-xmp-target"),
-            originalURL: URL(fileURLWithPath: "/Volumes/NAS/frame.cr2"),
+            originalURL: originalURL,
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
             availability: .online,
@@ -856,6 +859,103 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try transport.commands(), [.syncMetadata(assetID: asset.id)])
         XCTAssertEqual(model.visibleWorkActivity?.kind, .xmpSync)
         XCTAssertEqual(model.visibleWorkActivity?.detail, "Writing XMP sidecar")
+    }
+
+    func testLoadSkipsPendingMetadataSyncForUnavailableOriginal() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-pending-worker-xmp-offline")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let originalURL = photoFolder.appendingPathComponent("frame.cr2")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "pending-worker-xmp-offline"),
+            originalURL: originalURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .offline,
+            metadata: AssetMetadata(rating: 4)
+        )
+        try repository.upsert(asset)
+        let pending = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: asset.originalURL.appendingPathExtension("xmp"),
+            catalogGeneration: 1,
+            lastSyncedFingerprint: nil
+        )
+        try repository.recordMetadataSyncPending(pending)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+
+        let model = try AppModel.load(
+            catalog: AppCatalog(
+                paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+                repository: repository,
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+                importService: LibraryImportService(
+                    ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                    previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+                )
+            ),
+            workerSupervisor: supervisor
+        )
+
+        XCTAssertEqual(model.pendingMetadataSyncItems, [pending])
+        XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }, [])
+        XCTAssertEqual(try transport.commands(), [])
+    }
+
+    func testLoadBoundsPendingMetadataSyncRetries() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-pending-worker-xmp-limit")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assets = (0..<205).map { index in
+            Asset(
+                id: AssetID(rawValue: "pending-worker-xmp-limit-\(index)"),
+                originalURL: photoFolder.appendingPathComponent("frame-\(index).cr2"),
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: Int64(index + 1), modificationDate: Date(timeIntervalSince1970: TimeInterval(index + 1))),
+                availability: .online,
+                metadata: AssetMetadata(rating: 4)
+            )
+        }
+        try repository.upsert(assets)
+        for asset in assets {
+            try repository.recordMetadataSyncPending(MetadataSyncItem(
+                assetID: asset.id,
+                sidecarURL: asset.originalURL.appendingPathExtension("xmp"),
+                catalogGeneration: 1,
+                lastSyncedFingerprint: nil
+            ))
+        }
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+
+        let model = try AppModel.load(
+            catalog: AppCatalog(
+                paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+                repository: repository,
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+                importService: LibraryImportService(
+                    ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                    previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+                )
+            ),
+            workerSupervisor: supervisor
+        )
+
+        XCTAssertEqual(model.pendingMetadataSyncItems.count, 205)
+        XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }.count, 200)
     }
 
     func testRatingCullingCommandUpdatesSelectedAsset() throws {
