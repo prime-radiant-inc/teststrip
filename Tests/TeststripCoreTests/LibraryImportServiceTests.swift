@@ -140,9 +140,9 @@ final class LibraryImportServiceTests: XCTestCase {
             "Generated 3 of 4 previews",
             "Generated 4 of 4 previews"
         ])
-        XCTAssertEqual(updates.map(\.catalogedAssetIDs.count), [0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0])
-        let catalogedUpdate = try XCTUnwrap(updates.first { !$0.catalogedAssetIDs.isEmpty })
-        XCTAssertEqual(catalogedUpdate.catalogedAssetIDs, result.importedAssets.map(\.id))
+        XCTAssertEqual(updates.map(\.catalogedAssetIDs.count), [0, 0, 0, 0, 1, 1, 2, 0, 0, 0, 0, 0])
+        let finalCatalogedUpdate = try XCTUnwrap(updates.last { !$0.catalogedAssetIDs.isEmpty })
+        XCTAssertEqual(finalCatalogedUpdate.catalogedAssetIDs, result.importedAssets.map(\.id))
         XCTAssertEqual(updates.last?.detail, "Generated 4 of 4 previews")
     }
 
@@ -187,8 +187,27 @@ final class LibraryImportServiceTests: XCTestCase {
             "Cataloged 2 photos"
         ])
         XCTAssertEqual(catalogingUpdates.map(\.completedUnitCount), [0, 1, 2, 2])
-        XCTAssertEqual(catalogingUpdates.map(\.catalogedAssetIDs.count), [0, 0, 0, 2])
+        XCTAssertEqual(catalogingUpdates.map(\.catalogedAssetIDs.count), [0, 1, 1, 2])
         XCTAssertEqual(catalogingUpdates.last?.catalogedAssetIDs, result.importedAssets.map(\.id))
+    }
+
+    func testAddFolderCatalogsFirstAssetBeforeFinalImportCompletion() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-early-catalog")
+        try TestDirectories.writeTestJPEG(to: root.appendingPathComponent("one.jpg"), width: 1200, height: 800)
+        try TestDirectories.writeTestJPEG(to: root.appendingPathComponent("two.jpg"), width: 800, height: 1200)
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+        let recorder = EarlyCatalogProgressRecorder(
+            repository: repository,
+            targetDetail: "Cataloging 1 of 2 photos"
+        )
+
+        let result = try service.addFolderInPlace(root, repository: repository, previewPolicy: .deferGeneration, progress: recorder.append)
+        let snapshot = recorder.snapshot()
+
+        XCTAssertEqual(snapshot.catalogedAssetIDs, [result.importedAssets[0].id])
+        XCTAssertTrue(snapshot.assetWasReadable)
     }
 
     func testAddFolderCoalescesScanProgressForLargeFolders() throws {
@@ -292,7 +311,7 @@ final class LibraryImportServiceTests: XCTestCase {
             "Copied 2 photos to Library"
         ])
         XCTAssertEqual(copyUpdates.map(\.completedUnitCount), [0, 1, 2, 2])
-        XCTAssertEqual(copyUpdates.map(\.catalogedAssetIDs.count), [0, 0, 0, 2])
+        XCTAssertEqual(copyUpdates.map(\.catalogedAssetIDs.count), [0, 1, 1, 2])
         XCTAssertEqual(copyUpdates.last?.catalogedAssetIDs, result.importedAssets.map(\.id))
     }
 
@@ -444,6 +463,35 @@ private final class ImportProgressRecorder: @unchecked Sendable {
     func values() -> [LibraryImportProgress] {
         lock.withLock {
             updates
+        }
+    }
+}
+
+private final class EarlyCatalogProgressRecorder: @unchecked Sendable {
+    private let repository: CatalogRepository
+    private let targetDetail: String
+    private let lock = NSLock()
+    private var catalogedAssetIDs: [AssetID] = []
+    private var assetWasReadable = false
+
+    init(repository: CatalogRepository, targetDetail: String) {
+        self.repository = repository
+        self.targetDetail = targetDetail
+    }
+
+    func append(_ progress: LibraryImportProgress) {
+        guard progress.detail == targetDetail else { return }
+        lock.withLock {
+            catalogedAssetIDs = progress.catalogedAssetIDs
+            if let firstCatalogedID = progress.catalogedAssetIDs.first {
+                assetWasReadable = ((try? repository.asset(id: firstCatalogedID)) != nil)
+            }
+        }
+    }
+
+    func snapshot() -> (catalogedAssetIDs: [AssetID], assetWasReadable: Bool) {
+        lock.withLock {
+            (catalogedAssetIDs, assetWasReadable)
         }
     }
 }

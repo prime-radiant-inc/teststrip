@@ -108,7 +108,14 @@ func children(of element: AXUIElement) -> [AXUIElement] {
     let navigationChildren = attribute(element, "AXChildrenInNavigationOrder") as? [AXUIElement] ?? []
     let visibleChildren = attribute(element, kAXVisibleChildrenAttribute) as? [AXUIElement] ?? []
     let windows = attribute(element, kAXWindowsAttribute) as? [AXUIElement] ?? []
-    return directChildren + navigationChildren + visibleChildren + windows
+    var seen = Set<CFHashCode>()
+    var uniqueChildren: [AXUIElement] = []
+    for child in directChildren + navigationChildren + visibleChildren + windows {
+        let key = CFHash(child)
+        guard seen.insert(key).inserted else { continue }
+        uniqueChildren.append(child)
+    }
+    return uniqueChildren
 }
 
 func accessibleText(_ element: AXUIElement) -> String? {
@@ -183,9 +190,6 @@ func importedTargetIsVisible() -> Bool {
 }
 
 func visibleImportFeedback() -> Bool {
-    if importedTargetIsVisible() {
-        return true
-    }
     return walk(root) { element in
         guard let text = accessibleText(element) else { return false }
         if text.contains("Importing from \(importSourceName)") {

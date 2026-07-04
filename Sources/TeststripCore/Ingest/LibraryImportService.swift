@@ -180,7 +180,8 @@ public struct LibraryImportService: Sendable {
                 progress?(LibraryImportProgress(
                     completedUnitCount: ingestProgress.completedUnitCount,
                     totalUnitCount: ingestProgress.totalUnitCount,
-                    detail: perFileDetail(ingestProgress.completedUnitCount, ingestProgress.totalUnitCount)
+                    detail: perFileDetail(ingestProgress.completedUnitCount, ingestProgress.totalUnitCount),
+                    catalogedAssetIDs: ingestProgress.catalogedAssetIDs
                 ))
             }
         }

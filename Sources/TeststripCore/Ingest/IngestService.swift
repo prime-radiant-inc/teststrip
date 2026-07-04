@@ -4,17 +4,27 @@ public struct IngestProgress: Equatable, Sendable {
     public var completedUnitCount: Int
     public var totalUnitCount: Int
     public var originalURL: URL
+    public var catalogedAssetIDs: [AssetID]
 
-    public init(completedUnitCount: Int, totalUnitCount: Int, originalURL: URL) {
+    public init(
+        completedUnitCount: Int,
+        totalUnitCount: Int,
+        originalURL: URL,
+        catalogedAssetIDs: [AssetID] = []
+    ) {
         self.completedUnitCount = completedUnitCount
         self.totalUnitCount = totalUnitCount
         self.originalURL = originalURL
+        self.catalogedAssetIDs = catalogedAssetIDs
     }
 }
 
 public typealias IngestProgressHandler = @Sendable (IngestProgress) -> Void
 
 public struct IngestService: Sendable {
+    private static let eagerCatalogPersistenceLimit = 10
+    private static let catalogPersistenceBatchSize = 500
+
     public var scanner: FolderScanner
     public var decodeRegistry: DecodeRegistry?
 
@@ -40,6 +50,7 @@ public struct IngestService: Sendable {
         progress: IngestProgressHandler? = nil
     ) throws -> [Asset] {
         var assets: [Asset] = []
+        var pendingCatalogAssets: [Asset] = []
         var importedSidecars: [ImportedSidecarSync] = []
         var sidecarConflicts: [SidecarSyncConflict] = []
         let sidecarStore = XMPSidecarStore()
@@ -97,13 +108,21 @@ public struct IngestService: Sendable {
                 technicalMetadata: technicalMetadata(for: originalURL) ?? existingAsset?.technicalMetadata
             )
             assets.append(asset)
+            pendingCatalogAssets.append(asset)
+            let catalogedAssetIDs = try flushCatalogAssetsIfNeeded(
+                pendingCatalogAssets: &pendingCatalogAssets,
+                importedAssetCount: assets.count,
+                isFinalAsset: assets.count == sourceFiles.count,
+                repository: repository
+            )
             progress?(IngestProgress(
                 completedUnitCount: assets.count,
                 totalUnitCount: sourceFiles.count,
-                originalURL: originalURL
+                originalURL: originalURL,
+                catalogedAssetIDs: catalogedAssetIDs
             ))
         }
-        try repository.upsert(assets)
+        _ = try flushCatalogAssets(&pendingCatalogAssets, repository: repository)
         for importedSidecar in importedSidecars {
             try repository.markMetadataSynced(
                 assetID: importedSidecar.assetID,
@@ -121,6 +140,31 @@ public struct IngestService: Sendable {
             ))
         }
         return assets
+    }
+
+    private func flushCatalogAssetsIfNeeded(
+        pendingCatalogAssets: inout [Asset],
+        importedAssetCount: Int,
+        isFinalAsset: Bool,
+        repository: CatalogRepository
+    ) throws -> [AssetID] {
+        guard isFinalAsset
+            || importedAssetCount <= Self.eagerCatalogPersistenceLimit
+            || pendingCatalogAssets.count >= Self.catalogPersistenceBatchSize else {
+            return []
+        }
+        return try flushCatalogAssets(&pendingCatalogAssets, repository: repository)
+    }
+
+    private func flushCatalogAssets(
+        _ pendingCatalogAssets: inout [Asset],
+        repository: CatalogRepository
+    ) throws -> [AssetID] {
+        guard !pendingCatalogAssets.isEmpty else { return [] }
+        let catalogedAssetIDs = pendingCatalogAssets.map(\.id)
+        try repository.upsert(pendingCatalogAssets)
+        pendingCatalogAssets.removeAll(keepingCapacity: true)
+        return catalogedAssetIDs
     }
 
     func originalURL(for sourceFile: URL, plan: IngestPlan) throws -> URL {
