@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `d8084c2 Bound import preflight source scans`
+- Snapshot commit: `9596ac3 Cover provisional evaluation labels`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter ImportConfirmationDraftTests` passed after bounding import preflight source scans.
-- Last broad unit verification: `swift test` passed with 580 tests after bounding import preflight source scans.
+- Last focused unit verification: `swift test --filter AppModelTests/testObjectEvaluationLabelsRemainProvisionalUntilAccepted` passed after adding explicit provisional-label coverage.
+- Last broad unit verification: `swift test` passed with 581 tests after adding explicit provisional-label coverage.
 - Last app workflow verification: no app launch was run for the diagnostics slice to minimize focus stealing while Jesse is using the machine; the new `Support > Copy Diagnostics` command is compile-covered and backed by model/report tests. Before that, no app launch was run for the XMP filter-bar addition for the same reason. `./script/build_and_run.sh --verify-smoke` launched an isolated smoke catalog after the Activity row-control change, and `./script/capture_app_window.sh Teststrip /tmp/teststrip-worker-control-smoke.png` captured a normal Library window with Activity idle state visible. Earlier `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import/click UI automation was intentionally deferred for the import phase and grid click-recentering slices to avoid unnecessary focus stealing while Jesse was using the machine; those slices were covered by focused presentation/policy tests and full unit runs. The previous grid aspect-ratio slice passed `./script/build_and_run.sh --sample-photos` and one Computer Use grid inspection, and the previous People live-mockup route passed Computer Use inspection plus `./script/verify_grid_activation.sh`, `./script/verify_grid_selection_feedback.sh`, `./script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 ./script/verify_imported_grid_culling.sh`. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
@@ -91,6 +91,7 @@
 - `5a89ce1`: added catalog-backed Review queues for Faces Found, OCR Found, and Likely Issues, with sidebar counts, navigation, and active-filter chips.
 - `7c33f5e`: added durable per-asset/per-provider evaluation failure tracking, automatic clear-on-success for the same provider, worker failure recording, and a Provider Failures review queue.
 - `d8084c2`: bounded import confirmation source-summary scans by total entries visited as well as supported-photo count, so huge unsupported/NAS/cloud folders do not block the confirmation UI before import starts.
+- `9596ac3`: added explicit regression coverage that machine object-label evaluation signals remain provisional suggestions until the user accepts them into catalog metadata/XMP.
 
 ## Product Decisions To Preserve
 
@@ -544,7 +545,7 @@ Teststrip reaches usable alpha when a photographer can:
 - [ ] Add People/face grouping data model only after deciding the smallest useful grouping behavior. Do not imply Apple Photos-level identity recognition unless Teststrip actually owns clustering and naming.
 - [x] Add review filters for unevaluated, faces found, OCR found, likely issues, and provider failures. Built as catalog-backed Review queues with durable per-asset/per-provider failure state for provider failures.
 - [ ] Add cancellation-aware provider execution or worker-level cancellation behavior for slow local HTTP calls.
-- [ ] Keep machine labels provisional unless the user explicitly accepts them into keywords/XMP.
+- [x] Keep machine labels provisional unless the user explicitly accepts them into keywords/XMP.
 - [ ] Verify provider tests, `script/verify_evaluation.sh`, and `TeststripBench local-http-smoke` against a real local endpoint when one is available.
 - [ ] Commit.
 
