@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `a44a1da Stage folder and card imports`
+- Snapshot commit: `64e707e Add needs keywords review queue`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last broad unit verification: `swift test` passed with 448 tests after the folder/card import staging work.
-- Last app workflow verification: `script/build_and_run.sh --verify-smoke` launched a clean isolated smoke catalog and `./script/verify_import_path.sh Teststrip` imported a temporary image, showed import feedback, and drained previews. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified selecting and rating a real sample photo leaves no stale XMP Pending sidebar row or inspector label after worker completion.
+- Last broad unit verification: `swift test` passed with 448 tests after the Needs Keywords review queue work.
+- Last app workflow verification: `script/build_and_run.sh --verify-sample-photos` seeded 12 WordPress Photo Directory sample images into a clean isolated catalog, generated 24 cached previews, and launched the signed dev app. Computer Use verified the Needs Keywords sidebar row applies a visible filter chip and leaves the grid/preview usable. Before that, `script/build_and_run.sh --verify-smoke` and `./script/verify_import_path.sh Teststrip` verified clean launch plus Import Path.
 
 ### Recent Completed Slices
 
@@ -32,6 +32,7 @@
 - `edc6f08`: added an Import Path plan explaining non-destructive cataloging, XMP sidecars, cached previews, and managed background work before the user imports.
 - `7b68f7e`: fixed stale XMP pending state when worker sync finds the sidecar already matches the catalog.
 - `a44a1da`: staged Import Folder and Import Card through confirmation sheets that summarize source, destination, and the non-destructive/XMP/preview/background-work plan before work starts.
+- `64e707e`: added a catalog-backed Needs Keywords review queue and active filter chip for unkeyworded assets.
 
 ## Product Decisions To Preserve
 
