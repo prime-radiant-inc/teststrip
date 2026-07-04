@@ -13,14 +13,15 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `edc6f08 Explain import path plan`
+- Snapshot commit: `7b68f7e Clear stale XMP pending rows`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last broad unit verification: `swift test` passed with 445 tests after the import-plan sheet work.
-- Last app workflow verification: `script/build_and_run.sh --sample-photos` launched the stock sample catalog; Computer Use verified import status, inspector preview, active filter chips, loupe-first culling, culling overlay guidance, and the Import Path plan sheet. `./script/verify_app_workflows.sh Teststrip` and the 600-image AX import path also passed earlier in this build-out.
+- Last broad unit verification: `swift test` passed with 446 tests after the stale XMP-pending cleanup.
+- Last app workflow verification: `script/build_and_run.sh --verify-sample-photos` launched the stock sample catalog; Computer Use verified selecting and rating a real sample photo leaves no stale XMP Pending sidebar row or inspector label after worker completion. `./script/verify_imported_grid_culling.sh Teststrip` also passed against the running app.
 
 ### Recent Completed Slices
 
 - `2a55910` / `41a8dd8` / `64a7821`: added real free stock-photo sample fixtures and made `script/build_and_run.sh --sample-photos` seed a clean sample catalog.
+- `04a291f`: made the standalone sample downloader default to the WordPress Photo Directory sample set and added `--print-config`.
 - `3088489`: added persisted thumbnail-size/density control.
 - `9274ad1`: added built-in review queues for common culling filters.
 - `235c878` / `127cf13`: made import progress and imported-grid culling observable through AX probes.
@@ -29,6 +30,7 @@
 - `7351798`: added active filter chips under the search/filter bar.
 - `f2b57f3` / `51f0d1f`: made culling sessions loupe-first and added frame/shortcut guidance to the loupe overlay.
 - `edc6f08`: added an Import Path plan explaining non-destructive cataloging, XMP sidecars, cached previews, and managed background work before the user imports.
+- `7b68f7e`: fixed stale XMP pending state when worker sync finds the sidecar already matches the catalog.
 
 ## Product Decisions To Preserve
 
