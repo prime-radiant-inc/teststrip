@@ -753,8 +753,8 @@ struct LibraryGridView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
                     .lineLimit(1)
-            } else if let statusMessage = model.statusMessage {
-                Text(statusMessage)
+            } else if let statusText = model.libraryStatusText {
+                Text(statusText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

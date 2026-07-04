@@ -312,7 +312,8 @@ Teststrip reaches usable alpha when a photographer can:
 
 - [ ] Make import state unambiguous before, during, and after path submission.
 - [ ] Disable duplicate import submission while an import is starting or running.
-- [ ] Surface import count, current phase, and whether preview generation is continuing after catalog/import completion.
+- [x] Surface completed import count and whether preview generation is continuing after catalog/import completion.
+- [ ] Surface a clearer current import phase while path submission is scanning and cataloging.
 - [ ] Show clear duplicate, empty-folder, failed-folder, and permission/security-scope errors.
 - [ ] Add model tests for import state transitions rather than brittle SwiftUI snapshots.
 - [x] Extend AX import verifier to catch apparent no-op after submit and sheet-dismissed-with-no-visible-progress states. Current coverage adds a post-submit visible-feedback gate and `feedback_visible_seconds`.

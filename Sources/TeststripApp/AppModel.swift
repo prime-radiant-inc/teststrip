@@ -373,6 +373,29 @@ public final class AppModel {
         return "\(assets.count) \(assets.count == 1 ? "photograph" : "photographs")"
     }
 
+    public var libraryStatusText: String? {
+        guard let statusMessage else { return nil }
+        guard statusMessage.hasPrefix("Imported "),
+              let previewStatus = activePreviewGenerationStatusText else {
+            return statusMessage
+        }
+        return "\(statusMessage); \(previewStatus)"
+    }
+
+    private var activePreviewGenerationStatusText: String? {
+        let previewItems = backgroundWorkQueue.items.filter { item in
+            item.kind == .previewGeneration && [.queued, .running, .paused].contains(item.status)
+        }
+        guard !previewItems.isEmpty else { return nil }
+        if backgroundWorkQueue.isPaused || previewItems.contains(where: { $0.status == .paused }) {
+            return "preview queue paused"
+        }
+        if previewItems.contains(where: { $0.status == .running }) {
+            return "generating previews"
+        }
+        return "previews queued"
+    }
+
     public var libraryTitle: String {
         if let selectedAssetSet {
             return selectedAssetSet.name

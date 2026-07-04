@@ -1131,6 +1131,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.visibleWorkActivity?.id, first.id.rawValue)
     }
 
+    func testLibraryStatusTextShowsPreviewGenerationAfterImportCompletes() {
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: [],
+            backgroundWorkQueue: BackgroundWorkQueue(maxRunningCount: 1)
+        )
+        model.statusMessage = "Imported 12 photos"
+
+        model.enqueueBackgroundWork(BackgroundWorkItem.testItem(id: "preview-after-import"))
+
+        XCTAssertEqual(model.libraryStatusText, "Imported 12 photos; generating previews")
+    }
+
     func testBackgroundWorkCanPauseResumeAndCancel() {
         let model = AppModel(
             sidebarSections: [],
