@@ -126,6 +126,108 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
     }
 
+    func testCullingProgressSummaryCountsEntireCatalogScope() throws {
+        var assets: [Asset] = []
+        for index in 0..<125 {
+            let flag: PickFlag?
+            switch index {
+            case 121, 124:
+                flag = .pick
+            case 122:
+                flag = .reject
+            default:
+                flag = nil
+            }
+            assets.append(makeAsset(id: "asset-\(index)", path: "/Photos/asset-\(index).jpg", rating: 0, flag: flag))
+        }
+        let (model, _) = try makeModelWithCatalogAssets(named: "culling-summary-entire-catalog", assets: assets)
+
+        XCTAssertEqual(model.assets.count, 120)
+        XCTAssertEqual(model.totalAssetCount, 125)
+        XCTAssertEqual(model.cullingProgressSummary.pickCount, 2)
+        XCTAssertEqual(model.cullingProgressSummary.rejectCount, 1)
+        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
+    }
+
+    func testCullingProgressSummaryCountsCurrentFilteredScope() throws {
+        var assets: [Asset] = []
+        for index in 0..<130 {
+            let isFilteredAsset = index < 125
+            let flag: PickFlag?
+            switch index {
+            case 121, 124, 128:
+                flag = .pick
+            case 122:
+                flag = .reject
+            default:
+                flag = nil
+            }
+            assets.append(makeAsset(
+                id: "filtered-\(index)",
+                path: "/Photos/filtered-\(index).jpg",
+                rating: isFilteredAsset ? 5 : 0,
+                flag: flag
+            ))
+        }
+        let (model, _) = try makeModelWithCatalogAssets(named: "culling-summary-filtered-catalog", assets: assets)
+
+        model.minimumRatingFilter = 5
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.assets.count, 120)
+        XCTAssertEqual(model.totalAssetCount, 125)
+        XCTAssertEqual(model.cullingProgressSummary.pickCount, 2)
+        XCTAssertEqual(model.cullingProgressSummary.rejectCount, 1)
+        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
+    }
+
+    func testCullingProgressSummaryCountsExplicitSavedSetScope() throws {
+        let directory = try makeTemporaryDirectory(named: "culling-summary-explicit-set")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        var assets: [Asset] = []
+        for index in 0..<130 {
+            let flag: PickFlag?
+            switch index {
+            case 121, 124, 128:
+                flag = .pick
+            case 122:
+                flag = .reject
+            default:
+                flag = nil
+            }
+            assets.append(makeAsset(id: "manual-\(index)", path: "/Photos/manual-\(index).jpg", rating: 0, flag: flag))
+        }
+        let manualSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "manual-cull"),
+            name: "Manual Cull",
+            assetIDs: Array(assets.prefix(125).map(\.id))
+        )
+        try repository.upsert(assets)
+        try repository.upsert(manualSet)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Saved Sets" }?.rows.first { $0.title == "Manual Cull" })
+
+        try model.selectSidebarRow(row)
+
+        XCTAssertEqual(model.assets.count, 120)
+        XCTAssertEqual(model.totalAssetCount, 125)
+        XCTAssertEqual(model.cullingProgressSummary.pickCount, 2)
+        XCTAssertEqual(model.cullingProgressSummary.rejectCount, 1)
+        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
+    }
+
     func testSelectNextAssetMovesSelectionForwardThroughLoadedAssets() {
         let first = makeAsset(id: "first", size: 1)
         let second = makeAsset(id: "second", size: 2)

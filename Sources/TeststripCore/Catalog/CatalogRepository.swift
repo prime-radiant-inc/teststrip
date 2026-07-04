@@ -150,6 +150,22 @@ public final class CatalogRepository {
         return count
     }
 
+    public func assetCount(ids: [AssetID], flag: PickFlag) throws -> Int {
+        var count = 0
+        for chunk in Self.chunks(ids, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try database.rows(
+                "SELECT COUNT(*) AS count FROM assets WHERE id IN (\(placeholders)) AND json_extract(metadata_json, '$.flag') = ?",
+                bindings: chunk.map(\.rawValue) + [flag.rawValue]
+            )
+            guard let countString = rows.first?["count"], let chunkCount = Int(countString) else {
+                throw CatalogError.sqlite("asset ID flag count query returned no count")
+            }
+            count += chunkCount
+        }
+        return count
+    }
+
     public func assetOffset(id: AssetID) throws -> Int {
         let rowIDRows = try database.rows("SELECT rowid FROM assets WHERE id = ?", bindings: [id.rawValue])
         guard let rowID = rowIDRows.first?["rowid"] else {

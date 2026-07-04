@@ -439,14 +439,43 @@ public final class AppModel {
     }
 
     public var cullingProgressSummary: CullingProgressSummary {
-        let pickCount = assets.filter { $0.metadata.flag == .pick }.count
-        let rejectCount = assets.filter { $0.metadata.flag == .reject }.count
+        let decisionCounts = cullingDecisionCounts()
         return CullingProgressSummary(
             selectedPosition: selectedAssetPosition,
             positionText: selectedAssetPositionText,
-            pickCount: pickCount,
-            rejectCount: rejectCount,
+            pickCount: decisionCounts.pickCount,
+            rejectCount: decisionCounts.rejectCount,
             totalCount: totalAssetCount
+        )
+    }
+
+    private func cullingDecisionCounts() -> (pickCount: Int, rejectCount: Int) {
+        guard let catalog else {
+            return loadedCullingDecisionCounts()
+        }
+        do {
+            return (
+                try cullingDecisionCount(flag: .pick, repository: catalog.repository),
+                try cullingDecisionCount(flag: .reject, repository: catalog.repository)
+            )
+        } catch {
+            return loadedCullingDecisionCounts()
+        }
+    }
+
+    private func cullingDecisionCount(flag: PickFlag, repository: CatalogRepository) throws -> Int {
+        if let explicitAssetIDs = selectedExplicitAssetIDs {
+            return try repository.assetCount(ids: explicitAssetIDs, flag: flag)
+        }
+        var predicates = currentLibraryQuery()?.predicates ?? []
+        predicates.append(.flag(flag))
+        return try repository.assetCount(matching: SetQuery(predicates: predicates))
+    }
+
+    private func loadedCullingDecisionCounts() -> (pickCount: Int, rejectCount: Int) {
+        (
+            assets.filter { $0.metadata.flag == .pick }.count,
+            assets.filter { $0.metadata.flag == .reject }.count
         )
     }
 
