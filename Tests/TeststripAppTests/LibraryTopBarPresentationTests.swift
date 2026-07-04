@@ -29,7 +29,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.filterSummaryText, "2 filters")
     }
 
-    func testSearchAndPeopleAreDirectLibraryRoutes() {
+    func testSearchTimelineAndPeopleAreDirectLibraryRoutes() {
         XCTAssertEqual(
             LibraryTopBarPresentation(
                 libraryTitle: "Search",
@@ -38,6 +38,15 @@ final class LibraryTopBarPresentationTests: XCTestCase {
                 activeFilterChips: ["Search: ceremony"]
             ).breadcrumbItems,
             ["Library", "Search"]
+        )
+        XCTAssertEqual(
+            LibraryTopBarPresentation(
+                libraryTitle: "Timeline",
+                libraryCountText: "12 photographs",
+                selectedView: .timeline,
+                activeFilterChips: []
+            ).breadcrumbItems,
+            ["Library", "Timeline"]
         )
         XCTAssertEqual(
             LibraryTopBarPresentation(
@@ -58,7 +67,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
             activeFilterChips: []
         )
 
-        XCTAssertEqual(presentation.modeItems.map(\.mode), [.grid, .search, .loupe, .compare, .people])
-        XCTAssertEqual(presentation.modeItems.map(\.title), ["Grid", "Search", "Loupe", "Compare", "People"])
+        XCTAssertEqual(presentation.modeItems.map(\.mode), [.grid, .search, .timeline, .loupe, .compare, .people])
+        XCTAssertEqual(presentation.modeItems.map(\.title), ["Grid", "Search", "Timeline", "Loupe", "Compare", "People"])
     }
 }

@@ -122,6 +122,7 @@ extension EvaluationKind {
 public enum SidebarRowTarget: Equatable, Sendable {
     case allPhotographs
     case search
+    case timeline
     case people
     case placeholder
     case reviewQueue(ReviewQueue)
@@ -307,6 +308,45 @@ public struct KeywordSuggestion: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct BatchKeywordSuggestion: Identifiable, Equatable, Sendable {
+    public var keyword: String
+    public var assetCount: Int
+    public var averageConfidence: Double
+    public var providerName: String
+    public var modelName: String
+
+    public var id: String {
+        keyword.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+    }
+
+    public var confidenceText: String {
+        let clamped = min(max(averageConfidence, 0), 1)
+        return "\(Int((clamped * 100).rounded()))%"
+    }
+
+    public var assetCountText: String {
+        "\(assetCount) \(assetCount == 1 ? "photo" : "photos")"
+    }
+
+    public var provenanceText: String {
+        "\(providerName)/\(modelName)"
+    }
+}
+
+private struct BatchKeywordAccumulator {
+    var keyword: String
+    var assetCount: Int
+    var confidenceTotal: Double
+    var providerName: String
+    var modelName: String
+    var bestConfidence: Double
+
+    var averageConfidence: Double {
+        guard assetCount > 0 else { return 0 }
+        return confidenceTotal / Double(assetCount)
+    }
+}
+
 public struct AppImportOutput: Sendable {
     public var result: LibraryImportResult
     public var assets: [Asset]
@@ -388,6 +428,7 @@ public final class AppModel {
     public var savedAssetSets: [AssetSet]
     public var assetSetCounts: [AssetSetID: Int]
     public var catalogFolders: [CatalogFolder]
+    public var catalogTimelineDays: [CatalogTimelineDay]
     public var sourceRoots: [CatalogSourceRoot]
     public var sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary]
     public var catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary]
@@ -563,6 +604,9 @@ public final class AppModel {
         if selectedView == .search {
             return "Search"
         }
+        if selectedView == .timeline {
+            return "Timeline"
+        }
         if selectedView == .people {
             return "People"
         }
@@ -688,6 +732,10 @@ public final class AppModel {
             from: selectedEvaluationSignals,
             existingKeywords: selectedAsset.metadata.keywords
         )
+    }
+
+    public var visibleBatchKeywordSuggestions: [BatchKeywordSuggestion] {
+        batchKeywordSuggestions(for: assets)
     }
 
     public var starredAssetSets: [AssetSet] {
@@ -903,6 +951,7 @@ public final class AppModel {
         savedAssetSets: [AssetSet] = [],
         assetSetCounts: [AssetSetID: Int] = [:],
         catalogFolders: [CatalogFolder] = [],
+        catalogTimelineDays: [CatalogTimelineDay] = [],
         sourceRoots: [CatalogSourceRoot] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
@@ -918,6 +967,7 @@ public final class AppModel {
             savedAssetSets: savedAssetSets,
             assetSetCounts: assetSetCounts,
             catalogFolders: catalogFolders,
+            catalogTimelineDays: catalogTimelineDays,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
             reviewQueueCounts: reviewQueueCounts,
@@ -959,6 +1009,7 @@ public final class AppModel {
         self.savedAssetSets = savedAssetSets
         self.assetSetCounts = assetSetCounts
         self.catalogFolders = catalogFolders
+        self.catalogTimelineDays = catalogTimelineDays
         self.sourceRoots = sourceRoots
         self.sourceAvailabilitySummaries = sourceAvailabilitySummaries
         self.catalogEvaluationKindSummaries = catalogEvaluationKindSummaries
@@ -1046,6 +1097,7 @@ public final class AppModel {
         let savedAssetSets = try repository.assetSets()
         let assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: repository)
         let catalogFolders = try repository.folders()
+        let catalogTimelineDays = try repository.timelineDays()
         let sourceRoots = try repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: repository)
         let catalogEvaluationKindSummaries = try repository.evaluationKindSummaries()
@@ -1061,6 +1113,7 @@ public final class AppModel {
                 savedAssetSets: savedAssetSets,
                 assetSetCounts: assetSetCounts,
                 catalogFolders: catalogFolders,
+                catalogTimelineDays: catalogTimelineDays,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
                 reviewQueueCounts: reviewQueueCounts,
@@ -1080,6 +1133,7 @@ public final class AppModel {
             savedAssetSets: savedAssetSets,
             assetSetCounts: assetSetCounts,
             catalogFolders: catalogFolders,
+            catalogTimelineDays: catalogTimelineDays,
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
@@ -1098,6 +1152,7 @@ public final class AppModel {
         let savedAssetSets = try catalog.repository.assetSets()
         let assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         let catalogFolders = try catalog.repository.folders()
+        let catalogTimelineDays = try catalog.repository.timelineDays()
         let sourceRoots = try catalog.repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         let catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
@@ -1113,6 +1168,7 @@ public final class AppModel {
                 savedAssetSets: savedAssetSets,
                 assetSetCounts: assetSetCounts,
                 catalogFolders: catalogFolders,
+                catalogTimelineDays: catalogTimelineDays,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
                 reviewQueueCounts: reviewQueueCounts,
@@ -1133,6 +1189,7 @@ public final class AppModel {
             savedAssetSets: savedAssetSets,
             assetSetCounts: assetSetCounts,
             catalogFolders: catalogFolders,
+            catalogTimelineDays: catalogTimelineDays,
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
@@ -1189,6 +1246,9 @@ public final class AppModel {
         case .search:
             selectedAssetSetID = nil
             selectedView = .search
+        case .timeline:
+            selectedAssetSetID = nil
+            selectedView = .timeline
         case .people:
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
@@ -1677,6 +1737,43 @@ public final class AppModel {
         }
     }
 
+    @discardableResult
+    public func acceptVisibleBatchKeywordSuggestion(_ keyword: String) throws -> Int {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let cleanedKeyword = Self.cleanedKeyword(keyword)
+        guard !cleanedKeyword.isEmpty else { return 0 }
+        let visibleAssetIDs = assets.map(\.id)
+        var appliedCount = 0
+
+        for assetID in visibleAssetIDs {
+            guard try visibleAssetNeedsSuggestedKeyword(assetID: assetID, keyword: cleanedKeyword) else {
+                continue
+            }
+            let originalAsset = try catalog.repository.asset(id: assetID)
+            var updatedMetadata = originalAsset.metadata
+            guard !Self.keywordList(updatedMetadata.keywords, contains: cleanedKeyword) else {
+                continue
+            }
+            updatedMetadata.keywords.append(cleanedKeyword)
+
+            try applyMetadataSnapshot(assetID: assetID, metadata: updatedMetadata)
+            metadataUndoStack.append(MetadataChange(
+                assetID: assetID,
+                before: originalAsset.metadata,
+                after: updatedMetadata
+            ))
+            appliedCount += 1
+        }
+
+        if appliedCount > 0 {
+            metadataRedoStack.removeAll()
+            statusMessage = "Applied \(cleanedKeyword) to \(Self.photoCountDescription(appliedCount))"
+        }
+        return appliedCount
+    }
+
     public func setCaptionForSelectedAsset(_ caption: String) throws {
         try updateSelectedAssetMetadata { metadata in
             metadata.caption = Self.portableText(from: caption)
@@ -1804,6 +1901,86 @@ public final class AppModel {
                 providerName: candidate.signal.provenance.provider,
                 modelName: candidate.signal.provenance.model
             )
+        }
+    }
+
+    private func batchKeywordSuggestions(for assets: [Asset]) -> [BatchKeywordSuggestion] {
+        var accumulatorsByKey: [String: BatchKeywordAccumulator] = [:]
+
+        for asset in assets {
+            let existingKeys = Set(asset.metadata.keywords.map(Self.keywordKey).filter { !$0.isEmpty })
+            var assetKeys = Set<String>()
+            for signal in evaluationSignals(for: asset.id) {
+                guard signal.kind == .object,
+                      case .label(let label) = signal.value else {
+                    continue
+                }
+                let keyword = Self.cleanedKeyword(label)
+                let key = Self.keywordKey(keyword)
+                guard !key.isEmpty,
+                      !existingKeys.contains(key),
+                      assetKeys.insert(key).inserted else {
+                    continue
+                }
+
+                var accumulator = accumulatorsByKey[key] ?? BatchKeywordAccumulator(
+                    keyword: keyword,
+                    assetCount: 0,
+                    confidenceTotal: 0,
+                    providerName: signal.provenance.provider,
+                    modelName: signal.provenance.model,
+                    bestConfidence: signal.confidence
+                )
+                accumulator.assetCount += 1
+                accumulator.confidenceTotal += signal.confidence
+                if signal.confidence > accumulator.bestConfidence {
+                    accumulator.providerName = signal.provenance.provider
+                    accumulator.modelName = signal.provenance.model
+                    accumulator.bestConfidence = signal.confidence
+                }
+                accumulatorsByKey[key] = accumulator
+            }
+        }
+
+        return accumulatorsByKey.values
+            .map { accumulator in
+                BatchKeywordSuggestion(
+                    keyword: accumulator.keyword,
+                    assetCount: accumulator.assetCount,
+                    averageConfidence: accumulator.averageConfidence,
+                    providerName: accumulator.providerName,
+                    modelName: accumulator.modelName
+                )
+            }
+            .sorted { lhs, rhs in
+                if lhs.assetCount != rhs.assetCount {
+                    return lhs.assetCount > rhs.assetCount
+                }
+                if lhs.averageConfidence != rhs.averageConfidence {
+                    return lhs.averageConfidence > rhs.averageConfidence
+                }
+                return lhs.keyword.localizedCaseInsensitiveCompare(rhs.keyword) == .orderedAscending
+            }
+    }
+
+    private func visibleAssetNeedsSuggestedKeyword(assetID: AssetID, keyword: String) throws -> Bool {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let key = Self.keywordKey(keyword)
+        guard !key.isEmpty else { return false }
+
+        let asset = try catalog.repository.asset(id: assetID)
+        guard !Self.keywordList(asset.metadata.keywords, contains: keyword) else {
+            return false
+        }
+
+        return try catalog.repository.evaluationSignals(assetID: assetID).contains { signal in
+            guard signal.kind == .object,
+                  case .label(let label) = signal.value else {
+                return false
+            }
+            return Self.keywordKey(label) == key
         }
     }
 
@@ -2895,6 +3072,18 @@ public final class AppModel {
         try reload()
     }
 
+    public func selectTimelineDay(_ day: CatalogTimelineDay, calendar: Calendar = .current) throws {
+        guard let startDate = day.startDate(calendar: calendar),
+              let endDate = day.endDate(calendar: calendar) else {
+            throw TeststripError.invalidState("timeline day has an invalid date")
+        }
+        selectedAssetSetID = nil
+        captureDateStartFilter = startDate
+        captureDateEndFilter = endDate
+        selectedView = .timeline
+        try reload()
+    }
+
     public func clearLibraryFilters() throws {
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
@@ -3277,6 +3466,7 @@ public final class AppModel {
             savedAssetSets: savedAssetSets,
             assetSetCounts: assetSetCounts,
             catalogFolders: catalogFolders,
+            catalogTimelineDays: catalogTimelineDays,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
             reviewQueueCounts: reviewQueueCounts,
@@ -3291,6 +3481,7 @@ public final class AppModel {
         guard let catalog else { return }
         do {
             catalogFolders = try catalog.repository.folders()
+            catalogTimelineDays = try catalog.repository.timelineDays()
             sourceRoots = try catalog.repository.sourceRoots()
             rebuildSidebarSections()
         } catch {
@@ -3871,6 +4062,7 @@ public final class AppModel {
         savedAssetSets: [AssetSet] = [],
         assetSetCounts: [AssetSetID: Int] = [:],
         catalogFolders: [CatalogFolder] = [],
+        catalogTimelineDays: [CatalogTimelineDay] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
         reviewQueueCounts: [ReviewQueue: Int] = [:],
@@ -3895,6 +4087,17 @@ public final class AppModel {
                 tone: .accent,
                 target: .search,
                 liveMockupPlaceholder: .agenticSearch
+            )
+        )
+        libraryRows.append(
+            SidebarRow(
+                id: "library-timeline",
+                title: "Timeline",
+                detailText: "By date",
+                countText: catalogTimelineDays.isEmpty ? nil : sidebarCountText(catalogTimelineDays.count),
+                tone: .accent,
+                target: .timeline,
+                liveMockupPlaceholder: .timelineLibrary
             )
         )
         if catalogFolders.isEmpty {

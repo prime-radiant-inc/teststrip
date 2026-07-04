@@ -53,7 +53,7 @@ public enum LiveMockupPlaceholders {
         id: "library.timeline",
         title: "Timeline library direction",
         intendedBehavior: "Navigate decade-scale catalogs through a year/month/day density ribbon and scrubber.",
-        currentFallback: "Date predicates and sidebar/library scopes exist, but the timeline ribbon view is not built."
+        currentFallback: "Catalog-backed capture-day counts and day drill-down exist; decade/month density scrubber remains pending."
     )
 
     public static let topChrome = LiveMockupPlaceholder(
@@ -237,9 +237,9 @@ public enum LiveMockupDesignSurfaces {
         LiveMockupDesignSurface(
             designID: "1c",
             title: "Timeline",
-            status: .liveMockup,
+            status: .partial,
             placeholder: .timelineLibrary,
-            currentImplementation: "Date filters can query the catalog, but the decade/month/day density ribbon and scrubber from the mockup are not built."
+            currentImplementation: "Timeline route uses catalog-backed capture-day counts with day drill-down into existing date predicates; decade/month density ribbon and scrubber from the mockup are not built."
         ),
         LiveMockupDesignSurface(
             designID: "2a",

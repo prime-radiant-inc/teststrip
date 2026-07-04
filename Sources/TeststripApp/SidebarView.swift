@@ -42,6 +42,8 @@ struct SidebarView: View {
             return "photo.on.rectangle"
         case .search:
             return "magnifyingglass"
+        case .timeline:
+            return "calendar"
         case .people:
             return "person.2"
         case .reviewQueue(let queue):

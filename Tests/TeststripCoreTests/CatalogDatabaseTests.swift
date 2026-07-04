@@ -611,6 +611,58 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(matching: query), 1)
     }
 
+    func testSummarizesCaptureDatesForTimelineWithoutLoadingAssets() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-timeline-days")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let provenance = ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+        let first = Asset.testAsset(
+            id: AssetID(rawValue: "first"),
+            path: "/Volumes/NAS/Job/first.cr3",
+            rating: 0,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 6000,
+                pixelHeight: 4000,
+                capturedAt: Date(timeIntervalSince1970: 1_800_010_000),
+                provenance: provenance
+            )
+        )
+        let sameDay = Asset.testAsset(
+            id: AssetID(rawValue: "same-day"),
+            path: "/Volumes/NAS/Job/same-day.cr3",
+            rating: 0,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 6000,
+                pixelHeight: 4000,
+                capturedAt: Date(timeIntervalSince1970: 1_800_020_000),
+                provenance: provenance
+            )
+        )
+        let nextDay = Asset.testAsset(
+            id: AssetID(rawValue: "next-day"),
+            path: "/Volumes/NAS/Job/next-day.cr3",
+            rating: 0,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 6000,
+                pixelHeight: 4000,
+                capturedAt: Date(timeIntervalSince1970: 1_800_096_400),
+                provenance: provenance
+            )
+        )
+        let undated = Asset.testAsset(
+            id: AssetID(rawValue: "undated"),
+            path: "/Volumes/NAS/Job/undated.cr3",
+            rating: 0
+        )
+        try repository.upsert([first, sameDay, nextDay, undated])
+
+        XCTAssertEqual(try repository.timelineDays(), [
+            CatalogTimelineDay(year: 2027, month: 1, day: 16, assetCount: 1),
+            CatalogTimelineDay(year: 2027, month: 1, day: 15, assetCount: 2)
+        ])
+    }
+
     func testPersistsDynamicAssetSet() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-sets")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

@@ -42,6 +42,14 @@ struct LibraryGridView: View {
                 PeopleView(model: model)
             } else if model.selectedView == .search {
                 SearchWorkspaceView(model: model, assetGrid: AnyView(assetGrid))
+            } else if model.selectedView == .timeline {
+                TimelineWorkspaceView(
+                    model: model,
+                    columns: columns,
+                    focusCullingSurface: focusCullingSurface
+                ) { assetID in
+                    selectAssetFromGrid(assetID)
+                }
             } else if model.assets.isEmpty {
                 ScrollView {
                     emptyLibraryView
@@ -326,7 +334,7 @@ struct LibraryGridView: View {
     private var topInsetContent: some View {
         VStack(spacing: 0) {
             libraryTopBar
-            if model.selectedView == .grid || model.selectedView == .search {
+            if model.selectedView == .grid || model.selectedView == .search || model.selectedView == .timeline {
                 filterBar
             }
             if LibraryGridChromePolicy.shouldShowImportProgressBanner(
@@ -2136,13 +2144,14 @@ struct LibraryTopBarPresentation: Equatable {
     private static let modeItems = [
         LibraryTopBarModeItem(title: "Grid", systemImage: "square.grid.3x3.fill", mode: .grid),
         LibraryTopBarModeItem(title: "Search", systemImage: "magnifyingglass", mode: .search),
+        LibraryTopBarModeItem(title: "Timeline", systemImage: "calendar", mode: .timeline),
         LibraryTopBarModeItem(title: "Loupe", systemImage: "rectangle.inset.filled", mode: .loupe),
         LibraryTopBarModeItem(title: "Compare", systemImage: "rectangle.grid.2x2", mode: .compare),
         LibraryTopBarModeItem(title: "People", systemImage: "person.2", mode: .people)
     ]
 
     private static func breadcrumbItems(scopeTitle: String, selectedView: LibraryViewMode) -> [String] {
-        if selectedView == .search || selectedView == .people {
+        if selectedView == .search || selectedView == .timeline || selectedView == .people {
             return ["Library", scopeTitle]
         }
         if scopeTitle == "All Photographs" {
@@ -2877,6 +2886,149 @@ private struct SearchWorkspaceView: View {
                 .foregroundStyle(.secondary)
             Text("No matches")
                 .font(.headline)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct TimelineWorkspaceView: View {
+    var model: AppModel
+    var columns: [GridItem]
+    var focusCullingSurface: () -> Void
+    var selectAsset: (AssetID) -> Void
+
+    private var presentation: TimelinePresentation {
+        TimelinePresentation(
+            timelineDays: model.catalogTimelineDays,
+            loadedAssets: model.assets,
+            totalAssetCount: model.totalAssetCount
+        )
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                timelineHeader
+                if presentation.months.isEmpty {
+                    emptyTimeline
+                        .frame(maxWidth: .infinity, minHeight: 280)
+                } else {
+                    ForEach(presentation.months) { month in
+                        monthSection(month)
+                    }
+                }
+            }
+            .padding(12)
+        }
+        .background(Color.black.opacity(0.18))
+        .liveMockupPlaceholder(.timelineLibrary)
+    }
+
+    private var timelineHeader: some View {
+        HStack(spacing: 10) {
+            Label("Timeline", systemImage: "calendar")
+                .font(.headline)
+                .foregroundStyle(.orange)
+            Text(presentation.summaryText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            timelineMetric(title: "Months", value: "\(presentation.months.count)")
+            timelineMetric(title: "Loaded", value: "\(model.assets.count)")
+        }
+        .padding(14)
+        .background(.bar, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func monthSection(_ month: TimelineMonthPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(month.title)
+                    .font(.title3.weight(.semibold))
+                Text(month.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+
+            ForEach(month.days) { day in
+                daySection(day)
+            }
+        }
+    }
+
+    private func daySection(_ day: TimelineDayPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(day.title)
+                    .font(.subheadline.weight(.semibold))
+                Text(day.countText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                if let timelineDay = day.timelineDay {
+                    Button("Show") {
+                        selectTimelineDay(timelineDay)
+                    }
+                    .font(.caption)
+                    .buttonStyle(.borderless)
+                    .help("Show photos from \(day.title)")
+                }
+            }
+
+            if !day.assets.isEmpty {
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(day.assets, id: \.id.rawValue) { asset in
+                        AssetGridCell(
+                            asset: asset,
+                            previewURL: model.gridPreviewURL(for: asset.id),
+                            previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
+                            isSelected: model.selectedAssetID == asset.id
+                        )
+                        .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
+                            selectAsset(assetID)
+                        }
+                        .id("timeline-\(asset.id.rawValue)")
+                        .task(id: asset.id.rawValue) {
+                            do {
+                                try model.requestVisibleGridPreview(assetID: asset.id)
+                            } catch {
+                                model.errorMessage = error.localizedDescription
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func timelineMetric(title: String, value: String) -> some View {
+        HStack(spacing: 4) {
+            Text(value)
+                .font(.caption.monospacedDigit().weight(.semibold))
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func selectTimelineDay(_ day: CatalogTimelineDay) {
+        do {
+            try model.selectTimelineDay(day)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private var emptyTimeline: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "calendar")
+                .font(.system(size: 34))
+                .foregroundStyle(.secondary)
+            Text("No loaded timeline")
+                .font(.headline)
+            Text("Import photos or change filters to populate the timeline.")
+                .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }

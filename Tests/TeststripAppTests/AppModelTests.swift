@@ -1845,6 +1845,56 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [.evaluationKind(.focus)])))
     }
 
+    func testTimelineSidebarRowOpensTimelineView() throws {
+        let calendar = Self.gregorianUTC
+        let asset = makeAsset(
+            id: "timeline-sidebar",
+            path: "/Photos/Timeline/sidebar.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Self.date(year: 2026, month: 2, day: 4, calendar: calendar))
+        )
+        let (model, _) = try makeModelWithCatalogAssets(named: "timeline-sidebar", assets: [asset])
+        let timelineRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" }?.rows.first { $0.title == "Timeline" })
+
+        XCTAssertEqual(timelineRow.target, .timeline)
+        XCTAssertEqual(timelineRow.countText, "1")
+
+        try model.selectSidebarRow(timelineRow)
+
+        XCTAssertEqual(model.selectedView, .timeline)
+        XCTAssertEqual(model.libraryTitle, "Timeline")
+    }
+
+    func testSelectingTimelineDayAppliesDateRangeAndLoadsMatchingAssets() throws {
+        let calendar = Self.gregorianUTC
+        let selectedDay = makeAsset(
+            id: "selected-day",
+            path: "/Photos/Timeline/selected-day.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Self.date(year: 2026, month: 2, day: 4, hour: 9, calendar: calendar))
+        )
+        let otherDay = makeAsset(
+            id: "other-day",
+            path: "/Photos/Timeline/other-day.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Self.date(year: 2026, month: 2, day: 5, hour: 9, calendar: calendar))
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "timeline-select-day",
+            assets: [selectedDay, otherDay]
+        )
+
+        let timelineDay = CatalogTimelineDay(year: 2026, month: 2, day: 4, assetCount: 1)
+
+        try model.selectTimelineDay(timelineDay, calendar: calendar)
+
+        XCTAssertEqual(model.selectedView, .timeline)
+        XCTAssertEqual(model.assets.map(\.id), [selectedDay.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+        XCTAssertEqual(model.captureDateStartFilter, timelineDay.startDate(calendar: calendar))
+        XCTAssertEqual(model.captureDateEndFilter, timelineDay.endDate(calendar: calendar))
+    }
+
     func testLoadExposesEvaluationSignalSidebarAndSelectingSignalAppliesFilter() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-evaluation-sidebar")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -4078,6 +4128,104 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedSuggestedKeywords.map(\.provenanceText), ["apple-vision/Vision-mountain", "apple-vision/Vision-lake"])
     }
 
+    func testVisibleBatchKeywordSuggestionsAggregateObjectLabels() throws {
+        let first = makeAsset(id: "first-batch-keyword", path: "/Photos/first.jpg", rating: 0)
+        let second = makeAsset(id: "second-batch-keyword", path: "/Photos/second.jpg", rating: 0)
+        let lake = makeAsset(id: "lake-batch-keyword", path: "/Photos/lake.jpg", rating: 0)
+        let keyworded = makeAsset(
+            id: "keyworded-batch-keyword",
+            path: "/Photos/keyworded.jpg",
+            rating: 0,
+            keywords: ["mountain"]
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "batch-keyword-suggestions",
+            assets: [first, second, lake, keyworded]
+        )
+        let apple = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        let local = ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: first.id, kind: .object, value: .label("mountain"), confidence: 0.8, provenance: apple),
+            EvaluationSignal(assetID: second.id, kind: .object, value: .label("mountain"), confidence: 0.6, provenance: local),
+            EvaluationSignal(assetID: lake.id, kind: .object, value: .label("lake"), confidence: 0.9, provenance: local),
+            EvaluationSignal(assetID: keyworded.id, kind: .object, value: .label("mountain"), confidence: 0.95, provenance: apple)
+        ])
+
+        let suggestions = model.visibleBatchKeywordSuggestions
+
+        XCTAssertEqual(suggestions.map(\.keyword), ["mountain", "lake"])
+        XCTAssertEqual(suggestions.map(\.assetCountText), ["2 photos", "1 photo"])
+        XCTAssertEqual(suggestions.map(\.confidenceText), ["70%", "90%"])
+        XCTAssertEqual(suggestions[0].provenanceText, "apple-vision/Vision")
+    }
+
+    func testAcceptVisibleBatchKeywordSuggestionWritesMatchingVisibleAssetsOnly() throws {
+        let directory = try makeTemporaryDirectory(named: "batch-keyword-apply")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let firstURL = photosDirectory.appendingPathComponent("first.cr2")
+        let secondURL = photosDirectory.appendingPathComponent("second.cr2")
+        let thirdURL = photosDirectory.appendingPathComponent("third.cr2")
+        try Data("first raw bytes".utf8).write(to: firstURL)
+        try Data("second raw bytes".utf8).write(to: secondURL)
+        try Data("third raw bytes".utf8).write(to: thirdURL)
+        let first = Asset(
+            id: AssetID(rawValue: "first"),
+            originalURL: firstURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let second = Asset(
+            id: AssetID(rawValue: "second"),
+            originalURL: secondURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 11, modificationDate: Date(timeIntervalSince1970: 11)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let third = Asset(
+            id: AssetID(rawValue: "third"),
+            originalURL: thirdURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 12, modificationDate: Date(timeIntervalSince1970: 12)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert([first, second, third])
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: first.id, kind: .object, value: .label("mountain"), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: second.id, kind: .object, value: .label("mountain"), confidence: 0.7, provenance: provenance),
+            EvaluationSignal(assetID: third.id, kind: .object, value: .label("lake"), confidence: 0.9, provenance: provenance)
+        ])
+
+        let appliedCount = try model.acceptVisibleBatchKeywordSuggestion("mountain")
+
+        XCTAssertEqual(appliedCount, 2)
+        XCTAssertEqual(try repository.asset(id: first.id).metadata.keywords, ["mountain"])
+        XCTAssertEqual(try repository.asset(id: second.id).metadata.keywords, ["mountain"])
+        XCTAssertEqual(try repository.asset(id: third.id).metadata.keywords, [])
+        XCTAssertEqual(model.assets.map(\.metadata.keywords), [["mountain"], ["mountain"], []])
+        XCTAssertEqual(model.visibleBatchKeywordSuggestions.map(\.keyword), ["lake"])
+        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: firstURL.appendingPathExtension("xmp"))).metadata.keywords, ["mountain"])
+        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: secondURL.appendingPathExtension("xmp"))).metadata.keywords, ["mountain"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: thirdURL.appendingPathExtension("xmp").path))
+    }
+
     func testAcceptSuggestedKeywordForSelectedAssetWritesCatalogAndXmp() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-accept-suggested-keyword")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
@@ -5763,6 +5911,29 @@ final class AppModelTests: XCTestCase {
             fingerprint: FileFingerprint(size: size, modificationDate: Date(timeIntervalSince1970: TimeInterval(size))),
             availability: .online,
             metadata: AssetMetadata()
+        )
+    }
+
+    private static var gregorianUTC: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
+    private static func date(year: Int, month: Int, day: Int, calendar: Calendar) -> Date {
+        date(year: year, month: month, day: day, hour: 12, calendar: calendar)
+    }
+
+    private static func date(year: Int, month: Int, day: Int, hour: Int, calendar: Calendar) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
+    }
+
+    private static func technicalMetadata(capturedAt: Date) -> AssetTechnicalMetadata {
+        AssetTechnicalMetadata(
+            pixelWidth: 6000,
+            pixelHeight: 4000,
+            capturedAt: capturedAt,
+            provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
         )
     }
 
