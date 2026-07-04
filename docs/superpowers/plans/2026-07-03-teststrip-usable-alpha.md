@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `b84aa2e Improve inspector mockup parity`
+- Snapshot commit: `11143b3 Annotate live mockup placeholders`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last broad unit verification: `swift test` passed with 456 tests after the inspector mockup-parity pass.
-- Last app workflow verification: `script/build_and_run.sh --sample-photos`, Computer Use inspection of the running app, `script/verify_grid_activation.sh`, `script/verify_grid_selection_feedback.sh`, `script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 script/verify_imported_grid_culling.sh Teststrip` passed after the inspector mockup-parity pass. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
+- Last broad unit verification: `swift test` passed with 457 tests after the live-mockup placeholder annotation pass.
+- Last app workflow verification: `script/build_and_run.sh --sample-photos`, Computer Use inspection of the running app, `script/verify_grid_activation.sh`, `script/verify_grid_selection_feedback.sh`, and `script/verify_keyboard_culling.sh` passed after the live-mockup placeholder annotation pass. `TESTSTRIP_AX_TIMEOUT_SECONDS=20 script/verify_imported_grid_culling.sh Teststrip` also passed after the inspector mockup-parity pass. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
 
@@ -39,6 +39,7 @@
 - `a4efda0`: improved library mockup parity by preserving thumbnail aspect ratios in the overview grid, tightening the Ask/search filter rail, and pinning the inspector selected-preview box to a stable size.
 - `feed363`: improved culling/loupe mockup parity with a denser rapid-cull header, command rail, and layout framing backed by existing culling state.
 - `b84aa2e`: improved inspector mockup parity with compact rating/flag/label controls, scrollable metadata sections, pinned Activity, tested filename/status/technical display models, keyword chips, and highlighted Teststrip evaluation signals.
+- `11143b3`: added code-level `LiveMockupPlaceholder` markers for scaffolded live-mockup UI, currently tagging the People sidebar placeholder and the agentic-search promise in the search box.
 
 ## Product Decisions To Preserve
 
@@ -242,6 +243,7 @@ Current behavior:
 - Grid thumbnail density is user-configurable from the toolbar and persists as an app preference.
 - Selection and inspector metadata display exist; the inspector now shows the selected cached preview above compact metadata controls in a fixed-size preview box, keeps Activity pinned below scrollable inspector content, and formats technical metadata through tested display models.
 - Active filters are summarized as visible chips below the search/filter controls.
+- Live-mockup placeholders can be tagged in code with `LiveMockupPlaceholder`, including stable ids, intended behavior, and current fallback notes. The current tagged scaffolded surfaces are `sidebar.people` and `search.agentic`.
 - Import Path shows a pre-import plan for in-place cataloging, XMP sidecars, cached previews, and managed background work.
 - Culling sessions now start and reopen in loupe view with a culling header, reviewed-progress bar, pick/reject counts, stable rating/label/flag command rail, and visible frame position.
 - Ratings, flags, labels, and keywords have app-model/catalog plumbing.
