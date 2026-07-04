@@ -127,6 +127,31 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertFalse(summary.canStartImport)
     }
 
+    func testSourceSummaryBlocksMissingSourceBeforeImportStarts() throws {
+        let directory = try makeTemporaryDirectory(named: "import-source-summary-missing")
+        let missing = directory.appendingPathComponent("missing", isDirectory: true)
+
+        let summary = ImportSourceSummary.scan(sourceURL: missing)
+
+        XCTAssertEqual(summary.countText, "Source folder is missing")
+        XCTAssertEqual(summary.detailText, "Source folder is missing")
+        XCTAssertFalse(summary.canStartImport)
+    }
+
+    func testSourceSummaryBlocksUnreadableSourceBeforeImportStarts() throws {
+        let directory = try makeTemporaryDirectory(named: "import-source-summary-unreadable")
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: directory.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        }
+
+        let summary = ImportSourceSummary.scan(sourceURL: directory)
+
+        XCTAssertEqual(summary.countText, "Source folder is not readable")
+        XCTAssertEqual(summary.detailText, "Source folder is not readable")
+        XCTAssertFalse(summary.canStartImport)
+    }
+
     func testFolderDraftBlocksStartWhenPreflightFindsNoSupportedPhotos() throws {
         let directory = try makeTemporaryDirectory(named: "import-draft-empty")
         try Data("notes".utf8).write(to: directory.appendingPathComponent("notes.txt"))

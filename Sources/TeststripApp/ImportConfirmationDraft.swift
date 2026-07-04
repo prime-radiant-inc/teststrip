@@ -12,6 +12,7 @@ struct ImportSourceSummary: Equatable {
     var reachedEntryLimit: Bool
     var scannedEntryCount: Int
     var unavailableReason: String?
+    var blocksImport: Bool
 
     static func scan(
         sourceURL: URL,
@@ -22,19 +23,25 @@ struct ImportSourceSummary: Equatable {
         let boundedLimit = max(1, limit)
         let boundedEntryLimit = max(1, entryLimit)
         let supportedExtensions = Set(supportedExtensions.map { $0.lowercased() })
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory) else {
+            return unavailableSummary(sourceURL: sourceURL, reason: "Source folder is missing", blocksImport: true)
+        }
+        guard isDirectory.boolValue else {
+            return unavailableSummary(sourceURL: sourceURL, reason: "Source is not a folder", blocksImport: true)
+        }
+        guard FileManager.default.isReadableFile(atPath: sourceURL.path) else {
+            return unavailableSummary(sourceURL: sourceURL, reason: "Source folder is not readable", blocksImport: true)
+        }
         guard let enumerator = FileManager.default.enumerator(
             at: sourceURL,
             includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
             options: [.skipsHiddenFiles]
         ) else {
-            return ImportSourceSummary(
+            return unavailableSummary(
                 sourceURL: sourceURL,
-                photoCount: 0,
-                byteCount: 0,
-                reachedLimit: false,
-                reachedEntryLimit: false,
-                scannedEntryCount: 0,
-                unavailableReason: "Source will be scanned when import starts"
+                reason: "Source will be scanned when import starts",
+                blocksImport: false
             )
         }
 
@@ -67,7 +74,21 @@ struct ImportSourceSummary: Equatable {
             reachedLimit: reachedLimit,
             reachedEntryLimit: reachedEntryLimit,
             scannedEntryCount: scannedEntryCount,
-            unavailableReason: nil
+            unavailableReason: nil,
+            blocksImport: false
+        )
+    }
+
+    private static func unavailableSummary(sourceURL: URL, reason: String, blocksImport: Bool) -> ImportSourceSummary {
+        ImportSourceSummary(
+            sourceURL: sourceURL,
+            photoCount: 0,
+            byteCount: 0,
+            reachedLimit: false,
+            reachedEntryLimit: false,
+            scannedEntryCount: 0,
+            unavailableReason: reason,
+            blocksImport: blocksImport
         )
     }
 
@@ -94,7 +115,7 @@ struct ImportSourceSummary: Equatable {
     }
 
     var canStartImport: Bool {
-        unavailableReason != nil || photoCount > 0 || reachedEntryLimit
+        !blocksImport && (unavailableReason != nil || photoCount > 0 || reachedEntryLimit)
     }
 
     var detailText: String {
