@@ -15,6 +15,14 @@ swift run TeststripBench 250000
 
 The catalog benchmark measures synthetic asset seeding, total count, first-page load, middle-page load, filtered count for 4+ star assets, and filtered first-page load. It uses the same `CatalogRepository` APIs as the app grid paging path.
 
+Every `TeststripBench` command keeps its human-readable output and also prints one machine-readable summary line:
+
+```text
+benchmark-summary	{"benchmark":"deferred_import","count":3,"measurements":{"import_deferred":0.017},"metrics":{"catalog_assets":3,"imported_assets":3,"pending_previews":6,"progress_events":8}}
+```
+
+The prefix is stable. The JSON payload contains the benchmark name, requested count, numeric result metrics, and measured step durations in seconds. Scripts should parse this line instead of scraping the human timing text.
+
 ## Local Evidence
 
 On July 3, 2026, local debug runs produced:

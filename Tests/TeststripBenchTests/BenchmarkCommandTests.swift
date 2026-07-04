@@ -225,6 +225,42 @@ final class BenchmarkCommandTests: XCTestCase {
         }
     }
 
+    func testBenchmarkSummaryEmitsDecodableMachineReadableLine() throws {
+        let summary = BenchmarkSummary(
+            benchmark: "catalog_scale",
+            count: 500_000,
+            metrics: [
+                "asset_count": 500_000,
+                "first_page_rows": 500
+            ],
+            measurements: [
+                "load_first_page": 0.008
+            ]
+        )
+
+        let line = try summary.machineReadableLine()
+
+        XCTAssertTrue(line.hasPrefix("benchmark-summary\t"))
+        let payload = String(line.dropFirst("benchmark-summary\t".count))
+        let decoded = try JSONDecoder().decode(BenchmarkSummary.self, from: Data(payload.utf8))
+        XCTAssertEqual(decoded, summary)
+    }
+
+    func testBenchmarkSummaryRecorderCapturesMetricsAndMeasurements() throws {
+        var recorder = BenchmarkSummaryRecorder(benchmark: "preview_render", count: 12)
+
+        recorder.recordMetric("rendered_previews", 48)
+        let value = recorder.measure("preview_render") {
+            "rendered"
+        }
+
+        XCTAssertEqual(value, "rendered")
+        XCTAssertEqual(recorder.summary.benchmark, "preview_render")
+        XCTAssertEqual(recorder.summary.count, 12)
+        XCTAssertEqual(recorder.summary.metrics["rendered_previews"], 48)
+        XCTAssertNotNil(recorder.summary.measurements["preview_render"])
+    }
+
     func testBenchmarkWorkspaceCreatesUniqueTemporaryRoots() {
         let first = BenchmarkWorkspace.temporaryRoot()
         let second = BenchmarkWorkspace.temporaryRoot()
