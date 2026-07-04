@@ -1730,18 +1730,61 @@ final class AppModelTests: XCTestCase {
             name: "Ceremony Picks",
             query: SetQuery(predicates: [.text("ceremony"), .flag(.pick)])
         )
+        let manual = AssetSet.manual(
+            id: AssetSetID(rawValue: "manual"),
+            name: "Manual Keeper",
+            assetIDs: [AssetID(rawValue: "ceremony-pick"), AssetID(rawValue: "missing")]
+        )
+        try repository.upsert([
+            makeAsset(id: "portfolio", path: "/Photos/Portfolio/hero.jpg", rating: 5),
+            makeAsset(id: "ceremony-pick", path: "/Photos/Ceremony/pick.jpg", rating: 5, flag: .pick),
+            makeAsset(id: "ceremony-reject", path: "/Photos/Ceremony/reject.jpg", rating: 1, flag: .reject)
+        ])
         try repository.upsert(starred)
         try repository.upsert(saved)
+        try repository.upsert(manual)
 
         let model = try AppModel.load(repository: repository)
 
-        XCTAssertEqual(model.savedAssetSets.map(\.id), [starred.id, saved.id])
+        XCTAssertEqual(model.savedAssetSets.map(\.id), [starred.id, saved.id, manual.id])
         XCTAssertEqual(model.starredAssetSets.map(\.id), [starred.id])
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, [starred.name])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, [starred.name, saved.name])
+        XCTAssertEqual(sidebarRowCount(starred.name, in: "Starred", of: model), "2")
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, [starred.name, saved.name, manual.name])
         let savedRows = try XCTUnwrap(model.sidebarSections.first { $0.title == "Saved Sets" }?.rows)
-        XCTAssertEqual(savedRows.map(\.detailText), ["Smart collection", "Smart collection"])
-        XCTAssertEqual(savedRows.map(\.tone), [.accent, .accent])
+        XCTAssertEqual(savedRows.map(\.detailText), ["Smart collection", "Smart collection", "Manual set"])
+        XCTAssertEqual(savedRows.map(\.countText), ["2", "1", "1"])
+        XCTAssertEqual(savedRows.map(\.tone), [.accent, .accent, .neutral])
+    }
+
+    func testSavedSetCountsRefreshAfterMetadataChanges() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-saved-set-count-refresh")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = makeAsset(id: "saved-set-target", path: "/Photos/target.jpg", rating: 0)
+        let savedSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "five-stars"),
+            name: "Five Stars",
+            query: SetQuery(predicates: [.ratingAtLeast(5)])
+        )
+        try repository.upsert(asset)
+        try repository.upsert(savedSet)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+
+        XCTAssertEqual(sidebarRowCount("Five Stars", in: "Saved Sets", of: model), "0")
+
+        try model.setRatingForSelectedAsset(5)
+
+        XCTAssertEqual(sidebarRowCount("Five Stars", in: "Saved Sets", of: model), "1")
     }
 
     func testLoadExposesCatalogFoldersInSidebarAndSelectingFolderAppliesFilter() throws {
@@ -2243,6 +2286,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.colorLabelFilter)
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, ["Ceremony Picks"])
+        XCTAssertEqual(sidebarRowCount("Ceremony Picks", in: "Starred", of: model), "1")
     }
 
     func testSavingCurrentLibraryQueryRequiresActiveQuery() throws {
@@ -2286,6 +2330,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetSetID, savedSet.id)
         XCTAssertEqual(model.assets.map(\.id), [asset.id])
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, ["Keeper"])
+        XCTAssertEqual(sidebarRowCount("Keeper", in: "Starred", of: model), "1")
     }
 
     func testSavingSelectedAssetAsManualSetRequiresSelection() throws {
@@ -5049,12 +5094,16 @@ final class AppModelTests: XCTestCase {
         try Data("preview".utf8).write(to: url)
     }
 
-    private func reviewQueueCount(_ title: String, in model: AppModel) -> String? {
+    private func sidebarRowCount(_ rowTitle: String, in sectionTitle: String, of model: AppModel) -> String? {
         model.sidebarSections
-            .first { $0.title == "Review" }?
+            .first { $0.title == sectionTitle }?
             .rows
-            .first { $0.title == title }?
+            .first { $0.title == rowTitle }?
             .countText
+    }
+
+    private func reviewQueueCount(_ title: String, in model: AppModel) -> String? {
+        sidebarRowCount(title, in: "Review", of: model)
     }
 
     private func fileFingerprint(for url: URL) throws -> FileFingerprint {

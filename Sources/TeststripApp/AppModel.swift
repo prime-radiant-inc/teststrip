@@ -360,6 +360,7 @@ public final class AppModel {
     public var metadataSyncPendingFilter: Bool
     public var metadataSyncConflictFilter: Bool
     public var savedAssetSets: [AssetSet]
+    public var assetSetCounts: [AssetSetID: Int]
     public var catalogFolders: [CatalogFolder]
     public var sourceRoots: [CatalogSourceRoot]
     public var sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary]
@@ -799,6 +800,7 @@ public final class AppModel {
         previewGenerationQueueStates: [PreviewGenerationQueueState] = [],
         backgroundWorkQueue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
         savedAssetSets: [AssetSet] = [],
+        assetSetCounts: [AssetSetID: Int] = [:],
         catalogFolders: [CatalogFolder] = [],
         sourceRoots: [CatalogSourceRoot] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
@@ -813,6 +815,7 @@ public final class AppModel {
         self.sidebarSections = sidebarSections.isEmpty ? Self.defaultSidebarSections(
             totalAssetCount: resolvedTotalAssetCount,
             savedAssetSets: savedAssetSets,
+            assetSetCounts: assetSetCounts,
             catalogFolders: catalogFolders,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
@@ -852,6 +855,7 @@ public final class AppModel {
         self.metadataSyncPendingFilter = false
         self.metadataSyncConflictFilter = false
         self.savedAssetSets = savedAssetSets
+        self.assetSetCounts = assetSetCounts
         self.catalogFolders = catalogFolders
         self.sourceRoots = sourceRoots
         self.sourceAvailabilitySummaries = sourceAvailabilitySummaries
@@ -935,6 +939,7 @@ public final class AppModel {
         try reconcileInterruptedIngestWorkSessions(repository: repository)
         let assets = try repository.allAssets(limit: Self.assetPageSize)
         let savedAssetSets = try repository.assetSets()
+        let assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: repository)
         let catalogFolders = try repository.folders()
         let sourceRoots = try repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: repository)
@@ -949,6 +954,7 @@ public final class AppModel {
             sidebarSections: defaultSidebarSections(
                 totalAssetCount: totalAssetCount,
                 savedAssetSets: savedAssetSets,
+                assetSetCounts: assetSetCounts,
                 catalogFolders: catalogFolders,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
@@ -967,6 +973,7 @@ public final class AppModel {
             metadataSyncConflictItems: metadataSyncConflictItems,
             previewGenerationQueueStates: try repository.previewGenerationQueueStates(),
             savedAssetSets: savedAssetSets,
+            assetSetCounts: assetSetCounts,
             catalogFolders: catalogFolders,
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
@@ -984,6 +991,7 @@ public final class AppModel {
         try reconcileInterruptedIngestWorkSessions(repository: catalog.repository)
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
         let savedAssetSets = try catalog.repository.assetSets()
+        let assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         let catalogFolders = try catalog.repository.folders()
         let sourceRoots = try catalog.repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
@@ -998,6 +1006,7 @@ public final class AppModel {
             sidebarSections: defaultSidebarSections(
                 totalAssetCount: totalAssetCount,
                 savedAssetSets: savedAssetSets,
+                assetSetCounts: assetSetCounts,
                 catalogFolders: catalogFolders,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
@@ -1017,6 +1026,7 @@ public final class AppModel {
             metadataSyncConflictItems: metadataSyncConflictItems,
             previewGenerationQueueStates: try catalog.repository.previewGenerationQueueStates(),
             savedAssetSets: savedAssetSets,
+            assetSetCounts: assetSetCounts,
             catalogFolders: catalogFolders,
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
@@ -1178,6 +1188,7 @@ public final class AppModel {
         let assetSet = try assetSetForSelection(id: id, repository: catalog.repository)
         if !savedAssetSets.contains(where: { $0.id == assetSet.id }) {
             savedAssetSets.append(assetSet)
+            assetSetCounts[assetSet.id] = try Self.assetCount(for: assetSet, repository: catalog.repository)
             rebuildSidebarSections()
         }
         selectedAssetSetID = id
@@ -1191,6 +1202,7 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         savedAssetSets = try catalog.repository.assetSets()
+        assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         rebuildSidebarSections()
     }
 
@@ -1251,6 +1263,7 @@ public final class AppModel {
         }
         try catalog.repository.upsert(assetSet)
         savedAssetSets = try catalog.repository.assetSets()
+        assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         selectedAssetSetID = assetSet.id
         clearLibraryQueryFilters()
         rebuildSidebarSections()
@@ -1584,7 +1597,7 @@ public final class AppModel {
         }
         let updatedAsset = try catalog.repository.asset(id: assetID)
         try syncMetadataSidecar(for: updatedAsset)
-        try refreshReviewQueueCounts()
+        try refreshCatalogSidebarCounts()
         guard let index = assets.firstIndex(where: { $0.id == assetID }) else {
             return
         }
@@ -1701,7 +1714,7 @@ public final class AppModel {
         if let index = assets.firstIndex(where: { $0.id == assetID }) {
             assets[index] = updatedAsset
         }
-        try refreshReviewQueueCounts()
+        try refreshCatalogSidebarCounts()
         if originalAsset.metadata != sidecarMetadata {
             metadataUndoStack.append(MetadataChange(
                 assetID: assetID,
@@ -2941,6 +2954,7 @@ public final class AppModel {
         )
         try catalog.repository.upsert(inputSet)
         savedAssetSets = try catalog.repository.assetSets()
+        assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         rebuildSidebarSections()
         return inputSetID
     }
@@ -2956,6 +2970,7 @@ public final class AppModel {
         sidebarSections = Self.defaultSidebarSections(
             totalAssetCount: totalAssetCount,
             savedAssetSets: savedAssetSets,
+            assetSetCounts: assetSetCounts,
             catalogFolders: catalogFolders,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
@@ -2988,9 +3003,10 @@ public final class AppModel {
         }
     }
 
-    private func refreshReviewQueueCounts() throws {
+    private func refreshCatalogSidebarCounts() throws {
         guard let catalog else { return }
         reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
+        assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         rebuildSidebarSections()
     }
 
@@ -3225,7 +3241,7 @@ public final class AppModel {
 
     private func updateImportStatus(with result: LibraryImportResult) {
         try? refreshPreviewGenerationQueueStates()
-        try? refreshReviewQueueCounts()
+        try? refreshCatalogSidebarCounts()
         statusMessage = Self.importCompletionStatus(result: result)
         if !result.previewFailures.isEmpty {
             statusMessage?.append(" (\(result.previewFailures.count) preview failures)")
@@ -3377,6 +3393,7 @@ public final class AppModel {
             try catalog.repository.upsert(outputSet)
             if !savedAssetSets.contains(where: { $0.id == outputSetID }) {
                 savedAssetSets.append(outputSet)
+                assetSetCounts[outputSetID] = result.importedAssets.count
             }
             return [outputSetID]
         } catch {
@@ -3546,6 +3563,7 @@ public final class AppModel {
     private static func defaultSidebarSections(
         totalAssetCount: Int? = nil,
         savedAssetSets: [AssetSet] = [],
+        assetSetCounts: [AssetSetID: Int] = [:],
         catalogFolders: [CatalogFolder] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
@@ -3633,12 +3651,12 @@ public final class AppModel {
             sections.append(SidebarSection(title: "Sync", rows: syncRows))
         }
         let visibleSavedAssetSets = Self.visibleSavedAssetSets(savedAssetSets)
-        let starredRows = visibleSavedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0) }
+        let starredRows = visibleSavedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0, count: assetSetCounts[$0.id]) }
         if !starredRows.isEmpty {
             sections.append(SidebarSection(title: "Starred", rows: starredRows))
         }
         if !visibleSavedAssetSets.isEmpty {
-            sections.append(SidebarSection(title: "Saved Sets", rows: visibleSavedAssetSets.map { Self.sidebarRow(for: $0) }))
+            sections.append(SidebarSection(title: "Saved Sets", rows: visibleSavedAssetSets.map { Self.sidebarRow(for: $0, count: assetSetCounts[$0.id]) }))
         }
         let workRows = Self.workSidebarRows(recentWork: recentWork, starredWork: starredWork)
         if workRows.isEmpty {
@@ -3810,14 +3828,33 @@ public final class AppModel {
         assetSets.filter { !$0.id.rawValue.hasPrefix("work-output-") && !$0.id.rawValue.hasPrefix("work-input-") }
     }
 
-    private static func sidebarRow(for assetSet: AssetSet) -> SidebarRow {
+    private static func sidebarRow(for assetSet: AssetSet, count: Int?) -> SidebarRow {
         SidebarRow(
             id: "asset-set-\(assetSet.id.rawValue)",
             title: assetSet.name,
             detailText: assetSet.sidebarDetailText,
+            countText: count.map(sidebarCountText),
             tone: assetSet.isDynamic ? .accent : .neutral,
             target: .assetSet(assetSet.id)
         )
+    }
+
+    private static func assetSetCounts(_ assetSets: [AssetSet], repository: CatalogRepository) throws -> [AssetSetID: Int] {
+        let visibleAssetSets = visibleSavedAssetSets(assetSets)
+        var counts: [AssetSetID: Int] = [:]
+        for assetSet in visibleAssetSets {
+            counts[assetSet.id] = try assetCount(for: assetSet, repository: repository)
+        }
+        return counts
+    }
+
+    private static func assetCount(for assetSet: AssetSet, repository: CatalogRepository) throws -> Int {
+        switch assetSet.membership {
+        case .manual(let ids), .snapshot(let ids):
+            return try repository.assetCount(ids: ids)
+        case .dynamic(let query):
+            return try repository.assetCount(matching: query)
+        }
     }
 
     private static func workSidebarRows(
