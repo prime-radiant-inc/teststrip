@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `fd56661 Show import progress before assets appear`
+- Snapshot commit: `b6c7149 Cover duplicate import guards`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter LibraryGridChromeTests` passed after the import progress banner slice.
-- Last broad unit verification: `swift test` passed with 464 tests after the import progress banner slice.
+- Last focused unit verification: `swift test --filter AppModelTests/testBeginImportFolderDoesNotEnqueueDuplicateImportWhileRunning --filter AppModelTests/testBeginImportCardDoesNotEnqueueWhileFolderImportIsRunning` passed after the duplicate-import guard coverage slice.
+- Last broad unit verification: `swift test` passed with 466 tests after the duplicate-import guard coverage slice.
 - Last app workflow verification: live import UI automation was intentionally deferred for the import progress banner slice to avoid unnecessary focus stealing; the previous grid aspect-ratio slice passed `./script/build_and_run.sh --sample-photos` and one Computer Use grid inspection, and the previous People live-mockup route passed Computer Use inspection plus `./script/verify_grid_activation.sh`, `./script/verify_grid_selection_feedback.sh`, `./script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 ./script/verify_imported_grid_culling.sh`. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
@@ -44,6 +44,7 @@
 - `b12cccf`: added a selectable People live-mockup route from the sidebar and toolbar, plus a placeholder registry covering People navigation, People face actions, agentic search, and empty work history.
 - `369b619`: made overview grid cells use cataloged technical dimensions for true photo aspect ratios, while falling back to the old 3:2 frame for missing or invalid dimensions.
 - `fd56661`: made the shared import progress banner appear as soon as import work is active, including before any assets are visible in the grid.
+- `b6c7149`: added focused tests proving folder/card import entrypoints do not enqueue duplicate work while an import is already running.
 
 ## Product Decisions To Preserve
 
@@ -253,6 +254,7 @@ Current behavior:
 - Live-mockup placeholders can be tagged in code with `LiveMockupPlaceholder`, including stable ids, intended behavior, and current fallback notes. The current registry tracks People navigation, People face actions, agentic search, and empty work history.
 - Import Path shows a pre-import plan for in-place cataloging, XMP sidecars, cached previews, and managed background work.
 - Active import work shows the shared progress banner immediately, even when the grid has no visible assets yet.
+- Folder and card import entrypoints refuse duplicate import submissions while an import is already running.
 - Culling sessions now start and reopen in loupe view with a culling header, reviewed-progress bar, pick/reject counts, stable rating/label/flag command rail, and visible frame position.
 - Ratings, flags, labels, and keywords have app-model/catalog plumbing.
 - Keyboard culling probe verifies selecting a thumbnail, clearing rating, sending `5`, and seeing `Rating: 5` in the inspector.
@@ -266,7 +268,7 @@ Current behavior:
 ### Alpha-Blocking Gaps
 
 - Preview throughput and UI churn under large preview backlogs are not good enough yet. The 600-image import path completed, but many previews were still pending after the initial wait and app CPU stayed high while draining.
-- Import UX is improved but not complete. The app now shows visible active-import feedback, post-import preview continuation, and an Import Path plan, but richer phase labeling, duplicate submission prevention, permission/security-scope failures, and card-source staging still need work.
+- Import UX is improved but not complete. The app now shows visible active-import feedback, post-import preview continuation, an Import Path plan, and tested duplicate-import guards, but richer phase labeling, permission/security-scope failures, and card-source staging still need work.
 - Clicking/selection needs a stronger regression harness. We have AX probes, but the user observed weird broken clicking after import, and this should be treated as a real usability risk until verified under imported-photo conditions.
 - Library mockup parity is improving but incomplete. The overview grid now uses cataloged dimensions for true aspect-ratio cells, the filter rail is closer to the Studio mockup's Ask/search treatment, the inspector preview size is pinned, the inspector metadata controls have an initial mockup-derived pass, and the culling/loupe chrome has an initial design pass, but sidebar density and saved/search set surfaces still need visual passes against the design concept.
 - The current RAW story is only the first abstraction and ImageIO-backed path. We still need an explicit decoder capability matrix and provider-swapping plan for formats Jesse named: DNG, CRW, CR2, Fuji RAW, Sigma/Foveon RAW, and specialty long-tail files. Lytro support remains out of scope.
