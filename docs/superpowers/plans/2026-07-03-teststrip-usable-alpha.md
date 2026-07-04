@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `b47e57a Emit machine-readable benchmark summaries`
+- Snapshot commit: `5989a8e Guard timeline navigation at 100k catalog scale`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter BenchmarkCommandTests` passed after the machine-readable benchmark summary slice; `swift run TeststripBench import-deferred 3` printed the new `benchmark-summary` JSON line while preserving human output.
-- Last broad unit verification: `swift test` passed with 566 tests after the machine-readable benchmark summary slice.
+- Last focused unit verification: `swift test --filter AppModelTests/testSelectingTimelineDayInSynthetic100kCatalogKeepsLoadedAssetWindowBounded` passed after adding the 100k Timeline scale guard.
+- Last broad unit verification: `swift test` passed with 567 tests after the 100k Timeline scale guard.
 - Last app workflow verification: `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import/click UI automation was intentionally deferred for the import phase and grid click-recentering slices to avoid unnecessary focus stealing while Jesse was using the machine; those slices were covered by focused presentation/policy tests and full unit runs. The previous grid aspect-ratio slice passed `./script/build_and_run.sh --sample-photos` and one Computer Use grid inspection, and the previous People live-mockup route passed Computer Use inspection plus `./script/verify_grid_activation.sh`, `./script/verify_grid_selection_feedback.sh`, `./script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 ./script/verify_imported_grid_culling.sh`. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
@@ -82,6 +82,7 @@
 - `bfe1602`: added deterministic Ask/search parsing for crisp photographer terms, mapping picks/rejects, star ratings, needs-keywords/evaluation, and camera/lens/keyword prefixes into structured catalog predicates while preserving plain text fallback.
 - `bb3ba81`: added a catalog-backed Timeline route with capture-day counts, sidebar/top-mode navigation, day drill-down through existing date predicates, and visible batch keyword suggestions/apply from object-label signals through catalog/XMP writeback.
 - `b47e57a`: made every TeststripBench command emit a parseable `benchmark-summary` JSON line with numeric metrics and measured step durations while keeping the existing human-readable output.
+- `5989a8e`: added a 100k synthetic catalog guard proving Timeline day drill-down keeps AppModel's loaded asset window bounded and constrained to the selected capture day.
 
 ## Product Decisions To Preserve
 
