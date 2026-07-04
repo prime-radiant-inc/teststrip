@@ -90,6 +90,27 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(summary.detailText, "Preview counted the first 2 supported photos")
     }
 
+    func testSourceSummaryStopsAtEntryLimitBeforeExhaustingUnsupportedFiles() throws {
+        let directory = try makeTemporaryDirectory(named: "import-source-summary-entry-limit")
+        for index in 0..<3 {
+            try Data([UInt8(index)]).write(to: directory.appendingPathComponent("notes-\(index).txt"))
+        }
+
+        let summary = ImportSourceSummary.scan(
+            sourceURL: directory,
+            supportedExtensions: ["jpg"],
+            limit: 20,
+            entryLimit: 2
+        )
+
+        XCTAssertEqual(summary.photoCount, 0)
+        XCTAssertEqual(summary.scannedEntryCount, 2)
+        XCTAssertFalse(summary.reachedLimit)
+        XCTAssertTrue(summary.reachedEntryLimit)
+        XCTAssertEqual(summary.countText, "No supported photos found yet")
+        XCTAssertEqual(summary.detailText, "Preview scanned the first 2 files; import will keep scanning")
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-import-confirmation-\(UUID().uuidString)", isDirectory: true)

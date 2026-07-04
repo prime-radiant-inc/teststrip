@@ -3,19 +3,24 @@ import TeststripCore
 
 struct ImportSourceSummary: Equatable {
     static let defaultScanLimit = 300
+    static let defaultEntryLimit = 2_000
 
     var sourceURL: URL
     var photoCount: Int
     var byteCount: Int64
     var reachedLimit: Bool
+    var reachedEntryLimit: Bool
+    var scannedEntryCount: Int
     var unavailableReason: String?
 
     static func scan(
         sourceURL: URL,
         supportedExtensions: Set<String> = ImageIODecodeProvider.supportedExtensions,
-        limit: Int = defaultScanLimit
+        limit: Int = defaultScanLimit,
+        entryLimit: Int = defaultEntryLimit
     ) -> ImportSourceSummary {
         let boundedLimit = max(1, limit)
+        let boundedEntryLimit = max(1, entryLimit)
         let supportedExtensions = Set(supportedExtensions.map { $0.lowercased() })
         guard let enumerator = FileManager.default.enumerator(
             at: sourceURL,
@@ -27,6 +32,8 @@ struct ImportSourceSummary: Equatable {
                 photoCount: 0,
                 byteCount: 0,
                 reachedLimit: false,
+                reachedEntryLimit: false,
+                scannedEntryCount: 0,
                 unavailableReason: "Source will be scanned when import starts"
             )
         }
@@ -34,7 +41,14 @@ struct ImportSourceSummary: Equatable {
         var photoCount = 0
         var byteCount: Int64 = 0
         var reachedLimit = false
+        var reachedEntryLimit = false
+        var scannedEntryCount = 0
         for case let fileURL as URL in enumerator {
+            if scannedEntryCount == boundedEntryLimit {
+                reachedEntryLimit = true
+                break
+            }
+            scannedEntryCount += 1
             guard supportedExtensions.contains(fileURL.pathExtension.lowercased()) else { continue }
             let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
             guard values?.isRegularFile == true else { continue }
@@ -51,6 +65,8 @@ struct ImportSourceSummary: Equatable {
             photoCount: photoCount,
             byteCount: byteCount,
             reachedLimit: reachedLimit,
+            reachedEntryLimit: reachedEntryLimit,
+            scannedEntryCount: scannedEntryCount,
             unavailableReason: nil
         )
     }
@@ -60,9 +76,12 @@ struct ImportSourceSummary: Equatable {
             return unavailableReason
         }
         if photoCount == 0 {
+            if reachedEntryLimit {
+                return "No supported photos found yet"
+            }
             return "No supported photos found"
         }
-        let suffix = reachedLimit ? "+" : ""
+        let suffix = reachedLimit || reachedEntryLimit ? "+" : ""
         let noun = photoCount == 1 ? "photo" : "photos"
         return "\(photoCount)\(suffix) supported \(noun)"
     }
@@ -77,6 +96,10 @@ struct ImportSourceSummary: Equatable {
     var detailText: String {
         if let unavailableReason {
             return unavailableReason
+        }
+        if reachedEntryLimit {
+            let noun = scannedEntryCount == 1 ? "file" : "files"
+            return "Preview scanned the first \(scannedEntryCount) \(noun); import will keep scanning"
         }
         if reachedLimit {
             return "Preview counted the first \(photoCount) supported photos"
