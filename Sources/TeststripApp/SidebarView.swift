@@ -75,6 +75,8 @@ struct SidebarView: View {
             return "star.fill"
         case .needsKeywords:
             return "tag"
+        case .needsEvaluation:
+            return "wand.and.stars"
         }
     }
 

@@ -1613,22 +1613,41 @@ final class AppModelTests: XCTestCase {
     }
 
     func testLoadExposesReviewQueuesAndSelectingQueueAppliesFilter() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-review-queue-sidebar")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
         let pick = makeAsset(id: "pick", path: "/Photos/Job/pick.jpg", rating: 4, flag: .pick, keywords: ["tagged"])
         let reject = makeAsset(id: "reject", path: "/Photos/Job/reject.jpg", rating: 1, flag: .reject, keywords: ["tagged"])
         let fiveStar = makeAsset(id: "five-star", path: "/Photos/Job/five-star.jpg", rating: 5, keywords: ["tagged"])
         let unreviewed = makeAsset(id: "unreviewed", path: "/Photos/Job/unreviewed.jpg", rating: 0, keywords: ["tagged"])
         let needsKeywords = makeAsset(id: "needs-keywords", path: "/Photos/Job/needs-keywords.jpg", rating: 3)
-        let (model, _) = try makeModelWithCatalogAssets(
-            named: "app-model-review-queue-sidebar",
-            assets: [pick, reject, fiveStar, unreviewed, needsKeywords]
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.upsert([pick, reject, fiveStar, unreviewed, needsKeywords])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: pick.id, kind: .faceQuality, value: .score(0.82), confidence: 0.82, provenance: provenance),
+            EvaluationSignal(assetID: reject.id, kind: .object, value: .label("camera"), confidence: 0.74, provenance: provenance),
+            EvaluationSignal(assetID: fiveStar.id, kind: .ocrText, value: .text("invoice"), confidence: 0.69, provenance: provenance)
+        ])
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
         )
+        let model = try AppModel.load(catalog: catalog)
 
         let reviewSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Review" })
-        XCTAssertEqual(reviewSection.rowTitles, ["Picks", "Rejects", "5 Stars", "Needs Keywords"])
+        XCTAssertEqual(reviewSection.rowTitles, ["Picks", "Rejects", "5 Stars", "Needs Keywords", "Needs Evaluation"])
         XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
         XCTAssertEqual(reviewQueueCount("Rejects", in: model), "1")
         XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "1")
         XCTAssertEqual(reviewQueueCount("Needs Keywords", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("Needs Evaluation", in: model), "2")
 
         let picksRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Picks" })
         try model.selectSidebarRow(picksRow)
@@ -1663,6 +1682,16 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.needsKeywordsFilter)
         XCTAssertEqual(model.assets.map(\.id), [needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 1)
+
+        let needsEvaluationRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Needs Evaluation" })
+        try model.selectSidebarRow(needsEvaluationRow)
+
+        XCTAssertNil(model.flagFilter)
+        XCTAssertNil(model.minimumRatingFilter)
+        XCTAssertFalse(model.needsKeywordsFilter)
+        XCTAssertTrue(model.needsEvaluationFilter)
+        XCTAssertEqual(model.assets.map(\.id), [unreviewed.id, needsKeywords.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
     }
 
     func testReviewQueueCountsRefreshAfterMetadataChanges() throws {
@@ -1688,6 +1717,41 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
         XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "1")
         XCTAssertEqual(reviewQueueCount("Needs Keywords", in: model), "1")
+    }
+
+    @MainActor
+    func testEvaluationCompletionRefreshesNeedsEvaluationReviewCount() async throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let asset = makeAsset(id: "needs-evaluation-refresh", path: "/Photos/needs-evaluation-refresh.jpg", rating: 0)
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "needs-evaluation-refresh",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        let signal = EvaluationSignal(
+            assetID: asset.id,
+            kind: .faceQuality,
+            value: .score(0.82),
+            confidence: 0.82,
+            provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        )
+
+        XCTAssertEqual(reviewQueueCount("Needs Evaluation", in: model), "1")
+
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
+        try model.requestEvaluation(assetID: asset.id, provider: "apple-vision")
+        try repository.recordEvaluationSignals([signal])
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: WorkSessionID(rawValue: "evaluation-\(asset.id.rawValue)-apple-vision"),
+            message: "evaluated \(asset.id.rawValue) with apple-vision"
+        )))
+
+        try await waitForEvaluationSignalGeneration(1, for: asset.id, in: model)
+        XCTAssertEqual(reviewQueueCount("Needs Evaluation", in: model), "0")
     }
 
     func testTechnicalFiltersCountAsActiveLibraryFiltersAndClear() throws {

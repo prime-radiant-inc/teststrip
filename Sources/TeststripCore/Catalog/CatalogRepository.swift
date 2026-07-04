@@ -924,6 +924,10 @@ public final class CatalogRepository {
                     "EXISTS (SELECT 1 FROM evaluation_signals WHERE evaluation_signals.asset_id = assets.id AND kind = ?)"
                 )
                 bindings.append(kind.rawValue)
+            case .unevaluated:
+                clauses.append(
+                    "NOT EXISTS (SELECT 1 FROM evaluation_signals WHERE evaluation_signals.asset_id = assets.id)"
+                )
             case .metadataSyncPending:
                 clauses.append(
                     """

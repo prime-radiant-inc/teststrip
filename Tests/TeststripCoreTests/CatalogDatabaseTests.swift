@@ -718,6 +718,24 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.evaluationSignals(assetID: assetID), [signal])
     }
 
+    func testUnevaluatedQueryMatchesAssetsWithoutSignals() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-unevaluated-query")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let evaluated = Asset.testAsset(id: AssetID(rawValue: "evaluated"), path: "/Volumes/NAS/Job/evaluated.jpg", rating: 0)
+        let unevaluated = Asset.testAsset(id: AssetID(rawValue: "unevaluated"), path: "/Volumes/NAS/Job/unevaluated.jpg", rating: 0)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.upsert([evaluated, unevaluated])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: evaluated.id, kind: .faceQuality, value: .score(0.82), confidence: 0.82, provenance: provenance)
+        ])
+        let query = SetQuery(predicates: [.unevaluated])
+
+        XCTAssertEqual(try repository.allAssets(matching: query, limit: 10).map(\.id), [unevaluated.id])
+        XCTAssertEqual(try repository.assetCount(matching: query), 1)
+    }
+
     func testRecordingEvaluationSignalReplacesSameProviderSignal() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-upsert")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

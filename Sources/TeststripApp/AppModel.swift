@@ -89,6 +89,7 @@ public enum ReviewQueue: String, Equatable, Hashable, Sendable {
     case rejects
     case fiveStars
     case needsKeywords
+    case needsEvaluation
 }
 
 extension EvaluationKind {
@@ -357,6 +358,7 @@ public final class AppModel {
     public var availabilityFilter: SourceAvailability?
     public var evaluationKindFilter: EvaluationKind?
     public var needsKeywordsFilter: Bool
+    public var needsEvaluationFilter: Bool
     public var metadataSyncPendingFilter: Bool
     public var metadataSyncConflictFilter: Bool
     public var savedAssetSets: [AssetSet]
@@ -669,6 +671,9 @@ public final class AppModel {
         if needsKeywordsFilter {
             chips.append("Needs Keywords")
         }
+        if needsEvaluationFilter {
+            chips.append("Needs Evaluation")
+        }
         if metadataSyncPendingFilter {
             chips.append("XMP Pending")
         }
@@ -745,6 +750,9 @@ public final class AppModel {
         }
         if needsKeywordsFilter {
             parts.append("Needs Keywords")
+        }
+        if needsEvaluationFilter {
+            parts.append("Needs Evaluation")
         }
         if metadataSyncPendingFilter {
             parts.append("XMP Pending")
@@ -852,6 +860,7 @@ public final class AppModel {
         self.availabilityFilter = nil
         self.evaluationKindFilter = nil
         self.needsKeywordsFilter = false
+        self.needsEvaluationFilter = false
         self.metadataSyncPendingFilter = false
         self.metadataSyncConflictFilter = false
         self.savedAssetSets = savedAssetSets
@@ -2627,6 +2636,8 @@ public final class AppModel {
             minimumRatingFilter = 5
         case .needsKeywords:
             needsKeywordsFilter = true
+        case .needsEvaluation:
+            needsEvaluationFilter = true
         }
         selectedView = .grid
         try reload()
@@ -2878,6 +2889,9 @@ public final class AppModel {
         if needsKeywordsFilter {
             predicates.append(.missingKeywords)
         }
+        if needsEvaluationFilter {
+            predicates.append(.unevaluated)
+        }
         if metadataSyncPendingFilter {
             predicates.append(.metadataSyncPending)
         }
@@ -2902,6 +2916,7 @@ public final class AppModel {
         availabilityFilter = nil
         evaluationKindFilter = nil
         needsKeywordsFilter = false
+        needsEvaluationFilter = false
         metadataSyncPendingFilter = false
         metadataSyncConflictFilter = false
     }
@@ -2997,6 +3012,7 @@ public final class AppModel {
         guard let catalog else { return }
         do {
             catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
+            reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
             rebuildSidebarSections()
         } catch {
             errorMessage = error.localizedDescription
@@ -3699,7 +3715,8 @@ public final class AppModel {
         .picks,
         .rejects,
         .fiveStars,
-        .needsKeywords
+        .needsKeywords,
+        .needsEvaluation
     ]
 
     private static func reviewQueueTitle(_ queue: ReviewQueue) -> String {
@@ -3712,6 +3729,8 @@ public final class AppModel {
             return "5 Stars"
         case .needsKeywords:
             return "Needs Keywords"
+        case .needsEvaluation:
+            return "Needs Evaluation"
         }
     }
 
@@ -3733,6 +3752,8 @@ public final class AppModel {
             return SetQuery(predicates: [.ratingAtLeast(5)])
         case .needsKeywords:
             return SetQuery(predicates: [.missingKeywords])
+        case .needsEvaluation:
+            return SetQuery(predicates: [.unevaluated])
         }
     }
 
