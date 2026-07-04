@@ -5435,6 +5435,67 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBeginImportCardWithWorkerRejectsMissingSourceWithoutEnqueueing() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-card-missing-source")
+        let missingSource = directory.appendingPathComponent("missing-card", isDirectory: true)
+        let destinationRoot = directory.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportCard(source: missingSource, destinationRoot: destinationRoot)
+
+        XCTAssertFalse(model.isImporting)
+        XCTAssertEqual(model.errorMessage, "Source folder is missing")
+        XCTAssertEqual(model.statusMessage, nil)
+        XCTAssertEqual(model.backgroundWorkQueue.items, [])
+        XCTAssertEqual(try transport.commands(), [])
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.kind, .ingest)
+        XCTAssertEqual(activity.status, .failed)
+        XCTAssertEqual(activity.detail, "Import failed from missing-card to Library: Source folder is missing")
+    }
+
+    @MainActor
+    func testBeginImportCardRejectsMissingSourceWithoutStartingLocalImport() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-local-card-missing-source")
+        let missingSource = directory.appendingPathComponent("missing-card", isDirectory: true)
+        let destinationRoot = directory.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(
+            catalog: catalog,
+            cardImportTaskFactory: { _, _, _, _ in
+                Task {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            }
+        )
+
+        model.beginImportCard(source: missingSource, destinationRoot: destinationRoot)
+
+        XCTAssertFalse(model.isImporting)
+        XCTAssertNil(model.activeWork)
+        XCTAssertEqual(model.errorMessage, "Source folder is missing")
+        XCTAssertEqual(model.statusMessage, nil)
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.status, .failed)
+        XCTAssertEqual(activity.detail, "Import failed from missing-card to Library: Source folder is missing")
+    }
+
+    @MainActor
     func testWorkerImportPersistsRunningActivityAndReloadMarksItInterrupted() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-interrupted")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)

@@ -4114,6 +4114,10 @@ public final class AppModel {
             errorMessage = "Another import is already running"
             return
         }
+        if let blockingReason = ImportSourcePreflight.blockingReason(for: source) {
+            failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: blockingReason)
+            return
+        }
         errorMessage = nil
         statusMessage = "Importing \(source.lastPathComponent)..."
         if workerSupervisor != nil {
