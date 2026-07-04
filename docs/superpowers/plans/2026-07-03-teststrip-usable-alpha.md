@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `5c153fa Persist import progress in early batches`
+- Snapshot commit: `81ec38a Reduce import-time UI churn`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last broad unit verification: `swift test` passed with 449 tests after early import batch persistence.
-- Last app workflow verification: `script/build_and_run.sh --verify-smoke` launched a clean isolated smoke catalog, and the corrected 600-image AX import verifier completed with feedback visible around 20.2s, target visible around 49.4s, and preview drain around 46.1s. This is measured progress/foundation work, not closure of the large-import UX blocker. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
+- Last broad unit verification: `swift test` passed with 451 tests after import-time UI churn reduction.
+- Last app workflow verification: repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. Treat these as evidence that the app-side churn fixes are real but insufficient, not as alpha-ready import performance. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
 
@@ -35,6 +35,7 @@
 - `64e707e`: added a catalog-backed Needs Keywords review queue and active filter chip for unkeyworded assets.
 - `037162c`: clarified import verifier metrics so target visibility, import completion, worker CPU, and preview drain are reported separately.
 - `5c153fa`: made ingest persist the first cataloged assets eagerly and then in batches, carrying cataloged IDs in progress events for earlier grid updates.
+- `81ec38a`: reduced import-time UI churn by batching worker queue notifications, exposing only the first cataloged asset during a running worker import, shrinking the default grid page/window to 120/240 assets, reducing automatic preview recovery from 200 to 40 queued items, and making evaluation toolbar enablement avoid preview-cache scans.
 
 ## Product Decisions To Preserve
 
@@ -77,7 +78,7 @@ Built files include:
 Current behavior:
 
 - SQLite catalog stores assets, folders, source roots, work sessions, saved asset sets, preview queue state, metadata sync state, evaluation signals, and source availability state.
-- Grid/library paging uses repository APIs rather than loading the whole catalog.
+- Grid/library paging uses repository APIs rather than loading the whole catalog. The default grid page is 120 assets with a 240-asset loaded window.
 - Synthetic catalog benchmarks exist for 500k and 1M asset scale targets.
 - Current debug benchmark evidence in `docs/architecture/performance.md` shows first-page and filtered-page catalog loads stay in milliseconds for synthetic 500k/1M catalogs.
 
@@ -102,6 +103,7 @@ Current behavior:
 - Interrupted queued/running/paused ingest sessions reconcile as failed on next load instead of disappearing or falsely appearing active.
 - Duplicate and empty imports now report clearly.
 - The AX import verifier can create temporary images, open the Import Path sheet, submit a path, and wait until imported thumbnails appear.
+- Worker import progress exposes the first cataloged asset once during a running import, then keeps the visible grid stable until completion instead of reloading the page for every cataloged progress event.
 
 ### Decode And Preview
 
@@ -126,6 +128,7 @@ Current behavior:
 - Demand-driven preview requests record pending work before dispatching worker generation.
 - Browsing prefers cached previews. Grid display falls back to micro while grid preview work catches up. Loupe/compare paths prefer large, then medium, then grid, then micro.
 - Launch/load does not synchronously render all pending previews. App-model recovery enqueues bounded worker jobs when a worker supervisor is available.
+- Automatic preview recovery is capped at 40 queued items and enqueued as a batch to avoid one observable queue update per recovered preview.
 - Preview recovery skips unavailable originals and rows that have failed too many automatic attempts.
 - Recent work optimized preview refill responsiveness by avoiding durable write churn and all-work scans while refilling the pending preview queue.
 
@@ -189,6 +192,7 @@ Current behavior:
 - Queue dispatch can pause/resume. Already-dispatched synchronous helper work remains running and timeout-protected rather than being mislabeled as paused.
 - Cancel terminates the worker transport where needed.
 - Worker commands and JSON-lines protocol live in core so the app and worker share the same contract.
+- WorkerSupervisor supports batch enqueue for sets of background work that should produce a single queue-change notification.
 - `FoundationWorkerTransport` launches the helper, writes commands to stdin, and streams stdout/stderr responses.
 - Worker stderr fails the oldest dispatched item and keeps the queue moving.
 - Worker commands have supervisor-level timeouts.
@@ -308,12 +312,14 @@ Teststrip reaches usable alpha when a photographer can:
 - [ ] Decide whether the synchronous helper needs batch preview commands before adding more worker concurrency. Do not add more parallel original reads until the disk/NAS impact is understood.
 - [x] Extend `script/verify_import_path.sh` to report import completion time, pending preview count after a fixed window, final drain time, and process CPU snapshot.
 - [ ] Verify with `swift test --filter AppModelTests --filter WorkerSupervisorTests` only if supported by SwiftPM filtering; otherwise run the focused test files separately.
-- [ ] Verify with full `swift test`.
-- [ ] Verify with `./script/build_and_run.sh --verify-smoke`.
+- [x] Verify with full `swift test`.
+- [x] Verify with `./script/build_and_run.sh --verify-smoke`.
 - [x] Verify with `TESTSTRIP_AX_IMPORT_COUNT=600 TESTSTRIP_AX_TIMEOUT_SECONDS=75 ./script/verify_import_path.sh Teststrip`.
-- [ ] Commit with a message explaining the measured before/after preview backlog behavior.
+- [x] Commit with a message explaining the measured before/after preview backlog behavior.
 
 **Acceptance:** 600-image import should stay visibly responsive, import completion should not wait for all downstream previews, preview backlog should drain without sustained UI churn, and the verifier should print enough timing/counter evidence for future regressions.
+
+**Current result:** Not accepted yet. The verifier now has enough timing/counter evidence, and import completion is independent from downstream preview drain, but 600-image visible-feedback/target-visible timings remain too slow and noisy. Continue with a tighter SwiftUI invalidation/AX traversal investigation before calling the import UX usable.
 
 ### Slice 2: Import UX Hardening
 
