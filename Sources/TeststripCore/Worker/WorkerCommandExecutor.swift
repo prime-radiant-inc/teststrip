@@ -302,6 +302,14 @@ public struct WorkerCommandExecutor {
 
         switch decision {
         case .upToDate:
+            if let sidecarData {
+                try repository.markMetadataSynced(
+                    assetID: assetID,
+                    sidecarURL: sidecarURL,
+                    catalogGeneration: catalogGeneration,
+                    fingerprint: XMPSidecarStore.fingerprint(for: sidecarData)
+                )
+            }
             return .completed("metadata up to date for \(assetName)")
         case .writeCatalog:
             do {

@@ -318,6 +318,26 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(result, .completed("metadata up to date for asset.raw"))
     }
 
+    func testSyncMetadataCommandClearsPendingRowWhenMatchingSidecarIsAlreadyWritten() throws {
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-up-to-date-pending", metadata: AssetMetadata(rating: 5))
+        let write = try XMPSidecarStore().write(metadata: setup.asset.metadata, forOriginalAt: setup.asset.originalURL)
+        try setup.repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: setup.asset.id,
+            sidecarURL: write.sidecarURL,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id),
+            lastSyncedFingerprint: write.fingerprint
+        ))
+
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("metadata up to date for asset.raw"))
+        XCTAssertEqual(try setup.repository.pendingMetadataSyncItems(), [])
+        XCTAssertEqual(
+            try setup.repository.lastMetadataSyncFingerprint(assetID: setup.asset.id),
+            write.fingerprint
+        )
+    }
+
     func testSyncMetadataCommandRecordsPendingWhenSidecarCannotBeWritten() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-sync-pending")
         let originalURL = root
