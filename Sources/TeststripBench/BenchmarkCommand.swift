@@ -1,6 +1,9 @@
 import Foundation
 
 public enum BenchmarkCommand: Equatable {
+    public static let catalogBaselineCount = 500_000
+    public static let catalogStressCount = 1_000_000
+
     case catalogScale(count: Int)
     case importDeferred(count: Int)
     case localHTTPSmoke(endpoint: URL, model: String, imagePath: String?, timeout: TimeInterval)
@@ -11,7 +14,13 @@ public enum BenchmarkCommand: Equatable {
     public static func parse(_ arguments: [String]) -> BenchmarkCommand {
         let userArguments = Array(arguments.dropFirst())
         guard let firstArgument = userArguments.first else {
-            return .catalogScale(count: 100_000)
+            return .catalogScale(count: catalogBaselineCount)
+        }
+        if firstArgument == "catalog-baseline" {
+            return .catalogScale(count: catalogBaselineCount)
+        }
+        if firstArgument == "catalog-stress" {
+            return .catalogScale(count: catalogStressCount)
         }
         if firstArgument == "import-deferred" {
             return .importDeferred(count: Int(userArguments.dropFirst().first ?? "1000") ?? 1_000)
@@ -35,6 +44,6 @@ public enum BenchmarkCommand: Equatable {
             let count = Int(userArguments.dropFirst(2).first ?? "24") ?? 24
             return .seedAppCatalog(applicationSupportDirectory: URL(fileURLWithPath: directory), count: count)
         }
-        return .catalogScale(count: Int(firstArgument) ?? 100_000)
+        return .catalogScale(count: Int(firstArgument) ?? catalogBaselineCount)
     }
 }

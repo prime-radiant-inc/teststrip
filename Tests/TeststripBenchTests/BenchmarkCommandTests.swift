@@ -4,7 +4,15 @@ import TeststripCore
 
 final class BenchmarkCommandTests: XCTestCase {
     func testDefaultCommandRunsCatalogScaleBenchmark() throws {
-        XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench"]), .catalogScale(count: 100_000))
+        XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench"]), .catalogScale(count: 500_000))
+    }
+
+    func testCatalogBaselineCommandRunsBaselineScaleBenchmark() throws {
+        XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "catalog-baseline"]), .catalogScale(count: 500_000))
+    }
+
+    func testCatalogStressCommandRunsStressScaleBenchmark() throws {
+        XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "catalog-stress"]), .catalogScale(count: 1_000_000))
     }
 
     func testNumericArgumentRunsCatalogScaleBenchmark() throws {
