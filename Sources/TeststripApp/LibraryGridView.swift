@@ -1485,6 +1485,7 @@ private struct LoupeView: View {
             } else {
                 unavailableView(title: "No photo selected", systemImage: "photo")
             }
+            cullingFilmstrip
             cullingCommandRail
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1589,6 +1590,93 @@ private struct LoupeView: View {
                 .padding(20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var cullingFilmstrip: some View {
+        let presentation = CullingFilmstripPresentation(
+            assets: model.assets,
+            selectedAssetID: model.selectedAssetID
+        )
+        return VStack(spacing: 6) {
+            HStack {
+                Text("Filmstrip")
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(presentation.positionText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 7) {
+                ForEach(presentation.visibleAssets, id: \.id.rawValue) { asset in
+                    filmstripTile(for: asset, isSelected: asset.id == model.selectedAssetID)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .frame(height: 82)
+        .background(Color.black.opacity(0.18))
+        .liveMockupPlaceholder(.cullingFilmstrip)
+        .task(id: presentation.requestID) {
+            requestFilmstripPreviews(for: presentation.visibleAssets)
+        }
+    }
+
+    private func filmstripTile(for asset: Asset, isSelected: Bool) -> some View {
+        Button {
+            model.select(asset.id)
+        } label: {
+            ZStack(alignment: .bottomLeading) {
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.black.opacity(0.55))
+                if let previewURL = model.gridPreviewURL(for: asset.id) {
+                    CachedPreviewImage(
+                        previewURL: previewURL,
+                        scaling: .fit,
+                        cacheGeneration: model.previewCacheGeneration(for: asset.id)
+                    )
+                    .padding(2)
+                } else {
+                    Image(systemName: "photo")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                filmstripDecisionOverlay(for: asset)
+                    .padding(4)
+            }
+            .frame(width: 64, height: 44)
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .overlay {
+                RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(isSelected ? Color.orange : Color.white.opacity(0.12), lineWidth: isSelected ? 2 : 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(asset.originalURL.lastPathComponent)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    }
+
+    @ViewBuilder
+    private func filmstripDecisionOverlay(for asset: Asset) -> some View {
+        if asset.metadata.flag != nil || asset.metadata.rating > 0 {
+            HStack(spacing: 4) {
+                if let flag = asset.metadata.flag {
+                    Image(systemName: flag == .pick ? "flag.fill" : "xmark.circle.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(flag == .pick ? .green : .red)
+                }
+                if asset.metadata.rating > 0 {
+                    Text("\(asset.metadata.rating)")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.yellow)
+                }
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
+        }
     }
 
     private var cullingCommandRail: some View {
@@ -1743,6 +1831,16 @@ private struct LoupeView: View {
         }
     }
 
+    private func requestFilmstripPreviews(for assets: [Asset]) {
+        do {
+            for asset in assets {
+                try model.requestVisibleGridPreview(assetID: asset.id)
+            }
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
     private func revealOriginal(for asset: Asset) {
         do {
             guard let originalURL = try model.originalAccessURL(for: asset.id) else {
@@ -1839,6 +1937,50 @@ struct CompareSurveyPresentation: Equatable {
             return "\(colorLabel.rawValue.capitalized) label"
         }
         return "Unreviewed"
+    }
+}
+
+struct CullingFilmstripPresentation: Equatable {
+    static let defaultVisibleLimit = 12
+
+    var visibleAssets: [Asset]
+    var selectedIndex: Int?
+    var totalCount: Int
+
+    init(
+        assets: [Asset],
+        selectedAssetID: AssetID?,
+        visibleLimit: Int = CullingFilmstripPresentation.defaultVisibleLimit
+    ) {
+        totalCount = assets.count
+        selectedIndex = selectedAssetID.flatMap { selectedID in
+            assets.firstIndex { $0.id == selectedID }
+        }
+        let boundedLimit = max(1, visibleLimit)
+        guard assets.count > boundedLimit else {
+            visibleAssets = assets
+            return
+        }
+        let anchorIndex = selectedIndex ?? 0
+        let proposedStart = anchorIndex - boundedLimit / 2
+        let startIndex = min(max(proposedStart, 0), assets.count - boundedLimit)
+        visibleAssets = Array(assets[startIndex..<(startIndex + boundedLimit)])
+    }
+
+    var positionText: String {
+        guard totalCount > 0 else { return "0 frames" }
+        guard let selectedIndex else {
+            return "\(totalCount) \(totalCount == 1 ? "frame" : "frames")"
+        }
+        return "Frame \(selectedIndex + 1) of \(totalCount)"
+    }
+
+    var requestID: String {
+        [
+            visibleAssets.map(\.id.rawValue).joined(separator: "\n"),
+            selectedIndex.map(String.init) ?? "none",
+            String(totalCount)
+        ].joined(separator: "\n")
     }
 }
 
