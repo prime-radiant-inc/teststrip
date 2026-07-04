@@ -419,6 +419,8 @@ struct LibraryGridView: View {
 
                     signalFilterPicker
 
+                    metadataSyncFilterPicker
+
                     Button {
                         refreshVisibleAvailability()
                     } label: {
@@ -612,6 +614,16 @@ struct LibraryGridView: View {
             }
         }
         .frame(width: 130)
+        .controlSize(.small)
+    }
+
+    private var metadataSyncFilterPicker: some View {
+        Picker("XMP", selection: metadataSyncFilterBinding) {
+            Text("Any XMP").tag(MetadataSyncFilterOption.any.rawValue)
+            Text("Pending").tag(MetadataSyncFilterOption.pending.rawValue)
+            Text("Conflicts").tag(MetadataSyncFilterOption.conflicts.rawValue)
+        }
+        .frame(width: 112)
         .controlSize(.small)
     }
 
@@ -1355,6 +1367,23 @@ struct LibraryGridView: View {
 
     private var evaluationKindFilterOptions: [EvaluationKind] {
         [.focus, .motionBlur, .exposure, .aesthetics, .object, .faceCount, .faceQuality, .ocrText, .colorPalette, .novelty]
+    }
+
+    private var metadataSyncFilterBinding: Binding<String> {
+        Binding(
+            get: {
+                MetadataSyncFilterOption(
+                    pending: model.metadataSyncPendingFilter,
+                    conflict: model.metadataSyncConflictFilter
+                ).rawValue
+            },
+            set: { value in
+                let option = MetadataSyncFilterOption(rawValue: value) ?? .any
+                model.metadataSyncPendingFilter = option.pendingFilter
+                model.metadataSyncConflictFilter = option.conflictFilter
+                applyLibraryFilters()
+            }
+        )
     }
 
     private var minimumISOTextBinding: Binding<String> {
@@ -3150,6 +3179,30 @@ enum LibraryGridChromePolicy {
     ) -> Bool {
         guard !isImporting, let summaryID else { return false }
         return summaryID != dismissedSummaryID
+    }
+}
+
+enum MetadataSyncFilterOption: String, Equatable {
+    case any
+    case pending
+    case conflicts
+
+    init(pending: Bool, conflict: Bool) {
+        if conflict {
+            self = .conflicts
+        } else if pending {
+            self = .pending
+        } else {
+            self = .any
+        }
+    }
+
+    var pendingFilter: Bool {
+        self == .pending
+    }
+
+    var conflictFilter: Bool {
+        self == .conflicts
     }
 }
 

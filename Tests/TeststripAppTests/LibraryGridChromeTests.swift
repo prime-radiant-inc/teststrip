@@ -37,4 +37,15 @@ final class LibraryGridChromeTests: XCTestCase {
             dismissedSummaryID: "import-1"
         ))
     }
+
+    func testMetadataSyncFilterOptionMapsPendingAndConflictFlags() {
+        XCTAssertEqual(MetadataSyncFilterOption(pending: false, conflict: false), .any)
+        XCTAssertEqual(MetadataSyncFilterOption(pending: true, conflict: false), .pending)
+        XCTAssertEqual(MetadataSyncFilterOption(pending: false, conflict: true), .conflicts)
+        XCTAssertEqual(MetadataSyncFilterOption(pending: true, conflict: true), .conflicts)
+        XCTAssertEqual(MetadataSyncFilterOption.pending.pendingFilter, true)
+        XCTAssertEqual(MetadataSyncFilterOption.pending.conflictFilter, false)
+        XCTAssertEqual(MetadataSyncFilterOption.conflicts.pendingFilter, false)
+        XCTAssertEqual(MetadataSyncFilterOption.conflicts.conflictFilter, true)
+    }
 }
