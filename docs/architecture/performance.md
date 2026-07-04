@@ -15,6 +15,16 @@ swift run TeststripBench 250000
 
 The catalog benchmark measures synthetic asset seeding, total count, first-page load, middle-page load, filtered count for 4+ star assets, and filtered first-page load. It uses the same `CatalogRepository` APIs as the app grid paging path.
 
+Additional focused commands cover the other hot paths that currently matter for alpha:
+
+```bash
+swift run TeststripBench import-deferred 1000
+swift run TeststripBench preview-render 100
+swift run TeststripBench metadata-write 1000
+```
+
+`import-deferred` creates a synthetic folder, catalogs it in place, and verifies preview work is queued instead of generated synchronously. `preview-render` creates generated JPEG sources and renders all cache levels through `PreviewRenderer`. `metadata-write` updates catalog metadata, writes XMP sidecars, marks sync fingerprints, and verifies the original files were not changed.
+
 Every `TeststripBench` command keeps its human-readable output and also prints one machine-readable summary line:
 
 ```text
@@ -33,3 +43,13 @@ On July 3, 2026, local debug runs produced:
 | `swift run TeststripBench catalog-stress` | 25.083s | 0.006s | 0.008s | 0.032s | 0.271s | 0.008s |
 
 These are not release-mode acceptance numbers, but they prove the current SQLite-backed catalog path can page 500k and 1M synthetic catalogs without loading the full catalog into app memory.
+
+On July 4, 2026, local debug runs produced:
+
+| Command | Duration | Primary Counts |
+| --- | ---: | --- |
+| `swift run TeststripBench import-deferred 1000` | 0.402s | 1,000 imported/catalog assets, 2,000 pending previews, 16 progress events |
+| `swift run TeststripBench preview-render 100` | 1.551s | 100 generated JPEG sources, 400 rendered previews, 400 cached previews |
+| `swift run TeststripBench metadata-write 1000` | 1.451s | 1,000 catalog updates, 1,000 sidecars, 1,000 synced fingerprints, 0 pending sync items, 1,000 unchanged originals |
+
+These runs prove the benchmark harnesses are executable and exercise real app paths, not that the alpha has final performance thresholds. The preview-render command still uses generated JPEG sources; the real stock-photo sample workflow is covered by `seed-sample-catalog`, but a dedicated real-image preview throughput command remains open.

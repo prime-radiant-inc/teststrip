@@ -616,12 +616,13 @@ Teststrip reaches usable alpha when a photographer can:
 **Work:**
 
 - [x] Make benchmark commands print machine-readable summaries in addition to human text.
-- [ ] Add a repeatable import benchmark for large folders with previews deferred.
-- [ ] Add preview render throughput benchmark for cached generated images and a small real-image sample directory.
-- [ ] Add metadata/XMP bulk edit benchmark.
+- [x] Add a repeatable import benchmark for large folders with previews deferred.
+- [x] Add preview render throughput benchmark for cached generated images.
+- [ ] Add a dedicated preview render throughput benchmark for a small real-image sample directory.
+- [x] Add metadata/XMP bulk edit benchmark.
 - [ ] Add memory and CPU snapshots to app workflow scripts where practical.
 - [ ] Set initial red/yellow/green thresholds for alpha only after measuring current local behavior.
-- [ ] Update `docs/architecture/performance.md` with measured evidence and caveats.
+- [x] Update `docs/architecture/performance.md` with measured evidence and caveats.
 - [ ] Commit.
 
 **Acceptance:** Future agents cannot accidentally call the app fast without running the same scale checks.
