@@ -14,6 +14,7 @@ public struct LiveMockupPlaceholder: Equatable, Hashable, Identifiable, Sendable
 public extension LiveMockupPlaceholder {
     static let peopleSidebar = LiveMockupPlaceholders.peopleSidebar
     static let peopleFaceActions = LiveMockupPlaceholders.peopleFaceActions
+    static let topChrome = LiveMockupPlaceholders.topChrome
     static let agenticSearch = LiveMockupPlaceholders.agenticSearch
     static let searchRefine = LiveMockupPlaceholders.searchRefine
     static let smartCollectionsBuilder = LiveMockupPlaceholders.smartCollectionsBuilder
@@ -26,6 +27,13 @@ public extension LiveMockupPlaceholder {
 }
 
 public enum LiveMockupPlaceholders {
+    public static let topChrome = LiveMockupPlaceholder(
+        id: "library.top-chrome",
+        title: "Library top chrome",
+        intendedBehavior: "Unify catalog identity, breadcrumbs, agentic search, view switching, and import actions in the dense Studio header.",
+        currentFallback: "In-content header backed by current library state while native toolbar controls remain available."
+    )
+
     public static let peopleSidebar = LiveMockupPlaceholder(
         id: "sidebar.people",
         title: "People navigation",
@@ -104,6 +112,7 @@ public enum LiveMockupPlaceholders {
     )
 
     public static let all: [LiveMockupPlaceholder] = [
+        topChrome,
         peopleSidebar,
         peopleFaceActions,
         agenticSearch,

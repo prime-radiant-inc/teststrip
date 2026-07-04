@@ -63,24 +63,6 @@ struct LibraryGridView: View {
         }
         .navigationTitle(model.libraryTitle)
         .toolbar {
-            Picker("View", selection: Binding(
-                get: { model.selectedView },
-                set: { model.selectedView = $0 }
-            )) {
-                Label("Grid", systemImage: "square.grid.3x3.fill")
-                    .tag(LibraryViewMode.grid)
-                Label("Search", systemImage: "magnifyingglass")
-                    .tag(LibraryViewMode.search)
-                Label("Loupe", systemImage: "rectangle.inset.filled")
-                    .tag(LibraryViewMode.loupe)
-                Label("Compare", systemImage: "rectangle.grid.2x2")
-                    .tag(LibraryViewMode.compare)
-                Label("People", systemImage: "person.2")
-                    .tag(LibraryViewMode.people)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-
             thumbnailSizeControl
 
             Button {
@@ -189,9 +171,160 @@ struct LibraryGridView: View {
         .help("Thumbnail size: \(gridLayout.accessibilityValue)")
     }
 
+    private var libraryTopBar: some View {
+        let presentation = LibraryTopBarPresentation(
+            libraryTitle: model.libraryTitle,
+            libraryCountText: model.libraryCountText,
+            selectedView: model.selectedView,
+            activeFilterChips: model.activeLibraryFilterChips
+        )
+        return HStack(spacing: 12) {
+            topBarCatalogIdentity(presentation)
+            Divider()
+                .frame(height: 26)
+            topBarBreadcrumb(presentation)
+            Spacer(minLength: 12)
+            topBarSearchField
+            topBarViewSwitcher(presentation)
+            Button {
+                showImportFolderPanel()
+            } label: {
+                Label("Import", systemImage: "square.and.arrow.down")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .tint(.orange)
+            .disabled(isImporting)
+            .help("Import folder")
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 52)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(nsColor: .controlBackgroundColor).opacity(0.92),
+                    Color.black.opacity(0.28)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.white.opacity(0.07))
+                .frame(height: 1)
+        }
+        .liveMockupPlaceholder(.topChrome)
+    }
+
+    private func topBarCatalogIdentity(_ presentation: LibraryTopBarPresentation) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: "chart.bar.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(presentation.catalogTitle)
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+                Text(presentation.catalogSubtitle)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(width: 174, alignment: .leading)
+    }
+
+    private func topBarBreadcrumb(_ presentation: LibraryTopBarPresentation) -> some View {
+        HStack(spacing: 6) {
+            ForEach(Array(presentation.breadcrumbItems.enumerated()), id: \.offset) { index, item in
+                if index > 0 {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                Text(item)
+                    .font(.caption.weight(index == presentation.breadcrumbItems.count - 1 ? .semibold : .regular))
+                    .foregroundStyle(index == presentation.breadcrumbItems.count - 1 ? .primary : .secondary)
+                    .lineLimit(1)
+            }
+            if let filterSummaryText = presentation.filterSummaryText {
+                Text(filterSummaryText)
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
+            }
+        }
+        .frame(minWidth: 160, alignment: .leading)
+    }
+
+    private var topBarSearchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.orange)
+            TextField("Ask Teststrip or search...", text: Binding(
+                get: { model.librarySearchText },
+                set: { model.librarySearchText = $0 }
+            ))
+            .textFieldStyle(.plain)
+            .onSubmit {
+                applyLibraryFilters()
+            }
+            .accessibilityLabel("Top Search Catalog")
+            Button {
+                applyLibraryFilters()
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .help("Search")
+        }
+        .padding(.horizontal, 10)
+        .frame(width: 262, height: 31)
+        .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color.white.opacity(0.09))
+        }
+    }
+
+    private func topBarViewSwitcher(_ presentation: LibraryTopBarPresentation) -> some View {
+        HStack(spacing: 2) {
+            ForEach(presentation.modeItems) { item in
+                topBarModeButton(item)
+            }
+        }
+        .padding(2)
+        .background(Color.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Library View")
+    }
+
+    private func topBarModeButton(_ item: LibraryTopBarModeItem) -> some View {
+        let isSelected = model.selectedView == item.mode
+        return Button {
+            model.selectedView = item.mode
+        } label: {
+            Image(systemName: item.systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(isSelected ? .primary : .secondary)
+                .frame(width: 30, height: 26)
+                .background(isSelected ? Color.white.opacity(0.11) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .help(item.title)
+        .accessibilityLabel(item.title)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+    }
+
     @ViewBuilder
     private var topInsetContent: some View {
         VStack(spacing: 0) {
+            libraryTopBar
             if model.selectedView == .grid || model.selectedView == .search {
                 filterBar
             }
@@ -1872,6 +2005,69 @@ private struct LoupeView: View {
         case .blue: .blue
         case .purple: .purple
         }
+    }
+}
+
+struct LibraryTopBarModeItem: Equatable, Identifiable {
+    var title: String
+    var systemImage: String
+    var mode: LibraryViewMode
+
+    var id: String {
+        mode.rawValue
+    }
+}
+
+struct LibraryTopBarPresentation: Equatable {
+    var catalogTitle: String
+    var catalogSubtitle: String
+    var scopeTitle: String
+    var breadcrumbItems: [String]
+    var filterSummaryText: String?
+    var selectedView: LibraryViewMode
+
+    init(
+        libraryTitle: String,
+        libraryCountText: String,
+        selectedView: LibraryViewMode,
+        activeFilterChips: [String]
+    ) {
+        let trimmedTitle = libraryTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedTitle = trimmedTitle.isEmpty ? "All Photographs" : trimmedTitle
+
+        self.catalogTitle = "Master Catalog"
+        self.catalogSubtitle = libraryCountText
+        self.scopeTitle = resolvedTitle
+        self.breadcrumbItems = Self.breadcrumbItems(scopeTitle: resolvedTitle, selectedView: selectedView)
+        self.filterSummaryText = Self.filterSummaryText(for: activeFilterChips)
+        self.selectedView = selectedView
+    }
+
+    var modeItems: [LibraryTopBarModeItem] {
+        Self.modeItems
+    }
+
+    private static let modeItems = [
+        LibraryTopBarModeItem(title: "Grid", systemImage: "square.grid.3x3.fill", mode: .grid),
+        LibraryTopBarModeItem(title: "Search", systemImage: "magnifyingglass", mode: .search),
+        LibraryTopBarModeItem(title: "Loupe", systemImage: "rectangle.inset.filled", mode: .loupe),
+        LibraryTopBarModeItem(title: "Compare", systemImage: "rectangle.grid.2x2", mode: .compare),
+        LibraryTopBarModeItem(title: "People", systemImage: "person.2", mode: .people)
+    ]
+
+    private static func breadcrumbItems(scopeTitle: String, selectedView: LibraryViewMode) -> [String] {
+        if selectedView == .search || selectedView == .people {
+            return ["Library", scopeTitle]
+        }
+        if scopeTitle == "All Photographs" {
+            return ["Library", scopeTitle]
+        }
+        return ["Library", "All Photographs", scopeTitle]
+    }
+
+    private static func filterSummaryText(for chips: [String]) -> String? {
+        guard !chips.isEmpty else { return nil }
+        return "\(chips.count) \(chips.count == 1 ? "filter" : "filters")"
     }
 }
 

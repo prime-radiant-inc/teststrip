@@ -16,6 +16,7 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let ids = Set(LiveMockupPlaceholders.all.map(\.id))
 
         XCTAssertTrue(ids.isSuperset(of: [
+            "library.top-chrome",
             "search.agentic",
             "search.refine",
             "smart-collections.builder",
