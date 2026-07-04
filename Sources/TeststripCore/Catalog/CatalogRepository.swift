@@ -877,6 +877,8 @@ public final class CatalogRepository {
                     "EXISTS (SELECT 1 FROM json_each(metadata_json, '$.keywords') WHERE LOWER(value) = LOWER(?))"
                 )
                 bindings.append(trimmed)
+            case .missingKeywords:
+                clauses.append("NOT EXISTS (SELECT 1 FROM json_each(metadata_json, '$.keywords'))")
             case .availability(let availability):
                 clauses.append("availability = ?")
                 bindings.append(availability.rawValue)

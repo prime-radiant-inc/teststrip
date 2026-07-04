@@ -409,7 +409,12 @@ final class CatalogDatabaseTests: XCTestCase {
             path: "/Volumes/NAS/Travel/mountain.jpg",
             metadata: AssetMetadata(rating: 4, colorLabel: .green, flag: nil, keywords: ["patagonia"])
         )
-        try repository.upsert([keeper, reject, landscape])
+        let needsKeywords = Asset.testAsset(
+            id: AssetID(rawValue: "needs-keywords"),
+            path: "/Volumes/NAS/Wedding/untagged.jpg",
+            metadata: AssetMetadata(rating: 3)
+        )
+        try repository.upsert([keeper, reject, landscape, needsKeywords])
 
         let pickQuery = SetQuery(predicates: [.text("CEREMONY"), .ratingAtLeast(4), .flag(.pick)])
         XCTAssertEqual(try repository.allAssets(matching: pickQuery, limit: 10).map(\.id), [keeper.id])
@@ -417,6 +422,10 @@ final class CatalogDatabaseTests: XCTestCase {
 
         let colorKeywordQuery = SetQuery(predicates: [.colorLabel(.green), .keyword("patagonia")])
         XCTAssertEqual(try repository.allAssets(matching: colorKeywordQuery, limit: 10).map(\.id), [landscape.id])
+
+        let missingKeywordsQuery = SetQuery(predicates: [.missingKeywords])
+        XCTAssertEqual(try repository.allAssets(matching: missingKeywordsQuery, limit: 10).map(\.id), [needsKeywords.id])
+        XCTAssertEqual(try repository.assetCount(matching: missingKeywordsQuery), 1)
     }
 
     func testListsCatalogFoldersWithAssetCounts() throws {

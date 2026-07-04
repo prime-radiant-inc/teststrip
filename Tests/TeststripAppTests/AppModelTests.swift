@@ -1575,17 +1575,18 @@ final class AppModelTests: XCTestCase {
     }
 
     func testLoadExposesReviewQueuesAndSelectingQueueAppliesFilter() throws {
-        let pick = makeAsset(id: "pick", path: "/Photos/Job/pick.jpg", rating: 4, flag: .pick)
-        let reject = makeAsset(id: "reject", path: "/Photos/Job/reject.jpg", rating: 1, flag: .reject)
-        let fiveStar = makeAsset(id: "five-star", path: "/Photos/Job/five-star.jpg", rating: 5)
-        let unreviewed = makeAsset(id: "unreviewed", path: "/Photos/Job/unreviewed.jpg", rating: 0)
+        let pick = makeAsset(id: "pick", path: "/Photos/Job/pick.jpg", rating: 4, flag: .pick, keywords: ["tagged"])
+        let reject = makeAsset(id: "reject", path: "/Photos/Job/reject.jpg", rating: 1, flag: .reject, keywords: ["tagged"])
+        let fiveStar = makeAsset(id: "five-star", path: "/Photos/Job/five-star.jpg", rating: 5, keywords: ["tagged"])
+        let unreviewed = makeAsset(id: "unreviewed", path: "/Photos/Job/unreviewed.jpg", rating: 0, keywords: ["tagged"])
+        let needsKeywords = makeAsset(id: "needs-keywords", path: "/Photos/Job/needs-keywords.jpg", rating: 3)
         let (model, _) = try makeModelWithCatalogAssets(
             named: "app-model-review-queue-sidebar",
-            assets: [pick, reject, fiveStar, unreviewed]
+            assets: [pick, reject, fiveStar, unreviewed, needsKeywords]
         )
 
         let reviewSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Review" })
-        XCTAssertEqual(reviewSection.rowTitles, ["Picks", "Rejects", "5 Stars"])
+        XCTAssertEqual(reviewSection.rowTitles, ["Picks", "Rejects", "5 Stars", "Needs Keywords"])
 
         let picksRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Picks" })
         try model.selectSidebarRow(picksRow)
@@ -1610,6 +1611,15 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.flagFilter)
         XCTAssertEqual(model.minimumRatingFilter, 5)
         XCTAssertEqual(model.assets.map(\.id), [fiveStar.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+
+        let needsKeywordsRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Needs Keywords" })
+        try model.selectSidebarRow(needsKeywordsRow)
+
+        XCTAssertNil(model.flagFilter)
+        XCTAssertNil(model.minimumRatingFilter)
+        XCTAssertTrue(model.needsKeywordsFilter)
+        XCTAssertEqual(model.assets.map(\.id), [needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 

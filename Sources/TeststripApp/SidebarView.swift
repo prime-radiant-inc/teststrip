@@ -65,6 +65,8 @@ struct SidebarView: View {
             return "xmark.circle"
         case .fiveStars:
             return "star.fill"
+        case .needsKeywords:
+            return "tag"
         }
     }
 
