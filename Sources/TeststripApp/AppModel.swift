@@ -276,8 +276,11 @@ public struct ImportCompletionSummary: Identifiable, Equatable, Sendable {
     public var activityID: String
     public var title: String
     public var detail: String
+    public var importedPhotoCount: Int
     public var photoCountText: String
+    public var previewFailureCount: Int
     public var failureText: String?
+    public var previewStatusText: String
     public var cullingSessionName: String
 
     public var id: String { activityID }
@@ -724,15 +727,19 @@ public final class AppModel {
         guard let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
             return nil
         }
-        let failureText = activity.failureCount > 0
-            ? "\(activity.failureCount) preview \(activity.failureCount == 1 ? "failure" : "failures")"
+        let previewFailureCount = activity.failureCount
+        let failureText = previewFailureCount > 0
+            ? "\(previewFailureCount) preview \(previewFailureCount == 1 ? "failure" : "failures")"
             : nil
         return ImportCompletionSummary(
             activityID: activity.id,
             title: "Import complete",
             detail: activity.detail,
+            importedPhotoCount: activity.completedUnitCount,
             photoCountText: Self.photoCountDescription(activity.completedUnitCount),
+            previewFailureCount: previewFailureCount,
             failureText: failureText,
+            previewStatusText: failureText ?? activePreviewGenerationStatusText ?? "Previews ready",
             cullingSessionName: "\(activity.detail) Cull"
         )
     }

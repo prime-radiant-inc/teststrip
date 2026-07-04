@@ -660,56 +660,136 @@ struct LibraryGridView: View {
     }
 
     private func importCompletionSummary(_ summary: ImportCompletionSummary) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.green)
+        let presentation = ImportCompletionPresentation.presentation(for: summary)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.green)
+                    .frame(width: 28, height: 28)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(presentation.title)
+                        .font(.headline.weight(.semibold))
+                        .lineLimit(1)
+                    Text(presentation.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
+                Button {
+                    dismissedImportCompletionSummaryID = summary.id
+                } label: {
+                    Image(systemName: "xmark.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("Dismiss import summary")
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 8)], spacing: 8) {
+                ForEach(presentation.metricRows) { metric in
+                    importCompletionMetric(metric)
+                }
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 148), spacing: 8)], spacing: 8) {
+                ForEach(presentation.actionRows) { action in
+                    importCompletionAction(action)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+        .background(.bar)
+        .liveMockupPlaceholder(.importCompleteSummary)
+    }
+
+    private func importCompletionMetric(_ metric: ImportCompletionMetricRow) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: metric.systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(metric.tint)
+                .frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
-                Text(summary.title)
-                    .font(.caption.weight(.semibold))
-                Text(summary.detail)
-                    .font(.caption)
+                Text(metric.value)
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .lineLimit(1)
+                Text(metric.label)
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text(metric.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(summary.photoCountText)
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                if let failureText = summary.failureText {
-                    Text(failureText)
-                        .font(.caption2)
-                        .foregroundStyle(.yellow)
-                }
-            }
-            Button {
-                openLatestImportCompletion()
-            } label: {
-                Label("Open", systemImage: "rectangle.stack")
-            }
-            .controlSize(.small)
-            .help("Open imported photos")
-
-            Button {
-                beginCullingFromLatestImportCompletion()
-            } label: {
-                Label("Cull", systemImage: "checkmark.seal")
-            }
-            .controlSize(.small)
-            .help("Start culling imported photos")
-
-            Button {
-                dismissedImportCompletionSummaryID = summary.id
-            } label: {
-                Image(systemName: "xmark.circle")
-            }
-            .buttonStyle(.borderless)
-            .help("Dismiss import summary")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.bar)
-        .liveMockupPlaceholder(.importCompleteSummary)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .topLeading)
+        .padding(9)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(.quaternary)
+        }
+    }
+
+    @ViewBuilder
+    private func importCompletionAction(_ action: ImportCompletionActionPresentation) -> some View {
+        if action.isEnabled {
+            Button {
+                performImportCompletionAction(action.kind)
+            } label: {
+                importCompletionActionLabel(action)
+            }
+            .buttonStyle(.plain)
+            .help(action.detail)
+        } else {
+            Button {} label: {
+                importCompletionActionLabel(action)
+            }
+            .buttonStyle(.plain)
+            .disabled(true)
+            .help(action.detail)
+            .liveMockupPlaceholder(action.placeholder)
+        }
+    }
+
+    private func importCompletionActionLabel(_ action: ImportCompletionActionPresentation) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: action.systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(action.title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Text(action.detail)
+                    .font(.caption2)
+                    .lineLimit(1)
+                    .foregroundStyle(action.isPrimary ? Color.black.opacity(0.72) : Color.secondary)
+            }
+        }
+        .foregroundStyle(action.isPrimary ? Color.black : Color.primary)
+        .frame(minWidth: 126, maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .padding(.horizontal, 10)
+        .background(action.isPrimary ? Color.orange : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(action.isPrimary ? Color.orange.opacity(0.5) : Color.white.opacity(0.08))
+        }
+        .opacity(action.isEnabled ? 1 : 0.55)
+    }
+
+    private func performImportCompletionAction(_ kind: ImportCompletionActionPresentation.Kind) {
+        switch kind {
+        case .startCulling:
+            beginCullingFromLatestImportCompletion()
+        case .openInLibrary:
+            openLatestImportCompletion()
+        case .stackGrouping, .faceNaming, .keywordSuggestions:
+            break
+        }
     }
 
     @ViewBuilder
@@ -2833,6 +2913,178 @@ struct CullingAssistPresentation: Equatable {
             return fallback
         }
         return first.uppercased() + trimmed.dropFirst()
+    }
+}
+
+struct ImportCompletionPresentation: Equatable {
+    var title: String
+    var detail: String
+    var metricRows: [ImportCompletionMetricRow]
+    var actionRows: [ImportCompletionActionPresentation]
+
+    var enabledActions: [ImportCompletionActionPresentation] {
+        actionRows.filter(\.isEnabled)
+    }
+
+    var placeholderActions: [ImportCompletionActionPresentation] {
+        actionRows.filter { !$0.isEnabled }
+    }
+
+    static func presentation(for summary: ImportCompletionSummary) -> ImportCompletionPresentation {
+        ImportCompletionPresentation(
+            title: "\(summary.photoCountText) imported",
+            detail: summary.detail,
+            metricRows: [
+                ImportCompletionMetricRow(
+                    id: "imported-set",
+                    value: summary.photoCountText,
+                    label: "Imported set",
+                    detail: "Ready to browse and cull",
+                    systemImage: "rectangle.stack.fill",
+                    tone: .green
+                ),
+                previewMetric(for: summary),
+                ImportCompletionMetricRow(
+                    id: "cull-scope",
+                    value: "Ready",
+                    label: "Cull scope",
+                    detail: "Uses the imported set",
+                    systemImage: "checkmark.seal.fill",
+                    tone: .orange
+                )
+            ],
+            actionRows: [
+                ImportCompletionActionPresentation(
+                    kind: .startCulling,
+                    title: "Start culling",
+                    detail: "Use the imported set",
+                    systemImage: "checkmark.seal.fill",
+                    isEnabled: true,
+                    isPrimary: true,
+                    placeholder: nil
+                ),
+                ImportCompletionActionPresentation(
+                    kind: .openInLibrary,
+                    title: "Open in Library",
+                    detail: "Browse everything",
+                    systemImage: "rectangle.stack",
+                    isEnabled: true,
+                    isPrimary: false,
+                    placeholder: nil
+                ),
+                ImportCompletionActionPresentation(
+                    kind: .stackGrouping,
+                    title: "Stack grouping",
+                    detail: "Manual culling until stack grouping ships",
+                    systemImage: "square.stack.3d.up",
+                    isEnabled: false,
+                    isPrimary: false,
+                    placeholder: .cullingStackCull
+                ),
+                ImportCompletionActionPresentation(
+                    kind: .faceNaming,
+                    title: "Name faces",
+                    detail: "Face clustering and naming not built",
+                    systemImage: "person.2",
+                    isEnabled: false,
+                    isPrimary: false,
+                    placeholder: .peopleFaceActions
+                ),
+                ImportCompletionActionPresentation(
+                    kind: .keywordSuggestions,
+                    title: "Keyword suggestions",
+                    detail: "Batch suggested keywords not built",
+                    systemImage: "tag",
+                    isEnabled: false,
+                    isPrimary: false,
+                    placeholder: .keywordingBatch
+                )
+            ]
+        )
+    }
+
+    private static func previewMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
+        if summary.previewFailureCount > 0 {
+            return ImportCompletionMetricRow(
+                id: "previews",
+                value: "\(summary.previewFailureCount) \(summary.previewFailureCount == 1 ? "issue" : "issues")",
+                label: "Previews",
+                detail: summary.failureText ?? summary.previewStatusText,
+                systemImage: "exclamationmark.triangle.fill",
+                tone: .yellow
+            )
+        }
+
+        let status = summary.previewStatusText.lowercased()
+        let value: String
+        if status.contains("queued") {
+            value = "Queued"
+        } else if status.contains("generating") || status.contains("building") {
+            value = "Building"
+        } else if status.contains("paused") {
+            value = "Paused"
+        } else {
+            value = "Ready"
+        }
+        return ImportCompletionMetricRow(
+            id: "previews",
+            value: value,
+            label: "Previews",
+            detail: summary.previewStatusText,
+            systemImage: "photo.stack",
+            tone: value == "Ready" ? .blue : .yellow
+        )
+    }
+}
+
+struct ImportCompletionMetricRow: Equatable, Identifiable {
+    enum Tone: Equatable {
+        case green
+        case blue
+        case yellow
+        case orange
+    }
+
+    var id: String
+    var value: String
+    var label: String
+    var detail: String
+    var systemImage: String
+    var tone: Tone
+
+    var tint: Color {
+        switch tone {
+        case .green:
+            return .green
+        case .blue:
+            return .blue
+        case .yellow:
+            return .yellow
+        case .orange:
+            return .orange
+        }
+    }
+}
+
+struct ImportCompletionActionPresentation: Equatable, Identifiable {
+    enum Kind: String, Equatable {
+        case startCulling
+        case openInLibrary
+        case stackGrouping
+        case faceNaming
+        case keywordSuggestions
+    }
+
+    var kind: Kind
+    var title: String
+    var detail: String
+    var systemImage: String
+    var isEnabled: Bool
+    var isPrimary: Bool
+    var placeholder: LiveMockupPlaceholder?
+
+    var id: String {
+        kind.rawValue
     }
 }
 

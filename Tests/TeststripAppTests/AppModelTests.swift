@@ -5173,7 +5173,10 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(summary.title, "Import complete")
         XCTAssertEqual(summary.detail, "Imported 1 photo from photos")
+        XCTAssertEqual(summary.importedPhotoCount, 1)
         XCTAssertEqual(summary.photoCountText, "1 photo")
+        XCTAssertEqual(summary.previewFailureCount, 0)
+        XCTAssertEqual(summary.previewStatusText, "Previews ready")
         XCTAssertEqual(summary.cullingSessionName, "Imported 1 photo from photos Cull")
         XCTAssertNil(summary.failureText)
 
