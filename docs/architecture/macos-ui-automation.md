@@ -44,6 +44,14 @@ The probe also emits `teststrip_import_metric` lines for feedback visibility dur
 TESTSTRIP_AX_IMPORT_COUNT=600 TESTSTRIP_AX_TIMEOUT_SECONDS=75 ./script/verify_import_path.sh Teststrip
 ```
 
+The submit-only Import Path helper is:
+
+```bash
+./script/submit_import_path.sh Teststrip /path/to/photos
+```
+
+It opens the Import Path sheet, submits a directory, and exits without waiting for visible feedback or walking the whole app accessibility tree. Use it with catalog polling when separating raw catalog/import latency from AX traversal overhead. A 600-image smoke import measured through this path reached the catalog about 0.12s after submit and completed import work about 0.53s after submit, while the full AX visibility probe still reported much slower target-visible timings.
+
 The imported-grid culling probe is:
 
 ```bash
