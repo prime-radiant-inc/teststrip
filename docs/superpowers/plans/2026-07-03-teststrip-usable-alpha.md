@@ -13,10 +13,22 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `1471a64 Avoid import state scans over preview work`
+- Snapshot commit: `edc6f08 Explain import path plan`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last broad unit verification before this document: `swift test` passed with 432 tests after the preview/import scan optimization work.
-- Last app workflow verification before this document: `./script/verify_app_workflows.sh Teststrip` passed during the same build-out, and the 600-image import AX path completed successfully. A later full workflow rerun should still be part of the next code slice because the final small optimization landed after that workflow pass.
+- Last broad unit verification: `swift test` passed with 445 tests after the import-plan sheet work.
+- Last app workflow verification: `script/build_and_run.sh --sample-photos` launched the stock sample catalog; Computer Use verified import status, inspector preview, active filter chips, loupe-first culling, culling overlay guidance, and the Import Path plan sheet. `./script/verify_app_workflows.sh Teststrip` and the 600-image AX import path also passed earlier in this build-out.
+
+### Recent Completed Slices
+
+- `2a55910` / `41a8dd8` / `64a7821`: added real free stock-photo sample fixtures and made `script/build_and_run.sh --sample-photos` seed a clean sample catalog.
+- `3088489`: added persisted thumbnail-size/density control.
+- `9274ad1`: added built-in review queues for common culling filters.
+- `235c878` / `127cf13`: made import progress and imported-grid culling observable through AX probes.
+- `5563caa`: kept the footer explicit after import completion while preview generation continues.
+- `59c4219`: added selected-photo preview at the top of the inspector.
+- `7351798`: added active filter chips under the search/filter bar.
+- `f2b57f3` / `51f0d1f`: made culling sessions loupe-first and added frame/shortcut guidance to the loupe overlay.
+- `edc6f08`: added an Import Path plan explaining non-destructive cataloging, XMP sidecars, cached previews, and managed background work before the user imports.
 
 ## Product Decisions To Preserve
 
@@ -215,7 +227,10 @@ Current behavior:
 - Studio-style shell exists: sidebar, library grid, inspector, toolbar actions, activity/work surface.
 - Library grid renders cached previews.
 - Grid thumbnail density is user-configurable from the toolbar and persists as an app preference.
-- Selection and inspector metadata display exist.
+- Selection and inspector metadata display exist; the inspector now shows the selected cached preview above metadata controls.
+- Active filters are summarized as visible chips below the search/filter controls.
+- Import Path shows a pre-import plan for in-place cataloging, XMP sidecars, cached previews, and managed background work.
+- Culling sessions now start and reopen in loupe view, with visible frame position and core keyboard hints.
 - Ratings, flags, labels, and keywords have app-model/catalog plumbing.
 - Keyboard culling probe verifies selecting a thumbnail, clearing rating, sending `5`, and seeing `Rating: 5` in the inspector.
 - Grid activation and selected-thumbnail feedback AX probes exist.
@@ -227,7 +242,7 @@ Current behavior:
 ### Alpha-Blocking Gaps
 
 - Preview throughput and UI churn under large preview backlogs are not good enough yet. The 600-image import path completed, but many previews were still pending after the initial wait and app CPU stayed high while draining.
-- Import UX still feels janky. The current flow can look broken before it completes, even when the backend path works.
+- Import UX is improved but not complete. The app now shows visible post-import preview continuation and an Import Path plan, but starting/running import phases, duplicate submission prevention, permission/security-scope failures, and richer card-source staging still need work.
 - Clicking/selection needs a stronger regression harness. We have AX probes, but the user observed weird broken clicking after import, and this should be treated as a real usability risk until verified under imported-photo conditions.
 - The current RAW story is only the first abstraction and ImageIO-backed path. We still need an explicit decoder capability matrix and provider-swapping plan for formats Jesse named: DNG, CRW, CR2, Fuji RAW, Sigma/Foveon RAW, and specialty long-tail files. Lytro support remains out of scope.
 - Evaluation is scaffolding plus early useful providers, not finished face/person/object/aesthetic workflow. People grouping, review UI, accepted labels, and reprocessing flows are not complete.
