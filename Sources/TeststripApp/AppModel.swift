@@ -673,10 +673,13 @@ public final class AppModel {
         self.compareAssetIDs = nil
         self.workerImportContextsByItemID = [:]
         self.workerSupervisor?.onQueueChanged = { [weak self] queue in
+            let previousQueue = self?.backgroundWorkQueue
             let previousPreviewFailureIDs = Self.failedPreviewGenerationItemIDs(in: self?.backgroundWorkQueue)
             self?.backgroundWorkQueue = queue
             self?.recordPersistedActiveBackgroundWorkActivities(in: queue)
-            try? self?.refreshMetadataSyncState()
+            if Self.metadataSyncWorkChanged(from: previousQueue, to: queue) {
+                try? self?.refreshMetadataSyncState()
+            }
             if !Self.failedPreviewGenerationItemIDs(in: queue).isSubset(of: previousPreviewFailureIDs) {
                 try? self?.refreshPreviewGenerationQueueStates()
             }
@@ -1909,6 +1912,22 @@ public final class AppModel {
             queue?.items.compactMap { item in
                 guard item.kind == .previewGeneration, item.status == .failed else { return nil }
                 return item.id
+            } ?? []
+        )
+    }
+
+    private static func metadataSyncWorkChanged(
+        from previousQueue: BackgroundWorkQueue?,
+        to queue: BackgroundWorkQueue
+    ) -> Bool {
+        metadataSyncWorkStatuses(in: previousQueue) != metadataSyncWorkStatuses(in: queue)
+    }
+
+    private static func metadataSyncWorkStatuses(in queue: BackgroundWorkQueue?) -> [WorkSessionID: WorkSessionStatus] {
+        Dictionary(
+            uniqueKeysWithValues: queue?.items.compactMap { item in
+                guard item.kind == .xmpSync else { return nil }
+                return (item.id, item.status)
             } ?? []
         )
     }

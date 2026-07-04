@@ -3050,6 +3050,38 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(assetLookupCount, 1)
     }
 
+    func testPreviewCompletionDoesNotRefreshMetadataSyncState() throws {
+        var metadataSyncQueryCount = 0
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, repository, assets) = try makeModelWithPendingPreviewBacklog(
+            named: "pending-preview-refill-xmp-query-count",
+            assetCount: 201,
+            workerSupervisor: supervisor
+        ) { database in
+            database.rowQueryObserver = { sql in
+                if sql.contains("FROM metadata_sync_state") {
+                    metadataSyncQueryCount += 1
+                }
+            }
+        }
+        let firstItemID = WorkSessionID(rawValue: "preview-asset-0-grid")
+        let refillItemID = WorkSessionID(rawValue: "preview-asset-200-grid")
+
+        metadataSyncQueryCount = 0
+        try repository.markPreviewGenerated(assetID: assets[0].id, level: .grid)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: firstItemID,
+            message: "generated grid preview for asset-0"
+        )))
+
+        XCTAssertTrue(waitForBackgroundWorkItem(refillItemID, in: model))
+        XCTAssertEqual(metadataSyncQueryCount, 0)
+    }
+
     func testRequestQueuedPreviewDoesNotRewriteDurablePendingState() throws {
         let directory = try makeTemporaryDirectory(named: "request-preview-dedup-pending")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

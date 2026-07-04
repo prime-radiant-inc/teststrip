@@ -37,8 +37,13 @@ struct LibraryGridView: View {
             } else if model.selectedView == .compare {
                 CompareView(model: model, focusCullingSurface: focusCullingSurface)
             } else {
-                ScrollView {
-                    assetGrid
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        assetGrid
+                    }
+                    .onChange(of: model.selectedAssetID?.rawValue) { _, selectedAssetID in
+                        scrollSelectedAssetIntoView(selectedAssetID, with: proxy)
+                    }
                 }
             }
         }
@@ -628,6 +633,7 @@ struct LibraryGridView: View {
                     isSelected: model.selectedAssetID == asset.id
                 )
                 .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface)
+                .id(asset.id.rawValue)
                 .task(id: asset.id.rawValue) {
                     do {
                         try model.requestVisibleGridPreview(assetID: asset.id)
@@ -847,6 +853,15 @@ struct LibraryGridView: View {
             try model.refreshVisibleAssetAvailability()
         } catch {
             model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func scrollSelectedAssetIntoView(_ selectedAssetID: String?, with proxy: ScrollViewProxy) {
+        guard let selectedAssetID else { return }
+        Task { @MainActor in
+            withAnimation(.easeOut(duration: 0.12)) {
+                proxy.scrollTo(selectedAssetID, anchor: .center)
+            }
         }
     }
 
