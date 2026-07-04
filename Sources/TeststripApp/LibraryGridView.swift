@@ -601,7 +601,7 @@ struct LibraryGridView: View {
     }
 
     private var evaluationKindFilterOptions: [EvaluationKind] {
-        [.focus, .motionBlur, .exposure, .aesthetics, .object, .faceQuality, .ocrText, .colorPalette, .novelty]
+        [.focus, .motionBlur, .exposure, .aesthetics, .object, .faceCount, .faceQuality, .ocrText, .colorPalette, .novelty]
     }
 
     private var minimumISOTextBinding: Binding<String> {

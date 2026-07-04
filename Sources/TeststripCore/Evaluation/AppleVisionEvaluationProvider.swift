@@ -12,15 +12,18 @@ public struct AppleVisionLabel: Equatable, Sendable {
 }
 
 public struct AppleVisionAnalysis: Equatable, Sendable {
+    public var faceCount: Int
     public var faceQualityScores: [Double]
     public var recognizedText: [String]
     public var classificationLabels: [AppleVisionLabel]
 
     public init(
+        faceCount: Int,
         faceQualityScores: [Double],
         recognizedText: [String],
         classificationLabels: [AppleVisionLabel]
     ) {
+        self.faceCount = faceCount
         self.faceQualityScores = faceQualityScores
         self.recognizedText = recognizedText
         self.classificationLabels = classificationLabels
@@ -45,6 +48,9 @@ public struct AppleVisionEvaluationProvider: EvaluationProvider {
         let provenance = ProviderProvenance(provider: name, model: "Vision", version: "1", settingsHash: "default")
         var signals: [EvaluationSignal] = []
 
+        if let faceCountSignal = Self.faceCountSignal(assetID: assetID, count: analysis.faceCount, scores: analysis.faceQualityScores, provenance: provenance) {
+            signals.append(faceCountSignal)
+        }
         if let faceSignal = Self.faceSignal(assetID: assetID, scores: analysis.faceQualityScores, provenance: provenance) {
             signals.append(faceSignal)
         }
@@ -56,6 +62,23 @@ public struct AppleVisionEvaluationProvider: EvaluationProvider {
         }
 
         return signals
+    }
+
+    private static func faceCountSignal(
+        assetID: AssetID,
+        count: Int,
+        scores: [Double],
+        provenance: ProviderProvenance
+    ) -> EvaluationSignal? {
+        guard count > 0 else { return nil }
+        let boundedScores = scores.map { min(max($0, 0.0), 1.0) }
+        return EvaluationSignal(
+            assetID: assetID,
+            kind: .faceCount,
+            value: .count(count),
+            confidence: boundedScores.max() ?? 1.0,
+            provenance: provenance
+        )
     }
 
     private static func faceSignal(
@@ -123,6 +146,7 @@ public struct AppleVisionAnalyzer: AppleVisionAnalyzing {
         try handler.perform([faceQualityRequest, textRequest, classificationRequest])
 
         return AppleVisionAnalysis(
+            faceCount: (faceQualityRequest.results ?? []).count,
             faceQualityScores: (faceQualityRequest.results ?? []).compactMap { observation in
                 observation.faceCaptureQuality.map(Double.init)
             },

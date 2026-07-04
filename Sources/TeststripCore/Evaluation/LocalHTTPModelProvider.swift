@@ -161,8 +161,8 @@ public struct LocalHTTPModelProvider: EvaluationProvider {
     }
 
     public static let defaultPrompt = """
-    Evaluate this photo for culling. Return only JSON shaped as {"signals":[{"kind":"aesthetics","label":"keeper","confidence":0.0},{"kind":"focus","score":0.0,"confidence":0.0}]}.
-    Use Teststrip signal kinds when possible: focus, motionBlur, exposure, aesthetics, object, faceQuality, ocrText, colorPalette, novelty.
+    Evaluate this photo for culling. Return only JSON shaped as {"signals":[{"kind":"aesthetics","label":"keeper","confidence":0.0},{"kind":"focus","score":0.0,"confidence":0.0},{"kind":"faceCount","count":1,"confidence":0.0}]}.
+    Use Teststrip signal kinds when possible: focus, motionBlur, exposure, aesthetics, object, faceCount, faceQuality, ocrText, colorPalette, novelty.
     """
 
     private static func dataURL(forImageAt url: URL) throws -> String {
@@ -223,6 +223,7 @@ private struct LocalHTTPModelSignal: Decodable {
     var score: Double?
     var label: String?
     var text: String?
+    var count: Int?
     var vector: [Double]?
 
     func evaluationSignal(assetID: AssetID, provenance: ProviderProvenance) throws -> EvaluationSignal {
@@ -244,6 +245,9 @@ private struct LocalHTTPModelSignal: Decodable {
         }
         if let text {
             return .text(text)
+        }
+        if let count {
+            return .count(count)
         }
         if let vector {
             return .vector(vector)

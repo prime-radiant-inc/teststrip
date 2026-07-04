@@ -307,6 +307,7 @@ struct InspectorView: View {
         case .exposure: "Exposure"
         case .aesthetics: "Aesthetics"
         case .object: "Object"
+        case .faceCount: "Face count"
         case .faceQuality: "Face quality"
         case .ocrText: "OCR"
         case .colorPalette: "Color"
@@ -322,6 +323,8 @@ struct InspectorView: View {
             label
         case .text(let text):
             text
+        case .count(let count):
+            "\(count)"
         case .vector(let values):
             values.prefix(3).map { String(format: "%.2f", $0) }.joined(separator: ", ")
         }

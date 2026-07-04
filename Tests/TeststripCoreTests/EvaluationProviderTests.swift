@@ -61,7 +61,7 @@ final class EvaluationProviderTests: XCTestCase {
         let transport = RecordingLocalHTTPTransport(response: .success(LocalHTTPModelHTTPResponse(
             statusCode: 200,
             data: try chatCompletionData(content: """
-            {"signals":[{"kind":"aesthetics","label":"keeper","confidence":0.74},{"kind":"focus","score":0.91,"confidence":0.82}]}
+            {"signals":[{"kind":"aesthetics","label":"keeper","confidence":0.74},{"kind":"focus","score":0.91,"confidence":0.82},{"kind":"faceCount","count":2,"confidence":0.9}]}
             """)
         )))
         let provider = LocalHTTPModelProvider(
@@ -86,6 +86,13 @@ final class EvaluationProviderTests: XCTestCase {
                 kind: .focus,
                 value: .score(0.91),
                 confidence: 0.82,
+                provenance: ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+            ),
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .faceCount,
+                value: .count(2),
+                confidence: 0.9,
                 provenance: ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
             )
         ])
@@ -203,6 +210,7 @@ final class EvaluationProviderTests: XCTestCase {
 
     func testAppleVisionProviderMapsAnalysisToSignals() throws {
         let provider = AppleVisionEvaluationProvider(analyzer: FakeAppleVisionAnalyzer(analysis: AppleVisionAnalysis(
+            faceCount: 2,
             faceQualityScores: [0.6, 0.9],
             recognizedText: ["Invoice 123", "Total 45"],
             classificationLabels: [AppleVisionLabel(identifier: "document", confidence: 0.82)]
@@ -212,6 +220,13 @@ final class EvaluationProviderTests: XCTestCase {
         let signals = try provider.evaluate(assetID: assetID, previewURL: URL(fileURLWithPath: "/tmp/preview.jpg"))
 
         XCTAssertEqual(signals, [
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .faceCount,
+                value: .count(2),
+                confidence: 0.9,
+                provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+            ),
             EvaluationSignal(
                 assetID: assetID,
                 kind: .faceQuality,
@@ -241,6 +256,7 @@ final class EvaluationProviderTests: XCTestCase {
             .score(0.92),
             .label("keeper"),
             .text("sharp foreground"),
+            .count(3),
             .vector([0.1, 0.2, 0.3])
         ]
 

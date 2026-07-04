@@ -76,6 +76,8 @@ extension EvaluationKind {
             return "Aesthetics"
         case .object:
             return "Object"
+        case .faceCount:
+            return "Face Count"
         case .faceQuality:
             return "Face Quality"
         case .ocrText:
@@ -3156,6 +3158,7 @@ public final class AppModel {
     }
 
     private static let evaluationKindSidebarOrder: [EvaluationKind] = [
+        .faceCount,
         .faceQuality,
         .object,
         .ocrText,
@@ -3169,6 +3172,8 @@ public final class AppModel {
 
     private static func evaluationKindSidebarTitle(_ kind: EvaluationKind) -> String {
         switch kind {
+        case .faceCount:
+            return "People"
         case .faceQuality:
             return "Faces"
         case .object:

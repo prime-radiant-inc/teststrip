@@ -4,6 +4,7 @@ public enum EvaluationKind: String, Codable, Sendable {
     case exposure
     case aesthetics
     case object
+    case faceCount
     case faceQuality
     case ocrText
     case colorPalette
@@ -14,6 +15,7 @@ public enum EvaluationValue: Codable, Equatable, Sendable {
     case score(Double)
     case label(String)
     case text(String)
+    case count(Int)
     case vector([Double])
 }
 

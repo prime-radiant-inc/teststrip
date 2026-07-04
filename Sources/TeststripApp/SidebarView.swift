@@ -55,6 +55,8 @@ struct SidebarView: View {
 
     private func evaluationKindIconName(_ kind: EvaluationKind) -> String {
         switch kind {
+        case .faceCount:
+            return "person.2"
         case .faceQuality:
             return "person.crop.circle"
         case .object:
