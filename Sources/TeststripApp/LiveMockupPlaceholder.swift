@@ -15,6 +15,7 @@ public extension LiveMockupPlaceholder {
     static let peopleSidebar = LiveMockupPlaceholders.peopleSidebar
     static let peopleFaceActions = LiveMockupPlaceholders.peopleFaceActions
     static let agenticSearch = LiveMockupPlaceholders.agenticSearch
+    static let importCompleteSummary = LiveMockupPlaceholders.importCompleteSummary
     static let workHistory = LiveMockupPlaceholders.workHistory
 }
 
@@ -40,6 +41,13 @@ public enum LiveMockupPlaceholders {
         currentFallback: "Plain catalog text search plus explicit filter controls."
     )
 
+    public static let importCompleteSummary = LiveMockupPlaceholder(
+        id: "import.complete-summary",
+        title: "Import complete summary",
+        intendedBehavior: "Show the import-complete payoff surface with imported-set actions, preview status, culling entrypoints, and follow-up workflow suggestions.",
+        currentFallback: "Compact post-import banner backed by the completed import work session and output set."
+    )
+
     public static let workHistory = LiveMockupPlaceholder(
         id: "work.history",
         title: "Work history",
@@ -51,6 +59,7 @@ public enum LiveMockupPlaceholders {
         peopleSidebar,
         peopleFaceActions,
         agenticSearch,
+        importCompleteSummary,
         workHistory
     ]
 }

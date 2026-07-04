@@ -252,6 +252,17 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct ImportCompletionSummary: Identifiable, Equatable, Sendable {
+    public var activityID: String
+    public var title: String
+    public var detail: String
+    public var photoCountText: String
+    public var failureText: String?
+    public var cullingSessionName: String
+
+    public var id: String { activityID }
+}
+
 public struct AppImportOutput: Sendable {
     public var result: LibraryImportResult
     public var assets: [Asset]
@@ -649,6 +660,23 @@ public final class AppModel {
 
     public var canBeginCullingSession: Bool {
         catalog != nil && !assets.isEmpty
+    }
+
+    public var latestImportCompletionSummary: ImportCompletionSummary? {
+        guard let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
+            return nil
+        }
+        let failureText = activity.failureCount > 0
+            ? "\(activity.failureCount) preview \(activity.failureCount == 1 ? "failure" : "failures")"
+            : nil
+        return ImportCompletionSummary(
+            activityID: activity.id,
+            title: "Import complete",
+            detail: activity.detail,
+            photoCountText: Self.photoCountDescription(activity.completedUnitCount),
+            failureText: failureText,
+            cullingSessionName: "\(activity.detail) Cull"
+        )
     }
 
     public var suggestedSavedSearchName: String {
@@ -1063,6 +1091,21 @@ public final class AppModel {
             return
         }
         statusMessage = session.detail.isEmpty ? session.title : session.detail
+    }
+
+    @discardableResult
+    public func openLatestImportCompletion() throws -> ImportCompletionSummary {
+        guard let summary = latestImportCompletionSummary else {
+            throw TeststripError.invalidState("no completed import")
+        }
+        try applyWorkSession(id: WorkSessionID(rawValue: summary.activityID))
+        return summary
+    }
+
+    @discardableResult
+    public func beginCullingFromLatestImportCompletion() throws -> WorkSession {
+        let summary = try openLatestImportCompletion()
+        return try beginCullingSession(named: summary.cullingSessionName)
     }
 
     public func canToggleWorkSessionStarred(_ activity: AppWorkActivity) -> Bool {
@@ -3262,6 +3305,10 @@ public final class AppModel {
 
     private static func photoCountDescription(_ count: Int) -> String {
         "\(count) \(count == 1 ? "photo" : "photos")"
+    }
+
+    private static func isImportCompletionActivity(_ activity: AppWorkActivity) -> Bool {
+        activity.kind == .ingest && activity.status == .completed && activity.completedUnitCount > 0
     }
 
     private func saveImportOutputSet(for activity: AppWorkActivity, result: LibraryImportResult) -> [AssetSetID] {

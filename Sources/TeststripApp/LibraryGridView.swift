@@ -16,6 +16,7 @@ struct LibraryGridView: View {
     @State private var cullingSessionIntent = ""
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
+    @State private var dismissedImportCompletionSummaryID: String?
     @State private var importPathDraft = ImportFolderPathDraft()
     @State private var importConfirmationDraft: ImportConfirmationDraft?
     @State private var sourceReconnectDraft = SourceReconnectPathDraft()
@@ -194,8 +195,22 @@ struct LibraryGridView: View {
                 visibleAssetCount: model.assets.count
             ) {
                 importProgressBanner
+            } else if let summary = visibleImportCompletionSummary {
+                importCompletionSummary(summary)
             }
         }
+    }
+
+    private var visibleImportCompletionSummary: ImportCompletionSummary? {
+        guard let summary = model.latestImportCompletionSummary else { return nil }
+        guard LibraryGridChromePolicy.shouldShowImportCompletionSummary(
+            isImporting: isImporting,
+            summaryID: summary.id,
+            dismissedSummaryID: dismissedImportCompletionSummaryID
+        ) else {
+            return nil
+        }
+        return summary
     }
 
     private var filterBar: some View {
@@ -489,6 +504,59 @@ struct LibraryGridView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
         .background(.bar)
+    }
+
+    private func importCompletionSummary(_ summary: ImportCompletionSummary) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.green)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(summary.title)
+                    .font(.caption.weight(.semibold))
+                Text(summary.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(summary.photoCountText)
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                if let failureText = summary.failureText {
+                    Text(failureText)
+                        .font(.caption2)
+                        .foregroundStyle(.yellow)
+                }
+            }
+            Button {
+                openLatestImportCompletion()
+            } label: {
+                Label("Open", systemImage: "rectangle.stack")
+            }
+            .controlSize(.small)
+            .help("Open imported photos")
+
+            Button {
+                beginCullingFromLatestImportCompletion()
+            } label: {
+                Label("Cull", systemImage: "checkmark.seal")
+            }
+            .controlSize(.small)
+            .help("Start culling imported photos")
+
+            Button {
+                dismissedImportCompletionSummaryID = summary.id
+            } label: {
+                Image(systemName: "xmark.circle")
+            }
+            .buttonStyle(.borderless)
+            .help("Dismiss import summary")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.bar)
+        .liveMockupPlaceholder(.importCompleteSummary)
     }
 
     @ViewBuilder
@@ -1105,6 +1173,23 @@ struct LibraryGridView: View {
         }
     }
 
+    private func openLatestImportCompletion() {
+        do {
+            try model.openLatestImportCompletion()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func beginCullingFromLatestImportCompletion() {
+        do {
+            try model.beginCullingFromLatestImportCompletion()
+            focusCullingSurface()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
     private func evaluateSelectedAsset() {
         do {
             try model.requestSelectedAssetEvaluations()
@@ -1495,6 +1580,15 @@ enum AssetGridPreviewPolicy {
 enum LibraryGridChromePolicy {
     static func shouldShowImportProgressBanner(isImporting: Bool, visibleAssetCount _: Int) -> Bool {
         isImporting
+    }
+
+    static func shouldShowImportCompletionSummary(
+        isImporting: Bool,
+        summaryID: String?,
+        dismissedSummaryID: String?
+    ) -> Bool {
+        guard !isImporting, let summaryID else { return false }
+        return summaryID != dismissedSummaryID
     }
 }
 
