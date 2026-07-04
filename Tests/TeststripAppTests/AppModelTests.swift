@@ -1,5 +1,5 @@
 import XCTest
-import TeststripCore
+@testable import TeststripCore
 @testable import TeststripApp
 
 final class AppModelTests: XCTestCase {
@@ -1140,14 +1140,17 @@ final class AppModelTests: XCTestCase {
         )
         let item = BackgroundWorkItem.testItem(id: "pause-target")
         model.enqueueBackgroundWork(item)
+        XCTAssertNil(model.backgroundWorkPauseNotice)
 
         model.pauseBackgroundWork()
         XCTAssertEqual(model.visibleWorkActivity?.status, .running)
+        XCTAssertEqual(model.backgroundWorkPauseNotice, "Queue paused after current task")
         XCTAssertFalse(model.canPauseBackgroundWork)
         XCTAssertTrue(model.canResumeBackgroundWork)
 
         model.resumeBackgroundWork()
         XCTAssertEqual(model.visibleWorkActivity?.status, .running)
+        XCTAssertNil(model.backgroundWorkPauseNotice)
         XCTAssertTrue(model.canPauseBackgroundWork)
         XCTAssertFalse(model.canResumeBackgroundWork)
 
@@ -2939,33 +2942,16 @@ final class AppModelTests: XCTestCase {
     }
 
     func testPreviewCompletionRefillsPendingPreviewRecoveryBatch() throws {
-        let directory = try makeTemporaryDirectory(named: "pending-preview-refill")
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
-        try database.migrate()
-        let repository = CatalogRepository(database: database)
-        let assets = (0..<201).map { index in
-            makeAsset(id: "asset-\(index)", path: "/Photos/asset-\(index).jpg", rating: 0)
-        }
-        try repository.upsert(assets)
-        for asset in assets {
-            try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .grid))
-        }
-        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
-        let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
-            repository: repository,
-            previewCache: previewCache,
-            importService: LibraryImportService(
-                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
-                previewCache: previewCache
-            )
-        )
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
             queue: BackgroundWorkQueue(maxRunningCount: 1),
             transport: transport
         )
-        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+        let (model, repository, assets) = try makeModelWithPendingPreviewBacklog(
+            named: "pending-preview-refill",
+            assetCount: 201,
+            workerSupervisor: supervisor
+        )
         let firstItemID = WorkSessionID(rawValue: "preview-asset-0-grid")
         let refillItemID = WorkSessionID(rawValue: "preview-asset-200-grid")
 
@@ -2984,6 +2970,121 @@ final class AppModelTests: XCTestCase {
             .generatePreview(assetID: assets[1].id, level: .grid)
         ], in: transport))
         XCTAssertTrue(waitForBackgroundWorkItem(refillItemID, in: model))
+    }
+
+    @MainActor
+    func testCompletedPreviewGenerationKeepsOnlyLatestCompletedPreviewInBackgroundQueue() async throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let first = makeAsset(id: "completed-preview-first", size: 1)
+        let second = makeAsset(id: "completed-preview-second", size: 2)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "completed-preview-pruned",
+            assets: [first, second],
+            workerSupervisor: supervisor
+        )
+        let firstItemID = WorkSessionID(rawValue: "preview-\(first.id.rawValue)-grid")
+        let secondItemID = WorkSessionID(rawValue: "preview-\(second.id.rawValue)-grid")
+        try model.requestPreview(assetID: first.id, level: .grid)
+        try model.requestPreview(assetID: second.id, level: .grid)
+        try repository.markPreviewGenerated(assetID: first.id, level: .grid)
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: firstItemID,
+            message: "generated grid preview"
+        )))
+        try await waitForBackgroundWorkStatus(.completed, itemID: firstItemID, in: model)
+
+        try repository.markPreviewGenerated(assetID: second.id, level: .grid)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: secondItemID,
+            message: "generated grid preview"
+        )))
+
+        try await waitForBackgroundWorkStatus(.completed, itemID: secondItemID, in: model)
+        XCTAssertTrue(waitForBackgroundWorkItemRemoval(firstItemID, in: model))
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: secondItemID)?.status, .completed)
+    }
+
+    func testPreviewRecoveryRefreshesQueueStateOncePerBatch() throws {
+        var queueStateQueryCount = 0
+        var assetLookupCount = 0
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, repository, assets) = try makeModelWithPendingPreviewBacklog(
+            named: "pending-preview-refill-query-count",
+            assetCount: 201,
+            workerSupervisor: supervisor
+        ) { database in
+            database.rowQueryObserver = { sql in
+                if sql.contains("SELECT asset_id, level, attempt_count"),
+                   sql.contains("FROM preview_generation_queue") {
+                    queueStateQueryCount += 1
+                }
+                if sql == "SELECT * FROM assets WHERE id = ?" {
+                    assetLookupCount += 1
+                }
+            }
+        }
+        let firstItemID = WorkSessionID(rawValue: "preview-asset-0-grid")
+        let refillItemID = WorkSessionID(rawValue: "preview-asset-200-grid")
+
+        XCTAssertEqual(queueStateQueryCount, 2)
+
+        queueStateQueryCount = 0
+        assetLookupCount = 0
+        try repository.markPreviewGenerated(assetID: assets[0].id, level: .grid)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: firstItemID,
+            message: "generated grid preview for asset-0"
+        )))
+
+        XCTAssertTrue(waitForBackgroundWorkItem(refillItemID, in: model))
+        XCTAssertEqual(queueStateQueryCount, 1)
+        XCTAssertEqual(assetLookupCount, 1)
+    }
+
+    func testRequestQueuedPreviewDoesNotRewriteDurablePendingState() throws {
+        let directory = try makeTemporaryDirectory(named: "request-preview-dedup-pending")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let first = makeAsset(id: "asset-0", path: "/Photos/asset-0.jpg", rating: 0)
+        let second = makeAsset(id: "asset-1", path: "/Photos/asset-1.jpg", rating: 0)
+        try repository.upsert([first, second])
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: first.id, level: .grid))
+        Thread.sleep(forTimeInterval: 0.01)
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: second.id, level: .grid))
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+        Thread.sleep(forTimeInterval: 0.01)
+
+        try model.requestPreview(assetID: first.id, level: .grid)
+
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: first.id, level: .grid),
+            PreviewGenerationItem(assetID: second.id, level: .grid)
+        ])
     }
 
     func testVisibleGridPreviewCutsAheadOfPendingPreviewRecoveryBacklog() throws {
@@ -3424,6 +3525,36 @@ final class AppModelTests: XCTestCase {
 
         try await waitForVisibleWorkStatus(.failed, in: model)
         XCTAssertEqual(model.visibleWorkActivity?.detail, "could not render preview")
+    }
+
+    @MainActor
+    func testWorkerPreviewFailureRefreshesDurableFailureState() async throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let asset = makeAsset(id: "preview-durable-failure", size: 1)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "preview-durable-failure",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        try model.requestPreview(assetID: asset.id, level: .grid)
+        let itemID = WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-grid")
+        try repository.recordPreviewGenerationFailure(
+            assetID: asset.id,
+            level: .grid,
+            errorMessage: "could not render preview"
+        )
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.failed(
+            itemID: itemID,
+            message: "could not render preview"
+        )))
+
+        try await waitForBackgroundWorkStatus(.failed, itemID: itemID, in: model)
+        XCTAssertEqual(model.previewGenerationQueueStates.first?.lastErrorMessage, "could not render preview")
     }
 
     func testVisibleLoupePreviewRequestsMediumThenLargeWhenNeitherIsCached() throws {
@@ -4667,7 +4798,41 @@ final class AppModelTests: XCTestCase {
         return (try AppModel.load(catalog: catalog, workerSupervisor: workerSupervisor), previewCache, asset)
     }
 
-    private func makeModelWithCatalogAsset(named name: String) throws -> (AppModel, CatalogRepository, Asset) {
+    private func makeModelWithPendingPreviewBacklog(
+        named name: String,
+        assetCount: Int,
+        workerSupervisor: WorkerSupervisor,
+        configureDatabase: ((CatalogDatabase) -> Void)? = nil
+    ) throws -> (AppModel, CatalogRepository, [Asset]) {
+        let directory = try makeTemporaryDirectory(named: name)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        configureDatabase?(database)
+        let repository = CatalogRepository(database: database)
+        let assets = (0..<assetCount).map { index in
+            makeAsset(id: "asset-\(index)", path: "/Photos/asset-\(index).jpg", rating: 0)
+        }
+        try repository.upsert(assets)
+        for asset in assets {
+            try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .grid))
+        }
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        return (try AppModel.load(catalog: catalog, workerSupervisor: workerSupervisor), repository, assets)
+    }
+
+    private func makeModelWithCatalogAsset(
+        named name: String,
+        workerSupervisor: WorkerSupervisor? = nil
+    ) throws -> (AppModel, CatalogRepository, Asset) {
         let directory = try makeTemporaryDirectory(named: name)
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
@@ -4690,7 +4855,7 @@ final class AppModelTests: XCTestCase {
                 previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
             )
         )
-        return (try AppModel.load(catalog: catalog), repository, asset)
+        return (try AppModel.load(catalog: catalog, workerSupervisor: workerSupervisor), repository, asset)
     }
 
     private func makeWorkerMetadataSyncModel(
@@ -4969,6 +5134,21 @@ final class AppModelTests: XCTestCase {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
         }
         return model.backgroundWorkQueue.item(id: itemID) != nil
+    }
+
+    private func waitForBackgroundWorkItemRemoval(
+        _ itemID: WorkSessionID,
+        in model: AppModel,
+        timeout: TimeInterval = 2
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if model.backgroundWorkQueue.item(id: itemID) == nil {
+                return true
+            }
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+        return model.backgroundWorkQueue.item(id: itemID) == nil
     }
 
     @MainActor

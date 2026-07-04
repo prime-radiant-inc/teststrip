@@ -104,6 +104,17 @@ public struct BackgroundWorkQueue: Equatable, Sendable {
         activateRunnableItems()
     }
 
+    public mutating func pruneCompletedItems(kind: WorkSessionKind, keepingLast retainedCount: Int = 0) {
+        var remainingRetainedItems = max(0, retainedCount)
+        let prunedItems = items.reversed().filter { item in
+            guard item.kind == kind && item.status == .completed else { return true }
+            guard remainingRetainedItems > 0 else { return false }
+            remainingRetainedItems -= 1
+            return true
+        }
+        items = Array(prunedItems.reversed())
+    }
+
     public mutating func updateProgress(id: WorkSessionID, completedUnitCount: Int, totalUnitCount: Int?, detail: String) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].completedUnitCount = completedUnitCount

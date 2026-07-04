@@ -5,6 +5,7 @@ public final class CatalogDatabase: @unchecked Sendable {
     private static let busyTimeoutMilliseconds: Int32 = 5_000
 
     private let handle: OpaquePointer
+    var rowQueryObserver: ((String) -> Void)?
 
     private init(handle: OpaquePointer) {
         self.handle = handle
@@ -70,6 +71,7 @@ public final class CatalogDatabase: @unchecked Sendable {
     }
 
     func rows(_ sql: String, bindings: [String] = []) throws -> [[String: String]] {
+        rowQueryObserver?(sql)
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
             throw CatalogError.sqlite(lastError)

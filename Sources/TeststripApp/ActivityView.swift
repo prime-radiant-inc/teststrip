@@ -9,6 +9,11 @@ struct ActivityView: View {
             Text("Activity")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+            if let pauseNotice = model.backgroundWorkPauseNotice {
+                Text(pauseNotice)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
             let activities = model.visibleWorkActivities
             if !activities.isEmpty {
                 ForEach(Array(activities.prefix(4).enumerated()), id: \.element.id) { index, activity in

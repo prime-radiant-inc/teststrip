@@ -106,6 +106,10 @@ public final class WorkerSupervisor: @unchecked Sendable {
         notifyQueueChanged()
     }
 
+    public func pruneCompletedItems(kind: WorkSessionKind, keepingLast retainedCount: Int = 0) {
+        queue.pruneCompletedItems(kind: kind, keepingLast: retainedCount)
+    }
+
     public func pause() throws {
         if transport.isRunning {
             try send(.pause)

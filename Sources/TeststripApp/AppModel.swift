@@ -436,6 +436,11 @@ public final class AppModel {
         backgroundWorkQueue.isPaused
     }
 
+    public var backgroundWorkPauseNotice: String? {
+        guard backgroundWorkQueue.isPaused else { return nil }
+        return backgroundWorkQueue.runningItems.isEmpty ? "Queue paused" : "Queue paused after current task"
+    }
+
     public var canCancelBackgroundWork: Bool {
         backgroundWorkQueue.items.contains { [.queued, .running, .paused].contains($0.status) }
     }
@@ -666,10 +671,13 @@ public final class AppModel {
         self.compareAssetIDs = nil
         self.workerImportContextsByItemID = [:]
         self.workerSupervisor?.onQueueChanged = { [weak self] queue in
+            let previousPreviewFailureIDs = Self.failedPreviewGenerationItemIDs(in: self?.backgroundWorkQueue)
             self?.backgroundWorkQueue = queue
             self?.recordPersistedActiveBackgroundWorkActivities(in: queue)
             try? self?.refreshMetadataSyncState()
-            try? self?.refreshPreviewGenerationQueueStates()
+            if !Self.failedPreviewGenerationItemIDs(in: queue).isSubset(of: previousPreviewFailureIDs) {
+                try? self?.refreshPreviewGenerationQueueStates()
+            }
             self?.refreshVisibleWorkerImportAssetsIfNeeded(in: queue)
             self?.releaseInactiveWorkerImportContexts(in: queue)
             self?.releaseInactiveEvaluationContexts(in: queue)
@@ -1626,22 +1634,40 @@ public final class AppModel {
         level: PreviewLevel,
         placement: BackgroundWorkQueuePlacement = .back
     ) throws {
+        try requestPreview(
+            assetID: assetID,
+            level: level,
+            placement: placement,
+            recordsPendingPreview: true,
+            refreshesPreviewGenerationQueueState: true
+        )
+    }
+
+    private func requestPreview(
+        assetID: AssetID,
+        level: PreviewLevel,
+        placement: BackgroundWorkQueuePlacement = .back,
+        recordsPendingPreview: Bool,
+        refreshesPreviewGenerationQueueState: Bool
+    ) throws {
         if previewURL(for: assetID, levels: [level]) != nil {
             return
         }
         guard let workerSupervisor else {
             throw TeststripError.invalidState("worker supervisor is not configured")
         }
-        if let catalog {
-            try catalog.repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: assetID, level: level))
-            try refreshPreviewGenerationQueueStates()
-        }
-        let itemID = WorkSessionID(rawValue: "preview-\(assetID.rawValue)-\(level.rawValue)")
+        let itemID = Self.previewWorkItemID(assetID: assetID, level: level)
         if backgroundWorkQueue.item(id: itemID) != nil {
             if placement == .front, try workerSupervisor.promoteQueuedItem(id: itemID) {
                 syncBackgroundWorkQueueFromSupervisor()
             }
             return
+        }
+        if recordsPendingPreview, let catalog {
+            try catalog.repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: assetID, level: level))
+            if refreshesPreviewGenerationQueueState {
+                try refreshPreviewGenerationQueueStates()
+            }
         }
 
         let item = BackgroundWorkItem(
@@ -1673,10 +1699,24 @@ public final class AppModel {
 
     private func enqueuePendingPreviewGeneration() throws {
         guard let catalog, workerSupervisor != nil else { return }
+        var existingPreviewWorkItemIDs = Self.previewGenerationWorkItemIDs(in: backgroundWorkQueue)
+        let availableSlotCount = max(
+            0,
+            Self.pendingPreviewRecoveryBatchSize - Self.activePreviewGenerationWorkCount(in: backgroundWorkQueue)
+        )
+        guard availableSlotCount > 0 else {
+            try refreshPreviewGenerationQueueStates()
+            return
+        }
+        var enqueuedCount = 0
         for item in try catalog.repository.pendingPreviewGenerationItems(
             limit: Self.pendingPreviewRecoveryBatchSize,
             maximumAttemptCount: Self.previewGenerationMaximumAutomaticAttempts
         ) {
+            let itemID = Self.previewWorkItemID(assetID: item.assetID, level: item.level)
+            if existingPreviewWorkItemIDs.contains(itemID) {
+                continue
+            }
             let asset = try catalog.repository.asset(id: item.assetID)
             if asset.availability.requiresCachedPreviewOnly {
                 continue
@@ -1685,7 +1725,17 @@ public final class AppModel {
                 try catalog.repository.markPreviewGenerated(assetID: item.assetID, level: item.level)
                 continue
             }
-            try requestPreview(assetID: item.assetID, level: item.level)
+            try requestPreview(
+                assetID: item.assetID,
+                level: item.level,
+                recordsPendingPreview: false,
+                refreshesPreviewGenerationQueueState: false
+            )
+            existingPreviewWorkItemIDs.insert(itemID)
+            enqueuedCount += 1
+            if enqueuedCount >= availableSlotCount {
+                break
+            }
         }
         try refreshPreviewGenerationQueueStates()
     }
@@ -1852,6 +1902,15 @@ public final class AppModel {
         }
     }
 
+    private static func failedPreviewGenerationItemIDs(in queue: BackgroundWorkQueue?) -> Set<WorkSessionID> {
+        Set(
+            queue?.items.compactMap { item in
+                guard item.kind == .previewGeneration, item.status == .failed else { return nil }
+                return item.id
+            } ?? []
+        )
+    }
+
     private func enqueueWorkerImport(
         source: URL,
         destinationRoot: URL?,
@@ -1898,6 +1957,8 @@ public final class AppModel {
             if completedPreview {
                 do {
                     try enqueuePendingPreviewGeneration()
+                    workerSupervisor?.pruneCompletedItems(kind: .previewGeneration, keepingLast: 1)
+                    syncBackgroundWorkQueueFromSupervisor()
                 } catch {
                     errorMessage = error.localizedDescription
                 }
@@ -1999,6 +2060,23 @@ public final class AppModel {
             }
         }
         return nil
+    }
+
+    private static func previewWorkItemID(assetID: AssetID, level: PreviewLevel) -> WorkSessionID {
+        WorkSessionID(rawValue: "preview-\(assetID.rawValue)-\(level.rawValue)")
+    }
+
+    private static func previewGenerationWorkItemIDs(in queue: BackgroundWorkQueue) -> Set<WorkSessionID> {
+        Set(queue.items.compactMap { item in
+            guard item.kind == .previewGeneration else { return nil }
+            return item.id
+        })
+    }
+
+    private static func activePreviewGenerationWorkCount(in queue: BackgroundWorkQueue) -> Int {
+        queue.items.filter { item in
+            item.kind == .previewGeneration && [.queued, .running, .paused].contains(item.status)
+        }.count
     }
 
     private func handleWorkerImportCompleted(
