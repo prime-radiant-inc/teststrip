@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `2cdd1a9 Make compare primary choice actionable`
+- Snapshot commit: `306c8d8 Add bounded import source summary`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter 'CompareSurveyPresentationTests/testGroupActionTextNamesCurrentCompareSet|AppModelTests/testKeepComparePrimaryRejectsCurrentCompareAlternatesOnly|PlaceholderTests'` passed after the current-compare-set primary action slice.
-- Last broad unit verification: `swift test` passed with 548 tests after the current-compare-set primary action slice.
+- Last focused unit verification: `swift test --filter 'ImportConfirmationDraftTests|ImportFolderPathDraftTests'` passed after the bounded import source summary slice.
+- Last broad unit verification: `swift test` passed with 550 tests after the bounded import source summary slice.
 - Last app workflow verification: `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import/click UI automation was intentionally deferred for the import phase and grid click-recentering slices to avoid unnecessary focus stealing while Jesse was using the machine; those slices were covered by focused presentation/policy tests and full unit runs. The previous grid aspect-ratio slice passed `./script/build_and_run.sh --sample-photos` and one Computer Use grid inspection, and the previous People live-mockup route passed Computer Use inspection plus `./script/verify_grid_activation.sh`, `./script/verify_grid_selection_feedback.sh`, `./script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 ./script/verify_imported_grid_culling.sh`. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
@@ -78,6 +78,7 @@
 - `9a86a87`: corrected Sigma/Foveon X3F from ImageIO best-effort to explicitly unsupported until a future non-ImageIO RAW provider exists.
 - `dfd7716`: added selected-photo XMP pending/conflict detail in the inspector and an explicit retry path for pending sidecar writes through direct catalog writeback or the managed worker.
 - `2cdd1a9`: made Survey Compare's primary recommendation actionable for the current compare set, marking the primary Pick and visible alternates Reject without claiming real stack detection.
+- `306c8d8`: added a bounded import source summary with supported-photo count, counted bytes, capped `N+` display, and routed typed Import Path through the same confirmation sheet.
 
 ## Product Decisions To Preserve
 
@@ -304,6 +305,7 @@ Current behavior:
 - Compare now uses a survey-style live mockup instead of the original flat adaptive grid: the selected frame becomes the primary candidate, the visible survey grid orders that primary first followed by alternates, metadata-backed decision badges and focus/quality metric lanes render on tiles, preview/evaluation requests stay scoped to cached progressive compare behavior, Pick/Reject/Loupe actions write through existing metadata/navigation paths, and the current compare set can apply the primary recommendation by marking the primary Pick and visible alternates Reject.
 - The import-complete summary is an expanded partial payoff panel with real import count, preview status, Open/Cull actions, dismiss behavior, and disabled/annotated stack grouping, face naming, and batch keyword suggestion follow-ups.
 - Import Path shows a pre-import plan for in-place cataloging, XMP sidecars, cached previews, and managed background work.
+- Folder and card import confirmation now perform a capped source preview count using supported photo extensions, show counted bytes, and display honest `N+` copy when the cap is hit. Typed Import Path now resolves into the same confirmation sheet before starting work.
 - Active import work shows the shared progress banner immediately, even when the grid has no visible assets yet.
 - Import progress copy now distinguishes starting, scanning, cataloging, copying, and preview-building phases with tested presentation rules and visible counts where available.
 - Completed imports show an expanded summary panel with the imported photo count, preview status/failure count, Open action for the imported output set, Cull action that starts a culling work session from that set, disabled unbuilt follow-ups, and dismiss behavior.
