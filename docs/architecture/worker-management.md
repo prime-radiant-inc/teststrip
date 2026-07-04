@@ -10,7 +10,7 @@ The UI must not start unbounded detached work silently. Any long-running preview
 
 - `BackgroundWorkQueue` enforces a maximum number of running items.
 - Queued work stays queued until a running slot opens.
-- Running work can be paused, resumed, or cancelled through app-model methods.
+- Queue dispatch can be paused and resumed through app-model methods. Already-dispatched work remains visibly running because the synchronous helper cannot stop mid-command; it can still be cancelled or timed out.
 - The activity panel uses the app model's visible work projection so background queue state can be shown even when no import is active.
 - Worker commands and JSON-lines protocol live in `TeststripCore` so the app and `TeststripWorker` share one process contract.
 - `WorkerSupervisor` dispatches only runnable queue items to a `WorkerTransport`, launches the worker transport on demand, maps completed worker output back to dispatched queue items, sends explicit pause/resume/cancel commands, and terminates the transport on cancel.
@@ -19,7 +19,7 @@ The UI must not start unbounded detached work silently. Any long-running preview
 - The packaged macOS app stages `TeststripWorker` as a signed helper at `Contents/Helpers/TeststripWorker`; app startup injects that helper URL into `AppCatalog.loadModel`.
 - Explicit preview requests dispatch missing preview work through `WorkerSupervisor` and surface it through the app model's background queue projection.
 - Worker stderr marks the oldest dispatched work item failed and keeps the queue moving.
-- Dispatched worker commands have a supervisor-level timeout. If a worker command stops responding, the supervisor terminates the helper process, fails the in-flight dispatched work with command-specific context, and relaunches the helper for queued work. Pausing background work gates queue dispatch, but it does not disable timeouts for commands already sent to the synchronous helper.
+- Dispatched worker commands have a supervisor-level timeout. If a worker command stops responding, the supervisor terminates the helper process, fails the in-flight dispatched work with command-specific context, and relaunches the helper for queued work. Pausing background work gates future queue dispatch, but it does not mark already-sent commands as paused and does not disable their timeouts.
 - `TeststripWorker` opens the app catalog from `--catalog`, writes cached previews under `--preview-cache`, executes `generatePreview` with `PreviewRenderer`, and executes `syncMetadata` through the catalog/XMP sync planner.
 - Worker progress, completion, import-completion, and failure events are structured JSON-lines events with the originating work item ID.
 - Visible source refreshes dispatch bounded, source-grouped `refreshAvailabilityBatch` worker commands so slow volume checks stay visible, cancellable, and smaller than one full loaded-window scan.
