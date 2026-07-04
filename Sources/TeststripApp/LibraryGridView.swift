@@ -2929,20 +2929,67 @@ private extension View {
     }
 }
 
+struct SearchWorkspaceRefineRow: Equatable, Identifiable {
+    var title: String
+    var value: String
+
+    var id: String { "\(title)|\(value)" }
+}
+
+struct SearchWorkspacePresentation: Equatable {
+    var title: String
+    var resultCountText: String
+    var savedSetCountText: String
+    var starredSetCountText: String
+    var refineRows: [SearchWorkspaceRefineRow]
+
+    init(
+        suggestedName: String,
+        totalAssetCount: Int,
+        savedSetCount: Int,
+        starredSetCount: Int,
+        activeFilterChips: [String]
+    ) {
+        title = suggestedName
+        resultCountText = "\(totalAssetCount)"
+        savedSetCountText = "\(savedSetCount)"
+        starredSetCountText = "\(starredSetCount)"
+        if activeFilterChips.isEmpty {
+            refineRows = [SearchWorkspaceRefineRow(title: "All photographs", value: "current scope")]
+        } else {
+            refineRows = activeFilterChips.map { SearchWorkspaceRefineRow(title: $0, value: "active") }
+        }
+    }
+}
+
 private struct SearchWorkspaceView: View {
     var model: AppModel
     var assetGrid: AnyView
+
+    private var presentation: SearchWorkspacePresentation {
+        SearchWorkspacePresentation(
+            suggestedName: model.suggestedSavedSearchName,
+            totalAssetCount: model.totalAssetCount,
+            savedSetCount: model.savedAssetSets.count,
+            starredSetCount: model.starredAssetSets.count,
+            activeFilterChips: model.activeLibraryFilterChips
+        )
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 searchHeader
                 Divider()
-                if model.assets.isEmpty {
-                    emptySearchResults
-                        .frame(maxWidth: .infinity, minHeight: 280)
-                } else {
-                    assetGrid
+                HStack(alignment: .top, spacing: 0) {
+                    refineRail
+                    Divider()
+                    if model.assets.isEmpty {
+                        emptySearchResults
+                            .frame(maxWidth: .infinity, minHeight: 280)
+                    } else {
+                        assetGrid
+                    }
                 }
             }
         }
@@ -2955,24 +3002,25 @@ private struct SearchWorkspaceView: View {
                 Label("Search", systemImage: "sparkles")
                     .font(.headline)
                     .foregroundStyle(.orange)
-                Text(model.suggestedSavedSearchName)
+                Text(presentation.title)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                searchMetric(title: "Results", value: "\(model.totalAssetCount)")
-                searchMetric(title: "Sets", value: "\(model.savedAssetSets.count)")
-                searchMetric(title: "Starred", value: "\(model.starredAssetSets.count)")
+                searchMetric(title: "Results", value: presentation.resultCountText)
+                searchMetric(title: "Sets", value: presentation.savedSetCountText)
+                searchMetric(title: "Starred", value: presentation.starredSetCountText)
             }
-            if model.activeLibraryFilterChips.isEmpty {
+            if presentation.refineRows.count == 1,
+               presentation.refineRows.first?.title == "All photographs" {
                 Text("All photographs")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
-                        ForEach(model.activeLibraryFilterChips, id: \.self) { chip in
-                            Text(chip)
+                        ForEach(presentation.refineRows) { row in
+                            Text(row.title)
                                 .font(.caption.weight(.medium))
                                 .lineLimit(1)
                                 .padding(.horizontal, 8)
@@ -2985,6 +3033,37 @@ private struct SearchWorkspaceView: View {
         }
         .padding(14)
         .background(.bar)
+        .liveMockupPlaceholder(.searchRefine)
+    }
+
+    private var refineRail: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Teststrip Reads")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(presentation.refineRows) { row in
+                    HStack(spacing: 8) {
+                        Image(systemName: row.value == "active" ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(row.value == "active" ? .orange : .secondary)
+                            .font(.caption)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.title)
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                            Text(row.value)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(width: 214, alignment: .topLeading)
         .liveMockupPlaceholder(.searchRefine)
     }
 

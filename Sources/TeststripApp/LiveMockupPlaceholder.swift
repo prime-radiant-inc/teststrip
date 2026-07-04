@@ -95,7 +95,7 @@ public enum LiveMockupPlaceholders {
         id: "search.refine",
         title: "Search refine rail",
         intendedBehavior: "Show parsed facets, query refinements, and agent-suggested set actions beside search results.",
-        currentFallback: "Explicit filter controls and active filter chips in the library toolbar."
+        currentFallback: "Search view now shows a deterministic Teststrip Reads rail from active filter chips; suggested refinements and agent set actions are not built."
     )
 
     public static let smartCollectionsBuilder = LiveMockupPlaceholder(
@@ -232,7 +232,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Copilot",
             status: .partial,
             placeholder: .copilotLibrary,
-            currentImplementation: "Agentic search copy is wired to deterministic catalog query parsing, explicit filters, review queues, and visible evaluation signals; natural-language planning and autonomous actions are not built."
+            currentImplementation: "Agentic search copy is wired to deterministic catalog query parsing, a Teststrip Reads refine rail, explicit filters, review queues, and visible evaluation signals; natural-language planning and autonomous actions are not built."
         ),
         LiveMockupDesignSurface(
             designID: "1c",
