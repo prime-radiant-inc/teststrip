@@ -672,6 +672,54 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectingThroughAssetsCancelsStaleQueuedMetadataSyncChecks() async throws {
+        let first = makeAsset(id: "stale-selection-xmp-first", size: 1)
+        let second = makeAsset(id: "stale-selection-xmp-second", size: 2)
+        let third = makeAsset(id: "stale-selection-xmp-third", size: 3)
+        let fourth = makeAsset(id: "stale-selection-xmp-fourth", size: 4)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "stale-selection-worker-xmp-check",
+            assets: [first, second, third, fourth],
+            workerSupervisor: supervisor
+        )
+
+        model.select(second.id)
+        let runningItemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        model.select(third.id)
+        model.select(fourth.id)
+
+        let queuedChecks = model.backgroundWorkQueue.queuedItems.filter { $0.title == "Check XMP" }
+        XCTAssertEqual(queuedChecks.count, 1)
+        XCTAssertTrue(queuedChecks[0].id.rawValue.hasPrefix("xmp-check-\(fourth.id.rawValue)-"))
+        XCTAssertEqual(try transport.commands(), [.syncMetadata(assetID: second.id)])
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: runningItemID,
+            message: "metadata up to date for second.jpg"
+        )))
+
+        try await waitForBackgroundWorkStatus(.completed, itemID: runningItemID, in: model)
+        XCTAssertEqual(try transport.commands(), [
+            .syncMetadata(assetID: second.id),
+            .syncMetadata(assetID: fourth.id)
+        ])
+
+        let fourthItemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: fourthItemID,
+            message: "metadata up to date for fourth.jpg"
+        )))
+
+        try await waitForBackgroundWorkStatus(.completed, itemID: fourthItemID, in: model)
+        XCTAssertNil(model.visibleWorkActivity)
+    }
+
+    @MainActor
     func testCompletedSelectionMetadataCheckDoesNotReplaceVisibleActivity() async throws {
         let first = makeAsset(id: "completed-selection-xmp-first", size: 1)
         let second = makeAsset(id: "completed-selection-xmp-second", size: 2)

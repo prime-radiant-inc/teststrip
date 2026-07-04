@@ -1459,6 +1459,7 @@ public final class AppModel {
     private func enqueueMetadataSyncCheck(for assetID: AssetID) throws {
         guard let catalog, let workerSupervisor else { return }
         let generation = try catalog.repository.catalogGeneration(assetID: assetID)
+        try cancelStaleQueuedMetadataSyncChecks(keeping: assetID, generation: generation)
         guard !hasActiveMetadataSyncWork(assetID: assetID, generation: generation) else { return }
         let itemID = WorkSessionID(rawValue: "xmp-check-\(assetID.rawValue)-\(generation)-\(UUID().uuidString)")
         let item = BackgroundWorkItem(
@@ -1479,14 +1480,36 @@ public final class AppModel {
         syncBackgroundWorkQueueFromSupervisor()
     }
 
+    private func cancelStaleQueuedMetadataSyncChecks(keeping assetID: AssetID, generation: Int) throws {
+        guard let workerSupervisor else { return }
+        let keptPrefix = metadataSyncCheckPrefix(assetID: assetID, generation: generation)
+        let staleQueuedChecks = backgroundWorkQueue.queuedItems.filter { item in
+            isSelectionMetadataSyncCheck(item) && !item.id.rawValue.hasPrefix(keptPrefix)
+        }
+        for item in staleQueuedChecks {
+            try workerSupervisor.cancel(id: item.id)
+        }
+        if !staleQueuedChecks.isEmpty {
+            syncBackgroundWorkQueueFromSupervisor()
+        }
+    }
+
     private func hasActiveMetadataSyncWork(assetID: AssetID, generation: Int) -> Bool {
         let writeSyncID = "xmp-\(assetID.rawValue)-\(generation)"
-        let selectionCheckPrefix = "xmp-check-\(assetID.rawValue)-\(generation)-"
+        let selectionCheckPrefix = metadataSyncCheckPrefix(assetID: assetID, generation: generation)
         return backgroundWorkQueue.items.contains { item in
             item.kind == .xmpSync
                 && [.queued, .running, .paused].contains(item.status)
                 && (item.id.rawValue == writeSyncID || item.id.rawValue.hasPrefix(selectionCheckPrefix))
         }
+    }
+
+    private func metadataSyncCheckPrefix(assetID: AssetID, generation: Int) -> String {
+        "xmp-check-\(assetID.rawValue)-\(generation)-"
+    }
+
+    private func isSelectionMetadataSyncCheck(_ item: BackgroundWorkItem) -> Bool {
+        item.kind == .xmpSync && item.title == "Check XMP"
     }
 
     private func upsertPendingMetadataSyncItem(_ item: MetadataSyncItem) {
@@ -2107,7 +2130,7 @@ public final class AppModel {
         guard [.cancelled, .failed, .completed].contains(item.status) else {
             return false
         }
-        return !(item.status == .completed && item.kind == .xmpSync && item.title == "Check XMP")
+        return !isSelectionMetadataSyncCheck(item)
     }
 
     public func reload() throws {
