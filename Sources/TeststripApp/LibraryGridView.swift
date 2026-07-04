@@ -185,123 +185,60 @@ struct LibraryGridView: View {
     }
 
     private var filterBar: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    TextField("Search catalog", text: Binding(
-                        get: { model.librarySearchText },
-                        set: { model.librarySearchText = $0 }
-                    ))
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 200)
-                    .onSubmit {
-                        applyLibraryFilters()
-                    }
+                    searchControl
 
-                    TextField("Keyword", text: Binding(
-                        get: { model.keywordFilterText },
-                        set: { model.keywordFilterText = $0 }
-                    ))
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 116)
-                    .onSubmit {
-                        applyLibraryFilters()
-                    }
+                    filterTextField(
+                        "Keyword",
+                        text: Binding(
+                            get: { model.keywordFilterText },
+                            set: { model.keywordFilterText = $0 }
+                        ),
+                        width: 96
+                    )
 
-                    TextField("Folder", text: Binding(
-                        get: { model.folderFilterText },
-                        set: { model.folderFilterText = $0 }
-                    ))
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 150)
-                    .onSubmit {
-                        applyLibraryFilters()
-                    }
+                    filterTextField(
+                        "Folder",
+                        text: Binding(
+                            get: { model.folderFilterText },
+                            set: { model.folderFilterText = $0 }
+                        ),
+                        width: 128
+                    )
 
-                    TextField("Camera", text: Binding(
-                        get: { model.cameraFilterText },
-                        set: { model.cameraFilterText = $0 }
-                    ))
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 116)
-                    .onSubmit {
-                        applyLibraryFilters()
-                    }
+                    filterTextField(
+                        "Camera",
+                        text: Binding(
+                            get: { model.cameraFilterText },
+                            set: { model.cameraFilterText = $0 }
+                        ),
+                        width: 96
+                    )
 
-                    TextField("Lens", text: Binding(
-                        get: { model.lensFilterText },
-                        set: { model.lensFilterText = $0 }
-                    ))
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 116)
-                    .onSubmit {
-                        applyLibraryFilters()
-                    }
+                    filterTextField(
+                        "Lens",
+                        text: Binding(
+                            get: { model.lensFilterText },
+                            set: { model.lensFilterText = $0 }
+                        ),
+                        width: 96
+                    )
 
-                    TextField("ISO+", text: minimumISOTextBinding)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 66)
-                        .onSubmit {
-                            applyLibraryFilters()
-                        }
+                    filterTextField("ISO+", text: minimumISOTextBinding, width: 48)
 
-                    Button {
-                        isShowingDateFilters = true
-                    } label: {
-                        Image(systemName: "calendar")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Date filters")
-                    .popover(isPresented: $isShowingDateFilters) {
-                        dateFilterPopover
-                    }
+                    dateFilterButton
 
-                    Button {
-                        applyLibraryFilters()
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Search")
+                    ratingFilterPicker
 
-                    Picker("Rating", selection: minimumRatingBinding) {
-                        Text("Any Rating").tag(0)
-                        ForEach(Array(1...5), id: \.self) { rating in
-                            Text("\(rating)+").tag(rating)
-                        }
-                    }
-                    .frame(width: 118)
+                    flagFilterPicker
 
-                    Picker("Flag", selection: flagFilterBinding) {
-                        Text("Any Flag").tag("")
-                        Text("Pick").tag(PickFlag.pick.rawValue)
-                        Text("Reject").tag(PickFlag.reject.rawValue)
-                    }
-                    .frame(width: 112)
+                    colorLabelFilterPicker
 
-                    Picker("Label", selection: colorLabelFilterBinding) {
-                        Text("Any Label").tag("")
-                        ForEach(ColorLabel.allCases, id: \.self) { label in
-                            Text(label.rawValue.capitalized).tag(label.rawValue)
-                        }
-                    }
-                    .frame(width: 124)
+                    sourceFilterPicker
 
-                    Picker("Source", selection: availabilityFilterBinding) {
-                        Text("Any Source").tag("")
-                        ForEach(availabilityFilterOptions, id: \.rawValue) { availability in
-                            Text(availability.rawValue.capitalized).tag(availability.rawValue)
-                        }
-                    }
-                    .frame(width: 126)
-
-                    Picker("Signal", selection: evaluationKindFilterBinding) {
-                        Text("Any Signal").tag("")
-                        ForEach(evaluationKindFilterOptions, id: \.rawValue) { kind in
-                            Text(kind.displayName).tag(kind.rawValue)
-                        }
-                    }
-                    .frame(width: 138)
+                    signalFilterPicker
 
                     Button {
                         refreshVisibleAvailability()
@@ -353,22 +290,144 @@ struct LibraryGridView: View {
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.top, 8)
             }
 
             if !model.activeLibraryFilterChips.isEmpty {
                 activeFilterChips
             }
         }
+        .padding(.bottom, 7)
         .background(.bar)
+    }
+
+    private var searchControl: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.orange)
+            TextField("Ask Teststrip or search...", text: Binding(
+                get: { model.librarySearchText },
+                set: { model.librarySearchText = $0 }
+            ))
+            .textFieldStyle(.plain)
+            .frame(width: 210)
+            .onSubmit {
+                applyLibraryFilters()
+            }
+            .accessibilityLabel("Search catalog")
+            Button {
+                applyLibraryFilters()
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .buttonStyle(.borderless)
+            .help("Search")
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color.orange.opacity(0.25))
+        }
+    }
+
+    private func filterTextField(_ title: String, text: Binding<String>, width: CGFloat) -> some View {
+        TextField(title, text: text)
+            .textFieldStyle(.plain)
+            .frame(width: width)
+            .padding(.horizontal, 9)
+            .frame(height: 28)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
+            .overlay {
+                RoundedRectangle(cornerRadius: 7)
+                    .strokeBorder(.quaternary)
+            }
+            .onSubmit {
+                applyLibraryFilters()
+            }
+            .accessibilityLabel(title)
+    }
+
+    private var dateFilterButton: some View {
+        Button {
+            isShowingDateFilters = true
+        } label: {
+            Image(systemName: "calendar")
+                .frame(width: 20)
+        }
+        .buttonStyle(.borderless)
+        .help("Date filters")
+        .popover(isPresented: $isShowingDateFilters) {
+            dateFilterPopover
+        }
+    }
+
+    private var ratingFilterPicker: some View {
+        Picker("Rating", selection: minimumRatingBinding) {
+            Text("Any Rating").tag(0)
+            ForEach(Array(1...5), id: \.self) { rating in
+                Text("\(rating)+").tag(rating)
+            }
+        }
+        .frame(width: 112)
+        .controlSize(.small)
+    }
+
+    private var flagFilterPicker: some View {
+        Picker("Flag", selection: flagFilterBinding) {
+            Text("Any Flag").tag("")
+            Text("Pick").tag(PickFlag.pick.rawValue)
+            Text("Reject").tag(PickFlag.reject.rawValue)
+        }
+        .frame(width: 104)
+        .controlSize(.small)
+    }
+
+    private var colorLabelFilterPicker: some View {
+        Picker("Label", selection: colorLabelFilterBinding) {
+            Text("Any Label").tag("")
+            ForEach(ColorLabel.allCases, id: \.self) { label in
+                Text(label.rawValue.capitalized).tag(label.rawValue)
+            }
+        }
+        .frame(width: 116)
+        .controlSize(.small)
+    }
+
+    private var sourceFilterPicker: some View {
+        Picker("Source", selection: availabilityFilterBinding) {
+            Text("Any Source").tag("")
+            ForEach(availabilityFilterOptions, id: \.rawValue) { availability in
+                Text(availability.rawValue.capitalized).tag(availability.rawValue)
+            }
+        }
+        .frame(width: 118)
+        .controlSize(.small)
+    }
+
+    private var signalFilterPicker: some View {
+        Picker("Signal", selection: evaluationKindFilterBinding) {
+            Text("Any Signal").tag("")
+            ForEach(evaluationKindFilterOptions, id: \.rawValue) { kind in
+                Text(kind.displayName).tag(kind.rawValue)
+            }
+        }
+        .frame(width: 130)
+        .controlSize(.small)
     }
 
     private var activeFilterChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                Image(systemName: "line.3.horizontal.decrease.circle")
+                Image(systemName: "sparkles")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.orange)
+                Text("TESTSTRIP READS")
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(.orange)
                 ForEach(model.activeLibraryFilterChips, id: \.self) { chip in
                     Text(chip)
                         .font(.caption.weight(.medium))
@@ -376,10 +435,13 @@ struct LibraryGridView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(Color.orange.opacity(0.18))
+                        }
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.bottom, 7)
         }
     }
 
@@ -1236,6 +1298,10 @@ private extension View {
     }
 }
 
+enum AssetGridPreviewPolicy {
+    static let thumbnailScaling: CachedPreviewImage.Scaling = .fit
+}
+
 private struct AssetGridCell: View {
     var asset: Asset
     var previewURL: URL?
@@ -1277,7 +1343,11 @@ private struct AssetGridCell: View {
 
     @ViewBuilder
     private var thumbnail: some View {
-        CachedPreviewImage(previewURL: previewURL, scaling: .fill, cacheGeneration: previewCacheGeneration)
+        CachedPreviewImage(
+            previewURL: previewURL,
+            scaling: AssetGridPreviewPolicy.thumbnailScaling,
+            cacheGeneration: previewCacheGeneration
+        )
     }
 
     private var metadataOverlay: some View {

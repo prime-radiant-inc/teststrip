@@ -1,8 +1,13 @@
 import XCTest
+import CoreGraphics
 import TeststripCore
 @testable import TeststripApp
 
 final class InspectorViewTests: XCTestCase {
+    func testSelectedPreviewLayoutPinsSize() {
+        XCTAssertEqual(InspectorPreviewLayout.size, CGSize(width: 258, height: 186))
+    }
+
     func testMetadataDraftFormatsPortableMetadataFromAsset() {
         let asset = makeAsset(
             id: "draft-asset",

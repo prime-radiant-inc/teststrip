@@ -2,6 +2,10 @@ import Foundation
 import SwiftUI
 import TeststripCore
 
+enum InspectorPreviewLayout {
+    static let size = CGSize(width: 258, height: 186)
+}
+
 struct InspectorView: View {
     var model: AppModel
     @State private var metadataDraft = InspectorMetadataDraft()
@@ -61,7 +65,7 @@ struct InspectorView: View {
             )
             .padding(4)
         }
-        .aspectRatio(3.0 / 2.0, contentMode: .fit)
+        .frame(width: InspectorPreviewLayout.size.width, height: InspectorPreviewLayout.size.height)
         .clipShape(RoundedRectangle(cornerRadius: 5))
         .accessibilityLabel("Selected preview")
     }

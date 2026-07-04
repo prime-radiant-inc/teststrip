@@ -20,4 +20,8 @@ final class LibraryGridLayoutTests: XCTestCase {
             "140 px, Comfortable"
         )
     }
+
+    func testOverviewThumbnailScalingPreservesFullImage() {
+        XCTAssertEqual(AssetGridPreviewPolicy.thumbnailScaling, .fit)
+    }
 }

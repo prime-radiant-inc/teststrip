@@ -255,7 +255,7 @@ Current behavior:
 - Preview throughput and UI churn under large preview backlogs are not good enough yet. The 600-image import path completed, but many previews were still pending after the initial wait and app CPU stayed high while draining.
 - Import UX is improved but not complete. The app now shows visible post-import preview continuation and an Import Path plan, but starting/running import phases, duplicate submission prevention, permission/security-scope failures, and richer card-source staging still need work.
 - Clicking/selection needs a stronger regression harness. We have AX probes, but the user observed weird broken clicking after import, and this should be treated as a real usability risk until verified under imported-photo conditions.
-- Overview thumbnails currently crop into a fixed 3:2 frame instead of showing each photo's true aspect ratio. The library overview should preserve image aspect ratio by default so photographers can scan verticals, panoramas, and odd crops accurately.
+- Library mockup parity is improving but incomplete. The overview grid now preserves image aspect ratio inside stable cells, the filter rail is closer to the Studio mockup's Ask/search treatment, and the inspector preview size is pinned, but sidebar density, inspector metadata polish, culling chrome, and saved/search set surfaces still need visual passes against the design concept.
 - The current RAW story is only the first abstraction and ImageIO-backed path. We still need an explicit decoder capability matrix and provider-swapping plan for formats Jesse named: DNG, CRW, CR2, Fuji RAW, Sigma/Foveon RAW, and specialty long-tail files. Lytro support remains out of scope.
 - Evaluation is scaffolding plus early useful providers, not finished face/person/object/aesthetic workflow. People grouping, review UI, accepted labels, and reprocessing flows are not complete.
 - Search/sets/work sessions are partially built but not yet the full user-facing model. Saved/ad hoc sets, clusters, work-session-derived sets, and query builder UX need more implementation.
@@ -373,7 +373,9 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Reproduce selection/click behavior with an imported catalog, not only the seeded smoke catalog.
 - [x] Add an AX probe that imports several images, clicks the second or third imported thumbnail, verifies selection feedback, then applies a rating and verifies the inspector/catalog state.
 - [ ] Use CoreGraphics capture to verify the UI is not blank or visually occluded after import.
-- [ ] Fix overview thumbnails so the grid shows true photo aspect ratios instead of cropping every image into a fixed 3:2 tile. Preserve stable hit targets and metadata overlays while doing this.
+- [x] Fix overview thumbnails so the grid shows true photo aspect ratios instead of cropping every image into a fixed 3:2 tile. Preserve stable hit targets and metadata overlays while doing this.
+- [x] Bring the library filter rail closer to the Studio mockup by making Ask/search visually primary, keeping advanced filters compact, and preserving the Search catalog accessibility contract.
+- [x] Pin the inspector/sidebar selected-preview box to a stable X/Y size so it does not expand with the detail column or selected image.
 - [ ] Fix the root cause if click handling, hit testing, focus capture, selection identity, or grid cell accessibility is wrong.
 - [ ] Add the least brittle model/UI tests that would have failed for the root cause.
 - [ ] Verify all grid/culling scripts and full `swift test`.
