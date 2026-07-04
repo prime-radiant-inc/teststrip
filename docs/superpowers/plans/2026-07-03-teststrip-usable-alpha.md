@@ -429,7 +429,8 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Surface completed import count and whether preview generation is continuing after catalog/import completion.
 - [x] Surface a clearer current import phase while path submission is scanning and cataloging.
 - [x] Show clear empty-folder/no-supported-photo preflight state before import starts.
-- [ ] Show clear duplicate, failed-folder, and permission/security-scope errors.
+- [x] Show clear typed-path file and unreadable-folder errors before import confirmation.
+- [ ] Show clear duplicate, runtime failed-folder, and panel/security-scope errors.
 - [x] Add model/presentation tests for import state transitions rather than brittle SwiftUI snapshots.
 - [x] Extend AX import verifier to catch apparent no-op after submit and sheet-dismissed-with-no-visible-progress states. Current coverage adds a post-submit visible-feedback gate and `feedback_visible_seconds`.
 - [ ] Add the imported-grid selection/rating AX probe in Slice 3.

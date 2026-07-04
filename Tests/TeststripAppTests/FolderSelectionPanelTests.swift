@@ -93,6 +93,26 @@ final class FolderSelectionPanelTests: XCTestCase {
     }
 
     @MainActor
+    func testImportFolderURLFromPathReportsFileAndUnreadableDirectoryClearly() throws {
+        let directory = try makeTemporaryDirectory(named: "path-import-validation")
+        let file = directory.appendingPathComponent("not-a-folder.txt")
+        let unreadable = directory.appendingPathComponent("unreadable", isDirectory: true)
+        try Data("not a folder".utf8).write(to: file)
+        try FileManager.default.createDirectory(at: unreadable, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: unreadable.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: unreadable.path)
+        }
+
+        XCTAssertThrowsError(try FolderSelectionPanel.importFolderURL(fromPath: file.path)) { error in
+            XCTAssertEqual(error.localizedDescription, "Folder path is not a folder")
+        }
+        XCTAssertThrowsError(try FolderSelectionPanel.importFolderURL(fromPath: unreadable.path)) { error in
+            XCTAssertEqual(error.localizedDescription, "Folder path is not readable")
+        }
+    }
+
+    @MainActor
     func testImportFolderURLFromPathExpandsHomeDirectory() throws {
         let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
 

@@ -119,10 +119,17 @@ enum FolderSelectionPanel {
         }
         let expandedPath = (trimmedPath as NSString).expandingTildeInPath
         let url = URL(fileURLWithPath: expandedPath, isDirectory: true).standardizedFileURL
-        guard let directory = existingDirectory(url) else {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
             throw TeststripError.invalidState("Folder path does not exist")
         }
-        return directory.standardizedFileURL
+        guard isDirectory.boolValue else {
+            throw TeststripError.invalidState("Folder path is not a folder")
+        }
+        guard FileManager.default.isReadableFile(atPath: url.path) else {
+            throw TeststripError.invalidState("Folder path is not readable")
+        }
+        return url.standardizedFileURL
     }
 
     private static func configureDirectoryPanel(
