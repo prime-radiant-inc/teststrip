@@ -189,7 +189,10 @@ struct LibraryGridView: View {
             if model.selectedView == .grid {
                 filterBar
             }
-            if isImporting && !model.assets.isEmpty {
+            if LibraryGridChromePolicy.shouldShowImportProgressBanner(
+                isImporting: isImporting,
+                visibleAssetCount: model.assets.count
+            ) {
                 importProgressBanner
             }
         }
@@ -1481,6 +1484,12 @@ private extension View {
 
 enum AssetGridPreviewPolicy {
     static let thumbnailScaling: CachedPreviewImage.Scaling = .fit
+}
+
+enum LibraryGridChromePolicy {
+    static func shouldShowImportProgressBanner(isImporting: Bool, visibleAssetCount _: Int) -> Bool {
+        isImporting
+    }
 }
 
 enum AssetGridCellLayout {
