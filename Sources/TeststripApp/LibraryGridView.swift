@@ -633,10 +633,14 @@ struct LibraryGridView: View {
     }
 
     private var saveSearchPopover: some View {
-        SaveSetPopover(
-            title: "Save Search",
+        SmartCollectionBuilderPopover(
             name: $savedSearchName,
             starred: $savedSearchStarred,
+            presentation: SmartCollectionBuilderPresentation(
+                proposedName: savedSearchName,
+                ruleChips: model.activeLibraryFilterChips,
+                matchCount: model.totalAssetCount
+            ),
             cancel: { isSavingSearch = false },
             save: saveCurrentSearch
         )
@@ -819,6 +823,112 @@ struct LibraryGridView: View {
                 }
             }
             .padding(14)
+        }
+    }
+
+    private struct SmartCollectionBuilderPopover: View {
+        @Binding var name: String
+        @Binding var starred: Bool
+        var presentation: SmartCollectionBuilderPresentation
+        var cancel: () -> Void
+        var save: () -> Void
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Label("New Smart Collection", systemImage: "sparkles")
+                        .font(.headline)
+                    Spacer(minLength: 0)
+                    Text(presentation.matchCountText)
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Name")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("Name", text: $name)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Text("Match")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("All")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                        Text("of these rules")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        Text(presentation.ruleCountText)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    if presentation.ruleChips.isEmpty {
+                        Text("No active filters")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 6)], alignment: .leading, spacing: 6) {
+                            ForEach(presentation.ruleChips, id: \.self) { chip in
+                                Text(chip)
+                                    .font(.caption.weight(.medium))
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                            }
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Teststrip suggests", systemImage: "sparkles")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.orange)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 6)], alignment: .leading, spacing: 6) {
+                        ForEach(SmartCollectionBuilderPresentation.suggestedTemplates, id: \.self) { template in
+                            Text(template)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.orange)
+                                .lineLimit(1)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .strokeBorder(Color.orange.opacity(0.24))
+                                }
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+                .liveMockupPlaceholder(.smartCollectionsBuilder)
+
+                Toggle("Starred", isOn: $starred)
+
+                HStack {
+                    Spacer()
+                    Button("Cancel") {
+                        cancel()
+                    }
+                    Button("Create") {
+                        save()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!presentation.canCreate)
+                }
+            }
+            .padding(16)
+            .frame(width: 420)
+            .liveMockupPlaceholder(.smartCollectionsBuilder)
         }
     }
 
@@ -1883,6 +1993,30 @@ enum LibraryGridChromePolicy {
     ) -> Bool {
         guard !isImporting, let summaryID else { return false }
         return summaryID != dismissedSummaryID
+    }
+}
+
+struct SmartCollectionBuilderPresentation: Equatable {
+    static let suggestedTemplates = [
+        "Sharp keepers",
+        "Golden hour",
+        "Best of each trip"
+    ]
+
+    var proposedName: String
+    var ruleChips: [String]
+    var matchCount: Int
+
+    var ruleCountText: String {
+        "\(ruleChips.count) \(ruleChips.count == 1 ? "rule" : "rules")"
+    }
+
+    var matchCountText: String {
+        "\(matchCount) \(matchCount == 1 ? "match" : "matches")"
+    }
+
+    var canCreate: Bool {
+        !proposedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !ruleChips.isEmpty
     }
 }
 
