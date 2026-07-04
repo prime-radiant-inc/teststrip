@@ -3914,11 +3914,15 @@ final class AppModelTests: XCTestCase {
             queue: BackgroundWorkQueue(maxRunningCount: 1),
             transport: transport
         )
-        let (model, _, asset) = try makeModelWithPreviewCache(
+        let asset = makeAsset(id: "preview-completion-refresh", size: 1)
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "preview-completion-refresh",
+            assets: [asset],
             workerSupervisor: supervisor
         )
         try model.requestPreview(assetID: asset.id, level: .large)
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+        try repository.markPreviewGenerated(assetID: asset.id, level: .large)
 
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
             itemID: WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-large"),
