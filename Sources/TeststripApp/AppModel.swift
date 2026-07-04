@@ -987,7 +987,7 @@ public final class AppModel {
         if let assetSetID = session.outputSetIDs.first ?? session.inputSetIDs.first {
             try applyAssetSet(id: assetSetID)
             if session.kind == .culling {
-                selectedView = .compare
+                selectedView = .loupe
             }
             return
         }
@@ -1126,7 +1126,7 @@ public final class AppModel {
         if let previousSelection, assets.contains(where: { $0.id == previousSelection }) {
             selectedAssetID = previousSelection
         }
-        selectedView = .compare
+        selectedView = .loupe
 
         let detail = trimmedIntent.isEmpty ? "Culling \(Self.photoCountDescription(totalUnitCount))" : trimmedIntent
         let activity = AppWorkActivity(

@@ -1986,7 +1986,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
     }
 
-    func testSelectingCullingWorkSessionReopensCompareView() throws {
+    func testSelectingCullingWorkSessionReopensLoupeView() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-select-culling-work-session")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
@@ -2033,7 +2033,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.selectedAssetSetID, inputSet.id)
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
-        XCTAssertEqual(model.selectedView, .compare)
+        XCTAssertEqual(model.selectedView, .loupe)
     }
 
     func testApplyingDynamicSavedSetLoadsMatchingCatalogAssets() throws {
@@ -2256,7 +2256,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(session.intent, "One hero per burst")
         XCTAssertEqual(session.inputSetIDs, [inputSet.id])
         XCTAssertEqual(session.totalUnitCount, 1)
-        XCTAssertEqual(model.selectedView, .compare)
+        XCTAssertEqual(model.selectedView, .loupe)
         XCTAssertEqual(model.recentWork.first?.id, session.id.rawValue)
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rowTitles.first, "Ceremony Cull")
 
@@ -2289,7 +2289,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(inputSet.membership, .dynamic(SetQuery(predicates: [.text("Wedding"), .ratingAtLeast(4), .flag(.pick)])))
         XCTAssertEqual(model.selectedAssetSetID, inputSetID)
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
-        XCTAssertEqual(model.selectedView, .compare)
+        XCTAssertEqual(model.selectedView, .loupe)
         XCTAssertFalse(model.sidebarSections.contains { section in
             section.title == "Saved Sets" && section.rowTitles.contains("Wedding Cull Input")
         })
