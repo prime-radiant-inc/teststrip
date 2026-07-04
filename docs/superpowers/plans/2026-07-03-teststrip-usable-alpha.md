@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `64e707e Add needs keywords review queue`
+- Snapshot commit: `5c153fa Persist import progress in early batches`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last broad unit verification: `swift test` passed with 448 tests after the Needs Keywords review queue work.
-- Last app workflow verification: `script/build_and_run.sh --verify-sample-photos` seeded 12 WordPress Photo Directory sample images into a clean isolated catalog, generated 24 cached previews, and launched the signed dev app. Computer Use verified the Needs Keywords sidebar row applies a visible filter chip and leaves the grid/preview usable. Before that, `script/build_and_run.sh --verify-smoke` and `./script/verify_import_path.sh Teststrip` verified clean launch plus Import Path.
+- Last broad unit verification: `swift test` passed with 449 tests after early import batch persistence.
+- Last app workflow verification: `script/build_and_run.sh --verify-smoke` launched a clean isolated smoke catalog, and the corrected 600-image AX import verifier completed with feedback visible around 20.2s, target visible around 49.4s, and preview drain around 46.1s. This is measured progress/foundation work, not closure of the large-import UX blocker. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
 
@@ -33,6 +33,8 @@
 - `7b68f7e`: fixed stale XMP pending state when worker sync finds the sidecar already matches the catalog.
 - `a44a1da`: staged Import Folder and Import Card through confirmation sheets that summarize source, destination, and the non-destructive/XMP/preview/background-work plan before work starts.
 - `64e707e`: added a catalog-backed Needs Keywords review queue and active filter chip for unkeyworded assets.
+- `037162c`: clarified import verifier metrics so target visibility, import completion, worker CPU, and preview drain are reported separately.
+- `5c153fa`: made ingest persist the first cataloged assets eagerly and then in batches, carrying cataloged IDs in progress events for earlier grid updates.
 
 ## Product Decisions To Preserve
 
