@@ -6,22 +6,45 @@ APP_NAME="${1:-Teststrip}"
 TARGET_ASSET="${2:-}"
 TIMEOUT_SECONDS="${TESTSTRIP_AX_TIMEOUT_SECONDS:-8}"
 
+run_frontmost_app_keyboard_step() {
+    /usr/bin/osascript - "$APP_NAME" "$1" <<'APPLESCRIPT' >/dev/null
+on run argv
+    set appName to item 1 of argv
+    set stepName to item 2 of argv
+    set becameFrontmost to false
+    tell application appName to activate
+    tell application "System Events"
+        repeat 50 times
+            if exists process appName then
+                tell process appName to set frontmost to true
+                if frontmost of process appName then
+                    set becameFrontmost to true
+                    exit repeat
+                end if
+            end if
+            delay 0.1
+        end repeat
+        if becameFrontmost is false then error appName & " did not become frontmost"
+        if stepName is "clear-rating" then
+            tell process appName to click menu item "Clear Rating" of menu "Culling" of menu bar 1
+        else if stepName is "rate-five" then
+            tell process appName to keystroke "5"
+        else
+            error "Unknown keyboard culling step " & stepName
+        end if
+    end tell
+end run
+APPLESCRIPT
+}
+
 selection_output="$("$SCRIPT_DIR/verify_grid_activation.sh" "$APP_NAME" "$TARGET_ASSET")"
 selected_asset="${selection_output#selected }"
 
-/usr/bin/osascript \
-    -e "tell application \"$APP_NAME\" to activate" \
-    -e 'delay 0.2' \
-    -e "tell application \"System Events\" to tell process \"$APP_NAME\" to click menu item \"Clear Rating\" of menu \"Culling\" of menu bar 1" \
-    >/dev/null
+run_frontmost_app_keyboard_step "clear-rating"
 
 "$SCRIPT_DIR/verify_grid_activation.sh" "$APP_NAME" "$selected_asset" >/dev/null
 
-/usr/bin/osascript \
-    -e "tell application \"$APP_NAME\" to activate" \
-    -e 'delay 0.2' \
-    -e 'tell application "System Events" to keystroke "5"' \
-    >/dev/null
+run_frontmost_app_keyboard_step "rate-five"
 
 "$SCRIPT_DIR/verify_grid_activation.sh" "$APP_NAME" "$selected_asset" >/dev/null
 
