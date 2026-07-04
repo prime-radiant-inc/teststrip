@@ -8,6 +8,10 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertTrue(model.sidebarSections.map(\.title).contains("Library"))
         XCTAssertTrue(model.sidebarSections.map(\.title).contains("Work"))
+        let librarySection = model.sidebarSections.first { $0.title == "Library" }
+        XCTAssertEqual(librarySection?.rows.first { $0.title == "All Photographs" }?.countText, "1")
+        let workSection = model.sidebarSections.first { $0.title == "Work" }
+        XCTAssertEqual(workSection?.rows.first { $0.title == "Recent" }?.detailText, "No recent work")
         XCTAssertEqual(model.selectedView, .grid)
         XCTAssertEqual(model.selectedAsset?.id, model.assets.first?.id)
     }
@@ -491,7 +495,9 @@ final class AppModelTests: XCTestCase {
         ))
 
         let syncSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sync" })
-        XCTAssertEqual(syncSection.rowTitles, ["XMP Conflicts (1)"])
+        XCTAssertEqual(syncSection.rowTitles, ["XMP Conflicts"])
+        XCTAssertEqual(syncSection.rows.first?.countText, "1")
+        XCTAssertEqual(syncSection.rows.first?.tone, .destructive)
 
         try model.selectSidebarRow(try XCTUnwrap(syncSection.rows.first))
 
@@ -526,7 +532,9 @@ final class AppModelTests: XCTestCase {
         ))
 
         let syncSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sync" })
-        XCTAssertEqual(syncSection.rowTitles, ["XMP Pending (1)"])
+        XCTAssertEqual(syncSection.rowTitles, ["XMP Pending"])
+        XCTAssertEqual(syncSection.rows.first?.countText, "1")
+        XCTAssertEqual(syncSection.rows.first?.tone, .warning)
 
         try model.selectSidebarRow(try XCTUnwrap(syncSection.rows.first))
 
@@ -1696,6 +1704,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.starredAssetSets.map(\.id), [starred.id])
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, [starred.name])
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, [starred.name, saved.name])
+        let savedRows = try XCTUnwrap(model.sidebarSections.first { $0.title == "Saved Sets" }?.rows)
+        XCTAssertEqual(savedRows.map(\.detailText), ["Smart collection", "Smart collection"])
+        XCTAssertEqual(savedRows.map(\.tone), [.accent, .accent])
     }
 
     func testLoadExposesCatalogFoldersInSidebarAndSelectingFolderAppliesFilter() throws {
@@ -1733,12 +1744,13 @@ final class AppModelTests: XCTestCase {
 
         let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
         XCTAssertEqual(sourceSection.rowTitles, [
-            "Offline Originals (1)",
-            "Missing Originals (2)",
-            "Moved Originals (1)",
-            "Stale Originals (1)"
+            "Offline Originals",
+            "Missing Originals",
+            "Moved Originals",
+            "Stale Originals"
         ])
-        let missingRow = try XCTUnwrap(sourceSection.rows.first { $0.title == "Missing Originals (2)" })
+        XCTAssertEqual(sourceSection.rows.map(\.countText), ["1", "2", "1", "1"])
+        let missingRow = try XCTUnwrap(sourceSection.rows.first { $0.title == "Missing Originals" })
 
         try model.selectSidebarRow(missingRow)
 
@@ -1781,7 +1793,9 @@ final class AppModelTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Sources" }?.rowTitles, ["Missing Originals (1)"])
+        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
+        XCTAssertEqual(sourceSection.rowTitles, ["Missing Originals"])
+        XCTAssertEqual(sourceSection.rows.first?.countText, "1")
 
         let result = try model.reconnectSourceRoot(from: oldRoot, to: newRoot)
 
@@ -2620,7 +2634,9 @@ final class AppModelTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Sources" }?.rowTitles, ["Missing Originals (1)"])
+        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
+        XCTAssertEqual(sourceSection.rowTitles, ["Missing Originals"])
+        XCTAssertEqual(sourceSection.rows.first?.countText, "1")
 
         try model.refreshVisibleAssetAvailability()
 
@@ -3571,7 +3587,9 @@ final class AppModelTests: XCTestCase {
         )))
 
         try await waitForEvaluationSignalGeneration(1, for: asset.id, in: model)
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "AI" }?.rowTitles, ["Faces"])
+        let aiSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "AI" })
+        XCTAssertEqual(aiSection.rowTitles, ["Faces"])
+        XCTAssertEqual(aiSection.rows.first?.countText, "1")
     }
 
     @MainActor

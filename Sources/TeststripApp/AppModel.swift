@@ -136,17 +136,26 @@ public enum SidebarRowTarget: Equatable, Sendable {
 public struct SidebarRow: Identifiable, Equatable, Sendable {
     public var id: String
     public var title: String
+    public var detailText: String?
+    public var countText: String?
+    public var tone: SidebarRowTone
     public var target: SidebarRowTarget
     public var liveMockupPlaceholder: LiveMockupPlaceholder?
 
     public init(
         id: String,
         title: String,
+        detailText: String? = nil,
+        countText: String? = nil,
+        tone: SidebarRowTone = .neutral,
         target: SidebarRowTarget = .placeholder,
         liveMockupPlaceholder: LiveMockupPlaceholder? = nil
     ) {
         self.id = id
         self.title = title
+        self.detailText = detailText
+        self.countText = countText
+        self.tone = tone
         self.target = target
         self.liveMockupPlaceholder = liveMockupPlaceholder
     }
@@ -154,6 +163,14 @@ public struct SidebarRow: Identifiable, Equatable, Sendable {
     public var isSelectable: Bool {
         target != .placeholder
     }
+}
+
+public enum SidebarRowTone: String, Equatable, Sendable {
+    case neutral
+    case accent
+    case positive
+    case warning
+    case destructive
 }
 
 public struct SidebarSection: Identifiable, Equatable {
@@ -790,7 +807,9 @@ public final class AppModel {
         importTaskFactory: AppImportTaskFactory? = nil,
         cardImportTaskFactory: AppCardImportTaskFactory? = nil
     ) {
+        let resolvedTotalAssetCount = totalAssetCount ?? assets.count
         self.sidebarSections = sidebarSections.isEmpty ? Self.defaultSidebarSections(
+            totalAssetCount: resolvedTotalAssetCount,
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
@@ -802,7 +821,7 @@ public final class AppModel {
         ) : sidebarSections
         self.selectedView = selectedView
         self.assets = assets
-        self.totalAssetCount = totalAssetCount ?? assets.count
+        self.totalAssetCount = resolvedTotalAssetCount
         self.selectedAssetID = assets.first?.id
         self.statusMessage = statusMessage
         self.errorMessage = errorMessage
@@ -902,7 +921,7 @@ public final class AppModel {
             metadata: AssetMetadata(rating: 4, colorLabel: .green, flag: .pick, keywords: ["demo"])
         )
         return AppModel(
-            sidebarSections: defaultSidebarSections(),
+            sidebarSections: defaultSidebarSections(totalAssetCount: 1),
             selectedView: .grid,
             assets: [asset]
         )
@@ -920,8 +939,10 @@ public final class AppModel {
         let metadataSyncConflictItems = try repository.metadataSyncConflictItems()
         let recentWork = try repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
+        let totalAssetCount = try repository.assetCount()
         return AppModel(
             sidebarSections: defaultSidebarSections(
+                totalAssetCount: totalAssetCount,
                 savedAssetSets: savedAssetSets,
                 catalogFolders: catalogFolders,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
@@ -933,7 +954,7 @@ public final class AppModel {
             ),
             selectedView: .grid,
             assets: assets,
-            totalAssetCount: try repository.assetCount(),
+            totalAssetCount: totalAssetCount,
             recentWork: recentWork,
             starredWork: starredWork,
             pendingMetadataSyncItems: pendingMetadataSyncItems,
@@ -964,8 +985,10 @@ public final class AppModel {
         let metadataSyncConflictItems = try catalog.repository.metadataSyncConflictItems()
         let recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
+        let totalAssetCount = try catalog.repository.assetCount()
         let model = AppModel(
             sidebarSections: defaultSidebarSections(
+                totalAssetCount: totalAssetCount,
                 savedAssetSets: savedAssetSets,
                 catalogFolders: catalogFolders,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
@@ -977,7 +1000,7 @@ public final class AppModel {
             ),
             selectedView: .grid,
             assets: assets,
-            totalAssetCount: try catalog.repository.assetCount(),
+            totalAssetCount: totalAssetCount,
             catalog: catalog,
             recentWork: recentWork,
             starredWork: starredWork,
@@ -3500,6 +3523,7 @@ public final class AppModel {
     }
 
     private static func defaultSidebarSections(
+        totalAssetCount: Int? = nil,
         savedAssetSets: [AssetSet] = [],
         catalogFolders: [CatalogFolder] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
@@ -3510,23 +3534,32 @@ public final class AppModel {
         starredWork: [AppWorkActivity] = []
     ) -> [SidebarSection] {
         var libraryRows = [
-            SidebarRow(id: "library-all", title: "All Photographs", target: .allPhotographs)
+            SidebarRow(
+                id: "library-all",
+                title: "All Photographs",
+                countText: totalAssetCount.map(sidebarCountText),
+                target: .allPhotographs
+            )
         ]
         libraryRows.append(
             SidebarRow(
                 id: "library-search",
                 title: "Search",
+                detailText: "Ask or filter",
+                tone: .accent,
                 target: .search,
                 liveMockupPlaceholder: .agenticSearch
             )
         )
         if catalogFolders.isEmpty {
-            libraryRows.append(SidebarRow(id: "library-folders", title: "Folders"))
+            libraryRows.append(SidebarRow(id: "library-folders", title: "Folders", detailText: "No folders yet"))
         }
         libraryRows.append(
             SidebarRow(
                 id: "library-people",
                 title: "People",
+                detailText: "Face groups",
+                tone: .accent,
                 target: .people,
                 liveMockupPlaceholder: .peopleSidebar
             )
@@ -3538,6 +3571,7 @@ public final class AppModel {
                 SidebarRow(
                     id: "folder-\(folder.path)",
                     title: folder.name,
+                    detailText: folder.path,
                     target: .folder(folder.path)
                 )
             }))
@@ -3555,7 +3589,9 @@ public final class AppModel {
             syncRows.append(
                 SidebarRow(
                     id: "sync-xmp-pending",
-                    title: "XMP Pending (\(pendingMetadataSyncItems.count))",
+                    title: "XMP Pending",
+                    countText: sidebarCountText(pendingMetadataSyncItems.count),
+                    tone: .warning,
                     target: .metadataSyncPending
                 )
             )
@@ -3564,7 +3600,9 @@ public final class AppModel {
             syncRows.append(
                 SidebarRow(
                     id: "sync-xmp-conflicts",
-                    title: "XMP Conflicts (\(metadataSyncConflictItems.count))",
+                    title: "XMP Conflicts",
+                    countText: sidebarCountText(metadataSyncConflictItems.count),
+                    tone: .destructive,
                     target: .metadataSyncConflicts
                 )
             )
@@ -3594,11 +3632,13 @@ public final class AppModel {
             SidebarRow(
                 id: "work-recent-placeholder",
                 title: "Recent",
+                detailText: "No recent work",
                 liveMockupPlaceholder: .workHistory
             ),
             SidebarRow(
                 id: "work-starred-placeholder",
                 title: "Starred",
+                detailText: "No starred work",
                 liveMockupPlaceholder: .workHistory
             )
         ]
@@ -3648,7 +3688,9 @@ public final class AppModel {
             guard let summary = summariesByAvailability[availability], summary.assetCount > 0 else { return nil }
             return SidebarRow(
                 id: "source-availability-\(availability.rawValue)",
-                title: "\(sourceAvailabilitySidebarTitle(availability)) (\(summary.assetCount))",
+                title: sourceAvailabilitySidebarTitle(availability),
+                countText: sidebarCountText(summary.assetCount),
+                tone: availability == .stale ? .warning : .destructive,
                 target: .sourceAvailability(availability)
             )
         }
@@ -3677,12 +3719,14 @@ public final class AppModel {
     }
 
     private static func evaluationSignalSidebarRows(_ summaries: [CatalogEvaluationKindSummary]) -> [SidebarRow] {
-        let availableKinds = Set(summaries.map(\.kind))
+        let summariesByKind = Dictionary(uniqueKeysWithValues: summaries.map { ($0.kind, $0) })
         return evaluationKindSidebarOrder.compactMap { kind in
-            guard availableKinds.contains(kind) else { return nil }
+            guard let summary = summariesByKind[kind], summary.assetCount > 0 else { return nil }
             return SidebarRow(
                 id: "evaluation-kind-\(kind.rawValue)",
                 title: evaluationKindSidebarTitle(kind),
+                countText: sidebarCountText(summary.assetCount),
+                tone: .accent,
                 target: .evaluationKind(kind)
             )
         }
@@ -3726,6 +3770,8 @@ public final class AppModel {
         SidebarRow(
             id: "asset-set-\(assetSet.id.rawValue)",
             title: assetSet.name,
+            detailText: assetSet.sidebarDetailText,
+            tone: assetSet.isDynamic ? .accent : .neutral,
             target: .assetSet(assetSet.id)
         )
     }
@@ -3738,6 +3784,9 @@ public final class AppModel {
             SidebarRow(
                 id: "work-recent-\(activity.id)",
                 title: workSidebarTitle(for: activity),
+                detailText: activity.sidebarDetailText,
+                countText: activity.sidebarCountText,
+                tone: activity.sidebarTone,
                 target: .workSession(WorkSessionID(rawValue: activity.id))
             )
         }
@@ -3746,10 +3795,17 @@ public final class AppModel {
             SidebarRow(
                 id: "work-starred-\(activity.id)",
                 title: workSidebarTitle(for: activity),
+                detailText: activity.sidebarDetailText,
+                countText: activity.sidebarCountText,
+                tone: activity.sidebarTone,
                 target: .workSession(WorkSessionID(rawValue: activity.id))
             )
         })
         return rows
+    }
+
+    fileprivate static func sidebarCountText(_ count: Int) -> String {
+        count.formatted(.number.notation(.compactName))
     }
 
     private static func workSidebarTitle(for activity: AppWorkActivity) -> String {
@@ -3760,9 +3816,84 @@ public final class AppModel {
         }
         return trimmedTitle.isEmpty && !trimmedDetail.isEmpty ? trimmedDetail : activity.title
     }
+
+    fileprivate static func workKindTitle(_ kind: WorkSessionKind) -> String {
+        switch kind {
+        case .ingest:
+            return "Import"
+        case .previewGeneration:
+            return "Previews"
+        case .recognition:
+            return "Recognition"
+        case .culling:
+            return "Culling"
+        case .collecting:
+            return "Collecting"
+        case .searchSort:
+            return "Search"
+        case .keywording:
+            return "Keywording"
+        case .xmpSync:
+            return "XMP"
+        case .sourceScan:
+            return "Source scan"
+        case .export:
+            return "Export"
+        }
+    }
+}
+
+private extension AssetSet {
+    var sidebarDetailText: String {
+        switch membership {
+        case .dynamic:
+            return "Smart collection"
+        case .manual:
+            return "Manual set"
+        case .snapshot:
+            return "Snapshot"
+        }
+    }
 }
 
 private extension AppWorkActivity {
+    var sidebarDetailText: String? {
+        switch status {
+        case .running:
+            return detail.isEmpty ? "Running" : detail
+        case .paused:
+            return detail.isEmpty ? "Paused" : detail
+        case .queued:
+            return detail.isEmpty ? "Queued" : detail
+        case .failed:
+            return detail.isEmpty ? "Failed" : detail
+        case .cancelled:
+            return detail.isEmpty ? "Cancelled" : detail
+        case .completed:
+            return AppModel.workKindTitle(kind)
+        }
+    }
+
+    var sidebarCountText: String? {
+        guard let totalUnitCount, totalUnitCount > 0 else {
+            return completedUnitCount > 0 ? AppModel.sidebarCountText(completedUnitCount) : nil
+        }
+        return "\(completedUnitCount)/\(totalUnitCount)"
+    }
+
+    var sidebarTone: SidebarRowTone {
+        switch status {
+        case .completed:
+            return .positive
+        case .failed:
+            return .destructive
+        case .paused, .cancelled:
+            return .warning
+        case .queued, .running:
+            return .accent
+        }
+    }
+
     func workSession(
         now: Date = Date(),
         intent: String? = nil,
