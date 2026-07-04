@@ -15,6 +15,7 @@ SMOKE=0
 SMOKE_ASSET_COUNT="${TESTSTRIP_SMOKE_ASSET_COUNT:-24}"
 SAMPLE_PHOTOS=0
 SAMPLE_PHOTOS_DIR="${TESTSTRIP_SAMPLE_PHOTOS_DIR:-}"
+SAMPLE_PHOTOS_MANIFEST="${TESTSTRIP_SAMPLE_PHOTOS_MANIFEST:-}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -134,10 +135,13 @@ seed_smoke_catalog() {
 seed_sample_catalog() {
   cd "$ROOT_DIR"
   if [[ -z "$SAMPLE_PHOTOS_DIR" ]]; then
-    SAMPLE_PHOTOS_DIR="$ROOT_DIR/sample-data/photos/loc-free-to-use"
+    SAMPLE_PHOTOS_DIR="$ROOT_DIR/sample-data/photos/wordpress-photo-directory"
+  fi
+  if [[ -z "$SAMPLE_PHOTOS_MANIFEST" ]]; then
+    SAMPLE_PHOTOS_MANIFEST="$ROOT_DIR/sample-data/wordpress-photo-directory.tsv"
   fi
   if [[ ! -d "$SAMPLE_PHOTOS_DIR" ]] || [[ -z "$(find "$SAMPLE_PHOTOS_DIR" -maxdepth 1 -type f -print -quit)" ]]; then
-    "$ROOT_DIR/script/download_sample_photos.sh" --destination "$SAMPLE_PHOTOS_DIR"
+    "$ROOT_DIR/script/download_sample_photos.sh" --manifest "$SAMPLE_PHOTOS_MANIFEST" --destination "$SAMPLE_PHOTOS_DIR"
   fi
   swift run "$BENCH_PRODUCT_NAME" seed-sample-catalog "$ISOLATED_APPLICATION_SUPPORT" "$SAMPLE_PHOTOS_DIR"
 }
