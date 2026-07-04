@@ -17,6 +17,7 @@ The default sidecar convention is collision-safe: append `.xmp` to the full orig
 - Failed sidecar writes are recorded as pending sync items with the asset ID, sidecar path, catalog generation, and last synced fingerprint if one exists.
 - Worker-backed metadata edits record the pending sync item before enqueueing helper work, so a quit or crash after the catalog edit does not lose the required sidecar write.
 - `TeststripWorker` can execute `syncMetadata` for one asset: write missing/outdated sidecars from catalog metadata, import externally changed sidecars when the catalog generation is unchanged, and record conflicts when both catalog and sidecar changed.
+- Selection-triggered XMP checks are coalesced: rapid browsing keeps the latest queued selected-asset check and does not let stale checks accumulate behind the worker. In-flight checks are allowed to finish so normal browsing does not restart the helper process.
 - Recorded conflicts appear in the sidebar under `Sync` as `XMP Conflicts (n)`. Selecting that row applies a catalog-backed conflict query so photographers can find and resolve conflicted assets instead of discovering conflicts only one selected photo at a time.
 
 ## Next Work
