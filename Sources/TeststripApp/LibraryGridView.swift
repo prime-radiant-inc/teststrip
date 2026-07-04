@@ -1021,29 +1021,40 @@ private struct LoupeView: View {
     }
 
     private func loupeOverlay(for asset: Asset) -> some View {
-        HStack(spacing: 10) {
-            Text(asset.originalURL.lastPathComponent)
-                .font(.caption.weight(.medium))
-                .lineLimit(1)
-            Text("Rating: \(asset.metadata.rating)")
-                .font(.caption)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Text(asset.originalURL.lastPathComponent)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                Text("Rating: \(asset.metadata.rating)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let flag = asset.metadata.flag {
+                    Text(flag.rawValue.capitalized)
+                        .font(.caption)
+                        .foregroundStyle(flag == .pick ? .green : .red)
+                }
+                Button {
+                    revealOriginal(for: asset)
+                } label: {
+                    Image(systemName: "folder")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-            if let flag = asset.metadata.flag {
-                Text(flag.rawValue.capitalized)
-                    .font(.caption)
-                    .foregroundStyle(flag == .pick ? .green : .red)
+                .disabled(asset.availability.requiresCachedPreviewOnly)
+                .help("Reveal original")
+                .accessibilityLabel("Reveal original")
             }
-            Button {
-                revealOriginal(for: asset)
-            } label: {
-                Image(systemName: "folder")
-                    .font(.caption)
+            HStack(spacing: 8) {
+                if let positionText = model.selectedAssetPositionText {
+                    Text(positionText)
+                }
+                Text("Left/Right Move - P Pick - X Reject - 0-5 Rate")
             }
-            .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .disabled(asset.availability.requiresCachedPreviewOnly)
-            .help("Reveal original")
-            .accessibilityLabel("Reveal original")
+            .font(.caption2.monospaced())
+            .lineLimit(1)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)

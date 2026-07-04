@@ -89,6 +89,17 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .loupe)
     }
 
+    func testSelectedAssetPositionTextShowsFrameWithinLibrary() {
+        let first = makeAsset(id: "first", size: 1)
+        let second = makeAsset(id: "second", size: 2)
+        let third = makeAsset(id: "third", size: 3)
+        let model = AppModel(sidebarSections: [], selectedView: .loupe, assets: [first, second, third])
+
+        model.select(second.id)
+
+        XCTAssertEqual(model.selectedAssetPositionText, "Frame 2 of 3")
+    }
+
     func testSelectNextAssetMovesSelectionForwardThroughLoadedAssets() {
         let first = makeAsset(id: "first", size: 1)
         let second = makeAsset(id: "second", size: 2)

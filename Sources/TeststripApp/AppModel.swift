@@ -357,6 +357,16 @@ public final class AppModel {
         selectedAssetID.flatMap { loupePreviewURL(for: $0) }
     }
 
+    public var selectedAssetPositionText: String? {
+        guard let selectedAssetID,
+              let selectedIndex = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
+            return nil
+        }
+        let position = assetPageOffset + selectedIndex + 1
+        let totalCount = max(totalAssetCount, position)
+        return "Frame \(position) of \(totalCount)"
+    }
+
     public var hasMoreAssets: Bool {
         assetPageOffset + assets.count < totalAssetCount
     }
