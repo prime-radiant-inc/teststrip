@@ -3766,6 +3766,38 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testRequestCompareAssetEvaluationsDispatchesOnlyCachedCompareAssets() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: transport
+        )
+        let first = makeAsset(id: "first", size: 1)
+        let second = makeAsset(id: "second", size: 2)
+        let third = makeAsset(id: "third", size: 3)
+        let fourth = makeAsset(id: "fourth", size: 4)
+        let outsideCompareSet = makeAsset(id: "outside-compare-set", size: 5)
+        let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "compare-evaluation-skips-uncached",
+            assets: [first, second, third, fourth, outsideCompareSet],
+            workerSupervisor: supervisor
+        )
+        model.selectedView = .compare
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: first.id, level: .grid)))
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: third.id, level: .grid)))
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: outsideCompareSet.id, level: .grid)))
+
+        try model.requestCompareAssetEvaluations(providers: ["local-image-metrics"])
+
+        XCTAssertEqual(model.backgroundWorkQueue.items.map(\.id), [
+            WorkSessionID(rawValue: "evaluation-\(first.id.rawValue)-local-image-metrics"),
+            WorkSessionID(rawValue: "evaluation-\(third.id.rawValue)-local-image-metrics")
+        ])
+        XCTAssertEqual(try transport.commands(), [
+            .runEvaluation(assetID: first.id, provider: "local-image-metrics")
+        ])
+    }
+
     func testCanRequestSelectedAssetEvaluationRequiresSelectionAndWorker() throws {
         let (modelWithoutWorker, _, _) = try makeModelWithPreviewCache(named: "evaluation-without-worker")
         XCTAssertFalse(modelWithoutWorker.canRequestSelectedAssetEvaluation)
@@ -3817,6 +3849,26 @@ final class AppModelTests: XCTestCase {
         try repository.recordEvaluationSignals([signal])
 
         XCTAssertEqual(model.selectedEvaluationSignals, [signal])
+    }
+
+    func testEvaluationSignalsCanLoadForNonSelectedAsset() throws {
+        let selected = makeAsset(id: "selected", size: 1)
+        let alternate = makeAsset(id: "alternate", size: 2)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "non-selected-evaluation-signals",
+            assets: [selected, alternate]
+        )
+        let signal = EvaluationSignal(
+            assetID: alternate.id,
+            kind: .focus,
+            value: .score(0.91),
+            confidence: 0.88,
+            provenance: ProviderProvenance(provider: "local-image-metrics", model: "sharpness", version: "1", settingsHash: "default")
+        )
+        try repository.recordEvaluationSignals([signal])
+
+        XCTAssertEqual(model.selectedAssetID, selected.id)
+        XCTAssertEqual(model.evaluationSignals(for: alternate.id), [signal])
     }
 
     func testSelectedSuggestedKeywordsComeFromObjectEvaluationLabels() throws {

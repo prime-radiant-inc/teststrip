@@ -650,14 +650,23 @@ public final class AppModel {
         workerSupervisor != nil && !assets.isEmpty
     }
 
+    public var canRequestCompareAssetEvaluations: Bool {
+        workerSupervisor != nil && compareAssets().contains { hasCachedPreview(for: $0.id) }
+    }
+
     public var canRefreshVisibleAssetAvailability: Bool {
         catalog != nil && !assets.isEmpty
     }
 
     public var selectedEvaluationSignals: [EvaluationSignal] {
-        guard let catalog, let selectedAssetID else { return [] }
-        _ = evaluationSignalGeneration(for: selectedAssetID)
-        return (try? catalog.repository.evaluationSignals(assetID: selectedAssetID)) ?? []
+        guard let selectedAssetID else { return [] }
+        return evaluationSignals(for: selectedAssetID)
+    }
+
+    public func evaluationSignals(for assetID: AssetID) -> [EvaluationSignal] {
+        guard let catalog else { return [] }
+        _ = evaluationSignalGeneration(for: assetID)
+        return (try? catalog.repository.evaluationSignals(assetID: assetID)) ?? []
     }
 
     public var selectedSuggestedKeywords: [KeywordSuggestion] {
@@ -2301,6 +2310,22 @@ public final class AppModel {
         let evaluableAssets = assets.filter { hasCachedPreview(for: $0.id) }
         guard !evaluableAssets.isEmpty else {
             throw TeststripError.invalidState("no visible assets with cached previews")
+        }
+        for asset in evaluableAssets {
+            for provider in providers {
+                try requestEvaluation(assetID: asset.id, provider: provider)
+            }
+        }
+    }
+
+    public func requestCompareAssetEvaluations(providers: [String] = AppModel.defaultEvaluationProviderNames) throws {
+        let compareAssets = compareAssets()
+        guard !compareAssets.isEmpty else {
+            throw TeststripError.invalidState("no compare assets")
+        }
+        let evaluableAssets = compareAssets.filter { hasCachedPreview(for: $0.id) }
+        guard !evaluableAssets.isEmpty else {
+            throw TeststripError.invalidState("no compare assets with cached previews")
         }
         for asset in evaluableAssets {
             for provider in providers {

@@ -125,6 +125,46 @@ final class CompareSurveyPresentationTests: XCTestCase {
         )
     }
 
+    func testFocusMetricsUseRealQualitySignalsWithoutClaimingBest() {
+        let assetID = AssetID(rawValue: "quality-frame")
+        let provenance = ProviderProvenance(
+            provider: "local-image-metrics",
+            model: "average-preview-metrics",
+            version: "1",
+            settingsHash: "default"
+        )
+        let metrics = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .object, value: .label("camera"), confidence: 0.94, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .motionBlur, value: .score(0.21), confidence: 0.76, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .focus, value: .score(0.88), confidence: 0.81, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .exposure, value: .score(0.63), confidence: 0.7, provenance: provenance)
+        ])
+
+        XCTAssertEqual(metrics.map(\.title), ["Focus", "Motion blur", "Exposure"])
+        XCTAssertEqual(metrics.map(\.value), ["88%", "21%", "63%"])
+        XCTAssertEqual(metrics.map(\.tone), [.positive, .positive, .neutral])
+        XCTAssertFalse(metrics.contains { metric in
+            [metric.title, metric.value, metric.detail].contains { $0.localizedCaseInsensitiveContains("best") }
+        })
+    }
+
+    func testFocusMetricsShowNoReadWhenNoQualitySignalsExist() {
+        let assetID = AssetID(rawValue: "unread-frame")
+        let provenance = ProviderProvenance(
+            provider: "apple-vision",
+            model: "Vision-labels",
+            version: "1",
+            settingsHash: "default"
+        )
+
+        XCTAssertEqual(
+            CompareFocusMetricPresentation.metrics(for: [
+                EvaluationSignal(assetID: assetID, kind: .object, value: .label("camera"), confidence: 0.94, provenance: provenance)
+            ]),
+            [CompareFocusMetric(title: "No read yet", value: "Evaluate", detail: "No compare quality signals", tone: .waiting)]
+        )
+    }
+
     private func makeAsset(
         id: String,
         metadata: AssetMetadata = AssetMetadata()

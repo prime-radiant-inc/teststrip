@@ -158,7 +158,7 @@ public enum LiveMockupPlaceholders {
         id: "compare.focus",
         title: "Focus compare",
         intendedBehavior: "Line up close contenders and use sharpness, eye state, exposure, and frame signals to break ties.",
-        currentFallback: "Survey Compare can show selected-frame evaluation signals, but there is no focused metric comparison lane yet."
+        currentFallback: "Survey Compare shows persisted focus, motion blur, exposure, and face-quality signals for visible contenders; eye-state and richer frame rationale depend on future providers."
     )
 
     public static let compareSurvey = LiveMockupPlaceholder(
@@ -253,7 +253,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Survey and compare",
             status: .partial,
             placeholder: .compareSurvey,
-            currentImplementation: "Compare shows selected primary first, alternates, metadata-backed badges, and honest disabled group actions; real stack membership and bulk stack mutations are not built."
+            currentImplementation: "Compare shows selected primary first, alternates, metadata-backed badges, a focus metric lane, and honest disabled group actions; real stack membership and bulk stack mutations are not built."
         ),
         LiveMockupDesignSurface(
             designID: "3a",
@@ -265,9 +265,9 @@ public enum LiveMockupDesignSurfaces {
         LiveMockupDesignSurface(
             designID: "3b",
             title: "Focus compare",
-            status: .liveMockup,
+            status: .partial,
             placeholder: .focusCompare,
-            currentImplementation: "Evaluation signals can expose focus-like metrics, but there is no dedicated contender lane for sharpness, eye state, exposure, and frame tie-breaks."
+            currentImplementation: "Compare has a persisted focus/motion/exposure/face-quality lane and cached-preview evaluation action; eye-state and richer frame rationale depend on future providers."
         ),
         LiveMockupDesignSurface(
             designID: "4a",
@@ -316,7 +316,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Keywording",
             status: .partial,
             placeholder: .keywordingBatch,
-            currentImplementation: "Selected asset metadata controls edit keywords, caption, creator, and copyright with XMP writeback; batch keywording and suggested-keyword acceptance are not built."
+            currentImplementation: "Selected asset metadata controls edit keywords, caption, creator, and copyright with XMP writeback, plus accepting single-asset suggested keywords from object evaluation labels; batch keywording is not built."
         ),
         LiveMockupDesignSurface(
             designID: "5f",

@@ -2264,6 +2264,132 @@ struct CompareDecisionBadge: Equatable, Identifiable {
     }
 }
 
+struct CompareFocusMetric: Equatable, Identifiable {
+    enum Tone: String, Equatable {
+        case waiting
+        case positive
+        case caution
+        case neutral
+    }
+
+    var title: String
+    var value: String
+    var detail: String
+    var tone: Tone
+
+    var id: String {
+        "\(tone.rawValue):\(title):\(value):\(detail)"
+    }
+}
+
+enum CompareFocusMetricPresentation {
+    private static let qualityKinds: [EvaluationKind] = [
+        .focus,
+        .motionBlur,
+        .exposure,
+        .faceQuality
+    ]
+
+    static func metrics(for signals: [EvaluationSignal]) -> [CompareFocusMetric] {
+        let metrics = qualityKinds.compactMap { kind in
+            bestSignal(for: kind, in: signals).map(metric(for:))
+        }
+        guard !metrics.isEmpty else {
+            return [CompareFocusMetric(
+                title: "No read yet",
+                value: "Evaluate",
+                detail: "No compare quality signals",
+                tone: .waiting
+            )]
+        }
+        return metrics
+    }
+
+    private static func bestSignal(for kind: EvaluationKind, in signals: [EvaluationSignal]) -> EvaluationSignal? {
+        signals
+            .filter { $0.kind == kind }
+            .sorted { lhs, rhs in lhs.confidence > rhs.confidence }
+            .first
+    }
+
+    private static func metric(for signal: EvaluationSignal) -> CompareFocusMetric {
+        CompareFocusMetric(
+            title: EvaluationSignalPresentation.displayName(for: signal.kind),
+            value: valueText(for: signal),
+            detail: "\(EvaluationSignalPresentation.percentage(signal.confidence)) confidence - \(signal.provenance.provider)",
+            tone: tone(for: signal)
+        )
+    }
+
+    private static func valueText(for signal: EvaluationSignal) -> String {
+        switch signal.value {
+        case .score(let score):
+            return EvaluationSignalPresentation.percentage(score)
+        case .label(let label):
+            return EvaluationSignalPresentation.capitalized(label, fallback: EvaluationSignalPresentation.displayName(for: signal.kind))
+        case .text(let text):
+            return EvaluationSignalPresentation.capitalized(text, fallback: EvaluationSignalPresentation.displayName(for: signal.kind))
+        case .count(let count):
+            return String(count)
+        case .vector:
+            return "Sampled"
+        }
+    }
+
+    private static func tone(for signal: EvaluationSignal) -> CompareFocusMetric.Tone {
+        switch (signal.kind, signal.value) {
+        case (.motionBlur, .score(let score)):
+            return score >= 0.5 ? .caution : .positive
+        case (.focus, .score(let score)), (.faceQuality, .score(let score)):
+            return score >= 0.7 ? .positive : .caution
+        case (.exposure, _):
+            return .neutral
+        default:
+            return .neutral
+        }
+    }
+}
+
+private enum EvaluationSignalPresentation {
+    static func displayName(for kind: EvaluationKind) -> String {
+        switch kind {
+        case .focus:
+            return "Focus"
+        case .motionBlur:
+            return "Motion blur"
+        case .exposure:
+            return "Exposure"
+        case .aesthetics:
+            return "Aesthetics"
+        case .object:
+            return "Object"
+        case .faceCount:
+            return "Faces"
+        case .faceQuality:
+            return "Face quality"
+        case .ocrText:
+            return "Text"
+        case .colorPalette:
+            return "Color"
+        case .novelty:
+            return "Novelty"
+        }
+    }
+
+    static func percentage(_ value: Double) -> String {
+        let clamped = min(max(value, 0), 1)
+        return "\(Int((clamped * 100).rounded()))%"
+    }
+
+    static func capitalized(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = trimmed.first else {
+            return fallback
+        }
+        return first.uppercased() + trimmed.dropFirst()
+    }
+}
+
 struct CullingFilmstripPresentation: Equatable {
     static let defaultVisibleLimit = 12
 
@@ -2313,6 +2439,7 @@ private struct CompareView: View {
     var focusCullingSurface: () -> Void
 
     private let surveyColumns = [GridItem(.adaptive(minimum: 180), spacing: 12)]
+    private let focusMetricColumns = [GridItem(.adaptive(minimum: 78), spacing: 5)]
 
     var body: some View {
         let presentation = CompareSurveyPresentation(
@@ -2363,6 +2490,16 @@ private struct CompareView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
+            Button {
+                requestCompareEvaluations()
+            } label: {
+                Label("Evaluate Compare", systemImage: "sparkles")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(!model.canRequestCompareAssetEvaluations)
+            .help("Runs evaluation for compare frames with cached previews")
+            .liveMockupPlaceholder(.focusCompare)
             Label(presentation.recommendationText, systemImage: "sparkles")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.orange)
@@ -2385,6 +2522,7 @@ private struct CompareView: View {
                 VStack(alignment: .leading, spacing: 7) {
                     compareTile(asset, presentation: presentation)
                     assetCaption(asset, label: surveyLabel(for: asset, presentation: presentation))
+                    compareFocusMetricLane(for: asset)
                 }
             }
         }
@@ -2467,6 +2605,51 @@ private struct CompareView: View {
         }
     }
 
+    private func compareFocusMetricLane(for asset: Asset) -> some View {
+        let metrics = CompareFocusMetricPresentation.metrics(for: model.evaluationSignals(for: asset.id))
+
+        return LazyVGrid(columns: focusMetricColumns, alignment: .leading, spacing: 5) {
+            ForEach(metrics) { metric in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(metric.title)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Text(metric.value)
+                        .font(.caption.monospacedDigit().weight(.bold))
+                        .foregroundStyle(compareFocusMetricAccent(for: metric.tone))
+                        .lineLimit(1)
+                    Text(metric.detail)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 5)
+                .background(compareFocusMetricAccent(for: metric.tone).opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(compareFocusMetricAccent(for: metric.tone).opacity(0.18))
+                }
+            }
+        }
+        .liveMockupPlaceholder(.focusCompare)
+    }
+
+    private func compareFocusMetricAccent(for tone: CompareFocusMetric.Tone) -> Color {
+        switch tone {
+        case .positive:
+            return .green
+        case .caution:
+            return .yellow
+        case .neutral:
+            return .secondary
+        case .waiting:
+            return .orange
+        }
+    }
+
     private func compareActionStrip(
         primaryAsset: Asset,
         presentation: CompareSurveyPresentation
@@ -2530,6 +2713,14 @@ private struct CompareView: View {
     private func requestComparePreviews() {
         do {
             try model.requestVisibleComparePreviews()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func requestCompareEvaluations() {
+        do {
+            try model.requestCompareAssetEvaluations()
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -2799,7 +2990,7 @@ struct CullingAssistPresentation: Equatable {
         }
         return CullingAssistPresentation(
             title: title(for: signal),
-            detail: "\(displayName(for: signal.kind)) - \(signal.provenance.provider) - \(percentage(signal.confidence)) confidence",
+            detail: "\(EvaluationSignalPresentation.displayName(for: signal.kind)) - \(signal.provenance.provider) - \(EvaluationSignalPresentation.percentage(signal.confidence)) confidence",
             tone: tone(for: signal)
         )
     }
@@ -2841,15 +3032,15 @@ struct CullingAssistPresentation: Equatable {
     private static func title(for signal: EvaluationSignal) -> String {
         switch signal.value {
         case .score(let score):
-            return "\(displayName(for: signal.kind)) \(percentage(score))"
+            return "\(EvaluationSignalPresentation.displayName(for: signal.kind)) \(EvaluationSignalPresentation.percentage(score))"
         case .label(let label):
-            return capitalized(label, fallback: displayName(for: signal.kind))
+            return EvaluationSignalPresentation.capitalized(label, fallback: EvaluationSignalPresentation.displayName(for: signal.kind))
         case .text(let text):
-            return capitalized(text, fallback: displayName(for: signal.kind))
+            return EvaluationSignalPresentation.capitalized(text, fallback: EvaluationSignalPresentation.displayName(for: signal.kind))
         case .count(let count):
-            return "\(displayName(for: signal.kind)) \(count)"
+            return "\(EvaluationSignalPresentation.displayName(for: signal.kind)) \(count)"
         case .vector:
-            return "\(displayName(for: signal.kind)) sampled"
+            return "\(EvaluationSignalPresentation.displayName(for: signal.kind)) sampled"
         }
     }
 
@@ -2877,43 +3068,6 @@ struct CullingAssistPresentation: Equatable {
         "closed eyes"
     ]
 
-    private static func displayName(for kind: EvaluationKind) -> String {
-        switch kind {
-        case .focus:
-            return "Focus"
-        case .motionBlur:
-            return "Motion blur"
-        case .exposure:
-            return "Exposure"
-        case .aesthetics:
-            return "Aesthetics"
-        case .object:
-            return "Object"
-        case .faceCount:
-            return "Faces"
-        case .faceQuality:
-            return "Face quality"
-        case .ocrText:
-            return "Text"
-        case .colorPalette:
-            return "Color"
-        case .novelty:
-            return "Novelty"
-        }
-    }
-
-    private static func percentage(_ value: Double) -> String {
-        let clamped = min(max(value, 0), 1)
-        return "\(Int((clamped * 100).rounded()))%"
-    }
-
-    private static func capitalized(_ value: String, fallback: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let first = trimmed.first else {
-            return fallback
-        }
-        return first.uppercased() + trimmed.dropFirst()
-    }
 }
 
 struct ImportCompletionPresentation: Equatable {
