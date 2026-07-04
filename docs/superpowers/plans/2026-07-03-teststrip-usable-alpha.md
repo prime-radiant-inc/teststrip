@@ -13,11 +13,11 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `a6a7d88 Add Smart Collection builder popover`
+- Snapshot commit: `b5dd2df Show evaluation verdicts in culling header`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter SmartCollectionBuilderPresentationTests` and `swift test --filter AppModelTests/testActiveLibraryFilterChipsSummarizeCurrentFilters` passed after the Smart Collection builder live-mockup slice.
-- Last broad unit verification: `swift test` passed with 483 tests after the Smart Collection builder slice.
-- Last app workflow verification: `./script/build_and_run.sh --sample-photos` plus one Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. The previous Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import UI automation was intentionally deferred for the import progress banner slice to avoid unnecessary focus stealing; the previous grid aspect-ratio slice passed `./script/build_and_run.sh --sample-photos` and one Computer Use grid inspection, and the previous People live-mockup route passed Computer Use inspection plus `./script/verify_grid_activation.sh`, `./script/verify_grid_selection_feedback.sh`, `./script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 ./script/verify_imported_grid_culling.sh`. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
+- Last focused unit verification: `swift test --filter CullingAssistPresentationTests` and `swift test --filter AppModelTests/testSelectedEvaluationSignalsLoadFromCatalog` passed after the culling verdict slice.
+- Last broad unit verification: `swift test` passed with 487 tests after the culling verdict slice.
+- Last app workflow verification: `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import UI automation was intentionally deferred for the import progress banner slice to avoid unnecessary focus stealing; the previous grid aspect-ratio slice passed `./script/build_and_run.sh --sample-photos` and one Computer Use grid inspection, and the previous People live-mockup route passed Computer Use inspection plus `./script/verify_grid_activation.sh`, `./script/verify_grid_selection_feedback.sh`, `./script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 ./script/verify_imported_grid_culling.sh`. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
 
@@ -52,6 +52,7 @@
 - `09eab92`: reshaped Compare into a survey-style live mockup with a primary frame, alternates, frame/recommendation header, real Pick/Reject/Loupe actions, and presentation tests while preserving existing compare preview behavior.
 - `c95ae1f`: corrected the Compare Survey visual layout from a squeezed split pane to an adaptive N-up grid with the selected primary first, backed by the ordered presentation contract and verified with sample photos through Computer Use.
 - `a6a7d88`: replaced the compact saved-search popover with a Smart Collection builder live mockup that shows current filter rules, filtered match count, suggestion chips, starred state, and the existing dynamic query save action.
+- `b5dd2df`: replaced the static culling Assist placeholder with a selected-frame `TESTSTRIP READS` verdict pill backed by persisted evaluation signals and tested signal prioritization.
 
 ## Product Decisions To Preserve
 
@@ -237,6 +238,7 @@ Current behavior:
 - HTTP responses can be raw JSON or prose/fence-wrapped JSON; the provider extracts the JSON object.
 - Retry behavior exists for transient transport failures and retryable response statuses.
 - Evaluation output is persisted as typed `EvaluationSignal` rows with provider/model/version/settings provenance.
+- Selected-frame evaluation signals now feed a compact culling verdict presentation so the rapid-cull header can show a real `TESTSTRIP READS` state instead of a static placeholder.
 - `TeststripBench local-http-smoke <endpoint> <model> <image> [timeout]` exercises LM Studio/Ollama-style endpoints.
 
 ### UI And Automation
@@ -268,7 +270,7 @@ Current behavior:
 - Active import work shows the shared progress banner immediately, even when the grid has no visible assets yet.
 - Completed imports show a compact summary banner with the imported photo count, optional preview-failure count, Open action for the imported output set, Cull action that starts a culling work session from that set, and dismiss behavior.
 - Folder and card import entrypoints refuse duplicate import submissions while an import is already running.
-- Culling sessions now start and reopen in loupe view with a culling header, reviewed-progress bar, pick/reject counts, stable rating/label/flag command rail, and visible frame position.
+- Culling sessions now start and reopen in loupe view with a culling header, reviewed-progress bar, pick/reject counts, selected-frame `TESTSTRIP READS` verdict, stable rating/label/flag command rail, and visible frame position.
 - Ratings, flags, labels, and keywords have app-model/catalog plumbing.
 - Keyboard culling probe verifies selecting a thumbnail, clearing rating, sending `5`, and seeing `Rating: 5` in the inspector.
 - Grid activation and selected-thumbnail feedback AX probes exist.
@@ -477,7 +479,8 @@ Teststrip reaches usable alpha when a photographer can:
 
 **Work:**
 
-- [ ] Promote evaluation results into user-visible signal groups: technical quality, faces, OCR, objects/content, color/look, and provider provenance.
+- [x] Promote selected-frame evaluation signals into the rapid-cull `TESTSTRIP READS` verdict surface with provider confidence detail.
+- [ ] Promote evaluation results into fuller user-visible signal groups: technical quality, faces, OCR, objects/content, color/look, and provider provenance.
 - [ ] Add People/face grouping data model only after deciding the smallest useful grouping behavior. Do not imply Apple Photos-level identity recognition unless Teststrip actually owns clustering and naming.
 - [ ] Add review filters for unevaluated, faces found, OCR found, likely issues, and provider failures.
 - [ ] Add cancellation-aware provider execution or worker-level cancellation behavior for slow local HTTP calls.
