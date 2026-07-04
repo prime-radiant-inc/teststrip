@@ -184,9 +184,7 @@ public struct LibraryImportService: Sendable {
             }
             return Self.importPreviewLevels.map { PreviewGenerationItem(assetID: asset.id, level: $0) }
         }
-        for item in previewItems {
-            try repository.recordPreviewGenerationPending(item)
-        }
+        try repository.recordPreviewGenerationPending(previewItems)
 
         progress?(LibraryImportProgress(
             completedUnitCount: assets.count,

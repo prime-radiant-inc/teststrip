@@ -28,9 +28,9 @@ public struct XMPSidecarStore: Sendable {
             return primarySidecarURL
         }
 
-        guard let adobeStyleSidecarURL = unambiguousAdobeStyleSidecarURL(forOriginalAt: originalURL),
-              FileManager.default.fileExists(atPath: adobeStyleSidecarURL.path)
-        else {
+        guard let adobeStyleSidecarURL = adobeStyleSidecarURL(forOriginalAt: originalURL),
+              FileManager.default.fileExists(atPath: adobeStyleSidecarURL.path),
+              !hasSiblingWithSameBasename(as: originalURL) else {
             return nil
         }
         return adobeStyleSidecarURL
@@ -60,13 +60,10 @@ public struct XMPSidecarStore: Sendable {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    private func unambiguousAdobeStyleSidecarURL(forOriginalAt originalURL: URL) -> URL? {
+    private func adobeStyleSidecarURL(forOriginalAt originalURL: URL) -> URL? {
         let primarySidecarURL = defaultSidecarURL(forOriginalAt: originalURL)
         let adobeStyleSidecarURL = originalURL.deletingPathExtension().appendingPathExtension("xmp")
         guard adobeStyleSidecarURL.path != primarySidecarURL.path else {
-            return nil
-        }
-        guard !hasSiblingWithSameBasename(as: originalURL) else {
             return nil
         }
         return adobeStyleSidecarURL

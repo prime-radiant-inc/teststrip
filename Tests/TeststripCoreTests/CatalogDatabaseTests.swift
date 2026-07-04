@@ -203,6 +203,27 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try reopenedRepository.pendingPreviewGenerationItems(), [item])
     }
 
+    func testPersistsPendingPreviewGenerationItemsInBatch() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-batch")
+        let catalogURL = directory.appendingPathComponent("catalog.sqlite")
+        let database = try CatalogDatabase.open(at: catalogURL)
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let items = [
+            PreviewGenerationItem(assetID: AssetID(rawValue: "asset-1"), level: .micro),
+            PreviewGenerationItem(assetID: AssetID(rawValue: "asset-1"), level: .grid),
+            PreviewGenerationItem(assetID: AssetID(rawValue: "asset-2"), level: .micro),
+            PreviewGenerationItem(assetID: AssetID(rawValue: "asset-2"), level: .grid)
+        ]
+
+        try repository.recordPreviewGenerationPending(items)
+        let reopenedDatabase = try CatalogDatabase.open(at: catalogURL)
+        try reopenedDatabase.migrate()
+        let reopenedRepository = CatalogRepository(database: reopenedDatabase)
+
+        XCTAssertEqual(try reopenedRepository.pendingPreviewGenerationItems(), items)
+    }
+
     func testLimitsPendingPreviewGenerationItems() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-limit")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

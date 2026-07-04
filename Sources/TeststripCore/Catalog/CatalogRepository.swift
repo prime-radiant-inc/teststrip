@@ -527,6 +527,15 @@ public final class CatalogRepository {
         )
     }
 
+    public func recordPreviewGenerationPending(_ items: [PreviewGenerationItem]) throws {
+        guard !items.isEmpty else { return }
+        try database.transaction {
+            for item in items {
+                try recordPreviewGenerationPending(item)
+            }
+        }
+    }
+
     public func recordPreviewGenerationFailure(
         assetID: AssetID,
         level: PreviewLevel,
