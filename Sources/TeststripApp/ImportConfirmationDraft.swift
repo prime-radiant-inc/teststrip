@@ -1,19 +1,52 @@
 import Foundation
 import TeststripCore
 
-enum ImportSourcePreflight {
-    static func blockingReason(for sourceURL: URL, fileManager: FileManager = .default) -> String? {
+private enum ImportFolderPreflight {
+    static func blockingReason(
+        for folderURL: URL,
+        label: String,
+        requiresReadableAccess: Bool,
+        requiresWritableAccess: Bool,
+        fileManager: FileManager = .default
+    ) -> String? {
         var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: sourceURL.path, isDirectory: &isDirectory) else {
-            return "Source folder is missing"
+        guard fileManager.fileExists(atPath: folderURL.path, isDirectory: &isDirectory) else {
+            return "\(label) folder is missing"
         }
         guard isDirectory.boolValue else {
-            return "Source is not a folder"
+            return "\(label) is not a folder"
         }
-        guard fileManager.isReadableFile(atPath: sourceURL.path) else {
-            return "Source folder is not readable"
+        if requiresReadableAccess, !fileManager.isReadableFile(atPath: folderURL.path) {
+            return "\(label) folder is not readable"
+        }
+        if requiresWritableAccess, !fileManager.isWritableFile(atPath: folderURL.path) {
+            return "\(label) folder is not writable"
         }
         return nil
+    }
+}
+
+enum ImportSourcePreflight {
+    static func blockingReason(for sourceURL: URL, fileManager: FileManager = .default) -> String? {
+        ImportFolderPreflight.blockingReason(
+            for: sourceURL,
+            label: "Source",
+            requiresReadableAccess: true,
+            requiresWritableAccess: false,
+            fileManager: fileManager
+        )
+    }
+}
+
+enum ImportDestinationPreflight {
+    static func blockingReason(for destinationURL: URL, fileManager: FileManager = .default) -> String? {
+        ImportFolderPreflight.blockingReason(
+            for: destinationURL,
+            label: "Destination",
+            requiresReadableAccess: false,
+            requiresWritableAccess: true,
+            fileManager: fileManager
+        )
     }
 }
 

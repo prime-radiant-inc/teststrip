@@ -4118,6 +4118,10 @@ public final class AppModel {
             failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: blockingReason)
             return
         }
+        if let blockingReason = ImportDestinationPreflight.blockingReason(for: destinationRoot) {
+            failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: blockingReason)
+            return
+        }
         errorMessage = nil
         statusMessage = "Importing \(source.lastPathComponent)..."
         if workerSupervisor != nil {
