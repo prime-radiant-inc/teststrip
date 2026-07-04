@@ -707,61 +707,64 @@ public final class AppModel {
         if let selectedAssetSet {
             chips.append(selectedAssetSet.name)
         }
-        let trimmedSearch = librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedSearch.isEmpty {
-            chips.append("Search: \(trimmedSearch)")
+        let searchIntent = LibrarySearchIntent.parse(librarySearchText)
+        if let residualSearch = searchIntent.residualText {
+            chips.append("Search: \(residualSearch)")
+        }
+        for chip in searchIntent.chips {
+            Self.append(chip, to: &chips)
         }
         let trimmedKeyword = keywordFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedKeyword.isEmpty {
-            chips.append("Keyword: \(trimmedKeyword)")
+            Self.append("Keyword: \(trimmedKeyword)", to: &chips)
         }
         let trimmedFolder = folderFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedFolder.isEmpty {
-            chips.append("Folder: \(URL(fileURLWithPath: trimmedFolder).lastPathComponent)")
+            Self.append("Folder: \(URL(fileURLWithPath: trimmedFolder).lastPathComponent)", to: &chips)
         }
         if let minimumRatingFilter {
-            chips.append("Rating >= \(minimumRatingFilter)")
+            Self.append("Rating >= \(minimumRatingFilter)", to: &chips)
         }
         if let flagFilter {
-            chips.append(flagFilter.rawValue.capitalized)
+            Self.append(flagFilter.rawValue.capitalized, to: &chips)
         }
         if let colorLabelFilter {
-            chips.append("\(colorLabelFilter.rawValue.capitalized) Label")
+            Self.append("\(colorLabelFilter.rawValue.capitalized) Label", to: &chips)
         }
         let trimmedCamera = cameraFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedCamera.isEmpty {
-            chips.append("Camera: \(trimmedCamera)")
+            Self.append("Camera: \(trimmedCamera)", to: &chips)
         }
         let trimmedLens = lensFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedLens.isEmpty {
-            chips.append("Lens: \(trimmedLens)")
+            Self.append("Lens: \(trimmedLens)", to: &chips)
         }
         if let minimumISOFilter {
-            chips.append("ISO >= \(minimumISOFilter)")
+            Self.append("ISO >= \(minimumISOFilter)", to: &chips)
         }
         if let captureDateStartFilter {
-            chips.append("From \(captureDateStartFilter.formatted(date: .abbreviated, time: .omitted))")
+            Self.append("From \(captureDateStartFilter.formatted(date: .abbreviated, time: .omitted))", to: &chips)
         }
         if let captureDateEndFilter {
-            chips.append("Before \(captureDateEndFilter.formatted(date: .abbreviated, time: .omitted))")
+            Self.append("Before \(captureDateEndFilter.formatted(date: .abbreviated, time: .omitted))", to: &chips)
         }
         if let availabilityFilter {
-            chips.append("Source: \(availabilityFilter.rawValue.capitalized)")
+            Self.append("Source: \(availabilityFilter.rawValue.capitalized)", to: &chips)
         }
         if let evaluationKindFilter {
-            chips.append("Signal: \(evaluationKindFilter.displayName)")
+            Self.append("Signal: \(evaluationKindFilter.displayName)", to: &chips)
         }
         if needsKeywordsFilter {
-            chips.append("Needs Keywords")
+            Self.append("Needs Keywords", to: &chips)
         }
         if needsEvaluationFilter {
-            chips.append("Needs Evaluation")
+            Self.append("Needs Evaluation", to: &chips)
         }
         if metadataSyncPendingFilter {
-            chips.append("XMP Pending")
+            Self.append("XMP Pending", to: &chips)
         }
         if metadataSyncConflictFilter {
-            chips.append("XMP Conflicts")
+            Self.append("XMP Conflicts", to: &chips)
         }
         return chips
     }
@@ -797,55 +800,58 @@ public final class AppModel {
 
     public var suggestedSavedSearchName: String {
         var parts: [String] = []
-        let trimmedSearch = librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedSearch.isEmpty {
-            parts.append(trimmedSearch)
+        let searchIntent = LibrarySearchIntent.parse(librarySearchText)
+        if let residualSearch = searchIntent.residualText {
+            parts.append(residualSearch)
+        }
+        for namePart in searchIntent.nameParts {
+            Self.append(namePart, to: &parts)
         }
         let trimmedKeyword = keywordFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedKeyword.isEmpty {
-            parts.append(trimmedKeyword)
+            Self.append(trimmedKeyword, to: &parts)
         }
         let trimmedFolder = folderFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedFolder.isEmpty {
-            parts.append(URL(fileURLWithPath: trimmedFolder).lastPathComponent)
+            Self.append(URL(fileURLWithPath: trimmedFolder).lastPathComponent, to: &parts)
         }
         if let minimumRatingFilter {
-            parts.append("\(minimumRatingFilter)+ Stars")
+            Self.append("\(minimumRatingFilter)+ Stars", to: &parts)
         }
         if let flagFilter {
-            parts.append(flagFilter.rawValue.capitalized)
+            Self.append(flagFilter.rawValue.capitalized, to: &parts)
         }
         if let colorLabelFilter {
-            parts.append("\(colorLabelFilter.rawValue.capitalized) Label")
+            Self.append("\(colorLabelFilter.rawValue.capitalized) Label", to: &parts)
         }
         let trimmedCamera = cameraFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedCamera.isEmpty {
-            parts.append(trimmedCamera)
+            Self.append(trimmedCamera, to: &parts)
         }
         let trimmedLens = lensFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedLens.isEmpty {
-            parts.append(trimmedLens)
+            Self.append(trimmedLens, to: &parts)
         }
         if let minimumISOFilter {
-            parts.append("ISO \(minimumISOFilter)+")
+            Self.append("ISO \(minimumISOFilter)+", to: &parts)
         }
         if let availabilityFilter {
-            parts.append(availabilityFilter.rawValue.capitalized)
+            Self.append(availabilityFilter.rawValue.capitalized, to: &parts)
         }
         if let evaluationKindFilter {
-            parts.append("\(evaluationKindFilter.displayName) Signal")
+            Self.append("\(evaluationKindFilter.displayName) Signal", to: &parts)
         }
         if needsKeywordsFilter {
-            parts.append("Needs Keywords")
+            Self.append("Needs Keywords", to: &parts)
         }
         if needsEvaluationFilter {
-            parts.append("Needs Evaluation")
+            Self.append("Needs Evaluation", to: &parts)
         }
         if metadataSyncPendingFilter {
-            parts.append("XMP Pending")
+            Self.append("XMP Pending", to: &parts)
         }
         if metadataSyncConflictFilter {
-            parts.append("XMP Conflicts")
+            Self.append("XMP Conflicts", to: &parts)
         }
         return parts.isEmpty ? "Saved Search" : parts.joined(separator: " ")
     }
@@ -3108,66 +3114,79 @@ public final class AppModel {
         totalAssetCount = page.totalAssetCount
     }
 
+    private static func append(_ predicate: SetQuery.Predicate, to predicates: inout [SetQuery.Predicate]) {
+        guard !predicates.contains(predicate) else { return }
+        predicates.append(predicate)
+    }
+
+    private static func append(_ value: String, to values: inout [String]) {
+        guard !values.contains(value) else { return }
+        values.append(value)
+    }
+
     private func currentLibraryQuery() -> SetQuery? {
         var predicates: [SetQuery.Predicate] = []
         if let selectedDynamicSetQuery {
             predicates.append(contentsOf: selectedDynamicSetQuery.predicates)
         }
-        let trimmedSearch = librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedSearch.isEmpty {
-            predicates.append(.text(trimmedSearch))
+        let searchIntent = LibrarySearchIntent.parse(librarySearchText)
+        if let residualSearch = searchIntent.residualText {
+            Self.append(.text(residualSearch), to: &predicates)
+        }
+        for predicate in searchIntent.predicates {
+            Self.append(predicate, to: &predicates)
         }
         let trimmedKeyword = keywordFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedKeyword.isEmpty {
-            predicates.append(.keyword(trimmedKeyword))
+            Self.append(.keyword(trimmedKeyword), to: &predicates)
         }
         let trimmedFolder = folderFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedFolder.isEmpty {
-            predicates.append(.folderPrefix(trimmedFolder))
+            Self.append(.folderPrefix(trimmedFolder), to: &predicates)
         }
         if let minimumRatingFilter {
-            predicates.append(.ratingAtLeast(minimumRatingFilter))
+            Self.append(.ratingAtLeast(minimumRatingFilter), to: &predicates)
         }
         if let flagFilter {
-            predicates.append(.flag(flagFilter))
+            Self.append(.flag(flagFilter), to: &predicates)
         }
         if let colorLabelFilter {
-            predicates.append(.colorLabel(colorLabelFilter))
+            Self.append(.colorLabel(colorLabelFilter), to: &predicates)
         }
         let trimmedCamera = cameraFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedCamera.isEmpty {
-            predicates.append(.camera(trimmedCamera))
+            Self.append(.camera(trimmedCamera), to: &predicates)
         }
         let trimmedLens = lensFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedLens.isEmpty {
-            predicates.append(.lens(trimmedLens))
+            Self.append(.lens(trimmedLens), to: &predicates)
         }
         if let minimumISOFilter, minimumISOFilter > 0 {
-            predicates.append(.isoAtLeast(minimumISOFilter))
+            Self.append(.isoAtLeast(minimumISOFilter), to: &predicates)
         }
         if let captureDateStartFilter {
-            predicates.append(.capturedAtOrAfter(captureDateStartFilter))
+            Self.append(.capturedAtOrAfter(captureDateStartFilter), to: &predicates)
         }
         if let captureDateEndFilter {
-            predicates.append(.capturedBefore(captureDateEndFilter))
+            Self.append(.capturedBefore(captureDateEndFilter), to: &predicates)
         }
         if let availabilityFilter {
-            predicates.append(.availability(availabilityFilter))
+            Self.append(.availability(availabilityFilter), to: &predicates)
         }
         if let evaluationKindFilter {
-            predicates.append(.evaluationKind(evaluationKindFilter))
+            Self.append(.evaluationKind(evaluationKindFilter), to: &predicates)
         }
         if needsKeywordsFilter {
-            predicates.append(.missingKeywords)
+            Self.append(.missingKeywords, to: &predicates)
         }
         if needsEvaluationFilter {
-            predicates.append(.unevaluated)
+            Self.append(.unevaluated, to: &predicates)
         }
         if metadataSyncPendingFilter {
-            predicates.append(.metadataSyncPending)
+            Self.append(.metadataSyncPending, to: &predicates)
         }
         if metadataSyncConflictFilter {
-            predicates.append(.metadataSyncConflict)
+            Self.append(.metadataSyncConflict, to: &predicates)
         }
         return predicates.isEmpty ? nil : SetQuery(predicates: predicates)
     }

@@ -1671,6 +1671,75 @@ final class AppModelTests: XCTestCase {
         ])))
     }
 
+    func testApplyingLibrarySearchIntentFiltersCatalogResults() throws {
+        let keeper = makeAsset(
+            id: "keeper",
+            path: "/Photos/Wedding/ceremony-keeper.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let lowerRatedPick = makeAsset(
+            id: "lower-rated",
+            path: "/Photos/Wedding/ceremony-lower-rated.jpg",
+            rating: 4,
+            flag: .pick
+        )
+        let rejected = makeAsset(
+            id: "rejected",
+            path: "/Photos/Wedding/ceremony-rejected.jpg",
+            rating: 5,
+            flag: .reject
+        )
+        let keyworded = makeAsset(
+            id: "keyworded",
+            path: "/Photos/Wedding/ceremony-keyworded.jpg",
+            rating: 5,
+            flag: .pick,
+            keywords: ["portfolio"]
+        )
+        let travel = makeAsset(
+            id: "travel",
+            path: "/Photos/Travel/mountain.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-library-search-intent",
+            assets: [keeper, lowerRatedPick, rejected, keyworded, travel]
+        )
+
+        model.librarySearchText = "ceremony picks 5 stars needs keywords"
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
+    func testSavingLibrarySearchIntentStoresStructuredPredicates() throws {
+        let keeper = makeAsset(
+            id: "keeper",
+            path: "/Photos/Wedding/ceremony-keeper.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-library-search-intent-save",
+            assets: [keeper]
+        )
+
+        model.librarySearchText = "ceremony picks 5 stars needs keywords"
+
+        let savedSet = try model.saveCurrentLibraryQuery(named: "Ceremony Keepers")
+
+        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [
+            .text("ceremony"),
+            .flag(.pick),
+            .ratingAtLeast(5),
+            .missingKeywords
+        ])))
+        XCTAssertEqual(model.librarySearchText, "")
+    }
+
     func testApplyingLibraryFiltersUsesTechnicalMetadata() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-technical-filters")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -2580,6 +2649,20 @@ final class AppModelTests: XCTestCase {
             "Camera: Sony",
             "ISO >= 800"
         ])
+    }
+
+    func testActiveLibraryFilterChipsIncludeParsedSearchIntent() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        model.librarySearchText = " ceremony picks camera:Canon keyword:portfolio "
+        model.keywordFilterText = "portfolio"
+
+        XCTAssertEqual(model.activeLibraryFilterChips, [
+            "Search: ceremony",
+            "Pick",
+            "Camera: Canon",
+            "Keyword: portfolio"
+        ])
+        XCTAssertEqual(model.suggestedSavedSearchName, "ceremony Pick Canon portfolio")
     }
 
     func testSavingSelectedAssetCreatesSelectedManualSet() throws {

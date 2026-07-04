@@ -88,7 +88,7 @@ public enum LiveMockupPlaceholders {
         id: "search.agentic",
         title: "Agentic search",
         intendedBehavior: "Accept natural-language catalog questions and translate them into searches, sets, or review actions.",
-        currentFallback: "Plain catalog text search plus explicit filter controls."
+        currentFallback: "Deterministic parsing for known photographer terms plus plain text fallback and explicit filter controls."
     )
 
     public static let searchRefine = LiveMockupPlaceholder(
@@ -232,7 +232,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Copilot",
             status: .partial,
             placeholder: .copilotLibrary,
-            currentImplementation: "Agentic search copy is wired to plain catalog search/filtering, review queues, and visible evaluation signals; natural-language planning and autonomous actions are not built."
+            currentImplementation: "Agentic search copy is wired to deterministic catalog query parsing, explicit filters, review queues, and visible evaluation signals; natural-language planning and autonomous actions are not built."
         ),
         LiveMockupDesignSurface(
             designID: "1c",
@@ -302,7 +302,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Search",
             status: .partial,
             placeholder: .agenticSearch,
-            currentImplementation: "Search route preserves catalog query/filter state, chips, saved-set counts, and results grid; natural-language parsing and suggested refinements are not built."
+            currentImplementation: "Search route preserves catalog query/filter state, parsed chips, saved-set counts, and results grid; suggested refinements and broader natural-language planning are not built."
         ),
         LiveMockupDesignSurface(
             designID: "5d",
