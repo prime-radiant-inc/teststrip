@@ -237,10 +237,10 @@ public struct WorkerCommandExecutor {
     private func markUnavailableOriginalIfNeeded(_ asset: Asset) throws -> SourceAvailability? {
         let availability = SourceAvailabilityProbe().availability(for: asset)
         switch availability {
-        case .offline, .missing, .moved:
+        case .offline, .missing:
             try repository.updateAvailability(assetID: asset.id, availability: availability)
             return availability
-        case .online, .stale:
+        case .online, .moved, .stale:
             return nil
         }
     }

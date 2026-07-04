@@ -88,6 +88,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         guard !requests.isEmpty else { return }
 
         for request in requests {
+            queue.removeInactiveItems(id: request.item.id)
             commandsByItemID[request.item.id] = request.command
             queue.enqueue(request.item, placement: request.placement)
         }

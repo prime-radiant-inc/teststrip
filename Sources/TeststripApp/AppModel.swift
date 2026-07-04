@@ -1967,7 +1967,8 @@ public final class AppModel {
             throw TeststripError.invalidState("worker supervisor is not configured")
         }
         let itemID = Self.previewWorkItemID(assetID: assetID, level: level)
-        if backgroundWorkQueue.item(id: itemID) != nil {
+        if let existingItem = backgroundWorkQueue.item(id: itemID),
+           Self.isActiveBackgroundWorkStatus(existingItem.status) {
             if placement == .front, try workerSupervisor.promoteQueuedItem(id: itemID) {
                 syncBackgroundWorkQueueFromSupervisor()
             }
@@ -2350,14 +2351,9 @@ public final class AppModel {
 
     private func refreshLoadedAssetAvailabilityForPreviewFailures(_ itemIDs: Set<WorkSessionID>) {
         let assetIDs = itemIDs.compactMap(Self.previewAssetID)
-        guard !assetIDs.isEmpty, let catalog else { return }
+        guard !assetIDs.isEmpty, catalog != nil else { return }
         do {
-            for assetID in assetIDs {
-                let updatedAsset = try catalog.repository.asset(id: assetID)
-                if let index = assets.firstIndex(where: { $0.id == assetID }) {
-                    assets[index] = updatedAsset
-                }
-            }
+            try reload()
             try refreshSourceAvailabilitySummaries()
         } catch {
             errorMessage = error.localizedDescription
@@ -2422,7 +2418,8 @@ public final class AppModel {
 
     private static func previewGenerationWorkItemIDs(in queue: BackgroundWorkQueue) -> Set<WorkSessionID> {
         Set(queue.items.compactMap { item in
-            guard item.kind == .previewGeneration else { return nil }
+            guard item.kind == .previewGeneration,
+                  Self.isActiveBackgroundWorkStatus(item.status) else { return nil }
             return item.id
         })
     }

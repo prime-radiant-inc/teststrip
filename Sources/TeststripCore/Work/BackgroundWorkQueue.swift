@@ -62,6 +62,12 @@ public struct BackgroundWorkQueue: Equatable, Sendable {
         items.append(item)
     }
 
+    public mutating func removeInactiveItems(id: WorkSessionID) {
+        items.removeAll { item in
+            item.id == id && !Self.isActiveStatus(item.status)
+        }
+    }
+
     public func item(id: WorkSessionID) -> BackgroundWorkItem? {
         items.first { $0.id == id }
     }
@@ -143,6 +149,10 @@ public struct BackgroundWorkQueue: Equatable, Sendable {
         for index in items.indices where [.queued, .running, .paused].contains(items[index].status) {
             items[index].status = .cancelled
         }
+    }
+
+    private static func isActiveStatus(_ status: WorkSessionStatus) -> Bool {
+        [.queued, .running, .paused].contains(status)
     }
 
     public mutating func cancel(id: WorkSessionID) {
