@@ -48,4 +48,53 @@ final class ImportConfirmationDraftTests: XCTestCase {
             detail: "Copy, preview, and metadata work remains visible, pausable, and cancellable."
         )))
     }
+
+    func testSourceSummaryCountsSupportedPhotosAndBytes() throws {
+        let directory = try makeTemporaryDirectory(named: "import-source-summary")
+        let nested = directory.appendingPathComponent("Nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        try Data([1, 2, 3]).write(to: directory.appendingPathComponent("first.jpg"))
+        try Data([4, 5, 6, 7, 8]).write(to: nested.appendingPathComponent("second.CR2"))
+        try Data("notes".utf8).write(to: directory.appendingPathComponent("notes.txt"))
+
+        let summary = ImportSourceSummary.scan(
+            sourceURL: directory,
+            supportedExtensions: ["jpg", "cr2"],
+            limit: 20
+        )
+
+        XCTAssertEqual(summary.photoCount, 2)
+        XCTAssertEqual(summary.byteCount, 8)
+        XCTAssertFalse(summary.reachedLimit)
+        XCTAssertEqual(summary.countText, "2 supported photos")
+        XCTAssertEqual(summary.byteCountText, "8 bytes")
+        XCTAssertEqual(summary.detailText, "Ready to catalog from import-source-summary")
+    }
+
+    func testSourceSummaryStopsAtScanLimit() throws {
+        let directory = try makeTemporaryDirectory(named: "import-source-summary-limit")
+        for index in 0..<3 {
+            try Data([UInt8(index)]).write(to: directory.appendingPathComponent("frame-\(index).jpg"))
+        }
+
+        let summary = ImportSourceSummary.scan(
+            sourceURL: directory,
+            supportedExtensions: ["jpg"],
+            limit: 2
+        )
+
+        XCTAssertEqual(summary.photoCount, 2)
+        XCTAssertEqual(summary.byteCount, 2)
+        XCTAssertTrue(summary.reachedLimit)
+        XCTAssertEqual(summary.countText, "2+ supported photos")
+        XCTAssertEqual(summary.detailText, "Preview counted the first 2 supported photos")
+    }
+
+    private func makeTemporaryDirectory(named name: String) throws -> URL {
+        let parent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-import-confirmation-\(UUID().uuidString)", isDirectory: true)
+        let directory = parent.appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
 }

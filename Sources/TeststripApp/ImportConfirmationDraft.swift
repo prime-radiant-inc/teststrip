@@ -1,4 +1,90 @@
 import Foundation
+import TeststripCore
+
+struct ImportSourceSummary: Equatable {
+    static let defaultScanLimit = 300
+
+    var sourceURL: URL
+    var photoCount: Int
+    var byteCount: Int64
+    var reachedLimit: Bool
+    var unavailableReason: String?
+
+    static func scan(
+        sourceURL: URL,
+        supportedExtensions: Set<String> = ImageIODecodeProvider.supportedExtensions,
+        limit: Int = defaultScanLimit
+    ) -> ImportSourceSummary {
+        let boundedLimit = max(1, limit)
+        let supportedExtensions = Set(supportedExtensions.map { $0.lowercased() })
+        guard let enumerator = FileManager.default.enumerator(
+            at: sourceURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return ImportSourceSummary(
+                sourceURL: sourceURL,
+                photoCount: 0,
+                byteCount: 0,
+                reachedLimit: false,
+                unavailableReason: "Source will be scanned when import starts"
+            )
+        }
+
+        var photoCount = 0
+        var byteCount: Int64 = 0
+        var reachedLimit = false
+        for case let fileURL as URL in enumerator {
+            guard supportedExtensions.contains(fileURL.pathExtension.lowercased()) else { continue }
+            let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            guard values?.isRegularFile == true else { continue }
+            if photoCount == boundedLimit {
+                reachedLimit = true
+                break
+            }
+            photoCount += 1
+            byteCount += Int64(values?.fileSize ?? 0)
+        }
+
+        return ImportSourceSummary(
+            sourceURL: sourceURL,
+            photoCount: photoCount,
+            byteCount: byteCount,
+            reachedLimit: reachedLimit,
+            unavailableReason: nil
+        )
+    }
+
+    var countText: String {
+        if let unavailableReason {
+            return unavailableReason
+        }
+        if photoCount == 0 {
+            return "No supported photos found"
+        }
+        let suffix = reachedLimit ? "+" : ""
+        let noun = photoCount == 1 ? "photo" : "photos"
+        return "\(photoCount)\(suffix) supported \(noun)"
+    }
+
+    var byteCountText: String {
+        if unavailableReason != nil {
+            return "Unknown"
+        }
+        return ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file)
+    }
+
+    var detailText: String {
+        if let unavailableReason {
+            return unavailableReason
+        }
+        if reachedLimit {
+            return "Preview counted the first \(photoCount) supported photos"
+        }
+        let sourceName = sourceURL.lastPathComponent.isEmpty ? sourceURL.path : sourceURL.lastPathComponent
+        return "Ready to catalog from \(sourceName)"
+    }
+}
 
 struct ImportConfirmationDraft: Equatable, Identifiable {
     enum Mode: Equatable {
@@ -9,6 +95,7 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     var mode: Mode
     var sourceURL: URL
     var destinationRootURL: URL?
+    var sourceSummary: ImportSourceSummary
 
     var id: String {
         [
@@ -19,11 +106,21 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     }
 
     static func folder(_ sourceURL: URL) -> ImportConfirmationDraft {
-        ImportConfirmationDraft(mode: .folder, sourceURL: sourceURL)
+        ImportConfirmationDraft(
+            mode: .folder,
+            sourceURL: sourceURL,
+            destinationRootURL: nil,
+            sourceSummary: ImportSourceSummary.scan(sourceURL: sourceURL)
+        )
     }
 
     static func card(source sourceURL: URL, destinationRoot destinationRootURL: URL) -> ImportConfirmationDraft {
-        ImportConfirmationDraft(mode: .card, sourceURL: sourceURL, destinationRootURL: destinationRootURL)
+        ImportConfirmationDraft(
+            mode: .card,
+            sourceURL: sourceURL,
+            destinationRootURL: destinationRootURL,
+            sourceSummary: ImportSourceSummary.scan(sourceURL: sourceURL)
+        )
     }
 
     var title: String {

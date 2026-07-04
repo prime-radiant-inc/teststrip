@@ -948,6 +948,12 @@ struct LibraryGridView: View {
                 if let destinationName = draft.destinationName {
                     LabeledContent("Destination", value: destinationName)
                 }
+                LabeledContent("Photos", value: draft.sourceSummary.countText)
+                LabeledContent("Size", value: draft.sourceSummary.byteCountText)
+                Text(draft.sourceSummary.detailText)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -1487,9 +1493,8 @@ struct LibraryGridView: View {
     private func importFolderPath() {
         do {
             let folderURL = try importPathDraft.resolveFolderURL()
-            FolderSelectionPanel.rememberImportFolder(folderURL)
             isShowingImportPathSheet = false
-            importFolder(folderURL)
+            importConfirmationDraft = .folder(folderURL)
         } catch {
             return
         }
