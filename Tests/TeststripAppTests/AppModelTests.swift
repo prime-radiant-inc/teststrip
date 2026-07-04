@@ -5154,7 +5154,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNotEqual(model.statusMessage, "Cancelled import")
     }
 
-    func testCancellingRunningEvaluationRestartsWorkerAndStartsNextQueuedWork() throws {
+    func testCancellingRunningLocalHTTPModelEvaluationRestartsWorkerAndStartsNextQueuedWork() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
             queue: BackgroundWorkQueue(maxRunningCount: 1),
@@ -5168,9 +5168,9 @@ final class AppModelTests: XCTestCase {
             workerSupervisor: supervisor
         )
         try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: evaluationAsset.id, level: .grid)))
-        try model.requestEvaluation(assetID: evaluationAsset.id, provider: "local-image-metrics")
+        try model.requestEvaluation(assetID: evaluationAsset.id, provider: "local-http-model")
         try model.requestPreview(assetID: previewAsset.id, level: .medium)
-        let evaluationID = WorkSessionID(rawValue: "evaluation-\(evaluationAsset.id.rawValue)-local-image-metrics")
+        let evaluationID = WorkSessionID(rawValue: "evaluation-\(evaluationAsset.id.rawValue)-local-http-model")
         let previewID = WorkSessionID(rawValue: "preview-\(previewAsset.id.rawValue)-medium")
 
         model.cancelBackgroundWork(id: evaluationID)
@@ -5178,7 +5178,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.item(id: evaluationID)?.status, .cancelled)
         XCTAssertEqual(model.backgroundWorkQueue.item(id: previewID)?.status, .running)
         XCTAssertEqual(try transport.commands(), [
-            .runEvaluation(assetID: evaluationAsset.id, provider: "local-image-metrics"),
+            .runEvaluation(assetID: evaluationAsset.id, provider: "local-http-model"),
             .cancelAll,
             .generatePreview(assetID: previewAsset.id, level: .medium)
         ])
