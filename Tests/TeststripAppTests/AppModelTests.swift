@@ -1142,11 +1142,14 @@ final class AppModelTests: XCTestCase {
         model.enqueueBackgroundWork(item)
 
         model.pauseBackgroundWork()
-        XCTAssertEqual(model.visibleWorkActivity?.status, .paused)
+        XCTAssertEqual(model.visibleWorkActivity?.status, .running)
+        XCTAssertFalse(model.canPauseBackgroundWork)
         XCTAssertTrue(model.canResumeBackgroundWork)
 
         model.resumeBackgroundWork()
         XCTAssertEqual(model.visibleWorkActivity?.status, .running)
+        XCTAssertTrue(model.canPauseBackgroundWork)
+        XCTAssertFalse(model.canResumeBackgroundWork)
 
         model.cancelBackgroundWork()
         XCTAssertEqual(model.visibleWorkActivity?.status, .cancelled)

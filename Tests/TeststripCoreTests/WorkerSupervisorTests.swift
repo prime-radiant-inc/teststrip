@@ -390,6 +390,8 @@ final class WorkerSupervisorTests: XCTestCase {
         try supervisor.enqueue(item, command: command)
 
         try supervisor.pause()
+        XCTAssertTrue(supervisor.queue.isPaused)
+        XCTAssertEqual(supervisor.queue.item(id: item.id)?.status, .running)
         timeoutScheduler.fireNext()
 
         XCTAssertEqual(transport.terminateCount, 1)
@@ -408,9 +410,11 @@ final class WorkerSupervisorTests: XCTestCase {
         try supervisor.enqueue(item, command: command)
 
         try supervisor.pause()
-        XCTAssertEqual(supervisor.queue.item(id: item.id)?.status, .paused)
+        XCTAssertTrue(supervisor.queue.isPaused)
+        XCTAssertEqual(supervisor.queue.item(id: item.id)?.status, .running)
 
         try supervisor.resume()
+        XCTAssertFalse(supervisor.queue.isPaused)
         XCTAssertEqual(supervisor.queue.item(id: item.id)?.status, .running)
 
         try supervisor.cancelAll()

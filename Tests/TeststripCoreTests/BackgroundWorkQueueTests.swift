@@ -126,8 +126,8 @@ final class BackgroundWorkQueueTests: XCTestCase {
         XCTAssertEqual(queue.item(id: second.id)?.status, .running)
     }
 
-    func testPauseAndResumeControlRunningWork() {
-        var queue = BackgroundWorkQueue(maxRunningCount: 2)
+    func testPauseKeepsRunningWorkActiveAndPreventsStartingQueuedWork() {
+        var queue = BackgroundWorkQueue(maxRunningCount: 1)
         let first = BackgroundWorkItem.testItem(id: "first")
         let second = BackgroundWorkItem.testItem(id: "second")
         queue.enqueue(first)
@@ -137,13 +137,17 @@ final class BackgroundWorkQueueTests: XCTestCase {
         queue.pause()
 
         XCTAssertTrue(queue.isPaused)
-        XCTAssertEqual(queue.item(id: first.id)?.status, .paused)
-        XCTAssertEqual(queue.item(id: second.id)?.status, .paused)
+        XCTAssertEqual(queue.item(id: first.id)?.status, .running)
+        XCTAssertEqual(queue.item(id: second.id)?.status, .queued)
+
+        queue.markCompleted(id: first.id)
+
+        XCTAssertEqual(queue.item(id: first.id)?.status, .completed)
+        XCTAssertEqual(queue.item(id: second.id)?.status, .queued)
 
         queue.resume()
 
         XCTAssertFalse(queue.isPaused)
-        XCTAssertEqual(queue.item(id: first.id)?.status, .running)
         XCTAssertEqual(queue.item(id: second.id)?.status, .running)
     }
 

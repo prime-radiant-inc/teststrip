@@ -120,9 +120,6 @@ public struct BackgroundWorkQueue: Equatable, Sendable {
 
     public mutating func pause() {
         isPaused = true
-        for index in items.indices where items[index].status == .running {
-            items[index].status = .paused
-        }
     }
 
     public mutating func resume() {

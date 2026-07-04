@@ -428,7 +428,8 @@ public final class AppModel {
     }
 
     public var canPauseBackgroundWork: Bool {
-        !backgroundWorkQueue.runningItems.isEmpty
+        !backgroundWorkQueue.isPaused
+            && backgroundWorkQueue.items.contains { [.queued, .running].contains($0.status) }
     }
 
     public var canResumeBackgroundWork: Bool {
