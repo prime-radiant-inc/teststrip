@@ -938,8 +938,11 @@ public final class AppModel {
             if Self.metadataSyncWorkChanged(from: previousQueue, to: queue) {
                 try? self?.refreshMetadataSyncState()
             }
-            if !Self.failedPreviewGenerationItemIDs(in: queue).isSubset(of: previousPreviewFailureIDs) {
+            let failedPreviewItemIDs = Self.failedPreviewGenerationItemIDs(in: queue)
+            let newFailedPreviewItemIDs = failedPreviewItemIDs.subtracting(previousPreviewFailureIDs)
+            if !newFailedPreviewItemIDs.isEmpty {
                 try? self?.refreshPreviewGenerationQueueStates()
+                self?.refreshLoadedAssetAvailabilityForPreviewFailures(newFailedPreviewItemIDs)
             }
             self?.releaseInactiveWorkerImportContexts(in: queue)
             self?.releaseInactiveEvaluationContexts(in: queue)
@@ -2340,6 +2343,22 @@ public final class AppModel {
             }
             try refreshSourceAvailabilitySummaries()
             try enqueuePendingPreviewGeneration()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshLoadedAssetAvailabilityForPreviewFailures(_ itemIDs: Set<WorkSessionID>) {
+        let assetIDs = itemIDs.compactMap(Self.previewAssetID)
+        guard !assetIDs.isEmpty, let catalog else { return }
+        do {
+            for assetID in assetIDs {
+                let updatedAsset = try catalog.repository.asset(id: assetID)
+                if let index = assets.firstIndex(where: { $0.id == assetID }) {
+                    assets[index] = updatedAsset
+                }
+            }
+            try refreshSourceAvailabilitySummaries()
         } catch {
             errorMessage = error.localizedDescription
         }

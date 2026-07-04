@@ -185,6 +185,9 @@ public struct WorkerCommandExecutor {
                     destinationURL: previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
                 )
             } catch {
+                if let availability = try markUnavailableOriginalIfNeeded(asset) {
+                    throw TeststripError.io("original is \(availability.rawValue) for \(Self.displayName(for: asset))")
+                }
                 try repository.recordPreviewGenerationFailure(
                     assetID: assetID,
                     level: level,
@@ -229,6 +232,17 @@ public struct WorkerCommandExecutor {
     private static func displayName(for asset: Asset) -> String {
         let name = asset.originalURL.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? asset.id.rawValue : name
+    }
+
+    private func markUnavailableOriginalIfNeeded(_ asset: Asset) throws -> SourceAvailability? {
+        let availability = SourceAvailabilityProbe().availability(for: asset)
+        switch availability {
+        case .offline, .missing, .moved:
+            try repository.updateAvailability(assetID: asset.id, availability: availability)
+            return availability
+        case .online, .stale:
+            return nil
+        }
     }
 
     private func refreshAvailability(assetID: AssetID) throws -> WorkerCommandResult {

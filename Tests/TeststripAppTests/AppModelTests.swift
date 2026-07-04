@@ -3979,6 +3979,33 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.previewGenerationQueueStates.first?.lastErrorMessage, "could not render preview")
     }
 
+    @MainActor
+    func testWorkerPreviewFailureRefreshesLoadedSourceAvailability() async throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let asset = makeAsset(id: "preview-failure-source-refresh", size: 1)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "preview-failure-source-refresh",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        try model.requestPreview(assetID: asset.id, level: .grid)
+        let itemID = WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-grid")
+        try repository.updateAvailability(assetID: asset.id, availability: .missing)
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.failed(
+            itemID: itemID,
+            message: "original is missing"
+        )))
+
+        try await waitForBackgroundWorkStatus(.failed, itemID: itemID, in: model)
+        XCTAssertEqual(model.selectedAsset?.availability, .missing)
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Sources" }?.rowTitles, ["Missing Originals"])
+    }
+
     func testVisibleLoupePreviewRequestsMediumThenLargeWhenNeitherIsCached() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

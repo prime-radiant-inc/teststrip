@@ -90,6 +90,70 @@ final class WorkerCommandExecutorTests: XCTestCase {
         ])
     }
 
+    func testGeneratePreviewCommandMarksOfflineOriginalWithoutBurningPreviewAttempt() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-preview-offline-source")
+        let source = URL(fileURLWithPath: "/Volumes/TeststripOffline-\(UUID().uuidString)/Job/source.jpg")
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "offline-volume",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .grid))
+        let executor = WorkerCommandExecutor(
+            repository: repository,
+            previewCache: PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        )
+
+        XCTAssertThrowsError(try executor.execute(.generatePreview(assetID: asset.id, level: .grid)))
+
+        XCTAssertEqual(try repository.asset(id: asset.id).availability, .offline)
+        let state = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .grid))
+        XCTAssertEqual(state.attemptCount, 0)
+        XCTAssertNil(state.lastAttemptedAt)
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: asset.id, level: .grid)
+        ])
+    }
+
+    func testGeneratePreviewCommandMarksMissingOriginalWithoutBurningPreviewAttempt() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-preview-missing-source")
+        let source = root.appendingPathComponent("missing-source.jpg")
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .grid))
+        let executor = WorkerCommandExecutor(
+            repository: repository,
+            previewCache: PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        )
+
+        XCTAssertThrowsError(try executor.execute(.generatePreview(assetID: asset.id, level: .grid)))
+
+        XCTAssertEqual(try repository.asset(id: asset.id).availability, .missing)
+        let state = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .grid))
+        XCTAssertEqual(state.attemptCount, 0)
+        XCTAssertNil(state.lastAttemptedAt)
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: asset.id, level: .grid)
+        ])
+    }
+
     func testRefreshAvailabilityCommandUpdatesCatalogSourceState() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-refresh-availability")
         let source = root.appendingPathComponent("source.jpg")
