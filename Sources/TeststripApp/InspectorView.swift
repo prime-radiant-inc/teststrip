@@ -12,6 +12,7 @@ struct InspectorAssetIdentity: Equatable {
     var extensionBadge: String?
     var availabilityText: String
     var ratingText: String
+    var capturedText: String?
 
     init(asset: Asset) {
         let extensionText = asset.originalURL.pathExtension.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -22,6 +23,7 @@ struct InspectorAssetIdentity: Equatable {
             : asset.originalURL.deletingPathExtension().lastPathComponent
         availabilityText = "Availability: \(asset.availability.rawValue)"
         ratingText = "Rating: \(asset.metadata.rating)"
+        capturedText = asset.technicalMetadata?.capturedAt?.formatted(date: .abbreviated, time: .shortened)
     }
 }
 
@@ -125,15 +127,40 @@ struct InspectorView: View {
     @ViewBuilder
     private func assetHeader(for asset: Asset) -> some View {
         let identity = InspectorAssetIdentity(asset: asset)
-        Text(identity.fullFilename)
-            .font(.system(.headline, design: .monospaced))
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(identity.displayName)
+                    .font(.system(.headline, design: .monospaced))
+                    .lineLimit(1)
+                if let extensionBadge = identity.extensionBadge {
+                    Text(extensionBadge)
+                        .font(.caption2.monospaced().weight(.bold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Color.orange.opacity(0.13), in: RoundedRectangle(cornerRadius: 4))
+                }
+            }
+            HStack(spacing: 8) {
+                if let capturedText = identity.capturedText {
+                    Text(capturedText)
+                } else {
+                    Text(identity.availabilityText)
+                }
+                Text(identity.ratingText)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
             .lineLimit(1)
-        Text(identity.availabilityText)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        Text(identity.ratingText)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            if identity.capturedText != nil {
+                Text(identity.availabilityText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(identity.fullFilename)
     }
 
     @ViewBuilder

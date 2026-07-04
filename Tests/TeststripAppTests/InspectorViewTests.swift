@@ -23,6 +23,24 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(identity.extensionBadge, "CR2")
         XCTAssertEqual(identity.availabilityText, "Availability: offline")
         XCTAssertEqual(identity.ratingText, "Rating: 4")
+        XCTAssertNil(identity.capturedText)
+    }
+
+    func testAssetIdentityUsesCapturedDateWhenTechnicalMetadataExists() {
+        let asset = makeAsset(
+            id: "captured",
+            metadata: AssetMetadata(),
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 6000,
+                pixelHeight: 4000,
+                capturedAt: Date(timeIntervalSince1970: 1_704_067_200),
+                provenance: ProviderProvenance(provider: "test", model: "test", version: "1", settingsHash: "test")
+            )
+        )
+
+        let identity = InspectorAssetIdentity(asset: asset)
+
+        XCTAssertNotNil(identity.capturedText)
     }
 
     func testTechnicalRowsUseCompactCatalogMetadata() {
@@ -129,7 +147,8 @@ final class InspectorViewTests: XCTestCase {
         id: String,
         originalURL: URL? = nil,
         availability: SourceAvailability = .online,
-        metadata: AssetMetadata
+        metadata: AssetMetadata,
+        technicalMetadata: AssetTechnicalMetadata? = nil
     ) -> Asset {
         Asset(
             id: AssetID(rawValue: id),
@@ -137,7 +156,8 @@ final class InspectorViewTests: XCTestCase {
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
             availability: availability,
-            metadata: metadata
+            metadata: metadata,
+            technicalMetadata: technicalMetadata
         )
     }
 }
