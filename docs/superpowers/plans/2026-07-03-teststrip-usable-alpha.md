@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `7a8f236 Add saved set sidebar counts`
+- Snapshot commit: `f40234f Add needs-evaluation review queue`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
 - Last focused unit verification: `swift test --filter AppModelTests` passed after the saved set count slice.
-- Last broad unit verification: `swift test` passed with 511 tests after the saved set count slice.
+- Last broad unit verification: `swift test` passed with 513 tests after the needs-evaluation review queue slice.
 - Last app workflow verification: `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import/click UI automation was intentionally deferred for the import phase and grid click-recentering slices to avoid unnecessary focus stealing while Jesse was using the machine; those slices were covered by focused presentation/policy tests and full unit runs. The previous grid aspect-ratio slice passed `./script/build_and_run.sh --sample-photos` and one Computer Use grid inspection, and the previous People live-mockup route passed Computer Use inspection plus `./script/verify_grid_activation.sh`, `./script/verify_grid_selection_feedback.sh`, `./script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 ./script/verify_imported_grid_culling.sh`. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
@@ -63,6 +63,7 @@
 - `d3d5b6d`: refined the inspector selected-asset header with filename stem, extension badge, captured date when available, rating, and source availability while keeping full filename accessibility.
 - `b96766d`: added real catalog-backed counts for the Picks, Rejects, 5 Stars, and Needs Keywords review queues, refreshing them after metadata edits, XMP sidecar conflict resolution, and import completion.
 - `7a8f236`: added real count badges for Starred and Saved Sets sidebar rows across dynamic, manual, and snapshot memberships, including refresh after metadata edits and import completion.
+- `f40234f`: added a catalog-backed Needs Evaluation review queue for assets without persisted evaluation signals, plus sidebar count refresh after worker evaluation completion.
 
 ## Product Decisions To Preserve
 
@@ -501,7 +502,7 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Promote selected-frame evaluation signals into the rapid-cull `TESTSTRIP READS` verdict surface with provider confidence detail.
 - [ ] Promote evaluation results into fuller user-visible signal groups: technical quality, faces, OCR, objects/content, color/look, and provider provenance.
 - [ ] Add People/face grouping data model only after deciding the smallest useful grouping behavior. Do not imply Apple Photos-level identity recognition unless Teststrip actually owns clustering and naming.
-- [ ] Add review filters for unevaluated, faces found, OCR found, likely issues, and provider failures.
+- [ ] Add review filters for unevaluated, faces found, OCR found, likely issues, and provider failures. Current checkpoint: unevaluated is built as the Needs Evaluation review queue, while likely issues and provider failures still need dedicated contracts.
 - [ ] Add cancellation-aware provider execution or worker-level cancellation behavior for slow local HTTP calls.
 - [ ] Keep machine labels provisional unless the user explicitly accepts them into keywords/XMP.
 - [ ] Verify provider tests, `script/verify_evaluation.sh`, and `TeststripBench local-http-smoke` against a real local endpoint when one is available.
