@@ -1483,6 +1483,19 @@ enum AssetGridPreviewPolicy {
     static let thumbnailScaling: CachedPreviewImage.Scaling = .fit
 }
 
+enum AssetGridCellLayout {
+    static let fallbackAspectRatio = 3.0 / 2.0
+
+    static func aspectRatio(for asset: Asset) -> Double {
+        guard let technicalMetadata = asset.technicalMetadata,
+              technicalMetadata.pixelWidth > 0,
+              technicalMetadata.pixelHeight > 0 else {
+            return fallbackAspectRatio
+        }
+        return Double(technicalMetadata.pixelWidth) / Double(technicalMetadata.pixelHeight)
+    }
+}
+
 private struct AssetGridCell: View {
     var asset: Asset
     var previewURL: URL?
@@ -1518,7 +1531,7 @@ private struct AssetGridCell: View {
                     .fill(Color.gray.opacity(0.35))
             )
         }
-        .aspectRatio(3.0 / 2.0, contentMode: .fit)
+        .aspectRatio(AssetGridCellLayout.aspectRatio(for: asset), contentMode: .fit)
         .contentShape(Rectangle())
     }
 

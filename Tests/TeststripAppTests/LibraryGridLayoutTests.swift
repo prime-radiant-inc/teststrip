@@ -1,4 +1,5 @@
 import XCTest
+import TeststripCore
 @testable import TeststripApp
 
 final class LibraryGridLayoutTests: XCTestCase {
@@ -23,5 +24,48 @@ final class LibraryGridLayoutTests: XCTestCase {
 
     func testOverviewThumbnailScalingPreservesFullImage() {
         XCTAssertEqual(AssetGridPreviewPolicy.thumbnailScaling, .fit)
+    }
+
+    func testGridCellAspectRatioUsesCatalogedImageDimensions() {
+        let portrait = Asset.gridLayoutTestAsset(width: 4000, height: 6000)
+        let panoramic = Asset.gridLayoutTestAsset(width: 6000, height: 2000)
+
+        XCTAssertEqual(AssetGridCellLayout.aspectRatio(for: portrait), 2.0 / 3.0)
+        XCTAssertEqual(AssetGridCellLayout.aspectRatio(for: panoramic), 3.0)
+    }
+
+    func testGridCellAspectRatioFallsBackWhenDimensionsAreMissing() {
+        let asset = Asset.gridLayoutTestAsset(width: nil, height: nil)
+
+        XCTAssertEqual(AssetGridCellLayout.aspectRatio(for: asset), 3.0 / 2.0)
+    }
+
+    func testGridCellAspectRatioFallsBackWhenDimensionsAreInvalid() {
+        let asset = Asset.gridLayoutTestAsset(width: 4000, height: 0)
+
+        XCTAssertEqual(AssetGridCellLayout.aspectRatio(for: asset), 3.0 / 2.0)
+    }
+}
+
+private extension Asset {
+    static func gridLayoutTestAsset(width: Int?, height: Int?) -> Asset {
+        Asset(
+            id: AssetID(rawValue: "layout-\(width ?? 0)-\(height ?? 0)"),
+            originalURL: URL(fileURLWithPath: "/Photos/layout.jpg"),
+            volumeIdentifier: nil,
+            fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 0)),
+            availability: .online,
+            metadata: AssetMetadata(),
+            technicalMetadata: technicalMetadata(width: width, height: height)
+        )
+    }
+
+    private static func technicalMetadata(width: Int?, height: Int?) -> AssetTechnicalMetadata? {
+        guard let width, let height else { return nil }
+        return AssetTechnicalMetadata(
+            pixelWidth: width,
+            pixelHeight: height,
+            provenance: ProviderProvenance(provider: "test", model: "test", version: "1", settingsHash: "test")
+        )
     }
 }
