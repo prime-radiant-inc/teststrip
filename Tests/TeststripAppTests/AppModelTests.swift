@@ -2078,6 +2078,26 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Folders" }?.rowTitles, ["photos"])
     }
 
+    func testImportFolderReportsNoSupportedPhotosWhenFolderIsEmpty() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-empty-import")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        try Data("notes".utf8).write(to: photoFolder.appendingPathComponent("notes.txt"))
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(catalog: catalog)
+
+        let result = try model.importFolder(photoFolder)
+
+        XCTAssertEqual(result.importedAssets.count, 0)
+        XCTAssertEqual(model.assets, [])
+        XCTAssertNil(model.selectedAssetID)
+        XCTAssertEqual(model.totalAssetCount, 0)
+        XCTAssertEqual(model.statusMessage, "No supported photos found")
+        XCTAssertEqual(model.recentWork.first?.detail, "No supported photos found in photos")
+        XCTAssertNil(model.errorMessage)
+    }
+
     @MainActor
     func testBackgroundImportShowsImportedAssetWhenFirstCatalogPageIsFull() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-page")

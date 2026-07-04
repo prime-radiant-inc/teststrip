@@ -2757,11 +2757,18 @@ public final class AppModel {
 
     private func updateImportStatus(with result: LibraryImportResult) {
         try? refreshPreviewGenerationQueueStates()
-        let photoLabel = result.importedAssets.count == 1 ? "photo" : "photos"
-        statusMessage = "Imported \(result.importedAssets.count) \(photoLabel)"
+        statusMessage = Self.importCompletionStatus(result: result)
         if !result.previewFailures.isEmpty {
             statusMessage?.append(" (\(result.previewFailures.count) preview failures)")
         }
+    }
+
+    private static func importCompletionStatus(result: LibraryImportResult) -> String {
+        guard !result.importedAssets.isEmpty else {
+            return "No supported photos found"
+        }
+        let photoLabel = result.importedAssets.count == 1 ? "photo" : "photos"
+        return "Imported \(result.importedAssets.count) \(photoLabel)"
     }
 
     private func startImportActivity(folderURL: URL, destinationRoot: URL? = nil) {
@@ -2804,13 +2811,15 @@ public final class AppModel {
         destinationRoot: URL? = nil,
         result: LibraryImportResult
     ) {
-        let photoLabel = result.importedAssets.count == 1 ? "photo" : "photos"
         let activity = AppWorkActivity(
             id: id ?? activeWork?.id ?? UUID().uuidString,
             kind: .ingest,
             status: .completed,
             title: "Import photos",
-            detail: "Imported \(result.importedAssets.count) \(photoLabel) from \(importSourceDescription(folderURL: folderURL, destinationRoot: destinationRoot))",
+            detail: Self.importCompletionDetail(
+                result: result,
+                sourceDescription: importSourceDescription(folderURL: folderURL, destinationRoot: destinationRoot)
+            ),
             completedUnitCount: result.importedAssets.count,
             totalUnitCount: result.importedAssets.count,
             failureCount: result.previewFailures.count
@@ -2819,6 +2828,13 @@ public final class AppModel {
         refreshCatalogFolders()
         activeWork = nil
         recordRecentActivity(activity, outputSetIDs: outputSetIDs)
+    }
+
+    private static func importCompletionDetail(result: LibraryImportResult, sourceDescription: String) -> String {
+        if result.importedAssets.isEmpty {
+            return "No supported photos found in \(sourceDescription)"
+        }
+        return "\(importCompletionStatus(result: result)) from \(sourceDescription)"
     }
 
     private func failImportActivity(id: String? = nil, folderURL: URL, destinationRoot: URL? = nil, error: Error) {
