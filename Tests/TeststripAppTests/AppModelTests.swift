@@ -1895,6 +1895,63 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.captureDateEndFilter, timelineDay.endDate(calendar: calendar))
     }
 
+    func testSelectingTimelineDayInSynthetic100kCatalogKeepsLoadedAssetWindowBounded() throws {
+        let calendar = Self.gregorianUTC
+        let selectedCapturedAt = Self.date(year: 2026, month: 2, day: 4, hour: 9, calendar: calendar)
+        let otherCapturedAt = Self.date(year: 2026, month: 2, day: 5, hour: 9, calendar: calendar)
+        let directory = try makeTemporaryDirectory(named: "timeline-100k-window")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try seedTimelineCatalogAssets(
+            count: 100_000,
+            selectedDayCount: 60_000,
+            selectedCapturedAt: selectedCapturedAt,
+            otherCapturedAt: otherCapturedAt,
+            repository: repository
+        )
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        XCTAssertEqual(model.assets.count, 120)
+        XCTAssertEqual(model.totalAssetCount, 100_000)
+        XCTAssertEqual(model.catalogTimelineDays, [
+            CatalogTimelineDay(year: 2026, month: 2, day: 5, assetCount: 40_000),
+            CatalogTimelineDay(year: 2026, month: 2, day: 4, assetCount: 60_000)
+        ])
+
+        let selectedDay = CatalogTimelineDay(year: 2026, month: 2, day: 4, assetCount: 60_000)
+        try model.selectTimelineDay(selectedDay, calendar: calendar)
+
+        XCTAssertEqual(model.selectedView, .timeline)
+        XCTAssertEqual(model.assets.count, 120)
+        XCTAssertEqual(model.totalAssetCount, 60_000)
+        XCTAssertTrue(model.assets.allSatisfy { asset in
+            asset.technicalMetadata?.capturedAt.map { calendar.isDate($0, inSameDayAs: selectedCapturedAt) } ?? false
+        })
+
+        for _ in 0..<3 {
+            try model.loadMoreAssets()
+        }
+
+        XCTAssertEqual(model.assets.count, 240)
+        XCTAssertEqual(model.totalAssetCount, 60_000)
+        XCTAssertTrue(model.hasPreviousAssets)
+        XCTAssertTrue(model.hasMoreAssets)
+        XCTAssertTrue(model.assets.allSatisfy { asset in
+            asset.technicalMetadata?.capturedAt.map { calendar.isDate($0, inSameDayAs: selectedCapturedAt) } ?? false
+        })
+    }
+
     func testLoadExposesEvaluationSignalSidebarAndSelectingSignalAppliesFilter() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-evaluation-sidebar")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -5878,6 +5935,35 @@ final class AppModelTests: XCTestCase {
                     ),
                     availability: index.isMultiple(of: 2) ? .online : .offline,
                     metadata: AssetMetadata(rating: index % 6)
+                )
+            }
+            try repository.upsert(assets)
+        }
+    }
+
+    private func seedTimelineCatalogAssets(
+        count: Int,
+        selectedDayCount: Int,
+        selectedCapturedAt: Date,
+        otherCapturedAt: Date,
+        repository: CatalogRepository
+    ) throws {
+        let batchSize = 1_000
+        for batchStart in stride(from: 0, to: count, by: batchSize) {
+            let batchEnd = min(batchStart + batchSize, count)
+            let assets = (batchStart..<batchEnd).map { index in
+                let capturedAt = index < selectedDayCount ? selectedCapturedAt : otherCapturedAt
+                return Asset(
+                    id: AssetID(rawValue: "timeline-\(index)"),
+                    originalURL: URL(fileURLWithPath: "/Volumes/NAS/Timeline/frame-\(index).dng"),
+                    volumeIdentifier: "NAS",
+                    fingerprint: FileFingerprint(
+                        size: Int64(index + 1),
+                        modificationDate: Date(timeIntervalSince1970: TimeInterval(index))
+                    ),
+                    availability: .online,
+                    metadata: AssetMetadata(),
+                    technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
                 )
             }
             try repository.upsert(assets)
