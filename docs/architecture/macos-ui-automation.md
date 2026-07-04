@@ -44,6 +44,14 @@ The probe also emits `teststrip_import_metric` lines for feedback visibility dur
 TESTSTRIP_AX_IMPORT_COUNT=600 TESTSTRIP_AX_TIMEOUT_SECONDS=75 ./script/verify_import_path.sh Teststrip
 ```
 
+The imported-grid culling probe is:
+
+```bash
+./script/verify_imported_grid_culling.sh Teststrip
+```
+
+It imports a temporary image set, targets a non-first imported thumbnail, verifies selected-thumbnail feedback, applies a keyboard 5-star rating, and waits until the inspector exposes `Rating: 5`. Use it when checking the path Jesse reported as janky: import, click an imported image, and rate it.
+
 The keyboard culling probe is:
 
 ```bash

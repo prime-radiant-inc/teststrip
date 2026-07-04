@@ -340,8 +340,8 @@ Teststrip reaches usable alpha when a photographer can:
 
 **Work:**
 
-- [ ] Reproduce selection/click behavior with an isolated imported catalog, not only the seeded smoke catalog.
-- [ ] Add an AX probe that imports several images, clicks the second or third imported thumbnail, verifies selection feedback, then applies a rating and verifies the inspector/catalog state.
+- [x] Reproduce selection/click behavior with an imported catalog, not only the seeded smoke catalog.
+- [x] Add an AX probe that imports several images, clicks the second or third imported thumbnail, verifies selection feedback, then applies a rating and verifies the inspector/catalog state.
 - [ ] Use CoreGraphics capture to verify the UI is not blank or visually occluded after import.
 - [ ] Fix the root cause if click handling, hit testing, focus capture, selection identity, or grid cell accessibility is wrong.
 - [ ] Add the least brittle model/UI tests that would have failed for the root cause.
@@ -530,6 +530,7 @@ swift test
 ./script/verify_grid_activation.sh Teststrip
 ./script/verify_grid_selection_feedback.sh Teststrip
 ./script/verify_keyboard_culling.sh Teststrip
+./script/verify_imported_grid_culling.sh Teststrip
 ./script/verify_evaluation.sh Teststrip
 TESTSTRIP_AX_IMPORT_COUNT=600 TESTSTRIP_AX_TIMEOUT_SECONDS=45 ./script/verify_import_path.sh Teststrip
 ```
