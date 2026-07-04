@@ -322,6 +322,25 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
     }
 
+    func testReimportReportsExistingAssetsSeparatelyFromNewAssets() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-reimport-counts")
+        let image = root.appendingPathComponent("one.jpg")
+        try TestDirectories.writeTestJPEG(to: image, width: 1200, height: 800)
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+
+        let firstResult = try service.addFolderInPlace(root, repository: repository, previewPolicy: .deferGeneration)
+        let secondResult = try service.addFolderInPlace(root, repository: repository, previewPolicy: .deferGeneration)
+
+        XCTAssertEqual(firstResult.importedAssets.count, 1)
+        XCTAssertEqual(firstResult.newAssetCount, 1)
+        XCTAssertEqual(firstResult.existingAssetCount, 0)
+        XCTAssertEqual(secondResult.importedAssets.map(\.id), firstResult.importedAssets.map(\.id))
+        XCTAssertEqual(secondResult.newAssetCount, 0)
+        XCTAssertEqual(secondResult.existingAssetCount, 1)
+    }
+
     func testReimportUnchangedAssetWithCachedGridPreviewDoesNotQueuePreviewGeneration() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-reimport-unchanged-preview")
         let image = root.appendingPathComponent("one.jpg")

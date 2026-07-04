@@ -2078,6 +2078,31 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Folders" }?.rowTitles, ["photos"])
     }
 
+    func testReimportFolderReportsNoNewPhotos() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-reimport")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(catalog: catalog)
+
+        let firstResult = try model.importFolder(photoFolder)
+        let secondResult = try model.importFolder(photoFolder)
+
+        XCTAssertEqual(firstResult.newAssetCount, 1)
+        XCTAssertEqual(firstResult.existingAssetCount, 0)
+        XCTAssertEqual(secondResult.importedAssets.map(\.id), firstResult.importedAssets.map(\.id))
+        XCTAssertEqual(secondResult.newAssetCount, 0)
+        XCTAssertEqual(secondResult.existingAssetCount, 1)
+        XCTAssertEqual(model.assets.map(\.originalURL), [image])
+        XCTAssertEqual(model.totalAssetCount, 1)
+        XCTAssertEqual(model.statusMessage, "No new photos found")
+        XCTAssertEqual(model.recentWork.first?.detail, "No new photos found in photos")
+        XCTAssertNil(model.errorMessage)
+    }
+
     func testImportFolderReportsNoSupportedPhotosWhenFolderIsEmpty() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-empty-import")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
@@ -3653,7 +3678,9 @@ final class AppModelTests: XCTestCase {
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
             itemID: importItem.id,
             message: "imported 1 photo from photos",
-            importedAssetIDs: [importedAsset.id]
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0
         )))
 
         try await waitForSelectedAsset(importedAsset.id, in: model)
@@ -3944,7 +3971,9 @@ final class AppModelTests: XCTestCase {
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
             itemID: importItem.id,
             message: "imported 1 photo from DCIM to Library",
-            importedAssetIDs: [importedAsset.id]
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0
         )))
 
         try await waitForSelectedAsset(importedAsset.id, in: model)

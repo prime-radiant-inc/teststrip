@@ -14,7 +14,7 @@ public enum WorkerEvent: Equatable, Sendable {
     case accepted(itemID: WorkSessionID?, message: String)
     case progress(itemID: WorkSessionID?, completedUnitCount: Int, totalUnitCount: Int?, detail: String, catalogedAssetIDs: [AssetID])
     case completed(itemID: WorkSessionID?, message: String)
-    case completedImport(itemID: WorkSessionID?, message: String, importedAssetIDs: [AssetID])
+    case completedImport(itemID: WorkSessionID?, message: String, importedAssetIDs: [AssetID], newAssetCount: Int, existingAssetCount: Int)
     case failed(itemID: WorkSessionID?, message: String)
 
     public var itemID: WorkSessionID? {
@@ -22,7 +22,7 @@ public enum WorkerEvent: Equatable, Sendable {
         case .accepted(let itemID, _),
              .progress(let itemID, _, _, _, _),
              .completed(let itemID, _),
-             .completedImport(let itemID, _, _),
+             .completedImport(let itemID, _, _, _, _),
              .failed(let itemID, _):
             return itemID
         }
@@ -33,7 +33,7 @@ public enum WorkerEvent: Equatable, Sendable {
         case .accepted(_, let message),
              .progress(_, _, _, let message, _),
              .completed(_, let message),
-             .completedImport(_, let message, _),
+             .completedImport(_, let message, _, _, _),
              .failed(_, let message):
             return message
         }
@@ -171,7 +171,7 @@ public enum WorkerProtocolEncoder {
                 completedUnitCount: nil,
                 totalUnitCount: nil
             )
-        case .completedImport(let itemID, let message, let importedAssetIDs):
+        case .completedImport(let itemID, let message, let importedAssetIDs, let newAssetCount, let existingAssetCount):
             envelope = WorkerEventEnvelope(
                 event: "completed",
                 itemID: itemID?.rawValue,
@@ -179,7 +179,9 @@ public enum WorkerProtocolEncoder {
                 importedAssetIDs: importedAssetIDs.map(\.rawValue),
                 catalogedAssetIDs: nil,
                 completedUnitCount: nil,
-                totalUnitCount: nil
+                totalUnitCount: nil,
+                newAssetCount: newAssetCount,
+                existingAssetCount: existingAssetCount
             )
         case .failed(let itemID, let message):
             envelope = WorkerEventEnvelope(
@@ -266,7 +268,9 @@ public enum WorkerProtocolEncoder {
                 return .completedImport(
                     itemID: itemID,
                     message: envelope.message,
-                    importedAssetIDs: importedAssetIDs.map(AssetID.init(rawValue:))
+                    importedAssetIDs: importedAssetIDs.map(AssetID.init(rawValue:)),
+                    newAssetCount: try envelope.requiredNewAssetCount(),
+                    existingAssetCount: try envelope.requiredExistingAssetCount()
                 )
             }
             return .completed(itemID: itemID, message: envelope.message)
@@ -359,6 +363,8 @@ public enum WorkerProtocolEncoder {
         var catalogedAssetIDs: [String]?
         var completedUnitCount: Int?
         var totalUnitCount: Int?
+        var newAssetCount: Int? = nil
+        var existingAssetCount: Int? = nil
 
         func requiredCompletedUnitCount() throws -> Int {
             guard let completedUnitCount else {
@@ -382,6 +388,30 @@ public enum WorkerProtocolEncoder {
                 )
             }
             return catalogedAssetIDs.map(AssetID.init(rawValue:))
+        }
+
+        func requiredNewAssetCount() throws -> Int {
+            guard let newAssetCount else {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.newAssetCount],
+                        debugDescription: "Missing newAssetCount"
+                    )
+                )
+            }
+            return newAssetCount
+        }
+
+        func requiredExistingAssetCount() throws -> Int {
+            guard let existingAssetCount else {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.existingAssetCount],
+                        debugDescription: "Missing existingAssetCount"
+                    )
+                )
+            }
+            return existingAssetCount
         }
     }
 }

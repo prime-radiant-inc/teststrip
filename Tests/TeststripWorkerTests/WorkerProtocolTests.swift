@@ -92,7 +92,9 @@ final class WorkerProtocolTests: XCTestCase {
         let event = WorkerEvent.completedImport(
             itemID: WorkSessionID(rawValue: "import-work"),
             message: "imported 2 photos from photos",
-            importedAssetIDs: [AssetID(rawValue: "asset-1"), AssetID(rawValue: "asset-2")]
+            importedAssetIDs: [AssetID(rawValue: "asset-1"), AssetID(rawValue: "asset-2")],
+            newAssetCount: 1,
+            existingAssetCount: 1
         )
 
         let line = try WorkerProtocolEncoder.encode(event)
@@ -103,6 +105,8 @@ final class WorkerProtocolTests: XCTestCase {
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
         XCTAssertEqual(json["event"] as? String, "completed")
         XCTAssertEqual(json["importedAssetIDs"] as? [String], ["asset-1", "asset-2"])
+        XCTAssertEqual(json["newAssetCount"] as? Int, 1)
+        XCTAssertEqual(json["existingAssetCount"] as? Int, 1)
     }
 
     func testProgressEventRoundTripsThroughJSONLine() throws {

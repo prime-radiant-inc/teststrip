@@ -107,7 +107,9 @@ final class WorkerSupervisorTests: XCTestCase {
         let event = WorkerEvent.completedImport(
             itemID: item.id,
             message: "imported 1 photo from Photos",
-            importedAssetIDs: [AssetID(rawValue: "asset-1")]
+            importedAssetIDs: [AssetID(rawValue: "asset-1")],
+            newAssetCount: 1,
+            existingAssetCount: 0
         )
         try supervisor.enqueue(item, command: command)
 

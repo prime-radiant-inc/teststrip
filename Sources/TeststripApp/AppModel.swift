@@ -1836,8 +1836,13 @@ public final class AppModel {
                     errorMessage = error.localizedDescription
                 }
             }
-        case .completedImport(let itemID, _, let importedAssetIDs):
-            handleWorkerImportCompleted(itemID: itemID, importedAssetIDs: importedAssetIDs)
+        case .completedImport(let itemID, _, let importedAssetIDs, let newAssetCount, let existingAssetCount):
+            handleWorkerImportCompleted(
+                itemID: itemID,
+                importedAssetIDs: importedAssetIDs,
+                newAssetCount: newAssetCount,
+                existingAssetCount: existingAssetCount
+            )
         case .accepted, .progress, .failed:
             return
         }
@@ -1930,7 +1935,12 @@ public final class AppModel {
         return nil
     }
 
-    private func handleWorkerImportCompleted(itemID: WorkSessionID?, importedAssetIDs: [AssetID]) {
+    private func handleWorkerImportCompleted(
+        itemID: WorkSessionID?,
+        importedAssetIDs: [AssetID],
+        newAssetCount: Int,
+        existingAssetCount: Int
+    ) {
         guard let itemID,
               let context = workerImportContextsByItemID.removeValue(forKey: itemID) else {
             return
@@ -1946,7 +1956,12 @@ public final class AppModel {
             try loadCatalogPage(preferredSelection: importedAssetIDs.first)
             try enqueuePendingPreviewGeneration()
             let importedAssets = try catalog.repository.assets(ids: importedAssetIDs, limit: importedAssetIDs.count)
-            let result = LibraryImportResult(importedAssets: importedAssets, previewFailures: [])
+            let result = LibraryImportResult(
+                importedAssets: importedAssets,
+                previewFailures: [],
+                newAssetCount: newAssetCount,
+                existingAssetCount: existingAssetCount
+            )
             updateImportStatus(with: result)
             recordCompletedImportActivity(
                 id: itemID.rawValue,
@@ -2767,8 +2782,16 @@ public final class AppModel {
         guard !result.importedAssets.isEmpty else {
             return "No supported photos found"
         }
-        let photoLabel = result.importedAssets.count == 1 ? "photo" : "photos"
-        return "Imported \(result.importedAssets.count) \(photoLabel)"
+        guard result.newAssetCount > 0 else {
+            return "No new photos found"
+        }
+        let photoLabel = result.newAssetCount == 1 ? "photo" : "photos"
+        var status = "Imported \(result.newAssetCount) \(photoLabel)"
+        if result.existingAssetCount > 0 {
+            let existingLabel = result.existingAssetCount == 1 ? "photo" : "photos"
+            status.append(" (\(result.existingAssetCount) \(existingLabel) already in catalog)")
+        }
+        return status
     }
 
     private func startImportActivity(folderURL: URL, destinationRoot: URL? = nil) {
@@ -2833,6 +2856,9 @@ public final class AppModel {
     private static func importCompletionDetail(result: LibraryImportResult, sourceDescription: String) -> String {
         if result.importedAssets.isEmpty {
             return "No supported photos found in \(sourceDescription)"
+        }
+        if result.newAssetCount == 0 {
+            return "No new photos found in \(sourceDescription)"
         }
         return "\(importCompletionStatus(result: result)) from \(sourceDescription)"
     }

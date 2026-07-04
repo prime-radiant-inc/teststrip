@@ -15,10 +15,19 @@ public struct LibraryPreviewFailure: Equatable, Sendable {
 public struct LibraryImportResult: Sendable {
     public var importedAssets: [Asset]
     public var previewFailures: [LibraryPreviewFailure]
+    public var newAssetCount: Int
+    public var existingAssetCount: Int
 
-    public init(importedAssets: [Asset], previewFailures: [LibraryPreviewFailure]) {
+    public init(
+        importedAssets: [Asset],
+        previewFailures: [LibraryPreviewFailure],
+        newAssetCount: Int? = nil,
+        existingAssetCount: Int = 0
+    ) {
         self.importedAssets = importedAssets
         self.previewFailures = previewFailures
+        self.newAssetCount = newAssetCount ?? max(importedAssets.count - existingAssetCount, 0)
+        self.existingAssetCount = existingAssetCount
     }
 }
 
@@ -178,6 +187,8 @@ public struct LibraryImportService: Sendable {
         if !assets.isEmpty {
             try repository.recordSourceRoot(Self.catalogSourceRoot(for: plan))
         }
+        let existingAssetCount = assets.filter { existingPreviewStates[$0.id] != nil }.count
+        let newAssetCount = assets.count - existingAssetCount
         let previewItems: [PreviewGenerationItem] = assets.flatMap { asset -> [PreviewGenerationItem] in
             guard shouldGenerateGridPreview(for: asset, existingState: existingPreviewStates[asset.id]) else {
                 return []
@@ -194,7 +205,12 @@ public struct LibraryImportService: Sendable {
         ))
 
         guard previewPolicy == .generateImmediately else {
-            return LibraryImportResult(importedAssets: assets, previewFailures: [])
+            return LibraryImportResult(
+                importedAssets: assets,
+                previewFailures: [],
+                newAssetCount: newAssetCount,
+                existingAssetCount: existingAssetCount
+            )
         }
 
         progress?(LibraryImportProgress(
@@ -204,7 +220,12 @@ public struct LibraryImportService: Sendable {
         ))
 
         let previewResult = try generatePreviews(for: previewItems, repository: repository, progress: progress)
-        return LibraryImportResult(importedAssets: assets, previewFailures: previewResult.previewFailures)
+        return LibraryImportResult(
+            importedAssets: assets,
+            previewFailures: previewResult.previewFailures,
+            newAssetCount: newAssetCount,
+            existingAssetCount: existingAssetCount
+        )
     }
 
     private static func catalogSourceRoot(for plan: IngestPlan) -> URL {

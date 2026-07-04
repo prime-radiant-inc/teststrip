@@ -182,12 +182,44 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let imported = try repository.allAssets(limit: 10)
         let asset = try XCTUnwrap(imported.first)
         XCTAssertEqual(imported.map(\.originalURL), [source])
-        XCTAssertEqual(result, .completedImport("imported 1 photo from photos", importedAssetIDs: [asset.id]))
+        XCTAssertEqual(result, .completedImport(
+            "imported 1 photo from photos",
+            importedAssetIDs: [asset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0
+        ))
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
             PreviewGenerationItem(assetID: asset.id, level: .micro),
             PreviewGenerationItem(assetID: asset.id, level: .grid)
         ])
         XCTAssertFalse(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)).path))
+    }
+
+    func testImportFolderCommandReportsExistingAssetsOnReimport() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-import-folder-reimport")
+        let sourceRoot = root.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+        let source = sourceRoot.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1600, height: 1000)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
+        let firstResult = try executor.execute(.importFolder(root: sourceRoot))
+        guard case .completedImport(_, let importedAssetIDs, 1, 0) = firstResult else {
+            XCTFail("expected first import to report one new asset")
+            return
+        }
+
+        let secondResult = try executor.execute(.importFolder(root: sourceRoot))
+
+        XCTAssertEqual(secondResult, .completedImport(
+            "imported 1 photo from photos",
+            importedAssetIDs: importedAssetIDs,
+            newAssetCount: 0,
+            existingAssetCount: 1
+        ))
     }
 
     func testImportFolderCommandReportsProgress() throws {
@@ -241,7 +273,12 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let imported = try repository.allAssets(limit: 10)
         let asset = try XCTUnwrap(imported.first)
         XCTAssertEqual(imported.map(\.originalURL), [destination])
-        XCTAssertEqual(result, .completedImport("imported 1 photo from DCIM to Library", importedAssetIDs: [asset.id]))
+        XCTAssertEqual(result, .completedImport(
+            "imported 1 photo from DCIM to Library",
+            importedAssetIDs: [asset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0
+        ))
         XCTAssertEqual(try repository.asset(id: asset.id).metadata, metadata)
         XCTAssertEqual(try Data(contentsOf: XMPSidecarStore().sidecarURL(forOriginalAt: destination)), sidecarData)
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
