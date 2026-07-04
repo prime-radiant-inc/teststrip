@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `b469b7c Accept suggested keywords from evaluation labels`
+- Snapshot commit: `9a86a87 Stop overclaiming X3F ImageIO support`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter 'AppModelTests/testSelectedSuggestedKeywordsComeFromObjectEvaluationLabels|AppModelTests/testAcceptSuggestedKeywordForSelectedAssetWritesCatalogAndXmp|InspectorViewTests'` passed after the suggested-keyword slice.
-- Last broad unit verification: `swift test` passed with 534 tests after the suggested-keyword slice.
+- Last focused unit verification: `swift test --filter DecodeRegistryTests` passed after the RAW decode capability matrix and X3F correction.
+- Last broad unit verification: `swift test` passed with 543 tests after the RAW decode capability matrix and X3F correction.
 - Last app workflow verification: `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import/click UI automation was intentionally deferred for the import phase and grid click-recentering slices to avoid unnecessary focus stealing while Jesse was using the machine; those slices were covered by focused presentation/policy tests and full unit runs. The previous grid aspect-ratio slice passed `./script/build_and_run.sh --sample-photos` and one Computer Use grid inspection, and the previous People live-mockup route passed Computer Use inspection plus `./script/verify_grid_activation.sh`, `./script/verify_grid_selection_feedback.sh`, `./script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 ./script/verify_imported_grid_culling.sh`. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
@@ -73,6 +73,9 @@
 - `ec0a185`: replaced fake People identities/counts with real face-signal and face-quality coverage from catalog evaluation summaries while keeping clustering and naming actions disabled and marked as live-mockup placeholders.
 - `3eb7465`: expanded the import-complete banner into a partial payoff panel with real imported count, preview status, Open/Cull actions, adaptive layout, and disabled/annotated stack/face/keyword follow-ups.
 - `b469b7c`: added selected-asset keyword suggestions from persisted object-label evaluation signals and let users accept a suggestion through the existing catalog/XMP keyword writeback path.
+- `cd11dc5` / `0404ef2`: added focus-aware Survey Compare with per-contender persisted evaluation signals, cached-preview-scoped compare evaluation, and clearer confidence-based signal selection naming.
+- `7e2b3d3`: added the first decode capability matrix and provider boundary so ImageIO can declare working still formats and best-effort RAW families without attempting a decode.
+- `9a86a87`: corrected Sigma/Foveon X3F from ImageIO best-effort to explicitly unsupported until a future non-ImageIO RAW provider exists.
 
 ## Product Decisions To Preserve
 
@@ -160,6 +163,8 @@ Current behavior:
 
 - Decode registry exists with an ImageIO-backed provider.
 - Supported extension plumbing exists for common still formats and RAW-ish formats handled by ImageIO.
+- Decode providers now expose `DecodeCapability` metadata so Teststrip can distinguish working still formats, best-effort ImageIO RAW candidates, and unsupported formats without attempting a decode.
+- Current RAW capability documentation lives in `docs/architecture/raw-decode-capability.md`; DNG, CRW, CR2, CR3, NEF, ARW, RAF, RWL, RW2, SRW, and ORF are best-effort ImageIO candidates, while Sigma/Foveon X3F is recognized but unsupported until a dedicated provider exists.
 - Preview levels include micro, grid, medium, and large. Original/full decode is intentionally not part of ordinary browsing.
 - Imports record pending micro/grid preview work in `preview_generation_queue`.
 - Demand-driven preview requests record pending work before dispatching worker generation.
@@ -262,6 +267,7 @@ Current behavior:
 - Evaluation output is persisted as typed `EvaluationSignal` rows with provider/model/version/settings provenance.
 - Selected-frame evaluation signals now feed a compact culling verdict presentation so the rapid-cull header can show a real `TESTSTRIP READS` state instead of a static placeholder.
 - Selected-photo object-label signals now feed Inspector keyword suggestions, remaining provisional until the user explicitly accepts one into keywords/XMP.
+- Survey Compare can show persisted focus, motion blur, exposure, and face-quality signals for each visible contender, and can enqueue evaluation only for compare frames that already have cached previews.
 - `TeststripBench local-http-smoke <endpoint> <model> <image> [timeout]` exercises LM Studio/Ollama-style endpoints.
 
 ### UI And Automation
@@ -291,7 +297,7 @@ Current behavior:
 - Search is a first-class library route in the sidebar and top chrome. It reuses the current catalog query/filter state, keeps the filter rail visible, shows parsed filter chips and saved-set counts, and displays the normal result grid as a live mockup for the fuller Search/Sets surface.
 - Starred and Saved Sets sidebar rows show catalog-backed count badges for dynamic saved searches and explicit manual/snapshot sets.
 - Smart Collection creation now has a split live-mockup builder popover reachable from active library filters. It parses current filter chips into rule rows, shows Teststrip-suggested templates, previews loaded matching thumbnails, keeps Starred state, and writes through the existing dynamic saved-query path.
-- Compare now uses a survey-style live mockup instead of the original flat adaptive grid: the selected frame becomes the primary candidate, the visible survey grid orders that primary first followed by alternates, metadata-backed decision badges render on tiles, preview requests still use cached progressive compare behavior, Pick/Reject/Loupe actions write through existing metadata/navigation paths, and disabled group-action affordances show the intended stack workflow without mutating unrelated neighbors.
+- Compare now uses a survey-style live mockup instead of the original flat adaptive grid: the selected frame becomes the primary candidate, the visible survey grid orders that primary first followed by alternates, metadata-backed decision badges and focus/quality metric lanes render on tiles, preview/evaluation requests stay scoped to cached progressive compare behavior, Pick/Reject/Loupe actions write through existing metadata/navigation paths, and disabled group-action affordances show the intended stack workflow without mutating unrelated neighbors.
 - The import-complete summary is an expanded partial payoff panel with real import count, preview status, Open/Cull actions, dismiss behavior, and disabled/annotated stack grouping, face naming, and batch keyword suggestion follow-ups.
 - Import Path shows a pre-import plan for in-place cataloging, XMP sidecars, cached previews, and managed background work.
 - Active import work shows the shared progress banner immediately, even when the grid has no visible assets yet.
@@ -314,7 +320,7 @@ Current behavior:
 - Import UX is improved but not complete. The app now shows visible active-import feedback, phase labels, post-import preview continuation, an Import Path plan, tested duplicate-import guards, and a compact import-complete action summary, but permission/security-scope failures and card-source staging still need work.
 - Clicking/selection needs one more lightweight imported-photo verification pass. Direct grid clicks no longer recenter the thumbnail under the pointer, which was the likely root cause of the weird click feeling, and policy tests cover pointer-vs-programmatic selection scroll behavior. The remaining risk is human/AX confirmation under imported-photo conditions.
 - Library mockup parity is improving but incomplete. The overview grid now uses cataloged dimensions for true aspect-ratio cells, the filter rail is closer to the Studio mockup's Ask/search treatment, the inspector preview size is pinned, the inspector header/metadata controls have initial mockup-derived passes, the culling/loupe chrome now has verdict and filmstrip passes, Search has a first live route, Compare has a survey-style pass with metadata badges, Smart Collections has a split builder, the sidebar has richer count/detail rows and real review-queue/saved-set counts, the top chrome has a first Studio-style pass, and major dead UI gaps plus all designer surfaces are tagged in code, but real stack/focus compare grouping and deeper saved-query interactions still need visual passes against the design concept.
-- The current RAW story is only the first abstraction and ImageIO-backed path. We still need an explicit decoder capability matrix and provider-swapping plan for formats Jesse named: DNG, CRW, CR2, Fuji RAW, Sigma/Foveon RAW, and specialty long-tail files. Lytro support remains out of scope.
+- The current RAW story has an explicit ImageIO capability matrix and provider boundary, but still lacks real RAW fixture coverage and a non-ImageIO provider for unsupported or weakly supported families such as Sigma/Foveon X3F. Lytro support remains out of scope.
 - Evaluation is scaffolding plus early useful providers, not finished face/person/object/aesthetic workflow. The People view now uses real face-signal coverage and object labels can be explicitly accepted as keyword suggestions, but real face clustering, identity recognition, naming, merge/dismiss actions, batch label acceptance, and reprocessing flows are not wired yet.
 - Search/sets/work sessions are partially built but not yet the full user-facing model. Saved/ad hoc sets, clusters, work-session-derived sets, and query builder UX need more implementation.
 - Smart collections have a stronger live builder for current filters, but dynamic-vs-frozen choices, real rule editing, and agent-suggested rules are not complete.
@@ -461,16 +467,18 @@ Teststrip reaches usable alpha when a photographer can:
 
 **Work:**
 
-- [ ] Document the actual current ImageIO-supported extension set and what Teststrip claims versus merely attempts.
-- [ ] Add provider capability metadata: embedded preview, metadata read, working preview render, full render, and known unsupported.
-- [ ] Keep ImageIO as the default provider where it works.
+- [x] Document the actual current ImageIO-supported extension set and what Teststrip claims versus merely attempts.
+- [x] Add provider capability metadata for metadata read, embedded-preview usefulness, preview rendering, full render, and unsupported formats.
+- [x] Keep ImageIO as the default provider where it works.
 - [ ] Add fixtures or fixture hooks for DNG, CRW, CR2, Fuji RAW, and Sigma/Foveon RAW. If real sample files are not committed, tests should skip with explicit sample-missing messages instead of pretending coverage exists.
-- [ ] Add a clean adapter seam for future LibRaw/RawSpeed-style providers without implementing the whole provider now.
+- [x] Add a clean provider capability seam for future LibRaw/RawSpeed-style providers without implementing the whole provider now.
 - [ ] Make import still catalog unsupported/partial formats when metadata or embedded previews can be read.
-- [ ] Verify focused decode/preview tests and full `swift test`.
-- [ ] Commit.
+- [x] Verify focused decode tests and full `swift test`.
+- [x] Commit.
 
 **Acceptance:** We know exactly which formats work, which are best-effort, and where a future decoder provider plugs in. The app should not silently overpromise RAW support.
+
+**Current result:** Partially accepted. The ImageIO capability matrix and future provider seam are built and documented, and X3F is no longer overclaimed. Remaining work is fixture-backed coverage for DNG, CRW, CR2, Fuji RAW, and long-tail RAW samples, plus deciding whether unsupported-but-important formats should be cataloged through a separate non-decode import path.
 
 ### Slice 5: XMP Conflict And Pending Sync UX
 
