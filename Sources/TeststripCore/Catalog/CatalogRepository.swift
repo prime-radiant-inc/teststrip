@@ -105,6 +105,20 @@ public final class CatalogRepository {
         return try rows.map(decodeAsset)
     }
 
+    public func assetIDs() throws -> [AssetID] {
+        let rows = try database.rows("SELECT id FROM assets ORDER BY rowid ASC")
+        return try rows.map(decodeAssetID)
+    }
+
+    public func assetIDs(matching query: SetQuery) throws -> [AssetID] {
+        let compiledQuery = try compile(query)
+        let rows = try database.rows(
+            "SELECT id FROM assets\(compiledQuery.whereSQL) ORDER BY rowid ASC",
+            bindings: compiledQuery.bindings
+        )
+        return try rows.map(decodeAssetID)
+    }
+
     public func assets(ids: [AssetID], limit: Int, offset: Int = 0) throws -> [Asset] {
         guard limit > 0 else { return [] }
         var skippedAssetCount = 0
@@ -132,6 +146,13 @@ public final class CatalogRepository {
             }
         }
         return loadedAssets
+    }
+
+    private func decodeAssetID(_ row: [String: String]) throws -> AssetID {
+        guard let id = row["id"] else {
+            throw CatalogError.sqlite("asset ID row is missing id")
+        }
+        return AssetID(rawValue: id)
     }
 
     public func assetCount(ids: [AssetID]) throws -> Int {

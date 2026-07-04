@@ -828,6 +828,10 @@ public final class AppModel {
         catalog != nil && selectedAssetID != nil
     }
 
+    public var canSaveCurrentAssetScopeSnapshot: Bool {
+        catalog != nil && !assets.isEmpty
+    }
+
     public var canBeginCullingSession: Bool {
         catalog != nil && !assets.isEmpty
     }
@@ -918,6 +922,16 @@ public final class AppModel {
         let filename = selectedAsset.originalURL.deletingPathExtension().lastPathComponent
         let trimmedFilename = filename.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedFilename.isEmpty ? "Selection" : trimmedFilename
+    }
+
+    public var suggestedSnapshotSetName: String {
+        if let selectedAssetSet {
+            return "\(selectedAssetSet.name) Snapshot"
+        }
+        if currentLibraryQuery() != nil {
+            return "\(suggestedSavedSearchName) Snapshot"
+        }
+        return "Catalog Snapshot"
     }
 
     public var suggestedCullingSessionName: String {
@@ -1424,6 +1438,28 @@ public final class AppModel {
             id: .new(),
             name: trimmedName,
             membership: .manual([selectedAssetID]),
+            starred: starred
+        )
+        return try saveAndSelect(assetSet)
+    }
+
+    @discardableResult
+    public func saveCurrentAssetScopeSnapshot(named name: String, starred: Bool = false) throws -> AssetSet {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw TeststripError.invalidState("snapshot set name is required")
+        }
+        let assetIDs = try currentAssetScopeIDs(repository: catalog.repository)
+        guard !assetIDs.isEmpty else {
+            throw TeststripError.invalidState("there are no photos to snapshot")
+        }
+        let assetSet = AssetSet(
+            id: .new(),
+            name: trimmedName,
+            membership: .snapshot(assetIDs),
             starred: starred
         )
         return try saveAndSelect(assetSet)
@@ -3428,6 +3464,16 @@ public final class AppModel {
             return try repository.assetCount(matching: query)
         }
         return try repository.assetCount()
+    }
+
+    private func currentAssetScopeIDs(repository: CatalogRepository) throws -> [AssetID] {
+        if let explicitAssetIDs = selectedExplicitAssetIDs {
+            return explicitAssetIDs
+        }
+        if let query = currentLibraryQuery() {
+            return try repository.assetIDs(matching: query)
+        }
+        return try repository.assetIDs()
     }
 
     private var selectedAssetSet: AssetSet? {

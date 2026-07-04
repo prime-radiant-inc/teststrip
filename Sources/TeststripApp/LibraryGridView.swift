@@ -6,12 +6,15 @@ struct LibraryGridView: View {
     var model: AppModel
     @State private var isSavingSearch = false
     @State private var isSavingManualSet = false
+    @State private var isSavingSnapshotSet = false
     @State private var isStartingCullingSession = false
     @State private var isShowingSourceReconnectSheet = false
     @State private var savedSearchName = ""
     @State private var savedSearchStarred = false
     @State private var manualSetName = ""
     @State private var manualSetStarred = false
+    @State private var snapshotSetName = ""
+    @State private var snapshotSetStarred = false
     @State private var cullingSessionName = ""
     @State private var cullingSessionIntent = ""
     @State private var isShowingDateFilters = false
@@ -449,6 +452,20 @@ struct LibraryGridView: View {
                         saveSearchPopover
                     }
                     .liveMockupPlaceholder(.smartCollectionsBuilder)
+
+                    Button {
+                        snapshotSetName = model.suggestedSnapshotSetName
+                        snapshotSetStarred = false
+                        isSavingSnapshotSet = true
+                    } label: {
+                        Image(systemName: "camera.viewfinder")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!model.canSaveCurrentAssetScopeSnapshot)
+                    .help("Save current results as snapshot")
+                    .popover(isPresented: $isSavingSnapshotSet) {
+                        saveSnapshotSetPopover
+                    }
 
                     Button {
                         manualSetName = model.suggestedManualSetName
@@ -891,6 +908,16 @@ struct LibraryGridView: View {
             starred: $manualSetStarred,
             cancel: { isSavingManualSet = false },
             save: saveSelectedManualSet
+        )
+    }
+
+    private var saveSnapshotSetPopover: some View {
+        SaveSetPopover(
+            title: "Save Snapshot",
+            name: $snapshotSetName,
+            starred: $snapshotSetStarred,
+            cancel: { isSavingSnapshotSet = false },
+            save: saveCurrentSnapshotSet
         )
     }
 
@@ -1633,6 +1660,15 @@ struct LibraryGridView: View {
         do {
             try model.saveSelectedAssetAsManualSet(named: manualSetName, starred: manualSetStarred)
             isSavingManualSet = false
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func saveCurrentSnapshotSet() {
+        do {
+            try model.saveCurrentAssetScopeSnapshot(named: snapshotSetName, starred: snapshotSetStarred)
+            isSavingSnapshotSet = false
         } catch {
             model.errorMessage = error.localizedDescription
         }

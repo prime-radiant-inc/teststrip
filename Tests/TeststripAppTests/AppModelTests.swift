@@ -2730,6 +2730,53 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(sidebarRowCount("Ceremony Picks", in: "Starred", of: model), "1")
     }
 
+    func testSavingCurrentAssetScopeSnapshotCapturesAllFilteredMatchesBeyondLoadedPage() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-save-snapshot")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let keepers = (0..<130).map { index in
+            makeAsset(id: "keeper-\(index)", path: "/Photos/Wedding/keeper-\(index).jpg", rating: 5)
+        }
+        let rejects = (0..<3).map { index in
+            makeAsset(id: "reject-\(index)", path: "/Photos/Wedding/reject-\(index).jpg", rating: 1)
+        }
+        try repository.upsert(keepers + rejects)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        model.minimumRatingFilter = 5
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.assets.count, 120)
+        XCTAssertEqual(model.totalAssetCount, 130)
+
+        let savedSet = try model.saveCurrentAssetScopeSnapshot(named: " Ceremony Snapshot ", starred: true)
+
+        XCTAssertEqual(savedSet.name, "Ceremony Snapshot")
+        XCTAssertEqual(savedSet.membership, .snapshot(keepers.map(\.id)))
+        XCTAssertEqual(try repository.assetSet(id: savedSet.id), savedSet)
+        XCTAssertEqual(model.selectedAssetSetID, savedSet.id)
+        XCTAssertEqual(model.totalAssetCount, 130)
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, ["Ceremony Snapshot"])
+        XCTAssertEqual(sidebarRowCount("Ceremony Snapshot", in: "Starred", of: model), "130")
+
+        var changedKeeper = keepers[0]
+        changedKeeper.metadata.rating = 1
+        try repository.upsert(changedKeeper)
+        try model.reload()
+
+        XCTAssertEqual(model.totalAssetCount, 130)
+        XCTAssertEqual(model.assets.first?.id, changedKeeper.id)
+    }
+
     func testSavingCurrentLibraryQueryRequiresActiveQuery() throws {
         let (model, _, _) = try makeModelWithCatalogAsset(named: "empty-save-search")
 
