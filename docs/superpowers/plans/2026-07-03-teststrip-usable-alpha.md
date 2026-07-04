@@ -541,7 +541,7 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Promote selected-frame evaluation signals into the rapid-cull `TESTSTRIP READS` verdict surface with provider confidence detail.
 - [x] Promote evaluation results into fuller user-visible signal groups: technical quality, faces, OCR, objects/content, color/look, and provider provenance.
 - [ ] Add People/face grouping data model only after deciding the smallest useful grouping behavior. Do not imply Apple Photos-level identity recognition unless Teststrip actually owns clustering and naming.
-- [ ] Add review filters for unevaluated, faces found, OCR found, likely issues, and provider failures. Current checkpoint: unevaluated, faces found, OCR found, and likely issues are built as catalog-backed Review queues; provider failures still need a durable per-asset failure contract.
+- [x] Add review filters for unevaluated, faces found, OCR found, likely issues, and provider failures. Built as catalog-backed Review queues with durable per-asset/per-provider failure state for provider failures.
 - [ ] Add cancellation-aware provider execution or worker-level cancellation behavior for slow local HTTP calls.
 - [ ] Keep machine labels provisional unless the user explicitly accepts them into keywords/XMP.
 - [ ] Verify provider tests, `script/verify_evaluation.sh`, and `TeststripBench local-http-smoke` against a real local endpoint when one is available.
