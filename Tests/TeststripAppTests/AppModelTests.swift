@@ -4961,6 +4961,97 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.visibleWorkActivity?.status, .cancelled)
     }
 
+    func testCancellingQueuedEvaluationWorkPreservesRunningPreviewAndDoesNotCancelAll() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let previewAsset = makeAsset(id: "running-preview", size: 1)
+        let evaluationAsset = makeAsset(id: "queued-evaluation", size: 2)
+        let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "cancel-queued-evaluation",
+            assets: [previewAsset, evaluationAsset],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: evaluationAsset.id, level: .grid)))
+        try model.requestPreview(assetID: previewAsset.id, level: .medium)
+        try model.requestEvaluation(assetID: evaluationAsset.id, provider: "local-image-metrics")
+        let previewID = WorkSessionID(rawValue: "preview-\(previewAsset.id.rawValue)-medium")
+        let evaluationID = WorkSessionID(rawValue: "evaluation-\(evaluationAsset.id.rawValue)-local-image-metrics")
+
+        model.cancelBackgroundWork(id: evaluationID)
+
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: evaluationID)?.status, .cancelled)
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: previewID)?.status, .running)
+        XCTAssertEqual(try transport.commands(), [
+            .generatePreview(assetID: previewAsset.id, level: .medium)
+        ])
+        XCTAssertNotEqual(model.statusMessage, "Cancelled import")
+    }
+
+    func testCancellingRunningEvaluationRestartsWorkerAndStartsNextQueuedWork() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let evaluationAsset = makeAsset(id: "running-evaluation", size: 1)
+        let previewAsset = makeAsset(id: "queued-preview", size: 2)
+        let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "cancel-running-evaluation",
+            assets: [evaluationAsset, previewAsset],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: evaluationAsset.id, level: .grid)))
+        try model.requestEvaluation(assetID: evaluationAsset.id, provider: "local-image-metrics")
+        try model.requestPreview(assetID: previewAsset.id, level: .medium)
+        let evaluationID = WorkSessionID(rawValue: "evaluation-\(evaluationAsset.id.rawValue)-local-image-metrics")
+        let previewID = WorkSessionID(rawValue: "preview-\(previewAsset.id.rawValue)-medium")
+
+        model.cancelBackgroundWork(id: evaluationID)
+
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: evaluationID)?.status, .cancelled)
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: previewID)?.status, .running)
+        XCTAssertEqual(try transport.commands(), [
+            .runEvaluation(assetID: evaluationAsset.id, provider: "local-image-metrics"),
+            .cancelAll,
+            .generatePreview(assetID: previewAsset.id, level: .medium)
+        ])
+    }
+
+    func testCanCancelBackgroundWorkActivityRequiresActiveBackgroundItem() {
+        let runningItem = BackgroundWorkItem(
+            id: WorkSessionID(rawValue: "running"),
+            kind: .previewGeneration,
+            title: "Generate previews",
+            detail: "Rendering",
+            status: .running,
+            completedUnitCount: 0,
+            totalUnitCount: 1
+        )
+        let completedItem = BackgroundWorkItem(
+            id: WorkSessionID(rawValue: "completed"),
+            kind: .previewGeneration,
+            title: "Generate previews",
+            detail: "Done",
+            status: .completed,
+            completedUnitCount: 1,
+            totalUnitCount: 1
+        )
+        let running = AppWorkActivity(workItem: runningItem)
+        let completed = AppWorkActivity(workItem: completedItem)
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: [],
+            backgroundWorkQueue: BackgroundWorkQueue(maxRunningCount: 1, items: [runningItem, completedItem])
+        )
+
+        XCTAssertTrue(model.canCancelBackgroundWorkActivity(running))
+        XCTAssertFalse(model.canCancelBackgroundWorkActivity(completed))
+    }
+
     @MainActor
     func testBackgroundImportReloadsAssetsAndExposesGridPreviewURL() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-background-import")

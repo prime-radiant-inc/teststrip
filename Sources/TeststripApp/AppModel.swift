@@ -688,6 +688,13 @@ public final class AppModel {
         backgroundWorkQueue.items.contains { [.queued, .running, .paused].contains($0.status) }
     }
 
+    public func canCancelBackgroundWorkActivity(_ activity: AppWorkActivity) -> Bool {
+        guard let item = backgroundWorkQueue.item(id: WorkSessionID(rawValue: activity.id)) else {
+            return false
+        }
+        return Self.isActiveBackgroundWorkStatus(item.status)
+    }
+
     public var isImporting: Bool {
         if activeWork?.kind == .ingest, let status = activeWork?.status, Self.isActiveBackgroundWorkStatus(status) {
             return true
@@ -2319,6 +2326,19 @@ public final class AppModel {
                 syncBackgroundWorkQueueFromSupervisor()
             } else {
                 backgroundWorkQueue.cancelAll()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    public func cancelBackgroundWork(id itemID: WorkSessionID) {
+        do {
+            if let workerSupervisor {
+                try workerSupervisor.cancel(id: itemID)
+                syncBackgroundWorkQueueFromSupervisor()
+            } else {
+                backgroundWorkQueue.cancel(id: itemID)
             }
         } catch {
             errorMessage = error.localizedDescription

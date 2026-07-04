@@ -17,7 +17,7 @@ struct ActivityView: View {
             let activities = model.visibleWorkActivities
             if !activities.isEmpty {
                 ForEach(Array(activities.prefix(4).enumerated()), id: \.element.id) { index, activity in
-                    activityRow(activity, showsControls: index == 0)
+                    activityRow(activity, showsQueueControls: index == 0)
                 }
                 if activities.count > 4 {
                     Text("\(activities.count - 4) more queued")
@@ -34,7 +34,7 @@ struct ActivityView: View {
         .padding(.top, 8)
     }
 
-    private func activityRow(_ activity: AppWorkActivity, showsControls: Bool) -> some View {
+    private func activityRow(_ activity: AppWorkActivity, showsQueueControls: Bool) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
                 if activity.status == .running {
@@ -56,7 +56,7 @@ struct ActivityView: View {
                     .buttonStyle(.plain)
                     .help(activity.starred ? "Unstar work" : "Star work")
                 }
-                if showsControls, model.activeWork?.id == activity.id && activity.status == .running {
+                if model.activeWork?.id == activity.id && activity.status == .running {
                     Button {
                         model.cancelActiveWork()
                     } label: {
@@ -64,33 +64,35 @@ struct ActivityView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Cancel work")
-                } else if showsControls {
-                    if model.canPauseBackgroundWork {
-                        Button {
-                            model.pauseBackgroundWork()
-                        } label: {
-                            Image(systemName: "pause.circle")
+                } else {
+                    if showsQueueControls {
+                        if model.canPauseBackgroundWork {
+                            Button {
+                                model.pauseBackgroundWork()
+                            } label: {
+                                Image(systemName: "pause.circle")
+                            }
+                            .buttonStyle(.plain)
+                            .help("Pause background work")
                         }
-                        .buttonStyle(.plain)
-                        .help("Pause background work")
-                    }
-                    if model.canResumeBackgroundWork {
-                        Button {
-                            model.resumeBackgroundWork()
-                        } label: {
-                            Image(systemName: "play.circle")
+                        if model.canResumeBackgroundWork {
+                            Button {
+                                model.resumeBackgroundWork()
+                            } label: {
+                                Image(systemName: "play.circle")
+                            }
+                            .buttonStyle(.plain)
+                            .help("Resume background work")
                         }
-                        .buttonStyle(.plain)
-                        .help("Resume background work")
                     }
-                    if model.canCancelBackgroundWork {
+                    if model.canCancelBackgroundWorkActivity(activity) {
                         Button {
-                            model.cancelBackgroundWork()
+                            model.cancelBackgroundWork(id: WorkSessionID(rawValue: activity.id))
                         } label: {
                             Image(systemName: "xmark.circle")
                         }
                         .buttonStyle(.plain)
-                        .help("Cancel background work")
+                        .help("Cancel this work item")
                     }
                 }
             }
