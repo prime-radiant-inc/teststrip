@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `6ce902b Track designer surfaces in live mockup ledger`
+- Snapshot commit: `ec0a185 Make People view show real face signal coverage`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter LiveMockupPlaceholderTests` passed after the designer-surface ledger slice.
-- Last broad unit verification: `swift test` passed with 524 tests after the designer-surface ledger slice.
+- Last focused unit verification: `swift test --filter PeoplePresentationTests --filter LiveMockupPlaceholderTests` passed after the People signal-coverage slice.
+- Last broad unit verification: `swift test` passed with 529 tests after the People signal-coverage slice.
 - Last app workflow verification: `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import/click UI automation was intentionally deferred for the import phase and grid click-recentering slices to avoid unnecessary focus stealing while Jesse was using the machine; those slices were covered by focused presentation/policy tests and full unit runs. The previous grid aspect-ratio slice passed `./script/build_and_run.sh --sample-photos` and one Computer Use grid inspection, and the previous People live-mockup route passed Computer Use inspection plus `./script/verify_grid_activation.sh`, `./script/verify_grid_selection_feedback.sh`, `./script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 ./script/verify_imported_grid_culling.sh`. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
@@ -68,6 +68,9 @@
 - `758dd51`: fixed culling progress counts to cover the active catalog query or explicit saved set instead of only the loaded thumbnail window.
 - `288f66a`: made preview generation classify offline or missing originals as source availability changes instead of burning preview retry attempts, and refresh the loaded asset/source sidebar when the worker reports that state.
 - `6ce902b`: added a code-level designer-surface ledger covering mockup ids 1a through 5f with shipped/partial/live-mockup/deferred status, tightened stale placeholder descriptions, and marked the top-bar Ask/search field as agentic-search placeholder UI.
+- `e27eddf`: fixed preview recovery after unavailable-original failures so failed in-memory preview work no longer blocks requeueing after source recovery, source-filtered views reload after preview availability changes, and the worker path no longer overclaims moved-file detection.
+- `51bd8e6`: aligned the preview completion test with real worker side effects before asserting completed preview work state.
+- `ec0a185`: replaced fake People identities/counts with real face-signal and face-quality coverage from catalog evaluation summaries while keeping clustering and naming actions disabled and marked as live-mockup placeholders.
 
 ## Product Decisions To Preserve
 
@@ -162,7 +165,7 @@ Current behavior:
 - Launch/load does not synchronously render all pending previews. App-model recovery enqueues bounded worker jobs when a worker supervisor is available.
 - Automatic preview recovery is capped at 40 queued items and enqueued as a batch to avoid one observable queue update per recovered preview.
 - Preview recovery skips unavailable originals and rows that have failed too many automatic attempts.
-- Preview generation updates source availability instead of recording a render failure when an original has gone offline, missing, or moved after the catalog last saw it online.
+- Preview generation updates source availability instead of recording a render failure when an original has gone offline or missing after the catalog last saw it online.
 - Recent work optimized preview refill responsiveness by avoiding durable write churn and all-work scans while refilling the pending preview queue.
 
 ### Metadata And XMP
@@ -274,7 +277,7 @@ Current behavior:
 - Studio-style shell exists: top chrome, sidebar, library grid, inspector, toolbar utility actions, activity/work surface.
 - Sidebar rows now render custom compact rows with icons, titles, optional details, count badges, and tone coloring. Row metadata is structured instead of baking counts into titles.
 - Review queues show catalog-backed counts for Picks, Rejects, 5 Stars, and Needs Keywords, and selecting those rows applies the matching catalog filters.
-- People is selectable from the sidebar and top chrome as a live mockup backed by placeholder people/faces data.
+- People is selectable from the sidebar and top chrome as a live mockup backed by real face-signal coverage; named identities, clustering, suggestions, and naming/merge/dismiss workflows remain disabled placeholders.
 - Library grid renders cached previews and sizes overview cells from cataloged technical dimensions so portrait and panoramic photos keep their own aspect ratios without reading originals.
 - Grid thumbnail density is user-configurable from the toolbar and persists as an app preference.
 - Selection and inspector metadata display exist; the inspector now shows the selected cached preview above a mockup-closer asset header and compact metadata controls in a fixed-size preview box, keeps Activity pinned below scrollable inspector content, and formats technical metadata through tested display models.
@@ -308,7 +311,7 @@ Current behavior:
 - Clicking/selection needs one more lightweight imported-photo verification pass. Direct grid clicks no longer recenter the thumbnail under the pointer, which was the likely root cause of the weird click feeling, and policy tests cover pointer-vs-programmatic selection scroll behavior. The remaining risk is human/AX confirmation under imported-photo conditions.
 - Library mockup parity is improving but incomplete. The overview grid now uses cataloged dimensions for true aspect-ratio cells, the filter rail is closer to the Studio mockup's Ask/search treatment, the inspector preview size is pinned, the inspector header/metadata controls have initial mockup-derived passes, the culling/loupe chrome now has verdict and filmstrip passes, Search has a first live route, Compare has a survey-style pass with metadata badges, Smart Collections has a split builder, the sidebar has richer count/detail rows and real review-queue/saved-set counts, the top chrome has a first Studio-style pass, and major dead UI gaps plus all designer surfaces are tagged in code, but real stack/focus compare grouping and deeper saved-query interactions still need visual passes against the design concept.
 - The current RAW story is only the first abstraction and ImageIO-backed path. We still need an explicit decoder capability matrix and provider-swapping plan for formats Jesse named: DNG, CRW, CR2, Fuji RAW, Sigma/Foveon RAW, and specialty long-tail files. Lytro support remains out of scope.
-- Evaluation is scaffolding plus early useful providers, not finished face/person/object/aesthetic workflow. The People view uses placeholder data; real face recognition, grouping, naming, merge/dismiss actions, accepted labels, and reprocessing flows are not wired yet.
+- Evaluation is scaffolding plus early useful providers, not finished face/person/object/aesthetic workflow. The People view now uses real face-signal coverage, but real face clustering, identity recognition, naming, merge/dismiss actions, accepted labels, and reprocessing flows are not wired yet.
 - Search/sets/work sessions are partially built but not yet the full user-facing model. Saved/ad hoc sets, clusters, work-session-derived sets, and query builder UX need more implementation.
 - Smart collections have a stronger live builder for current filters, but dynamic-vs-frozen choices, real rule editing, and agent-suggested rules are not complete.
 - The app is not packaged/notarized as a production distributable. Current app bundle work is dev/smoke focused.
