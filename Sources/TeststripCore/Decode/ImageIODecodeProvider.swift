@@ -9,7 +9,11 @@ public struct ImageIODecodeProvider: DecodeProvider {
     ]
 
     public static let bestEffortRawExtensions: Set<String> = [
-        "dng", "crw", "cr2", "cr3", "nef", "arw", "raf", "rwl", "rw2", "srw", "orf", "x3f"
+        "dng", "crw", "cr2", "cr3", "nef", "arw", "raf", "rwl", "rw2", "srw", "orf"
+    ]
+
+    public static let knownUnsupportedRawExtensions: Set<String> = [
+        "x3f"
     ]
 
     public static let supportedExtensions: Set<String> = [
@@ -51,6 +55,18 @@ public struct ImageIODecodeProvider: DecodeProvider {
                 canRenderPreview: true,
                 canRenderFullImage: false,
                 note: "ImageIO RAW support is OS and camera dependent; Teststrip catalogs the file and attempts cached previews without promising full RAW decode."
+            )
+        }
+        if Self.knownUnsupportedRawExtensions.contains(normalizedExtension) {
+            return DecodeCapability(
+                providerName: name,
+                fileExtension: normalizedExtension,
+                support: .unsupported,
+                canReadMetadata: false,
+                canUseEmbeddedPreview: false,
+                canRenderPreview: false,
+                canRenderFullImage: false,
+                note: "Sigma/Foveon X3F is recognized as a RAW family but needs a future non-ImageIO decode provider."
             )
         }
         return DecodeCapability(

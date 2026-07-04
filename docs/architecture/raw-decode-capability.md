@@ -17,9 +17,9 @@ Teststrip currently uses `ImageIODecodeProvider` as the default decode provider.
 | Fuji RAW | `raf` | ImageIO | Best effort | Yes | Best effort | Not promised |
 | Panasonic/Leica RAW | `rwl`, `rw2` | ImageIO | Best effort | Yes | Best effort | Not promised |
 | Samsung/Olympus RAW | `srw`, `orf` | ImageIO | Best effort | Yes | Best effort | Not promised |
-| Sigma/Foveon RAW | `x3f` | ImageIO | Best effort | Yes | Best effort | Not promised |
+| Sigma/Foveon RAW | `x3f` | None yet | Unsupported | No | No | No |
 
-Lytro and other specialty long-tail formats are out of scope unless a future provider explicitly declares support.
+Sigma/Foveon X3F is recognized as a relevant long-tail RAW family because Jesse has old Foveon files, but the current ImageIO provider does not claim it. Lytro and other specialty long-tail formats are out of scope unless a future provider explicitly declares support.
 
 ## Product Behavior
 

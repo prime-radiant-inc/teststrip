@@ -73,7 +73,8 @@ final class DecodeRegistryTests: XCTestCase {
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("raf"))
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("rwl"))
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("srw"))
-        XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("x3f"))
+        XCTAssertFalse(ImageIODecodeProvider.supportedExtensions.contains("x3f"))
+        XCTAssertTrue(ImageIODecodeProvider.knownUnsupportedRawExtensions.contains("x3f"))
     }
 
     func testImageIOCapabilityMatrixMarksCommonStillFormatsAsWorking() {
@@ -92,7 +93,7 @@ final class DecodeRegistryTests: XCTestCase {
     func testImageIOCapabilityMatrixMarksNamedRawFamiliesAsBestEffort() {
         let provider = ImageIODecodeProvider()
 
-        for fileExtension in ["dng", "crw", "cr2", "raf", "x3f"] {
+        for fileExtension in ["dng", "crw", "cr2", "raf"] {
             let capability = provider.capability(forFileExtension: fileExtension)
 
             XCTAssertEqual(capability?.support, .bestEffort, fileExtension)
@@ -102,6 +103,15 @@ final class DecodeRegistryTests: XCTestCase {
             XCTAssertFalse(capability?.canRenderFullImage == true, fileExtension)
             XCTAssertTrue(capability?.note.localizedCaseInsensitiveContains("OS") == true, fileExtension)
         }
+    }
+
+    func testImageIOCapabilityMatrixRecognizesX3FAsUnsupportedUntilDedicatedProviderExists() {
+        let capability = ImageIODecodeProvider().capability(forFileExtension: "x3f")
+
+        XCTAssertEqual(capability?.support, .unsupported)
+        XCTAssertFalse(capability?.canReadMetadata == true)
+        XCTAssertFalse(capability?.canRenderPreview == true)
+        XCTAssertTrue(capability?.note.localizedCaseInsensitiveContains("Sigma") == true)
     }
 
     func testImageIOCapabilityMatrixRejectsUnsupportedLongTailFormats() {
