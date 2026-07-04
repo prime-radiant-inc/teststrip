@@ -4169,6 +4169,54 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBeginImportFolderDoesNotEnqueueDuplicateImportWhileRunning() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-folder-import-duplicate")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+        model.beginImportFolder(photoFolder)
+
+        XCTAssertEqual(model.errorMessage, "Another import is already running")
+        XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder)])
+    }
+
+    @MainActor
+    func testBeginImportCardDoesNotEnqueueWhileFolderImportIsRunning() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-card-import-duplicate")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        let cardSource = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let cardDestination = directory.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: cardSource, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: cardDestination, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+        model.beginImportCard(source: cardSource, destinationRoot: cardDestination)
+
+        XCTAssertEqual(model.errorMessage, "Another import is already running")
+        XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder)])
+    }
+
+    @MainActor
     func testWorkerImportPersistsRunningActivityAndReloadMarksItInterrupted() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-interrupted")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
