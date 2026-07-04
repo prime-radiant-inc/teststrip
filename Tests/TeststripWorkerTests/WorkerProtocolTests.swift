@@ -110,7 +110,8 @@ final class WorkerProtocolTests: XCTestCase {
             itemID: WorkSessionID(rawValue: "import-work"),
             completedUnitCount: 3,
             totalUnitCount: 8,
-            detail: "Cataloged 3 photos"
+            detail: "Cataloged 3 photos",
+            catalogedAssetIDs: [AssetID(rawValue: "asset-1"), AssetID(rawValue: "asset-2")]
         )
 
         let line = try WorkerProtocolEncoder.encode(event)
@@ -123,6 +124,7 @@ final class WorkerProtocolTests: XCTestCase {
         XCTAssertEqual(json["completedUnitCount"] as? Int, 3)
         XCTAssertEqual(json["totalUnitCount"] as? Int, 8)
         XCTAssertEqual(json["message"] as? String, "Cataloged 3 photos")
+        XCTAssertEqual(json["catalogedAssetIDs"] as? [String], ["asset-1", "asset-2"])
     }
 
     func testWorkerCommandRoundTripsThroughJSONLine() throws {

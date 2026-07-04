@@ -139,7 +139,8 @@ final class WorkerSupervisorTests: XCTestCase {
             itemID: item.id,
             completedUnitCount: 3,
             totalUnitCount: 8,
-            detail: "Cataloged 3 photos"
+            detail: "Cataloged 3 photos",
+            catalogedAssetIDs: []
         )))
 
         XCTAssertTrue(waitUntil {
@@ -173,7 +174,8 @@ final class WorkerSupervisorTests: XCTestCase {
             itemID: item.id,
             completedUnitCount: 3,
             totalUnitCount: 8,
-            detail: "Cataloged 3 photos"
+            detail: "Cataloged 3 photos",
+            catalogedAssetIDs: []
         )))
         XCTAssertTrue(waitUntil {
             supervisor.queue.item(id: item.id)?.detail == "Cataloged 3 photos"

@@ -664,6 +664,9 @@ public final class AppModel {
             self?.releaseInactiveMetadataSyncContexts(in: queue)
             self?.releaseInactiveAvailabilityContexts(in: queue)
         }
+        self.workerSupervisor?.onCommandProgress = { [weak self] event in
+            self?.handleWorkerCommandProgress(event)
+        }
         self.workerSupervisor?.onCommandCompleted = { [weak self] event in
             self?.handleWorkerCommandCompleted(event)
         }
@@ -1835,6 +1838,20 @@ public final class AppModel {
             handleWorkerImportCompleted(itemID: itemID, importedAssetIDs: importedAssetIDs)
         case .accepted, .progress, .failed:
             return
+        }
+    }
+
+    private func handleWorkerCommandProgress(_ event: WorkerEvent) {
+        guard case .progress(let itemID, _, _, _, let catalogedAssetIDs) = event,
+              let itemID,
+              workerImportContextsByItemID[itemID] != nil,
+              let firstCatalogedAssetID = catalogedAssetIDs.first else {
+            return
+        }
+        do {
+            try loadCatalogPage(preferredSelection: firstCatalogedAssetID)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

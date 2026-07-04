@@ -88,8 +88,8 @@ final class WorkerEntrypointTests: XCTestCase {
             .split(separator: "\n", omittingEmptySubsequences: true)
             .map { try WorkerProtocolEncoder.decodeEvent(String($0)) }
         XCTAssertTrue(events.contains { event in
-            if case .progress(let progressItemID, _, _, _) = event {
-                return progressItemID == itemID
+            if case .progress(let progressItemID, _, _, _, let catalogedAssetIDs) = event {
+                return progressItemID == itemID && catalogedAssetIDs.count == 1
             }
             return false
         })

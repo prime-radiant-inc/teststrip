@@ -33,7 +33,8 @@ private func execute(_ command: WorkerCommand, itemID: WorkSessionID?) throws ->
             itemID: itemID,
             completedUnitCount: progress.completedUnitCount,
             totalUnitCount: progress.totalUnitCount,
-            detail: progress.detail
+            detail: progress.detail,
+            catalogedAssetIDs: progress.catalogedAssetIDs
         ))
     }
 }

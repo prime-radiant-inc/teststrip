@@ -12,7 +12,7 @@ public struct WorkerCommandRequest: Equatable, Sendable {
 
 public enum WorkerEvent: Equatable, Sendable {
     case accepted(itemID: WorkSessionID?, message: String)
-    case progress(itemID: WorkSessionID?, completedUnitCount: Int, totalUnitCount: Int?, detail: String)
+    case progress(itemID: WorkSessionID?, completedUnitCount: Int, totalUnitCount: Int?, detail: String, catalogedAssetIDs: [AssetID])
     case completed(itemID: WorkSessionID?, message: String)
     case completedImport(itemID: WorkSessionID?, message: String, importedAssetIDs: [AssetID])
     case failed(itemID: WorkSessionID?, message: String)
@@ -20,7 +20,7 @@ public enum WorkerEvent: Equatable, Sendable {
     public var itemID: WorkSessionID? {
         switch self {
         case .accepted(let itemID, _),
-             .progress(let itemID, _, _, _),
+             .progress(let itemID, _, _, _, _),
              .completed(let itemID, _),
              .completedImport(let itemID, _, _),
              .failed(let itemID, _):
@@ -31,7 +31,7 @@ public enum WorkerEvent: Equatable, Sendable {
     public var message: String {
         switch self {
         case .accepted(_, let message),
-             .progress(_, _, _, let message),
+             .progress(_, _, _, let message, _),
              .completed(_, let message),
              .completedImport(_, let message, _),
              .failed(_, let message):
@@ -142,22 +142,55 @@ public enum WorkerProtocolEncoder {
         let envelope: WorkerEventEnvelope
         switch event {
         case .accepted(let itemID, let message):
-            envelope = WorkerEventEnvelope(event: "accepted", itemID: itemID?.rawValue, message: message, importedAssetIDs: nil, completedUnitCount: nil, totalUnitCount: nil)
-        case .progress(let itemID, let completedUnitCount, let totalUnitCount, let detail):
-            envelope = WorkerEventEnvelope(event: "progress", itemID: itemID?.rawValue, message: detail, importedAssetIDs: nil, completedUnitCount: completedUnitCount, totalUnitCount: totalUnitCount)
+            envelope = WorkerEventEnvelope(
+                event: "accepted",
+                itemID: itemID?.rawValue,
+                message: message,
+                importedAssetIDs: nil,
+                catalogedAssetIDs: nil,
+                completedUnitCount: nil,
+                totalUnitCount: nil
+            )
+        case .progress(let itemID, let completedUnitCount, let totalUnitCount, let detail, let catalogedAssetIDs):
+            envelope = WorkerEventEnvelope(
+                event: "progress",
+                itemID: itemID?.rawValue,
+                message: detail,
+                importedAssetIDs: nil,
+                catalogedAssetIDs: catalogedAssetIDs.map(\.rawValue),
+                completedUnitCount: completedUnitCount,
+                totalUnitCount: totalUnitCount
+            )
         case .completed(let itemID, let message):
-            envelope = WorkerEventEnvelope(event: "completed", itemID: itemID?.rawValue, message: message, importedAssetIDs: nil, completedUnitCount: nil, totalUnitCount: nil)
+            envelope = WorkerEventEnvelope(
+                event: "completed",
+                itemID: itemID?.rawValue,
+                message: message,
+                importedAssetIDs: nil,
+                catalogedAssetIDs: nil,
+                completedUnitCount: nil,
+                totalUnitCount: nil
+            )
         case .completedImport(let itemID, let message, let importedAssetIDs):
             envelope = WorkerEventEnvelope(
                 event: "completed",
                 itemID: itemID?.rawValue,
                 message: message,
                 importedAssetIDs: importedAssetIDs.map(\.rawValue),
+                catalogedAssetIDs: nil,
                 completedUnitCount: nil,
                 totalUnitCount: nil
             )
         case .failed(let itemID, let message):
-            envelope = WorkerEventEnvelope(event: "failed", itemID: itemID?.rawValue, message: message, importedAssetIDs: nil, completedUnitCount: nil, totalUnitCount: nil)
+            envelope = WorkerEventEnvelope(
+                event: "failed",
+                itemID: itemID?.rawValue,
+                message: message,
+                importedAssetIDs: nil,
+                catalogedAssetIDs: nil,
+                completedUnitCount: nil,
+                totalUnitCount: nil
+            )
         }
 
         let data = try encoder.encode(envelope)
@@ -225,7 +258,8 @@ public enum WorkerProtocolEncoder {
                 itemID: itemID,
                 completedUnitCount: try envelope.requiredCompletedUnitCount(),
                 totalUnitCount: envelope.totalUnitCount,
-                detail: envelope.message
+                detail: envelope.message,
+                catalogedAssetIDs: try envelope.requiredCatalogedAssetIDs()
             )
         case "completed":
             if let importedAssetIDs = envelope.importedAssetIDs {
@@ -322,6 +356,7 @@ public enum WorkerProtocolEncoder {
         var itemID: String?
         var message: String
         var importedAssetIDs: [String]?
+        var catalogedAssetIDs: [String]?
         var completedUnitCount: Int?
         var totalUnitCount: Int?
 
@@ -335,6 +370,18 @@ public enum WorkerProtocolEncoder {
                 )
             }
             return completedUnitCount
+        }
+
+        func requiredCatalogedAssetIDs() throws -> [AssetID] {
+            guard let catalogedAssetIDs else {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.catalogedAssetIDs],
+                        debugDescription: "Missing catalogedAssetIDs"
+                    )
+                )
+            }
+            return catalogedAssetIDs.map(AssetID.init(rawValue:))
         }
     }
 }

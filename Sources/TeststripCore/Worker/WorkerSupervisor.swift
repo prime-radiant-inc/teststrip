@@ -35,6 +35,7 @@ private final class DispatchWorkerTimeoutCancellation: WorkerTimeoutCancellation
 public final class WorkerSupervisor: @unchecked Sendable {
     public private(set) var queue: BackgroundWorkQueue
     public var onQueueChanged: ((BackgroundWorkQueue) -> Void)?
+    public var onCommandProgress: ((WorkerEvent) -> Void)?
     public var onCommandCompleted: ((WorkerEvent) -> Void)?
 
     private let transport: WorkerTransport
@@ -207,7 +208,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         switch event {
         case .accepted:
             return
-        case .progress(let itemID, let completedUnitCount, let totalUnitCount, let detail):
+        case .progress(let itemID, let completedUnitCount, let totalUnitCount, let detail, _):
             guard let itemID else { return }
             updateDispatchedItemProgress(
                 id: itemID,
@@ -215,6 +216,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
                 totalUnitCount: totalUnitCount,
                 detail: detail
             )
+            onCommandProgress?(event)
         case .completed(let itemID, let message):
             guard let itemID else { return }
             completeDispatchedItem(id: itemID, detail: message, event: event)

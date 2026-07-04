@@ -2299,7 +2299,8 @@ final class AppModelTests: XCTestCase {
             itemID: itemID,
             completedUnitCount: 1,
             totalUnitCount: 2,
-            detail: "Checked 1 of 2 sources"
+            detail: "Checked 1 of 2 sources",
+            catalogedAssetIDs: []
         )))
         try await waitForVisibleWorkDetail("Checked 1 of 2 sources", in: model)
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
@@ -3128,7 +3129,8 @@ final class AppModelTests: XCTestCase {
             itemID: itemID,
             completedUnitCount: 3,
             totalUnitCount: 8,
-            detail: "Cataloged 3 photos"
+            detail: "Cataloged 3 photos",
+            catalogedAssetIDs: []
         )))
 
         try await waitForVisibleWorkDetail("Cataloged 3 photos", in: model)
@@ -3158,7 +3160,8 @@ final class AppModelTests: XCTestCase {
             itemID: itemID,
             completedUnitCount: 3,
             totalUnitCount: 8,
-            detail: "Cataloged 3 photos"
+            detail: "Cataloged 3 photos",
+            catalogedAssetIDs: []
         )))
 
         try await waitForVisibleWorkDetail("Cataloged 3 photos", in: model)
@@ -3710,12 +3713,67 @@ final class AppModelTests: XCTestCase {
             itemID: itemID,
             completedUnitCount: 1,
             totalUnitCount: 10,
-            detail: "Cataloging 1 of 10 photos"
+            detail: "Cataloging 1 of 10 photos",
+            catalogedAssetIDs: [importedAsset.id]
         )))
 
         try await waitForSelectedAsset(importedAsset.id, in: model)
         XCTAssertEqual(model.assets.map(\.id), [importedAsset.id])
         XCTAssertEqual(model.totalAssetCount, 1)
+        XCTAssertTrue(model.isImporting)
+    }
+
+    @MainActor
+    func testWorkerImportProgressPrefersCatalogedAssetWhenCurrentPageIsFull() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-full-page-early-assets")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("new.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        for index in 0..<500 {
+            try catalog.repository.upsert(Asset(
+                id: AssetID(rawValue: "existing-\(index)"),
+                originalURL: URL(fileURLWithPath: "/Photos/existing-\(index).jpg"),
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: Int64(index + 1), modificationDate: Date(timeIntervalSince1970: TimeInterval(index + 1))),
+                availability: .online,
+                metadata: AssetMetadata()
+            ))
+        }
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+        XCTAssertEqual(model.selectedAssetID, AssetID(rawValue: "existing-0"))
+
+        model.beginImportFolder(photoFolder)
+        let itemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "worker-early-import-full-page"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10_000, modificationDate: Date(timeIntervalSince1970: 10_000)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
+            itemID: itemID,
+            completedUnitCount: 1,
+            totalUnitCount: 501,
+            detail: "Cataloging 1 of 501 photos",
+            catalogedAssetIDs: [importedAsset.id]
+        )))
+
+        try await waitForSelectedAsset(importedAsset.id, in: model)
+        XCTAssertEqual(model.assets.map(\.id), [importedAsset.id])
+        XCTAssertEqual(model.totalAssetCount, 501)
+        XCTAssertEqual(model.libraryCountText, "Showing 501-501 of 501 photographs")
         XCTAssertTrue(model.isImporting)
     }
 
