@@ -4294,6 +4294,26 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedSuggestedKeywords.map(\.provenanceText), ["apple-vision/Vision-mountain", "apple-vision/Vision-lake"])
     }
 
+    func testObjectEvaluationLabelsRemainProvisionalUntilAccepted() throws {
+        let asset = Asset(
+            id: AssetID(rawValue: "provisional-keyword"),
+            originalURL: URL(fileURLWithPath: "/Photos/provisional-keyword.jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata(keywords: ["portfolio"])
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(named: "provisional-keyword", assets: [asset])
+        let provenance = ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: asset.id, kind: .object, value: .label("mountain"), confidence: 0.84, provenance: provenance)
+        ])
+
+        XCTAssertEqual(model.selectedSuggestedKeywords.map(\.keyword), ["mountain"])
+        XCTAssertEqual(model.selectedAsset?.metadata.keywords, ["portfolio"])
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.keywords, ["portfolio"])
+    }
+
     func testVisibleBatchKeywordSuggestionsAggregateObjectLabels() throws {
         let first = makeAsset(id: "first-batch-keyword", path: "/Photos/first.jpg", rating: 0)
         let second = makeAsset(id: "second-batch-keyword", path: "/Photos/second.jpg", rating: 0)
