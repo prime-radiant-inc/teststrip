@@ -2522,6 +2522,83 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rows.map(\.isSelectable), [true, true])
     }
 
+    func testWorkSidebarIncludesStarredSessionOutsideDisplayedRecentRows() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-work-sidebar-starred-overflow")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let keeper = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
+        let reject = makeAsset(id: "reject", path: "/Photos/reject.jpg", rating: 1)
+        try repository.upsert([keeper, reject])
+        let inputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "starred-cull-input"),
+            name: "Starred Cull Input",
+            assetIDs: [keeper.id]
+        )
+        try repository.upsert(inputSet)
+        let oldStarredCull = WorkSession(
+            id: WorkSessionID(rawValue: "old-starred-cull"),
+            kind: .culling,
+            intent: "Long-running edit",
+            title: "Long-running Cull",
+            detail: "Long-running edit",
+            status: .running,
+            inputSetIDs: [inputSet.id],
+            outputSetIDs: [],
+            completedUnitCount: 0,
+            totalUnitCount: 2,
+            failureCount: 0,
+            starred: true,
+            createdAt: Date(timeIntervalSince1970: 0),
+            updatedAt: Date(timeIntervalSince1970: 0)
+        )
+        try repository.save(oldStarredCull)
+        for index in 1...5 {
+            try repository.save(WorkSession(
+                id: WorkSessionID(rawValue: "recent-\(index)"),
+                kind: .ingest,
+                intent: "Recent \(index)",
+                title: "Recent \(index)",
+                detail: "Recent \(index)",
+                status: .completed,
+                inputSetIDs: [],
+                outputSetIDs: [],
+                completedUnitCount: index,
+                totalUnitCount: index,
+                failureCount: 0,
+                createdAt: Date(timeIntervalSince1970: TimeInterval(index)),
+                updatedAt: Date(timeIntervalSince1970: TimeInterval(index))
+            ))
+        }
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        let workRows = try XCTUnwrap(model.sidebarSections.first { $0.title == "Work" }?.rows)
+
+        XCTAssertEqual(workRows.map(\.title), [
+            "Recent 5",
+            "Recent 4",
+            "Recent 3",
+            "Recent 2",
+            "Recent 1",
+            "Long-running Cull"
+        ])
+        let starredRow = try XCTUnwrap(workRows.first { $0.title == "Long-running Cull" })
+        try model.selectSidebarRow(starredRow)
+
+        XCTAssertEqual(model.selectedAssetSetID, inputSet.id)
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
+        XCTAssertEqual(model.selectedView, .loupe)
+    }
+
     func testSettingWorkSessionStarredRefreshesWorkLists() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-star-work-session")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

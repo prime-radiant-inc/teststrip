@@ -326,6 +326,7 @@ Current behavior:
 - Completed imports show an expanded summary panel with the imported photo count, preview status/failure count, Open action for the imported output set, Cull action that starts a culling work session from that set, disabled unbuilt follow-ups, and dismiss behavior.
 - Folder and card import entrypoints refuse duplicate import submissions while an import is already running.
 - Culling sessions now start and reopen in loupe view with a culling header, reviewed-progress bar, pick/reject counts, selected-frame `TESTSTRIP READS` verdict, fixed-height bottom filmstrip, stable rating/label/flag command rail, and visible frame position.
+- Work sessions point to input/output sets, recent and starred work sessions are visible in the sidebar, and older starred sessions remain visible even when they fall outside the displayed recent-work cap.
 - Ratings, flags, labels, and keywords have app-model/catalog plumbing. The inspector can show object-label-backed keyword suggestions and accept them into catalog/XMP metadata; visible loaded assets can also aggregate object-label batch keyword suggestions and apply one through the same catalog/XMP path.
 - Keyboard culling probe verifies selecting a thumbnail, clearing rating, sending `5`, and seeing `Rating: 5` in the inspector.
 - Grid activation and selected-thumbnail feedback AX probes exist.
@@ -576,8 +577,9 @@ Teststrip reaches usable alpha when a photographer can:
 - [ ] Define the minimum user-facing set types for alpha: import batch, manual selection, saved search, frozen snapshot, and work-session-derived set.
 - [ ] Add query predicates for rating, color label, pick/reject, keyword, date, folder, source availability, XMP state, and evaluation signal kind.
 - [x] Add sidebar sections for recent/starred work sessions next to saved sets/searches.
-- [ ] Make culling operate on the active set, not only the whole library or last import.
-- [ ] Add tests that a work session points to input/output/generated sets rather than owning a separate membership system.
+- [x] Keep older starred work sessions visible next to the capped recent work list.
+- [x] Make culling operate on the active set, not only the whole library or last import.
+- [x] Add tests that a work session points to input/output/generated sets rather than owning a separate membership system.
 - [ ] Verify full `swift test` and one app workflow: import, save a filtered set, start a culling session over it, star the session, relaunch, and recover it from sidebar.
 - [ ] Commit.
 

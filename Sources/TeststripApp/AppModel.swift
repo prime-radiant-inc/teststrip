@@ -4852,7 +4852,8 @@ public final class AppModel {
         recentWork: [AppWorkActivity],
         starredWork: [AppWorkActivity]
     ) -> [SidebarRow] {
-        var rows = recentWork.prefix(5).map { activity in
+        let displayedRecentWork = Array(recentWork.prefix(5))
+        var rows = displayedRecentWork.map { activity in
             SidebarRow(
                 id: "work-recent-\(activity.id)",
                 title: workSidebarTitle(for: activity),
@@ -4862,7 +4863,7 @@ public final class AppModel {
                 target: .workSession(WorkSessionID(rawValue: activity.id))
             )
         }
-        let recentIDs = Set(recentWork.map(\.id))
+        let recentIDs = Set(displayedRecentWork.map(\.id))
         rows.append(contentsOf: starredWork.prefix(5).filter { !recentIDs.contains($0.id) }.map { activity in
             SidebarRow(
                 id: "work-starred-\(activity.id)",
