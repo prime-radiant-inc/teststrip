@@ -482,20 +482,32 @@ struct LibraryGridView: View {
     }
 
     private var importProgressBanner: some View {
-        HStack(spacing: 10) {
+        let presentation = importProgressPresentation
+        return HStack(spacing: 10) {
             importProgressIndicator
                 .controlSize(.small)
+            Text(presentation.phaseText)
+                .font(.caption2.monospaced().weight(.semibold))
+                .foregroundStyle(.orange)
+                .lineLimit(1)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Color.orange.opacity(0.22))
+                }
             VStack(alignment: .leading, spacing: 2) {
-                Text(importActivity?.title ?? "Import photos")
+                Text(presentation.title)
                     .font(.caption.weight(.semibold))
-                Text(importActivityDetail)
+                Text(presentation.detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            if let importActivity, let total = importActivity.totalUnitCount {
-                Text("\(importActivity.completedUnitCount) of \(total)")
+            if let countText = presentation.countText {
+                Text(countText)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -1033,17 +1045,17 @@ struct LibraryGridView: View {
                 .font(.system(size: 34))
                 .foregroundStyle(.secondary)
             if isImporting {
-                Text(importActivity?.title ?? "Import photos")
+                Text(importProgressPresentation.title)
                     .font(.headline)
                 importProgressIndicator
                     .controlSize(.small)
-                Text(importActivityDetail)
+                Text(importProgressPresentation.detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                if let importActivity, let total = importActivity.totalUnitCount {
-                    Text("\(importActivity.completedUnitCount) of \(total)")
+                if let countText = importProgressPresentation.countText {
+                    Text(countText)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -1084,7 +1096,7 @@ struct LibraryGridView: View {
             if isImporting {
                 ProgressView()
                     .controlSize(.small)
-                Text(importActivityDetail)
+                Text(importProgressPresentation.detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -1204,8 +1216,8 @@ struct LibraryGridView: View {
         model.visibleImportActivity
     }
 
-    private var importActivityDetail: String {
-        importActivity?.detail ?? "Importing"
+    private var importProgressPresentation: ImportProgressPresentation {
+        ImportProgressPresentation.presentation(for: importActivity)
     }
 
     private func cancelImport() {
@@ -2185,6 +2197,49 @@ struct CullingAssistPresentation: Equatable {
             return fallback
         }
         return first.uppercased() + trimmed.dropFirst()
+    }
+}
+
+struct ImportProgressPresentation: Equatable {
+    var title: String
+    var phaseText: String
+    var detail: String
+    var countText: String?
+
+    static func presentation(for activity: AppWorkActivity?) -> ImportProgressPresentation {
+        guard let activity else {
+            return ImportProgressPresentation(
+                title: "Import photos",
+                phaseText: "Starting",
+                detail: "Preparing import",
+                countText: nil
+            )
+        }
+        return ImportProgressPresentation(
+            title: activity.title,
+            phaseText: phaseText(for: activity),
+            detail: activity.detail.isEmpty ? "Preparing import" : activity.detail,
+            countText: countText(for: activity)
+        )
+    }
+
+    private static func phaseText(for activity: AppWorkActivity) -> String {
+        let lowercasedDetail = activity.detail.lowercased()
+        if lowercasedDetail.contains("preview") || lowercasedDetail.contains("generated") {
+            return "Building previews"
+        }
+        if lowercasedDetail.contains("catalog") || activity.totalUnitCount != nil {
+            return "Cataloging"
+        }
+        if lowercasedDetail.contains("copy") {
+            return "Copying"
+        }
+        return "Scanning source"
+    }
+
+    private static func countText(for activity: AppWorkActivity) -> String? {
+        guard let total = activity.totalUnitCount else { return nil }
+        return "\(activity.completedUnitCount) of \(total)"
     }
 }
 
