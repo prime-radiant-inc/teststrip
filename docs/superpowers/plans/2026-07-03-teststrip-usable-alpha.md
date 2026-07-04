@@ -214,6 +214,7 @@ Current behavior:
 
 - Studio-style shell exists: sidebar, library grid, inspector, toolbar actions, activity/work surface.
 - Library grid renders cached previews.
+- Grid thumbnail density is user-configurable from the toolbar and persists as an app preference.
 - Selection and inspector metadata display exist.
 - Ratings, flags, labels, and keywords have app-model/catalog plumbing.
 - Keyboard culling probe verifies selecting a thumbnail, clearing rating, sending `5`, and seeing `Rating: 5` in the inspector.

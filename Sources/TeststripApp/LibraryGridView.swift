@@ -19,8 +19,15 @@ struct LibraryGridView: View {
     @State private var importPathDraft = ImportFolderPathDraft()
     @State private var sourceReconnectDraft = SourceReconnectPathDraft()
     @State private var cullingFocusRequest = 0
+    @AppStorage("LibraryGridView.thumbnailWidth") private var storedThumbnailWidth = LibraryGridLayout.defaultThumbnailWidth
 
-    private let columns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
+    private var gridLayout: LibraryGridLayout {
+        LibraryGridLayout(thumbnailWidth: storedThumbnailWidth)
+    }
+
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: gridLayout.gridItemMinimumWidth), spacing: 8)]
+    }
 
     private var isImporting: Bool {
         model.isImporting
@@ -62,6 +69,8 @@ struct LibraryGridView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+
+            thumbnailSizeControl
 
             Button {
                 cullingSessionName = model.suggestedCullingSessionName
@@ -144,6 +153,31 @@ struct LibraryGridView: View {
                 .frame(width: 1, height: 1)
                 .accessibilityHidden(true)
         }
+    }
+
+    private var thumbnailSizeControl: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "square.grid.3x3")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Slider(
+                value: Binding(
+                    get: { gridLayout.thumbnailWidth },
+                    set: { storedThumbnailWidth = LibraryGridLayout.clampedThumbnailWidth($0) }
+                ),
+                in: LibraryGridLayout.minimumThumbnailWidth...LibraryGridLayout.maximumThumbnailWidth,
+                step: 8
+            ) {
+                Text("Thumbnail Size")
+            }
+            .frame(width: 120)
+            .accessibilityLabel("Thumbnail Size")
+            .accessibilityValue(gridLayout.accessibilityValue)
+            Image(systemName: "rectangle.grid.1x2")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .help("Thumbnail size: \(gridLayout.accessibilityValue)")
     }
 
     private var filterBar: some View {
