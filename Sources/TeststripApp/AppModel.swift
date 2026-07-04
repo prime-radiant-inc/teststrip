@@ -84,7 +84,7 @@ public enum CullingShortcutKey: Equatable, Sendable {
     case character(String)
 }
 
-public enum ReviewQueue: String, Equatable, Sendable {
+public enum ReviewQueue: String, Equatable, Hashable, Sendable {
     case picks
     case rejects
     case fiveStars
@@ -364,6 +364,7 @@ public final class AppModel {
     public var sourceRoots: [CatalogSourceRoot]
     public var sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary]
     public var catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary]
+    public var reviewQueueCounts: [ReviewQueue: Int]
     public var selectedAssetSetID: AssetSetID?
 
     @ObservationIgnored
@@ -802,6 +803,7 @@ public final class AppModel {
         sourceRoots: [CatalogSourceRoot] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
+        reviewQueueCounts: [ReviewQueue: Int] = [:],
         selectedAssetSetID: AssetSetID? = nil,
         workerSupervisor: WorkerSupervisor? = nil,
         importTaskFactory: AppImportTaskFactory? = nil,
@@ -814,6 +816,7 @@ public final class AppModel {
             catalogFolders: catalogFolders,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+            reviewQueueCounts: reviewQueueCounts,
             pendingMetadataSyncItems: pendingMetadataSyncItems,
             metadataSyncConflictItems: metadataSyncConflictItems,
             recentWork: recentWork,
@@ -853,6 +856,7 @@ public final class AppModel {
         self.sourceRoots = sourceRoots
         self.sourceAvailabilitySummaries = sourceAvailabilitySummaries
         self.catalogEvaluationKindSummaries = catalogEvaluationKindSummaries
+        self.reviewQueueCounts = reviewQueueCounts
         self.selectedAssetSetID = selectedAssetSetID
         self.catalog = catalog
         self.workerSupervisor = workerSupervisor
@@ -935,6 +939,7 @@ public final class AppModel {
         let sourceRoots = try repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: repository)
         let catalogEvaluationKindSummaries = try repository.evaluationKindSummaries()
+        let reviewQueueCounts = try Self.reviewQueueCounts(repository: repository)
         let pendingMetadataSyncItems = try repository.pendingMetadataSyncItems()
         let metadataSyncConflictItems = try repository.metadataSyncConflictItems()
         let recentWork = try repository.workSessions(limit: 10).map(AppWorkActivity.init)
@@ -947,6 +952,7 @@ public final class AppModel {
                 catalogFolders: catalogFolders,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+                reviewQueueCounts: reviewQueueCounts,
                 pendingMetadataSyncItems: pendingMetadataSyncItems,
                 metadataSyncConflictItems: metadataSyncConflictItems,
                 recentWork: recentWork,
@@ -964,7 +970,8 @@ public final class AppModel {
             catalogFolders: catalogFolders,
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
-            catalogEvaluationKindSummaries: catalogEvaluationKindSummaries
+            catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+            reviewQueueCounts: reviewQueueCounts
         )
     }
 
@@ -981,6 +988,7 @@ public final class AppModel {
         let sourceRoots = try catalog.repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         let catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
+        let reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
         let pendingMetadataSyncItems = try catalog.repository.pendingMetadataSyncItems()
         let metadataSyncConflictItems = try catalog.repository.metadataSyncConflictItems()
         let recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
@@ -993,6 +1001,7 @@ public final class AppModel {
                 catalogFolders: catalogFolders,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+                reviewQueueCounts: reviewQueueCounts,
                 pendingMetadataSyncItems: pendingMetadataSyncItems,
                 metadataSyncConflictItems: metadataSyncConflictItems,
                 recentWork: recentWork,
@@ -1012,6 +1021,7 @@ public final class AppModel {
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+            reviewQueueCounts: reviewQueueCounts,
             workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory,
             cardImportTaskFactory: cardImportTaskFactory
@@ -1574,6 +1584,7 @@ public final class AppModel {
         }
         let updatedAsset = try catalog.repository.asset(id: assetID)
         try syncMetadataSidecar(for: updatedAsset)
+        try refreshReviewQueueCounts()
         guard let index = assets.firstIndex(where: { $0.id == assetID }) else {
             return
         }
@@ -1690,6 +1701,7 @@ public final class AppModel {
         if let index = assets.firstIndex(where: { $0.id == assetID }) {
             assets[index] = updatedAsset
         }
+        try refreshReviewQueueCounts()
         if originalAsset.metadata != sidecarMetadata {
             metadataUndoStack.append(MetadataChange(
                 assetID: assetID,
@@ -2942,10 +2954,12 @@ public final class AppModel {
 
     private func rebuildSidebarSections() {
         sidebarSections = Self.defaultSidebarSections(
+            totalAssetCount: totalAssetCount,
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+            reviewQueueCounts: reviewQueueCounts,
             pendingMetadataSyncItems: pendingMetadataSyncItems,
             metadataSyncConflictItems: metadataSyncConflictItems,
             recentWork: recentWork,
@@ -2972,6 +2986,12 @@ public final class AppModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func refreshReviewQueueCounts() throws {
+        guard let catalog else { return }
+        reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
+        rebuildSidebarSections()
     }
 
     @discardableResult
@@ -3205,6 +3225,7 @@ public final class AppModel {
 
     private func updateImportStatus(with result: LibraryImportResult) {
         try? refreshPreviewGenerationQueueStates()
+        try? refreshReviewQueueCounts()
         statusMessage = Self.importCompletionStatus(result: result)
         if !result.previewFailures.isEmpty {
             statusMessage?.append(" (\(result.previewFailures.count) preview failures)")
@@ -3528,6 +3549,7 @@ public final class AppModel {
         catalogFolders: [CatalogFolder] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
+        reviewQueueCounts: [ReviewQueue: Int] = [:],
         pendingMetadataSyncItems: [MetadataSyncItem] = [],
         metadataSyncConflictItems: [MetadataSyncItem] = [],
         recentWork: [AppWorkActivity] = [],
@@ -3565,7 +3587,7 @@ public final class AppModel {
             )
         )
         var sections = [SidebarSection(title: "Library", rows: libraryRows)]
-        sections.append(SidebarSection(title: "Review", rows: reviewQueueSidebarRows()))
+        sections.append(SidebarSection(title: "Review", rows: reviewQueueSidebarRows(reviewQueueCounts: reviewQueueCounts)))
         if !catalogFolders.isEmpty {
             sections.append(SidebarSection(title: "Folders", rows: catalogFolders.prefix(20).map { folder in
                 SidebarRow(
@@ -3644,11 +3666,12 @@ public final class AppModel {
         ]
     }
 
-    private static func reviewQueueSidebarRows() -> [SidebarRow] {
+    private static func reviewQueueSidebarRows(reviewQueueCounts: [ReviewQueue: Int]) -> [SidebarRow] {
         reviewQueueSidebarOrder.map { queue in
             SidebarRow(
                 id: "review-\(queue.rawValue)",
                 title: reviewQueueTitle(queue),
+                countText: reviewQueueCounts[queue].map(sidebarCountText),
                 target: .reviewQueue(queue)
             )
         }
@@ -3671,6 +3694,27 @@ public final class AppModel {
             return "5 Stars"
         case .needsKeywords:
             return "Needs Keywords"
+        }
+    }
+
+    private static func reviewQueueCounts(repository: CatalogRepository) throws -> [ReviewQueue: Int] {
+        var counts: [ReviewQueue: Int] = [:]
+        for queue in reviewQueueSidebarOrder {
+            counts[queue] = try repository.assetCount(matching: reviewQueueQuery(queue))
+        }
+        return counts
+    }
+
+    private static func reviewQueueQuery(_ queue: ReviewQueue) -> SetQuery {
+        switch queue {
+        case .picks:
+            return SetQuery(predicates: [.flag(.pick)])
+        case .rejects:
+            return SetQuery(predicates: [.flag(.reject)])
+        case .fiveStars:
+            return SetQuery(predicates: [.ratingAtLeast(5)])
+        case .needsKeywords:
+            return SetQuery(predicates: [.missingKeywords])
         }
     }
 

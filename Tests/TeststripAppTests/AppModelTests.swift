@@ -595,6 +595,9 @@ final class AppModelTests: XCTestCase {
             catalogMetadata: catalogMetadata,
             sidecarMetadata: sidecarMetadata
         )
+        XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("Rejects", in: model), "0")
+        XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "1")
 
         try model.resolveSelectedMetadataConflictUsingSidecar()
 
@@ -606,6 +609,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.metadataSyncConflictItems(), [])
         XCTAssertEqual(model.metadataSyncConflictItems, [])
         XCTAssertEqual(model.pendingMetadataSyncItems, [])
+        XCTAssertEqual(reviewQueueCount("Picks", in: model), "0")
+        XCTAssertEqual(reviewQueueCount("Rejects", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "0")
         XCTAssertEqual(
             try repository.lastMetadataSyncFingerprint(assetID: asset.id),
             XMPSidecarStore.fingerprint(for: sidecarData)
@@ -1619,6 +1625,10 @@ final class AppModelTests: XCTestCase {
 
         let reviewSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Review" })
         XCTAssertEqual(reviewSection.rowTitles, ["Picks", "Rejects", "5 Stars", "Needs Keywords"])
+        XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("Rejects", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("Needs Keywords", in: model), "1")
 
         let picksRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Picks" })
         try model.selectSidebarRow(picksRow)
@@ -1653,6 +1663,31 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.needsKeywordsFilter)
         XCTAssertEqual(model.assets.map(\.id), [needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
+    func testReviewQueueCountsRefreshAfterMetadataChanges() throws {
+        let asset = makeAsset(
+            id: "metadata-target",
+            path: "/Photos/Job/metadata-target.jpg",
+            rating: 0,
+            keywords: ["tagged"]
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-review-count-refresh",
+            assets: [asset]
+        )
+
+        XCTAssertEqual(reviewQueueCount("Picks", in: model), "0")
+        XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "0")
+        XCTAssertEqual(reviewQueueCount("Needs Keywords", in: model), "0")
+
+        try model.setFlagForSelectedAsset(.pick)
+        try model.setRatingForSelectedAsset(5)
+        try model.setKeywordTextForSelectedAsset("")
+
+        XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("Needs Keywords", in: model), "1")
     }
 
     func testTechnicalFiltersCountAsActiveLibraryFiltersAndClear() throws {
@@ -2398,6 +2433,10 @@ final class AppModelTests: XCTestCase {
             CatalogFolder(path: "\(photoFolder.path)/", name: "photos", assetCount: 1)
         ])
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Folders" }?.rowTitles, ["photos"])
+        XCTAssertEqual(reviewQueueCount("Picks", in: model), "0")
+        XCTAssertEqual(reviewQueueCount("Rejects", in: model), "0")
+        XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "0")
+        XCTAssertEqual(reviewQueueCount("Needs Keywords", in: model), "1")
     }
 
     func testReimportFolderReportsNoNewPhotos() throws {
@@ -5008,6 +5047,14 @@ final class AppModelTests: XCTestCase {
     private func writePreviewPlaceholder(to url: URL) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("preview".utf8).write(to: url)
+    }
+
+    private func reviewQueueCount(_ title: String, in model: AppModel) -> String? {
+        model.sidebarSections
+            .first { $0.title == "Review" }?
+            .rows
+            .first { $0.title == title }?
+            .countText
     }
 
     private func fileFingerprint(for url: URL) throws -> FileFingerprint {
