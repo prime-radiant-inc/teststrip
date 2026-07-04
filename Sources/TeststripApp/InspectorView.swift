@@ -155,6 +155,55 @@ struct InspectorEvaluationSignalGroup: Equatable, Identifiable {
     }
 }
 
+struct InspectorMetadataSyncStatus: Equatable {
+    enum Kind: Equatable {
+        case pending
+        case conflict
+    }
+
+    var kind: Kind
+    var title: String
+    var detail: String
+    var sidecarFilename: String
+    var sidecarPath: String
+    var catalogGenerationText: String
+
+    init?(
+        asset: Asset,
+        pendingItems: [MetadataSyncItem],
+        conflictItems: [MetadataSyncItem]
+    ) {
+        if let conflict = conflictItems.first(where: { $0.assetID == asset.id }) {
+            self.init(
+                kind: .conflict,
+                item: conflict,
+                title: "XMP conflict",
+                detail: "Catalog and sidecar both changed since the last sync."
+            )
+            return
+        }
+        if let pending = pendingItems.first(where: { $0.assetID == asset.id }) {
+            self.init(
+                kind: .pending,
+                item: pending,
+                title: "XMP sync pending",
+                detail: "Catalog metadata is saved; sidecar write is waiting to retry."
+            )
+            return
+        }
+        return nil
+    }
+
+    private init(kind: Kind, item: MetadataSyncItem, title: String, detail: String) {
+        self.kind = kind
+        self.title = title
+        self.detail = detail
+        self.sidecarFilename = item.sidecarURL.lastPathComponent
+        self.sidecarPath = item.sidecarURL.path
+        self.catalogGenerationText = "Catalog generation \(item.catalogGeneration)"
+    }
+}
+
 struct InspectorView: View {
     var model: AppModel
     @State private var metadataDraft = InspectorMetadataDraft()
@@ -257,13 +306,12 @@ struct InspectorView: View {
 
     @ViewBuilder
     private func statusAlerts(for asset: Asset) -> some View {
-        if model.pendingMetadataSyncItems.contains(where: { $0.assetID == asset.id }) {
-            Label("XMP sync pending", systemImage: "arrow.triangle.2.circlepath")
-                .font(.caption)
-                .foregroundStyle(.yellow)
-        }
-        if model.metadataSyncConflictItems.contains(where: { $0.assetID == asset.id }) {
-            metadataConflictControls()
+        if let syncStatus = InspectorMetadataSyncStatus(
+            asset: asset,
+            pendingItems: model.pendingMetadataSyncItems,
+            conflictItems: model.metadataSyncConflictItems
+        ) {
+            metadataSyncStatus(syncStatus)
         }
         if !model.selectedPreviewGenerationFailures.isEmpty {
             previewFailureStatus(model.selectedPreviewGenerationFailures)
@@ -291,28 +339,59 @@ struct InspectorView: View {
         }
     }
 
-    private func metadataConflictControls() -> some View {
+    private func metadataSyncStatus(_ status: InspectorMetadataSyncStatus) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("XMP conflict")
+            Label(status.title, systemImage: status.kind == .conflict ? "exclamationmark.triangle.fill" : "arrow.triangle.2.circlepath")
                 .font(.caption)
-                .foregroundStyle(.red)
-            HStack(spacing: 8) {
-                Button {
-                    apply { try model.resolveSelectedMetadataConflictUsingCatalog() }
-                } label: {
-                    Label("Use Catalog", systemImage: "internaldrive")
-                }
-                .help("Keep catalog metadata and overwrite the XMP sidecar")
-
-                Button {
-                    apply { try model.resolveSelectedMetadataConflictUsingSidecar() }
-                } label: {
-                    Label("Use XMP", systemImage: "doc.text")
-                }
-                .help("Import XMP sidecar metadata into the catalog")
+                .foregroundStyle(status.kind == .conflict ? .red : .yellow)
+            Text(status.detail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(status.sidecarFilename)
+                    .font(.caption2.monospaced())
+                    .lineLimit(1)
+                Text(status.catalogGenerationText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(status.sidecarPath)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
-            .controlSize(.small)
+            switch status.kind {
+            case .pending:
+                Button {
+                    apply { try model.retrySelectedMetadataSync() }
+                } label: {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                }
+                .controlSize(.small)
+                .disabled(!model.canRetrySelectedMetadataSync)
+            case .conflict:
+                metadataConflictControls()
+            }
         }
+    }
+
+    private func metadataConflictControls() -> some View {
+        HStack(spacing: 8) {
+            Button {
+                apply { try model.resolveSelectedMetadataConflictUsingCatalog() }
+            } label: {
+                Label("Use Catalog", systemImage: "internaldrive")
+            }
+            .help("Keep catalog metadata and overwrite the XMP sidecar")
+
+            Button {
+                apply { try model.resolveSelectedMetadataConflictUsingSidecar() }
+            } label: {
+                Label("Use XMP", systemImage: "doc.text")
+            }
+            .help("Import XMP sidecar metadata into the catalog")
+        }
+        .controlSize(.small)
     }
 
     private func metadataControls(for asset: Asset) -> some View {

@@ -128,6 +128,57 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(rows.map(\.detail), ["82% - apple-vision/Vision", "77% - local-http-model/llava"])
     }
 
+    func testMetadataSyncStatusPresentationDescribesPendingSidecar() throws {
+        let asset = makeAsset(id: "pending", metadata: AssetMetadata(rating: 4))
+        let pending = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: URL(fileURLWithPath: "/Photos/pending.jpg.xmp"),
+            catalogGeneration: 7,
+            lastSyncedFingerprint: "old"
+        )
+
+        let status = try XCTUnwrap(InspectorMetadataSyncStatus(
+            asset: asset,
+            pendingItems: [pending],
+            conflictItems: []
+        ))
+
+        XCTAssertEqual(status.kind, .pending)
+        XCTAssertEqual(status.title, "XMP sync pending")
+        XCTAssertEqual(status.detail, "Catalog metadata is saved; sidecar write is waiting to retry.")
+        XCTAssertEqual(status.sidecarFilename, "pending.jpg.xmp")
+        XCTAssertEqual(status.sidecarPath, "/Photos/pending.jpg.xmp")
+        XCTAssertEqual(status.catalogGenerationText, "Catalog generation 7")
+    }
+
+    func testMetadataSyncStatusPresentationPrefersConflictOverPending() throws {
+        let asset = makeAsset(id: "conflict", metadata: AssetMetadata(rating: 4))
+        let pending = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: URL(fileURLWithPath: "/Photos/conflict-pending.jpg.xmp"),
+            catalogGeneration: 4,
+            lastSyncedFingerprint: "old"
+        )
+        let conflict = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: URL(fileURLWithPath: "/Photos/conflict.jpg.xmp"),
+            catalogGeneration: 5,
+            lastSyncedFingerprint: "newer"
+        )
+
+        let status = try XCTUnwrap(InspectorMetadataSyncStatus(
+            asset: asset,
+            pendingItems: [pending],
+            conflictItems: [conflict]
+        ))
+
+        XCTAssertEqual(status.kind, .conflict)
+        XCTAssertEqual(status.title, "XMP conflict")
+        XCTAssertEqual(status.detail, "Catalog and sidecar both changed since the last sync.")
+        XCTAssertEqual(status.sidecarFilename, "conflict.jpg.xmp")
+        XCTAssertEqual(status.catalogGenerationText, "Catalog generation 5")
+    }
+
     func testMetadataDraftFormatsPortableMetadataFromAsset() {
         let asset = makeAsset(
             id: "draft-asset",

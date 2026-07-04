@@ -1107,6 +1107,82 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }.count, 200)
     }
 
+    func testRetrySelectedPendingMetadataSyncWritesSidecarWithoutWorker() throws {
+        let directory = try makeTemporaryDirectory(named: "retry-selected-pending-xmp")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        let originalData = Data("original raw bytes".utf8)
+        try originalData.write(to: originalURL)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "retry-selected-pending-xmp"),
+            originalURL: originalURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata(rating: 5, keywords: ["keeper"])
+        )
+        try repository.upsert(asset)
+        let pending = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: originalURL.appendingPathExtension("xmp"),
+            catalogGeneration: try repository.catalogGeneration(assetID: asset.id),
+            lastSyncedFingerprint: nil
+        )
+        try repository.recordMetadataSyncPending(pending)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        XCTAssertTrue(model.canRetrySelectedMetadataSync)
+        try model.retrySelectedMetadataSync()
+
+        let sidecarData = try Data(contentsOf: pending.sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata.rating, 5)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata.keywords, ["keeper"])
+        XCTAssertEqual(try Data(contentsOf: originalURL), originalData)
+        XCTAssertEqual(model.pendingMetadataSyncItems, [])
+        XCTAssertEqual(try repository.pendingMetadataSyncItems(), [])
+        XCTAssertEqual(
+            try repository.lastMetadataSyncFingerprint(assetID: asset.id),
+            XMPSidecarStore.fingerprint(for: sidecarData)
+        )
+    }
+
+    func testRetrySelectedPendingMetadataSyncQueuesWorkerCommand() throws {
+        let (model, repository, asset, originalURL, transport) = try makeWorkerMetadataSyncModel(
+            named: "retry-selected-pending-worker-xmp",
+            assetID: "retry-selected-pending-worker-xmp"
+        )
+        let pending = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: originalURL.appendingPathExtension("xmp"),
+            catalogGeneration: try repository.catalogGeneration(assetID: asset.id),
+            lastSyncedFingerprint: nil
+        )
+        try repository.recordMetadataSyncPending(pending)
+        model.pendingMetadataSyncItems = [pending]
+
+        XCTAssertTrue(model.canRetrySelectedMetadataSync)
+        try model.retrySelectedMetadataSync()
+
+        XCTAssertEqual(try transport.commands(), [.syncMetadata(assetID: asset.id)])
+        XCTAssertEqual(model.visibleWorkActivity?.kind, .xmpSync)
+        XCTAssertEqual(model.visibleWorkActivity?.detail, "Writing XMP sidecar")
+        XCTAssertEqual(try repository.pendingMetadataSyncItems(), [pending])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: pending.sidecarURL.path))
+    }
+
     func testRatingCullingCommandUpdatesSelectedAsset() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "rating-command")
 

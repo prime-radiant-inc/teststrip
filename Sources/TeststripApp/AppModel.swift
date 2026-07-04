@@ -446,6 +446,19 @@ public final class AppModel {
         selectedAssetID.flatMap { loupePreviewURL(for: $0) }
     }
 
+    public var selectedPendingMetadataSyncItem: MetadataSyncItem? {
+        guard let selectedAssetID else { return nil }
+        return pendingMetadataSyncItems.first { $0.assetID == selectedAssetID }
+    }
+
+    public var canRetrySelectedMetadataSync: Bool {
+        guard let selectedAsset,
+              let pendingItem = selectedPendingMetadataSyncItem else {
+            return false
+        }
+        return canAutomaticallyRetryMetadataSync(for: selectedAsset, sidecarURL: pendingItem.sidecarURL)
+    }
+
     public var selectedAssetPosition: Int? {
         guard let selectedAssetID,
               let selectedIndex = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
@@ -1636,6 +1649,28 @@ public final class AppModel {
         try resolveMetadataConflictUsingSidecar(assetID: selectedAssetID)
     }
 
+    public func retrySelectedMetadataSync() throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard let selectedAssetID else {
+            throw TeststripError.invalidState("no selected asset")
+        }
+        let pendingItem = try pendingMetadataSyncItem(assetID: selectedAssetID, repository: catalog.repository)
+        let asset = try catalog.repository.asset(id: selectedAssetID)
+        guard canAutomaticallyRetryMetadataSync(for: asset, sidecarURL: pendingItem.sidecarURL) else {
+            throw TeststripError.invalidState("XMP sidecar folder is not writable or original is unavailable")
+        }
+
+        if workerSupervisor != nil {
+            try enqueueMetadataSyncWork(pendingItem: pendingItem, placement: .front)
+            return
+        }
+
+        try syncMetadataSidecar(for: asset)
+        try refreshMetadataSyncState()
+    }
+
     public func undoMetadataChange() throws {
         guard let change = metadataUndoStack.popLast() else { return }
         try applyMetadataSnapshot(assetID: change.assetID, metadata: change.before)
@@ -1759,29 +1794,10 @@ public final class AppModel {
             catalogGeneration: generation,
             lastSyncedFingerprint: lastFingerprint
         )
-        if let workerSupervisor {
+        if workerSupervisor != nil {
             try catalog.repository.recordMetadataSyncPending(pendingItem)
             upsertPendingMetadataSyncItem(pendingItem)
-            let itemID = WorkSessionID(rawValue: "xmp-\(asset.id.rawValue)-\(generation)")
-            if backgroundWorkQueue.item(id: itemID) != nil {
-                return
-            }
-            let item = BackgroundWorkItem(
-                id: itemID,
-                kind: .xmpSync,
-                title: "Sync XMP",
-                detail: "Writing XMP sidecar",
-                completedUnitCount: 0,
-                totalUnitCount: 1
-            )
-            metadataSyncAssetIDsByItemID[itemID] = asset.id
-            do {
-                try workerSupervisor.enqueue(item, command: .syncMetadata(assetID: asset.id))
-            } catch {
-                metadataSyncAssetIDsByItemID[itemID] = nil
-                throw error
-            }
-            syncBackgroundWorkQueueFromSupervisor()
+            try enqueueMetadataSyncWork(pendingItem: pendingItem)
             return
         }
         do {
@@ -1881,6 +1897,16 @@ public final class AppModel {
         throw TeststripError.invalidState("selected asset has no XMP conflict")
     }
 
+    private func pendingMetadataSyncItem(assetID: AssetID, repository: CatalogRepository) throws -> MetadataSyncItem {
+        if let item = pendingMetadataSyncItems.first(where: { $0.assetID == assetID }) {
+            return item
+        }
+        if let item = try repository.pendingMetadataSyncItems().first(where: { $0.assetID == assetID }) {
+            return item
+        }
+        throw TeststripError.invalidState("selected asset has no pending XMP sync")
+    }
+
     private func clearMetadataSyncState(assetID: AssetID) {
         pendingMetadataSyncItems.removeAll { $0.assetID == assetID }
         metadataSyncConflictItems.removeAll { $0.assetID == assetID }
@@ -1932,7 +1958,7 @@ public final class AppModel {
     }
 
     private func hasActiveMetadataSyncWork(assetID: AssetID, generation: Int) -> Bool {
-        let writeSyncID = "xmp-\(assetID.rawValue)-\(generation)"
+        let writeSyncID = Self.metadataSyncWorkItemID(assetID: assetID, catalogGeneration: generation).rawValue
         let selectionCheckPrefix = metadataSyncCheckPrefix(assetID: assetID, generation: generation)
         return backgroundWorkQueue.items.contains { item in
             item.kind == .xmpSync
@@ -1943,6 +1969,46 @@ public final class AppModel {
 
     private func metadataSyncCheckPrefix(assetID: AssetID, generation: Int) -> String {
         "xmp-check-\(assetID.rawValue)-\(generation)-"
+    }
+
+    private static func metadataSyncWorkItemID(assetID: AssetID, catalogGeneration: Int) -> WorkSessionID {
+        WorkSessionID(rawValue: "xmp-\(assetID.rawValue)-\(catalogGeneration)")
+    }
+
+    private func enqueueMetadataSyncWork(
+        pendingItem: MetadataSyncItem,
+        placement: BackgroundWorkQueuePlacement = .back
+    ) throws {
+        guard let workerSupervisor else {
+            throw TeststripError.invalidState("worker supervisor is not configured")
+        }
+        let itemID = Self.metadataSyncWorkItemID(
+            assetID: pendingItem.assetID,
+            catalogGeneration: pendingItem.catalogGeneration
+        )
+        if backgroundWorkQueue.item(id: itemID) != nil {
+            return
+        }
+        let item = BackgroundWorkItem(
+            id: itemID,
+            kind: .xmpSync,
+            title: "Sync XMP",
+            detail: "Writing XMP sidecar",
+            completedUnitCount: 0,
+            totalUnitCount: 1
+        )
+        metadataSyncAssetIDsByItemID[itemID] = pendingItem.assetID
+        do {
+            try workerSupervisor.enqueue(
+                item,
+                command: .syncMetadata(assetID: pendingItem.assetID),
+                placement: placement
+            )
+        } catch {
+            metadataSyncAssetIDsByItemID[itemID] = nil
+            throw error
+        }
+        syncBackgroundWorkQueueFromSupervisor()
     }
 
     private func isSelectionMetadataSyncCheck(_ item: BackgroundWorkItem) -> Bool {
@@ -2163,7 +2229,7 @@ public final class AppModel {
     }
 
     private func enqueuePendingMetadataSync() throws {
-        guard let catalog, let workerSupervisor else { return }
+        guard let catalog, workerSupervisor != nil else { return }
         var enqueuedCount = 0
         for pendingItem in try catalog.repository.pendingMetadataSyncItems() {
             guard enqueuedCount < Self.pendingMetadataSyncRecoveryBatchSize else {
@@ -2173,27 +2239,15 @@ public final class AppModel {
             guard canAutomaticallyRetryMetadataSync(for: asset, sidecarURL: pendingItem.sidecarURL) else {
                 continue
             }
-            let itemID = WorkSessionID(rawValue: "xmp-\(pendingItem.assetID.rawValue)-\(pendingItem.catalogGeneration)")
+            let itemID = Self.metadataSyncWorkItemID(
+                assetID: pendingItem.assetID,
+                catalogGeneration: pendingItem.catalogGeneration
+            )
             if backgroundWorkQueue.item(id: itemID) != nil {
                 continue
             }
-            let item = BackgroundWorkItem(
-                id: itemID,
-                kind: .xmpSync,
-                title: "Sync XMP",
-                detail: "Writing XMP sidecar",
-                completedUnitCount: 0,
-                totalUnitCount: 1
-            )
-            metadataSyncAssetIDsByItemID[itemID] = pendingItem.assetID
-            do {
-                try workerSupervisor.enqueue(item, command: .syncMetadata(assetID: pendingItem.assetID))
-            } catch {
-                metadataSyncAssetIDsByItemID[itemID] = nil
-                throw error
-            }
+            try enqueueMetadataSyncWork(pendingItem: pendingItem)
             enqueuedCount += 1
-            syncBackgroundWorkQueueFromSupervisor()
         }
     }
 
