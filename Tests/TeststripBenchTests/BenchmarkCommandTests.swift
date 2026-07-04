@@ -31,6 +31,13 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "preview-render", "250"]), .previewRender(count: 250))
     }
 
+    func testSamplePreviewRenderCommandParsesPhotoDirectory() throws {
+        XCTAssertEqual(
+            BenchmarkCommand.parse(["TeststripBench", "sample-preview-render", "/tmp/teststrip-samples"]),
+            .samplePreviewRender(photoDirectory: URL(fileURLWithPath: "/tmp/teststrip-samples"))
+        )
+    }
+
     func testLocalHTTPModelSmokeCommandParsesConnectionArguments() throws {
         XCTAssertEqual(
             BenchmarkCommand.parse([
@@ -99,6 +106,19 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(result.sourceImageCount, 12)
         XCTAssertEqual(result.renderedPreviewCount, 48)
         XCTAssertEqual(result.cachedPreviewCount, 48)
+    }
+
+    func testSamplePreviewRenderBenchmarkCreatesCachedPreviewsFromExistingPhotos() throws {
+        let root = try makeTemporaryDirectory(named: "sample-preview-render-benchmark")
+        let photoDirectory = try makeTemporaryDirectory(named: "sample-preview-render-photos")
+        try writeTestPNG(to: photoDirectory.appendingPathComponent("one.png"))
+        try writeTestPNG(to: photoDirectory.appendingPathComponent("two.png"))
+
+        let result = try SamplePreviewRenderBenchmark(root: root, photoDirectory: photoDirectory).run()
+
+        XCTAssertEqual(result.sourceImageCount, 2)
+        XCTAssertEqual(result.catalogAssetCount, 2)
+        XCTAssertEqual(result.cachedPreviewCount, 4)
     }
 
     func testLocalHTTPModelSmokeEvaluatesOpenAICompatibleEndpoint() throws {

@@ -20,6 +20,8 @@ case .metadataWrite(let count):
     try runMetadataWriteBenchmark(count: count, root: root)
 case .previewRender(let count):
     try runPreviewRenderBenchmark(count: count, root: root)
+case .samplePreviewRender(let photoDirectory):
+    try runSamplePreviewRenderBenchmark(photoDirectory: photoDirectory, root: root)
 case .seedAppCatalog(let applicationSupportDirectory, let count):
     try runSeedAppCatalog(applicationSupportDirectory: applicationSupportDirectory, count: count)
 case .seedSampleCatalog(let applicationSupportDirectory, let photoDirectory):
@@ -171,6 +173,23 @@ private func runPreviewRenderBenchmark(count: Int, root: URL) throws {
     recorder.recordMetric("cached_previews", result.cachedPreviewCount)
     print("source images: \(result.sourceImageCount)")
     print("rendered previews: \(result.renderedPreviewCount)")
+    print("cached previews: \(result.cachedPreviewCount)")
+    try printMachineReadableSummary(recorder.summary)
+}
+
+private func runSamplePreviewRenderBenchmark(photoDirectory: URL, root: URL) throws {
+    var recorder = BenchmarkSummaryRecorder(benchmark: "sample_preview_render", count: 0)
+
+    print("TeststripBench sample preview render")
+    print("photo directory: \(photoDirectory.path)")
+    let result = try measure("sample preview render", recorder: &recorder, key: "sample_preview_render") {
+        try SamplePreviewRenderBenchmark(root: root, photoDirectory: photoDirectory).run()
+    }
+    recorder.recordMetric("source_images", result.sourceImageCount)
+    recorder.recordMetric("catalog_assets", result.catalogAssetCount)
+    recorder.recordMetric("cached_previews", result.cachedPreviewCount)
+    print("source images: \(result.sourceImageCount)")
+    print("catalog assets: \(result.catalogAssetCount)")
     print("cached previews: \(result.cachedPreviewCount)")
     try printMachineReadableSummary(recorder.summary)
 }

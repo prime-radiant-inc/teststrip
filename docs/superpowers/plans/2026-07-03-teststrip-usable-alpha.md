@@ -622,7 +622,7 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Make benchmark commands print machine-readable summaries in addition to human text.
 - [x] Add a repeatable import benchmark for large folders with previews deferred.
 - [x] Add preview render throughput benchmark for cached generated images.
-- [ ] Add a dedicated preview render throughput benchmark for a small real-image sample directory.
+- [x] Add a dedicated preview render throughput benchmark for a small real-image sample directory.
 - [x] Add metadata/XMP bulk edit benchmark.
 - [ ] Add memory and CPU snapshots to app workflow scripts where practical.
 - [ ] Set initial red/yellow/green thresholds for alpha only after measuring current local behavior.
