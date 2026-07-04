@@ -1359,6 +1359,12 @@ private struct LoupeView: View {
                     .font(.caption2.monospaced())
                     .lineLimit(1)
             }
+            if let status = AssetSourceStatusPresentation.presentation(for: asset.availability) {
+                Label(status.detail, systemImage: status.systemImage)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(status.tint)
+                    .lineLimit(1)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -1492,6 +1498,52 @@ enum LibraryGridChromePolicy {
     }
 }
 
+struct AssetSourceStatusPresentation: Equatable {
+    var title: String
+    var detail: String
+    var systemImage: String
+
+    static func presentation(for availability: SourceAvailability) -> AssetSourceStatusPresentation? {
+        switch availability {
+        case .online:
+            return nil
+        case .offline:
+            return AssetSourceStatusPresentation(
+                title: "Offline",
+                detail: "Original offline; cached previews only",
+                systemImage: "externaldrive.badge.xmark"
+            )
+        case .missing:
+            return AssetSourceStatusPresentation(
+                title: "Missing",
+                detail: "Original missing; cached previews only",
+                systemImage: "photo.badge.exclamationmark"
+            )
+        case .moved:
+            return AssetSourceStatusPresentation(
+                title: "Moved",
+                detail: "Original moved; cached previews only",
+                systemImage: "arrowshape.turn.up.right"
+            )
+        case .stale:
+            return AssetSourceStatusPresentation(
+                title: "Stale",
+                detail: "Original changed on disk",
+                systemImage: "clock.badge.exclamationmark"
+            )
+        }
+    }
+
+    var tint: Color {
+        switch title {
+        case "Stale":
+            return .yellow
+        default:
+            return .orange
+        }
+    }
+}
+
 enum AssetGridCellLayout {
     static let fallbackAspectRatio = 3.0 / 2.0
 
@@ -1535,6 +1587,12 @@ private struct AssetGridCell: View {
                         .shadow(color: Color.orange.opacity(0.45), radius: 3)
                 }
             }
+            .overlay(alignment: .topTrailing) {
+                if let status = AssetSourceStatusPresentation.presentation(for: asset.availability) {
+                    sourceStatusBadge(status)
+                        .padding(6)
+                }
+            }
             .background(
                 RoundedRectangle(cornerRadius: 5)
                     .fill(Color.gray.opacity(0.35))
@@ -1572,6 +1630,22 @@ private struct AssetGridCell: View {
             }
             Spacer(minLength: 0)
         }
+    }
+
+    private func sourceStatusBadge(_ status: AssetSourceStatusPresentation) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: status.systemImage)
+                .font(.system(size: 9, weight: .bold))
+            Text(status.title)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .foregroundStyle(.black.opacity(0.82))
+        .padding(.horizontal, 6)
+        .frame(height: 18)
+        .background(status.tint, in: RoundedRectangle(cornerRadius: 4))
+        .accessibilityLabel(status.detail)
     }
 
     private func flagBadge(systemName: String, color: Color) -> some View {
