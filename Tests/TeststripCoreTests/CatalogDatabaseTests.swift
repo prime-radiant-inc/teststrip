@@ -501,6 +501,27 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(matching: conflictQuery), 1)
     }
 
+    func testSearchesAssetsWithMetadataSyncPendingPredicate() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-xmp-pending-search")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let pending = Asset.testAsset(id: AssetID(rawValue: "pending"), path: "/Volumes/NAS/Job/pending.cr2", rating: 0)
+        let clean = Asset.testAsset(id: AssetID(rawValue: "clean"), path: "/Volumes/NAS/Job/clean.cr2", rating: 0)
+        try repository.upsert([pending, clean])
+        try repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: pending.id,
+            sidecarURL: pending.originalURL.appendingPathExtension("xmp"),
+            catalogGeneration: 1,
+            lastSyncedFingerprint: "old"
+        ))
+
+        let pendingQuery = SetQuery(predicates: [.metadataSyncPending])
+
+        XCTAssertEqual(try repository.allAssets(matching: pendingQuery, limit: 10).map(\.id), [pending.id])
+        XCTAssertEqual(try repository.assetCount(matching: pendingQuery), 1)
+    }
+
     func testListsEvaluationKindSummariesWithDistinctAssetCounts() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-kind-summary")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

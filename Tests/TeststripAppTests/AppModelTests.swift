@@ -468,6 +468,41 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 
+    func testSelectingPendingMetadataSyncSidebarRowLoadsPendingAssets() throws {
+        let directory = try makeTemporaryDirectory(named: "xmp-pending-sidebar")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let pending = makeAsset(id: "pending-xmp", path: "/Photos/pending.jpg", rating: 0)
+        let clean = makeAsset(id: "clean-xmp", path: "/Photos/clean.jpg", rating: 0)
+        try repository.upsert([pending, clean])
+        try repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: pending.id,
+            sidecarURL: pending.originalURL.appendingPathExtension("xmp"),
+            catalogGeneration: 1,
+            lastSyncedFingerprint: "old"
+        ))
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+
+        let syncSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sync" })
+        XCTAssertEqual(syncSection.rowTitles, ["XMP Pending (1)"])
+
+        try model.selectSidebarRow(try XCTUnwrap(syncSection.rows.first))
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertTrue(model.metadataSyncPendingFilter)
+        XCTAssertEqual(model.assets.map(\.id), [pending.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
     func testResolveSelectedMetadataConflictUsingCatalogOverwritesSidecar() throws {
         let catalogMetadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["catalog"])
         let sidecarMetadata = AssetMetadata(rating: 2, colorLabel: .red, flag: .reject, keywords: ["sidecar"])

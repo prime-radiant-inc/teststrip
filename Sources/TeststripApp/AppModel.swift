@@ -96,6 +96,7 @@ public enum SidebarRowTarget: Equatable, Sendable {
     case folder(String)
     case sourceAvailability(SourceAvailability)
     case evaluationKind(EvaluationKind)
+    case metadataSyncPending
     case metadataSyncConflicts
     case assetSet(AssetSetID)
     case workSession(WorkSessionID)
@@ -288,6 +289,7 @@ public final class AppModel {
     public var captureDateEndFilter: Date?
     public var availabilityFilter: SourceAvailability?
     public var evaluationKindFilter: EvaluationKind?
+    public var metadataSyncPendingFilter: Bool
     public var metadataSyncConflictFilter: Bool
     public var savedAssetSets: [AssetSet]
     public var catalogFolders: [CatalogFolder]
@@ -524,6 +526,9 @@ public final class AppModel {
         if let evaluationKindFilter {
             parts.append("\(evaluationKindFilter.displayName) Signal")
         }
+        if metadataSyncPendingFilter {
+            parts.append("XMP Pending")
+        }
         if metadataSyncConflictFilter {
             parts.append("XMP Conflicts")
         }
@@ -589,6 +594,7 @@ public final class AppModel {
             catalogFolders: catalogFolders,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+            pendingMetadataSyncItems: pendingMetadataSyncItems,
             metadataSyncConflictItems: metadataSyncConflictItems,
             recentWork: recentWork,
             starredWork: starredWork
@@ -619,6 +625,7 @@ public final class AppModel {
         self.captureDateEndFilter = nil
         self.availabilityFilter = nil
         self.evaluationKindFilter = nil
+        self.metadataSyncPendingFilter = false
         self.metadataSyncConflictFilter = false
         self.savedAssetSets = savedAssetSets
         self.catalogFolders = catalogFolders
@@ -712,6 +719,7 @@ public final class AppModel {
                 catalogFolders: catalogFolders,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+                pendingMetadataSyncItems: pendingMetadataSyncItems,
                 metadataSyncConflictItems: metadataSyncConflictItems,
                 recentWork: recentWork,
                 starredWork: starredWork
@@ -755,6 +763,7 @@ public final class AppModel {
                 catalogFolders: catalogFolders,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+                pendingMetadataSyncItems: pendingMetadataSyncItems,
                 metadataSyncConflictItems: metadataSyncConflictItems,
                 recentWork: recentWork,
                 starredWork: starredWork
@@ -838,6 +847,12 @@ public final class AppModel {
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
             evaluationKindFilter = kind
+            selectedView = .grid
+            try reload()
+        case .metadataSyncPending:
+            selectedAssetSetID = nil
+            clearLibraryQueryFilters()
+            metadataSyncPendingFilter = true
             selectedView = .grid
             try reload()
         case .metadataSyncConflicts:
@@ -2465,6 +2480,9 @@ public final class AppModel {
         if let evaluationKindFilter {
             predicates.append(.evaluationKind(evaluationKindFilter))
         }
+        if metadataSyncPendingFilter {
+            predicates.append(.metadataSyncPending)
+        }
         if metadataSyncConflictFilter {
             predicates.append(.metadataSyncConflict)
         }
@@ -2485,6 +2503,7 @@ public final class AppModel {
         captureDateEndFilter = nil
         availabilityFilter = nil
         evaluationKindFilter = nil
+        metadataSyncPendingFilter = false
         metadataSyncConflictFilter = false
     }
 
@@ -2553,6 +2572,7 @@ public final class AppModel {
             catalogFolders: catalogFolders,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+            pendingMetadataSyncItems: pendingMetadataSyncItems,
             metadataSyncConflictItems: metadataSyncConflictItems,
             recentWork: recentWork,
             starredWork: starredWork
@@ -3129,6 +3149,7 @@ public final class AppModel {
         catalogFolders: [CatalogFolder] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
+        pendingMetadataSyncItems: [MetadataSyncItem] = [],
         metadataSyncConflictItems: [MetadataSyncItem] = [],
         recentWork: [AppWorkActivity] = [],
         starredWork: [AppWorkActivity] = []
@@ -3158,14 +3179,27 @@ public final class AppModel {
         if !evaluationRows.isEmpty {
             sections.append(SidebarSection(title: "AI", rows: evaluationRows))
         }
+        var syncRows: [SidebarRow] = []
+        if !pendingMetadataSyncItems.isEmpty {
+            syncRows.append(
+                SidebarRow(
+                    id: "sync-xmp-pending",
+                    title: "XMP Pending (\(pendingMetadataSyncItems.count))",
+                    target: .metadataSyncPending
+                )
+            )
+        }
         if !metadataSyncConflictItems.isEmpty {
-            sections.append(SidebarSection(title: "Sync", rows: [
+            syncRows.append(
                 SidebarRow(
                     id: "sync-xmp-conflicts",
                     title: "XMP Conflicts (\(metadataSyncConflictItems.count))",
                     target: .metadataSyncConflicts
                 )
-            ]))
+            )
+        }
+        if !syncRows.isEmpty {
+            sections.append(SidebarSection(title: "Sync", rows: syncRows))
         }
         let visibleSavedAssetSets = Self.visibleSavedAssetSets(savedAssetSets)
         let starredRows = visibleSavedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0) }

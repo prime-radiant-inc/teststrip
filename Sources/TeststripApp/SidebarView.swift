@@ -42,6 +42,8 @@ struct SidebarView: View {
             return "externaldrive.badge.exclamationmark"
         case .evaluationKind(let kind):
             return evaluationKindIconName(kind)
+        case .metadataSyncPending:
+            return "arrow.triangle.2.circlepath"
         case .metadataSyncConflicts:
             return "exclamationmark.triangle"
         case .assetSet:
