@@ -1506,31 +1506,225 @@ private struct LoupeView: View {
     }
 }
 
+struct CompareSurveyPresentation: Equatable {
+    var primaryAsset: Asset?
+    var alternateAssets: [Asset]
+    var framePositionText: String?
+    var groupCountText: String
+    var recommendationText: String
+
+    init(assets: [Asset], selectedAssetID: AssetID?) {
+        guard !assets.isEmpty else {
+            self.primaryAsset = nil
+            self.alternateAssets = []
+            self.framePositionText = nil
+            self.groupCountText = "No frames"
+            self.recommendationText = "No comparison set"
+            return
+        }
+
+        let primaryIndex = selectedAssetID.flatMap { selectedID in
+            assets.firstIndex { $0.id == selectedID }
+        } ?? 0
+
+        self.primaryAsset = assets[primaryIndex]
+        self.alternateAssets = assets.enumerated().compactMap { index, asset in
+            index == primaryIndex ? nil : asset
+        }
+        self.framePositionText = "Frame \(primaryIndex + 1) of \(assets.count)"
+        self.groupCountText = "\(assets.count) \(assets.count == 1 ? "frame" : "frames")"
+
+        let rejectCount = max(assets.count - 1, 0)
+        if rejectCount == 0 {
+            self.recommendationText = "Suggests: keep 1"
+        } else {
+            self.recommendationText = "Suggests: keep 1 · reject \(rejectCount)"
+        }
+    }
+
+    var primaryDecisionText: String {
+        guard let primaryAsset else { return "No frame selected" }
+        return Self.decisionSummary(for: primaryAsset)
+    }
+
+    static func decisionSummary(for asset: Asset) -> String {
+        if let flag = asset.metadata.flag {
+            switch flag {
+            case .pick:
+                return "Picked"
+            case .reject:
+                return "Rejected"
+            }
+        }
+        if asset.metadata.rating > 0 {
+            return "\(asset.metadata.rating) \(asset.metadata.rating == 1 ? "star" : "stars")"
+        }
+        if let colorLabel = asset.metadata.colorLabel {
+            return "\(colorLabel.rawValue.capitalized) label"
+        }
+        return "Unreviewed"
+    }
+}
+
 private struct CompareView: View {
     var model: AppModel
     var focusCullingSurface: () -> Void
 
-    private let columns = [GridItem(.adaptive(minimum: 260), spacing: 10)]
+    private let alternateColumns = [GridItem(.adaptive(minimum: 150), spacing: 10)]
 
     var body: some View {
+        let presentation = CompareSurveyPresentation(
+            assets: model.compareAssets(),
+            selectedAssetID: model.selectedAssetID
+        )
+
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 10) {
-                ForEach(model.compareAssets(), id: \.id.rawValue) { asset in
-                    AssetGridCell(
-                        asset: asset,
-                        previewURL: model.loupePreviewURL(for: asset.id),
-                        previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
-                        isSelected: model.selectedAssetID == asset.id
-                    )
-                    .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface)
+            VStack(alignment: .leading, spacing: 0) {
+                compareHeader(presentation)
+                if let primaryAsset = presentation.primaryAsset {
+                    surveyLayout(primaryAsset: primaryAsset, presentation: presentation)
+                    compareActionStrip(primaryAsset: primaryAsset, presentation: presentation)
+                } else {
+                    emptyCompareSet
+                        .frame(maxWidth: .infinity, minHeight: 360)
                 }
             }
-            .padding(12)
         }
         .background(Color.black.opacity(0.24))
         .task(id: comparePreviewTaskID) {
             requestComparePreviews()
         }
+        .liveMockupPlaceholder(.compareSurvey)
+    }
+
+    private var emptyCompareSet: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "rectangle.grid.2x2")
+                .font(.system(size: 34))
+                .foregroundStyle(.secondary)
+            Text("No compare set")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func compareHeader(_ presentation: CompareSurveyPresentation) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Label("Survey Compare", systemImage: "rectangle.grid.2x2")
+                .font(.headline)
+            Text(presentation.groupCountText)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            if let framePositionText = presentation.framePositionText {
+                Text(framePositionText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Label(presentation.recommendationText, systemImage: "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 7))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 7)
+                        .strokeBorder(Color.orange.opacity(0.26))
+                }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.bar)
+    }
+
+    private func surveyLayout(primaryAsset: Asset, presentation: CompareSurveyPresentation) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                compareTile(primaryAsset)
+                    .frame(minHeight: 420)
+                assetCaption(primaryAsset, label: "Primary")
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Alternates")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                LazyVGrid(columns: alternateColumns, alignment: .leading, spacing: 10) {
+                    ForEach(presentation.alternateAssets, id: \.id.rawValue) { asset in
+                        VStack(alignment: .leading, spacing: 6) {
+                            compareTile(asset)
+                                .frame(height: 128)
+                            assetCaption(asset, label: CompareSurveyPresentation.decisionSummary(for: asset))
+                        }
+                    }
+                }
+            }
+            .frame(width: 350, alignment: .topLeading)
+        }
+        .padding(14)
+    }
+
+    private func compareTile(_ asset: Asset) -> some View {
+        AssetGridCell(
+            asset: asset,
+            previewURL: model.loupePreviewURL(for: asset.id),
+            previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
+            isSelected: model.selectedAssetID == asset.id
+        )
+        .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface)
+    }
+
+    private func assetCaption(_ asset: Asset, label: String) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+            Text(asset.originalURL.lastPathComponent)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func compareActionStrip(
+        primaryAsset: Asset,
+        presentation: CompareSurveyPresentation
+    ) -> some View {
+        HStack(spacing: 10) {
+            Label("Teststrip", systemImage: "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+            Text("Primary · \(presentation.primaryDecisionText)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button {
+                applyPrimaryFlag(.pick, to: primaryAsset)
+            } label: {
+                Label("Pick", systemImage: "flag.fill")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            Button {
+                applyPrimaryFlag(.reject, to: primaryAsset)
+            } label: {
+                Label("Reject", systemImage: "xmark.circle")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            Button {
+                openPrimaryInLoupe(primaryAsset)
+            } label: {
+                Label("Loupe", systemImage: "rectangle.inset.filled")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.bar)
         .liveMockupPlaceholder(.compareSurvey)
     }
 
@@ -1544,6 +1738,21 @@ private struct CompareView: View {
         } catch {
             model.errorMessage = error.localizedDescription
         }
+    }
+
+    private func applyPrimaryFlag(_ flag: PickFlag, to asset: Asset) {
+        do {
+            focusCullingSurface()
+            model.select(asset.id)
+            try model.setFlagForSelectedAsset(flag)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func openPrimaryInLoupe(_ asset: Asset) {
+        focusCullingSurface()
+        model.openAssetInLoupe(asset.id)
     }
 }
 
