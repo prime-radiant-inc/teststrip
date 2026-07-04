@@ -69,7 +69,9 @@ final class DecodeRegistryTests: XCTestCase {
     func testImageIOSupportedExtensionsArePublicForIngestComposition() {
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("jpg"))
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("dng"))
+        XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("crw"))
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("raf"))
+        XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("x3f"))
     }
 
     func testImageIOCanDecodeUsesSharedSupportedExtensions() {

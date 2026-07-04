@@ -6,7 +6,7 @@ public struct ImageIODecodeProvider: DecodeProvider {
 
     public static let supportedExtensions: Set<String> = [
         "jpg", "jpeg", "heic", "tif", "tiff", "png",
-        "dng", "cr2", "cr3", "nef", "arw", "raf", "rw2", "orf"
+        "dng", "crw", "cr2", "cr3", "nef", "arw", "raf", "rw2", "orf", "x3f"
     ]
 
     private let extensions = Self.supportedExtensions
