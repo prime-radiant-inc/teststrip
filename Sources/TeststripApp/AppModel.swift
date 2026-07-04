@@ -446,11 +446,13 @@ public final class AppModel {
     }
 
     public var isImporting: Bool {
-        if activeWork?.kind == .ingest, let status = activeWork?.status, [.queued, .running, .paused].contains(status) {
+        if activeWork?.kind == .ingest, let status = activeWork?.status, Self.isActiveBackgroundWorkStatus(status) {
             return true
         }
-        return backgroundWorkQueue.items.contains { item in
-            item.kind == .ingest && [.queued, .running, .paused].contains(item.status)
+        guard !workerImportContextsByItemID.isEmpty else { return false }
+        return workerImportContextsByItemID.keys.contains { itemID in
+            guard let item = backgroundWorkQueue.item(id: itemID), item.kind == .ingest else { return false }
+            return Self.isActiveBackgroundWorkStatus(item.status)
         }
     }
 
@@ -2075,8 +2077,12 @@ public final class AppModel {
 
     private static func activePreviewGenerationWorkCount(in queue: BackgroundWorkQueue) -> Int {
         queue.items.filter { item in
-            item.kind == .previewGeneration && [.queued, .running, .paused].contains(item.status)
+            item.kind == .previewGeneration && Self.isActiveBackgroundWorkStatus(item.status)
         }.count
+    }
+
+    private static func isActiveBackgroundWorkStatus(_ status: WorkSessionStatus) -> Bool {
+        [.queued, .running, .paused].contains(status)
     }
 
     private func handleWorkerImportCompleted(
@@ -2226,9 +2232,10 @@ public final class AppModel {
     }
 
     private var activeBackgroundImportItem: BackgroundWorkItem? {
-        backgroundWorkQueue.runningItems.first { $0.kind == .ingest } ??
-            backgroundWorkQueue.items.first { $0.kind == .ingest && $0.status == .paused } ??
-            backgroundWorkQueue.queuedItems.first { $0.kind == .ingest }
+        let importItems = workerImportContextsByItemID.keys.compactMap { backgroundWorkQueue.item(id: $0) }
+        return importItems.first { $0.kind == .ingest && $0.status == .running } ??
+            importItems.first { $0.kind == .ingest && $0.status == .paused } ??
+            importItems.first { $0.kind == .ingest && $0.status == .queued }
     }
 
     private func recordPersistedActiveBackgroundWorkActivities(in queue: BackgroundWorkQueue) {
