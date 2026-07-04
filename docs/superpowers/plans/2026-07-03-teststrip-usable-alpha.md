@@ -13,11 +13,11 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `b5dd2df Show evaluation verdicts in culling header`
+- Snapshot commit: `1c9d386 Stop grid clicks from recentering selection`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter CullingAssistPresentationTests` and `swift test --filter AppModelTests/testSelectedEvaluationSignalsLoadFromCatalog` passed after the culling verdict slice.
-- Last broad unit verification: `swift test` passed with 487 tests after the culling verdict slice.
-- Last app workflow verification: `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import UI automation was intentionally deferred for the import progress banner slice to avoid unnecessary focus stealing; the previous grid aspect-ratio slice passed `./script/build_and_run.sh --sample-photos` and one Computer Use grid inspection, and the previous People live-mockup route passed Computer Use inspection plus `./script/verify_grid_activation.sh`, `./script/verify_grid_selection_feedback.sh`, `./script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 ./script/verify_imported_grid_culling.sh`. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
+- Last focused unit verification: `swift test --filter LibraryGridLayoutTests`, `swift test --filter ImportProgressPresentationTests`, and `swift test --filter AppModelTests/testBackgroundImportAppliesProgressUpdatesBeforeCompletion` passed after the import/click reliability slices.
+- Last broad unit verification: `swift test` passed with 494 tests after the grid click-recentering slice.
+- Last app workflow verification: `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import/click UI automation was intentionally deferred for the import phase and grid click-recentering slices to avoid unnecessary focus stealing while Jesse was using the machine; those slices were covered by focused presentation/policy tests and full unit runs. The previous grid aspect-ratio slice passed `./script/build_and_run.sh --sample-photos` and one Computer Use grid inspection, and the previous People live-mockup route passed Computer Use inspection plus `./script/verify_grid_activation.sh`, `./script/verify_grid_selection_feedback.sh`, `./script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 ./script/verify_imported_grid_culling.sh`. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
 
@@ -53,6 +53,8 @@
 - `c95ae1f`: corrected the Compare Survey visual layout from a squeezed split pane to an adaptive N-up grid with the selected primary first, backed by the ordered presentation contract and verified with sample photos through Computer Use.
 - `a6a7d88`: replaced the compact saved-search popover with a Smart Collection builder live mockup that shows current filter rules, filtered match count, suggestion chips, starred state, and the existing dynamic query save action.
 - `b5dd2df`: replaced the static culling Assist placeholder with a selected-frame `TESTSTRIP READS` verdict pill backed by persisted evaluation signals and tested signal prioritization.
+- `d0d6800`: clarified active import progress with visible phase labels and counts for starting, scanning, cataloging, copying, and preview-building states across the import banner, empty-catalog import state, and footer.
+- `1c9d386`: stopped direct grid clicks from recentering the selected thumbnail while preserving auto-scroll for programmatic selection from import, keyboard navigation, filters, and culling advance.
 
 ## Product Decisions To Preserve
 
@@ -268,6 +270,7 @@ Current behavior:
 - The import-complete summary is tagged as a live mockup placeholder for the fuller designer payoff surface.
 - Import Path shows a pre-import plan for in-place cataloging, XMP sidecars, cached previews, and managed background work.
 - Active import work shows the shared progress banner immediately, even when the grid has no visible assets yet.
+- Import progress copy now distinguishes starting, scanning, cataloging, copying, and preview-building phases with tested presentation rules and visible counts where available.
 - Completed imports show a compact summary banner with the imported photo count, optional preview-failure count, Open action for the imported output set, Cull action that starts a culling work session from that set, and dismiss behavior.
 - Folder and card import entrypoints refuse duplicate import submissions while an import is already running.
 - Culling sessions now start and reopen in loupe view with a culling header, reviewed-progress bar, pick/reject counts, selected-frame `TESTSTRIP READS` verdict, stable rating/label/flag command rail, and visible frame position.
@@ -283,8 +286,8 @@ Current behavior:
 ### Alpha-Blocking Gaps
 
 - Preview throughput and UI churn under large preview backlogs are not good enough yet. The 600-image import path completed, but many previews were still pending after the initial wait and app CPU stayed high while draining.
-- Import UX is improved but not complete. The app now shows visible active-import feedback, post-import preview continuation, an Import Path plan, tested duplicate-import guards, and a compact import-complete action summary, but richer phase labeling, permission/security-scope failures, and card-source staging still need work.
-- Clicking/selection needs a stronger regression harness. We have AX probes, but the user observed weird broken clicking after import, and this should be treated as a real usability risk until verified under imported-photo conditions.
+- Import UX is improved but not complete. The app now shows visible active-import feedback, phase labels, post-import preview continuation, an Import Path plan, tested duplicate-import guards, and a compact import-complete action summary, but permission/security-scope failures and card-source staging still need work.
+- Clicking/selection needs one more lightweight imported-photo verification pass. Direct grid clicks no longer recenter the thumbnail under the pointer, which was the likely root cause of the weird click feeling, and policy tests cover pointer-vs-programmatic selection scroll behavior. The remaining risk is human/AX confirmation under imported-photo conditions.
 - Library mockup parity is improving but incomplete. The overview grid now uses cataloged dimensions for true aspect-ratio cells, the filter rail is closer to the Studio mockup's Ask/search treatment, the inspector preview size is pinned, the inspector metadata controls have an initial mockup-derived pass, the culling/loupe chrome has an initial design pass, Search has a first live route, Compare has a first survey-style pass, Smart Collections has a first builder popover, and major dead UI gaps are tagged in code, but sidebar density, stack/focus compare depth, and deeper saved-query builder interactions still need visual passes against the design concept.
 - The current RAW story is only the first abstraction and ImageIO-backed path. We still need an explicit decoder capability matrix and provider-swapping plan for formats Jesse named: DNG, CRW, CR2, Fuji RAW, Sigma/Foveon RAW, and specialty long-tail files. Lytro support remains out of scope.
 - Evaluation is scaffolding plus early useful providers, not finished face/person/object/aesthetic workflow. The People view uses placeholder data; real face recognition, grouping, naming, merge/dismiss actions, accepted labels, and reprocessing flows are not wired yet.
@@ -372,9 +375,9 @@ Teststrip reaches usable alpha when a photographer can:
 - [ ] Make import state unambiguous before, during, and after path submission.
 - [ ] Disable duplicate import submission while an import is starting or running.
 - [x] Surface completed import count and whether preview generation is continuing after catalog/import completion.
-- [ ] Surface a clearer current import phase while path submission is scanning and cataloging.
+- [x] Surface a clearer current import phase while path submission is scanning and cataloging.
 - [ ] Show clear duplicate, empty-folder, failed-folder, and permission/security-scope errors.
-- [ ] Add model tests for import state transitions rather than brittle SwiftUI snapshots.
+- [x] Add model/presentation tests for import state transitions rather than brittle SwiftUI snapshots.
 - [x] Extend AX import verifier to catch apparent no-op after submit and sheet-dismissed-with-no-visible-progress states. Current coverage adds a post-submit visible-feedback gate and `feedback_visible_seconds`.
 - [ ] Add the imported-grid selection/rating AX probe in Slice 3.
 - [ ] Verify with focused tests, full `swift test`, `./script/verify_app_workflows.sh Teststrip`, and manual/AX import smoke.
@@ -407,10 +410,11 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Bring the library filter rail closer to the Studio mockup by making Ask/search visually primary, keeping advanced filters compact, and preserving the Search catalog accessibility contract.
 - [x] Pin the inspector/sidebar selected-preview box to a stable X/Y size so it does not expand with the detail column or selected image.
 - [x] Bring the loupe/culling surface closer to the mockup with top-level progress, decision counts, and stable flag/rating/label controls.
-- [ ] Fix the root cause if click handling, hit testing, focus capture, selection identity, or grid cell accessibility is wrong.
-- [ ] Add the least brittle model/UI tests that would have failed for the root cause.
-- [ ] Verify all grid/culling scripts and full `swift test`.
-- [ ] Commit.
+- [x] Fix the root cause if click handling, hit testing, focus capture, selection identity, or grid cell accessibility is wrong.
+- [x] Add the least brittle model/UI tests that would have failed for the root cause.
+- [ ] Verify all grid/culling scripts after Jesse is not actively using the computer.
+- [x] Verify full `swift test`.
+- [x] Commit.
 
 **Acceptance:** Imported photos can be clicked, selected, rated, and inspected reliably through both human interaction and AX automation.
 
