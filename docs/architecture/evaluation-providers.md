@@ -11,6 +11,7 @@ Teststrip treats photo evaluation as a provider-backed worker capability. Local 
 - `local-http-model` is registered only when the worker receives `--local-http-model-endpoint` and `--local-http-model`.
 - App launch can pass those worker flags from `TESTSTRIP_LOCAL_HTTP_MODEL_ENDPOINT`, `TESTSTRIP_LOCAL_HTTP_MODEL`, and `TESTSTRIP_LOCAL_HTTP_MODEL_TIMEOUT`.
 - HTTP model requests use an OpenAI-compatible chat-completions shape and embed the cached preview as an `image_url` data URL. Providers must not depend on a local filesystem path being visible to the model server.
+- HTTP model responses may contain raw JSON or a fenced/prose-wrapped JSON object; the provider extracts the returned JSON object before decoding typed signals.
 - HTTP model requests retry transient transport failures and retryable response statuses, including `408`, `429`, and `5xx`, up to three attempts before surfacing the last failure.
 - All imported model output is stored as typed `EvaluationSignal` rows with provider, model, version, and settings provenance.
 - `TeststripBench local-http-smoke <endpoint> <model> <image> [timeout]` exercises an OpenAI-compatible local model endpoint such as LM Studio or Ollama against one preview image and reports returned signal kinds.

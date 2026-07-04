@@ -573,6 +573,37 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(request.timeoutInterval, 6)
     }
 
+    func testLocalHTTPModelProviderAcceptsFencedJSONContent() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "local-http-model-fenced-json")
+        let previewURL = root.appendingPathComponent("preview.jpg")
+        try TestDirectories.writeTestJPEG(to: previewURL, width: 512, height: 340)
+        let transport = RecordingLocalHTTPModelTransport(response: .success(LocalHTTPModelHTTPResponse(
+            statusCode: 200,
+            data: try chatCompletionData(content: """
+            ```json
+            {"signals":[{"kind":"focus","score":0.91,"confidence":0.82}]}
+            ```
+            """)
+        )))
+        let provider = LocalHTTPModelProvider(
+            endpoint: URL(string: "http://localhost:1234/v1/chat/completions")!,
+            model: "llava",
+            transport: transport
+        )
+
+        let signals = try provider.evaluate(assetID: AssetID(rawValue: "asset-1"), previewURL: previewURL)
+
+        XCTAssertEqual(signals, [
+            EvaluationSignal(
+                assetID: AssetID(rawValue: "asset-1"),
+                kind: .focus,
+                value: .score(0.91),
+                confidence: 0.82,
+                provenance: ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+            )
+        ])
+    }
+
     func testRuntimeConfigurationParsesOptionalLocalHTTPModelArguments() throws {
         let configuration = try WorkerRuntimeConfiguration(arguments: [
             "--catalog",

@@ -114,12 +114,23 @@ public struct LocalHTTPModelProvider: EvaluationProvider {
     public func evaluate(assetID: AssetID, previewURL: URL) throws -> [EvaluationSignal] {
         let response = try response(for: try request(for: previewURL, prompt: prompt))
         let completion = try JSONDecoder().decode(OpenAIChatCompletionResponse.self, from: response.data)
-        guard let content = completion.choices.first?.message.content, let contentData = content.data(using: .utf8) else {
+        guard let content = completion.choices.first?.message.content else {
             throw TeststripError.invalidState("HTTP model response did not include message content")
         }
+        let contentData = Self.modelJSONData(from: content)
         let modelResponse = try JSONDecoder().decode(LocalHTTPModelEvaluationResponse.self, from: contentData)
         let provenance = ProviderProvenance(provider: name, model: model, version: "1", settingsHash: "default")
         return try modelResponse.signals.map { try $0.evaluationSignal(assetID: assetID, provenance: provenance) }
+    }
+
+    private static func modelJSONData(from content: String) -> Data {
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let start = trimmedContent.firstIndex(of: "{"),
+           let end = trimmedContent.lastIndex(of: "}"),
+           start <= end {
+            return Data(trimmedContent[start...end].utf8)
+        }
+        return Data(trimmedContent.utf8)
     }
 
     private func response(for request: URLRequest) throws -> LocalHTTPModelHTTPResponse {
