@@ -90,6 +90,9 @@ public enum ReviewQueue: String, Equatable, Hashable, Sendable {
     case fiveStars
     case needsKeywords
     case needsEvaluation
+    case facesFound
+    case ocrFound
+    case likelyIssues
 }
 
 extension EvaluationKind {
@@ -599,6 +602,7 @@ public final class AppModel {
     public var evaluationKindFilter: EvaluationKind?
     public var needsKeywordsFilter: Bool
     public var needsEvaluationFilter: Bool
+    public var likelyIssuesFilter: Bool
     public var metadataSyncPendingFilter: Bool
     public var metadataSyncConflictFilter: Bool
     public var savedAssetSets: [AssetSet]
@@ -1026,6 +1030,9 @@ public final class AppModel {
         if needsEvaluationFilter {
             Self.append("Needs Evaluation", to: &chips)
         }
+        if likelyIssuesFilter {
+            Self.append("Likely Issues", to: &chips)
+        }
         if metadataSyncPendingFilter {
             Self.append("XMP Pending", to: &chips)
         }
@@ -1116,6 +1123,9 @@ public final class AppModel {
         }
         if needsEvaluationFilter {
             Self.append("Needs Evaluation", to: &parts)
+        }
+        if likelyIssuesFilter {
+            Self.append("Likely Issues", to: &parts)
         }
         if metadataSyncPendingFilter {
             Self.append("XMP Pending", to: &parts)
@@ -1237,6 +1247,7 @@ public final class AppModel {
         self.evaluationKindFilter = nil
         self.needsKeywordsFilter = false
         self.needsEvaluationFilter = false
+        self.likelyIssuesFilter = false
         self.metadataSyncPendingFilter = false
         self.metadataSyncConflictFilter = false
         self.savedAssetSets = savedAssetSets
@@ -3461,6 +3472,12 @@ public final class AppModel {
             needsKeywordsFilter = true
         case .needsEvaluation:
             needsEvaluationFilter = true
+        case .facesFound:
+            evaluationKindFilter = .faceCount
+        case .ocrFound:
+            evaluationKindFilter = .ocrText
+        case .likelyIssues:
+            likelyIssuesFilter = true
         }
         selectedView = .grid
         try reload()
@@ -3728,6 +3745,9 @@ public final class AppModel {
         if needsEvaluationFilter {
             Self.append(.unevaluated, to: &predicates)
         }
+        if likelyIssuesFilter {
+            Self.append(.likelyIssue, to: &predicates)
+        }
         if metadataSyncPendingFilter {
             Self.append(.metadataSyncPending, to: &predicates)
         }
@@ -3753,6 +3773,7 @@ public final class AppModel {
         evaluationKindFilter = nil
         needsKeywordsFilter = false
         needsEvaluationFilter = false
+        likelyIssuesFilter = false
         metadataSyncPendingFilter = false
         metadataSyncConflictFilter = false
     }
@@ -4576,7 +4597,10 @@ public final class AppModel {
         .rejects,
         .fiveStars,
         .needsKeywords,
-        .needsEvaluation
+        .needsEvaluation,
+        .facesFound,
+        .ocrFound,
+        .likelyIssues
     ]
 
     private static func reviewQueueTitle(_ queue: ReviewQueue) -> String {
@@ -4591,6 +4615,12 @@ public final class AppModel {
             return "Needs Keywords"
         case .needsEvaluation:
             return "Needs Evaluation"
+        case .facesFound:
+            return "Faces Found"
+        case .ocrFound:
+            return "OCR Found"
+        case .likelyIssues:
+            return "Likely Issues"
         }
     }
 
@@ -4614,6 +4644,12 @@ public final class AppModel {
             return SetQuery(predicates: [.missingKeywords])
         case .needsEvaluation:
             return SetQuery(predicates: [.unevaluated])
+        case .facesFound:
+            return SetQuery(predicates: [.evaluationKind(.faceCount)])
+        case .ocrFound:
+            return SetQuery(predicates: [.evaluationKind(.ocrText)])
+        case .likelyIssues:
+            return SetQuery(predicates: [.likelyIssue])
         }
     }
 

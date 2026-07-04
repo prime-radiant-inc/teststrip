@@ -17,6 +17,7 @@ public struct SetQuery: Codable, Equatable, Sendable {
         case capturedBefore(Date)
         case evaluationKind(EvaluationKind)
         case unevaluated
+        case likelyIssue
         case metadataSyncPending
         case metadataSyncConflict
         case importBatch(String)

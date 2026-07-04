@@ -79,6 +79,12 @@ struct SidebarView: View {
             return "tag"
         case .needsEvaluation:
             return "wand.and.stars"
+        case .facesFound:
+            return "person.2"
+        case .ocrFound:
+            return "text.viewfinder"
+        case .likelyIssues:
+            return "exclamationmark.triangle"
         }
     }
 

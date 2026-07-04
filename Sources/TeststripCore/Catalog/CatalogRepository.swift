@@ -1003,6 +1003,28 @@ public final class CatalogRepository {
                 clauses.append(
                     "NOT EXISTS (SELECT 1 FROM evaluation_signals WHERE evaluation_signals.asset_id = assets.id)"
                 )
+            case .likelyIssue:
+                clauses.append(
+                    """
+                    EXISTS (
+                        SELECT 1
+                        FROM evaluation_signals
+                        WHERE evaluation_signals.asset_id = assets.id
+                          AND (
+                            (kind = 'focus' AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.5)
+                            OR (kind = 'motionBlur' AND CAST(json_extract(value_json, '$.score._0') AS REAL) >= 0.5)
+                            OR (
+                                kind = 'exposure'
+                                AND (
+                                    CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.12
+                                    OR CAST(json_extract(value_json, '$.score._0') AS REAL) >= 0.88
+                                )
+                            )
+                            OR (kind = 'faceQuality' AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.5)
+                          )
+                    )
+                    """
+                )
             case .metadataSyncPending:
                 clauses.append(
                     """

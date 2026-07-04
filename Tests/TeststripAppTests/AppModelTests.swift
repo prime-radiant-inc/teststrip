@@ -1999,12 +1999,18 @@ final class AppModelTests: XCTestCase {
         let fiveStar = makeAsset(id: "five-star", path: "/Photos/Job/five-star.jpg", rating: 5, keywords: ["tagged"])
         let unreviewed = makeAsset(id: "unreviewed", path: "/Photos/Job/unreviewed.jpg", rating: 0, keywords: ["tagged"])
         let needsKeywords = makeAsset(id: "needs-keywords", path: "/Photos/Job/needs-keywords.jpg", rating: 3)
+        let faceFound = makeAsset(id: "face-found", path: "/Photos/Job/face-found.jpg", rating: 3, keywords: ["tagged"])
+        let ocrFound = makeAsset(id: "ocr-found", path: "/Photos/Job/ocr-found.jpg", rating: 3, keywords: ["tagged"])
+        let likelyIssue = makeAsset(id: "likely-issue", path: "/Photos/Job/likely-issue.jpg", rating: 3, keywords: ["tagged"])
         let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
-        try repository.upsert([pick, reject, fiveStar, unreviewed, needsKeywords])
+        try repository.upsert([pick, reject, fiveStar, unreviewed, needsKeywords, faceFound, ocrFound, likelyIssue])
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: pick.id, kind: .faceQuality, value: .score(0.82), confidence: 0.82, provenance: provenance),
             EvaluationSignal(assetID: reject.id, kind: .object, value: .label("camera"), confidence: 0.74, provenance: provenance),
-            EvaluationSignal(assetID: fiveStar.id, kind: .ocrText, value: .text("invoice"), confidence: 0.69, provenance: provenance)
+            EvaluationSignal(assetID: fiveStar.id, kind: .object, value: .label("receipt"), confidence: 0.69, provenance: provenance),
+            EvaluationSignal(assetID: faceFound.id, kind: .faceCount, value: .count(2), confidence: 0.91, provenance: provenance),
+            EvaluationSignal(assetID: ocrFound.id, kind: .ocrText, value: .text("invoice"), confidence: 0.94, provenance: provenance),
+            EvaluationSignal(assetID: likelyIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance)
         ])
         let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
         let catalog = AppCatalog(
@@ -2019,12 +2025,24 @@ final class AppModelTests: XCTestCase {
         let model = try AppModel.load(catalog: catalog)
 
         let reviewSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Review" })
-        XCTAssertEqual(reviewSection.rowTitles, ["Picks", "Rejects", "5 Stars", "Needs Keywords", "Needs Evaluation"])
+        XCTAssertEqual(reviewSection.rowTitles, [
+            "Picks",
+            "Rejects",
+            "5 Stars",
+            "Needs Keywords",
+            "Needs Evaluation",
+            "Faces Found",
+            "OCR Found",
+            "Likely Issues"
+        ])
         XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
         XCTAssertEqual(reviewQueueCount("Rejects", in: model), "1")
         XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "1")
         XCTAssertEqual(reviewQueueCount("Needs Keywords", in: model), "1")
         XCTAssertEqual(reviewQueueCount("Needs Evaluation", in: model), "2")
+        XCTAssertEqual(reviewQueueCount("Faces Found", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("OCR Found", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("Likely Issues", in: model), "1")
 
         let picksRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Picks" })
         try model.selectSidebarRow(picksRow)
@@ -2069,6 +2087,28 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.needsEvaluationFilter)
         XCTAssertEqual(model.assets.map(\.id), [unreviewed.id, needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 2)
+
+        let facesFoundRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Faces Found" })
+        try model.selectSidebarRow(facesFoundRow)
+
+        XCTAssertEqual(model.evaluationKindFilter, .faceCount)
+        XCTAssertEqual(model.assets.map(\.id), [faceFound.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+
+        let ocrFoundRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "OCR Found" })
+        try model.selectSidebarRow(ocrFoundRow)
+
+        XCTAssertEqual(model.evaluationKindFilter, .ocrText)
+        XCTAssertEqual(model.assets.map(\.id), [ocrFound.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+
+        let likelyIssuesRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Likely Issues" })
+        try model.selectSidebarRow(likelyIssuesRow)
+
+        XCTAssertTrue(model.likelyIssuesFilter)
+        XCTAssertNil(model.evaluationKindFilter)
+        XCTAssertEqual(model.assets.map(\.id), [likelyIssue.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
     }
 
     func testReviewQueueCountsRefreshAfterMetadataChanges() throws {
@@ -2817,6 +2857,14 @@ final class AppModelTests: XCTestCase {
             "Keyword: portfolio"
         ])
         XCTAssertEqual(model.suggestedSavedSearchName, "ceremony Pick Canon portfolio")
+    }
+
+    func testLikelyIssuesFilterNamesSavedSearchScope() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        model.likelyIssuesFilter = true
+
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Likely Issues"])
+        XCTAssertEqual(model.suggestedSavedSearchName, "Likely Issues")
     }
 
     func testSavingSelectedAssetCreatesSelectedManualSet() throws {
