@@ -3,30 +3,53 @@ set -euo pipefail
 
 APP_NAME="${1:-Teststrip}"
 TIMEOUT_SECONDS="${TESTSTRIP_AX_TIMEOUT_SECONDS:-15}"
-IMPORT_COUNT="${TESTSTRIP_AX_IMPORT_COUNT:-1}"
-IMPORT_DIR="$(mktemp -d /tmp/teststrip-import-path-smoke.XXXXXX)"
-ASSET_NAME="ax-import-$$.png"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 METRIC_PREVIEW_SAMPLE_SECONDS="${TESTSTRIP_IMPORT_METRIC_PREVIEW_SAMPLE_SECONDS:-2}"
 METRIC_PREVIEW_DRAIN_TIMEOUT_SECONDS="${TESTSTRIP_IMPORT_METRIC_PREVIEW_DRAIN_TIMEOUT_SECONDS:-30}"
 METRIC_PREVIEW_DRAIN_POLL_SECONDS="${TESTSTRIP_IMPORT_METRIC_PREVIEW_DRAIN_POLL_SECONDS:-0.25}"
+IMPORT_SOURCE_DIR="${TESTSTRIP_AX_IMPORT_SOURCE_DIR:-}"
 
 source "$SCRIPT_DIR/import_verifier_metrics.sh"
 
-if [[ ! "$IMPORT_COUNT" =~ ^[0-9]+$ ]] || [[ "$IMPORT_COUNT" -lt 1 ]]; then
-  echo "TESTSTRIP_AX_IMPORT_COUNT must be a positive integer" >&2
-  exit 2
-fi
+if [[ -n "$IMPORT_SOURCE_DIR" ]]; then
+  if [[ ! -d "$IMPORT_SOURCE_DIR" ]]; then
+    echo "TESTSTRIP_AX_IMPORT_SOURCE_DIR must be a directory" >&2
+    exit 2
+  fi
 
-PNG_BYTES='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
-if [[ "$IMPORT_COUNT" -eq 1 ]]; then
-  printf '%s' "$PNG_BYTES" | base64 -D > "$IMPORT_DIR/$ASSET_NAME"
+  IMPORT_DIR="$(cd "$IMPORT_SOURCE_DIR" && pwd)"
+  import_files=()
+  while IFS= read -r import_file; do
+    import_files+=("$import_file")
+  done < <(find "$IMPORT_DIR" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.tif' -o -iname '*.tiff' \) | sort)
+
+  if [[ "${#import_files[@]}" -lt 1 ]]; then
+    echo "TESTSTRIP_AX_IMPORT_SOURCE_DIR contains no supported image files" >&2
+    exit 2
+  fi
+
+  IMPORT_COUNT="${#import_files[@]}"
+  ASSET_NAME="${TESTSTRIP_AX_TARGET_ASSET:-$(basename "${import_files[0]}")}"
 else
-  for ((index = 0; index < IMPORT_COUNT; index++)); do
-    asset_name="$(printf 'ax-import-%04d.png' "$index")"
-    printf '%s' "$PNG_BYTES" | base64 -D > "$IMPORT_DIR/$asset_name"
-  done
-  ASSET_NAME="ax-import-0000.png"
+  IMPORT_COUNT="${TESTSTRIP_AX_IMPORT_COUNT:-1}"
+  IMPORT_DIR="$(mktemp -d /tmp/teststrip-import-path-smoke.XXXXXX)"
+  ASSET_NAME="ax-import-$$.png"
+
+  if [[ ! "$IMPORT_COUNT" =~ ^[0-9]+$ ]] || [[ "$IMPORT_COUNT" -lt 1 ]]; then
+    echo "TESTSTRIP_AX_IMPORT_COUNT must be a positive integer" >&2
+    exit 2
+  fi
+
+  PNG_BYTES='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
+  if [[ "$IMPORT_COUNT" -eq 1 ]]; then
+    printf '%s' "$PNG_BYTES" | base64 -D > "$IMPORT_DIR/$ASSET_NAME"
+  else
+    for ((index = 0; index < IMPORT_COUNT; index++)); do
+      asset_name="$(printf 'ax-import-%04d.png' "$index")"
+      printf '%s' "$PNG_BYTES" | base64 -D > "$IMPORT_DIR/$asset_name"
+    done
+    ASSET_NAME="ax-import-0000.png"
+  fi
 fi
 
 import_started_ms="$(metric_now_ms)"
@@ -76,8 +99,10 @@ func stringAttribute(_ element: AXUIElement, _ name: String) -> String? {
 
 func children(of element: AXUIElement) -> [AXUIElement] {
     let directChildren = attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? []
+    let navigationChildren = attribute(element, "AXChildrenInNavigationOrder") as? [AXUIElement] ?? []
+    let visibleChildren = attribute(element, kAXVisibleChildrenAttribute) as? [AXUIElement] ?? []
     let windows = attribute(element, kAXWindowsAttribute) as? [AXUIElement] ?? []
-    return directChildren + windows
+    return directChildren + navigationChildren + visibleChildren + windows
 }
 
 func accessibleText(_ element: AXUIElement) -> String? {
@@ -145,8 +170,9 @@ func focusedSheetTextField() -> AXUIElement? {
 }
 
 if focusedSheetTextField() == nil {
-    guard let importPathButton = button(named: "Import Path", insideSheet: false) else {
-        fputs("Import Path button not found in \(appName)\n", stderr)
+    guard waitFor({ button(named: "Import Path", insideSheet: false) != nil }),
+          let importPathButton = button(named: "Import Path", insideSheet: false) else {
+        fputs("Import Path button not found in \(appName) within \(timeout)s\n", stderr)
         exit(1)
     }
     let pressResult = AXUIElementPerformAction(importPathButton, kAXPressAction as CFString)

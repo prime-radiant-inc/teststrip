@@ -80,8 +80,10 @@ func stringAttribute(_ element: AXUIElement, _ name: String) -> String? {
 
 func children(of element: AXUIElement) -> [AXUIElement] {
     let directChildren = attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? []
+    let navigationChildren = attribute(element, "AXChildrenInNavigationOrder") as? [AXUIElement] ?? []
+    let visibleChildren = attribute(element, kAXVisibleChildrenAttribute) as? [AXUIElement] ?? []
     let windows = attribute(element, kAXWindowsAttribute) as? [AXUIElement] ?? []
-    return directChildren + windows
+    return directChildren + navigationChildren + visibleChildren + windows
 }
 
 func accessibleText(_ element: AXUIElement) -> String? {
