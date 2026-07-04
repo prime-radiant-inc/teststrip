@@ -22,6 +22,8 @@ case .previewRender(let count):
     try runPreviewRenderBenchmark(count: count, root: root)
 case .seedAppCatalog(let applicationSupportDirectory, let count):
     try runSeedAppCatalog(applicationSupportDirectory: applicationSupportDirectory, count: count)
+case .seedSampleCatalog(let applicationSupportDirectory, let photoDirectory):
+    try runSeedSampleCatalog(applicationSupportDirectory: applicationSupportDirectory, photoDirectory: photoDirectory)
 }
 
 private func runCatalogScaleBenchmark(count: Int, root: URL) throws {
@@ -148,6 +150,23 @@ private func runSeedAppCatalog(applicationSupportDirectory: URL, count: Int) thr
         try SmokeCatalogSeeder(
             applicationSupportDirectory: applicationSupportDirectory,
             count: count
+        ).run()
+    }
+    print("catalog: \(result.catalogURL.path)")
+    print("preview cache: \(result.previewCacheRoot.path)")
+    print("source images: \(result.sourceImageCount)")
+    print("catalog assets: \(result.assetCount)")
+    print("cached previews: \(result.cachedPreviewCount)")
+}
+
+private func runSeedSampleCatalog(applicationSupportDirectory: URL, photoDirectory: URL) throws {
+    print("TeststripBench seed sample catalog")
+    print("application support: \(applicationSupportDirectory.path)")
+    print("photo directory: \(photoDirectory.path)")
+    let result = try measure("seed sample catalog") {
+        try SampleCatalogSeeder(
+            applicationSupportDirectory: applicationSupportDirectory,
+            photoDirectory: photoDirectory
         ).run()
     }
     print("catalog: \(result.catalogURL.path)")

@@ -57,6 +57,16 @@ final class BenchmarkCommandTests: XCTestCase {
         )
     }
 
+    func testSeedSampleCatalogCommandParsesApplicationSupportDirectoryAndPhotoDirectory() throws {
+        XCTAssertEqual(
+            BenchmarkCommand.parse(["TeststripBench", "seed-sample-catalog", "/tmp/teststrip-sample", "/tmp/teststrip-photos"]),
+            .seedSampleCatalog(
+                applicationSupportDirectory: URL(fileURLWithPath: "/tmp/teststrip-sample"),
+                photoDirectory: URL(fileURLWithPath: "/tmp/teststrip-photos")
+            )
+        )
+    }
+
     func testDeferredImportBenchmarkCatalogsAssetsAndQueuesPreviewWork() throws {
         let root = try makeTemporaryDirectory(named: "deferred-import-benchmark")
 
@@ -172,6 +182,49 @@ final class BenchmarkCommandTests: XCTestCase {
         }
     }
 
+    func testSampleCatalogSeederImportsExistingPhotosAndPreviews() throws {
+        let applicationSupportDirectory = try makeTemporaryDirectory(named: "sample-app-support")
+        let photoDirectory = try makeTemporaryDirectory(named: "sample-photos")
+        try writeTestPNG(to: photoDirectory.appendingPathComponent("one.png"))
+        try writeTestPNG(to: photoDirectory.appendingPathComponent("two.png"))
+
+        let result = try SampleCatalogSeeder(
+            applicationSupportDirectory: applicationSupportDirectory,
+            photoDirectory: photoDirectory
+        ).run()
+
+        let database = try CatalogDatabase.open(at: result.catalogURL)
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assets = try repository.allAssets(limit: 20)
+        let previewCache = PreviewCache(root: result.previewCacheRoot)
+
+        XCTAssertEqual(result.sourceImageCount, 2)
+        XCTAssertEqual(result.assetCount, 2)
+        XCTAssertEqual(result.cachedPreviewCount, 4)
+        XCTAssertEqual(try repository.assetCount(), 2)
+        XCTAssertEqual(Set(assets.map { $0.originalURL.deletingLastPathComponent() }), [photoDirectory])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: assets[0].id, level: .grid)).path))
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [PreviewGenerationItem]())
+    }
+
+    func testSampleCatalogSeederRefusesExistingCatalog() throws {
+        let applicationSupportDirectory = try makeTemporaryDirectory(named: "existing-sample-app-support")
+        let photoDirectory = try makeTemporaryDirectory(named: "existing-sample-photos")
+        let catalogURL = applicationSupportDirectory
+            .appendingPathComponent("Teststrip", isDirectory: true)
+            .appendingPathComponent("catalog.sqlite")
+        try FileManager.default.createDirectory(at: catalogURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("existing catalog".utf8).write(to: catalogURL)
+
+        XCTAssertThrowsError(try SampleCatalogSeeder(
+            applicationSupportDirectory: applicationSupportDirectory,
+            photoDirectory: photoDirectory
+        ).run()) { error in
+            XCTAssertTrue(error.localizedDescription.contains("refusing to seed sample catalog over existing catalog"))
+        }
+    }
+
     func testBenchmarkWorkspaceCreatesUniqueTemporaryRoots() {
         let first = BenchmarkWorkspace.temporaryRoot()
         let second = BenchmarkWorkspace.temporaryRoot()
@@ -188,6 +241,11 @@ final class BenchmarkCommandTests: XCTestCase {
             .appendingPathComponent(name, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         return root
+    }
+
+    private func writeTestPNG(to url: URL) throws {
+        let data = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=")!
+        try data.write(to: url)
     }
 }
 

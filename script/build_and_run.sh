@@ -13,6 +13,8 @@ ISOLATED=0
 ISOLATED_APPLICATION_SUPPORT=""
 SMOKE=0
 SMOKE_ASSET_COUNT="${TESTSTRIP_SMOKE_ASSET_COUNT:-24}"
+SAMPLE_PHOTOS=0
+SAMPLE_PHOTOS_DIR="${TESTSTRIP_SAMPLE_PHOTOS_DIR:-}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -25,7 +27,7 @@ WORKER_BINARY="$APP_HELPERS/$WORKER_PRODUCT_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 
 usage() {
-  echo "usage: $0 [run|--verify|--isolated|--verify-isolated|--smoke|--verify-smoke|--debug|--logs|--telemetry]" >&2
+  echo "usage: $0 [run|--verify|--isolated|--verify-isolated|--smoke|--verify-smoke|--sample-photos|--verify-sample-photos|--debug|--logs|--telemetry]" >&2
 }
 
 stop_running_app() {
@@ -89,6 +91,9 @@ open_app() {
     if [[ "$SMOKE" == "1" ]]; then
       seed_smoke_catalog
     fi
+    if [[ "$SAMPLE_PHOTOS" == "1" ]]; then
+      seed_sample_catalog
+    fi
     open_args=(--env "$APPLICATION_SUPPORT_ENV_KEY=$ISOLATED_APPLICATION_SUPPORT" "${open_args[@]}")
   fi
   /usr/bin/open "${open_args[@]}"
@@ -126,6 +131,17 @@ seed_smoke_catalog() {
   swift run "$BENCH_PRODUCT_NAME" seed-app-catalog "$ISOLATED_APPLICATION_SUPPORT" "$SMOKE_ASSET_COUNT"
 }
 
+seed_sample_catalog() {
+  cd "$ROOT_DIR"
+  if [[ -z "$SAMPLE_PHOTOS_DIR" ]]; then
+    SAMPLE_PHOTOS_DIR="$ROOT_DIR/sample-data/photos/loc-free-to-use"
+  fi
+  if [[ ! -d "$SAMPLE_PHOTOS_DIR" ]] || [[ -z "$(find "$SAMPLE_PHOTOS_DIR" -maxdepth 1 -type f -print -quit)" ]]; then
+    "$ROOT_DIR/script/download_sample_photos.sh" --destination "$SAMPLE_PHOTOS_DIR"
+  fi
+  swift run "$BENCH_PRODUCT_NAME" seed-sample-catalog "$ISOLATED_APPLICATION_SUPPORT" "$SAMPLE_PHOTOS_DIR"
+}
+
 case "$MODE" in
   run|--verify|verify|--debug|debug|--logs|logs|--telemetry|telemetry)
     ;;
@@ -146,6 +162,16 @@ case "$MODE" in
     MODE="--verify"
     ISOLATED=1
     SMOKE=1
+    ;;
+  --sample-photos|sample-photos)
+    MODE="run"
+    ISOLATED=1
+    SAMPLE_PHOTOS=1
+    ;;
+  --verify-sample-photos|verify-sample-photos)
+    MODE="--verify"
+    ISOLATED=1
+    SAMPLE_PHOTOS=1
     ;;
   --help|help|-h)
     usage

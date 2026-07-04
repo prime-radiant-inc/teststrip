@@ -10,6 +10,7 @@ public enum BenchmarkCommand: Equatable {
     case metadataWrite(count: Int)
     case previewRender(count: Int)
     case seedAppCatalog(applicationSupportDirectory: URL, count: Int)
+    case seedSampleCatalog(applicationSupportDirectory: URL, photoDirectory: URL)
 
     public static func parse(_ arguments: [String]) -> BenchmarkCommand {
         let userArguments = Array(arguments.dropFirst())
@@ -43,6 +44,14 @@ public enum BenchmarkCommand: Equatable {
             let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
             let count = Int(userArguments.dropFirst(2).first ?? "24") ?? 24
             return .seedAppCatalog(applicationSupportDirectory: URL(fileURLWithPath: directory), count: count)
+        }
+        if firstArgument == "seed-sample-catalog" {
+            let applicationSupportDirectory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
+            let photoDirectory = userArguments.dropFirst(2).first ?? FileManager.default.currentDirectoryPath
+            return .seedSampleCatalog(
+                applicationSupportDirectory: URL(fileURLWithPath: applicationSupportDirectory),
+                photoDirectory: URL(fileURLWithPath: photoDirectory)
+            )
         }
         return .catalogScale(count: Int(firstArgument) ?? catalogBaselineCount)
     }
