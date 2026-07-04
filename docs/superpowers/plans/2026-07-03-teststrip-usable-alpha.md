@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `1c9d386 Stop grid clicks from recentering selection`
+- Snapshot commit: `00d07c2 Render richer sidebar rows`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter LibraryGridLayoutTests`, `swift test --filter ImportProgressPresentationTests`, and `swift test --filter AppModelTests/testBackgroundImportAppliesProgressUpdatesBeforeCompletion` passed after the import/click reliability slices.
-- Last broad unit verification: `swift test` passed with 494 tests after the grid click-recentering slice.
+- Last focused unit verification: `swift test --filter AppModelTests` passed after the richer sidebar rows slice. `swift test --filter SmartCollectionBuilderPresentationTests` passed after the split Smart Collection builder slice.
+- Last broad unit verification: `swift test` passed with 497 tests after the richer sidebar rows slice.
 - Last app workflow verification: `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import/click UI automation was intentionally deferred for the import phase and grid click-recentering slices to avoid unnecessary focus stealing while Jesse was using the machine; those slices were covered by focused presentation/policy tests and full unit runs. The previous grid aspect-ratio slice passed `./script/build_and_run.sh --sample-photos` and one Computer Use grid inspection, and the previous People live-mockup route passed Computer Use inspection plus `./script/verify_grid_activation.sh`, `./script/verify_grid_selection_feedback.sh`, `./script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 ./script/verify_imported_grid_culling.sh`. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
@@ -55,6 +55,8 @@
 - `b5dd2df`: replaced the static culling Assist placeholder with a selected-frame `TESTSTRIP READS` verdict pill backed by persisted evaluation signals and tested signal prioritization.
 - `d0d6800`: clarified active import progress with visible phase labels and counts for starting, scanning, cataloging, copying, and preview-building states across the import banner, empty-catalog import state, and footer.
 - `1c9d386`: stopped direct grid clicks from recentering the selected thumbnail while preserving auto-scroll for programmatic selection from import, keyboard navigation, filters, and culling advance.
+- `4973f32`: expanded the Smart Collection builder from a compact popover into a split live mockup with parsed rule rows, Teststrip suggestions, and a loaded-page thumbnail preview while preserving dynamic saved-search creation.
+- `00d07c2`: made sidebar rows richer and closer to the Studio mockup with structured details, counts, tones, and compact custom row rendering for library, source, sync, AI, saved set, and work rows.
 
 ## Product Decisions To Preserve
 
@@ -258,6 +260,7 @@ Built files include:
 Current behavior:
 
 - Studio-style shell exists: sidebar, library grid, inspector, toolbar actions, activity/work surface.
+- Sidebar rows now render custom compact rows with icons, titles, optional details, count badges, and tone coloring. Row metadata is structured instead of baking counts into titles.
 - People is selectable from the sidebar and toolbar as a live mockup backed by placeholder people/faces data.
 - Library grid renders cached previews and sizes overview cells from cataloged technical dimensions so portrait and panoramic photos keep their own aspect ratios without reading originals.
 - Grid thumbnail density is user-configurable from the toolbar and persists as an app preference.
@@ -265,7 +268,7 @@ Current behavior:
 - Active filters are summarized as visible chips below the search/filter controls.
 - Live-mockup placeholders can be tagged in code with `LiveMockupPlaceholder`, including stable ids, intended behavior, and current fallback notes. The current registry tracks People navigation, People face actions, agentic search, search refine, smart collections builder, import-complete summary, culling assist, culling filmstrip, stack cull, survey compare, and empty work history.
 - Search is a first-class library route in the sidebar and toolbar. It reuses the current catalog query/filter state, keeps the filter rail visible, shows parsed filter chips and saved-set counts, and displays the normal result grid as a live mockup for the fuller Search/Sets surface.
-- Smart Collection creation now has a first live-mockup builder popover reachable from active library filters. It uses the current filter chips as rules, shows the current filtered match count, keeps Starred state, and writes through the existing dynamic saved-query path.
+- Smart Collection creation now has a split live-mockup builder popover reachable from active library filters. It parses current filter chips into rule rows, shows Teststrip-suggested templates, previews loaded matching thumbnails, keeps Starred state, and writes through the existing dynamic saved-query path.
 - Compare now uses a survey-style live mockup instead of the original flat adaptive grid: the selected frame becomes the primary candidate, the visible survey grid orders that primary first followed by alternates, preview requests still use cached progressive compare behavior, and Pick/Reject/Loupe actions write through existing metadata/navigation paths.
 - The import-complete summary is tagged as a live mockup placeholder for the fuller designer payoff surface.
 - Import Path shows a pre-import plan for in-place cataloging, XMP sidecars, cached previews, and managed background work.
@@ -288,11 +291,11 @@ Current behavior:
 - Preview throughput and UI churn under large preview backlogs are not good enough yet. The 600-image import path completed, but many previews were still pending after the initial wait and app CPU stayed high while draining.
 - Import UX is improved but not complete. The app now shows visible active-import feedback, phase labels, post-import preview continuation, an Import Path plan, tested duplicate-import guards, and a compact import-complete action summary, but permission/security-scope failures and card-source staging still need work.
 - Clicking/selection needs one more lightweight imported-photo verification pass. Direct grid clicks no longer recenter the thumbnail under the pointer, which was the likely root cause of the weird click feeling, and policy tests cover pointer-vs-programmatic selection scroll behavior. The remaining risk is human/AX confirmation under imported-photo conditions.
-- Library mockup parity is improving but incomplete. The overview grid now uses cataloged dimensions for true aspect-ratio cells, the filter rail is closer to the Studio mockup's Ask/search treatment, the inspector preview size is pinned, the inspector metadata controls have an initial mockup-derived pass, the culling/loupe chrome has an initial design pass, Search has a first live route, Compare has a first survey-style pass, Smart Collections has a first builder popover, and major dead UI gaps are tagged in code, but sidebar density, stack/focus compare depth, and deeper saved-query builder interactions still need visual passes against the design concept.
+- Library mockup parity is improving but incomplete. The overview grid now uses cataloged dimensions for true aspect-ratio cells, the filter rail is closer to the Studio mockup's Ask/search treatment, the inspector preview size is pinned, the inspector metadata controls have an initial mockup-derived pass, the culling/loupe chrome has an initial design pass, Search has a first live route, Compare has a first survey-style pass, Smart Collections has a split builder, the sidebar has richer count/detail rows, and major dead UI gaps are tagged in code, but top chrome, stack/focus compare depth, review-queue counts, and deeper saved-query interactions still need visual passes against the design concept.
 - The current RAW story is only the first abstraction and ImageIO-backed path. We still need an explicit decoder capability matrix and provider-swapping plan for formats Jesse named: DNG, CRW, CR2, Fuji RAW, Sigma/Foveon RAW, and specialty long-tail files. Lytro support remains out of scope.
 - Evaluation is scaffolding plus early useful providers, not finished face/person/object/aesthetic workflow. The People view uses placeholder data; real face recognition, grouping, naming, merge/dismiss actions, accepted labels, and reprocessing flows are not wired yet.
 - Search/sets/work sessions are partially built but not yet the full user-facing model. Saved/ad hoc sets, clusters, work-session-derived sets, and query builder UX need more implementation.
-- Smart collections have a first live builder for current filters, but dynamic-vs-frozen choices, richer rule editing, and agent-suggested rules are not complete.
+- Smart collections have a stronger live builder for current filters, but dynamic-vs-frozen choices, real rule editing, and agent-suggested rules are not complete.
 - The app is not packaged/notarized as a production distributable. Current app bundle work is dev/smoke focused.
 
 ### Important Non-Alpha Gaps
@@ -512,7 +515,7 @@ Teststrip reaches usable alpha when a photographer can:
 
 - [ ] Define the minimum user-facing set types for alpha: import batch, manual selection, saved search, frozen snapshot, and work-session-derived set.
 - [ ] Add query predicates for rating, color label, pick/reject, keyword, date, folder, source availability, XMP state, and evaluation signal kind.
-- [ ] Add sidebar sections for recent/starred work sessions next to saved sets/searches.
+- [x] Add sidebar sections for recent/starred work sessions next to saved sets/searches.
 - [ ] Make culling operate on the active set, not only the whole library or last import.
 - [ ] Add tests that a work session points to input/output/generated sets rather than owning a separate membership system.
 - [ ] Verify full `swift test` and one app workflow: import, save a filtered set, start a culling session over it, star the session, relaunch, and recover it from sidebar.
@@ -534,6 +537,7 @@ Teststrip reaches usable alpha when a photographer can:
 
 - [ ] Build a compact advanced filter bar for camera/lens/ISO/date/rating/label/flag/keyword/source/evaluation filters once the underlying predicate set exists.
 - [x] Save current filter expressions as dynamic smart collections through the builder popover.
+- [x] Expand the builder toward the designer mockup with parsed rule rows and a live loaded-result thumbnail preview.
 - [ ] Support frozen snapshots separately from dynamic saved searches.
 - [ ] Add model tests for predicate round-trip and dynamic-vs-frozen behavior.
 - [ ] Verify that common indexed searches stay under the intended timing target on seeded 500k/1M catalogs.
