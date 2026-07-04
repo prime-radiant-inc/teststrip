@@ -658,6 +658,7 @@ public final class AppModel {
         self.workerImportContextsByItemID = [:]
         self.workerSupervisor?.onQueueChanged = { [weak self] queue in
             self?.backgroundWorkQueue = queue
+            self?.recordPersistedActiveBackgroundWorkActivities(in: queue)
             try? self?.refreshMetadataSyncState()
             try? self?.refreshPreviewGenerationQueueStates()
             self?.refreshVisibleWorkerImportAssetsIfNeeded(in: queue)
@@ -2085,6 +2086,13 @@ public final class AppModel {
         backgroundWorkQueue.runningItems.first { $0.kind == .ingest } ??
             backgroundWorkQueue.items.first { $0.kind == .ingest && $0.status == .paused } ??
             backgroundWorkQueue.queuedItems.first { $0.kind == .ingest }
+    }
+
+    private func recordPersistedActiveBackgroundWorkActivities(in queue: BackgroundWorkQueue) {
+        let persistedIDs = persistedWorkActivityIDs
+        for item in queue.items where persistedIDs.contains(item.id.rawValue) && [.queued, .running, .paused].contains(item.status) {
+            recordRecentActivity(AppWorkActivity(workItem: item))
+        }
     }
 
     private func isVisibleInactiveBackgroundWork(_ item: BackgroundWorkItem) -> Bool {

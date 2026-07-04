@@ -24,6 +24,7 @@ The UI must not start unbounded detached work silently. Any long-running preview
 - Worker progress, completion, import-completion, and failure events are structured JSON-lines events with the originating work item ID.
 - Visible source refreshes dispatch bounded, source-grouped `refreshAvailabilityBatch` worker commands so slow volume checks stay visible, cancellable, and smaller than one full loaded-window scan.
 - Worker import work is persisted to `work_sessions` when it is queued/running. On the next catalog load, stale queued/running/paused ingest sessions are reconciled as failed with an interruption message instead of disappearing from Work history or falsely appearing active.
+- Progress updates for already-persisted worker import sessions refresh the running `work_sessions` row, so interruption/reload history reflects the last observed import detail and counts instead of the original queued message.
 - The app's managed worker queue caps source scans, XMP sync, and recognition to one running item per kind while still allowing unrelated runnable work to use remaining global queue capacity.
 
 ## Next Work

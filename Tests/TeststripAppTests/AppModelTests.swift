@@ -3768,6 +3768,41 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [importedAsset.id])
         XCTAssertEqual(model.totalAssetCount, 1)
         XCTAssertTrue(model.isImporting)
+        XCTAssertEqual(model.visibleWorkActivity?.completedUnitCount, 1)
+        XCTAssertEqual(model.visibleWorkActivity?.totalUnitCount, 10)
+        XCTAssertEqual(model.visibleWorkActivity?.detail, "Cataloging 1 of 10 photos")
+    }
+
+    @MainActor
+    func testWorkerImportProgressPersistsRunningSessionDetail() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-progress-session")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+        let itemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
+            itemID: itemID,
+            completedUnitCount: 7,
+            totalUnitCount: 20,
+            detail: "Cataloging 7 of 20 photos",
+            catalogedAssetIDs: []
+        )))
+
+        try await waitForPersistedWorkDetail("Cataloging 7 of 20 photos", itemID: itemID, repository: catalog.repository)
+        let session = try catalog.repository.session(id: itemID)
+        XCTAssertEqual(session.status, .running)
+        XCTAssertEqual(session.completedUnitCount, 7)
+        XCTAssertEqual(session.totalUnitCount, 20)
+        XCTAssertEqual(session.detail, "Cataloging 7 of 20 photos")
     }
 
     @MainActor
@@ -4636,6 +4671,21 @@ final class AppModelTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTFail("timed out waiting for visible work detail \(detail)")
+    }
+
+    @MainActor
+    private func waitForPersistedWorkDetail(
+        _ detail: String,
+        itemID: WorkSessionID,
+        repository: CatalogRepository
+    ) async throws {
+        for _ in 0..<100 {
+            if try repository.session(id: itemID).detail == detail {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTFail("timed out waiting for persisted work detail \(detail)")
     }
 
     @MainActor
