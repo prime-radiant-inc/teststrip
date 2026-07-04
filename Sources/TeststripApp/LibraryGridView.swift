@@ -1547,6 +1547,11 @@ struct CompareSurveyPresentation: Equatable {
         return Self.decisionSummary(for: primaryAsset)
     }
 
+    var orderedAssets: [Asset] {
+        guard let primaryAsset else { return alternateAssets }
+        return [primaryAsset] + alternateAssets
+    }
+
     static func decisionSummary(for asset: Asset) -> String {
         if let flag = asset.metadata.flag {
             switch flag {
@@ -1570,7 +1575,7 @@ private struct CompareView: View {
     var model: AppModel
     var focusCullingSurface: () -> Void
 
-    private let alternateColumns = [GridItem(.adaptive(minimum: 150), spacing: 10)]
+    private let surveyColumns = [GridItem(.adaptive(minimum: 180), spacing: 12)]
 
     var body: some View {
         let presentation = CompareSurveyPresentation(
@@ -1582,7 +1587,7 @@ private struct CompareView: View {
             VStack(alignment: .leading, spacing: 0) {
                 compareHeader(presentation)
                 if let primaryAsset = presentation.primaryAsset {
-                    surveyLayout(primaryAsset: primaryAsset, presentation: presentation)
+                    surveyLayout(presentation)
                     compareActionStrip(primaryAsset: primaryAsset, presentation: presentation)
                 } else {
                     emptyCompareSet
@@ -1637,32 +1642,23 @@ private struct CompareView: View {
         .background(.bar)
     }
 
-    private func surveyLayout(primaryAsset: Asset, presentation: CompareSurveyPresentation) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                compareTile(primaryAsset)
-                    .frame(minHeight: 420)
-                assetCaption(primaryAsset, label: "Primary")
-            }
-            .frame(maxWidth: .infinity)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Alternates")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                LazyVGrid(columns: alternateColumns, alignment: .leading, spacing: 10) {
-                    ForEach(presentation.alternateAssets, id: \.id.rawValue) { asset in
-                        VStack(alignment: .leading, spacing: 6) {
-                            compareTile(asset)
-                                .frame(height: 128)
-                            assetCaption(asset, label: CompareSurveyPresentation.decisionSummary(for: asset))
-                        }
-                    }
+    private func surveyLayout(_ presentation: CompareSurveyPresentation) -> some View {
+        LazyVGrid(columns: surveyColumns, alignment: .leading, spacing: 14) {
+            ForEach(presentation.orderedAssets, id: \.id.rawValue) { asset in
+                VStack(alignment: .leading, spacing: 7) {
+                    compareTile(asset)
+                    assetCaption(asset, label: surveyLabel(for: asset, presentation: presentation))
                 }
             }
-            .frame(width: 350, alignment: .topLeading)
         }
-        .padding(14)
+        .padding(16)
+    }
+
+    private func surveyLabel(for asset: Asset, presentation: CompareSurveyPresentation) -> String {
+        if asset.id == presentation.primaryAsset?.id {
+            return "Primary"
+        }
+        return CompareSurveyPresentation.decisionSummary(for: asset)
     }
 
     private func compareTile(_ asset: Asset) -> some View {

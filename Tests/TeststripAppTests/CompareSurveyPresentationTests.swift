@@ -17,6 +17,7 @@ final class CompareSurveyPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.primaryAsset?.id, assets[1].id)
         XCTAssertEqual(presentation.alternateAssets.map(\.id), [assets[0].id, assets[2].id])
+        XCTAssertEqual(presentation.orderedAssets.map(\.id), [assets[1].id, assets[0].id, assets[2].id])
         XCTAssertEqual(presentation.framePositionText, "Frame 2 of 3")
         XCTAssertEqual(presentation.groupCountText, "3 frames")
         XCTAssertEqual(presentation.recommendationText, "Suggests: keep 1 · reject 2")
