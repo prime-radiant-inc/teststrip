@@ -71,6 +71,8 @@ final class DecodeRegistryTests: XCTestCase {
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("dng"))
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("crw"))
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("raf"))
+        XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("rwl"))
+        XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("srw"))
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("x3f"))
     }
 
