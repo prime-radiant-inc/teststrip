@@ -339,6 +339,7 @@ struct LibraryGridView: View {
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(Color.orange.opacity(0.25))
         }
+        .liveMockupPlaceholder(.agenticSearch)
     }
 
     private func filterTextField(_ title: String, text: Binding<String>, width: CGFloat) -> some View {

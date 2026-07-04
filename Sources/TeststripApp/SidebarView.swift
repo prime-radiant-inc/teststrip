@@ -16,6 +16,7 @@ struct SidebarView: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(!row.isSelectable)
+                        .liveMockupPlaceholder(row.liveMockupPlaceholder)
                     }
                 }
             }

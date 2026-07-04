@@ -134,11 +134,18 @@ public struct SidebarRow: Identifiable, Equatable, Sendable {
     public var id: String
     public var title: String
     public var target: SidebarRowTarget
+    public var liveMockupPlaceholder: LiveMockupPlaceholder?
 
-    public init(id: String, title: String, target: SidebarRowTarget = .placeholder) {
+    public init(
+        id: String,
+        title: String,
+        target: SidebarRowTarget = .placeholder,
+        liveMockupPlaceholder: LiveMockupPlaceholder? = nil
+    ) {
         self.id = id
         self.title = title
         self.target = target
+        self.liveMockupPlaceholder = liveMockupPlaceholder
     }
 
     public var isSelectable: Bool {
@@ -3445,7 +3452,13 @@ public final class AppModel {
         if catalogFolders.isEmpty {
             libraryRows.append(SidebarRow(id: "library-folders", title: "Folders"))
         }
-        libraryRows.append(SidebarRow(id: "library-people", title: "People"))
+        libraryRows.append(
+            SidebarRow(
+                id: "library-people",
+                title: "People",
+                liveMockupPlaceholder: .peopleSidebar
+            )
+        )
         var sections = [SidebarSection(title: "Library", rows: libraryRows)]
         sections.append(SidebarSection(title: "Review", rows: reviewQueueSidebarRows()))
         if !catalogFolders.isEmpty {
