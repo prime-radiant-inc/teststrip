@@ -521,6 +521,64 @@ public final class AppModel {
         selectedAssetSetID != nil || currentLibraryQuery() != nil
     }
 
+    public var activeLibraryFilterChips: [String] {
+        var chips: [String] = []
+        if let selectedAssetSet {
+            chips.append(selectedAssetSet.name)
+        }
+        let trimmedSearch = librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedSearch.isEmpty {
+            chips.append("Search: \(trimmedSearch)")
+        }
+        let trimmedKeyword = keywordFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedKeyword.isEmpty {
+            chips.append("Keyword: \(trimmedKeyword)")
+        }
+        let trimmedFolder = folderFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedFolder.isEmpty {
+            chips.append("Folder: \(URL(fileURLWithPath: trimmedFolder).lastPathComponent)")
+        }
+        if let minimumRatingFilter {
+            chips.append("Rating >= \(minimumRatingFilter)")
+        }
+        if let flagFilter {
+            chips.append(flagFilter.rawValue.capitalized)
+        }
+        if let colorLabelFilter {
+            chips.append("\(colorLabelFilter.rawValue.capitalized) Label")
+        }
+        let trimmedCamera = cameraFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedCamera.isEmpty {
+            chips.append("Camera: \(trimmedCamera)")
+        }
+        let trimmedLens = lensFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedLens.isEmpty {
+            chips.append("Lens: \(trimmedLens)")
+        }
+        if let minimumISOFilter {
+            chips.append("ISO >= \(minimumISOFilter)")
+        }
+        if let captureDateStartFilter {
+            chips.append("From \(captureDateStartFilter.formatted(date: .abbreviated, time: .omitted))")
+        }
+        if let captureDateEndFilter {
+            chips.append("Before \(captureDateEndFilter.formatted(date: .abbreviated, time: .omitted))")
+        }
+        if let availabilityFilter {
+            chips.append("Source: \(availabilityFilter.rawValue.capitalized)")
+        }
+        if let evaluationKindFilter {
+            chips.append("Signal: \(evaluationKindFilter.displayName)")
+        }
+        if metadataSyncPendingFilter {
+            chips.append("XMP Pending")
+        }
+        if metadataSyncConflictFilter {
+            chips.append("XMP Conflicts")
+        }
+        return chips
+    }
+
     public var canSaveSelectedAssetAsManualSet: Bool {
         catalog != nil && selectedAssetID != nil
     }

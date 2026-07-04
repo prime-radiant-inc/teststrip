@@ -2158,6 +2158,27 @@ final class AppModelTests: XCTestCase {
         XCTAssertThrowsError(try model.saveCurrentLibraryQuery(named: "No Filter"))
     }
 
+    func testActiveLibraryFilterChipsSummarizeCurrentFilters() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        model.librarySearchText = " ceremony "
+        model.keywordFilterText = "portfolio"
+        model.minimumRatingFilter = 4
+        model.flagFilter = .pick
+        model.colorLabelFilter = .green
+        model.cameraFilterText = "Sony"
+        model.minimumISOFilter = 800
+
+        XCTAssertEqual(model.activeLibraryFilterChips, [
+            "Search: ceremony",
+            "Keyword: portfolio",
+            "Rating >= 4",
+            "Pick",
+            "Green Label",
+            "Camera: Sony",
+            "ISO >= 800"
+        ])
+    }
+
     func testSavingSelectedAssetCreatesSelectedManualSet() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "manual-set-photo")
 

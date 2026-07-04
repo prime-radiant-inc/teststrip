@@ -181,176 +181,202 @@ struct LibraryGridView: View {
     }
 
     private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                TextField("Search catalog", text: Binding(
-                    get: { model.librarySearchText },
-                    set: { model.librarySearchText = $0 }
-                ))
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 200)
-                .onSubmit {
-                    applyLibraryFilters()
-                }
-
-                TextField("Keyword", text: Binding(
-                    get: { model.keywordFilterText },
-                    set: { model.keywordFilterText = $0 }
-                ))
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 116)
-                .onSubmit {
-                    applyLibraryFilters()
-                }
-
-                TextField("Folder", text: Binding(
-                    get: { model.folderFilterText },
-                    set: { model.folderFilterText = $0 }
-                ))
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 150)
-                .onSubmit {
-                    applyLibraryFilters()
-                }
-
-                TextField("Camera", text: Binding(
-                    get: { model.cameraFilterText },
-                    set: { model.cameraFilterText = $0 }
-                ))
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 116)
-                .onSubmit {
-                    applyLibraryFilters()
-                }
-
-                TextField("Lens", text: Binding(
-                    get: { model.lensFilterText },
-                    set: { model.lensFilterText = $0 }
-                ))
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 116)
-                .onSubmit {
-                    applyLibraryFilters()
-                }
-
-                TextField("ISO+", text: minimumISOTextBinding)
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    TextField("Search catalog", text: Binding(
+                        get: { model.librarySearchText },
+                        set: { model.librarySearchText = $0 }
+                    ))
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 66)
+                    .frame(width: 200)
                     .onSubmit {
                         applyLibraryFilters()
                     }
 
-                Button {
-                    isShowingDateFilters = true
-                } label: {
-                    Image(systemName: "calendar")
-                }
-                .buttonStyle(.borderless)
-                .help("Date filters")
-                .popover(isPresented: $isShowingDateFilters) {
-                    dateFilterPopover
-                }
-
-                Button {
-                    applyLibraryFilters()
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                }
-                .buttonStyle(.borderless)
-                .help("Search")
-
-                Picker("Rating", selection: minimumRatingBinding) {
-                    Text("Any Rating").tag(0)
-                    ForEach(Array(1...5), id: \.self) { rating in
-                        Text("\(rating)+").tag(rating)
+                    TextField("Keyword", text: Binding(
+                        get: { model.keywordFilterText },
+                        set: { model.keywordFilterText = $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 116)
+                    .onSubmit {
+                        applyLibraryFilters()
                     }
-                }
-                .frame(width: 118)
 
-                Picker("Flag", selection: flagFilterBinding) {
-                    Text("Any Flag").tag("")
-                    Text("Pick").tag(PickFlag.pick.rawValue)
-                    Text("Reject").tag(PickFlag.reject.rawValue)
-                }
-                .frame(width: 112)
-
-                Picker("Label", selection: colorLabelFilterBinding) {
-                    Text("Any Label").tag("")
-                    ForEach(ColorLabel.allCases, id: \.self) { label in
-                        Text(label.rawValue.capitalized).tag(label.rawValue)
+                    TextField("Folder", text: Binding(
+                        get: { model.folderFilterText },
+                        set: { model.folderFilterText = $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 150)
+                    .onSubmit {
+                        applyLibraryFilters()
                     }
-                }
-                .frame(width: 124)
 
-                Picker("Source", selection: availabilityFilterBinding) {
-                    Text("Any Source").tag("")
-                    ForEach(availabilityFilterOptions, id: \.rawValue) { availability in
-                        Text(availability.rawValue.capitalized).tag(availability.rawValue)
+                    TextField("Camera", text: Binding(
+                        get: { model.cameraFilterText },
+                        set: { model.cameraFilterText = $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 116)
+                    .onSubmit {
+                        applyLibraryFilters()
                     }
-                }
-                .frame(width: 126)
 
-                Picker("Signal", selection: evaluationKindFilterBinding) {
-                    Text("Any Signal").tag("")
-                    ForEach(evaluationKindFilterOptions, id: \.rawValue) { kind in
-                        Text(kind.displayName).tag(kind.rawValue)
+                    TextField("Lens", text: Binding(
+                        get: { model.lensFilterText },
+                        set: { model.lensFilterText = $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 116)
+                    .onSubmit {
+                        applyLibraryFilters()
                     }
-                }
-                .frame(width: 138)
 
-                Button {
-                    refreshVisibleAvailability()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.borderless)
-                .disabled(!model.canRefreshVisibleAssetAvailability)
-                .help("Refresh source status")
+                    TextField("ISO+", text: minimumISOTextBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 66)
+                        .onSubmit {
+                            applyLibraryFilters()
+                        }
 
-                if hasActiveFilters {
                     Button {
-                        clearLibraryFilters()
+                        isShowingDateFilters = true
                     } label: {
-                        Image(systemName: "xmark.circle")
+                        Image(systemName: "calendar")
                     }
                     .buttonStyle(.borderless)
-                    .help("Clear filters")
-                }
+                    .help("Date filters")
+                    .popover(isPresented: $isShowingDateFilters) {
+                        dateFilterPopover
+                    }
 
-                Button {
-                    savedSearchName = model.suggestedSavedSearchName
-                    savedSearchStarred = false
-                    isSavingSearch = true
-                } label: {
-                    Image(systemName: "bookmark")
-                }
-                .buttonStyle(.borderless)
-                .disabled(!model.canSaveCurrentLibraryQuery)
-                .help("Save search")
-                .popover(isPresented: $isSavingSearch) {
-                    saveSearchPopover
-                }
+                    Button {
+                        applyLibraryFilters()
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Search")
 
-                Button {
-                    manualSetName = model.suggestedManualSetName
-                    manualSetStarred = false
-                    isSavingManualSet = true
-                } label: {
-                    Image(systemName: "rectangle.stack.badge.plus")
-                }
-                .buttonStyle(.borderless)
-                .disabled(!model.canSaveSelectedAssetAsManualSet)
-                .help("Save selected photo as set")
-                .popover(isPresented: $isSavingManualSet) {
-                    saveManualSetPopover
-                }
+                    Picker("Rating", selection: minimumRatingBinding) {
+                        Text("Any Rating").tag(0)
+                        ForEach(Array(1...5), id: \.self) { rating in
+                            Text("\(rating)+").tag(rating)
+                        }
+                    }
+                    .frame(width: 118)
 
-                Spacer(minLength: 0)
+                    Picker("Flag", selection: flagFilterBinding) {
+                        Text("Any Flag").tag("")
+                        Text("Pick").tag(PickFlag.pick.rawValue)
+                        Text("Reject").tag(PickFlag.reject.rawValue)
+                    }
+                    .frame(width: 112)
+
+                    Picker("Label", selection: colorLabelFilterBinding) {
+                        Text("Any Label").tag("")
+                        ForEach(ColorLabel.allCases, id: \.self) { label in
+                            Text(label.rawValue.capitalized).tag(label.rawValue)
+                        }
+                    }
+                    .frame(width: 124)
+
+                    Picker("Source", selection: availabilityFilterBinding) {
+                        Text("Any Source").tag("")
+                        ForEach(availabilityFilterOptions, id: \.rawValue) { availability in
+                            Text(availability.rawValue.capitalized).tag(availability.rawValue)
+                        }
+                    }
+                    .frame(width: 126)
+
+                    Picker("Signal", selection: evaluationKindFilterBinding) {
+                        Text("Any Signal").tag("")
+                        ForEach(evaluationKindFilterOptions, id: \.rawValue) { kind in
+                            Text(kind.displayName).tag(kind.rawValue)
+                        }
+                    }
+                    .frame(width: 138)
+
+                    Button {
+                        refreshVisibleAvailability()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!model.canRefreshVisibleAssetAvailability)
+                    .help("Refresh source status")
+
+                    if hasActiveFilters {
+                        Button {
+                            clearLibraryFilters()
+                        } label: {
+                            Image(systemName: "xmark.circle")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Clear filters")
+                    }
+
+                    Button {
+                        savedSearchName = model.suggestedSavedSearchName
+                        savedSearchStarred = false
+                        isSavingSearch = true
+                    } label: {
+                        Image(systemName: "bookmark")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!model.canSaveCurrentLibraryQuery)
+                    .help("Save search")
+                    .popover(isPresented: $isSavingSearch) {
+                        saveSearchPopover
+                    }
+
+                    Button {
+                        manualSetName = model.suggestedManualSetName
+                        manualSetStarred = false
+                        isSavingManualSet = true
+                    } label: {
+                        Image(systemName: "rectangle.stack.badge.plus")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!model.canSaveSelectedAssetAsManualSet)
+                    .help("Save selected photo as set")
+                    .popover(isPresented: $isSavingManualSet) {
+                        saveManualSetPopover
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+
+            if !model.activeLibraryFilterChips.isEmpty {
+                activeFilterChips
+            }
         }
         .background(.bar)
+    }
+
+    private var activeFilterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(model.activeLibraryFilterChips, id: \.self) { chip in
+                    Text(chip)
+                        .font(.caption.weight(.medium))
+                        .lineLimit(1)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 7)
+        }
     }
 
     private var importProgressBanner: some View {
