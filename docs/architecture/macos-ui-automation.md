@@ -36,9 +36,9 @@ The Import Path probe is:
 ./script/verify_import_path.sh Teststrip
 ```
 
-It creates a temporary PNG folder, opens the Import Path sheet, fills the focused sheet field, presses Import, and waits until the imported thumbnail is visible. Use it after `./script/build_and_run.sh --verify-smoke` when checking the first-run import flow.
+It creates a temporary PNG folder, opens the Import Path sheet, fills the focused sheet field, presses Import, waits for visible import feedback, and then waits until the imported thumbnail is visible. Use it after `./script/build_and_run.sh --verify-smoke` when checking the first-run import flow.
 
-The probe also emits `teststrip_import_metric` lines for import visibility duration, import count, app/worker CPU snapshots, pending preview count after a fixed sample window, and final preview-drain status. Use a larger count when checking import and preview throughput:
+The probe also emits `teststrip_import_metric` lines for feedback visibility duration, import visibility duration, import count, app/worker CPU snapshots, pending preview count after a fixed sample window, and final preview-drain status. Use a larger count when checking import and preview throughput:
 
 ```bash
 TESTSTRIP_AX_IMPORT_COUNT=600 TESTSTRIP_AX_TIMEOUT_SECONDS=75 ./script/verify_import_path.sh Teststrip

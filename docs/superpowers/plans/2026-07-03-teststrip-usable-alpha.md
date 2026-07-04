@@ -315,7 +315,8 @@ Teststrip reaches usable alpha when a photographer can:
 - [ ] Surface import count, current phase, and whether preview generation is continuing after catalog/import completion.
 - [ ] Show clear duplicate, empty-folder, failed-folder, and permission/security-scope errors.
 - [ ] Add model tests for import state transitions rather than brittle SwiftUI snapshots.
-- [ ] Extend AX import verifier to catch the janky states Jesse observed: apparent no-op after submit, sheet dismissed with no visible progress, and imported grid not selectable.
+- [x] Extend AX import verifier to catch apparent no-op after submit and sheet-dismissed-with-no-visible-progress states. Current coverage adds a post-submit visible-feedback gate and `feedback_visible_seconds`.
+- [ ] Add the imported-grid selection/rating AX probe in Slice 3.
 - [ ] Verify with focused tests, full `swift test`, `./script/verify_app_workflows.sh Teststrip`, and manual/AX import smoke.
 - [ ] Commit.
 

@@ -3,6 +3,7 @@ set -euo pipefail
 
 APP_NAME="${1:-Teststrip}"
 TIMEOUT_SECONDS="${TESTSTRIP_AX_TIMEOUT_SECONDS:-15}"
+FEEDBACK_TIMEOUT_SECONDS="${TESTSTRIP_AX_FEEDBACK_TIMEOUT_SECONDS:-1.5}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 METRIC_PREVIEW_SAMPLE_SECONDS="${TESTSTRIP_IMPORT_METRIC_PREVIEW_SAMPLE_SECONDS:-2}"
 METRIC_PREVIEW_DRAIN_TIMEOUT_SECONDS="${TESTSTRIP_IMPORT_METRIC_PREVIEW_DRAIN_TIMEOUT_SECONDS:-30}"
@@ -58,6 +59,7 @@ TESTSTRIP_AX_APP_NAME="$APP_NAME" \
 TESTSTRIP_AX_IMPORT_DIR="$IMPORT_DIR" \
 TESTSTRIP_AX_TARGET_ASSET="$ASSET_NAME" \
 TESTSTRIP_AX_TIMEOUT_SECONDS="$TIMEOUT_SECONDS" \
+TESTSTRIP_AX_FEEDBACK_TIMEOUT_SECONDS="$FEEDBACK_TIMEOUT_SECONDS" \
 /usr/bin/swift -e '
 import AppKit
 import ApplicationServices
@@ -67,6 +69,8 @@ let appName = ProcessInfo.processInfo.environment["TESTSTRIP_AX_APP_NAME"] ?? "T
 let importPath = ProcessInfo.processInfo.environment["TESTSTRIP_AX_IMPORT_DIR"]!
 let targetAsset = ProcessInfo.processInfo.environment["TESTSTRIP_AX_TARGET_ASSET"]!
 let timeout = TimeInterval(ProcessInfo.processInfo.environment["TESTSTRIP_AX_TIMEOUT_SECONDS"] ?? "15") ?? 15
+let feedbackTimeout = TimeInterval(ProcessInfo.processInfo.environment["TESTSTRIP_AX_FEEDBACK_TIMEOUT_SECONDS"] ?? "1.5") ?? 1.5
+let importSourceName = URL(fileURLWithPath: importPath).lastPathComponent
 
 guard AXIsProcessTrusted() else {
     fputs("Accessibility is not trusted for this process\n", stderr)
@@ -125,8 +129,8 @@ func walk(_ element: AXUIElement, visit: (AXUIElement) -> Bool) -> AXUIElement? 
     return nil
 }
 
-func waitFor(_ predicate: @escaping () -> Bool) -> Bool {
-    let deadline = Date().addingTimeInterval(timeout)
+func waitFor(timeout seconds: TimeInterval = timeout, _ predicate: @escaping () -> Bool) -> Bool {
+    let deadline = Date().addingTimeInterval(seconds)
     while Date() < deadline {
         if predicate() {
             return true
@@ -169,6 +173,35 @@ func focusedSheetTextField() -> AXUIElement? {
     return focused
 }
 
+func importedTargetIsVisible() -> Bool {
+    walk(root) { element in
+        stringAttribute(element, kAXRoleAttribute) == kAXButtonRole
+            && accessibleText(element) == targetAsset
+    } != nil
+}
+
+func visibleImportFeedback() -> Bool {
+    if importedTargetIsVisible() {
+        return true
+    }
+    return walk(root) { element in
+        guard let text = accessibleText(element) else { return false }
+        if text.contains("Importing from \(importSourceName)") {
+            return true
+        }
+        if text.contains("Imported") && text.contains(importSourceName) {
+            return true
+        }
+        if text.contains("Cataloging") {
+            return true
+        }
+        if text == "Cancel Import" {
+            return true
+        }
+        return false
+    } != nil
+}
+
 if focusedSheetTextField() == nil {
     guard waitFor({ button(named: "Import Path", insideSheet: false) != nil }),
           let importPathButton = button(named: "Import Path", insideSheet: false) else {
@@ -205,11 +238,18 @@ guard importResult == .success else {
     exit(1)
 }
 
+let feedbackStartedAt = Date()
+guard waitFor(timeout: feedbackTimeout, {
+    visibleImportFeedback()
+}) else {
+    fputs("Import did not show visible progress or \(targetAsset) within \(feedbackTimeout)s\n", stderr)
+    exit(1)
+}
+let feedbackVisibleMilliseconds = Int(Date().timeIntervalSince(feedbackStartedAt) * 1000)
+print("import_feedback_visible_ms=\(feedbackVisibleMilliseconds)")
+
 guard waitFor({
-    walk(root) { element in
-        stringAttribute(element, kAXRoleAttribute) == kAXButtonRole
-            && accessibleText(element) == targetAsset
-    } != nil
+    importedTargetIsVisible()
 }) else {
     fputs("Imported image \(targetAsset) did not become visible within \(timeout)s\n", stderr)
     exit(1)
@@ -220,6 +260,10 @@ print("imported \(targetAsset) from \(importPath)")
 )"
 import_completed_ms="$(metric_now_ms)"
 printf '%s\n' "$import_output"
+feedback_visible_ms="$(/usr/bin/awk -F= '/^import_feedback_visible_ms=/ { print $2; exit }' <<< "$import_output")"
+if [[ -n "$feedback_visible_ms" ]]; then
+  emit_import_metric "feedback_visible_seconds" "$(elapsed_seconds_from_ms 0 "$feedback_visible_ms")"
+fi
 emit_import_metric "import_duration_seconds" "$(elapsed_seconds_from_ms "$import_started_ms" "$import_completed_ms")"
 emit_import_metric "import_count" "$IMPORT_COUNT"
 
