@@ -133,12 +133,7 @@ struct LibraryGridView: View {
             .help("Evaluate visible photos")
         }
         .safeAreaInset(edge: .top) {
-            VStack(spacing: 0) {
-                filterBar
-                if isImporting && !model.assets.isEmpty {
-                    importProgressBanner
-                }
-            }
+            topInsetContent
         }
         .safeAreaInset(edge: .bottom) {
             footer
@@ -182,6 +177,18 @@ struct LibraryGridView: View {
                 .foregroundStyle(.secondary)
         }
         .help("Thumbnail size: \(gridLayout.accessibilityValue)")
+    }
+
+    @ViewBuilder
+    private var topInsetContent: some View {
+        VStack(spacing: 0) {
+            if model.selectedView == .grid {
+                filterBar
+            }
+            if isImporting && !model.assets.isEmpty {
+                importProgressBanner
+            }
+        }
     }
 
     private var filterBar: some View {
@@ -1123,10 +1130,10 @@ private struct LoupeView: View {
     var model: AppModel
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.28)
+        VStack(spacing: 0) {
+            cullingHeader
             if let asset = model.selectedAsset {
-                loupeContent(for: asset)
+                loupeStage(for: asset)
                     .task(id: asset.id.rawValue) {
                         do {
                             try model.requestVisibleLoupePreview(assetID: asset.id)
@@ -1137,27 +1144,182 @@ private struct LoupeView: View {
             } else {
                 unavailableView(title: "No photo selected", systemImage: "photo")
             }
+            cullingCommandRail
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(0.34))
+    }
+
+    @ViewBuilder
+    private var cullingHeader: some View {
+        let summary = model.cullingProgressSummary
+        HStack(spacing: 14) {
+            Label("Culling", systemImage: "checkmark.seal")
+                .font(.headline)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            if let positionText = summary.positionText {
+                Text(positionText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            if summary.totalCount > 0 {
+                ProgressView(value: Double(summary.reviewedCount), total: Double(max(summary.totalCount, 1)))
+                    .tint(.orange)
+                    .frame(width: 130)
+                    .accessibilityLabel("Culling Progress")
+            }
+            Spacer(minLength: 0)
+            cullingCountPill(title: "Picks", count: summary.pickCount, color: .green, systemImage: "flag.fill")
+            cullingCountPill(title: "Rejects", count: summary.rejectCount, color: .red, systemImage: "xmark.circle.fill")
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(.orange)
+                Text("Assist")
+            }
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.orange.opacity(0.26))
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 48)
+        .background(.bar)
+    }
+
+    private func cullingCountPill(title: String, count: Int, color: Color, systemImage: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: systemImage)
+            Text("\(count) \(title.lowercased())")
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(color)
+    }
+
+    private func loupeStage(for asset: Asset) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            Color.black.opacity(0.22)
+            if let previewURL = model.loupePreviewURL(for: asset.id) {
+                CachedPreviewImage(
+                    previewURL: previewURL,
+                    scaling: .fit,
+                    cacheGeneration: model.previewCacheGeneration(for: asset.id)
+                )
+                .padding(24)
+            } else {
+                unavailableView(title: "No cached preview", systemImage: "photo.badge.exclamationmark")
+            }
+            loupeMetadataOverlay(for: asset)
+                .padding(20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder
-    private func loupeContent(for asset: Asset) -> some View {
-        if let previewURL = model.loupePreviewURL(for: asset.id) {
-            CachedPreviewImage(previewURL: previewURL, scaling: .fit, cacheGeneration: model.previewCacheGeneration(for: asset.id))
-                .padding(16)
-                .overlay(alignment: .bottomLeading) {
-                    loupeOverlay(for: asset)
+    private var cullingCommandRail: some View {
+        HStack(spacing: 14) {
+            cullingActionButton(key: "P", title: "Pick", color: .green, shortcut: .pick)
+            cullingActionButton(key: "X", title: "Reject", color: .red, shortcut: .reject)
+            cullingActionButton(key: "U", title: "Clear", color: .secondary, shortcut: .clearFlag)
+
+            Divider()
+                .frame(height: 22)
+
+            HStack(spacing: 4) {
+                ForEach(Array(1...5), id: \.self) { rating in
+                    Button {
+                        applyCullingShortcut(.rating(rating))
+                    } label: {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(rating <= (model.selectedAsset?.metadata.rating ?? 0) ? .yellow : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 22, height: 24)
+                    .help("Rate \(rating)")
                 }
-        } else {
-            unavailableView(title: "No cached preview", systemImage: "photo.badge.exclamationmark")
-                .overlay(alignment: .bottomLeading) {
-                    loupeOverlay(for: asset)
+                Button {
+                    applyCullingShortcut(.rating(0))
+                } label: {
+                    Text("0")
+                        .font(.caption.monospacedDigit().weight(.semibold))
                 }
+                .buttonStyle(.plain)
+                .frame(width: 22, height: 24)
+                .help("Clear rating")
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 34)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 9))
+
+            HStack(spacing: 8) {
+                ForEach(ColorLabel.allCases, id: \.self) { label in
+                    Button {
+                        applyCullingShortcut(.colorLabel(label))
+                    } label: {
+                        Circle()
+                            .fill(color(for: label))
+                            .frame(width: 13, height: 13)
+                            .overlay {
+                                if model.selectedAsset?.metadata.colorLabel == label {
+                                    Circle().strokeBorder(.white.opacity(0.8), lineWidth: 2)
+                                }
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .help("\(label.rawValue.capitalized) label")
+                }
+                Button {
+                    applyCullingShortcut(.colorLabel(nil))
+                } label: {
+                    Image(systemName: "slash.circle")
+                        .font(.system(size: 13))
+                }
+                .buttonStyle(.plain)
+                .help("Clear label")
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 34)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 9))
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 14)
+        .frame(height: 58)
+        .background(.bar)
     }
 
-    private func loupeOverlay(for asset: Asset) -> some View {
+    private func cullingActionButton(key: String, title: String, color: Color, shortcut: CullingShortcut) -> some View {
+        Button {
+            applyCullingShortcut(shortcut)
+        } label: {
+            HStack(spacing: 7) {
+                Text(key)
+                    .font(.caption2.monospaced().weight(.bold))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(color.opacity(0.55))
+                    }
+            }
+            .foregroundStyle(color)
+            .frame(width: 34)
+            .frame(height: 34)
+            .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9)
+                    .strokeBorder(color.opacity(0.28))
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+
+    private func loupeMetadataOverlay(for asset: Asset) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 10) {
                 Text(asset.originalURL.lastPathComponent)
@@ -1183,21 +1345,25 @@ private struct LoupeView: View {
                 .help("Reveal original")
                 .accessibilityLabel("Reveal original")
             }
-            HStack(spacing: 8) {
-                if let positionText = model.selectedAssetPositionText {
-                    Text(positionText)
-                }
-                Text("Left/Right Move - P Pick - X Reject - 0-5 Rate")
+            if let positionText = model.selectedAssetPositionText {
+                Text(positionText)
+                    .foregroundStyle(.secondary)
+                    .font(.caption2.monospaced())
+                    .lineLimit(1)
             }
-            .foregroundStyle(.secondary)
-            .font(.caption2.monospaced())
-            .lineLimit(1)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.thinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 5))
-        .padding(12)
+    }
+
+    private func applyCullingShortcut(_ shortcut: CullingShortcut) {
+        do {
+            try model.applyCullingShortcut(shortcut)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     private func revealOriginal(for asset: Asset) {
@@ -1220,6 +1386,16 @@ private struct LoupeView: View {
             Text(title)
                 .font(.headline)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private func color(for label: ColorLabel) -> Color {
+        switch label {
+        case .red: .red
+        case .yellow: .yellow
+        case .green: .green
+        case .blue: .blue
+        case .purple: .purple
         }
     }
 }

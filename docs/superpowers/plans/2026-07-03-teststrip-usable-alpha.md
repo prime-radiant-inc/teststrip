@@ -15,7 +15,7 @@
 - Branch: `wip/teststrip-usable-foundation`
 - Snapshot commit: `81ec38a Reduce import-time UI churn`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last broad unit verification: `swift test` passed with 451 tests after import-time UI churn reduction.
+- Last broad unit verification: `swift test` passed with 454 tests after the culling/loupe mockup-parity pass.
 - Last app workflow verification: repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
@@ -36,6 +36,7 @@
 - `037162c`: clarified import verifier metrics so target visibility, import completion, worker CPU, and preview drain are reported separately.
 - `5c153fa`: made ingest persist the first cataloged assets eagerly and then in batches, carrying cataloged IDs in progress events for earlier grid updates.
 - `81ec38a`: reduced import-time UI churn by batching worker queue notifications, exposing only the first cataloged asset during a running worker import, shrinking the default grid page/window to 120/240 assets, reducing automatic preview recovery from 200 to 40 queued items, and making evaluation toolbar enablement avoid preview-cache scans.
+- `a4efda0`: improved library mockup parity by preserving thumbnail aspect ratios in the overview grid, tightening the Ask/search filter rail, and pinning the inspector selected-preview box to a stable size.
 
 ## Product Decisions To Preserve
 
@@ -237,10 +238,10 @@ Current behavior:
 - Studio-style shell exists: sidebar, library grid, inspector, toolbar actions, activity/work surface.
 - Library grid renders cached previews.
 - Grid thumbnail density is user-configurable from the toolbar and persists as an app preference.
-- Selection and inspector metadata display exist; the inspector now shows the selected cached preview above metadata controls.
+- Selection and inspector metadata display exist; the inspector now shows the selected cached preview above metadata controls in a fixed-size preview box.
 - Active filters are summarized as visible chips below the search/filter controls.
 - Import Path shows a pre-import plan for in-place cataloging, XMP sidecars, cached previews, and managed background work.
-- Culling sessions now start and reopen in loupe view, with visible frame position and core keyboard hints.
+- Culling sessions now start and reopen in loupe view with a culling header, reviewed-progress bar, pick/reject counts, stable rating/label/flag command rail, and visible frame position.
 - Ratings, flags, labels, and keywords have app-model/catalog plumbing.
 - Keyboard culling probe verifies selecting a thumbnail, clearing rating, sending `5`, and seeing `Rating: 5` in the inspector.
 - Grid activation and selected-thumbnail feedback AX probes exist.
@@ -255,7 +256,7 @@ Current behavior:
 - Preview throughput and UI churn under large preview backlogs are not good enough yet. The 600-image import path completed, but many previews were still pending after the initial wait and app CPU stayed high while draining.
 - Import UX is improved but not complete. The app now shows visible post-import preview continuation and an Import Path plan, but starting/running import phases, duplicate submission prevention, permission/security-scope failures, and richer card-source staging still need work.
 - Clicking/selection needs a stronger regression harness. We have AX probes, but the user observed weird broken clicking after import, and this should be treated as a real usability risk until verified under imported-photo conditions.
-- Library mockup parity is improving but incomplete. The overview grid now preserves image aspect ratio inside stable cells, the filter rail is closer to the Studio mockup's Ask/search treatment, and the inspector preview size is pinned, but sidebar density, inspector metadata polish, culling chrome, and saved/search set surfaces still need visual passes against the design concept.
+- Library mockup parity is improving but incomplete. The overview grid now preserves image aspect ratio inside stable cells, the filter rail is closer to the Studio mockup's Ask/search treatment, the inspector preview size is pinned, and the culling/loupe chrome has an initial design pass, but sidebar density, inspector metadata polish, and saved/search set surfaces still need visual passes against the design concept.
 - The current RAW story is only the first abstraction and ImageIO-backed path. We still need an explicit decoder capability matrix and provider-swapping plan for formats Jesse named: DNG, CRW, CR2, Fuji RAW, Sigma/Foveon RAW, and specialty long-tail files. Lytro support remains out of scope.
 - Evaluation is scaffolding plus early useful providers, not finished face/person/object/aesthetic workflow. People grouping, review UI, accepted labels, and reprocessing flows are not complete.
 - Search/sets/work sessions are partially built but not yet the full user-facing model. Saved/ad hoc sets, clusters, work-session-derived sets, and query builder UX need more implementation.
@@ -372,10 +373,11 @@ Teststrip reaches usable alpha when a photographer can:
 
 - [x] Reproduce selection/click behavior with an imported catalog, not only the seeded smoke catalog.
 - [x] Add an AX probe that imports several images, clicks the second or third imported thumbnail, verifies selection feedback, then applies a rating and verifies the inspector/catalog state.
-- [ ] Use CoreGraphics capture to verify the UI is not blank or visually occluded after import.
+- [x] Use CoreGraphics capture to verify the UI is not blank or visually occluded after import.
 - [x] Fix overview thumbnails so the grid shows true photo aspect ratios instead of cropping every image into a fixed 3:2 tile. Preserve stable hit targets and metadata overlays while doing this.
 - [x] Bring the library filter rail closer to the Studio mockup by making Ask/search visually primary, keeping advanced filters compact, and preserving the Search catalog accessibility contract.
 - [x] Pin the inspector/sidebar selected-preview box to a stable X/Y size so it does not expand with the detail column or selected image.
+- [x] Bring the loupe/culling surface closer to the mockup with top-level progress, decision counts, and stable flag/rating/label controls.
 - [ ] Fix the root cause if click handling, hit testing, focus capture, selection identity, or grid cell accessibility is wrong.
 - [ ] Add the least brittle model/UI tests that would have failed for the root cause.
 - [ ] Verify all grid/culling scripts and full `swift test`.

@@ -100,6 +100,28 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetPositionText, "Frame 2 of 3")
     }
 
+    func testCullingProgressSummaryCountsVisibleDecisions() {
+        let pick = makeAsset(id: "pick", path: "/Photos/pick.jpg", rating: 0, flag: .pick)
+        let reject = makeAsset(id: "reject", path: "/Photos/reject.jpg", rating: 0, flag: .reject)
+        let unreviewed = makeAsset(id: "unreviewed", path: "/Photos/unreviewed.jpg", rating: 0)
+        let secondPick = makeAsset(id: "second-pick", path: "/Photos/second-pick.jpg", rating: 0, flag: .pick)
+        let model = AppModel(sidebarSections: [], selectedView: .loupe, assets: [pick, reject, unreviewed, secondPick])
+
+        model.select(unreviewed.id)
+
+        XCTAssertEqual(
+            model.cullingProgressSummary,
+            CullingProgressSummary(
+                selectedPosition: 3,
+                positionText: "Frame 3 of 4",
+                pickCount: 2,
+                rejectCount: 1,
+                totalCount: 4
+            )
+        )
+        XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
+    }
+
     func testSelectNextAssetMovesSelectionForwardThroughLoadedAssets() {
         let first = makeAsset(id: "first", size: 1)
         let second = makeAsset(id: "second", size: 2)

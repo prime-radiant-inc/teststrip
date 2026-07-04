@@ -19,6 +19,26 @@ public enum CullingCommand: Equatable, Sendable {
     case clearFlag
 }
 
+public struct CullingProgressSummary: Equatable, Sendable {
+    public var selectedPosition: Int?
+    public var positionText: String?
+    public var pickCount: Int
+    public var rejectCount: Int
+    public var totalCount: Int
+
+    public var reviewedCount: Int {
+        pickCount + rejectCount
+    }
+
+    public init(selectedPosition: Int?, positionText: String?, pickCount: Int, rejectCount: Int, totalCount: Int) {
+        self.selectedPosition = selectedPosition
+        self.positionText = positionText
+        self.pickCount = pickCount
+        self.rejectCount = rejectCount
+        self.totalCount = totalCount
+    }
+}
+
 public enum CullingShortcut: Equatable, Sendable {
     case previousPhoto
     case nextPhoto
@@ -360,14 +380,32 @@ public final class AppModel {
         selectedAssetID.flatMap { loupePreviewURL(for: $0) }
     }
 
-    public var selectedAssetPositionText: String? {
+    public var selectedAssetPosition: Int? {
         guard let selectedAssetID,
               let selectedIndex = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
             return nil
         }
-        let position = assetPageOffset + selectedIndex + 1
+        return assetPageOffset + selectedIndex + 1
+    }
+
+    public var selectedAssetPositionText: String? {
+        guard let position = selectedAssetPosition else {
+            return nil
+        }
         let totalCount = max(totalAssetCount, position)
         return "Frame \(position) of \(totalCount)"
+    }
+
+    public var cullingProgressSummary: CullingProgressSummary {
+        let pickCount = assets.filter { $0.metadata.flag == .pick }.count
+        let rejectCount = assets.filter { $0.metadata.flag == .reject }.count
+        return CullingProgressSummary(
+            selectedPosition: selectedAssetPosition,
+            positionText: selectedAssetPositionText,
+            pickCount: pickCount,
+            rejectCount: rejectCount,
+            totalCount: totalAssetCount
+        )
     }
 
     public var hasMoreAssets: Bool {
