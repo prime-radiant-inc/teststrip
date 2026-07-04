@@ -17,6 +17,7 @@ struct LibraryGridView: View {
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
     @State private var importPathDraft = ImportFolderPathDraft()
+    @State private var importConfirmationDraft: ImportConfirmationDraft?
     @State private var sourceReconnectDraft = SourceReconnectPathDraft()
     @State private var cullingFocusRequest = 0
     @AppStorage("LibraryGridView.thumbnailWidth") private var storedThumbnailWidth = LibraryGridLayout.defaultThumbnailWidth
@@ -144,6 +145,9 @@ struct LibraryGridView: View {
         }
         .sheet(isPresented: $isShowingImportPathSheet) {
             importPathSheet
+        }
+        .sheet(item: $importConfirmationDraft) { draft in
+            importConfirmationSheet(draft)
         }
         .sheet(isPresented: $isShowingSourceReconnectSheet) {
             sourceReconnectSheet
@@ -529,7 +533,7 @@ struct LibraryGridView: View {
             TextField("Folder path", text: $importPathDraft.path)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 420)
-            importPathPlan
+            importPlanView(steps: importPathDraft.planSteps, width: 420)
             if let errorMessage = importPathDraft.errorMessage {
                 Text(errorMessage)
                     .font(.caption)
@@ -550,12 +554,41 @@ struct LibraryGridView: View {
         .padding(18)
     }
 
-    private var importPathPlan: some View {
+    private func importConfirmationSheet(_ draft: ImportConfirmationDraft) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(draft.title)
+                .font(.headline)
+            VStack(alignment: .leading, spacing: 6) {
+                LabeledContent("Source", value: draft.sourceName)
+                if let destinationName = draft.destinationName {
+                    LabeledContent("Destination", value: destinationName)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            importPlanView(steps: draft.planSteps, width: 440)
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    importConfirmationDraft = nil
+                }
+                Button(draft.primaryActionTitle) {
+                    confirmImport(draft)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(isImporting)
+            }
+        }
+        .padding(18)
+        .frame(width: 480)
+    }
+
+    private func importPlanView(steps: [ImportPlanStep], width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             Label("Teststrip will", systemImage: "sparkles")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.orange)
-            ForEach(importPathDraft.planSteps) { step in
+            ForEach(steps) { step in
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.caption)
@@ -572,7 +605,7 @@ struct LibraryGridView: View {
             }
         }
         .padding(10)
-        .frame(width: 420, alignment: .leading)
+        .frame(width: width, alignment: .leading)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
     }
 
@@ -843,7 +876,7 @@ struct LibraryGridView: View {
 
     private func showImportFolderPanel() {
         guard let folderURL = FolderSelectionPanel.chooseImportFolder() else { return }
-        importFolder(folderURL)
+        importConfirmationDraft = .folder(folderURL)
     }
 
     private func showImportPathSheet() {
@@ -859,7 +892,7 @@ struct LibraryGridView: View {
     private func showImportCardPanel() {
         guard let source = FolderSelectionPanel.chooseCardSourceFolder() else { return }
         guard let destinationRoot = FolderSelectionPanel.chooseCardDestinationFolder() else { return }
-        importCard(source: source, destinationRoot: destinationRoot)
+        importConfirmationDraft = .card(source: source, destinationRoot: destinationRoot)
     }
 
     private func importFolderPath() {
@@ -870,6 +903,21 @@ struct LibraryGridView: View {
             importFolder(folderURL)
         } catch {
             return
+        }
+    }
+
+    private func confirmImport(_ draft: ImportConfirmationDraft) {
+        importConfirmationDraft = nil
+        switch draft.mode {
+        case .folder:
+            FolderSelectionPanel.rememberImportFolder(draft.sourceURL)
+            importFolder(draft.sourceURL)
+        case .card:
+            guard let destinationRootURL = draft.destinationRootURL else {
+                model.errorMessage = "Card import destination is missing"
+                return
+            }
+            importCard(source: draft.sourceURL, destinationRoot: destinationRootURL)
         }
     }
 

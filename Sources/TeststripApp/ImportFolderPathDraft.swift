@@ -7,6 +7,48 @@ struct ImportPlanStep: Equatable, Identifiable {
     var id: String { title }
 }
 
+enum ImportPlanSteps {
+    static let folderInPlace = [
+        ImportPlanStep(
+            title: "Catalog originals in place",
+            detail: "No original files are moved, rewritten, or copied from this folder."
+        ),
+        ImportPlanStep(
+            title: "Mirror portable metadata to XMP",
+            detail: "Ratings, labels, flags, keywords, captions, creator, and copyright stay file-based."
+        ),
+        ImportPlanStep(
+            title: "Generate cached previews",
+            detail: "Micro and grid previews are queued for fast browsing from slow or offline sources."
+        ),
+        ImportPlanStep(
+            title: "Use the managed background queue",
+            detail: "Preview and metadata work remains visible, pausable, and cancellable."
+        )
+    ]
+
+    static func cardCopy(destinationName: String) -> [ImportPlanStep] {
+        [
+            ImportPlanStep(
+                title: "Copy card files first",
+                detail: "Originals are copied into \(destinationName) before Teststrip catalogs the copied files."
+            ),
+            ImportPlanStep(
+                title: "Mirror portable metadata to XMP",
+                detail: "Ratings, labels, flags, keywords, captions, creator, and copyright stay file-based."
+            ),
+            ImportPlanStep(
+                title: "Generate cached previews",
+                detail: "Micro and grid previews are queued for fast browsing from slow or offline sources."
+            ),
+            ImportPlanStep(
+                title: "Use the managed background queue",
+                detail: "Copy, preview, and metadata work remains visible, pausable, and cancellable."
+            )
+        ]
+    }
+}
+
 struct ImportFolderPathDraft: Equatable {
     var path: String {
         didSet {
@@ -23,24 +65,7 @@ struct ImportFolderPathDraft: Equatable {
     }
 
     var planSteps: [ImportPlanStep] {
-        [
-            ImportPlanStep(
-                title: "Catalog originals in place",
-                detail: "No original files are moved, rewritten, or copied from this folder."
-            ),
-            ImportPlanStep(
-                title: "Mirror portable metadata to XMP",
-                detail: "Ratings, labels, flags, keywords, captions, creator, and copyright stay file-based."
-            ),
-            ImportPlanStep(
-                title: "Generate cached previews",
-                detail: "Micro and grid previews are queued for fast browsing from slow or offline sources."
-            ),
-            ImportPlanStep(
-                title: "Use the managed background queue",
-                detail: "Preview and metadata work remains visible, pausable, and cancellable."
-            )
-        ]
+        ImportPlanSteps.folderInPlace
     }
 
     mutating func reset() {
