@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `b6c7149 Cover duplicate import guards`
+- Snapshot commit: `a1e1144 Show source availability on browsing surfaces`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter AppModelTests/testBeginImportFolderDoesNotEnqueueDuplicateImportWhileRunning --filter AppModelTests/testBeginImportCardDoesNotEnqueueWhileFolderImportIsRunning` passed after the duplicate-import guard coverage slice.
-- Last broad unit verification: `swift test` passed with 466 tests after the duplicate-import guard coverage slice.
+- Last focused unit verification: `swift test --filter AssetSourceStatusPresentationTests` passed after the source-availability presentation slice.
+- Last broad unit verification: `swift test` passed with 468 tests after the source-availability presentation slice.
 - Last app workflow verification: live import UI automation was intentionally deferred for the import progress banner slice to avoid unnecessary focus stealing; the previous grid aspect-ratio slice passed `./script/build_and_run.sh --sample-photos` and one Computer Use grid inspection, and the previous People live-mockup route passed Computer Use inspection plus `./script/verify_grid_activation.sh`, `./script/verify_grid_selection_feedback.sh`, `./script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 ./script/verify_imported_grid_culling.sh`. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
 
 ### Recent Completed Slices
@@ -45,6 +45,7 @@
 - `369b619`: made overview grid cells use cataloged technical dimensions for true photo aspect ratios, while falling back to the old 3:2 frame for missing or invalid dimensions.
 - `fd56661`: made the shared import progress banner appear as soon as import work is active, including before any assets are visible in the grid.
 - `b6c7149`: added focused tests proving folder/card import entrypoints do not enqueue duplicate work while an import is already running.
+- `a1e1144`: added source availability presentation for offline, missing, moved, and stale originals on grid thumbnails and the culling loupe overlay, without changing catalog/preview source-access rules.
 
 ## Product Decisions To Preserve
 
@@ -179,6 +180,7 @@ Current behavior:
 - Normal browsing reads catalog rows and cached previews instead of probing originals on the grid hot path.
 - Loaded-window source refreshes can enqueue bounded source-scan batches through the worker.
 - Sidebar exposes unavailable/questionable source scopes.
+- Grid thumbnails and culling loupe metadata now show source-state badges/details for offline, missing, moved, and stale originals so cached-preview-only mode is visible instead of feeling broken.
 - Reconnect flow can remap a cataloged old source root to a newly mounted root when matching relative files and fingerprints exist.
 - Reconnect refreshes sidebar/source summaries, moves XMP sync state to the new sidecar path, marks restored originals online, and resumes bounded pending preview generation.
 
