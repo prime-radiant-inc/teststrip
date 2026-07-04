@@ -26,6 +26,8 @@ guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.localiz
     fputs("No running app named \(appName)\n", stderr)
     exit(1)
 }
+_ = app.activate(options: [.activateAllWindows])
+RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.2))
 
 let root = AXUIElementCreateApplication(app.processIdentifier)
 let imageExtensions: Set<String> = [
@@ -44,7 +46,9 @@ func stringAttribute(_ element: AXUIElement, _ name: String) -> String? {
 }
 
 func children(of element: AXUIElement) -> [AXUIElement] {
-    attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? []
+    let directChildren = attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? []
+    let windows = attribute(element, kAXWindowsAttribute) as? [AXUIElement] ?? []
+    return directChildren + windows
 }
 
 func accessibleText(_ element: AXUIElement) -> String? {
@@ -59,13 +63,15 @@ func isImageFilename(_ text: String) -> Bool {
 }
 
 func walk(_ element: AXUIElement, visit: (AXUIElement) -> Bool) -> AXUIElement? {
-    if visit(element) {
-        return element
-    }
-    for child in children(of: element) {
-        if let found = walk(child, visit: visit) {
-            return found
+    var visited = Set<CFHashCode>()
+    var stack = [element]
+    while let current = stack.popLast() {
+        let key = CFHash(current)
+        guard visited.insert(key).inserted else { continue }
+        if visit(current) {
+            return current
         }
+        stack.append(contentsOf: children(of: current).reversed())
     }
     return nil
 }

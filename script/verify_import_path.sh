@@ -6,6 +6,12 @@ TIMEOUT_SECONDS="${TESTSTRIP_AX_TIMEOUT_SECONDS:-15}"
 IMPORT_COUNT="${TESTSTRIP_AX_IMPORT_COUNT:-1}"
 IMPORT_DIR="$(mktemp -d /tmp/teststrip-import-path-smoke.XXXXXX)"
 ASSET_NAME="ax-import-$$.png"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+METRIC_PREVIEW_SAMPLE_SECONDS="${TESTSTRIP_IMPORT_METRIC_PREVIEW_SAMPLE_SECONDS:-2}"
+METRIC_PREVIEW_DRAIN_TIMEOUT_SECONDS="${TESTSTRIP_IMPORT_METRIC_PREVIEW_DRAIN_TIMEOUT_SECONDS:-30}"
+METRIC_PREVIEW_DRAIN_POLL_SECONDS="${TESTSTRIP_IMPORT_METRIC_PREVIEW_DRAIN_POLL_SECONDS:-0.25}"
+
+source "$SCRIPT_DIR/import_verifier_metrics.sh"
 
 if [[ ! "$IMPORT_COUNT" =~ ^[0-9]+$ ]] || [[ "$IMPORT_COUNT" -lt 1 ]]; then
   echo "TESTSTRIP_AX_IMPORT_COUNT must be a positive integer" >&2
@@ -23,6 +29,8 @@ else
   ASSET_NAME="ax-import-0000.png"
 fi
 
+import_started_ms="$(metric_now_ms)"
+import_output="$(
 TESTSTRIP_AX_APP_NAME="$APP_NAME" \
 TESTSTRIP_AX_IMPORT_DIR="$IMPORT_DIR" \
 TESTSTRIP_AX_TARGET_ASSET="$ASSET_NAME" \
@@ -46,6 +54,8 @@ guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.localiz
     fputs("No running app named \(appName)\n", stderr)
     exit(1)
 }
+_ = app.activate(options: [.activateAllWindows])
+RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.2))
 
 let root = AXUIElementCreateApplication(app.processIdentifier)
 
@@ -65,7 +75,9 @@ func stringAttribute(_ element: AXUIElement, _ name: String) -> String? {
 }
 
 func children(of element: AXUIElement) -> [AXUIElement] {
-    attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? []
+    let directChildren = attribute(element, kAXChildrenAttribute) as? [AXUIElement] ?? []
+    let windows = attribute(element, kAXWindowsAttribute) as? [AXUIElement] ?? []
+    return directChildren + windows
 }
 
 func accessibleText(_ element: AXUIElement) -> String? {
@@ -75,13 +87,15 @@ func accessibleText(_ element: AXUIElement) -> String? {
 }
 
 func walk(_ element: AXUIElement, visit: (AXUIElement) -> Bool) -> AXUIElement? {
-    if visit(element) {
-        return element
-    }
-    for child in children(of: element) {
-        if let found = walk(child, visit: visit) {
-            return found
+    var visited = Set<CFHashCode>()
+    var stack = [element]
+    while let current = stack.popLast() {
+        let key = CFHash(current)
+        guard visited.insert(key).inserted else { continue }
+        if visit(current) {
+            return current
         }
+        stack.append(contentsOf: children(of: current).reversed())
     }
     return nil
 }
@@ -177,3 +191,44 @@ guard waitFor({
 
 print("imported \(targetAsset) from \(importPath)")
 '
+)"
+import_completed_ms="$(metric_now_ms)"
+printf '%s\n' "$import_output"
+emit_import_metric "import_duration_seconds" "$(elapsed_seconds_from_ms "$import_started_ms" "$import_completed_ms")"
+emit_import_metric "import_count" "$IMPORT_COUNT"
+
+app_pid="$(pgrep -n -x "$APP_NAME" || true)"
+worker_listing="$(pgrep -fl "[T]eststripWorker" | /usr/bin/grep "Contents/Helpers/TeststripWorker" | /usr/bin/tail -n 1 || true)"
+worker_pid="$(/usr/bin/awk 'NF { print $1 }' <<< "$worker_listing")"
+catalog_path="$(extract_worker_catalog_path "$worker_listing")"
+if [[ -z "$catalog_path" ]]; then
+  app_command="$(/bin/ps eww -p "$app_pid" -o command= 2>/dev/null || true)"
+  app_support_directory="$(extract_app_support_directory "$app_command")"
+  if [[ -n "$app_support_directory" ]]; then
+    catalog_path="$(catalog_path_for_app_support_directory "$app_support_directory")"
+  fi
+fi
+
+emit_import_metric "app_cpu_percent" "$(process_cpu_percent "$app_pid")"
+emit_import_metric "worker_cpu_percent" "$(process_cpu_percent "$worker_pid")"
+
+if [[ -n "$catalog_path" && -f "$catalog_path" ]]; then
+  sleep "$METRIC_PREVIEW_SAMPLE_SECONDS"
+  emit_import_metric "pending_previews_after_sample" "$(preview_pending_count "$catalog_path")"
+  preview_drain_started_ms="$(metric_now_ms)"
+  if wait_until_preview_drained "$catalog_path" "$METRIC_PREVIEW_DRAIN_TIMEOUT_SECONDS" "$METRIC_PREVIEW_DRAIN_POLL_SECONDS"; then
+    preview_drain_completed_ms="$(metric_now_ms)"
+    emit_import_metric "preview_drain_completed" "true"
+    emit_import_metric "preview_drain_seconds" "$(elapsed_seconds_from_ms "$preview_drain_started_ms" "$preview_drain_completed_ms")"
+  else
+    preview_drain_completed_ms="$(metric_now_ms)"
+    emit_import_metric "preview_drain_completed" "false"
+    emit_import_metric "preview_drain_seconds" "$(elapsed_seconds_from_ms "$preview_drain_started_ms" "$preview_drain_completed_ms")"
+  fi
+  emit_import_metric "pending_previews_final" "$(preview_pending_count "$catalog_path")"
+else
+  emit_import_metric "pending_previews_after_sample" "unknown"
+  emit_import_metric "preview_drain_completed" "unknown"
+  emit_import_metric "preview_drain_seconds" "unknown"
+  emit_import_metric "pending_previews_final" "unknown"
+fi

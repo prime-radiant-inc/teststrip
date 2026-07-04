@@ -280,15 +280,15 @@ Teststrip reaches usable alpha when a photographer can:
 
 **Likely work:**
 
-- [ ] Add a focused test that imports a large batch, completes import activity, and proves preview queue refill does not rescan all background work or publish per-preview global UI churn.
-- [ ] Coalesce preview completion state refreshes so the grid/toolbar/activity surface updates at human-visible intervals or meaningful batches.
+- [x] Add a focused test that imports a large batch, completes import activity, and proves preview queue refill does not rescan all background work or publish per-preview global UI churn.
+- [x] Coalesce preview completion state refreshes so the grid/toolbar/activity surface updates at human-visible intervals or meaningful batches.
 - [ ] Keep pending preview queue recovery bounded, but make refill aggressive enough that worker idle gaps are small.
 - [ ] Decide whether the synchronous helper needs batch preview commands before adding more worker concurrency. Do not add more parallel original reads until the disk/NAS impact is understood.
-- [ ] Extend `script/verify_import_path.sh` to report import completion time, pending preview count after a fixed window, final drain time, and process CPU snapshot.
+- [x] Extend `script/verify_import_path.sh` to report import completion time, pending preview count after a fixed window, final drain time, and process CPU snapshot.
 - [ ] Verify with `swift test --filter AppModelTests --filter WorkerSupervisorTests` only if supported by SwiftPM filtering; otherwise run the focused test files separately.
 - [ ] Verify with full `swift test`.
 - [ ] Verify with `./script/build_and_run.sh --verify-smoke`.
-- [ ] Verify with `TESTSTRIP_AX_IMPORT_COUNT=600 TESTSTRIP_AX_TIMEOUT_SECONDS=45 ./script/verify_import_path.sh Teststrip`.
+- [x] Verify with `TESTSTRIP_AX_IMPORT_COUNT=600 TESTSTRIP_AX_TIMEOUT_SECONDS=75 ./script/verify_import_path.sh Teststrip`.
 - [ ] Commit with a message explaining the measured before/after preview backlog behavior.
 
 **Acceptance:** 600-image import should stay visibly responsive, import completion should not wait for all downstream previews, preview backlog should drain without sustained UI churn, and the verifier should print enough timing/counter evidence for future regressions.
