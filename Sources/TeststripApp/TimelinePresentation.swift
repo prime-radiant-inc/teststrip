@@ -4,6 +4,7 @@ import TeststripCore
 struct TimelinePresentation: Equatable {
     var months: [TimelineMonthPresentation]
     var summaryText: String
+    var yearRibbon: TimelineYearRibbonPresentation
 
     init(assets: [Asset], totalAssetCount: Int, calendar: Calendar = .current) {
         self.init(
@@ -22,6 +23,12 @@ struct TimelinePresentation: Equatable {
     ) {
         let sortedAssets = Self.sortedAssets(loadedAssets)
         self.months = Self.months(for: timelineDays, loadedAssets: sortedAssets, calendar: calendar)
+        self.yearRibbon = Self.yearRibbon(
+            for: timelineDays,
+            loadedAssets: sortedAssets,
+            totalAssetCount: totalAssetCount,
+            calendar: calendar
+        )
         let dayCount = timelineDays.count
         if dayCount == 0, loadedAssets.isEmpty {
             self.summaryText = "No dated photographs"
@@ -32,6 +39,48 @@ struct TimelinePresentation: Equatable {
         } else {
             self.summaryText = "\(totalAssetCount) \(totalAssetCount == 1 ? "photograph" : "photographs") across \(dayCount) \(dayCount == 1 ? "day" : "days")"
         }
+    }
+
+    private static func yearRibbon(
+        for timelineDays: [CatalogTimelineDay],
+        loadedAssets: [Asset],
+        totalAssetCount: Int,
+        calendar: Calendar
+    ) -> TimelineYearRibbonPresentation {
+        var countsByYear: [Int: Int] = [:]
+        for day in timelineDays {
+            countsByYear[day.year, default: 0] += day.assetCount
+        }
+        guard let firstYear = countsByYear.keys.min(),
+              let lastYear = countsByYear.keys.max() else {
+            return TimelineYearRibbonPresentation(years: [], rangeText: "No dates", summaryText: "No dated photographs", focusText: nil)
+        }
+
+        let focusedYear = loadedAssets.compactMap { asset -> Int? in
+            guard let capturedAt = asset.technicalMetadata?.capturedAt else { return nil }
+            return calendar.component(.year, from: capturedAt)
+        }.max() ?? lastYear
+        let maxYearCount = max(countsByYear.values.max() ?? 0, 1)
+        let years = (firstYear...lastYear).map { year in
+            let count = countsByYear[year, default: 0]
+            return TimelineYearPresentation(
+                year: year,
+                assetCount: count,
+                heightRatio: Double(count) / Double(maxYearCount),
+                tickText: year.isMultiple(of: 5) ? "\(year)" : "",
+                isFocused: year == focusedYear
+            )
+        }
+        let yearCount = years.count
+        let summaryText = "\(totalAssetCount.formatted()) \(totalAssetCount == 1 ? "photograph" : "photographs") - \(yearCount) \(yearCount == 1 ? "year" : "years")"
+        let focusCount = countsByYear[focusedYear, default: 0]
+        let focusText = "\(focusedYear) - \(focusCount.formatted())"
+        return TimelineYearRibbonPresentation(
+            years: years,
+            rangeText: "\(firstYear) - \(lastYear)",
+            summaryText: summaryText,
+            focusText: focusText
+        )
     }
 
     private static func sortedAssets(_ assets: [Asset]) -> [Asset] {
@@ -116,6 +165,31 @@ struct TimelinePresentation: Equatable {
             guard let days = daysByMonth[monthKey] else { return nil }
             return TimelineMonthPresentation(key: monthKey, days: days)
         }
+    }
+}
+
+struct TimelineYearRibbonPresentation: Equatable {
+    var years: [TimelineYearPresentation]
+    var rangeText: String
+    var summaryText: String
+    var focusText: String?
+}
+
+struct TimelineYearPresentation: Identifiable, Equatable {
+    var id: String
+    var year: Int
+    var assetCount: Int
+    var heightRatio: Double
+    var tickText: String
+    var isFocused: Bool
+
+    init(year: Int, assetCount: Int, heightRatio: Double, tickText: String, isFocused: Bool) {
+        self.id = "\(year)"
+        self.year = year
+        self.assetCount = assetCount
+        self.heightRatio = heightRatio
+        self.tickText = tickText
+        self.isFocused = isFocused
     }
 }
 

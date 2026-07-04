@@ -57,6 +57,29 @@ final class TimelinePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.months[0].days[1].timelineDay, CatalogTimelineDay(year: 2026, month: 2, day: 4, assetCount: 3))
     }
 
+    func testBuildsYearDensityRibbonFromCatalogTimelineDays() {
+        let calendar = Self.gregorianUTC
+        let focused = Self.asset(id: "focused", capturedAt: Self.date(year: 2022, month: 5, day: 4, calendar: calendar))
+        let presentation = TimelinePresentation(
+            timelineDays: [
+                CatalogTimelineDay(year: 2022, month: 5, day: 4, assetCount: 30),
+                CatalogTimelineDay(year: 2020, month: 11, day: 12, assetCount: 10)
+            ],
+            loadedAssets: [focused],
+            totalAssetCount: 40,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(presentation.yearRibbon.rangeText, "2020 - 2022")
+        XCTAssertEqual(presentation.yearRibbon.summaryText, "40 photographs - 3 years")
+        XCTAssertEqual(presentation.yearRibbon.years.map(\.year), [2020, 2021, 2022])
+        XCTAssertEqual(presentation.yearRibbon.years.map(\.assetCount), [10, 0, 30])
+        XCTAssertEqual(presentation.yearRibbon.years.map(\.tickText), ["2020", "", ""])
+        XCTAssertEqual(presentation.yearRibbon.years.map(\.isFocused), [false, false, true])
+        XCTAssertEqual(presentation.yearRibbon.years.map(\.heightRatio), [1.0 / 3.0, 0, 1.0])
+        XCTAssertEqual(presentation.yearRibbon.focusText, "2022 - 30")
+    }
+
     private static var gregorianUTC: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

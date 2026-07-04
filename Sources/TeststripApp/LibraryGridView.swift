@@ -3044,19 +3044,90 @@ private struct TimelineWorkspaceView: View {
     }
 
     private var timelineHeader: some View {
-        HStack(spacing: 10) {
-            Label("Timeline", systemImage: "calendar")
-                .font(.headline)
-                .foregroundStyle(.orange)
-            Text(presentation.summaryText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 0)
-            timelineMetric(title: "Months", value: "\(presentation.months.count)")
-            timelineMetric(title: "Loaded", value: "\(model.assets.count)")
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Label("Timeline", systemImage: "calendar")
+                    .font(.headline)
+                    .foregroundStyle(.orange)
+                Text(presentation.summaryText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                timelineMetric(title: "Months", value: "\(presentation.months.count)")
+                timelineMetric(title: "Loaded", value: "\(model.assets.count)")
+            }
+
+            if !presentation.yearRibbon.years.isEmpty {
+                timelineYearRibbon(presentation.yearRibbon)
+            }
         }
         .padding(14)
         .background(.bar, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func timelineYearRibbon(_ ribbon: TimelineYearRibbonPresentation) -> some View {
+        HStack(alignment: .bottom, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Catalog Timeline")
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .textCase(.uppercase)
+                    .foregroundStyle(.secondary)
+                Text(ribbon.rangeText)
+                    .font(.title3.weight(.semibold))
+                Text(ribbon.summaryText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 150, alignment: .leading)
+
+            VStack(spacing: 6) {
+                HStack(alignment: .bottom, spacing: 2) {
+                    ForEach(ribbon.years) { year in
+                        timelineYearBar(year, focusText: ribbon.focusText)
+                    }
+                }
+                .frame(height: 86)
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(height: 1)
+
+                HStack(spacing: 2) {
+                    ForEach(ribbon.years) { year in
+                        Text(year.tickText.isEmpty ? " " : year.tickText)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+    }
+
+    private func timelineYearBar(_ year: TimelineYearPresentation, focusText: String?) -> some View {
+        let barHeight = max(5, CGFloat(year.heightRatio) * 58)
+        return ZStack(alignment: .bottom) {
+            Color.clear
+            RoundedRectangle(cornerRadius: 3)
+                .fill(year.isFocused ? Color.orange : Color.white.opacity(0.22))
+                .frame(width: 12, height: barHeight)
+                .shadow(
+                    color: year.isFocused ? Color.orange.opacity(0.55) : .clear,
+                    radius: year.isFocused ? 7 : 0
+                )
+            if year.isFocused, let focusText {
+                Text(focusText)
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(Color.black.opacity(0.85))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.orange, in: RoundedRectangle(cornerRadius: 4))
+                    .fixedSize()
+                    .offset(y: -barHeight - 7)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel("\(year.year), \(year.assetCount) photographs")
     }
 
     private func monthSection(_ month: TimelineMonthPresentation) -> some View {
