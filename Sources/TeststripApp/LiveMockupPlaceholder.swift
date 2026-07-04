@@ -12,33 +12,62 @@ public struct LiveMockupPlaceholder: Equatable, Hashable, Identifiable, Sendable
 }
 
 public extension LiveMockupPlaceholder {
+    static let studioLibrary = LiveMockupPlaceholders.studioLibrary
+    static let copilotLibrary = LiveMockupPlaceholders.copilotLibrary
+    static let timelineLibrary = LiveMockupPlaceholders.timelineLibrary
     static let peopleSidebar = LiveMockupPlaceholders.peopleSidebar
     static let peopleFaceActions = LiveMockupPlaceholders.peopleFaceActions
+    static let placesMap = LiveMockupPlaceholders.placesMap
     static let topChrome = LiveMockupPlaceholders.topChrome
     static let agenticSearch = LiveMockupPlaceholders.agenticSearch
     static let searchRefine = LiveMockupPlaceholders.searchRefine
     static let smartCollectionsBuilder = LiveMockupPlaceholders.smartCollectionsBuilder
+    static let keywordingBatch = LiveMockupPlaceholders.keywordingBatch
+    static let exportWorkflow = LiveMockupPlaceholders.exportWorkflow
+    static let importPlan = LiveMockupPlaceholders.importPlan
     static let importCompleteSummary = LiveMockupPlaceholders.importCompleteSummary
     static let cullingAssistVerdict = LiveMockupPlaceholders.cullingAssistVerdict
     static let cullingFilmstrip = LiveMockupPlaceholders.cullingFilmstrip
     static let cullingStackCull = LiveMockupPlaceholders.cullingStackCull
+    static let focusCompare = LiveMockupPlaceholders.focusCompare
     static let compareSurvey = LiveMockupPlaceholders.compareSurvey
     static let workHistory = LiveMockupPlaceholders.workHistory
 }
 
 public enum LiveMockupPlaceholders {
+    public static let studioLibrary = LiveMockupPlaceholder(
+        id: "library.studio",
+        title: "Studio library direction",
+        intendedBehavior: "Represent the refined classic pro layout with catalog navigation, adaptive grid, inspector, and quiet agentic affordances.",
+        currentFallback: "Main Library route with real catalog/sidebar/grid/inspector behavior and ongoing mockup-parity passes."
+    )
+
+    public static let copilotLibrary = LiveMockupPlaceholder(
+        id: "library.copilot",
+        title: "Copilot library direction",
+        intendedBehavior: "Put plain-language search, agentic culling, and background catalog work at the center of the library experience.",
+        currentFallback: "Agentic search copy currently maps to explicit catalog search, filters, review queues, and persisted evaluation signals."
+    )
+
+    public static let timelineLibrary = LiveMockupPlaceholder(
+        id: "library.timeline",
+        title: "Timeline library direction",
+        intendedBehavior: "Navigate decade-scale catalogs through a year/month/day density ribbon and scrubber.",
+        currentFallback: "Date predicates and sidebar/library scopes exist, but the timeline ribbon view is not built."
+    )
+
     public static let topChrome = LiveMockupPlaceholder(
         id: "library.top-chrome",
         title: "Library top chrome",
         intendedBehavior: "Unify catalog identity, breadcrumbs, agentic search, view switching, and import actions in the dense Studio header.",
-        currentFallback: "In-content header backed by current library state while native toolbar controls remain available."
+        currentFallback: "In-content header backed by current library state while native toolbar controls remain available; catalog identity is static placeholder copy."
     )
 
     public static let peopleSidebar = LiveMockupPlaceholder(
         id: "sidebar.people",
         title: "People navigation",
         intendedBehavior: "Browse face groups and named people once people recognition and grouping are productized.",
-        currentFallback: "Selectable live mockup with placeholder face groups and people counts."
+        currentFallback: "Selectable live mockup with hardcoded people, face suggestions, and counts until recognition data drives the route."
     )
 
     public static let peopleFaceActions = LiveMockupPlaceholder(
@@ -46,6 +75,13 @@ public enum LiveMockupPlaceholders {
         title: "People face actions",
         intendedBehavior: "Confirm, name, merge, or dismiss face clusters created by local recognition.",
         currentFallback: "Disabled controls inside the placeholder People view."
+    )
+
+    public static let placesMap = LiveMockupPlaceholder(
+        id: "places.map",
+        title: "Places map",
+        intendedBehavior: "Browse geotagged frames on a map with clusters, reverse-geocoded locations, and region drill-down.",
+        currentFallback: "Out of scope for go-to-market; no map route is exposed."
     )
 
     public static let agenticSearch = LiveMockupPlaceholder(
@@ -69,6 +105,27 @@ public enum LiveMockupPlaceholders {
         currentFallback: "Save the current library query as a dynamic saved set."
     )
 
+    public static let keywordingBatch = LiveMockupPlaceholder(
+        id: "keywording.batch",
+        title: "Batch keywording",
+        intendedBehavior: "Apply Teststrip-suggested keywords, captions, creator, and copyright to a selected batch.",
+        currentFallback: "Single-selected asset keyword/caption/creator/copyright controls write through catalog and XMP; batch keywording surface is not built."
+    )
+
+    public static let exportWorkflow = LiveMockupPlaceholder(
+        id: "export.workflow",
+        title: "Export workflow",
+        intendedBehavior: "Export selected photos through presets for sizing, sharpening, color space, metadata, and watermarking.",
+        currentFallback: "Out of scope for the no-editing v1; no export route is exposed."
+    )
+
+    public static let importPlan = LiveMockupPlaceholder(
+        id: "import.plan",
+        title: "Import plan",
+        intendedBehavior: "Explain copy/catalog/XMP/preview/background work before import starts, including later agentic follow-up work.",
+        currentFallback: "Folder and card confirmation sheets show the non-destructive cataloging plan and managed background-work summary."
+    )
+
     public static let importCompleteSummary = LiveMockupPlaceholder(
         id: "import.complete-summary",
         title: "Import complete summary",
@@ -80,7 +137,7 @@ public enum LiveMockupPlaceholders {
         id: "culling.assist-verdict",
         title: "Culling assist verdict",
         intendedBehavior: "Show agentic keeper/reject guidance, rationale, and confidence for the current frame or burst.",
-        currentFallback: "Static Assist indicator while real culling evaluation signals are still being productized."
+        currentFallback: "Selected-frame verdict uses persisted evaluation signals when present, but richer rationale and burst-level guidance are not built."
     )
 
     public static let cullingFilmstrip = LiveMockupPlaceholder(
@@ -97,11 +154,18 @@ public enum LiveMockupPlaceholders {
         currentFallback: "Manual compare and ordinary culling over the current asset set."
     )
 
+    public static let focusCompare = LiveMockupPlaceholder(
+        id: "compare.focus",
+        title: "Focus compare",
+        intendedBehavior: "Line up close contenders and use sharpness, eye state, exposure, and frame signals to break ties.",
+        currentFallback: "Survey Compare can show selected-frame evaluation signals, but there is no focused metric comparison lane yet."
+    )
+
     public static let compareSurvey = LiveMockupPlaceholder(
         id: "compare.survey",
         title: "Survey compare",
         intendedBehavior: "Show a survey-style comparison surface with primary candidate, alternates, and decision affordances.",
-        currentFallback: "Adaptive compare grid over the current selected neighborhood."
+        currentFallback: "Adaptive compare grid over the current selected neighborhood with heuristic recommendation text, not real stack membership."
     )
 
     public static let workHistory = LiveMockupPlaceholder(
@@ -112,18 +176,155 @@ public enum LiveMockupPlaceholders {
     )
 
     public static let all: [LiveMockupPlaceholder] = [
+        studioLibrary,
+        copilotLibrary,
+        timelineLibrary,
         topChrome,
         peopleSidebar,
         peopleFaceActions,
+        placesMap,
         agenticSearch,
         searchRefine,
         smartCollectionsBuilder,
+        keywordingBatch,
+        exportWorkflow,
+        importPlan,
         importCompleteSummary,
         cullingAssistVerdict,
         cullingFilmstrip,
         cullingStackCull,
+        focusCompare,
         compareSurvey,
         workHistory
+    ]
+}
+
+public enum LiveMockupSurfaceStatus: String, Equatable, Sendable {
+    case shipped
+    case partial
+    case liveMockup
+    case deferred
+}
+
+public struct LiveMockupDesignSurface: Equatable, Identifiable, Sendable {
+    public var designID: String
+    public var title: String
+    public var status: LiveMockupSurfaceStatus
+    public var placeholder: LiveMockupPlaceholder?
+    public var currentImplementation: String
+
+    public var id: String {
+        designID
+    }
+}
+
+public enum LiveMockupDesignSurfaces {
+    public static let all: [LiveMockupDesignSurface] = [
+        LiveMockupDesignSurface(
+            designID: "1a",
+            title: "Studio",
+            status: .partial,
+            placeholder: .studioLibrary,
+            currentImplementation: "Main Library route has real catalog navigation, adaptive true-aspect grid cells, top chrome, and inspector passes; remaining work is deeper visual parity and density tuning."
+        ),
+        LiveMockupDesignSurface(
+            designID: "1b",
+            title: "Copilot",
+            status: .partial,
+            placeholder: .copilotLibrary,
+            currentImplementation: "Agentic search copy is wired to plain catalog search/filtering, review queues, and visible evaluation signals; natural-language planning and autonomous actions are not built."
+        ),
+        LiveMockupDesignSurface(
+            designID: "1c",
+            title: "Timeline",
+            status: .liveMockup,
+            placeholder: .timelineLibrary,
+            currentImplementation: "Date filters can query the catalog, but the decade/month/day density ribbon and scrubber from the mockup are not built."
+        ),
+        LiveMockupDesignSurface(
+            designID: "2a",
+            title: "Rapid cull",
+            status: .partial,
+            placeholder: .cullingAssistVerdict,
+            currentImplementation: "Loupe-first culling has keyboard pick/reject/rating/labels, progress, filmstrip, and selected-frame signal verdicts; burst-level agentic rationale remains pending."
+        ),
+        LiveMockupDesignSurface(
+            designID: "2b",
+            title: "Survey and compare",
+            status: .partial,
+            placeholder: .compareSurvey,
+            currentImplementation: "Compare shows selected primary first, alternates, metadata-backed badges, and honest disabled group actions; real stack membership and bulk stack mutations are not built."
+        ),
+        LiveMockupDesignSurface(
+            designID: "3a",
+            title: "Stack cull",
+            status: .liveMockup,
+            placeholder: .cullingStackCull,
+            currentImplementation: "Current app culls arbitrary sets and compare neighborhoods; automatic burst/near-duplicate stack grouping is not built."
+        ),
+        LiveMockupDesignSurface(
+            designID: "3b",
+            title: "Focus compare",
+            status: .liveMockup,
+            placeholder: .focusCompare,
+            currentImplementation: "Evaluation signals can expose focus-like metrics, but there is no dedicated contender lane for sharpness, eye state, exposure, and frame tie-breaks."
+        ),
+        LiveMockupDesignSurface(
+            designID: "4a",
+            title: "Import",
+            status: .partial,
+            placeholder: .importPlan,
+            currentImplementation: "Folder/card import confirmation explains non-destructive cataloging, XMP, previews, and managed background work; automatic stack/cull/keyword/face follow-up is not run during import."
+        ),
+        LiveMockupDesignSurface(
+            designID: "4b",
+            title: "Import complete",
+            status: .partial,
+            placeholder: .importCompleteSummary,
+            currentImplementation: "Compact import-complete banner exposes imported count, preview failures, Open, Cull, and dismiss; the richer payoff surface is not built."
+        ),
+        LiveMockupDesignSurface(
+            designID: "5a",
+            title: "People",
+            status: .liveMockup,
+            placeholder: .peopleSidebar,
+            currentImplementation: "People route is selectable but uses hardcoded placeholder names, suggestions, and counts while real face clustering and naming workflows are pending."
+        ),
+        LiveMockupDesignSurface(
+            designID: "5b",
+            title: "Places",
+            status: .deferred,
+            placeholder: .placesMap,
+            currentImplementation: "Out of scope for go-to-market; no map, clustering, or reverse-geocode route is exposed."
+        ),
+        LiveMockupDesignSurface(
+            designID: "5c",
+            title: "Search",
+            status: .partial,
+            placeholder: .agenticSearch,
+            currentImplementation: "Search route preserves catalog query/filter state, chips, saved-set counts, and results grid; natural-language parsing and suggested refinements are not built."
+        ),
+        LiveMockupDesignSurface(
+            designID: "5d",
+            title: "Smart collections",
+            status: .partial,
+            placeholder: .smartCollectionsBuilder,
+            currentImplementation: "Builder saves the current dynamic query with parsed rule presentation and loaded-result preview; editable arbitrary rule rows and real suggestions are not built."
+        ),
+        LiveMockupDesignSurface(
+            designID: "5e",
+            title: "Keywording",
+            status: .partial,
+            placeholder: .keywordingBatch,
+            currentImplementation: "Selected asset metadata controls edit keywords, caption, creator, and copyright with XMP writeback; batch keywording and suggested-keyword acceptance are not built."
+        ),
+        LiveMockupDesignSurface(
+            designID: "5f",
+            title: "Export",
+            status: .deferred,
+            placeholder: .exportWorkflow,
+            currentImplementation: "Out of scope for the no-editing v1; no export preset/settings route is exposed."
+        )
     ]
 }
 

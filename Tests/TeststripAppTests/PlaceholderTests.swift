@@ -28,6 +28,28 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         ]))
     }
 
+    func testDesignSurfaceRegistryCoversDesignerMockupIds() {
+        let surfaces = LiveMockupDesignSurfaces.all
+
+        XCTAssertEqual(
+            surfaces.map(\.designID),
+            ["1a", "1b", "1c", "2a", "2b", "3a", "3b", "4a", "4b", "5a", "5b", "5c", "5d", "5e", "5f"]
+        )
+        XCTAssertTrue(surfaces.allSatisfy { !$0.title.isEmpty })
+        XCTAssertTrue(surfaces.allSatisfy { !$0.currentImplementation.isEmpty })
+        XCTAssertEqual(Set(surfaces.map(\.designID)).count, surfaces.count)
+    }
+
+    func testDeferredDesignSurfacesDoNotReopenScopedOutProductFeatures() throws {
+        let places = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5b" })
+        let export = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5f" })
+
+        XCTAssertEqual(places.status, .deferred)
+        XCTAssertEqual(export.status, .deferred)
+        XCTAssertTrue(places.currentImplementation.localizedCaseInsensitiveContains("out of scope"))
+        XCTAssertTrue(export.currentImplementation.localizedCaseInsensitiveContains("out of scope"))
+    }
+
     func testPeopleSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
         let model = AppModel.demo()
         let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })

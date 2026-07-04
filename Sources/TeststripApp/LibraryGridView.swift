@@ -290,6 +290,7 @@ struct LibraryGridView: View {
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(Color.white.opacity(0.09))
         }
+        .liveMockupPlaceholder(.agenticSearch)
     }
 
     private func topBarViewSwitcher(_ presentation: LibraryTopBarPresentation) -> some View {
