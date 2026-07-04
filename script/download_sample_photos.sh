@@ -3,13 +3,14 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-MANIFEST="$ROOT_DIR/sample-data/loc-free-to-use.tsv"
-DESTINATION="$ROOT_DIR/sample-data/photos/loc-free-to-use"
+MANIFEST="$ROOT_DIR/sample-data/wordpress-photo-directory.tsv"
+DESTINATION="$ROOT_DIR/sample-data/photos/wordpress-photo-directory"
 LIMIT=0
+PRINT_CONFIG=0
 
 usage() {
   cat <<EOF
-Usage: $0 [--manifest PATH] [--destination PATH] [--limit COUNT]
+Usage: $0 [--manifest PATH] [--destination PATH] [--limit COUNT] [--print-config]
 
 Downloads the Teststrip real-photo sample set from a tab-separated manifest.
 Downloaded files are checksum verified and are not committed to the repo.
@@ -29,6 +30,10 @@ while [[ $# -gt 0 ]]; do
     --limit)
       LIMIT="$2"
       shift 2
+      ;;
+    --print-config)
+      PRINT_CONFIG=1
+      shift
       ;;
     -h|--help)
       usage
@@ -50,6 +55,13 @@ fi
 if ! [[ "$LIMIT" =~ '^[0-9]+$' ]]; then
   echo "--limit must be a non-negative integer" >&2
   exit 2
+fi
+
+if [[ "$PRINT_CONFIG" == "1" ]]; then
+  echo "manifest=$MANIFEST"
+  echo "destination=$DESTINATION"
+  echo "limit=$LIMIT"
+  exit 0
 fi
 
 md5_value() {

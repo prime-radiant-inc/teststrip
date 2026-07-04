@@ -38,6 +38,8 @@ Use `--limit COUNT` for a smaller local set while testing import behavior:
 script/download_sample_photos.sh --limit 4
 ```
 
+Use `--print-config` to inspect the effective manifest and destination without downloading files.
+
 Download the Library of Congress set explicitly:
 
 ```sh

@@ -6,6 +6,10 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/teststrip-sample-photos-test.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+default_config="$("$ROOT_DIR/script/download_sample_photos.sh" --print-config)"
+[[ "$default_config" == *"manifest=$ROOT_DIR/sample-data/wordpress-photo-directory.tsv"* ]]
+[[ "$default_config" == *"destination=$ROOT_DIR/sample-data/photos/wordpress-photo-directory"* ]]
+
 source_one="$TMP_DIR/source-one.jpg"
 source_two="$TMP_DIR/source-two.jpg"
 printf 'first sample image bytes\n' > "$source_one"
