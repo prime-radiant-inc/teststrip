@@ -26,6 +26,33 @@ final class LibraryGridLayoutTests: XCTestCase {
         XCTAssertEqual(AssetGridPreviewPolicy.thumbnailScaling, .fit)
     }
 
+    func testGridSelectionFromPointerDoesNotAutoScroll() {
+        XCTAssertFalse(
+            LibraryGridSelectionScrollPolicy.shouldScrollSelectedAssetIntoView(
+                selectedAssetID: "asset-2",
+                suppressedSelectionScrollAssetID: "asset-2"
+            )
+        )
+    }
+
+    func testProgrammaticGridSelectionStillAutoScrolls() {
+        XCTAssertTrue(
+            LibraryGridSelectionScrollPolicy.shouldScrollSelectedAssetIntoView(
+                selectedAssetID: "asset-2",
+                suppressedSelectionScrollAssetID: nil
+            )
+        )
+    }
+
+    func testClearedGridSelectionDoesNotAutoScroll() {
+        XCTAssertFalse(
+            LibraryGridSelectionScrollPolicy.shouldScrollSelectedAssetIntoView(
+                selectedAssetID: nil,
+                suppressedSelectionScrollAssetID: nil
+            )
+        )
+    }
+
     func testGridCellAspectRatioUsesCatalogedImageDimensions() {
         let portrait = Asset.gridLayoutTestAsset(width: 4000, height: 6000)
         let panoramic = Asset.gridLayoutTestAsset(width: 6000, height: 2000)

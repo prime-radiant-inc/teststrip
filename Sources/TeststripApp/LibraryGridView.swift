@@ -21,6 +21,7 @@ struct LibraryGridView: View {
     @State private var importConfirmationDraft: ImportConfirmationDraft?
     @State private var sourceReconnectDraft = SourceReconnectPathDraft()
     @State private var cullingFocusRequest = 0
+    @State private var suppressedSelectionScrollAssetID: String?
     @AppStorage("LibraryGridView.thumbnailWidth") private var storedThumbnailWidth = LibraryGridLayout.defaultThumbnailWidth
 
     private var gridLayout: LibraryGridLayout {
@@ -55,7 +56,7 @@ struct LibraryGridView: View {
                         assetGrid
                     }
                     .onChange(of: model.selectedAssetID?.rawValue) { _, selectedAssetID in
-                        scrollSelectedAssetIntoView(selectedAssetID, with: proxy)
+                        handleSelectedAssetChange(selectedAssetID, with: proxy)
                     }
                 }
             }
@@ -1025,7 +1026,9 @@ struct LibraryGridView: View {
                     previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
                     isSelected: model.selectedAssetID == asset.id
                 )
-                .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface)
+                .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
+                    selectAssetFromGrid(assetID)
+                }
                 .id(asset.id.rawValue)
                 .task(id: asset.id.rawValue) {
                     do {
@@ -1264,6 +1267,17 @@ struct LibraryGridView: View {
         }
     }
 
+    private func handleSelectedAssetChange(_ selectedAssetID: String?, with proxy: ScrollViewProxy) {
+        defer {
+            suppressedSelectionScrollAssetID = nil
+        }
+        guard LibraryGridSelectionScrollPolicy.shouldScrollSelectedAssetIntoView(
+            selectedAssetID: selectedAssetID,
+            suppressedSelectionScrollAssetID: suppressedSelectionScrollAssetID
+        ) else { return }
+        scrollSelectedAssetIntoView(selectedAssetID, with: proxy)
+    }
+
     private func scrollSelectedAssetIntoView(_ selectedAssetID: String?, with proxy: ScrollViewProxy) {
         guard let selectedAssetID else { return }
         Task { @MainActor in
@@ -1271,6 +1285,13 @@ struct LibraryGridView: View {
                 proxy.scrollTo(selectedAssetID, anchor: .center)
             }
         }
+    }
+
+    private func selectAssetFromGrid(_ assetID: AssetID) {
+        if model.selectedAssetID != assetID {
+            suppressedSelectionScrollAssetID = assetID.rawValue
+        }
+        model.select(assetID)
     }
 
     private func saveCurrentSearch() {
@@ -1819,7 +1840,9 @@ private struct CompareView: View {
             previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
             isSelected: model.selectedAssetID == asset.id
         )
-        .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface)
+        .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
+            model.select(assetID)
+        }
     }
 
     private func assetCaption(_ asset: Asset, label: String) -> some View {
@@ -1914,14 +1937,19 @@ enum ComparePreviewRequestID {
 }
 
 private extension View {
-    func assetActivation(for asset: Asset, model: AppModel, focusCullingSurface: @escaping () -> Void) -> some View {
+    func assetActivation(
+        for asset: Asset,
+        model: AppModel,
+        focusCullingSurface: @escaping () -> Void,
+        selectAsset: @escaping (AssetID) -> Void
+    ) -> some View {
         let doubleClick = TapGesture(count: 2).onEnded {
             focusCullingSurface()
             model.openAssetInLoupe(asset.id)
         }
         return Button {
             focusCullingSurface()
-            model.select(asset.id)
+            selectAsset(asset.id)
         } label: {
             contentShape(Rectangle())
         }
@@ -1932,7 +1960,7 @@ private extension View {
             .accessibilityLabel(asset.originalURL.lastPathComponent)
             .accessibilityValue(model.selectedAssetID == asset.id ? "Selected" : "Not selected")
             .accessibilityAction {
-                model.select(asset.id)
+                selectAsset(asset.id)
             }
     }
 }
@@ -2020,6 +2048,16 @@ private struct SearchWorkspaceView: View {
 
 enum AssetGridPreviewPolicy {
     static let thumbnailScaling: CachedPreviewImage.Scaling = .fit
+}
+
+enum LibraryGridSelectionScrollPolicy {
+    static func shouldScrollSelectedAssetIntoView(
+        selectedAssetID: String?,
+        suppressedSelectionScrollAssetID: String?
+    ) -> Bool {
+        guard let selectedAssetID else { return false }
+        return selectedAssetID != suppressedSelectionScrollAssetID
+    }
 }
 
 enum LibraryGridChromePolicy {
