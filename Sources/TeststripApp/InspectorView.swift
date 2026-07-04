@@ -63,6 +63,98 @@ struct InspectorTechnicalRows: Equatable {
     }
 }
 
+struct InspectorEvaluationSignalRow: Equatable, Identifiable {
+    var id: String
+    var title: String
+    var value: String
+    var detail: String
+}
+
+struct InspectorEvaluationSignalGroup: Equatable, Identifiable {
+    var title: String
+    var rows: [InspectorEvaluationSignalRow]
+
+    var id: String { title }
+
+    static func groups(for signals: [EvaluationSignal]) -> [InspectorEvaluationSignalGroup] {
+        var rowsByGroup: [String: [InspectorEvaluationSignalRow]] = [:]
+        for (index, signal) in signals.enumerated() {
+            let groupTitle = groupTitle(for: signal.kind)
+            rowsByGroup[groupTitle, default: []].append(row(for: signal, index: index))
+        }
+        return groupOrder.compactMap { title in
+            guard let rows = rowsByGroup[title], !rows.isEmpty else { return nil }
+            return InspectorEvaluationSignalGroup(title: title, rows: rows)
+        }
+    }
+
+    private static let groupOrder = [
+        "Technical Quality",
+        "Faces",
+        "Text",
+        "Objects & Content",
+        "Color & Look"
+    ]
+
+    private static func groupTitle(for kind: EvaluationKind) -> String {
+        switch kind {
+        case .focus, .motionBlur, .exposure:
+            return "Technical Quality"
+        case .faceCount, .faceQuality:
+            return "Faces"
+        case .ocrText:
+            return "Text"
+        case .object:
+            return "Objects & Content"
+        case .aesthetics, .colorPalette, .novelty:
+            return "Color & Look"
+        }
+    }
+
+    private static func row(for signal: EvaluationSignal, index: Int) -> InspectorEvaluationSignalRow {
+        InspectorEvaluationSignalRow(
+            id: "\(index)-\(signal.kind.rawValue)-\(signal.provenance.provider)-\(signal.provenance.model)",
+            title: title(for: signal.kind),
+            value: valueText(for: signal.value),
+            detail: "\(confidenceText(signal.confidence)) - \(signal.provenance.provider)/\(signal.provenance.model)"
+        )
+    }
+
+    private static func title(for kind: EvaluationKind) -> String {
+        switch kind {
+        case .focus: "Focus"
+        case .motionBlur: "Motion blur"
+        case .exposure: "Exposure"
+        case .aesthetics: "Aesthetics"
+        case .object: "Object"
+        case .faceCount: "Face count"
+        case .faceQuality: "Face quality"
+        case .ocrText: "OCR"
+        case .colorPalette: "Color"
+        case .novelty: "Novelty"
+        }
+    }
+
+    private static func valueText(for value: EvaluationValue) -> String {
+        switch value {
+        case .score(let score):
+            String(format: "%.2f", score)
+        case .label(let label):
+            label
+        case .text(let text):
+            text
+        case .count(let count):
+            "\(count)"
+        case .vector(let values):
+            values.prefix(3).map { String(format: "%.2f", $0) }.joined(separator: ", ")
+        }
+    }
+
+    private static func confidenceText(_ confidence: Double) -> String {
+        "\(Int((confidence * 100).rounded()))%"
+    }
+}
+
 struct InspectorView: View {
     var model: AppModel
     @State private var metadataDraft = InspectorMetadataDraft()
@@ -411,23 +503,31 @@ struct InspectorView: View {
     }
 
     private func evaluationSignals(_ signals: [EvaluationSignal]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let groups = InspectorEvaluationSignalGroup.groups(for: signals)
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
                     .foregroundStyle(.orange)
-                Text("TESTSTRIP TAGS")
+                Text("TESTSTRIP SIGNALS")
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.orange)
             }
-            ForEach(Array(signals.enumerated()), id: \.offset) { _, signal in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(title(for: signal.kind)): \(valueText(for: signal.value))")
-                        .font(.caption)
-                        .lineLimit(1)
-                    Text("\(confidenceText(signal.confidence)) - \(signal.provenance.provider)")
-                        .font(.caption2)
+            ForEach(groups) { group in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(group.title)
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    ForEach(group.rows) { row in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(row.title): \(row.value)")
+                                .font(.caption)
+                                .lineLimit(1)
+                            Text(row.detail)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
                 }
             }
         }
@@ -463,40 +563,6 @@ struct InspectorView: View {
         case .blue: .blue
         case .purple: .purple
         }
-    }
-
-    private func title(for kind: EvaluationKind) -> String {
-        switch kind {
-        case .focus: "Focus"
-        case .motionBlur: "Motion blur"
-        case .exposure: "Exposure"
-        case .aesthetics: "Aesthetics"
-        case .object: "Object"
-        case .faceCount: "Face count"
-        case .faceQuality: "Face quality"
-        case .ocrText: "OCR"
-        case .colorPalette: "Color"
-        case .novelty: "Novelty"
-        }
-    }
-
-    private func valueText(for value: EvaluationValue) -> String {
-        switch value {
-        case .score(let score):
-            String(format: "%.2f", score)
-        case .label(let label):
-            label
-        case .text(let text):
-            text
-        case .count(let count):
-            "\(count)"
-        case .vector(let values):
-            values.prefix(3).map { String(format: "%.2f", $0) }.joined(separator: ", ")
-        }
-    }
-
-    private func confidenceText(_ confidence: Double) -> String {
-        "\(Int((confidence * 100).rounded()))%"
     }
 
     private func sectionHeader(_ title: String) -> some View {

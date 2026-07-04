@@ -66,6 +66,68 @@ final class InspectorViewTests: XCTestCase {
         )
     }
 
+    func testEvaluationSignalsGroupIntoPhotographerFacingSections() {
+        let signals = [
+            evaluationSignal(kind: .object, value: .label("camera")),
+            evaluationSignal(kind: .focus, value: .score(0.92)),
+            evaluationSignal(kind: .ocrText, value: .text("Invoice 123")),
+            evaluationSignal(kind: .colorPalette, value: .vector([0.12, 0.34, 0.56])),
+            evaluationSignal(kind: .faceCount, value: .count(2))
+        ]
+
+        let groups = InspectorEvaluationSignalGroup.groups(for: signals)
+
+        XCTAssertEqual(groups.map(\.title), [
+            "Technical Quality",
+            "Faces",
+            "Text",
+            "Objects & Content",
+            "Color & Look"
+        ])
+        XCTAssertEqual(groups[0].rows.map(\.title), ["Focus"])
+        XCTAssertEqual(groups[1].rows.map(\.title), ["Face count"])
+        XCTAssertEqual(groups[2].rows.map(\.value), ["Invoice 123"])
+        XCTAssertEqual(groups[3].rows.map(\.title), ["Object"])
+        XCTAssertEqual(groups[4].rows.map(\.value), ["0.12, 0.34, 0.56"])
+    }
+
+    func testEvaluationRowsKeepConfidenceAndProviderProvenance() {
+        let signal = evaluationSignal(
+            kind: .aesthetics,
+            value: .label("keeper"),
+            confidence: 0.735,
+            provenance: ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+        )
+
+        let row = try! XCTUnwrap(InspectorEvaluationSignalGroup.groups(for: [signal]).first?.rows.first)
+
+        XCTAssertEqual(row.title, "Aesthetics")
+        XCTAssertEqual(row.value, "keeper")
+        XCTAssertEqual(row.detail, "74% - local-http-model/llava")
+    }
+
+    func testEvaluationRowsKeepDuplicateProvidersVisible() {
+        let signals = [
+            evaluationSignal(
+                kind: .focus,
+                value: .score(0.91),
+                confidence: 0.82,
+                provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+            ),
+            evaluationSignal(
+                kind: .focus,
+                value: .score(0.88),
+                confidence: 0.77,
+                provenance: ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+            )
+        ]
+
+        let rows = try! XCTUnwrap(InspectorEvaluationSignalGroup.groups(for: signals).first?.rows)
+
+        XCTAssertEqual(rows.map(\.value), ["0.91", "0.88"])
+        XCTAssertEqual(rows.map(\.detail), ["82% - apple-vision/Vision", "77% - local-http-model/llava"])
+    }
+
     func testMetadataDraftFormatsPortableMetadataFromAsset() {
         let asset = makeAsset(
             id: "draft-asset",
@@ -158,6 +220,21 @@ final class InspectorViewTests: XCTestCase {
             availability: availability,
             metadata: metadata,
             technicalMetadata: technicalMetadata
+        )
+    }
+
+    private func evaluationSignal(
+        kind: EvaluationKind,
+        value: EvaluationValue,
+        confidence: Double = 0.82,
+        provenance: ProviderProvenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+    ) -> EvaluationSignal {
+        EvaluationSignal(
+            assetID: AssetID(rawValue: "asset-\(kind.rawValue)"),
+            kind: kind,
+            value: value,
+            confidence: confidence,
+            provenance: provenance
         )
     }
 }
