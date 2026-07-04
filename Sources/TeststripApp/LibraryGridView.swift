@@ -1362,7 +1362,7 @@ private struct LoupeView: View {
     @ViewBuilder
     private var cullingHeader: some View {
         let summary = model.cullingProgressSummary
-        HStack(spacing: 14) {
+        HStack(spacing: 10) {
             Label("Culling", systemImage: "checkmark.seal")
                 .font(.headline)
                 .lineLimit(1)
@@ -1376,30 +1376,59 @@ private struct LoupeView: View {
             if summary.totalCount > 0 {
                 ProgressView(value: Double(summary.reviewedCount), total: Double(max(summary.totalCount, 1)))
                     .tint(.orange)
-                    .frame(width: 130)
+                    .frame(width: 96)
                     .accessibilityLabel("Culling Progress")
             }
             Spacer(minLength: 0)
             cullingCountPill(title: "Picks", count: summary.pickCount, color: .green, systemImage: "flag.fill")
             cullingCountPill(title: "Rejects", count: summary.rejectCount, color: .red, systemImage: "xmark.circle.fill")
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(.orange)
-                Text("Assist")
-            }
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 10)
-            .frame(height: 28)
-            .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Color.orange.opacity(0.26))
-            }
-            .liveMockupPlaceholder(.cullingAssistVerdict)
+            cullingAssistPill
+                .layoutPriority(1)
         }
         .padding(.horizontal, 14)
         .frame(height: 48)
         .background(.bar)
+    }
+
+    private var cullingAssistPill: some View {
+        let presentation = CullingAssistPresentation.presentation(for: model.selectedEvaluationSignals)
+        let color = cullingAssistColor(for: presentation.tone)
+        return HStack(spacing: 7) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(color)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("TESTSTRIP READS")
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(color)
+                    .lineLimit(1)
+                Text(presentation.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
+        }
+        .help(presentation.detail)
+        .padding(.horizontal, 10)
+        .frame(width: 148, height: 34, alignment: .leading)
+        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(color.opacity(0.28))
+        }
+        .liveMockupPlaceholder(.cullingAssistVerdict)
+    }
+
+    private func cullingAssistColor(for tone: CullingAssistPresentation.Tone) -> Color {
+        switch tone {
+        case .waiting:
+            return .secondary
+        case .positive:
+            return .green
+        case .caution:
+            return .red
+        case .neutral:
+            return .orange
+        }
     }
 
     private func cullingCountPill(title: String, count: Int, color: Color, systemImage: String) -> some View {
@@ -2017,6 +2046,145 @@ struct SmartCollectionBuilderPresentation: Equatable {
 
     var canCreate: Bool {
         !proposedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !ruleChips.isEmpty
+    }
+}
+
+struct CullingAssistPresentation: Equatable {
+    enum Tone: Equatable {
+        case waiting
+        case positive
+        case caution
+        case neutral
+    }
+
+    var title: String
+    var detail: String
+    var tone: Tone
+
+    static func presentation(for signals: [EvaluationSignal]) -> CullingAssistPresentation {
+        guard let signal = signals.sorted(by: signalSort).first else {
+            return CullingAssistPresentation(
+                title: "No read yet",
+                detail: "Evaluate frame to show culling signals",
+                tone: .waiting
+            )
+        }
+        return CullingAssistPresentation(
+            title: title(for: signal),
+            detail: "\(displayName(for: signal.kind)) - \(signal.provenance.provider) - \(percentage(signal.confidence)) confidence",
+            tone: tone(for: signal)
+        )
+    }
+
+    private static func signalSort(_ lhs: EvaluationSignal, _ rhs: EvaluationSignal) -> Bool {
+        let lhsRank = rank(for: lhs.kind)
+        let rhsRank = rank(for: rhs.kind)
+        if lhsRank != rhsRank {
+            return lhsRank < rhsRank
+        }
+        return lhs.confidence > rhs.confidence
+    }
+
+    private static func rank(for kind: EvaluationKind) -> Int {
+        switch kind {
+        case .aesthetics:
+            return 0
+        case .motionBlur:
+            return 1
+        case .focus:
+            return 2
+        case .faceQuality:
+            return 3
+        case .faceCount:
+            return 4
+        case .exposure:
+            return 5
+        case .object:
+            return 6
+        case .ocrText:
+            return 7
+        case .novelty:
+            return 8
+        case .colorPalette:
+            return 9
+        }
+    }
+
+    private static func title(for signal: EvaluationSignal) -> String {
+        switch signal.value {
+        case .score(let score):
+            return "\(displayName(for: signal.kind)) \(percentage(score))"
+        case .label(let label):
+            return capitalized(label, fallback: displayName(for: signal.kind))
+        case .text(let text):
+            return capitalized(text, fallback: displayName(for: signal.kind))
+        case .count(let count):
+            return "\(displayName(for: signal.kind)) \(count)"
+        case .vector:
+            return "\(displayName(for: signal.kind)) sampled"
+        }
+    }
+
+    private static func tone(for signal: EvaluationSignal) -> Tone {
+        switch (signal.kind, signal.value) {
+        case (.motionBlur, .score(let score)):
+            return score >= 0.5 ? .caution : .positive
+        case (.focus, .score(let score)), (.faceQuality, .score(let score)):
+            return score >= 0.7 ? .positive : .caution
+        case (.aesthetics, .label(let label)):
+            return cautionLabels.contains(label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) ? .caution : .positive
+        case (.faceCount, .count(let count)):
+            return count > 0 ? .positive : .neutral
+        default:
+            return .neutral
+        }
+    }
+
+    private static let cautionLabels: Set<String> = [
+        "blur",
+        "blurry",
+        "reject",
+        "soft",
+        "eyes closed",
+        "closed eyes"
+    ]
+
+    private static func displayName(for kind: EvaluationKind) -> String {
+        switch kind {
+        case .focus:
+            return "Focus"
+        case .motionBlur:
+            return "Motion blur"
+        case .exposure:
+            return "Exposure"
+        case .aesthetics:
+            return "Aesthetics"
+        case .object:
+            return "Object"
+        case .faceCount:
+            return "Faces"
+        case .faceQuality:
+            return "Face quality"
+        case .ocrText:
+            return "Text"
+        case .colorPalette:
+            return "Color"
+        case .novelty:
+            return "Novelty"
+        }
+    }
+
+    private static func percentage(_ value: Double) -> String {
+        let clamped = min(max(value, 0), 1)
+        return "\(Int((clamped * 100).rounded()))%"
+    }
+
+    private static func capitalized(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = trimmed.first else {
+            return fallback
+        }
+        return first.uppercased() + trimmed.dropFirst()
     }
 }
 
