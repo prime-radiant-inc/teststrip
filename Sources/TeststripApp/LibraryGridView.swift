@@ -301,6 +301,7 @@ struct LibraryGridView: View {
                     .popover(isPresented: $isSavingSearch) {
                         saveSearchPopover
                     }
+                    .liveMockupPlaceholder(.smartCollectionsBuilder)
 
                     Button {
                         manualSetName = model.suggestedManualSetName
@@ -328,6 +329,7 @@ struct LibraryGridView: View {
         }
         .padding(.bottom, 7)
         .background(.bar)
+        .liveMockupPlaceholder(.searchRefine)
     }
 
     private var searchControl: some View {
@@ -1279,6 +1281,7 @@ private struct LoupeView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .strokeBorder(Color.orange.opacity(0.26))
             }
+            .liveMockupPlaceholder(.cullingAssistVerdict)
         }
         .padding(.horizontal, 14)
         .frame(height: 48)
@@ -1524,6 +1527,7 @@ private struct CompareView: View {
         .task(id: comparePreviewTaskID) {
             requestComparePreviews()
         }
+        .liveMockupPlaceholder(.compareSurvey)
     }
 
     private var comparePreviewTaskID: String {

@@ -12,6 +12,21 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(placeholders.allSatisfy { !$0.currentFallback.isEmpty })
     }
 
+    func testRegistryTracksKnownMockupParityGaps() {
+        let ids = Set(LiveMockupPlaceholders.all.map(\.id))
+
+        XCTAssertTrue(ids.isSuperset(of: [
+            "search.agentic",
+            "search.refine",
+            "smart-collections.builder",
+            "import.complete-summary",
+            "culling.assist-verdict",
+            "culling.filmstrip",
+            "culling.stack-cull",
+            "compare.survey"
+        ]))
+    }
+
     func testPeopleSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
         let model = AppModel.demo()
         let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
