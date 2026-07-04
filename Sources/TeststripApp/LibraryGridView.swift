@@ -529,6 +529,7 @@ struct LibraryGridView: View {
             TextField("Folder path", text: $importPathDraft.path)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 420)
+            importPathPlan
             if let errorMessage = importPathDraft.errorMessage {
                 Text(errorMessage)
                     .font(.caption)
@@ -547,6 +548,32 @@ struct LibraryGridView: View {
             }
         }
         .padding(18)
+    }
+
+    private var importPathPlan: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Label("Teststrip will", systemImage: "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+            ForEach(importPathDraft.planSteps) { step in
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(step.title)
+                            .font(.caption.weight(.semibold))
+                        Text(step.detail)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .frame(width: 420, alignment: .leading)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var sourceReconnectSheet: some View {
