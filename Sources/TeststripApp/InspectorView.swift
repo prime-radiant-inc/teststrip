@@ -4,6 +4,7 @@ import TeststripCore
 
 enum InspectorPreviewLayout {
     static let size = CGSize(width: 258, height: 186)
+    static let pinsPreviewAboveMetadataScroll = true
 }
 
 struct InspectorAssetIdentity: Equatable {
@@ -210,11 +211,19 @@ struct InspectorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    if let asset = model.selectedAsset {
-                        selectedPreview(for: asset)
-                        assetHeader(for: asset)
+            if let asset = model.selectedAsset {
+                VStack(alignment: .leading, spacing: 10) {
+                    selectedPreview(for: asset)
+                    assetHeader(for: asset)
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
+                .padding(.bottom, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Divider()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
                         metadataControls(for: asset)
                             .onAppear {
                                 metadataDraft.sync(to: asset)
@@ -231,13 +240,17 @@ struct InspectorView: View {
                         if !signals.isEmpty {
                             evaluationSignals(signals)
                         }
-                    } else {
-                        Text("No selection")
-                            .foregroundStyle(.secondary)
                     }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                ScrollView {
+                    Text("No selection")
+                        .foregroundStyle(.secondary)
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
             Divider()
             ActivityView(model: model)

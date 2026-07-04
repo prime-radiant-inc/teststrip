@@ -8,6 +8,10 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(InspectorPreviewLayout.size, CGSize(width: 258, height: 186))
     }
 
+    func testSelectedPreviewLayoutPinsPreviewAboveMetadataScroll() {
+        XCTAssertTrue(InspectorPreviewLayout.pinsPreviewAboveMetadataScroll)
+    }
+
     func testAssetIdentitySplitsFilenameExtensionAndStatus() {
         let asset = makeAsset(
             id: "identity",
