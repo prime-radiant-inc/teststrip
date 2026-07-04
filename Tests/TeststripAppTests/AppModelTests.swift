@@ -433,6 +433,41 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.metadataSyncConflictItems, [conflict])
     }
 
+    func testSelectingMetadataConflictSidebarRowLoadsConflictedAssets() throws {
+        let directory = try makeTemporaryDirectory(named: "xmp-conflict-sidebar")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let conflicted = makeAsset(id: "conflicted", path: "/Photos/conflicted.jpg", rating: 0)
+        let clean = makeAsset(id: "clean", path: "/Photos/clean.jpg", rating: 0)
+        try repository.upsert([conflicted, clean])
+        try repository.recordMetadataSyncConflict(MetadataSyncItem(
+            assetID: conflicted.id,
+            sidecarURL: conflicted.originalURL.appendingPathExtension("xmp"),
+            catalogGeneration: 1,
+            lastSyncedFingerprint: "old"
+        ))
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+
+        let syncSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sync" })
+        XCTAssertEqual(syncSection.rowTitles, ["XMP Conflicts (1)"])
+
+        try model.selectSidebarRow(try XCTUnwrap(syncSection.rows.first))
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertTrue(model.metadataSyncConflictFilter)
+        XCTAssertEqual(model.assets.map(\.id), [conflicted.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
     func testResolveSelectedMetadataConflictUsingCatalogOverwritesSidecar() throws {
         let catalogMetadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["catalog"])
         let sidecarMetadata = AssetMetadata(rating: 2, colorLabel: .red, flag: .reject, keywords: ["sidecar"])

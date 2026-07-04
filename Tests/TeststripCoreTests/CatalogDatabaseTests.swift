@@ -459,6 +459,27 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(matching: focusQuery), 1)
     }
 
+    func testSearchesAssetsWithMetadataSyncConflictPredicate() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-xmp-conflict-search")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let conflicted = Asset.testAsset(id: AssetID(rawValue: "conflicted"), path: "/Volumes/NAS/Job/conflicted.cr2", rating: 0)
+        let clean = Asset.testAsset(id: AssetID(rawValue: "clean"), path: "/Volumes/NAS/Job/clean.cr2", rating: 0)
+        try repository.upsert([conflicted, clean])
+        try repository.recordMetadataSyncConflict(MetadataSyncItem(
+            assetID: conflicted.id,
+            sidecarURL: conflicted.originalURL.appendingPathExtension("xmp"),
+            catalogGeneration: 1,
+            lastSyncedFingerprint: "old"
+        ))
+
+        let conflictQuery = SetQuery(predicates: [.metadataSyncConflict])
+
+        XCTAssertEqual(try repository.allAssets(matching: conflictQuery, limit: 10).map(\.id), [conflicted.id])
+        XCTAssertEqual(try repository.assetCount(matching: conflictQuery), 1)
+    }
+
     func testListsEvaluationKindSummariesWithDistinctAssetCounts() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-kind-summary")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

@@ -15,6 +15,7 @@ public struct SetQuery: Codable, Equatable, Sendable {
         case capturedAtOrAfter(Date)
         case capturedBefore(Date)
         case evaluationKind(EvaluationKind)
+        case metadataSyncConflict
         case importBatch(String)
     }
 

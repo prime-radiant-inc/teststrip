@@ -913,6 +913,17 @@ public final class CatalogRepository {
                     "EXISTS (SELECT 1 FROM evaluation_signals WHERE evaluation_signals.asset_id = assets.id AND kind = ?)"
                 )
                 bindings.append(kind.rawValue)
+            case .metadataSyncConflict:
+                clauses.append(
+                    """
+                    EXISTS (
+                        SELECT 1
+                        FROM metadata_sync_state
+                        WHERE metadata_sync_state.asset_id = assets.id
+                          AND metadata_sync_state.status = 'conflict'
+                    )
+                    """
+                )
             case .importBatch:
                 throw TeststripError.invalidState("import batch queries are not catalog-backed yet")
             }

@@ -94,6 +94,7 @@ public enum SidebarRowTarget: Equatable, Sendable {
     case folder(String)
     case sourceAvailability(SourceAvailability)
     case evaluationKind(EvaluationKind)
+    case metadataSyncConflicts
     case assetSet(AssetSetID)
     case workSession(WorkSessionID)
 }
@@ -285,6 +286,7 @@ public final class AppModel {
     public var captureDateEndFilter: Date?
     public var availabilityFilter: SourceAvailability?
     public var evaluationKindFilter: EvaluationKind?
+    public var metadataSyncConflictFilter: Bool
     public var savedAssetSets: [AssetSet]
     public var catalogFolders: [CatalogFolder]
     public var sourceRoots: [CatalogSourceRoot]
@@ -520,6 +522,9 @@ public final class AppModel {
         if let evaluationKindFilter {
             parts.append("\(evaluationKindFilter.displayName) Signal")
         }
+        if metadataSyncConflictFilter {
+            parts.append("XMP Conflicts")
+        }
         return parts.isEmpty ? "Saved Search" : parts.joined(separator: " ")
     }
 
@@ -582,6 +587,7 @@ public final class AppModel {
             catalogFolders: catalogFolders,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+            metadataSyncConflictItems: metadataSyncConflictItems,
             recentWork: recentWork,
             starredWork: starredWork
         ) : sidebarSections
@@ -611,6 +617,7 @@ public final class AppModel {
         self.captureDateEndFilter = nil
         self.availabilityFilter = nil
         self.evaluationKindFilter = nil
+        self.metadataSyncConflictFilter = false
         self.savedAssetSets = savedAssetSets
         self.catalogFolders = catalogFolders
         self.sourceRoots = sourceRoots
@@ -689,6 +696,8 @@ public final class AppModel {
         let sourceRoots = try repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: repository)
         let catalogEvaluationKindSummaries = try repository.evaluationKindSummaries()
+        let pendingMetadataSyncItems = try repository.pendingMetadataSyncItems()
+        let metadataSyncConflictItems = try repository.metadataSyncConflictItems()
         let recentWork = try repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
         return AppModel(
@@ -697,6 +706,7 @@ public final class AppModel {
                 catalogFolders: catalogFolders,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+                metadataSyncConflictItems: metadataSyncConflictItems,
                 recentWork: recentWork,
                 starredWork: starredWork
             ),
@@ -705,6 +715,8 @@ public final class AppModel {
             totalAssetCount: try repository.assetCount(),
             recentWork: recentWork,
             starredWork: starredWork,
+            pendingMetadataSyncItems: pendingMetadataSyncItems,
+            metadataSyncConflictItems: metadataSyncConflictItems,
             previewGenerationQueueStates: try repository.previewGenerationQueueStates(),
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
@@ -727,6 +739,8 @@ public final class AppModel {
         let sourceRoots = try catalog.repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         let catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
+        let pendingMetadataSyncItems = try catalog.repository.pendingMetadataSyncItems()
+        let metadataSyncConflictItems = try catalog.repository.metadataSyncConflictItems()
         let recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
         let model = AppModel(
@@ -735,6 +749,7 @@ public final class AppModel {
                 catalogFolders: catalogFolders,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+                metadataSyncConflictItems: metadataSyncConflictItems,
                 recentWork: recentWork,
                 starredWork: starredWork
             ),
@@ -744,8 +759,8 @@ public final class AppModel {
             catalog: catalog,
             recentWork: recentWork,
             starredWork: starredWork,
-            pendingMetadataSyncItems: try catalog.repository.pendingMetadataSyncItems(),
-            metadataSyncConflictItems: try catalog.repository.metadataSyncConflictItems(),
+            pendingMetadataSyncItems: pendingMetadataSyncItems,
+            metadataSyncConflictItems: metadataSyncConflictItems,
             previewGenerationQueueStates: try catalog.repository.previewGenerationQueueStates(),
             savedAssetSets: savedAssetSets,
             catalogFolders: catalogFolders,
@@ -809,6 +824,12 @@ public final class AppModel {
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
             evaluationKindFilter = kind
+            selectedView = .grid
+            try reload()
+        case .metadataSyncConflicts:
+            selectedAssetSetID = nil
+            clearLibraryQueryFilters()
+            metadataSyncConflictFilter = true
             selectedView = .grid
             try reload()
         case .assetSet(let id):
@@ -1453,6 +1474,7 @@ public final class AppModel {
         guard let catalog else { return }
         pendingMetadataSyncItems = try catalog.repository.pendingMetadataSyncItems()
         metadataSyncConflictItems = try catalog.repository.metadataSyncConflictItems()
+        rebuildSidebarSections()
     }
 
     private func refreshPreviewGenerationQueueStates() throws {
@@ -2360,6 +2382,9 @@ public final class AppModel {
         if let evaluationKindFilter {
             predicates.append(.evaluationKind(evaluationKindFilter))
         }
+        if metadataSyncConflictFilter {
+            predicates.append(.metadataSyncConflict)
+        }
         return predicates.isEmpty ? nil : SetQuery(predicates: predicates)
     }
 
@@ -2377,6 +2402,7 @@ public final class AppModel {
         captureDateEndFilter = nil
         availabilityFilter = nil
         evaluationKindFilter = nil
+        metadataSyncConflictFilter = false
     }
 
     private func currentLibraryAssetCount(repository: CatalogRepository) throws -> Int {
@@ -2444,6 +2470,7 @@ public final class AppModel {
             catalogFolders: catalogFolders,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+            metadataSyncConflictItems: metadataSyncConflictItems,
             recentWork: recentWork,
             starredWork: starredWork
         )
@@ -2992,6 +3019,7 @@ public final class AppModel {
         catalogFolders: [CatalogFolder] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
+        metadataSyncConflictItems: [MetadataSyncItem] = [],
         recentWork: [AppWorkActivity] = [],
         starredWork: [AppWorkActivity] = []
     ) -> [SidebarSection] {
@@ -3019,6 +3047,15 @@ public final class AppModel {
         let evaluationRows = evaluationSignalSidebarRows(catalogEvaluationKindSummaries)
         if !evaluationRows.isEmpty {
             sections.append(SidebarSection(title: "AI", rows: evaluationRows))
+        }
+        if !metadataSyncConflictItems.isEmpty {
+            sections.append(SidebarSection(title: "Sync", rows: [
+                SidebarRow(
+                    id: "sync-xmp-conflicts",
+                    title: "XMP Conflicts (\(metadataSyncConflictItems.count))",
+                    target: .metadataSyncConflicts
+                )
+            ]))
         }
         let visibleSavedAssetSets = Self.visibleSavedAssetSets(savedAssetSets)
         let starredRows = visibleSavedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0) }
