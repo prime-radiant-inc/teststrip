@@ -76,6 +76,53 @@ final class DecodeRegistryTests: XCTestCase {
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("x3f"))
     }
 
+    func testImageIOCapabilityMatrixMarksCommonStillFormatsAsWorking() {
+        let provider = ImageIODecodeProvider()
+
+        let jpeg = provider.capability(forFileExtension: "JPG")
+
+        XCTAssertEqual(jpeg?.support, .working)
+        XCTAssertEqual(jpeg?.fileExtension, "jpg")
+        XCTAssertEqual(jpeg?.providerName, "ImageIO")
+        XCTAssertTrue(jpeg?.canReadMetadata == true)
+        XCTAssertTrue(jpeg?.canRenderPreview == true)
+        XCTAssertTrue(jpeg?.canRenderFullImage == true)
+    }
+
+    func testImageIOCapabilityMatrixMarksNamedRawFamiliesAsBestEffort() {
+        let provider = ImageIODecodeProvider()
+
+        for fileExtension in ["dng", "crw", "cr2", "raf", "x3f"] {
+            let capability = provider.capability(forFileExtension: fileExtension)
+
+            XCTAssertEqual(capability?.support, .bestEffort, fileExtension)
+            XCTAssertTrue(capability?.canReadMetadata == true, fileExtension)
+            XCTAssertTrue(capability?.canUseEmbeddedPreview == true, fileExtension)
+            XCTAssertTrue(capability?.canRenderPreview == true, fileExtension)
+            XCTAssertFalse(capability?.canRenderFullImage == true, fileExtension)
+            XCTAssertTrue(capability?.note.localizedCaseInsensitiveContains("OS") == true, fileExtension)
+        }
+    }
+
+    func testImageIOCapabilityMatrixRejectsUnsupportedLongTailFormats() {
+        let capability = ImageIODecodeProvider().capability(forFileExtension: "lytro")
+
+        XCTAssertEqual(capability?.support, .unsupported)
+        XCTAssertFalse(capability?.canReadMetadata == true)
+        XCTAssertFalse(capability?.canRenderPreview == true)
+    }
+
+    func testRegistryReturnsSelectedProviderCapability() throws {
+        let provider = FakeDecodeProvider(name: "fake", extensions: ["dng"])
+        let registry = DecodeRegistry(providers: [provider])
+
+        let capability = try registry.capability(for: URL(fileURLWithPath: "/tmp/photo.DNG"))
+
+        XCTAssertEqual(capability.providerName, "fake")
+        XCTAssertEqual(capability.fileExtension, "dng")
+        XCTAssertEqual(capability.support, .bestEffort)
+    }
+
     func testImageIOCanDecodeUsesSharedSupportedExtensions() {
         let provider = ImageIODecodeProvider()
 

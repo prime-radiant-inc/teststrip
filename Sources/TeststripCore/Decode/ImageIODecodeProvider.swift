@@ -4,17 +4,65 @@ import ImageIO
 public struct ImageIODecodeProvider: DecodeProvider {
     public let name = "ImageIO"
 
-    public static let supportedExtensions: Set<String> = [
-        "jpg", "jpeg", "heic", "tif", "tiff", "png",
+    public static let workingStillExtensions: Set<String> = [
+        "jpg", "jpeg", "heic", "tif", "tiff", "png"
+    ]
+
+    public static let bestEffortRawExtensions: Set<String> = [
         "dng", "crw", "cr2", "cr3", "nef", "arw", "raf", "rwl", "rw2", "srw", "orf", "x3f"
     ]
+
+    public static let supportedExtensions: Set<String> = [
+        workingStillExtensions,
+        bestEffortRawExtensions
+    ].reduce(into: Set<String>()) { result, extensions in
+        result.formUnion(extensions)
+    }
 
     private let extensions = Self.supportedExtensions
 
     public init() {}
 
     public func canDecode(url: URL) -> Bool {
-        extensions.contains(url.pathExtension.lowercased())
+        capability(forFileExtension: url.pathExtension)?.support != .unsupported
+    }
+
+    public func capability(forFileExtension fileExtension: String) -> DecodeCapability? {
+        let normalizedExtension = fileExtension.lowercased()
+        if Self.workingStillExtensions.contains(normalizedExtension) {
+            return DecodeCapability(
+                providerName: name,
+                fileExtension: normalizedExtension,
+                support: .working,
+                canReadMetadata: true,
+                canUseEmbeddedPreview: false,
+                canRenderPreview: true,
+                canRenderFullImage: true,
+                note: "ImageIO supports this still-image format for metadata and preview rendering."
+            )
+        }
+        if extensions.contains(normalizedExtension) {
+            return DecodeCapability(
+                providerName: name,
+                fileExtension: normalizedExtension,
+                support: .bestEffort,
+                canReadMetadata: true,
+                canUseEmbeddedPreview: true,
+                canRenderPreview: true,
+                canRenderFullImage: false,
+                note: "ImageIO RAW support is OS and camera dependent; Teststrip catalogs the file and attempts cached previews without promising full RAW decode."
+            )
+        }
+        return DecodeCapability(
+            providerName: name,
+            fileExtension: normalizedExtension,
+            support: .unsupported,
+            canReadMetadata: false,
+            canUseEmbeddedPreview: false,
+            canRenderPreview: false,
+            canRenderFullImage: false,
+            note: "ImageIO is not registered for this extension."
+        )
     }
 
     public func metadata(for url: URL) throws -> DecodeMetadata {

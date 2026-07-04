@@ -14,4 +14,13 @@ public struct DecodeRegistry: Sendable {
         let ext = url.pathExtension.lowercased()
         throw TeststripError.unsupportedFormat("no decode provider for \(ext)")
     }
+
+    public func capability(for url: URL) throws -> DecodeCapability {
+        let provider = try provider(for: url)
+        guard let capability = provider.capability(forFileExtension: url.pathExtension) else {
+            let ext = url.pathExtension.lowercased()
+            throw TeststripError.unsupportedFormat("no decode capability for \(ext)")
+        }
+        return capability
+    }
 }
