@@ -2431,6 +2431,16 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.loupePreviewURL(for: asset.id), microPreview)
     }
 
+    func testSelectedPreviewURLUsesSelectedAssetLoupePreview() throws {
+        let (model, previewCache, asset) = try makeModelWithPreviewCache(named: "selected-preview")
+        let largePreview = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large))
+        try writePreviewPlaceholder(to: largePreview)
+
+        model.select(asset.id)
+
+        XCTAssertEqual(model.selectedPreviewURL, largePreview)
+    }
+
     func testGridPreviewURLFallsBackToMicroPreview() throws {
         let (model, previewCache, asset) = try makeModelWithPreviewCache(named: "grid-micro")
         let microPreview = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .micro))

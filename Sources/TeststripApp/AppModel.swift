@@ -353,6 +353,10 @@ public final class AppModel {
         assets.first { $0.id == selectedAssetID }
     }
 
+    public var selectedPreviewURL: URL? {
+        selectedAssetID.flatMap { loupePreviewURL(for: $0) }
+    }
+
     public var hasMoreAssets: Bool {
         assetPageOffset + assets.count < totalAssetCount
     }

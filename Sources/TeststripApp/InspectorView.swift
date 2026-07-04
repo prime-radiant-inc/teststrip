@@ -9,6 +9,7 @@ struct InspectorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let asset = model.selectedAsset {
+                selectedPreview(for: asset)
                 Text(asset.originalURL.lastPathComponent)
                     .font(.headline)
                 Text("Availability: \(asset.availability.rawValue)")
@@ -46,6 +47,23 @@ struct InspectorView: View {
         }
         .padding()
         .frame(minWidth: 260)
+    }
+
+    private func selectedPreview(for asset: Asset) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.gray.opacity(0.18))
+            CachedPreviewImage(
+                previewURL: model.selectedPreviewURL,
+                scaling: .fit,
+                cornerRadius: 5,
+                cacheGeneration: model.previewCacheGeneration(for: asset.id)
+            )
+            .padding(4)
+        }
+        .aspectRatio(3.0 / 2.0, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .accessibilityLabel("Selected preview")
     }
 
     private func previewFailureStatus(_ failures: [PreviewGenerationQueueState]) -> some View {
