@@ -119,6 +119,7 @@ extension EvaluationKind {
 
 public enum SidebarRowTarget: Equatable, Sendable {
     case allPhotographs
+    case people
     case placeholder
     case reviewQueue(ReviewQueue)
     case folder(String)
@@ -459,6 +460,9 @@ public final class AppModel {
     }
 
     public var libraryTitle: String {
+        if selectedView == .people {
+            return "People"
+        }
         if let selectedAssetSet {
             return selectedAssetSet.name
         }
@@ -1001,6 +1005,10 @@ public final class AppModel {
         case .allPhotographs:
             selectedAssetSetID = nil
             try clearLibraryFilters()
+        case .people:
+            selectedAssetSetID = nil
+            clearLibraryQueryFilters()
+            selectedView = .people
         case .reviewQueue(let queue):
             try applyReviewQueue(queue)
         case .folder(let path):
@@ -3456,6 +3464,7 @@ public final class AppModel {
             SidebarRow(
                 id: "library-people",
                 title: "People",
+                target: .people,
                 liveMockupPlaceholder: .peopleSidebar
             )
         )
@@ -3510,11 +3519,26 @@ public final class AppModel {
         }
         let workRows = Self.workSidebarRows(recentWork: recentWork, starredWork: starredWork)
         if workRows.isEmpty {
-            sections.append(SidebarSection(title: "Work", rows: ["Recent", "Starred"]))
+            sections.append(SidebarSection(title: "Work", rows: workPlaceholderSidebarRows()))
         } else {
             sections.append(SidebarSection(title: "Work", rows: workRows))
         }
         return sections
+    }
+
+    private static func workPlaceholderSidebarRows() -> [SidebarRow] {
+        [
+            SidebarRow(
+                id: "work-recent-placeholder",
+                title: "Recent",
+                liveMockupPlaceholder: .workHistory
+            ),
+            SidebarRow(
+                id: "work-starred-placeholder",
+                title: "Starred",
+                liveMockupPlaceholder: .workHistory
+            )
+        ]
     }
 
     private static func reviewQueueSidebarRows() -> [SidebarRow] {

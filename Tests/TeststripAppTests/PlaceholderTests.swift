@@ -18,6 +18,26 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let peopleRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-people" })
 
         XCTAssertEqual(peopleRow.liveMockupPlaceholder, .peopleSidebar)
-        XCTAssertFalse(peopleRow.isSelectable)
+        XCTAssertTrue(peopleRow.isSelectable)
+        XCTAssertEqual(peopleRow.target, .people)
+    }
+
+    func testSelectingPeopleSidebarRowOpensPeopleView() throws {
+        let model = AppModel.demo()
+        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
+        let peopleRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-people" })
+
+        try model.selectSidebarRow(peopleRow)
+
+        XCTAssertEqual(model.selectedView, .people)
+    }
+
+    func testEmptyWorkSidebarRowsAreMarkedAsLiveMockupPlaceholders() throws {
+        let model = AppModel.demo()
+        let workSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Work" })
+
+        XCTAssertEqual(workSection.rows.map(\.title), ["Recent", "Starred"])
+        XCTAssertTrue(workSection.rows.allSatisfy { $0.liveMockupPlaceholder == .workHistory })
+        XCTAssertTrue(workSection.rows.allSatisfy { !$0.isSelectable })
     }
 }

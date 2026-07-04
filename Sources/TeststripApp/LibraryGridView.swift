@@ -36,7 +36,9 @@ struct LibraryGridView: View {
 
     var body: some View {
         Group {
-            if model.assets.isEmpty {
+            if model.selectedView == .people {
+                PeopleView(model: model)
+            } else if model.assets.isEmpty {
                 ScrollView {
                     emptyLibraryView
                 }
@@ -67,6 +69,8 @@ struct LibraryGridView: View {
                     .tag(LibraryViewMode.loupe)
                 Label("Compare", systemImage: "rectangle.grid.2x2")
                     .tag(LibraryViewMode.compare)
+                Label("People", systemImage: "person.2")
+                    .tag(LibraryViewMode.people)
             }
             .pickerStyle(.segmented)
             .labelsHidden()

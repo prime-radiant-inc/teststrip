@@ -37,6 +37,8 @@ struct SidebarView: View {
         switch target {
         case .allPhotographs:
             return "photo.on.rectangle"
+        case .people:
+            return "person.2"
         case .reviewQueue(let queue):
             return reviewQueueIconName(queue)
         case .folder:

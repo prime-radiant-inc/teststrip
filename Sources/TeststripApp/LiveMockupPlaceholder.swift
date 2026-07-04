@@ -13,15 +13,24 @@ public struct LiveMockupPlaceholder: Equatable, Hashable, Identifiable, Sendable
 
 public extension LiveMockupPlaceholder {
     static let peopleSidebar = LiveMockupPlaceholders.peopleSidebar
+    static let peopleFaceActions = LiveMockupPlaceholders.peopleFaceActions
     static let agenticSearch = LiveMockupPlaceholders.agenticSearch
+    static let workHistory = LiveMockupPlaceholders.workHistory
 }
 
 public enum LiveMockupPlaceholders {
     public static let peopleSidebar = LiveMockupPlaceholder(
         id: "sidebar.people",
-        title: "People sidebar",
+        title: "People navigation",
         intendedBehavior: "Browse face groups and named people once people recognition and grouping are productized.",
-        currentFallback: "Disabled sidebar row; face-related signals can appear under AI after evaluation."
+        currentFallback: "Selectable live mockup with placeholder face groups and people counts."
+    )
+
+    public static let peopleFaceActions = LiveMockupPlaceholder(
+        id: "people.face-actions",
+        title: "People face actions",
+        intendedBehavior: "Confirm, name, merge, or dismiss face clusters created by local recognition.",
+        currentFallback: "Disabled controls inside the placeholder People view."
     )
 
     public static let agenticSearch = LiveMockupPlaceholder(
@@ -31,9 +40,18 @@ public enum LiveMockupPlaceholders {
         currentFallback: "Plain catalog text search plus explicit filter controls."
     )
 
+    public static let workHistory = LiveMockupPlaceholder(
+        id: "work.history",
+        title: "Work history",
+        intendedBehavior: "Navigate recent and starred culling, collecting, searching, sorting, and editing sessions.",
+        currentFallback: "Disabled sidebar rows until real work activities have been recorded."
+    )
+
     public static let all: [LiveMockupPlaceholder] = [
         peopleSidebar,
-        agenticSearch
+        peopleFaceActions,
+        agenticSearch,
+        workHistory
     ]
 }
 
