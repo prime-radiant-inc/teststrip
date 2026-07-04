@@ -85,6 +85,8 @@ struct SidebarView: View {
             return "text.viewfinder"
         case .likelyIssues:
             return "exclamationmark.triangle"
+        case .providerFailures:
+            return "bolt.horizontal.circle"
         }
     }
 

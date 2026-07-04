@@ -18,6 +18,7 @@ public struct SetQuery: Codable, Equatable, Sendable {
         case evaluationKind(EvaluationKind)
         case unevaluated
         case likelyIssue
+        case evaluationFailure
         case metadataSyncPending
         case metadataSyncConflict
         case importBatch(String)

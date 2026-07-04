@@ -455,6 +455,7 @@ public final class CatalogRepository {
         try database.transaction {
             for signal in signals {
                 try recordEvaluationSignal(signal)
+                try clearEvaluationFailure(assetID: signal.assetID, provider: signal.provenance.provider)
             }
         }
     }
@@ -470,6 +471,47 @@ public final class CatalogRepository {
             bindings: [assetID.rawValue]
         )
         return try rows.map(decodeEvaluationSignal)
+    }
+
+    public func recordEvaluationFailure(assetID: AssetID, provider: String, message: String) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT INTO evaluation_failures (
+                asset_id,
+                provider,
+                message,
+                failed_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(asset_id, provider) DO UPDATE SET
+                message = excluded.message,
+                failed_at = excluded.failed_at,
+                updated_at = excluded.updated_at
+            """,
+            bindings: [
+                assetID.rawValue,
+                provider,
+                message,
+                now,
+                now
+            ]
+        )
+    }
+
+    public func clearEvaluationFailure(assetID: AssetID, provider: String) throws {
+        try database.execute(
+            """
+            DELETE FROM evaluation_failures
+            WHERE asset_id = ?
+              AND provider = ?
+            """,
+            bindings: [
+                assetID.rawValue,
+                provider
+            ]
+        )
     }
 
     public func evaluationKindSummaries() throws -> [CatalogEvaluationKindSummary] {
@@ -1024,6 +1066,10 @@ public final class CatalogRepository {
                           )
                     )
                     """
+                )
+            case .evaluationFailure:
+                clauses.append(
+                    "EXISTS (SELECT 1 FROM evaluation_failures WHERE evaluation_failures.asset_id = assets.id)"
                 )
             case .metadataSyncPending:
                 clauses.append(

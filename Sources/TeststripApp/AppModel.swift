@@ -93,6 +93,7 @@ public enum ReviewQueue: String, Equatable, Hashable, Sendable {
     case facesFound
     case ocrFound
     case likelyIssues
+    case providerFailures
 }
 
 extension EvaluationKind {
@@ -603,6 +604,7 @@ public final class AppModel {
     public var needsKeywordsFilter: Bool
     public var needsEvaluationFilter: Bool
     public var likelyIssuesFilter: Bool
+    public var providerFailuresFilter: Bool
     public var metadataSyncPendingFilter: Bool
     public var metadataSyncConflictFilter: Bool
     public var savedAssetSets: [AssetSet]
@@ -638,6 +640,9 @@ public final class AppModel {
 
     @ObservationIgnored
     private var evaluationAssetIDsByItemID: [WorkSessionID: AssetID]
+
+    @ObservationIgnored
+    private var evaluationProvidersByItemID: [WorkSessionID: String]
 
     @ObservationIgnored
     private var metadataSyncAssetIDsByItemID: [WorkSessionID: AssetID]
@@ -1033,6 +1038,9 @@ public final class AppModel {
         if likelyIssuesFilter {
             Self.append("Likely Issues", to: &chips)
         }
+        if providerFailuresFilter {
+            Self.append("Provider Failures", to: &chips)
+        }
         if metadataSyncPendingFilter {
             Self.append("XMP Pending", to: &chips)
         }
@@ -1126,6 +1134,9 @@ public final class AppModel {
         }
         if likelyIssuesFilter {
             Self.append("Likely Issues", to: &parts)
+        }
+        if providerFailuresFilter {
+            Self.append("Provider Failures", to: &parts)
         }
         if metadataSyncPendingFilter {
             Self.append("XMP Pending", to: &parts)
@@ -1248,6 +1259,7 @@ public final class AppModel {
         self.needsKeywordsFilter = false
         self.needsEvaluationFilter = false
         self.likelyIssuesFilter = false
+        self.providerFailuresFilter = false
         self.metadataSyncPendingFilter = false
         self.metadataSyncConflictFilter = false
         self.savedAssetSets = savedAssetSets
@@ -1264,6 +1276,7 @@ public final class AppModel {
         self.workerExecutableURL = workerExecutableURL
         self.previewCacheGenerationsByAssetID = [:]
         self.evaluationAssetIDsByItemID = [:]
+        self.evaluationProvidersByItemID = [:]
         self.metadataSyncAssetIDsByItemID = [:]
         self.availabilityAssetIDsByItemID = [:]
         self.evaluationSignalGenerationsByAssetID = [:]
@@ -2851,10 +2864,12 @@ public final class AppModel {
             totalUnitCount: 1
         )
         evaluationAssetIDsByItemID[itemID] = assetID
+        evaluationProvidersByItemID[itemID] = provider
         do {
             try workerSupervisor.enqueue(item, command: .runEvaluation(assetID: assetID, provider: provider))
         } catch {
             evaluationAssetIDsByItemID[itemID] = nil
+            evaluationProvidersByItemID[itemID] = nil
             throw error
         }
         syncBackgroundWorkQueueFromSupervisor()
@@ -3084,8 +3099,23 @@ public final class AppModel {
               let assetID = evaluationAssetIDsByItemID.removeValue(forKey: itemID) else {
             return
         }
+        let provider = evaluationProvidersByItemID.removeValue(forKey: itemID)
+        if let provider {
+            do {
+                try catalog?.repository.clearEvaluationFailure(assetID: assetID, provider: provider)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
         evaluationSignalGenerationsByAssetID[assetID, default: 0] += 1
         refreshCatalogEvaluationKindSummaries()
+        if providerFailuresFilter {
+            do {
+                try reload()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private static func previewAssetID(from itemID: WorkSessionID) -> AssetID? {
@@ -3282,11 +3312,26 @@ public final class AppModel {
     }
 
     private func releaseInactiveEvaluationContexts(in queue: BackgroundWorkQueue) {
-        for itemID in evaluationAssetIDsByItemID.keys {
+        for itemID in Array(evaluationAssetIDsByItemID.keys) {
             guard let item = queue.item(id: itemID), [.cancelled, .failed].contains(item.status) else {
                 continue
             }
-            evaluationAssetIDsByItemID[itemID] = nil
+            let assetID = evaluationAssetIDsByItemID.removeValue(forKey: itemID)
+            let provider = evaluationProvidersByItemID.removeValue(forKey: itemID)
+            if item.status == .failed,
+               let assetID,
+               let provider,
+               let catalog {
+                do {
+                    try catalog.repository.recordEvaluationFailure(assetID: assetID, provider: provider, message: item.detail)
+                    try refreshCatalogSidebarCounts()
+                    if providerFailuresFilter {
+                        try reload()
+                    }
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
         }
     }
 
@@ -3478,6 +3523,8 @@ public final class AppModel {
             evaluationKindFilter = .ocrText
         case .likelyIssues:
             likelyIssuesFilter = true
+        case .providerFailures:
+            providerFailuresFilter = true
         }
         selectedView = .grid
         try reload()
@@ -3748,6 +3795,9 @@ public final class AppModel {
         if likelyIssuesFilter {
             Self.append(.likelyIssue, to: &predicates)
         }
+        if providerFailuresFilter {
+            Self.append(.evaluationFailure, to: &predicates)
+        }
         if metadataSyncPendingFilter {
             Self.append(.metadataSyncPending, to: &predicates)
         }
@@ -3774,6 +3824,7 @@ public final class AppModel {
         needsKeywordsFilter = false
         needsEvaluationFilter = false
         likelyIssuesFilter = false
+        providerFailuresFilter = false
         metadataSyncPendingFilter = false
         metadataSyncConflictFilter = false
     }
@@ -4600,7 +4651,8 @@ public final class AppModel {
         .needsEvaluation,
         .facesFound,
         .ocrFound,
-        .likelyIssues
+        .likelyIssues,
+        .providerFailures
     ]
 
     private static func reviewQueueTitle(_ queue: ReviewQueue) -> String {
@@ -4621,6 +4673,8 @@ public final class AppModel {
             return "OCR Found"
         case .likelyIssues:
             return "Likely Issues"
+        case .providerFailures:
+            return "Provider Failures"
         }
     }
 
@@ -4650,6 +4704,8 @@ public final class AppModel {
             return SetQuery(predicates: [.evaluationKind(.ocrText)])
         case .likelyIssues:
             return SetQuery(predicates: [.likelyIssue])
+        case .providerFailures:
+            return SetQuery(predicates: [.evaluationFailure])
         }
     }
 

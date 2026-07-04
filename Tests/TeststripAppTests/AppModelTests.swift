@@ -2002,15 +2002,18 @@ final class AppModelTests: XCTestCase {
         let faceFound = makeAsset(id: "face-found", path: "/Photos/Job/face-found.jpg", rating: 3, keywords: ["tagged"])
         let ocrFound = makeAsset(id: "ocr-found", path: "/Photos/Job/ocr-found.jpg", rating: 3, keywords: ["tagged"])
         let likelyIssue = makeAsset(id: "likely-issue", path: "/Photos/Job/likely-issue.jpg", rating: 3, keywords: ["tagged"])
+        let providerFailure = makeAsset(id: "provider-failure", path: "/Photos/Job/provider-failure.jpg", rating: 3, keywords: ["tagged"])
         let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
-        try repository.upsert([pick, reject, fiveStar, unreviewed, needsKeywords, faceFound, ocrFound, likelyIssue])
+        try repository.upsert([pick, reject, fiveStar, unreviewed, needsKeywords, faceFound, ocrFound, likelyIssue, providerFailure])
+        try repository.recordEvaluationFailure(assetID: providerFailure.id, provider: "local-http-model", message: "model timed out")
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: pick.id, kind: .faceQuality, value: .score(0.82), confidence: 0.82, provenance: provenance),
             EvaluationSignal(assetID: reject.id, kind: .object, value: .label("camera"), confidence: 0.74, provenance: provenance),
             EvaluationSignal(assetID: fiveStar.id, kind: .object, value: .label("receipt"), confidence: 0.69, provenance: provenance),
             EvaluationSignal(assetID: faceFound.id, kind: .faceCount, value: .count(2), confidence: 0.91, provenance: provenance),
             EvaluationSignal(assetID: ocrFound.id, kind: .ocrText, value: .text("invoice"), confidence: 0.94, provenance: provenance),
-            EvaluationSignal(assetID: likelyIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance)
+            EvaluationSignal(assetID: likelyIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance),
+            EvaluationSignal(assetID: providerFailure.id, kind: .object, value: .label("person"), confidence: 0.77, provenance: provenance)
         ])
         let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
         let catalog = AppCatalog(
@@ -2033,7 +2036,8 @@ final class AppModelTests: XCTestCase {
             "Needs Evaluation",
             "Faces Found",
             "OCR Found",
-            "Likely Issues"
+            "Likely Issues",
+            "Provider Failures"
         ])
         XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
         XCTAssertEqual(reviewQueueCount("Rejects", in: model), "1")
@@ -2043,6 +2047,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(reviewQueueCount("Faces Found", in: model), "1")
         XCTAssertEqual(reviewQueueCount("OCR Found", in: model), "1")
         XCTAssertEqual(reviewQueueCount("Likely Issues", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("Provider Failures", in: model), "1")
 
         let picksRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Picks" })
         try model.selectSidebarRow(picksRow)
@@ -2108,6 +2113,15 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.likelyIssuesFilter)
         XCTAssertNil(model.evaluationKindFilter)
         XCTAssertEqual(model.assets.map(\.id), [likelyIssue.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+
+        let providerFailuresRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Provider Failures" })
+        try model.selectSidebarRow(providerFailuresRow)
+
+        XCTAssertTrue(model.providerFailuresFilter)
+        XCTAssertFalse(model.likelyIssuesFilter)
+        XCTAssertNil(model.evaluationKindFilter)
+        XCTAssertEqual(model.assets.map(\.id), [providerFailure.id])
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 
@@ -4651,6 +4665,41 @@ final class AppModelTests: XCTestCase {
 
         try await waitForBackgroundWorkStatus(.failed, itemID: itemID, in: model)
         XCTAssertEqual(model.previewGenerationQueueStates.first?.lastErrorMessage, "could not render preview")
+    }
+
+    @MainActor
+    func testWorkerEvaluationFailureRecordsProviderFailureReviewQueue() async throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let asset = makeAsset(id: "evaluation-provider-failure", path: "/Photos/evaluation-provider-failure.jpg", rating: 0, keywords: ["tagged"])
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "evaluation-provider-failure",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        let itemID = WorkSessionID(rawValue: "evaluation-\(asset.id.rawValue)-local-http-model")
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
+
+        try model.requestEvaluation(assetID: asset.id, provider: "local-http-model")
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.failed(
+            itemID: itemID,
+            message: "model timed out"
+        )))
+
+        try await waitForBackgroundWorkStatus(.failed, itemID: itemID, in: model)
+        XCTAssertEqual(try repository.assetCount(matching: SetQuery(predicates: [.evaluationFailure])), 1)
+        XCTAssertEqual(reviewQueueCount("Provider Failures", in: model), "1")
+
+        let reviewSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Review" })
+        let providerFailuresRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Provider Failures" })
+        try model.selectSidebarRow(providerFailuresRow)
+
+        XCTAssertTrue(model.providerFailuresFilter)
+        XCTAssertEqual(model.assets.map(\.id), [asset.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
     }
 
     @MainActor

@@ -788,6 +788,38 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(matching: query), 1)
     }
 
+    func testEvaluationFailureQueryMatchesProviderFailuresAndClearsAfterSameProviderSuccess() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-failure-query")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let failed = Asset.testAsset(id: AssetID(rawValue: "failed"), path: "/Volumes/NAS/Job/failed.jpg", rating: 0)
+        let clean = Asset.testAsset(id: AssetID(rawValue: "clean"), path: "/Volumes/NAS/Job/clean.jpg", rating: 0)
+        let localProvenance = ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+        let appleProvenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        let failureQuery = SetQuery(predicates: [.evaluationFailure])
+        try repository.upsert([failed, clean])
+
+        try repository.recordEvaluationFailure(assetID: failed.id, provider: "local-http-model", message: "model timed out")
+
+        XCTAssertEqual(try repository.allAssets(matching: failureQuery, limit: 10).map(\.id), [failed.id])
+        XCTAssertEqual(try repository.assetCount(matching: failureQuery), 1)
+
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: failed.id, kind: .object, value: .label("person"), confidence: 0.77, provenance: appleProvenance)
+        ])
+
+        XCTAssertEqual(try repository.allAssets(matching: failureQuery, limit: 10).map(\.id), [failed.id])
+        XCTAssertEqual(try repository.assetCount(matching: failureQuery), 1)
+
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: failed.id, kind: .focus, value: .score(0.91), confidence: 0.82, provenance: localProvenance)
+        ])
+
+        XCTAssertEqual(try repository.allAssets(matching: failureQuery, limit: 10), [])
+        XCTAssertEqual(try repository.assetCount(matching: failureQuery), 0)
+    }
+
     func testRecordingEvaluationSignalReplacesSameProviderSignal() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-upsert")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
