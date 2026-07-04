@@ -34,6 +34,22 @@ extract_worker_catalog_path() {
   ' <<< "$1"
 }
 
+select_worker_listing_for_catalog_path() {
+  local catalog_path="$1"
+  local listings="$2"
+  while IFS= read -r listing; do
+    if [[ "$(extract_worker_catalog_path "$listing")" == "$catalog_path" ]]; then
+      printf '%s\n' "$listing"
+      return 0
+    fi
+  done <<< "$listings"
+}
+
+select_latest_helper_worker_listing() {
+  local listings="$1"
+  /usr/bin/awk '/Contents\/Helpers\/TeststripWorker/ { latest = $0 } END { if (latest != "") print latest }' <<< "$listings"
+}
+
 extract_app_support_directory() {
   /usr/bin/awk '
     {
@@ -65,6 +81,18 @@ preview_pending_count() {
   }
 }
 
+active_import_count() {
+  local catalog_path="$1"
+  if [[ -z "$catalog_path" || ! -f "$catalog_path" ]]; then
+    echo "unknown"
+    return 1
+  fi
+  /usr/bin/sqlite3 "$catalog_path" "select count(*) from work_sessions where kind = 'ingest' and status in ('queued', 'running', 'paused');" 2>/dev/null || {
+    echo "unknown"
+    return 1
+  }
+}
+
 wait_until_preview_drained() {
   local catalog_path="$1"
   local timeout_seconds="$2"
@@ -73,6 +101,21 @@ wait_until_preview_drained() {
 
   while [[ "$SECONDS" -le "$deadline" ]]; do
     if [[ "$(preview_pending_count "$catalog_path")" == "0" ]]; then
+      return 0
+    fi
+    sleep "$poll_seconds"
+  done
+  return 1
+}
+
+wait_until_import_finished() {
+  local catalog_path="$1"
+  local timeout_seconds="$2"
+  local poll_seconds="$3"
+  local deadline=$((SECONDS + timeout_seconds))
+
+  while [[ "$SECONDS" -le "$deadline" ]]; do
+    if [[ "$(active_import_count "$catalog_path")" == "0" ]]; then
       return 0
     fi
     sleep "$poll_seconds"

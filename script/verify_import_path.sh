@@ -8,6 +8,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 METRIC_PREVIEW_SAMPLE_SECONDS="${TESTSTRIP_IMPORT_METRIC_PREVIEW_SAMPLE_SECONDS:-2}"
 METRIC_PREVIEW_DRAIN_TIMEOUT_SECONDS="${TESTSTRIP_IMPORT_METRIC_PREVIEW_DRAIN_TIMEOUT_SECONDS:-30}"
 METRIC_PREVIEW_DRAIN_POLL_SECONDS="${TESTSTRIP_IMPORT_METRIC_PREVIEW_DRAIN_POLL_SECONDS:-0.25}"
+METRIC_IMPORT_COMPLETION_TIMEOUT_SECONDS="${TESTSTRIP_IMPORT_METRIC_COMPLETION_TIMEOUT_SECONDS:-75}"
+METRIC_IMPORT_COMPLETION_POLL_SECONDS="${TESTSTRIP_IMPORT_METRIC_COMPLETION_POLL_SECONDS:-0.25}"
 IMPORT_SOURCE_DIR="${TESTSTRIP_AX_IMPORT_SOURCE_DIR:-}"
 
 source "$SCRIPT_DIR/import_verifier_metrics.sh"
@@ -264,12 +266,13 @@ feedback_visible_ms="$(/usr/bin/awk -F= '/^import_feedback_visible_ms=/ { print 
 if [[ -n "$feedback_visible_ms" ]]; then
   emit_import_metric "feedback_visible_seconds" "$(elapsed_seconds_from_ms 0 "$feedback_visible_ms")"
 fi
+emit_import_metric "target_visible_seconds" "$(elapsed_seconds_from_ms "$import_started_ms" "$import_completed_ms")"
 emit_import_metric "import_duration_seconds" "$(elapsed_seconds_from_ms "$import_started_ms" "$import_completed_ms")"
 emit_import_metric "import_count" "$IMPORT_COUNT"
 
 app_pid="$(pgrep -n -x "$APP_NAME" || true)"
-worker_listing="$(pgrep -fl "[T]eststripWorker" | /usr/bin/grep "Contents/Helpers/TeststripWorker" | /usr/bin/tail -n 1 || true)"
-worker_pid="$(/usr/bin/awk 'NF { print $1 }' <<< "$worker_listing")"
+worker_listings="$(pgrep -fl "[T]eststripWorker" || true)"
+worker_listing="$(select_latest_helper_worker_listing "$worker_listings")"
 catalog_path="$(extract_worker_catalog_path "$worker_listing")"
 if [[ -z "$catalog_path" ]]; then
   app_command="$(/bin/ps eww -p "$app_pid" -o command= 2>/dev/null || true)"
@@ -278,11 +281,29 @@ if [[ -z "$catalog_path" ]]; then
     catalog_path="$(catalog_path_for_app_support_directory "$app_support_directory")"
   fi
 fi
+if [[ -n "$catalog_path" ]]; then
+  worker_listing="$(select_worker_listing_for_catalog_path "$catalog_path" "$worker_listings")"
+  if [[ -z "$worker_listing" ]]; then
+    worker_listing="$(select_latest_helper_worker_listing "$worker_listings")"
+  fi
+fi
+worker_pid="$(/usr/bin/awk 'NF { print $1 }' <<< "$worker_listing")"
 
 emit_import_metric "app_cpu_percent" "$(process_cpu_percent "$app_pid")"
 emit_import_metric "worker_cpu_percent" "$(process_cpu_percent "$worker_pid")"
 
 if [[ -n "$catalog_path" && -f "$catalog_path" ]]; then
+  import_completion_started_ms="$(metric_now_ms)"
+  if wait_until_import_finished "$catalog_path" "$METRIC_IMPORT_COMPLETION_TIMEOUT_SECONDS" "$METRIC_IMPORT_COMPLETION_POLL_SECONDS"; then
+    import_completion_completed_ms="$(metric_now_ms)"
+    emit_import_metric "import_completion_completed" "true"
+    emit_import_metric "import_completion_wait_seconds" "$(elapsed_seconds_from_ms "$import_completion_started_ms" "$import_completion_completed_ms")"
+  else
+    import_completion_completed_ms="$(metric_now_ms)"
+    emit_import_metric "import_completion_completed" "false"
+    emit_import_metric "import_completion_wait_seconds" "$(elapsed_seconds_from_ms "$import_completion_started_ms" "$import_completion_completed_ms")"
+  fi
+  emit_import_metric "active_imports_after_completion_wait" "$(active_import_count "$catalog_path")"
   sleep "$METRIC_PREVIEW_SAMPLE_SECONDS"
   emit_import_metric "pending_previews_after_sample" "$(preview_pending_count "$catalog_path")"
   preview_drain_started_ms="$(metric_now_ms)"
@@ -297,6 +318,9 @@ if [[ -n "$catalog_path" && -f "$catalog_path" ]]; then
   fi
   emit_import_metric "pending_previews_final" "$(preview_pending_count "$catalog_path")"
 else
+  emit_import_metric "import_completion_completed" "unknown"
+  emit_import_metric "import_completion_wait_seconds" "unknown"
+  emit_import_metric "active_imports_after_completion_wait" "unknown"
   emit_import_metric "pending_previews_after_sample" "unknown"
   emit_import_metric "preview_drain_completed" "unknown"
   emit_import_metric "preview_drain_seconds" "unknown"
