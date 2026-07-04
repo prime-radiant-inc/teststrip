@@ -2292,7 +2292,7 @@ enum CompareFocusMetricPresentation {
 
     static func metrics(for signals: [EvaluationSignal]) -> [CompareFocusMetric] {
         let metrics = qualityKinds.compactMap { kind in
-            bestSignal(for: kind, in: signals).map(metric(for:))
+            highestConfidenceSignal(for: kind, in: signals).map(metric(for:))
         }
         guard !metrics.isEmpty else {
             return [CompareFocusMetric(
@@ -2305,7 +2305,7 @@ enum CompareFocusMetricPresentation {
         return metrics
     }
 
-    private static func bestSignal(for kind: EvaluationKind, in signals: [EvaluationSignal]) -> EvaluationSignal? {
+    private static func highestConfidenceSignal(for kind: EvaluationKind, in signals: [EvaluationSignal]) -> EvaluationSignal? {
         signals
             .filter { $0.kind == kind }
             .sorted { lhs, rhs in lhs.confidence > rhs.confidence }
