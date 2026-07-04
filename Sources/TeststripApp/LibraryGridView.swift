@@ -2223,6 +2223,32 @@ struct CompareSurveyPresentation: Equatable {
         "Marks the current compare primary as Pick and the visible alternates as Reject"
     }
 
+    func groupActions(canApplyPrimaryChoice: Bool) -> [CompareSurveyActionPresentation] {
+        [
+            CompareSurveyActionPresentation(
+                action: .keepPrimaryAndRejectAlternates,
+                title: groupActionText,
+                isEnabled: canApplyPrimaryChoice && primaryAsset != nil,
+                help: groupActionHelp,
+                liveMockupPlaceholder: nil
+            ),
+            CompareSurveyActionPresentation(
+                action: .keepAll,
+                title: "Keep all",
+                isEnabled: false,
+                help: "Keeps the current compare group unchanged once compare group decisions are persisted.",
+                liveMockupPlaceholder: .compareSurvey
+            ),
+            CompareSurveyActionPresentation(
+                action: .chooseManually,
+                title: "Choose manually",
+                isEnabled: false,
+                help: "Opens stack-aware manual culling once compare groups are real.",
+                liveMockupPlaceholder: .cullingStackCull
+            )
+        ]
+    }
+
     func decisionBadges(for asset: Asset) -> [CompareDecisionBadge] {
         var badges: [CompareDecisionBadge] = []
         if asset.id == primaryAsset?.id {
@@ -2262,6 +2288,24 @@ struct CompareSurveyPresentation: Equatable {
             return "\(colorLabel.rawValue.capitalized) label"
         }
         return "Unreviewed"
+    }
+}
+
+struct CompareSurveyActionPresentation: Equatable, Identifiable {
+    enum Action: String, Equatable {
+        case keepPrimaryAndRejectAlternates
+        case keepAll
+        case chooseManually
+    }
+
+    var action: Action
+    var title: String
+    var isEnabled: Bool
+    var help: String
+    var liveMockupPlaceholder: LiveMockupPlaceholder?
+
+    var id: Action {
+        action
     }
 }
 
@@ -2673,6 +2717,11 @@ private struct CompareView: View {
         presentation: CompareSurveyPresentation
     ) -> some View {
         HStack(spacing: 10) {
+            let groupActions = presentation.groupActions(canApplyPrimaryChoice: model.canKeepComparePrimaryAndRejectAlternates)
+            let primaryGroupAction = groupActions[0]
+            let keepAllAction = groupActions[1]
+            let chooseManuallyAction = groupActions[2]
+
             Label("Teststrip", systemImage: "sparkles")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.orange)
@@ -2704,21 +2753,26 @@ private struct CompareView: View {
             .controlSize(.small)
             Divider()
                 .frame(height: 22)
-            Button(presentation.groupActionText) {
+            Button(primaryGroupAction.title) {
                 applyCompareGroupChoice()
             }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
-                .disabled(!model.canKeepComparePrimaryAndRejectAlternates)
-                .help(presentation.groupActionHelp)
-            Button("Keep all") {}
+                .disabled(!primaryGroupAction.isEnabled)
+                .help(primaryGroupAction.help)
+                .liveMockupPlaceholder(primaryGroupAction.liveMockupPlaceholder)
+            Button(keepAllAction.title) {}
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .disabled(true)
-            Button("Choose manually") {}
+                .disabled(!keepAllAction.isEnabled)
+                .help(keepAllAction.help)
+                .liveMockupPlaceholder(keepAllAction.liveMockupPlaceholder)
+            Button(chooseManuallyAction.title) {}
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .disabled(true)
+                .disabled(!chooseManuallyAction.isEnabled)
+                .help(chooseManuallyAction.help)
+                .liveMockupPlaceholder(chooseManuallyAction.liveMockupPlaceholder)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

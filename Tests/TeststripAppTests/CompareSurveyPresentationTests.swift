@@ -129,6 +129,22 @@ final class CompareSurveyPresentationTests: XCTestCase {
         )
     }
 
+    func testDisabledGroupActionsCarryLiveMockupPlaceholders() {
+        let assets = [
+            makeAsset(id: "primary"),
+            makeAsset(id: "second")
+        ]
+        let presentation = CompareSurveyPresentation(assets: assets, selectedAssetID: assets[0].id)
+
+        let actions = presentation.groupActions(canApplyPrimaryChoice: true)
+
+        XCTAssertEqual(actions.map(\.title), ["Keep primary · reject 1", "Keep all", "Choose manually"])
+        XCTAssertEqual(actions.map(\.isEnabled), [true, false, false])
+        XCTAssertNil(actions[0].liveMockupPlaceholder)
+        XCTAssertEqual(actions[1].liveMockupPlaceholder, .compareSurvey)
+        XCTAssertEqual(actions[2].liveMockupPlaceholder, .cullingStackCull)
+    }
+
     func testFocusMetricsUseRealQualitySignalsWithoutClaimingBest() {
         let assetID = AssetID(rawValue: "quality-frame")
         let provenance = ProviderProvenance(
