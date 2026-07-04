@@ -3729,6 +3729,40 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testInterruptedWorkerImportPreservesLastProgressDetail() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-interrupted-progress")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+        let itemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
+            itemID: itemID,
+            completedUnitCount: 7,
+            totalUnitCount: 20,
+            detail: "Cataloging 7 of 20 photos",
+            catalogedAssetIDs: []
+        )))
+        try await waitForPersistedWorkDetail("Cataloging 7 of 20 photos", itemID: itemID, repository: catalog.repository)
+
+        let reloaded = try AppModel.load(catalog: catalog)
+        let interruptedSession = try catalog.repository.session(id: itemID)
+        XCTAssertEqual(interruptedSession.status, .failed)
+        XCTAssertEqual(interruptedSession.completedUnitCount, 7)
+        XCTAssertEqual(interruptedSession.totalUnitCount, 20)
+        XCTAssertEqual(interruptedSession.detail, "Import interrupted before completion (last progress: Cataloging 7 of 20 photos)")
+        XCTAssertEqual(reloaded.recentWork.first?.detail, interruptedSession.detail)
+    }
+
+    @MainActor
     func testWorkerImportProgressShowsCatalogedAssetsBeforeCompletion() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-early-assets")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)

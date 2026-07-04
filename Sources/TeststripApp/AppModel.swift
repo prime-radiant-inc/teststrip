@@ -787,11 +787,19 @@ public final class AppModel {
         for session in try repository.workSessions(kind: .ingest, statuses: interruptedStatuses) {
             var interruptedSession = session
             interruptedSession.status = .failed
-            interruptedSession.detail = "Import interrupted before completion"
+            interruptedSession.detail = interruptedIngestDetail(previousDetail: session.detail)
             interruptedSession.failureCount += 1
             interruptedSession.updatedAt = Date()
             try repository.save(interruptedSession)
         }
+    }
+
+    private static func interruptedIngestDetail(previousDetail: String) -> String {
+        let baseDetail = "Import interrupted before completion"
+        guard !previousDetail.isEmpty, !previousDetail.hasPrefix("Importing from ") else {
+            return baseDetail
+        }
+        return "\(baseDetail) (last progress: \(previousDetail))"
     }
 
     public func select(_ assetID: AssetID) {
