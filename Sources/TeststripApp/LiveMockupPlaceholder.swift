@@ -253,7 +253,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Survey and compare",
             status: .partial,
             placeholder: .compareSurvey,
-            currentImplementation: "Compare shows selected primary first, alternates, metadata-backed badges, a focus metric lane, and honest disabled group actions; real stack membership and bulk stack mutations are not built."
+            currentImplementation: "Compare shows selected primary first, alternates, metadata-backed badges, a focus metric lane, and a current-compare-set action to keep the primary and reject visible alternates; real stack membership and richer stack mutations are not built."
         ),
         LiveMockupDesignSurface(
             designID: "3a",

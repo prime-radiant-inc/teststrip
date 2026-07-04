@@ -286,6 +286,29 @@ final class AppModelTests: XCTestCase {
         XCTAssertNotEqual(ComparePreviewRequestID.make(for: model), initialRequestID)
     }
 
+    func testKeepComparePrimaryRejectsCurrentCompareAlternatesOnly() throws {
+        let assets = (0..<5).map { makeAsset(id: "compare-action-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-group-action",
+            assets: assets
+        )
+        model.selectedView = .compare
+        model.select(assets[1].id)
+
+        try model.keepComparePrimaryAndRejectAlternates()
+
+        XCTAssertEqual(try repository.asset(id: assets[0].id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: assets[1].id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: assets[2].id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: assets[3].id).metadata.flag, .reject)
+        XCTAssertNil(try repository.asset(id: assets[4].id).metadata.flag)
+        XCTAssertEqual(model.assets[0].metadata.flag, .reject)
+        XCTAssertEqual(model.assets[1].metadata.flag, .pick)
+        XCTAssertEqual(model.assets[2].metadata.flag, .reject)
+        XCTAssertEqual(model.assets[3].metadata.flag, .reject)
+        XCTAssertNil(model.assets[4].metadata.flag)
+    }
+
     func testLibraryCountTextShowsLoadedAndTotalWhenGridIsLimited() {
         let asset = Asset(
             id: AssetID(rawValue: "first"),

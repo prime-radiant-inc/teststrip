@@ -104,7 +104,7 @@ final class CompareSurveyPresentationTests: XCTestCase {
         ])
     }
 
-    func testDisabledGroupActionTextDoesNotOverstateStackSupport() {
+    func testGroupActionTextNamesCurrentCompareSetWithoutOverstatingStackSupport() {
         let assets = [
             makeAsset(id: "primary"),
             makeAsset(id: "second"),
@@ -112,16 +112,20 @@ final class CompareSurveyPresentationTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            CompareSurveyPresentation(assets: assets, selectedAssetID: assets[0].id).disabledGroupActionText,
+            CompareSurveyPresentation(assets: assets, selectedAssetID: assets[0].id).groupActionText,
             "Keep primary · reject 2"
         )
         XCTAssertEqual(
-            CompareSurveyPresentation(assets: [assets[0]], selectedAssetID: assets[0].id).disabledGroupActionText,
+            CompareSurveyPresentation(assets: [assets[0]], selectedAssetID: assets[0].id).groupActionText,
             "Keep primary"
         )
         XCTAssertEqual(
-            CompareSurveyPresentation(assets: [], selectedAssetID: nil).disabledGroupActionText,
+            CompareSurveyPresentation(assets: [], selectedAssetID: nil).groupActionText,
             "No group action"
+        )
+        XCTAssertEqual(
+            CompareSurveyPresentation(assets: assets, selectedAssetID: assets[0].id).groupActionHelp,
+            "Marks the current compare primary as Pick and the visible alternates as Reject"
         )
     }
 

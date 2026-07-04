@@ -2198,11 +2198,15 @@ struct CompareSurveyPresentation: Equatable {
         return [primaryAsset] + alternateAssets
     }
 
-    var disabledGroupActionText: String {
+    var groupActionText: String {
         guard primaryAsset != nil else { return "No group action" }
         let rejectCount = alternateAssets.count
         guard rejectCount > 0 else { return "Keep primary" }
         return "Keep primary · reject \(rejectCount)"
+    }
+
+    var groupActionHelp: String {
+        "Marks the current compare primary as Pick and the visible alternates as Reject"
     }
 
     func decisionBadges(for asset: Asset) -> [CompareDecisionBadge] {
@@ -2686,11 +2690,13 @@ private struct CompareView: View {
             .controlSize(.small)
             Divider()
                 .frame(height: 22)
-            Button(presentation.disabledGroupActionText) {}
+            Button(presentation.groupActionText) {
+                applyCompareGroupChoice()
+            }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
-                .disabled(true)
-                .help("Group actions need real stack membership before they can mutate multiple assets")
+                .disabled(!model.canKeepComparePrimaryAndRejectAlternates)
+                .help(presentation.groupActionHelp)
             Button("Keep all") {}
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -2721,6 +2727,15 @@ private struct CompareView: View {
     private func requestCompareEvaluations() {
         do {
             try model.requestCompareAssetEvaluations()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyCompareGroupChoice() {
+        do {
+            focusCullingSurface()
+            try model.keepComparePrimaryAndRejectAlternates()
         } catch {
             model.errorMessage = error.localizedDescription
         }

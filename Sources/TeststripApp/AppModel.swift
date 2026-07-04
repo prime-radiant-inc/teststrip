@@ -1432,6 +1432,60 @@ public final class AppModel {
         return compareWindowAssets(limit: boundedLimit, anchor: selectedAssetID)
     }
 
+    public var canKeepComparePrimaryAndRejectAlternates: Bool {
+        catalog != nil && !compareAssets().isEmpty
+    }
+
+    public func keepComparePrimaryAndRejectAlternates() throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let compareGroup = compareAssets()
+        guard let primaryAsset = comparePrimaryAsset(in: compareGroup) else {
+            throw TeststripError.invalidState("no compare set")
+        }
+
+        var changedCount = 0
+        var rejectedCount = 0
+        for compareAsset in compareGroup {
+            let targetFlag: PickFlag = compareAsset.id == primaryAsset.id ? .pick : .reject
+            let originalAsset = try catalog.repository.asset(id: compareAsset.id)
+            guard originalAsset.metadata.flag != targetFlag else {
+                if targetFlag == .reject {
+                    rejectedCount += 1
+                }
+                continue
+            }
+            var updatedMetadata = originalAsset.metadata
+            updatedMetadata.flag = targetFlag
+            try applyMetadataSnapshot(assetID: compareAsset.id, metadata: updatedMetadata)
+            metadataUndoStack.append(MetadataChange(
+                assetID: compareAsset.id,
+                before: originalAsset.metadata,
+                after: updatedMetadata
+            ))
+            if targetFlag == .reject {
+                rejectedCount += 1
+            }
+            changedCount += 1
+        }
+
+        if changedCount > 0 {
+            metadataRedoStack.removeAll()
+        }
+        statusMessage = rejectedCount == 0
+            ? "Kept \(primaryAsset.originalURL.lastPathComponent)"
+            : "Kept \(primaryAsset.originalURL.lastPathComponent); rejected \(rejectedCount) alternates"
+    }
+
+    private func comparePrimaryAsset(in compareGroup: [Asset]) -> Asset? {
+        if let selectedAssetID,
+           let selectedAsset = compareGroup.first(where: { $0.id == selectedAssetID }) {
+            return selectedAsset
+        }
+        return compareGroup.first
+    }
+
     private func compareWindowAssets(limit: Int, anchor: AssetID?) -> [Asset] {
         guard !assets.isEmpty else { return [] }
         let boundedLimit = max(1, limit)
