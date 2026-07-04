@@ -208,6 +208,182 @@ public struct CatalogSourceAvailabilitySummary: Equatable, Sendable {
     }
 }
 
+public struct AppDiagnosticsSourceRoot: Equatable, Sendable {
+    public var path: String
+    public var name: String
+    public var assetCount: Int
+    public var unavailableAssetCount: Int
+
+    public init(path: String, name: String, assetCount: Int, unavailableAssetCount: Int) {
+        self.path = path
+        self.name = name
+        self.assetCount = assetCount
+        self.unavailableAssetCount = unavailableAssetCount
+    }
+}
+
+public struct AppDiagnosticsWorkStatusCount: Equatable, Sendable {
+    public var status: WorkSessionStatus
+    public var count: Int
+
+    public init(status: WorkSessionStatus, count: Int) {
+        self.status = status
+        self.count = count
+    }
+}
+
+public struct AppDiagnosticsWorkKindCount: Equatable, Sendable {
+    public var kind: WorkSessionKind
+    public var count: Int
+
+    public init(kind: WorkSessionKind, count: Int) {
+        self.kind = kind
+        self.count = count
+    }
+}
+
+public struct AppDiagnosticsSourceAvailabilityCount: Equatable, Sendable {
+    public var availability: SourceAvailability
+    public var count: Int
+
+    public init(availability: SourceAvailability, count: Int) {
+        self.availability = availability
+        self.count = count
+    }
+}
+
+public struct AppDiagnosticsBackgroundWork: Equatable, Sendable {
+    public var maxRunningCount: Int
+    public var kindRunningLimits: [AppDiagnosticsWorkKindCount]
+    public var statusCounts: [AppDiagnosticsWorkStatusCount]
+    public var kindCounts: [AppDiagnosticsWorkKindCount]
+
+    public init(
+        maxRunningCount: Int,
+        kindRunningLimits: [AppDiagnosticsWorkKindCount],
+        statusCounts: [AppDiagnosticsWorkStatusCount],
+        kindCounts: [AppDiagnosticsWorkKindCount]
+    ) {
+        self.maxRunningCount = maxRunningCount
+        self.kindRunningLimits = kindRunningLimits
+        self.statusCounts = statusCounts
+        self.kindCounts = kindCounts
+    }
+}
+
+public struct AppDiagnosticsWorkFailure: Equatable, Sendable {
+    public var id: String
+    public var kind: WorkSessionKind
+    public var title: String
+    public var detail: String
+    public var failureCount: Int
+
+    public init(id: String, kind: WorkSessionKind, title: String, detail: String, failureCount: Int) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.detail = detail
+        self.failureCount = failureCount
+    }
+}
+
+public struct AppDiagnosticsSnapshot: Equatable, Sendable {
+    public var catalogRootPath: String?
+    public var catalogDatabasePath: String?
+    public var previewCacheRootPath: String?
+    public var workerExecutablePath: String?
+    public var workerConfigured: Bool
+    public var workerEnabled: Bool
+    public var loadedAssetCount: Int
+    public var totalAssetCount: Int
+    public var pendingBackgroundWorkCount: Int
+    public var pendingMetadataSyncCount: Int
+    public var metadataSyncConflictCount: Int
+    public var backgroundWork: AppDiagnosticsBackgroundWork
+    public var sourceAvailabilityCounts: [AppDiagnosticsSourceAvailabilityCount]
+    public var sourceRoots: [AppDiagnosticsSourceRoot]
+    public var recentFailures: [AppDiagnosticsWorkFailure]
+
+    public var previewCachePath: String? {
+        previewCacheRootPath
+    }
+
+    public init(
+        catalogRootPath: String?,
+        catalogDatabasePath: String?,
+        previewCacheRootPath: String?,
+        workerExecutablePath: String?,
+        workerConfigured: Bool,
+        workerEnabled: Bool,
+        loadedAssetCount: Int,
+        totalAssetCount: Int,
+        pendingBackgroundWorkCount: Int,
+        pendingMetadataSyncCount: Int,
+        metadataSyncConflictCount: Int,
+        backgroundWork: AppDiagnosticsBackgroundWork,
+        sourceAvailabilityCounts: [AppDiagnosticsSourceAvailabilityCount],
+        sourceRoots: [AppDiagnosticsSourceRoot],
+        recentFailures: [AppDiagnosticsWorkFailure]
+    ) {
+        self.catalogRootPath = catalogRootPath
+        self.catalogDatabasePath = catalogDatabasePath
+        self.previewCacheRootPath = previewCacheRootPath
+        self.workerExecutablePath = workerExecutablePath
+        self.workerConfigured = workerConfigured
+        self.workerEnabled = workerEnabled
+        self.loadedAssetCount = loadedAssetCount
+        self.totalAssetCount = totalAssetCount
+        self.pendingBackgroundWorkCount = pendingBackgroundWorkCount
+        self.pendingMetadataSyncCount = pendingMetadataSyncCount
+        self.metadataSyncConflictCount = metadataSyncConflictCount
+        self.backgroundWork = backgroundWork
+        self.sourceAvailabilityCounts = sourceAvailabilityCounts
+        self.sourceRoots = sourceRoots
+        self.recentFailures = recentFailures
+    }
+}
+
+public typealias AppDiagnosticsFailure = AppDiagnosticsWorkFailure
+
+public enum AppDiagnosticsReport {
+    public static func text(for snapshot: AppDiagnosticsSnapshot) -> String {
+        let backgroundKindCounts = snapshot.backgroundWork.kindCounts
+            .map { "  \($0.kind.rawValue): \($0.count)" }
+        let backgroundStatusCounts = snapshot.backgroundWork.statusCounts
+            .map { "  \($0.status.rawValue): \($0.count)" }
+        let sourceCounts = snapshot.sourceAvailabilityCounts
+            .map { "  \($0.availability.rawValue): \($0.count)" }
+        let sourceRoots = snapshot.sourceRoots.map { root in
+            "  \(root.name): \(root.path) (\(root.unavailableAssetCount) unavailable of \(root.assetCount))"
+        }
+        let failures = snapshot.recentFailures.map { failure in
+            "  \(failure.kind.rawValue) \(failure.id): \(failure.detail)"
+        }
+
+        return [
+            "Teststrip Diagnostics",
+            "Catalog root: \(snapshot.catalogRootPath ?? "Unavailable")",
+            "Catalog database: \(snapshot.catalogDatabasePath ?? "Unavailable")",
+            "Preview cache: \(snapshot.previewCachePath ?? "Unavailable")",
+            "Worker executable: \(snapshot.workerExecutablePath ?? "Unavailable")",
+            "Worker enabled: \(snapshot.workerEnabled ? "yes" : "no")",
+            "Assets loaded/total: \(snapshot.loadedAssetCount)/\(snapshot.totalAssetCount)",
+            "Background active: \(snapshot.pendingBackgroundWorkCount)",
+            "XMP pending/conflicts: \(snapshot.pendingMetadataSyncCount)/\(snapshot.metadataSyncConflictCount)",
+            "Background by kind:",
+            backgroundKindCounts.isEmpty ? "  none" : backgroundKindCounts.joined(separator: "\n"),
+            "Background by status:",
+            backgroundStatusCounts.isEmpty ? "  none" : backgroundStatusCounts.joined(separator: "\n"),
+            "Source availability:",
+            sourceCounts.isEmpty ? "  none" : sourceCounts.joined(separator: "\n"),
+            "Source roots:",
+            sourceRoots.isEmpty ? "  none" : sourceRoots.joined(separator: "\n"),
+            "Recent failures:",
+            failures.isEmpty ? "  none" : failures.joined(separator: "\n")
+        ].joined(separator: "\n")
+    }
+}
+
 public struct AppWorkActivity: Identifiable, Equatable, Sendable {
     public var id: String
     public var kind: WorkSessionKind
@@ -446,6 +622,9 @@ public final class AppModel {
 
     @ObservationIgnored
     private let workerSupervisor: WorkerSupervisor?
+
+    @ObservationIgnored
+    private let workerExecutableURL: URL?
 
     @ObservationIgnored
     private var activeImportTask: Task<AppImportOutput, Error>?
@@ -693,6 +872,38 @@ public final class AppModel {
             return false
         }
         return Self.isActiveBackgroundWorkStatus(item.status)
+    }
+
+    public var diagnosticsSnapshot: AppDiagnosticsSnapshot {
+        let paths = catalog?.paths
+        return AppDiagnosticsSnapshot(
+            catalogRootPath: paths?.root.path,
+            catalogDatabasePath: paths?.catalogURL.path,
+            previewCacheRootPath: paths?.previewCacheRoot.path,
+            workerExecutablePath: workerExecutableURL?.path,
+            workerConfigured: workerExecutableURL != nil,
+            workerEnabled: workerSupervisor != nil,
+            loadedAssetCount: assets.count,
+            totalAssetCount: totalAssetCount,
+            pendingBackgroundWorkCount: backgroundWorkQueue.items.filter { Self.isActiveBackgroundWorkStatus($0.status) }.count,
+            pendingMetadataSyncCount: pendingMetadataSyncItems.count,
+            metadataSyncConflictCount: metadataSyncConflictItems.count,
+            backgroundWork: Self.diagnosticsBackgroundWork(backgroundWorkQueue),
+            sourceAvailabilityCounts: Self.sourceAvailabilityCounts(sourceAvailabilitySummaries),
+            sourceRoots: sourceRoots.map {
+                AppDiagnosticsSourceRoot(
+                    path: $0.path,
+                    name: $0.name,
+                    assetCount: $0.assetCount,
+                    unavailableAssetCount: $0.unavailableAssetCount
+                )
+            },
+            recentFailures: diagnosticsRecentFailures()
+        )
+    }
+
+    public var diagnosticsReportText: String {
+        AppDiagnosticsReport.text(for: diagnosticsSnapshot)
     }
 
     public var isImporting: Bool {
@@ -980,7 +1191,8 @@ public final class AppModel {
         selectedAssetSetID: AssetSetID? = nil,
         workerSupervisor: WorkerSupervisor? = nil,
         importTaskFactory: AppImportTaskFactory? = nil,
-        cardImportTaskFactory: AppCardImportTaskFactory? = nil
+        cardImportTaskFactory: AppCardImportTaskFactory? = nil,
+        workerExecutableURL: URL? = nil
     ) {
         let resolvedTotalAssetCount = totalAssetCount ?? assets.count
         self.sidebarSections = sidebarSections.isEmpty ? Self.defaultSidebarSections(
@@ -1038,6 +1250,7 @@ public final class AppModel {
         self.selectedAssetSetID = selectedAssetSetID
         self.catalog = catalog
         self.workerSupervisor = workerSupervisor
+        self.workerExecutableURL = workerExecutableURL
         self.previewCacheGenerationsByAssetID = [:]
         self.evaluationAssetIDsByItemID = [:]
         self.metadataSyncAssetIDsByItemID = [:]
@@ -1166,7 +1379,8 @@ public final class AppModel {
         catalog: AppCatalog,
         importTaskFactory: AppImportTaskFactory? = nil,
         cardImportTaskFactory: AppCardImportTaskFactory? = nil,
-        workerSupervisor: WorkerSupervisor? = nil
+        workerSupervisor: WorkerSupervisor? = nil,
+        workerExecutableURL: URL? = nil
     ) throws -> AppModel {
         try reconcileInterruptedIngestWorkSessions(repository: catalog.repository)
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
@@ -1217,7 +1431,8 @@ public final class AppModel {
             reviewQueueCounts: reviewQueueCounts,
             workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory,
-            cardImportTaskFactory: cardImportTaskFactory
+            cardImportTaskFactory: cardImportTaskFactory,
+            workerExecutableURL: workerExecutableURL
         )
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
@@ -2893,6 +3108,92 @@ public final class AppModel {
         queue.items.filter { item in
             item.kind == .previewGeneration && Self.isActiveBackgroundWorkStatus(item.status)
         }.count
+    }
+
+    private static func diagnosticsBackgroundWork(_ queue: BackgroundWorkQueue) -> AppDiagnosticsBackgroundWork {
+        AppDiagnosticsBackgroundWork(
+            maxRunningCount: queue.maxRunningCount,
+            kindRunningLimits: sortedKindCounts(queue.kindRunningLimits),
+            statusCounts: sortedStatusCounts(queue.items),
+            kindCounts: sortedKindCounts(queue.items.reduce(into: [:]) { counts, item in
+                counts[item.kind, default: 0] += 1
+            })
+        )
+    }
+
+    private static func sortedStatusCounts(_ items: [BackgroundWorkItem]) -> [AppDiagnosticsWorkStatusCount] {
+        let counts = items.reduce(into: [WorkSessionStatus: Int]()) { counts, item in
+            counts[item.status, default: 0] += 1
+        }
+        return counts
+            .map { AppDiagnosticsWorkStatusCount(status: $0.key, count: $0.value) }
+            .sorted { statusSortIndex($0.status) < statusSortIndex($1.status) }
+    }
+
+    private static func sortedKindCounts(_ counts: [WorkSessionKind: Int]) -> [AppDiagnosticsWorkKindCount] {
+        counts
+            .map { AppDiagnosticsWorkKindCount(kind: $0.key, count: $0.value) }
+            .sorted { $0.kind.rawValue < $1.kind.rawValue }
+    }
+
+    private static func statusSortIndex(_ status: WorkSessionStatus) -> Int {
+        switch status {
+        case .queued:
+            return 0
+        case .running:
+            return 1
+        case .paused:
+            return 2
+        case .completed:
+            return 3
+        case .failed:
+            return 4
+        case .cancelled:
+            return 5
+        }
+    }
+
+    private static func sourceAvailabilityCounts(_ summaries: [CatalogSourceAvailabilitySummary]) -> [AppDiagnosticsSourceAvailabilityCount] {
+        var counts: [SourceAvailability: Int] = [:]
+        for summary in summaries {
+            counts[summary.availability, default: 0] += summary.assetCount
+        }
+        return counts
+            .map { AppDiagnosticsSourceAvailabilityCount(availability: $0.key, count: $0.value) }
+            .sorted { $0.availability.rawValue < $1.availability.rawValue }
+    }
+
+    private func diagnosticsRecentFailures(limit: Int = 5) -> [AppDiagnosticsWorkFailure] {
+        var seenIDs: Set<String> = []
+        var failures: [AppDiagnosticsWorkFailure] = []
+
+        for item in backgroundWorkQueue.items where item.status == .failed {
+            let failure = AppDiagnosticsWorkFailure(
+                id: item.id.rawValue,
+                kind: item.kind,
+                title: item.title,
+                detail: item.detail,
+                failureCount: 0
+            )
+            if seenIDs.insert(failure.id).inserted {
+                failures.append(failure)
+            }
+        }
+
+        for activity in recentWork where activity.status == .failed {
+            let failure = AppDiagnosticsWorkFailure(
+                id: activity.id,
+                kind: activity.kind,
+                title: activity.title,
+                detail: activity.detail,
+                failureCount: activity.failureCount
+            )
+            if seenIDs.insert(failure.id).inserted {
+                failures.append(failure)
+            }
+        }
+
+        return Array(failures.prefix(limit))
     }
 
     private static func isActiveBackgroundWorkStatus(_ status: WorkSessionStatus) -> Bool {

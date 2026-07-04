@@ -110,7 +110,11 @@ public struct AppCatalog {
                 )
             )
         }
-        return try AppModel.load(catalog: open(paths: paths), workerSupervisor: workerSupervisor)
+        return try AppModel.load(
+            catalog: open(paths: paths),
+            workerSupervisor: workerSupervisor,
+            workerExecutableURL: workerExecutableURL
+        )
     }
 
     public static func workerArguments(

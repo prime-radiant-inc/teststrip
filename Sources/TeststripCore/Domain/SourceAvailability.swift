@@ -1,4 +1,4 @@
-public enum SourceAvailability: String, Codable, Sendable {
+public enum SourceAvailability: String, Codable, Hashable, Sendable {
     case online
     case offline
     case missing

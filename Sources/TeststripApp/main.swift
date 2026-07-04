@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct TeststripApplication: App {
@@ -29,6 +30,7 @@ struct TeststripApplication: App {
         .commands {
             MetadataHistoryCommands(model: model)
             CullingCommands(model: model)
+            SupportCommands(model: model)
         }
     }
 }
@@ -173,6 +175,24 @@ private struct CullingCommands: Commands {
         } catch {
             model.errorMessage = error.localizedDescription
         }
+    }
+}
+
+private struct SupportCommands: Commands {
+    var model: AppModel
+
+    var body: some Commands {
+        CommandMenu("Support") {
+            Button("Copy Diagnostics") {
+                copyDiagnostics()
+            }
+        }
+    }
+
+    private func copyDiagnostics() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(model.diagnosticsReportText, forType: .string)
+        model.statusMessage = "Copied diagnostics"
     }
 }
 

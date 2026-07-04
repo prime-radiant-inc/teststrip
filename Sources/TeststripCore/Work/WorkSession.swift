@@ -21,7 +21,7 @@ public enum WorkSessionKind: String, Codable, Hashable, Sendable {
     case export
 }
 
-public enum WorkSessionStatus: String, Codable, Sendable {
+public enum WorkSessionStatus: String, Codable, Hashable, Sendable {
     case queued
     case running
     case paused
