@@ -159,7 +159,7 @@ public enum LiveMockupPlaceholders {
         id: "culling.stack-cull",
         title: "Stack cull",
         intendedBehavior: "Group bursts or near-duplicates into stacks and cull the strongest candidate within each stack.",
-        currentFallback: "Loupe culling can keep a selected same-folder capture-time stack frame through the Keep frame action and reject alternates; Keep top and Keep all are visible disabled placeholders, and real similarity and near-duplicate grouping are still pending."
+        currentFallback: "Loupe culling can keep a selected frame from persisted import stack sets or same-folder capture-time fallback stacks through the Keep frame action and reject alternates; Keep top and Keep all are visible disabled placeholders, and real similarity and near-duplicate grouping are still pending."
     )
 
     public static let focusCompare = LiveMockupPlaceholder(
@@ -173,7 +173,7 @@ public enum LiveMockupPlaceholders {
         id: "compare.survey",
         title: "Survey compare",
         intendedBehavior: "Show a survey-style comparison surface with primary candidate, alternates, and decision affordances.",
-        currentFallback: "Adaptive compare grid over loaded-scope candidate stacks or the current selected neighborhood with heuristic recommendation text, not persisted stack membership."
+        currentFallback: "Adaptive compare grid over persisted culling stack sets when active, loaded-scope candidate stacks otherwise, or the current selected neighborhood with heuristic recommendation text."
     )
 
     public static let workHistory = LiveMockupPlaceholder(
@@ -262,14 +262,14 @@ public enum LiveMockupDesignSurfaces {
             title: "Survey and compare",
             status: .partial,
             placeholder: .compareSurvey,
-            currentImplementation: "Compare shows selected primary first, loaded-scope candidate stacks when adjacent same-folder capture times are available, alternates, metadata-backed badges, a focus metric lane, and a current-compare-set action to keep the primary and reject visible alternates; persisted stack membership and richer stack mutations are not built."
+            currentImplementation: "Compare shows selected primary first, persisted culling stack membership when active, loaded-scope candidate stacks when adjacent same-folder capture times are available, alternates, metadata-backed badges, a focus metric lane, and a current-compare-set action to keep the primary and reject visible alternates; richer stack mutations are not built."
         ),
         LiveMockupDesignSurface(
             designID: "3a",
             title: "Stack cull",
             status: .liveMockup,
             placeholder: .cullingStackCull,
-            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, and loaded-scope same-folder capture-time stacks with a keep-selected/reject-alternates action; Return accepts the selected stack frame when the stack rail is active, and automatic burst/near-duplicate similarity grouping is not built."
+            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, persisted import stack sets, and loaded-scope same-folder capture-time stacks with a keep-selected/reject-alternates action; Return accepts the selected stack frame when a persisted or loaded stack is active, and automatic burst/near-duplicate similarity grouping is not built."
         ),
         LiveMockupDesignSurface(
             designID: "3b",

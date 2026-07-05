@@ -358,6 +358,38 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.compareGroupKind(), .candidateStack)
     }
 
+    func testCompareGroupKindTreatsPersistedWorkStackSetAsCandidateStack() throws {
+        let capturedAt = Date(timeIntervalSince1970: 1_900_000_300)
+        let lead = makeAsset(
+            id: "compare-persisted-stack-lead",
+            path: "/Photos/Stack/lead.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let alternate = makeAsset(
+            id: "compare-persisted-stack-alternate",
+            path: "/Photos/Other/alternate.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(60))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-persisted-work-stack",
+            assets: [lead, alternate]
+        )
+        let stackSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "work-stack-cull-session-1"),
+            name: "Cull Stack 1",
+            assetIDs: [lead.id, alternate.id]
+        )
+        try repository.upsert(stackSet)
+        try model.applyAssetSet(id: stackSet.id)
+        model.select(alternate.id)
+        model.selectedView = .compare
+
+        XCTAssertEqual(model.compareAssets().map(\.id), [lead.id, alternate.id])
+        XCTAssertEqual(model.compareGroupKind(), .candidateStack)
+    }
+
     func testCompareAssetsStayStableWhenSelectingAssetInsideCurrentCompareSet() {
         let assets = (0..<6).map { makeAsset(id: "asset-\($0)", size: Int64($0 + 1)) }
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: assets)
@@ -1760,6 +1792,100 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, first.id)
         XCTAssertNil(try repository.asset(id: first.id).metadata.flag)
         XCTAssertNil(try repository.asset(id: second.id).metadata.flag)
+    }
+
+    func testCullingShortcutAcceptsPersistedStackSetWithoutTimeAdjacency() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(
+            id: "persisted-shortcut-lead",
+            path: "/Photos/Stack/lead.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let alternate = makeAsset(
+            id: "persisted-shortcut-alternate",
+            path: "/Photos/Other/alternate.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(60))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "persisted-stack-shortcut",
+            assets: [lead, alternate]
+        )
+        let stackSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "work-stack-cull-session-1"),
+            name: "Cull Stack 1",
+            assetIDs: [lead.id, alternate.id]
+        )
+        try repository.upsert(stackSet)
+        try repository.save(cullingSession(id: "cull-session", inputSetIDs: [stackSet.id], totalUnitCount: 2))
+        try model.applyAssetSet(id: stackSet.id)
+        model.select(alternate.id)
+
+        try model.applyCullingShortcut(.acceptStackSelection)
+
+        XCTAssertEqual(try repository.asset(id: lead.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .pick)
+        XCTAssertEqual(model.selectedAssetID, alternate.id)
+    }
+
+    func testCullingShortcutMovesBetweenPersistedStackSets() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let firstLead = makeAsset(
+            id: "persisted-nav-first-lead",
+            path: "/Photos/Stack/first-lead.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let firstAlternate = makeAsset(
+            id: "persisted-nav-first-alternate",
+            path: "/Photos/Other/first-alternate.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(60))
+        )
+        let secondLead = makeAsset(
+            id: "persisted-nav-second-lead",
+            path: "/Photos/Stack/second-lead.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(120))
+        )
+        let secondAlternate = makeAsset(
+            id: "persisted-nav-second-alternate",
+            path: "/Photos/Other/second-alternate.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(180))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "persisted-stack-navigation",
+            assets: [firstLead, firstAlternate, secondLead, secondAlternate]
+        )
+        let firstSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "work-stack-cull-session-1"),
+            name: "Cull Stack 1",
+            assetIDs: [firstLead.id, firstAlternate.id]
+        )
+        let secondSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "work-stack-cull-session-2"),
+            name: "Cull Stack 2",
+            assetIDs: [secondLead.id, secondAlternate.id]
+        )
+        try repository.upsert(firstSet)
+        try repository.upsert(secondSet)
+        try repository.save(cullingSession(id: "cull-session", inputSetIDs: [firstSet.id, secondSet.id], totalUnitCount: 4))
+        try model.applyAssetSet(id: firstSet.id)
+        model.select(firstAlternate.id)
+
+        try model.applyCullingShortcut(.nextStack)
+
+        XCTAssertEqual(model.selectedAssetSetID, secondSet.id)
+        XCTAssertEqual(model.assets.map(\.id), [secondLead.id, secondAlternate.id])
+        XCTAssertEqual(model.selectedAssetID, secondLead.id)
+
+        try model.applyCullingShortcut(.previousStack)
+
+        XCTAssertEqual(model.selectedAssetSetID, firstSet.id)
+        XCTAssertEqual(model.assets.map(\.id), [firstLead.id, firstAlternate.id])
+        XCTAssertEqual(model.selectedAssetID, firstLead.id)
     }
 
     func testCullingShortcutMovesBetweenLoadedStacks() throws {
@@ -7968,7 +8094,11 @@ final class AppModelTests: XCTestCase {
 
         let session = try model.beginStackCullingFromLatestImportCompletion()
 
-        XCTAssertEqual(session.inputSetIDs.first?.rawValue, "latest-import-output")
+        let stackSetID = try XCTUnwrap(session.inputSetIDs.first)
+        XCTAssertTrue(stackSetID.rawValue.hasPrefix("work-stack-\(session.id.rawValue)-"))
+        XCTAssertEqual(assetIDs(in: try repository.assetSet(id: stackSetID)), [stackFirst.id, stackSecond.id])
+        XCTAssertEqual(model.selectedAssetSetID, stackSetID)
+        XCTAssertEqual(model.assets.map(\.id), [stackFirst.id, stackSecond.id])
         XCTAssertEqual(session.intent, "Cull 1 stack from latest import")
         XCTAssertEqual(model.selectedAssetID, stackFirst.id)
         XCTAssertEqual(model.selectedView, .loupe)
@@ -7976,6 +8106,66 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(try repository.asset(id: singleton.id).metadata.flag)
         XCTAssertNil(try repository.asset(id: stackFirst.id).metadata.flag)
         XCTAssertNil(try repository.asset(id: stackSecond.id).metadata.flag)
+    }
+
+    func testBeginningStackCullingFromLatestImportPersistsDetectedStackSets() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let firstStackLead = makeAsset(
+            id: "persisted-stack-first-lead",
+            path: "/Photos/Import/persisted-stack-first-lead.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let firstStackAlternate = makeAsset(
+            id: "persisted-stack-first-alternate",
+            path: "/Photos/Import/persisted-stack-first-alternate.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let singleton = makeAsset(
+            id: "persisted-stack-singleton",
+            path: "/Photos/Import/persisted-stack-singleton.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(10))
+        )
+        let secondStackLead = makeAsset(
+            id: "persisted-stack-second-lead",
+            path: "/Photos/Import/persisted-stack-second-lead.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(20))
+        )
+        let secondStackAlternate = makeAsset(
+            id: "persisted-stack-second-alternate",
+            path: "/Photos/Import/persisted-stack-second-alternate.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(21))
+        )
+        let assets = [firstStackLead, firstStackAlternate, singleton, secondStackLead, secondStackAlternate]
+        let (model, repository) = try makeModelWithCompletedImportSession(
+            named: "persist-stack-culling-from-import",
+            assets: assets,
+            outputAssetIDs: assets.map(\.id)
+        )
+
+        let session = try model.beginStackCullingFromLatestImportCompletion()
+
+        XCTAssertEqual(session.inputSetIDs.count, 2)
+        XCTAssertTrue(session.inputSetIDs.allSatisfy { $0.rawValue.hasPrefix("work-stack-\(session.id.rawValue)-") })
+        if session.inputSetIDs.count == 2 {
+            XCTAssertEqual(assetIDs(in: try repository.assetSet(id: session.inputSetIDs[0])), [firstStackLead.id, firstStackAlternate.id])
+            XCTAssertEqual(assetIDs(in: try repository.assetSet(id: session.inputSetIDs[1])), [secondStackLead.id, secondStackAlternate.id])
+            XCTAssertEqual(model.selectedAssetSetID, session.inputSetIDs[0])
+        }
+        XCTAssertEqual(model.assets.map(\.id), [firstStackLead.id, firstStackAlternate.id])
+        XCTAssertEqual(model.selectedAssetID, firstStackLead.id)
+
+        model.selectedView = .compare
+
+        XCTAssertEqual(model.compareAssets().map(\.id), [firstStackLead.id, firstStackAlternate.id])
+        XCTAssertFalse(model.sidebarSections.contains { section in
+            section.title == "Saved Sets"
+                && section.rowTitles.contains { $0.localizedCaseInsensitiveContains("Stack 1") }
+        })
     }
 
     func testBeginningStackCullingFromLatestImportLoadsFirstStackBeyondInitialPage() throws {
@@ -8714,6 +8904,33 @@ final class AppModelTests: XCTestCase {
             )
         )
         return (try AppModel.load(catalog: catalog, workerSupervisor: workerSupervisor), repository, previewCache)
+    }
+
+    private func assetIDs(in assetSet: AssetSet) -> [AssetID] {
+        switch assetSet.membership {
+        case .manual(let assetIDs), .snapshot(let assetIDs):
+            assetIDs
+        case .dynamic:
+            []
+        }
+    }
+
+    private func cullingSession(id: String, inputSetIDs: [AssetSetID], totalUnitCount: Int) -> WorkSession {
+        WorkSession(
+            id: WorkSessionID(rawValue: id),
+            kind: .culling,
+            intent: "Cull persisted stacks",
+            title: "Cull persisted stacks",
+            detail: "Cull persisted stacks",
+            status: .running,
+            inputSetIDs: inputSetIDs,
+            outputSetIDs: [],
+            completedUnitCount: 0,
+            totalUnitCount: totalUnitCount,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        )
     }
 
     private func makeModelWithCompletedImportSession(

@@ -1348,11 +1348,7 @@ public final class AppModel {
     private func latestImportStackSummary(activity: AppWorkActivity) -> (stackCount: Int, stackedPhotoCount: Int) {
         guard let catalog else { return (0, 0) }
         do {
-            let assetIDs = try latestImportOutputAssetIDs(activityID: activity.id, repository: catalog.repository)
-            let importAssets = try catalog.repository.assets(ids: assetIDs, limit: assetIDs.count)
-            let stacks = AssetStackBuilder(maximumCaptureGap: Self.candidateStackMaximumCaptureGap)
-                .stacks(from: importAssets)
-                .filter { $0.assetIDs.count > 1 }
+            let stacks = try latestImportStacks(activityID: activity.id, repository: catalog.repository)
             return (
                 stackCount: stacks.count,
                 stackedPhotoCount: stacks.reduce(0) { $0 + $1.assetIDs.count }
@@ -1972,17 +1968,56 @@ public final class AppModel {
 
     @discardableResult
     public func beginStackCullingFromLatestImportCompletion() throws -> WorkSession {
-        let summary = try openLatestImportCompletion()
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard let summary = latestImportCompletionSummary else {
+            throw TeststripError.invalidState("no completed import")
+        }
         let stackIntent = summary.stackCount > 0
             ? "Cull \(Self.stackCountDescription(summary.stackCount)) from latest import"
             : ""
-        let session = try beginCullingSession(named: summary.cullingSessionName, intent: stackIntent)
-        if try selectFirstCullingStackIfAvailable() {
-            statusMessage = "Started stack cull with \(Self.stackCountDescription(summary.stackCount))"
-        } else {
+        let stacks = try latestImportStacks(activityID: summary.activityID, repository: catalog.repository)
+        guard !stacks.isEmpty else {
+            _ = try openLatestImportCompletion()
+            let session = try beginCullingSession(named: summary.cullingSessionName, intent: stackIntent)
             statusMessage = "Started \(session.title); no time-adjacent stacks found"
+            return session
         }
-        return session
+
+        let sessionID = WorkSessionID.new()
+        let inputSetIDs = try saveCullingStackInputSets(
+            sessionID: sessionID,
+            title: summary.cullingSessionName,
+            stacks: stacks
+        )
+        guard let firstStackSetID = inputSetIDs.first else {
+            throw TeststripError.invalidState("no stack sets were created")
+        }
+        try applyAssetSet(id: firstStackSetID)
+        if let firstAssetID = stacks.first?.assetIDs.first {
+            selectAssetID(firstAssetID)
+        }
+        selectedView = .loupe
+
+        let totalUnitCount = stacks.reduce(0) { $0 + $1.assetIDs.count }
+        let activity = AppWorkActivity(
+            id: sessionID.rawValue,
+            kind: .culling,
+            status: .running,
+            title: summary.cullingSessionName,
+            detail: stackIntent,
+            completedUnitCount: 0,
+            totalUnitCount: totalUnitCount,
+            failureCount: 0
+        )
+        recordRecentActivity(
+            activity,
+            intent: stackIntent,
+            inputSetIDs: inputSetIDs
+        )
+        statusMessage = "Started stack cull with \(Self.stackCountDescription(stacks.count))"
+        return try catalog.repository.session(id: sessionID)
     }
 
     public func reviewLatestImportInCompare() throws {
@@ -2264,6 +2299,9 @@ public final class AppModel {
 
     public func compareAssets(limit: Int = 4) -> [Asset] {
         let boundedLimit = max(1, limit)
+        if let persistedStack = persistedWorkStackAssets(limit: boundedLimit, anchor: selectedAssetID) {
+            return persistedStack
+        }
         if let compareAssetIDs {
             let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
             let anchoredAssets = compareAssetIDs.compactMap { assetsByID[$0] }
@@ -2279,6 +2317,9 @@ public final class AppModel {
 
     public func compareGroupKind(limit: Int = 4) -> CompareGroupKind {
         let boundedLimit = max(1, limit)
+        if persistedWorkStackAssets(limit: boundedLimit, anchor: selectedAssetID) != nil {
+            return .candidateStack
+        }
         let candidateStackIDs = candidateStackAssets(limit: boundedLimit, anchor: selectedAssetID)?.map(\.id)
         if let compareAssetIDs, !compareAssetIDs.isEmpty {
             return compareAssetIDs == candidateStackIDs ? .candidateStack : .nearbyFrames
@@ -2342,6 +2383,20 @@ public final class AppModel {
 
     private func compareWindowAssets(limit: Int, anchor: AssetID?) -> [Asset] {
         Self.limitedCompareAssets(assets, limit: limit, anchor: anchor)
+    }
+
+    private func persistedWorkStackAssets(limit: Int, anchor: AssetID?) -> [Asset]? {
+        guard let selectedWorkStackAssetIDs,
+              let anchor,
+              selectedWorkStackAssetIDs.contains(anchor) else {
+            return nil
+        }
+        let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+        let stackAssets = selectedWorkStackAssetIDs.compactMap { assetsByID[$0] }
+        guard stackAssets.count > 1 else {
+            return nil
+        }
+        return Self.limitedCompareAssets(stackAssets, limit: limit, anchor: anchor)
     }
 
     private func candidateStackAssets(limit: Int, anchor: AssetID?) -> [Asset]? {
@@ -2450,12 +2505,20 @@ public final class AppModel {
         guard let selectedAssetID else {
             throw TeststripError.invalidState("no selected asset")
         }
-        let stacks = cullingStacks()
-        guard let stack = stacks.first(where: { $0.assetIDs.contains(selectedAssetID) }),
-              stack.assetIDs.count > 1 else {
+        let stack: AssetStack?
+        let nextAssetID: AssetID?
+        if let selectedWorkStackAssetIDs,
+           selectedWorkStackAssetIDs.contains(selectedAssetID) {
+            stack = AssetStack(assetIDs: selectedWorkStackAssetIDs)
+            nextAssetID = nil
+        } else {
+            let stacks = cullingStacks()
+            stack = stacks.first { $0.assetIDs.contains(selectedAssetID) }
+            nextAssetID = stack.map(nextAssetID(after:)) ?? nil
+        }
+        guard let stack, stack.assetIDs.count > 1 else {
             throw TeststripError.invalidState("selected asset is not in a culling stack")
         }
-        let nextAssetID = nextAssetID(after: stack)
 
         for assetID in stack.assetIDs {
             var metadata = try catalog.repository.asset(id: assetID).metadata
@@ -2463,7 +2526,9 @@ public final class AppModel {
             try applyMetadataSnapshot(assetID: assetID, metadata: metadata)
         }
 
-        if let nextAssetID {
+        if try selectPersistedCullingStack(.next) {
+            return
+        } else if let nextAssetID {
             selectAssetID(nextAssetID)
         }
     }
@@ -2475,9 +2540,9 @@ public final class AppModel {
         case .nextPhoto:
             try selectNextAssetForCulling()
         case .previousStack:
-            selectPreviousStackForCulling()
+            try selectPreviousStackForCulling()
         case .nextStack:
-            selectNextStackForCulling()
+            try selectNextStackForCulling()
         case .rating(let rating):
             try applyCullingCommandAndAdvance(.rating(rating))
         case .colorLabel(let colorLabel):
@@ -2551,11 +2616,17 @@ public final class AppModel {
         })
     }
 
-    private func selectNextStackForCulling() {
+    private func selectNextStackForCulling() throws {
+        if try selectPersistedCullingStack(.next) {
+            return
+        }
         selectCullingStack(.next)
     }
 
-    private func selectPreviousStackForCulling() {
+    private func selectPreviousStackForCulling() throws {
+        if try selectPersistedCullingStack(.previous) {
+            return
+        }
         selectCullingStack(.previous)
     }
 
@@ -2621,10 +2692,22 @@ public final class AppModel {
 
     private func acceptSelectedStackSelectionForCulling() throws {
         guard let selectedAssetID,
-              cullingStacks().contains(where: { $0.assetIDs.contains(selectedAssetID) }) else {
+              selectedWorkStackAssetIDs?.contains(selectedAssetID) == true
+                || cullingStacks().contains(where: { $0.assetIDs.contains(selectedAssetID) }) else {
             return
         }
         try keepSelectedStackFrameAndRejectAlternates()
+    }
+
+    @discardableResult
+    private func selectPersistedCullingStack(_ direction: CullingStackNavigationDirection) throws -> Bool {
+        guard let targetSetID = try persistedCullingStackSetID(direction) else {
+            return false
+        }
+        try applyAssetSet(id: targetSetID)
+        selectAssetID(selectedExplicitAssetIDs?.first)
+        selectedView = .loupe
+        return true
     }
 
     private func selectCullingStack(_ direction: CullingStackNavigationDirection) {
@@ -5039,6 +5122,52 @@ public final class AppModel {
         }
     }
 
+    private var selectedWorkStackAssetIDs: [AssetID]? {
+        guard let selectedAssetSetID,
+              Self.isWorkStackSetID(selectedAssetSetID),
+              let selectedExplicitAssetIDs,
+              selectedExplicitAssetIDs.count > 1 else {
+            return nil
+        }
+        return selectedExplicitAssetIDs
+    }
+
+    private static func isWorkStackSetID(_ id: AssetSetID) -> Bool {
+        id.rawValue.hasPrefix("work-stack-")
+    }
+
+    private func persistedCullingStackSetID(_ direction: CullingStackNavigationDirection) throws -> AssetSetID? {
+        guard let catalog,
+              let selectedAssetSetID,
+              Self.isWorkStackSetID(selectedAssetSetID),
+              let session = try activePersistedStackCullingSession(repository: catalog.repository),
+              let selectedIndex = session.inputSetIDs.firstIndex(of: selectedAssetSetID) else {
+            return nil
+        }
+        let targetIndex: Int
+        switch direction {
+        case .previous:
+            targetIndex = selectedIndex - 1
+        case .next:
+            targetIndex = selectedIndex + 1
+        }
+        guard session.inputSetIDs.indices.contains(targetIndex) else {
+            return nil
+        }
+        return session.inputSetIDs[targetIndex]
+    }
+
+    private func activePersistedStackCullingSession(repository: CatalogRepository) throws -> WorkSession? {
+        guard let selectedAssetSetID else { return nil }
+        let cullingSessions = try repository.workSessions(
+            kind: .culling,
+            statuses: [.queued, .running, .paused, .completed, .failed, .cancelled]
+        )
+        return cullingSessions.first { session in
+            session.inputSetIDs.contains(selectedAssetSetID)
+        }
+    }
+
     private func latestImportOutputAssetIDs(repository: CatalogRepository) throws -> [AssetID] {
         guard let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
             throw TeststripError.invalidState("no completed import")
@@ -5058,6 +5187,38 @@ public final class AppModel {
         case .dynamic(let query):
             return try repository.assetIDs(matching: query)
         }
+    }
+
+    private func latestImportStacks(activityID: String, repository: CatalogRepository) throws -> [AssetStack] {
+        let assetIDs = try latestImportOutputAssetIDs(activityID: activityID, repository: repository)
+        let importAssets = try repository.assets(ids: assetIDs, limit: assetIDs.count)
+        return AssetStackBuilder(maximumCaptureGap: Self.candidateStackMaximumCaptureGap)
+            .stacks(from: importAssets)
+            .filter { $0.assetIDs.count > 1 }
+    }
+
+    private func saveCullingStackInputSets(
+        sessionID: WorkSessionID,
+        title: String,
+        stacks: [AssetStack]
+    ) throws -> [AssetSetID] {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let stackSets = stacks.enumerated().map { index, stack in
+            AssetSet.manual(
+                id: AssetSetID(rawValue: "work-stack-\(sessionID.rawValue)-\(index + 1)"),
+                name: "\(title) Stack \(index + 1)",
+                assetIDs: stack.assetIDs
+            )
+        }
+        for stackSet in stackSets {
+            try catalog.repository.upsert(stackSet)
+        }
+        savedAssetSets = try catalog.repository.assetSets()
+        assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
+        rebuildSidebarSections()
+        return stackSets.map(\.id)
     }
 
     private func cullingInputSetID(sessionID: WorkSessionID, title: String) throws -> AssetSetID {
@@ -6060,7 +6221,11 @@ public final class AppModel {
     }
 
     private static func visibleSavedAssetSets(_ assetSets: [AssetSet]) -> [AssetSet] {
-        assetSets.filter { !$0.id.rawValue.hasPrefix("work-output-") && !$0.id.rawValue.hasPrefix("work-input-") }
+        assetSets.filter {
+            !$0.id.rawValue.hasPrefix("work-output-")
+                && !$0.id.rawValue.hasPrefix("work-input-")
+                && !$0.id.rawValue.hasPrefix("work-stack-")
+        }
     }
 
     private static func sidebarRow(for assetSet: AssetSet, count: Int?) -> SidebarRow {
