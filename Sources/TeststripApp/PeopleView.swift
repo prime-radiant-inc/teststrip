@@ -375,7 +375,7 @@ struct PeoplePresentation: Equatable {
 
     var statusDetail: String {
         if photosWithFaceSignals > 0 {
-            return "Review \(photosWithFaceSignals) photos with unnamed face signals. Naming and clustering are still disabled."
+            return "Review \(photosWithFaceSignals) photos with unnamed face signals. Select photos, then name the selection."
         }
         return "Run evaluation on catalog photos to populate local face review queues."
     }

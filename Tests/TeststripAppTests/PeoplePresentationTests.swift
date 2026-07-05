@@ -43,6 +43,20 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.namedPeopleEmptyText, "No confirmed people yet. Review face queues, select photos, then name the selection.")
     }
 
+    func testFaceReviewStatusPointsToManualNamingAction() {
+        let presentation = PeoplePresentation(
+            totalAssetCount: 1204,
+            evaluationSummaries: [
+                CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 3)
+            ]
+        )
+
+        XCTAssertEqual(
+            presentation.statusDetail,
+            "Review 3 photos with unnamed face signals. Select photos, then name the selection."
+        )
+    }
+
     func testFaceReviewStripStaysHonestWithoutFaceSignals() {
         let presentation = PeoplePresentation(totalAssetCount: 42, evaluationSummaries: [])
 
