@@ -1,6 +1,14 @@
 import AppKit
 import SwiftUI
 
+struct AppWindowLayoutMetrics {
+    static let minimumSplitContentWidth: CGFloat = 1_505
+    static let minimumWidth: CGFloat = 1_520
+    static let defaultWidth: CGFloat = minimumWidth
+    static let minimumHeight: CGFloat = 720
+    static let defaultHeight: CGFloat = 820
+}
+
 struct TeststripApplication: App {
     @State private var model: AppModel
 
@@ -24,9 +32,16 @@ struct TeststripApplication: App {
             } detail: {
                 InspectorView(model: model)
             }
-            .frame(minWidth: 1100, minHeight: 720)
+            .frame(
+                minWidth: AppWindowLayoutMetrics.minimumWidth,
+                minHeight: AppWindowLayoutMetrics.minimumHeight
+            )
             .preferredColorScheme(.dark)
         }
+        .defaultSize(
+            width: AppWindowLayoutMetrics.defaultWidth,
+            height: AppWindowLayoutMetrics.defaultHeight
+        )
         .commands {
             MetadataHistoryCommands(model: model)
             CullingCommands(model: model)
