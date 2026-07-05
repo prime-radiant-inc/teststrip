@@ -7840,6 +7840,42 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBeginImportFolderRecordsRunningActivityImmediately() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-running-import-activity")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(
+            catalog: catalog,
+            importTaskFactory: { _, _, _ in
+                Task {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            }
+        )
+
+        model.beginImportFolder(photoFolder)
+
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.kind, .ingest)
+        XCTAssertEqual(activity.status, .running)
+        XCTAssertEqual(activity.detail, "Importing from photos")
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Recent Work" }?.rowTitles.first, "Importing from photos")
+        let persisted = try catalog.repository.session(id: WorkSessionID(rawValue: activity.id))
+        XCTAssertEqual(persisted.status, .running)
+        XCTAssertEqual(persisted.detail, "Importing from photos")
+
+        model.cancelActiveWork()
+        try await waitForActivityStatus(.cancelled, in: model)
+    }
+
+    @MainActor
     func testCancellingActiveCardImportRecordsCancelledActivity() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-cancel-card-import")
         let source = directory.appendingPathComponent("DCIM", isDirectory: true)

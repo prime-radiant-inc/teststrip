@@ -5162,7 +5162,7 @@ public final class AppModel {
     }
 
     private func startImportActivity(folderURL: URL, destinationRoot: URL? = nil) {
-        activeWork = AppWorkActivity(
+        let activity = AppWorkActivity(
             kind: .ingest,
             status: .running,
             title: "Import photos",
@@ -5171,6 +5171,8 @@ public final class AppModel {
             totalUnitCount: nil,
             failureCount: 0
         )
+        activeWork = activity
+        recordRecentActivity(activity)
     }
 
     private func failImportBeforeStart(folderURL: URL, destinationRoot: URL? = nil, reason: String) {
