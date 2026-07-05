@@ -763,6 +763,42 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 
+    func testSelectingAssetLoadsPendingMetadataSyncOutsideStateSample() throws {
+        let directory = try makeTemporaryDirectory(named: "selected-pending-xmp-outside-sample")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assets = (0..<(AppModel.metadataSyncStateDisplayLimit + 1)).map { index in
+            makeAsset(id: "pending-xmp-sample-\(index)", path: "/Photos/pending-\(index).cr2", rating: 0)
+        }
+        let selectedOutsideSample = try XCTUnwrap(assets.last)
+        try repository.upsert(assets)
+        for asset in assets {
+            try repository.recordMetadataSyncPending(MetadataSyncItem(
+                assetID: asset.id,
+                sidecarURL: asset.originalURL.appendingPathExtension("xmp"),
+                catalogGeneration: 1,
+                lastSyncedFingerprint: "old"
+            ))
+        }
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+
+        XCTAssertEqual(model.pendingMetadataSyncItems.count, AppModel.metadataSyncStateDisplayLimit)
+
+        model.select(selectedOutsideSample.id)
+
+        XCTAssertEqual(model.selectedPendingMetadataSyncItem?.assetID, selectedOutsideSample.id)
+        XCTAssertEqual(model.pendingMetadataSyncCount, AppModel.metadataSyncStateDisplayLimit + 1)
+    }
+
     func testResolveSelectedMetadataConflictUsingCatalogOverwritesSidecar() throws {
         let catalogMetadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["catalog"])
         let sidecarMetadata = AssetMetadata(rating: 2, colorLabel: .red, flag: .reject, keywords: ["sidecar"])
@@ -1220,7 +1256,10 @@ final class AppModelTests: XCTestCase {
             workerSupervisor: supervisor
         )
 
-        XCTAssertEqual(model.pendingMetadataSyncItems.count, 205)
+        XCTAssertEqual(model.pendingMetadataSyncItems.count, AppModel.metadataSyncStateDisplayLimit)
+        XCTAssertEqual(model.pendingMetadataSyncCount, 205)
+        let syncSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sync" })
+        XCTAssertEqual(syncSection.rows.first { $0.title == "XMP Pending" }?.countText, "205")
         XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }.count, 200)
     }
 

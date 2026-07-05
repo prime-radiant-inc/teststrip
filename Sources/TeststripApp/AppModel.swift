@@ -595,6 +595,13 @@ private struct WorkerImportContext {
     var displayedCatalogedAssetID: AssetID?
 }
 
+private struct MetadataSyncStateSnapshot {
+    var pendingItems: [MetadataSyncItem]
+    var conflictItems: [MetadataSyncItem]
+    var pendingCount: Int
+    var conflictCount: Int
+}
+
 @Observable
 public final class AppModel {
     public var sidebarSections: [SidebarSection]
@@ -613,6 +620,8 @@ public final class AppModel {
     public var starredWork: [AppWorkActivity]
     public var pendingMetadataSyncItems: [MetadataSyncItem]
     public var metadataSyncConflictItems: [MetadataSyncItem]
+    public var pendingMetadataSyncCount: Int
+    public var metadataSyncConflictCount: Int
     public var previewGenerationQueueStates: [PreviewGenerationQueueState]
     public var backgroundWorkQueue: BackgroundWorkQueue
     public var librarySearchText: String
@@ -694,6 +703,7 @@ public final class AppModel {
     private static let pendingPreviewRecoveryBatchSize = 40
     static let previewGenerationQueueStateDisplayLimit = pendingPreviewRecoveryBatchSize
     private static let pendingMetadataSyncRecoveryBatchSize = 200
+    static let metadataSyncStateDisplayLimit = pendingMetadataSyncRecoveryBatchSize
     private static let previewGenerationMaximumAutomaticAttempts = 3
     static let sourceAvailabilityBatchSize = 100
     private static let defaultCompareAssetLimit = 4
@@ -927,8 +937,8 @@ public final class AppModel {
             loadedAssetCount: assets.count,
             totalAssetCount: totalAssetCount,
             pendingBackgroundWorkCount: backgroundWorkQueue.items.filter { Self.isActiveBackgroundWorkStatus($0.status) }.count,
-            pendingMetadataSyncCount: pendingMetadataSyncItems.count,
-            metadataSyncConflictCount: metadataSyncConflictItems.count,
+            pendingMetadataSyncCount: pendingMetadataSyncCount,
+            metadataSyncConflictCount: metadataSyncConflictCount,
             backgroundWork: Self.diagnosticsBackgroundWork(backgroundWorkQueue),
             sourceAvailabilityCounts: Self.sourceAvailabilityCounts(sourceAvailabilitySummaries),
             sourceRoots: sourceRoots.map {
@@ -1241,6 +1251,8 @@ public final class AppModel {
         starredWork: [AppWorkActivity] = [],
         pendingMetadataSyncItems: [MetadataSyncItem] = [],
         metadataSyncConflictItems: [MetadataSyncItem] = [],
+        pendingMetadataSyncCount: Int? = nil,
+        metadataSyncConflictCount: Int? = nil,
         previewGenerationQueueStates: [PreviewGenerationQueueState] = [],
         backgroundWorkQueue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
         savedAssetSets: [AssetSet] = [],
@@ -1259,6 +1271,8 @@ public final class AppModel {
         resourceAccess: SecurityScopedResourceAccess = .permissive
     ) {
         let resolvedTotalAssetCount = totalAssetCount ?? assets.count
+        let resolvedPendingMetadataSyncCount = pendingMetadataSyncCount ?? pendingMetadataSyncItems.count
+        let resolvedMetadataSyncConflictCount = metadataSyncConflictCount ?? metadataSyncConflictItems.count
         self.sidebarSections = sidebarSections.isEmpty ? Self.defaultSidebarSections(
             totalAssetCount: resolvedTotalAssetCount,
             savedAssetSets: savedAssetSets,
@@ -1270,6 +1284,8 @@ public final class AppModel {
             reviewQueueCounts: reviewQueueCounts,
             pendingMetadataSyncItems: pendingMetadataSyncItems,
             metadataSyncConflictItems: metadataSyncConflictItems,
+            pendingMetadataSyncCount: resolvedPendingMetadataSyncCount,
+            metadataSyncConflictCount: resolvedMetadataSyncConflictCount,
             recentWork: recentWork,
             starredWork: starredWork
         ) : sidebarSections
@@ -1284,6 +1300,8 @@ public final class AppModel {
         self.starredWork = starredWork
         self.pendingMetadataSyncItems = pendingMetadataSyncItems
         self.metadataSyncConflictItems = metadataSyncConflictItems
+        self.pendingMetadataSyncCount = resolvedPendingMetadataSyncCount
+        self.metadataSyncConflictCount = resolvedMetadataSyncConflictCount
         self.previewGenerationQueueStates = previewGenerationQueueStates
         self.backgroundWorkQueue = workerSupervisor?.queue ?? backgroundWorkQueue
         self.librarySearchText = ""
@@ -1404,8 +1422,10 @@ public final class AppModel {
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: repository)
         let catalogEvaluationKindSummaries = try repository.evaluationKindSummaries()
         let reviewQueueCounts = try Self.reviewQueueCounts(repository: repository)
-        let pendingMetadataSyncItems = try repository.pendingMetadataSyncItems()
-        let metadataSyncConflictItems = try repository.metadataSyncConflictItems()
+        let metadataSyncState = try Self.metadataSyncState(
+            repository: repository,
+            selectedAssetID: assets.first?.id
+        )
         let recentWork = try repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
         let totalAssetCount = try repository.assetCount()
@@ -1419,8 +1439,10 @@ public final class AppModel {
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
                 reviewQueueCounts: reviewQueueCounts,
-                pendingMetadataSyncItems: pendingMetadataSyncItems,
-                metadataSyncConflictItems: metadataSyncConflictItems,
+                pendingMetadataSyncItems: metadataSyncState.pendingItems,
+                metadataSyncConflictItems: metadataSyncState.conflictItems,
+                pendingMetadataSyncCount: metadataSyncState.pendingCount,
+                metadataSyncConflictCount: metadataSyncState.conflictCount,
                 recentWork: recentWork,
                 starredWork: starredWork
             ),
@@ -1429,8 +1451,10 @@ public final class AppModel {
             totalAssetCount: totalAssetCount,
             recentWork: recentWork,
             starredWork: starredWork,
-            pendingMetadataSyncItems: pendingMetadataSyncItems,
-            metadataSyncConflictItems: metadataSyncConflictItems,
+            pendingMetadataSyncItems: metadataSyncState.pendingItems,
+            metadataSyncConflictItems: metadataSyncState.conflictItems,
+            pendingMetadataSyncCount: metadataSyncState.pendingCount,
+            metadataSyncConflictCount: metadataSyncState.conflictCount,
             previewGenerationQueueStates: try previewGenerationQueueStates(
                 repository: repository,
                 selectedAssetID: assets.first?.id
@@ -1464,8 +1488,10 @@ public final class AppModel {
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         let catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
         let reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
-        let pendingMetadataSyncItems = try catalog.repository.pendingMetadataSyncItems()
-        let metadataSyncConflictItems = try catalog.repository.metadataSyncConflictItems()
+        let metadataSyncState = try Self.metadataSyncState(
+            repository: catalog.repository,
+            selectedAssetID: assets.first?.id
+        )
         let recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
         let totalAssetCount = try catalog.repository.assetCount()
@@ -1479,8 +1505,10 @@ public final class AppModel {
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
                 catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
                 reviewQueueCounts: reviewQueueCounts,
-                pendingMetadataSyncItems: pendingMetadataSyncItems,
-                metadataSyncConflictItems: metadataSyncConflictItems,
+                pendingMetadataSyncItems: metadataSyncState.pendingItems,
+                metadataSyncConflictItems: metadataSyncState.conflictItems,
+                pendingMetadataSyncCount: metadataSyncState.pendingCount,
+                metadataSyncConflictCount: metadataSyncState.conflictCount,
                 recentWork: recentWork,
                 starredWork: starredWork
             ),
@@ -1490,8 +1518,10 @@ public final class AppModel {
             catalog: catalog,
             recentWork: recentWork,
             starredWork: starredWork,
-            pendingMetadataSyncItems: pendingMetadataSyncItems,
-            metadataSyncConflictItems: metadataSyncConflictItems,
+            pendingMetadataSyncItems: metadataSyncState.pendingItems,
+            metadataSyncConflictItems: metadataSyncState.conflictItems,
+            pendingMetadataSyncCount: metadataSyncState.pendingCount,
+            metadataSyncConflictCount: metadataSyncState.conflictCount,
             previewGenerationQueueStates: try previewGenerationQueueStates(
                 repository: catalog.repository,
                 selectedAssetID: assets.first?.id
@@ -1513,6 +1543,37 @@ public final class AppModel {
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
         return model
+    }
+
+    private static func metadataSyncState(
+        repository: CatalogRepository,
+        selectedAssetID: AssetID?
+    ) throws -> MetadataSyncStateSnapshot {
+        var snapshot = MetadataSyncStateSnapshot(
+            pendingItems: try repository.pendingMetadataSyncItems(limit: metadataSyncStateDisplayLimit),
+            conflictItems: try repository.metadataSyncConflictItems(limit: metadataSyncStateDisplayLimit),
+            pendingCount: try repository.pendingMetadataSyncItemCount(),
+            conflictCount: try repository.metadataSyncConflictItemCount()
+        )
+        if let selectedAssetID {
+            try mergeMetadataSyncState(for: selectedAssetID, repository: repository, into: &snapshot)
+        }
+        return snapshot
+    }
+
+    private static func mergeMetadataSyncState(
+        for assetID: AssetID,
+        repository: CatalogRepository,
+        into snapshot: inout MetadataSyncStateSnapshot
+    ) throws {
+        snapshot.pendingItems.removeAll { $0.assetID == assetID }
+        snapshot.conflictItems.removeAll { $0.assetID == assetID }
+        if let pendingItem = try repository.pendingMetadataSyncItem(assetID: assetID) {
+            snapshot.pendingItems.append(pendingItem)
+        }
+        if let conflictItem = try repository.metadataSyncConflictItem(assetID: assetID) {
+            snapshot.conflictItems.append(conflictItem)
+        }
     }
 
     private static func previewGenerationQueueStates(
@@ -1569,6 +1630,11 @@ public final class AppModel {
         guard let assetID else { return }
         do {
             try refreshSelectedPreviewGenerationQueueStates(for: assetID)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        do {
+            try refreshSelectedMetadataSyncState(for: assetID)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2566,7 +2632,7 @@ public final class AppModel {
         if let item = metadataSyncConflictItems.first(where: { $0.assetID == assetID }) {
             return item
         }
-        if let item = try repository.metadataSyncConflictItems().first(where: { $0.assetID == assetID }) {
+        if let item = try repository.metadataSyncConflictItem(assetID: assetID) {
             return item
         }
         throw TeststripError.invalidState("selected asset has no XMP conflict")
@@ -2576,13 +2642,19 @@ public final class AppModel {
         if let item = pendingMetadataSyncItems.first(where: { $0.assetID == assetID }) {
             return item
         }
-        if let item = try repository.pendingMetadataSyncItems().first(where: { $0.assetID == assetID }) {
+        if let item = try repository.pendingMetadataSyncItem(assetID: assetID) {
             return item
         }
         throw TeststripError.invalidState("selected asset has no pending XMP sync")
     }
 
     private func clearMetadataSyncState(assetID: AssetID) {
+        if pendingMetadataSyncItems.contains(where: { $0.assetID == assetID }) {
+            pendingMetadataSyncCount = max(0, pendingMetadataSyncCount - 1)
+        }
+        if metadataSyncConflictItems.contains(where: { $0.assetID == assetID }) {
+            metadataSyncConflictCount = max(0, metadataSyncConflictCount - 1)
+        }
         pendingMetadataSyncItems.removeAll { $0.assetID == assetID }
         metadataSyncConflictItems.removeAll { $0.assetID == assetID }
     }
@@ -2691,15 +2763,40 @@ public final class AppModel {
     }
 
     private func upsertPendingMetadataSyncItem(_ item: MetadataSyncItem) {
+        let hadPendingItem = pendingMetadataSyncItems.contains { $0.assetID == item.assetID }
+        let hadConflictItem = metadataSyncConflictItems.contains { $0.assetID == item.assetID }
         pendingMetadataSyncItems.removeAll { $0.assetID == item.assetID }
+        metadataSyncConflictItems.removeAll { $0.assetID == item.assetID }
         pendingMetadataSyncItems.append(item)
+        if !hadPendingItem {
+            pendingMetadataSyncCount += 1
+        }
+        if hadConflictItem {
+            metadataSyncConflictCount = max(0, metadataSyncConflictCount - 1)
+        }
     }
 
     private func refreshMetadataSyncState() throws {
         guard let catalog else { return }
-        pendingMetadataSyncItems = try catalog.repository.pendingMetadataSyncItems()
-        metadataSyncConflictItems = try catalog.repository.metadataSyncConflictItems()
+        let snapshot = try Self.metadataSyncState(repository: catalog.repository, selectedAssetID: selectedAssetID)
+        pendingMetadataSyncItems = snapshot.pendingItems
+        metadataSyncConflictItems = snapshot.conflictItems
+        pendingMetadataSyncCount = snapshot.pendingCount
+        metadataSyncConflictCount = snapshot.conflictCount
         rebuildSidebarSections()
+    }
+
+    private func refreshSelectedMetadataSyncState(for assetID: AssetID) throws {
+        guard let catalog else { return }
+        var snapshot = MetadataSyncStateSnapshot(
+            pendingItems: pendingMetadataSyncItems,
+            conflictItems: metadataSyncConflictItems,
+            pendingCount: pendingMetadataSyncCount,
+            conflictCount: metadataSyncConflictCount
+        )
+        try Self.mergeMetadataSyncState(for: assetID, repository: catalog.repository, into: &snapshot)
+        pendingMetadataSyncItems = snapshot.pendingItems
+        metadataSyncConflictItems = snapshot.conflictItems
     }
 
     private func refreshPreviewGenerationQueueStates() throws {
@@ -4161,6 +4258,8 @@ public final class AppModel {
             reviewQueueCounts: reviewQueueCounts,
             pendingMetadataSyncItems: pendingMetadataSyncItems,
             metadataSyncConflictItems: metadataSyncConflictItems,
+            pendingMetadataSyncCount: pendingMetadataSyncCount,
+            metadataSyncConflictCount: metadataSyncConflictCount,
             recentWork: recentWork,
             starredWork: starredWork
         )
@@ -4798,6 +4897,8 @@ public final class AppModel {
         reviewQueueCounts: [ReviewQueue: Int] = [:],
         pendingMetadataSyncItems: [MetadataSyncItem] = [],
         metadataSyncConflictItems: [MetadataSyncItem] = [],
+        pendingMetadataSyncCount: Int? = nil,
+        metadataSyncConflictCount: Int? = nil,
         recentWork: [AppWorkActivity] = [],
         starredWork: [AppWorkActivity] = []
     ) -> [SidebarSection] {
@@ -4864,23 +4965,25 @@ public final class AppModel {
             sections.append(SidebarSection(title: "AI", rows: evaluationRows))
         }
         var syncRows: [SidebarRow] = []
-        if !pendingMetadataSyncItems.isEmpty {
+        let resolvedPendingMetadataSyncCount = pendingMetadataSyncCount ?? pendingMetadataSyncItems.count
+        let resolvedMetadataSyncConflictCount = metadataSyncConflictCount ?? metadataSyncConflictItems.count
+        if resolvedPendingMetadataSyncCount > 0 {
             syncRows.append(
                 SidebarRow(
                     id: "sync-xmp-pending",
                     title: "XMP Pending",
-                    countText: sidebarCountText(pendingMetadataSyncItems.count),
+                    countText: sidebarCountText(resolvedPendingMetadataSyncCount),
                     tone: .warning,
                     target: .metadataSyncPending
                 )
             )
         }
-        if !metadataSyncConflictItems.isEmpty {
+        if resolvedMetadataSyncConflictCount > 0 {
             syncRows.append(
                 SidebarRow(
                     id: "sync-xmp-conflicts",
                     title: "XMP Conflicts",
-                    countText: sidebarCountText(metadataSyncConflictItems.count),
+                    countText: sidebarCountText(resolvedMetadataSyncConflictCount),
                     tone: .destructive,
                     target: .metadataSyncConflicts
                 )

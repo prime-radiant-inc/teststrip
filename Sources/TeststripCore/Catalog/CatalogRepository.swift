@@ -632,8 +632,16 @@ public final class CatalogRepository {
         try upsertMetadataSyncState(item, status: "pending")
     }
 
-    public func pendingMetadataSyncItems() throws -> [MetadataSyncItem] {
-        try metadataSyncItems(status: "pending")
+    public func pendingMetadataSyncItems(limit: Int? = nil) throws -> [MetadataSyncItem] {
+        try metadataSyncItems(status: "pending", limit: limit)
+    }
+
+    public func pendingMetadataSyncItemCount() throws -> Int {
+        try metadataSyncItemCount(status: "pending")
+    }
+
+    public func pendingMetadataSyncItem(assetID: AssetID) throws -> MetadataSyncItem? {
+        try metadataSyncItem(assetID: assetID, status: "pending")
     }
 
     public func recordPreviewGenerationPending(_ item: PreviewGenerationItem) throws {
@@ -767,8 +775,16 @@ public final class CatalogRepository {
         return try rows.map(decodePreviewGenerationQueueState)
     }
 
-    public func metadataSyncConflictItems() throws -> [MetadataSyncItem] {
-        try metadataSyncItems(status: "conflict")
+    public func metadataSyncConflictItems(limit: Int? = nil) throws -> [MetadataSyncItem] {
+        try metadataSyncItems(status: "conflict", limit: limit)
+    }
+
+    public func metadataSyncConflictItemCount() throws -> Int {
+        try metadataSyncItemCount(status: "conflict")
+    }
+
+    public func metadataSyncConflictItem(assetID: AssetID) throws -> MetadataSyncItem? {
+        try metadataSyncItem(assetID: assetID, status: "conflict")
     }
 
     public func metadataSyncItem(assetID: AssetID) throws -> MetadataSyncItem? {
@@ -1284,16 +1300,50 @@ public final class CatalogRepository {
         )
     }
 
-    private func metadataSyncItems(status: String) throws -> [MetadataSyncItem] {
+    private func metadataSyncItem(assetID: AssetID, status: String) throws -> MetadataSyncItem? {
         let rows = try database.rows(
             """
             SELECT asset_id, sidecar_path, catalog_generation, last_synced_fingerprint, status, updated_at
             FROM metadata_sync_state
+            WHERE asset_id = ? AND status = ?
+            LIMIT 1
+            """,
+            bindings: [assetID.rawValue, status]
+        )
+        return try rows.first.map(decodeMetadataSyncItem)
+    }
+
+    private func metadataSyncItemCount(status: String) throws -> Int {
+        let rows = try database.rows(
+            """
+            SELECT COUNT(*) AS count
+            FROM metadata_sync_state
             WHERE status = ?
-            ORDER BY updated_at ASC
             """,
             bindings: [status]
         )
+        guard let countString = rows.first?["count"], let count = Int(countString) else {
+            throw CatalogError.sqlite("metadata sync count query returned no count")
+        }
+        return count
+    }
+
+    private func metadataSyncItems(status: String, limit: Int? = nil) throws -> [MetadataSyncItem] {
+        if let limit, limit <= 0 {
+            return []
+        }
+        var sql = """
+        SELECT asset_id, sidecar_path, catalog_generation, last_synced_fingerprint, status, updated_at
+        FROM metadata_sync_state
+        WHERE status = ?
+        ORDER BY updated_at ASC
+        """
+        var bindings = [status]
+        if let limit {
+            sql += " LIMIT ?"
+            bindings.append("\(limit)")
+        }
+        let rows = try database.rows(sql, bindings: bindings)
         return try rows.map(decodeMetadataSyncItem)
     }
 
