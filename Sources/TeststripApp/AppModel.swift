@@ -2546,6 +2546,13 @@ public final class AppModel {
         try resolveMetadataConflictUsingSidecar(assetID: selectedAssetID)
     }
 
+    public func resolveSelectedMetadataConflictByMergingMissingSidecarFields() throws {
+        guard let selectedAssetID else {
+            throw TeststripError.invalidState("no selected asset")
+        }
+        try resolveMetadataConflictByMergingMissingSidecarFields(assetID: selectedAssetID)
+    }
+
     public func retrySelectedMetadataSync() throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
@@ -2767,6 +2774,35 @@ public final class AppModel {
         return keywords.contains { keywordKey($0) == key }
     }
 
+    private static func metadataByMergingMissingSidecarFields(
+        catalogMetadata: AssetMetadata,
+        sidecarMetadata: AssetMetadata
+    ) -> AssetMetadata {
+        var mergedMetadata = catalogMetadata
+        if mergedMetadata.rating == 0 {
+            mergedMetadata.rating = sidecarMetadata.rating
+        }
+        if mergedMetadata.colorLabel == nil {
+            mergedMetadata.colorLabel = sidecarMetadata.colorLabel
+        }
+        if mergedMetadata.flag == nil {
+            mergedMetadata.flag = sidecarMetadata.flag
+        }
+        for keyword in sidecarMetadata.keywords where !keywordList(mergedMetadata.keywords, contains: keyword) {
+            mergedMetadata.keywords.append(keyword)
+        }
+        if mergedMetadata.caption == nil {
+            mergedMetadata.caption = sidecarMetadata.caption
+        }
+        if mergedMetadata.creator == nil {
+            mergedMetadata.creator = sidecarMetadata.creator
+        }
+        if mergedMetadata.copyright == nil {
+            mergedMetadata.copyright = sidecarMetadata.copyright
+        }
+        return mergedMetadata
+    }
+
     private static func cleanedKeyword(_ keyword: String) -> String {
         keyword.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -2899,6 +2935,64 @@ public final class AppModel {
         clearMetadataSyncState(assetID: assetID)
         try refreshAfterMetadataConflictResolution()
         statusMessage = "Resolved XMP conflict using sidecar metadata"
+    }
+
+    private func resolveMetadataConflictByMergingMissingSidecarFields(assetID: AssetID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let conflict = try metadataSyncConflictItem(assetID: assetID, repository: catalog.repository)
+        let originalAsset = try catalog.repository.asset(id: assetID)
+        let sidecarData = try Data(contentsOf: conflict.sidecarURL)
+        let sidecarMetadata = try XMPPacket.parse(sidecarData).metadata
+        let mergedMetadata = Self.metadataByMergingMissingSidecarFields(
+            catalogMetadata: originalAsset.metadata,
+            sidecarMetadata: sidecarMetadata
+        )
+
+        try catalog.repository.updateMetadata(assetID: assetID) { metadata in
+            metadata = mergedMetadata
+        }
+        let updatedAsset = try catalog.repository.asset(id: assetID)
+        let generation = try catalog.repository.catalogGeneration(assetID: assetID)
+        let pendingItem = MetadataSyncItem(
+            assetID: assetID,
+            sidecarURL: conflict.sidecarURL,
+            catalogGeneration: generation,
+            lastSyncedFingerprint: conflict.lastSyncedFingerprint
+        )
+
+        if let index = assets.firstIndex(where: { $0.id == assetID }) {
+            assets[index] = updatedAsset
+        }
+        try refreshCatalogSidebarCounts()
+        if originalAsset.metadata != mergedMetadata {
+            metadataUndoStack.append(MetadataChange(
+                assetID: assetID,
+                before: originalAsset.metadata,
+                after: mergedMetadata
+            ))
+            metadataRedoStack.removeAll()
+        }
+
+        do {
+            let result = try catalog.metadataSidecarStore.write(metadata: mergedMetadata, forOriginalAt: updatedAsset.originalURL)
+            try catalog.repository.markMetadataSynced(
+                assetID: assetID,
+                sidecarURL: result.sidecarURL,
+                catalogGeneration: generation,
+                fingerprint: result.fingerprint
+            )
+            clearMetadataSyncState(assetID: assetID)
+            try refreshAfterMetadataConflictResolution()
+            statusMessage = "Resolved XMP conflict by merging sidecar fields"
+        } catch {
+            try catalog.repository.recordMetadataSyncPending(pendingItem)
+            metadataSyncConflictItems.removeAll { $0.assetID == assetID }
+            upsertPendingMetadataSyncItem(pendingItem)
+            try refreshAfterMetadataConflictResolution()
+            statusMessage = "XMP write pending for \(updatedAsset.originalURL.lastPathComponent)"
+        }
     }
 
     private func metadataSyncConflictItem(assetID: AssetID, repository: CatalogRepository) throws -> MetadataSyncItem {

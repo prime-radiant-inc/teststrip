@@ -85,6 +85,27 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertLessThanOrEqual(result.progressEventCount, 8)
     }
 
+    func testCatalogScaleBenchmarkMeasuresRepresentativeIndexedFilters() throws {
+        let root = try makeTemporaryDirectory(named: "catalog-scale-benchmark")
+
+        let result = try CatalogScaleBenchmark(count: 120, root: root).run()
+
+        XCTAssertEqual(result.assetCount, 120)
+        XCTAssertEqual(result.firstPageRows, 120)
+        XCTAssertEqual(result.middlePageRows, 60)
+        XCTAssertEqual(result.filteredRating4PlusCount, 40)
+        XCTAssertEqual(result.filteredPageRows, 40)
+        XCTAssertEqual(result.pickedCount, 40)
+        XCTAssertEqual(result.greenLabelCount, 24)
+        XCTAssertEqual(result.keywordBatch10Count, 10)
+        XCTAssertEqual(result.offlineCount, 60)
+        XCTAssertEqual(result.folderFrameCount, 120)
+        XCTAssertEqual(result.cameraSmokeCam2Count, 40)
+        XCTAssertEqual(result.lens50mmCount, 30)
+        XCTAssertEqual(result.isoAtLeast500Count, 72)
+        XCTAssertEqual(result.recentCaptureCount, 60)
+    }
+
     func testMetadataWriteBenchmarkUpdatesCatalogAndWritesSidecars() throws {
         let root = try makeTemporaryDirectory(named: "metadata-write-benchmark")
 

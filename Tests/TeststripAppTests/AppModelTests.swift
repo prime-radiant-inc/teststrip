@@ -873,6 +873,55 @@ final class AppModelTests: XCTestCase {
         )
     }
 
+    func testResolveSelectedMetadataConflictMergesMissingSidecarFieldsIntoCatalog() throws {
+        let catalogMetadata = AssetMetadata(
+            rating: 0,
+            colorLabel: .green,
+            flag: nil,
+            keywords: ["catalog", "Shared"],
+            caption: nil,
+            creator: "Catalog Creator"
+        )
+        let sidecarMetadata = AssetMetadata(
+            rating: 4,
+            colorLabel: .red,
+            flag: .pick,
+            keywords: ["sidecar", "shared"],
+            caption: "Sidecar caption",
+            creator: "Sidecar Creator",
+            copyright: "Sidecar copyright"
+        )
+        let expectedMetadata = AssetMetadata(
+            rating: 4,
+            colorLabel: .green,
+            flag: .pick,
+            keywords: ["catalog", "Shared", "sidecar"],
+            caption: "Sidecar caption",
+            creator: "Catalog Creator",
+            copyright: "Sidecar copyright"
+        )
+        let (model, repository, asset, originalURL, sidecarURL) = try makeModelWithXMPConflict(
+            named: "resolve-conflict-merge-missing",
+            catalogMetadata: catalogMetadata,
+            sidecarMetadata: sidecarMetadata
+        )
+
+        try model.resolveSelectedMetadataConflictByMergingMissingSidecarFields()
+
+        let sidecarData = try Data(contentsOf: sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata, expectedMetadata)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata, expectedMetadata)
+        XCTAssertEqual(model.selectedAsset?.metadata, expectedMetadata)
+        XCTAssertEqual(try Data(contentsOf: originalURL), Data("original raw bytes".utf8))
+        XCTAssertEqual(try repository.metadataSyncConflictItems(), [])
+        XCTAssertEqual(model.metadataSyncConflictItems, [])
+        XCTAssertEqual(model.pendingMetadataSyncItems, [])
+        XCTAssertEqual(
+            try repository.lastMetadataSyncFingerprint(assetID: asset.id),
+            XMPSidecarStore.fingerprint(for: sidecarData)
+        )
+    }
+
     func testSelectedMetadataConflictSidecarMetadataParsesSelectedSidecar() throws {
         let sidecarMetadata = AssetMetadata(rating: 5, colorLabel: .green, keywords: ["sidecar"])
         let (model, _, asset, _, _) = try makeModelWithXMPConflict(

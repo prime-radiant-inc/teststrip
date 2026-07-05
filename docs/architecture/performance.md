@@ -13,7 +13,7 @@ swift run TeststripBench catalog-stress
 swift run TeststripBench 250000
 ```
 
-The catalog benchmark measures synthetic asset seeding, total count, first-page load, middle-page load, filtered count for 4+ star assets, and filtered first-page load. It uses the same `CatalogRepository` APIs as the app grid paging path.
+The catalog benchmark measures synthetic asset seeding, total count, first-page load, middle-page load, filtered count for 4+ star assets, and filtered first-page load. Its synthetic rows also include representative flag, color label, keyword, source availability, folder, camera, lens, ISO, and capture-date values, and the machine-readable summary records count timings for those common filter predicates. It uses the same `CatalogRepository` APIs as the app grid paging path.
 
 Additional focused commands cover the other hot paths that currently matter for alpha:
 
