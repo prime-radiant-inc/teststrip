@@ -3106,8 +3106,10 @@ public final class AppModel {
             return 0
         }
 
-        var appliedCount = 0
+        var seenAssetIDs: Set<AssetID> = []
+        var changes: [(original: Asset, updated: Asset)] = []
         for assetID in assetIDs {
+            guard seenAssetIDs.insert(assetID).inserted else { continue }
             let originalAsset = try catalog.repository.asset(id: assetID)
             var updatedMetadata = originalAsset.metadata
             var changed = false
@@ -3130,20 +3132,54 @@ public final class AppModel {
             }
             guard changed else { continue }
 
-            try applyMetadataSnapshot(assetID: assetID, metadata: updatedMetadata)
-            metadataUndoStack.append(MetadataChange(
-                assetID: assetID,
-                before: originalAsset.metadata,
-                after: updatedMetadata
-            ))
-            appliedCount += 1
+            var updatedAsset = originalAsset
+            updatedAsset.metadata = updatedMetadata
+            changes.append((original: originalAsset, updated: updatedAsset))
         }
 
-        if appliedCount > 0 {
-            metadataRedoStack.removeAll()
-            statusMessage = "Applied batch metadata to \(Self.photoCountDescription(appliedCount))"
+        guard !changes.isEmpty else {
+            return 0
         }
-        return appliedCount
+
+        try catalog.repository.upsert(changes.map(\.updated))
+        if workerSupervisor != nil {
+            let pendingItems = try changes.map { change in
+                let generation = try catalog.repository.catalogGeneration(assetID: change.updated.id)
+                let lastFingerprint = try catalog.repository.lastMetadataSyncFingerprint(assetID: change.updated.id)
+                return MetadataSyncItem(
+                    assetID: change.updated.id,
+                    sidecarURL: catalog.metadataSidecarStore.sidecarURL(forOriginalAt: change.updated.originalURL),
+                    catalogGeneration: generation,
+                    lastSyncedFingerprint: lastFingerprint
+                )
+            }
+            for pendingItem in pendingItems {
+                try catalog.repository.recordMetadataSyncPending(pendingItem)
+                upsertPendingMetadataSyncItem(pendingItem)
+            }
+            try enqueueMetadataSyncWork(pendingItems: pendingItems)
+        } else {
+            for change in changes {
+                try syncMetadataSidecar(for: change.updated)
+            }
+        }
+
+        let updatedAssetsByID = Dictionary(uniqueKeysWithValues: changes.map { ($0.updated.id, $0.updated) })
+        for index in assets.indices {
+            guard let updatedAsset = updatedAssetsByID[assets[index].id] else { continue }
+            assets[index] = updatedAsset
+        }
+        for change in changes {
+            metadataUndoStack.append(MetadataChange(
+                assetID: change.updated.id,
+                before: change.original.metadata,
+                after: change.updated.metadata
+            ))
+        }
+        try refreshCatalogSidebarCounts()
+        metadataRedoStack.removeAll()
+        statusMessage = "Applied batch metadata to \(Self.photoCountDescription(changes.count))"
+        return changes.count
     }
 
     public func setCaptionForSelectedAsset(_ caption: String) throws {
@@ -3725,33 +3761,47 @@ public final class AppModel {
         pendingItem: MetadataSyncItem,
         placement: BackgroundWorkQueuePlacement = .back
     ) throws {
+        try enqueueMetadataSyncWork(pendingItems: [pendingItem], placement: placement)
+    }
+
+    private func enqueueMetadataSyncWork(
+        pendingItems: [MetadataSyncItem],
+        placement: BackgroundWorkQueuePlacement = .back
+    ) throws {
         guard let workerSupervisor else {
             throw TeststripError.invalidState("worker supervisor is not configured")
         }
-        let itemID = Self.metadataSyncWorkItemID(
-            assetID: pendingItem.assetID,
-            catalogGeneration: pendingItem.catalogGeneration
-        )
-        if backgroundWorkQueue.item(id: itemID) != nil {
-            return
-        }
-        let item = BackgroundWorkItem(
-            id: itemID,
-            kind: .xmpSync,
-            title: "Sync XMP",
-            detail: "Writing XMP sidecar",
-            completedUnitCount: 0,
-            totalUnitCount: 1
-        )
-        metadataSyncAssetIDsByItemID[itemID] = pendingItem.assetID
-        do {
-            try workerSupervisor.enqueue(
-                item,
+        var requests: [(item: BackgroundWorkItem, command: WorkerCommand, placement: BackgroundWorkQueuePlacement)] = []
+        for pendingItem in pendingItems {
+            let itemID = Self.metadataSyncWorkItemID(
+                assetID: pendingItem.assetID,
+                catalogGeneration: pendingItem.catalogGeneration
+            )
+            if backgroundWorkQueue.item(id: itemID) != nil {
+                continue
+            }
+            let item = BackgroundWorkItem(
+                id: itemID,
+                kind: .xmpSync,
+                title: "Sync XMP",
+                detail: "Writing XMP sidecar",
+                completedUnitCount: 0,
+                totalUnitCount: 1
+            )
+            metadataSyncAssetIDsByItemID[itemID] = pendingItem.assetID
+            requests.append((
+                item: item,
                 command: .syncMetadata(assetID: pendingItem.assetID),
                 placement: placement
-            )
+            ))
+        }
+        guard !requests.isEmpty else { return }
+        do {
+            try workerSupervisor.enqueue(requests)
         } catch {
-            metadataSyncAssetIDsByItemID[itemID] = nil
+            for request in requests {
+                metadataSyncAssetIDsByItemID[request.item.id] = nil
+            }
             throw error
         }
         syncBackgroundWorkQueueFromSupervisor()

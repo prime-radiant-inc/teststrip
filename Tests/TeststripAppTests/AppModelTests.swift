@@ -819,6 +819,65 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: outsideURL), Data("outside original raw bytes".utf8))
     }
 
+    func testWorkerBackedBatchMetadataRefreshesXmpStateOnceForBatch() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-batch-metadata")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        var metadataSyncStateQueryCount = 0
+        database.rowQueryObserver = { sql in
+            if sql.contains("FROM metadata_sync_state") {
+                metadataSyncStateQueryCount += 1
+            }
+        }
+        let repository = CatalogRepository(database: database)
+        let assets = [
+            makeAsset(id: "worker-batch-first", size: 10),
+            makeAsset(id: "worker-batch-second", size: 11),
+            makeAsset(id: "worker-batch-third", size: 12)
+        ]
+        try repository.upsert(assets)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: assets,
+            totalAssetCount: assets.count,
+            catalog: catalog,
+            workerSupervisor: supervisor
+        )
+
+        metadataSyncStateQueryCount = 0
+        let appliedCount = try model.applyVisibleBatchMetadata(
+            keywordText: "portfolio",
+            caption: "  Worker batch  ",
+            creator: "",
+            copyright: ""
+        )
+
+        XCTAssertEqual(appliedCount, 3)
+        XCTAssertLessThanOrEqual(metadataSyncStateQueryCount, 9)
+        XCTAssertEqual(model.pendingMetadataSyncCount, 3)
+        XCTAssertEqual(Set(model.pendingMetadataSyncItems.map(\.assetID)), Set(assets.map(\.id)))
+        XCTAssertEqual(Set(try repository.pendingMetadataSyncItems().map(\.assetID)), Set(assets.map(\.id)))
+        XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }.count, 3)
+        XCTAssertEqual(try transport.commands(), [.syncMetadata(assetID: assets[0].id)])
+        XCTAssertEqual(try repository.asset(id: assets[2].id).metadata.caption, "Worker batch")
+    }
+
     func testBatchSelectionDoesNotReplacePrimarySelection() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-selected-batch-primary")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
