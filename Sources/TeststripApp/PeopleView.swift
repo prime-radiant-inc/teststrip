@@ -7,7 +7,8 @@ struct PeopleView: View {
     private var presentation: PeoplePresentation {
         PeoplePresentation(
             totalAssetCount: model.totalAssetCount,
-            evaluationSummaries: model.catalogEvaluationKindSummaries
+            evaluationSummaries: model.catalogEvaluationKindSummaries,
+            canRequestVisibleFaceScan: model.canRequestVisibleAssetEvaluations
         )
     }
 
@@ -53,6 +54,16 @@ struct PeopleView: View {
             Text(presentation.reviewStripDetail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            if let scanAction = presentation.scanAction {
+                Button {
+                    requestVisibleFaceScan()
+                } label: {
+                    Label(scanAction.title, systemImage: scanAction.systemImage)
+                }
+                .controlSize(.small)
+                .help(scanAction.detail)
+            }
 
             if presentation.reviewCards.isEmpty {
                 Text(presentation.namedPeopleEmptyText)
@@ -179,6 +190,14 @@ struct PeopleView: View {
         }
     }
 
+    private func requestVisibleFaceScan() {
+        do {
+            try model.requestVisibleAssetEvaluations(providers: ["apple-vision"])
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
     private func avatarGradient(seed: String, colors: [Color]) -> LinearGradient {
         let seedValue = seed.unicodeScalars.reduce(0) { partialResult, scalar in
             partialResult + Int(scalar.value)
@@ -193,9 +212,14 @@ struct PeoplePresentation: Equatable {
     var photosWithFaceSignals: Int
     var photosWithDetectedFaces: Int
     var photosWithFaceQualitySignals: Int
+    var scanAction: PeopleScanAction?
     private var faceSignalKind: EvaluationKind?
 
-    init(totalAssetCount: Int, evaluationSummaries: [CatalogEvaluationKindSummary]) {
+    init(
+        totalAssetCount: Int,
+        evaluationSummaries: [CatalogEvaluationKindSummary],
+        canRequestVisibleFaceScan: Bool = false
+    ) {
         self.totalAssetCount = totalAssetCount
         let faceCountSignals = evaluationSummaries.first { $0.kind == .faceCount }?.assetCount ?? 0
         let faceQualitySignals = evaluationSummaries.first { $0.kind == .faceQuality }?.assetCount ?? 0
@@ -203,6 +227,11 @@ struct PeoplePresentation: Equatable {
         self.photosWithDetectedFaces = faceCountSignals > 0 ? faceCountSignals : faceQualitySignals
         self.photosWithFaceQualitySignals = faceQualitySignals
         self.faceSignalKind = faceCountSignals > 0 ? .faceCount : (faceQualitySignals > 0 ? .faceQuality : nil)
+        self.scanAction = canRequestVisibleFaceScan ? PeopleScanAction(
+            title: "Scan visible photos",
+            detail: "Runs local Apple Vision on cached previews for the current visible result set.",
+            systemImage: "viewfinder"
+        ) : nil
     }
 
     var headerSummary: String {
@@ -323,6 +352,12 @@ struct PeopleSignalRow: Equatable, Identifiable {
     var isActionEnabled: Bool {
         filterKind != nil
     }
+}
+
+struct PeopleScanAction: Equatable {
+    var title: String
+    var detail: String
+    var systemImage: String
 }
 
 struct PeopleReviewCard: Equatable, Identifiable {

@@ -37,6 +37,19 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.signalRows.map(\.filterKind), [nil, nil])
         XCTAssertEqual(presentation.signalRows.map(\.isActionEnabled), [false, false])
         XCTAssertEqual(presentation.namedPeopleEmptyText, "Run evaluation to find faces before naming people.")
+        XCTAssertNil(presentation.scanAction)
+    }
+
+    func testVisibleFaceScanActionUsesLocalAppleVisionWhenAvailable() {
+        let presentation = PeoplePresentation(
+            totalAssetCount: 42,
+            evaluationSummaries: [],
+            canRequestVisibleFaceScan: true
+        )
+
+        XCTAssertEqual(presentation.scanAction?.title, "Scan visible photos")
+        XCTAssertEqual(presentation.scanAction?.detail, "Runs local Apple Vision on cached previews for the current visible result set.")
+        XCTAssertEqual(presentation.scanAction?.systemImage, "viewfinder")
     }
 
     func testUnnamedFaceReviewFallsBackToFaceQualityWhenFaceCountSignalsAreMissing() {
