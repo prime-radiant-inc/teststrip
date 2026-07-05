@@ -20,6 +20,8 @@ case .localHTTPSmoke(let endpoint, let model, let imagePath, let timeout):
     try runLocalHTTPModelSmoke(endpoint: endpoint, model: model, imagePath: imagePath, timeout: timeout)
 case .metadataWrite(let count):
     try runMetadataWriteBenchmark(count: count, root: root)
+case .sourceAvailability(let count):
+    try runSourceAvailabilityBenchmark(count: count, root: root)
 case .previewRender(let count):
     try runPreviewRenderBenchmark(count: count, root: root)
 case .realCorpusSmoke(let photoDirectory):
@@ -143,6 +145,20 @@ private func runMetadataWriteBenchmark(count: Int, root: URL) throws {
     print("synced fingerprints: \(result.syncedFingerprintCount)")
     print("pending sync items: \(result.pendingSyncCount)")
     print("unchanged originals: \(result.unchangedOriginalCount)")
+    try printMachineReadableSummary(recorder.summary)
+}
+
+private func runSourceAvailabilityBenchmark(count: Int, root: URL) throws {
+    var recorder = BenchmarkSummaryRecorder(benchmark: "source_availability", count: count)
+
+    print("TeststripBench source availability")
+    print("count: \(count)")
+    let result = try SourceAvailabilityBenchmark(count: count, root: root).run(recordingInto: &recorder)
+    print("catalog assets: \(result.catalogAssetCount)")
+    print("refreshed assets: \(result.refreshedAssetCount)")
+    print("online assets: \(result.onlineCount)")
+    print("missing assets: \(result.missingCount)")
+    print("stale assets: \(result.staleCount)")
     try printMachineReadableSummary(recorder.summary)
 }
 

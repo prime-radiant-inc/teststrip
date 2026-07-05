@@ -9,6 +9,7 @@ public enum BenchmarkCommand: Equatable {
     case importPreviewDrain(count: Int)
     case localHTTPSmoke(endpoint: URL, model: String, imagePath: String?, timeout: TimeInterval)
     case metadataWrite(count: Int)
+    case sourceAvailability(count: Int)
     case previewRender(count: Int)
     case realCorpusSmoke(photoDirectory: URL)
     case samplePreviewRender(photoDirectory: URL)
@@ -42,6 +43,9 @@ public enum BenchmarkCommand: Equatable {
         }
         if firstArgument == "metadata-write" {
             return .metadataWrite(count: Int(userArguments.dropFirst().first ?? "1000") ?? 1_000)
+        }
+        if firstArgument == "source-availability" {
+            return .sourceAvailability(count: Int(userArguments.dropFirst().first ?? "1000") ?? 1_000)
         }
         if firstArgument == "preview-render" {
             return .previewRender(count: Int(userArguments.dropFirst().first ?? "250") ?? 250)

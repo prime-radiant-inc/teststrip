@@ -22,6 +22,7 @@ script/verify_catalog_scale.sh 100000
 script/verify_import_preview_drain.sh 100
 script/verify_preview_render.sh 100
 script/verify_metadata_write.sh 1000
+script/verify_source_availability.sh 1000
 ```
 
 The catalog verifier parses the benchmark summary, checks the asset count, and enforces the current 0.2s default threshold for first/middle/filtered page loads and representative filter counts. Seed time is reported by `TeststripBench` but intentionally excluded from the filter/page threshold.
@@ -32,6 +33,8 @@ The import-preview-drain verifier wraps the `import-preview-drain` benchmark and
 
 The preview-render verifier wraps the generated-image `preview-render` benchmark, enforces the source image count, all four cache levels per source, cached-preview count, and the current 5s default preview-render threshold. Override the timing gate with `TESTSTRIP_PREVIEW_RENDER_MAX_SECONDS` when intentionally measuring slower hardware or larger source batches.
 
+The source-availability verifier wraps the `source-availability` benchmark and enforces catalog asset count, refreshed asset count, deterministic online/missing/stale source counts, and the current 5s default source refresh threshold. Override the timing gate with `TESTSTRIP_SOURCE_AVAILABILITY_MAX_SECONDS` when intentionally measuring slower hardware, remote volumes, or larger source batches.
+
 Additional focused commands cover the other hot paths that currently matter for alpha:
 
 ```bash
@@ -40,9 +43,10 @@ swift run TeststripBench import-preview-drain 100
 swift run TeststripBench preview-render 100
 swift run TeststripBench sample-preview-render sample-data/photos/wordpress-photo-directory
 swift run TeststripBench metadata-write 1000
+swift run TeststripBench source-availability 1000
 ```
 
-`import-deferred` creates a synthetic folder, catalogs it in place, and verifies preview work is queued instead of generated synchronously. `import-preview-drain` creates generated JPEG sources, imports with preview generation deferred, and drains the queued preview work through `LibraryImportService.resumePendingPreviews`. `preview-render` creates generated JPEG sources and renders all cache levels through `PreviewRenderer`. `sample-preview-render` imports an existing sample-photo directory and generates cached previews through the same immediate-preview import path used by the sample catalog smoke workflow. `metadata-write` updates catalog metadata, writes XMP sidecars, marks sync fingerprints, and verifies the original files were not changed.
+`import-deferred` creates a synthetic folder, catalogs it in place, and verifies preview work is queued instead of generated synchronously. `import-preview-drain` creates generated JPEG sources, imports with preview generation deferred, and drains the queued preview work through `LibraryImportService.resumePendingPreviews`. `preview-render` creates generated JPEG sources and renders all cache levels through `PreviewRenderer`. `sample-preview-render` imports an existing sample-photo directory and generates cached previews through the same immediate-preview import path used by the sample catalog smoke workflow. `metadata-write` updates catalog metadata, writes XMP sidecars, marks sync fingerprints, and verifies the original files were not changed. `source-availability` creates synthetic original files, catalogs their fingerprints, then refreshes catalog source states after a deterministic mix of unchanged, missing, and stale source files.
 
 Every `TeststripBench` command keeps its human-readable output and also prints one machine-readable summary line:
 
@@ -85,3 +89,9 @@ On July 5, 2026, a local debug run produced:
 | `script/verify_import_preview_drain.sh 100 5 10` | 0.033s | 0.516s | 100 imported/catalog assets, 200 pending previews before drain, 200 generated previews, 0 failures, 0 pending previews after drain, 200 cached previews |
 
 These runs prove the benchmark harnesses are executable and exercise real app paths, not that the alpha has final performance thresholds. The generated-image `preview-render` command isolates renderer/cache throughput; the real-image `sample-preview-render` command includes sample import and immediate preview generation overhead; the `import-preview-drain` verifier covers the deferred-preview recovery path the app depends on when originals are on slow, remote, removable, or intermittently available storage.
+
+| Command | Source Refresh | Primary Counts |
+| --- | ---: | --- |
+| `script/verify_source_availability.sh 1000 5` | 0.723s | 1,000 catalog/refreshed assets, 334 online sources, 333 missing sources, 333 stale sources |
+
+The `source-availability` verifier covers the bounded catalog refresh path the app depends on when a loaded window contains originals on local, remote, removable, or intermittently available storage.

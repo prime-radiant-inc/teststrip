@@ -31,6 +31,13 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "metadata-write", "250"]), .metadataWrite(count: 250))
     }
 
+    func testSourceAvailabilityCommandParsesCount() throws {
+        XCTAssertEqual(
+            BenchmarkCommand.parse(["TeststripBench", "source-availability", "250"]),
+            .sourceAvailability(count: 250)
+        )
+    }
+
     func testPreviewRenderCommandParsesCount() throws {
         XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "preview-render", "250"]), .previewRender(count: 250))
     }
@@ -142,6 +149,18 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(result.syncedFingerprintCount, 250)
         XCTAssertEqual(result.pendingSyncCount, 0)
         XCTAssertEqual(result.unchangedOriginalCount, 250)
+    }
+
+    func testSourceAvailabilityBenchmarkRefreshesCatalogSourceStates() throws {
+        let root = try makeTemporaryDirectory(named: "source-availability-benchmark")
+
+        let result = try SourceAvailabilityBenchmark(count: 12, root: root).run()
+
+        XCTAssertEqual(result.catalogAssetCount, 12)
+        XCTAssertEqual(result.refreshedAssetCount, 12)
+        XCTAssertEqual(result.onlineCount, 4)
+        XCTAssertEqual(result.missingCount, 4)
+        XCTAssertEqual(result.staleCount, 4)
     }
 
     func testPreviewRenderBenchmarkCreatesCachedPreviews() throws {
