@@ -1411,6 +1411,28 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(fixture.model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }, [])
     }
 
+    func testCanRetryPendingMetadataSyncInCurrentScopeRequiresPendingFilterAndRetryableVisibleItem() throws {
+        let fixture = try makePendingMetadataSyncScopeModel(named: "can-retry-pending-xmp-scope")
+
+        XCTAssertFalse(fixture.model.canRetryPendingMetadataSyncInCurrentScope)
+
+        fixture.model.metadataSyncPendingFilter = true
+        XCTAssertTrue(fixture.model.canRetryPendingMetadataSyncInCurrentScope)
+
+        try fixture.model.retryPendingMetadataSyncInCurrentScope()
+        XCTAssertFalse(fixture.model.canRetryPendingMetadataSyncInCurrentScope)
+    }
+
+    func testCanRetryPendingMetadataSyncInCurrentScopeRequiresWorker() throws {
+        let fixture = try makePendingMetadataSyncScopeModel(
+            named: "can-retry-pending-xmp-missing-worker",
+            includeWorker: false
+        )
+        fixture.model.metadataSyncPendingFilter = true
+
+        XCTAssertFalse(fixture.model.canRetryPendingMetadataSyncInCurrentScope)
+    }
+
     func testRatingCullingCommandUpdatesSelectedAsset() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "rating-command")
 

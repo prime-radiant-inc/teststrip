@@ -423,6 +423,22 @@ struct LibraryGridView: View {
 
                     metadataSyncFilterPicker
 
+                    if LibraryGridChromePolicy.shouldShowPendingMetadataSyncRetryAction(
+                        isPendingFilterActive: model.metadataSyncPendingFilter
+                    ) {
+                        Button {
+                            retryPendingMetadataSync()
+                        } label: {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(LibraryGridChromePolicy.isPendingMetadataSyncRetryActionDisabled(
+                            isImporting: isImporting,
+                            canRetry: model.canRetryPendingMetadataSyncInCurrentScope
+                        ))
+                        .help("Retry pending XMP sync in current results")
+                    }
+
                     Button {
                         refreshVisibleAvailability()
                     } label: {
@@ -1659,6 +1675,14 @@ struct LibraryGridView: View {
     private func refreshVisibleAvailability() {
         do {
             try model.refreshVisibleAssetAvailability()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func retryPendingMetadataSync() {
+        do {
+            try model.retryPendingMetadataSyncInCurrentScope()
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -3645,6 +3669,14 @@ enum LibraryGridChromePolicy {
     ) -> Bool {
         guard !isImporting, let summaryID else { return false }
         return summaryID != dismissedSummaryID
+    }
+
+    static func shouldShowPendingMetadataSyncRetryAction(isPendingFilterActive: Bool) -> Bool {
+        isPendingFilterActive
+    }
+
+    static func isPendingMetadataSyncRetryActionDisabled(isImporting: Bool, canRetry: Bool) -> Bool {
+        isImporting || !canRetry
     }
 }
 

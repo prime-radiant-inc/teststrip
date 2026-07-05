@@ -734,6 +734,24 @@ public final class AppModel {
         return canAutomaticallyRetryMetadataSync(for: selectedAsset, sidecarURL: pendingItem.sidecarURL)
     }
 
+    public var canRetryPendingMetadataSyncInCurrentScope: Bool {
+        guard metadataSyncPendingFilter,
+              let catalog,
+              workerSupervisor != nil else {
+            return false
+        }
+
+        for asset in assets.prefix(Self.metadataSyncStateDisplayLimit) {
+            guard let pendingItem = try? catalog.repository.pendingMetadataSyncItem(assetID: asset.id),
+                  canAutomaticallyRetryMetadataSync(for: asset, sidecarURL: pendingItem.sidecarURL),
+                  !hasActiveMetadataSyncWork(assetID: asset.id, generation: pendingItem.catalogGeneration) else {
+                continue
+            }
+            return true
+        }
+        return false
+    }
+
     public var selectedAssetPosition: Int? {
         guard let selectedAssetID,
               let selectedIndex = assets.firstIndex(where: { $0.id == selectedAssetID }) else {

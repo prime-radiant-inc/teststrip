@@ -38,6 +38,30 @@ final class LibraryGridChromeTests: XCTestCase {
         ))
     }
 
+    func testPendingMetadataSyncRetryActionShowsOnlyForPendingFilter() {
+        XCTAssertTrue(LibraryGridChromePolicy.shouldShowPendingMetadataSyncRetryAction(
+            isPendingFilterActive: true
+        ))
+        XCTAssertFalse(LibraryGridChromePolicy.shouldShowPendingMetadataSyncRetryAction(
+            isPendingFilterActive: false
+        ))
+    }
+
+    func testPendingMetadataSyncRetryActionDisablesDuringImportOrWithoutRetryableWork() {
+        XCTAssertFalse(LibraryGridChromePolicy.isPendingMetadataSyncRetryActionDisabled(
+            isImporting: false,
+            canRetry: true
+        ))
+        XCTAssertTrue(LibraryGridChromePolicy.isPendingMetadataSyncRetryActionDisabled(
+            isImporting: true,
+            canRetry: true
+        ))
+        XCTAssertTrue(LibraryGridChromePolicy.isPendingMetadataSyncRetryActionDisabled(
+            isImporting: false,
+            canRetry: false
+        ))
+    }
+
     func testMetadataSyncFilterOptionMapsPendingAndConflictFlags() {
         XCTAssertEqual(MetadataSyncFilterOption(pending: false, conflict: false), .any)
         XCTAssertEqual(MetadataSyncFilterOption(pending: true, conflict: false), .pending)
