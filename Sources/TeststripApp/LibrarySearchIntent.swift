@@ -36,10 +36,16 @@ public struct LibrarySearchIntent: Equatable, Sendable {
             let token = tokens[index]
             let normalizedToken = Self.normalizedToken(token)
 
-            if let field = Self.fieldPredicate(from: token) {
-                Self.append(field.predicate, to: &predicates)
-                Self.append(field.chip, to: &chips)
-                Self.append(field.namePart, to: &nameParts)
+            if let field = Self.fieldPredicates(from: token) {
+                for predicate in field.predicates {
+                    Self.append(predicate, to: &predicates)
+                }
+                for chip in field.chips {
+                    Self.append(chip, to: &chips)
+                }
+                for namePart in field.nameParts {
+                    Self.append(namePart, to: &nameParts)
+                }
                 index += 1
                 continue
             }
@@ -83,31 +89,161 @@ public struct LibrarySearchIntent: Equatable, Sendable {
         )
     }
 
-    private static func fieldPredicate(from token: String) -> (predicate: SetQuery.Predicate, chip: String, namePart: String)? {
-        let separators = [":", "="]
-        guard let separator = separators.first(where: { token.contains($0) }) else {
+    private struct FieldPredicates {
+        var predicates: [SetQuery.Predicate]
+        var chips: [String]
+        var nameParts: [String]
+    }
+
+    private static func fieldPredicates(from token: String) -> FieldPredicates? {
+        guard let fieldToken = fieldToken(from: token) else {
             return nil
         }
-        let parts = token.split(separator: Character(separator), maxSplits: 1, omittingEmptySubsequences: false)
-        guard parts.count == 2 else {
-            return nil
-        }
-        let field = normalizedToken(String(parts[0]))
-        let value = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let field = normalizedToken(fieldToken.field)
+        let value = fieldToken.value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else {
             return nil
         }
 
         switch field {
         case "camera":
-            return (.camera(value), "Camera: \(value)", value)
+            return singleFieldPredicate(.camera(value), chip: "Camera: \(value)", namePart: value)
         case "lens":
-            return (.lens(value), "Lens: \(value)", value)
+            return singleFieldPredicate(.lens(value), chip: "Lens: \(value)", namePart: value)
         case "keyword", "tag":
-            return (.keyword(value), "Keyword: \(value)", value)
+            return singleFieldPredicate(.keyword(value), chip: "Keyword: \(value)", namePart: value)
+        case "folder", "path":
+            let title = URL(fileURLWithPath: value).lastPathComponent
+            return singleFieldPredicate(.folderPrefix(value), chip: "Folder: \(title)", namePart: title)
+        case "color", "colour", "label":
+            guard let label = colorLabel(from: value) else { return nil }
+            let title = "\(label.rawValue.capitalized) Label"
+            return singleFieldPredicate(.colorLabel(label), chip: title, namePart: title)
+        case "iso":
+            guard let iso = positiveInteger(from: value) else { return nil }
+            return singleFieldPredicate(.isoAtLeast(iso), chip: "ISO >= \(iso)", namePart: "ISO \(iso)+")
+        case "from", "after", "since":
+            guard let date = captureDate(from: value) else { return nil }
+            return singleFieldPredicate(.capturedAtOrAfter(date), chip: "From \(value)", namePart: "From \(value)")
+        case "before", "until":
+            guard let date = captureDate(from: value) else { return nil }
+            return singleFieldPredicate(.capturedBefore(date), chip: "Before \(value)", namePart: "Before \(value)")
+        case "date", "day", "captured":
+            guard let start = captureDate(from: value),
+                  let end = dayAfter(start) else {
+                return nil
+            }
+            return FieldPredicates(
+                predicates: [.capturedAtOrAfter(start), .capturedBefore(end)],
+                chips: ["Date: \(value)"],
+                nameParts: [value]
+            )
+        case "source", "availability":
+            guard let availability = sourceAvailability(from: value) else { return nil }
+            let title = availability.rawValue.capitalized
+            return singleFieldPredicate(.availability(availability), chip: "Source: \(title)", namePart: title)
+        case "signal", "evaluation", "kind":
+            guard let kind = evaluationKind(from: value) else { return nil }
+            let title = kind.displayName
+            return singleFieldPredicate(.evaluationKind(kind), chip: "Signal: \(title)", namePart: title)
+        case "xmp":
+            guard let xmp = xmpPredicate(from: value) else { return nil }
+            return singleFieldPredicate(xmp.predicate, chip: xmp.title, namePart: xmp.title)
         default:
             return nil
         }
+    }
+
+    private static func singleFieldPredicate(
+        _ predicate: SetQuery.Predicate,
+        chip: String,
+        namePart: String
+    ) -> FieldPredicates {
+        FieldPredicates(predicates: [predicate], chips: [chip], nameParts: [namePart])
+    }
+
+    private static func fieldToken(from token: String) -> (field: String, value: String)? {
+        for separator in [":", ">=", "="] {
+            guard let range = token.range(of: separator) else { continue }
+            let field = String(token[..<range.lowerBound])
+            let value = String(token[range.upperBound...])
+            guard !field.isEmpty, !value.isEmpty else { return nil }
+            return (field, value)
+        }
+        return nil
+    }
+
+    private static func colorLabel(from value: String) -> ColorLabel? {
+        let normalized = compactIdentifier(value)
+        return ColorLabel.allCases.first { compactIdentifier($0.rawValue) == normalized }
+    }
+
+    private static func sourceAvailability(from value: String) -> SourceAvailability? {
+        let normalized = compactIdentifier(value)
+        return [SourceAvailability.online, .offline, .missing, .moved, .stale].first {
+            compactIdentifier($0.rawValue) == normalized
+        }
+    }
+
+    private static func evaluationKind(from value: String) -> EvaluationKind? {
+        let normalized = compactIdentifier(value)
+        return [
+            EvaluationKind.focus,
+            .motionBlur,
+            .exposure,
+            .aesthetics,
+            .object,
+            .faceCount,
+            .faceQuality,
+            .ocrText,
+            .colorPalette,
+            .novelty
+        ].first { compactIdentifier($0.rawValue) == normalized }
+    }
+
+    private static func xmpPredicate(from value: String) -> (predicate: SetQuery.Predicate, title: String)? {
+        switch compactIdentifier(value) {
+        case "pending":
+            return (.metadataSyncPending, "XMP Pending")
+        case "conflict", "conflicts":
+            return (.metadataSyncConflict, "XMP Conflicts")
+        default:
+            return nil
+        }
+    }
+
+    private static func positiveInteger(from value: String) -> Int? {
+        guard let integer = Int(value), integer > 0 else { return nil }
+        return integer
+    }
+
+    private static func captureDate(from value: String) -> Date? {
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        guard let date = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) else {
+            return nil
+        }
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        guard components.year == parts[0],
+              components.month == parts[1],
+              components.day == parts[2] else {
+            return nil
+        }
+        return date
+    }
+
+    private static func dayAfter(_ date: Date) -> Date? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar.date(byAdding: .day, value: 1, to: date)
+    }
+
+    private static func compactIdentifier(_ value: String) -> String {
+        normalizedToken(value)
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
     }
 
     private static func flagPredicate(for token: String) -> (value: PickFlag, chip: String, namePart: String)? {

@@ -51,4 +51,74 @@ final class LibrarySearchIntentTests: XCTestCase {
         XCTAssertEqual(noKeywords.predicates, [.missingKeywords])
         XCTAssertEqual(noKeywords.chips, ["Needs Keywords"])
     }
+
+    func testParsesAdvancedFilterFields() {
+        let start = Self.utcDate(year: 2026, month: 2, day: 1)
+        let end = Self.utcDate(year: 2026, month: 3, day: 1)
+
+        let intent = LibrarySearchIntent.parse(
+            "folder:/Volumes/NAS/Wedding color:green iso:800 from:2026-02-01 before:2026-03-01 source:offline signal:focus xmp:pending"
+        )
+
+        XCTAssertNil(intent.residualText)
+        XCTAssertEqual(intent.predicates, [
+            .folderPrefix("/Volumes/NAS/Wedding"),
+            .colorLabel(.green),
+            .isoAtLeast(800),
+            .capturedAtOrAfter(start),
+            .capturedBefore(end),
+            .availability(.offline),
+            .evaluationKind(.focus),
+            .metadataSyncPending
+        ])
+        XCTAssertEqual(intent.chips, [
+            "Folder: Wedding",
+            "Green Label",
+            "ISO >= 800",
+            "From 2026-02-01",
+            "Before 2026-03-01",
+            "Source: Offline",
+            "Signal: Focus",
+            "XMP Pending"
+        ])
+        XCTAssertEqual(intent.nameParts, [
+            "Wedding",
+            "Green Label",
+            "ISO 800+",
+            "From 2026-02-01",
+            "Before 2026-03-01",
+            "Offline",
+            "Focus",
+            "XMP Pending"
+        ])
+    }
+
+    func testParsesDateFieldAsSingleCaptureDay() {
+        let start = Self.utcDate(year: 2026, month: 2, day: 4)
+        let nextDay = Self.utcDate(year: 2026, month: 2, day: 5)
+
+        let intent = LibrarySearchIntent.parse("date:2026-02-04")
+
+        XCTAssertEqual(intent.predicates, [
+            .capturedAtOrAfter(start),
+            .capturedBefore(nextDay)
+        ])
+        XCTAssertEqual(intent.chips, ["Date: 2026-02-04"])
+        XCTAssertEqual(intent.nameParts, ["2026-02-04"])
+    }
+
+    func testParsesGreaterThanOrEqualFieldSeparatorAndLeavesInvalidFieldsAsSearchText() {
+        let intent = LibrarySearchIntent.parse("iso>=1600 date:2026-02-31 color:ultraviolet")
+
+        XCTAssertEqual(intent.residualText, "date:2026-02-31 color:ultraviolet")
+        XCTAssertEqual(intent.predicates, [.isoAtLeast(1600)])
+        XCTAssertEqual(intent.chips, ["ISO >= 1600"])
+        XCTAssertEqual(intent.nameParts, ["ISO 1600+"])
+    }
+
+    private static func utcDate(year: Int, month: Int, day: Int) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar.date(from: DateComponents(year: year, month: month, day: day))!
+    }
 }
