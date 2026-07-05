@@ -342,9 +342,12 @@ struct CopilotPresentation: Equatable {
 
     var reviewRows: [CopilotActionRow] {
         [
-            reviewRow(queue: .needsEvaluation, title: "Needs Evaluation", detail: "No persisted local signals", systemImage: "wand.and.stars"),
-            reviewRow(queue: .likelyIssues, title: "Likely Issues", detail: "Quality or source warnings", systemImage: "exclamationmark.triangle"),
-            reviewRow(queue: .providerFailures, title: "Provider Failures", detail: "Evaluation jobs needing attention", systemImage: "bolt.horizontal.circle")
+            reviewRow(queue: .needsKeywords, detail: "Missing keyword metadata"),
+            reviewRow(queue: .needsEvaluation, detail: "No persisted local signals"),
+            reviewRow(queue: .facesFound, detail: "Face-count signals ready to review"),
+            reviewRow(queue: .ocrFound, detail: "OCR text signals ready to review"),
+            reviewRow(queue: .likelyIssues, detail: "Quality or source warnings"),
+            reviewRow(queue: .providerFailures, detail: "Evaluation jobs needing attention")
         ]
     }
 
@@ -426,23 +429,30 @@ struct CopilotPresentation: Equatable {
         }
     }
 
-    private func reviewRow(queue: ReviewQueue, title: String, detail: String, systemImage: String) -> CopilotActionRow {
+    private func reviewRow(queue: ReviewQueue, detail: String) -> CopilotActionRow {
         let count = reviewQueueCounts[queue] ?? 0
+        let presentation = queue.presentation
         return CopilotActionRow(
             id: "review-\(queue.rawValue)",
-            title: title,
+            title: presentation.title,
             detail: detail,
             statusText: count == 0 ? reviewStatusText(for: queue) : nil,
             countText: String(count),
-            systemImage: systemImage,
+            systemImage: presentation.systemImage,
             target: count > 0 ? .reviewQueue(queue) : nil
         )
     }
 
     private func reviewStatusText(for queue: ReviewQueue) -> String {
         switch queue {
+        case .needsKeywords:
+            return "No photos missing keywords"
         case .needsEvaluation:
             return "All catalog photos have local signals"
+        case .facesFound:
+            return "No face signals recorded"
+        case .ocrFound:
+            return "No OCR text signals recorded"
         case .likelyIssues:
             return "No likely issues found"
         case .providerFailures:
