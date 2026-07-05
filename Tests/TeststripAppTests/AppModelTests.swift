@@ -254,14 +254,14 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCompareAssetsReturnWindowAroundSelectionWhenSelectionLeavesCurrentSet() {
-        let assets = (0..<6).map { makeAsset(id: "asset-\($0)", size: Int64($0 + 1)) }
+        let assets = (0..<10).map { makeAsset(id: "asset-\($0)", size: Int64($0 + 1)) }
         let model = AppModel(sidebarSections: [], selectedView: .compare, assets: assets)
 
-        XCTAssertEqual(model.compareAssets().map(\.id), assets[0..<4].map(\.id))
+        XCTAssertEqual(model.compareAssets().map(\.id), assets[0..<8].map(\.id))
 
-        model.select(assets[5].id)
+        model.select(assets[9].id)
 
-        XCTAssertEqual(model.compareAssets().map(\.id), assets[2..<6].map(\.id))
+        XCTAssertEqual(model.compareAssets().map(\.id), assets[2..<10].map(\.id))
     }
 
     func testCompareAssetsUseCandidateStackAroundSelectedCaptureTime() {
@@ -297,9 +297,9 @@ final class AppModelTests: XCTestCase {
             )
         ]
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: assets)
-        model.selectedView = .compare
 
         model.select(assets[5].id)
+        model.selectedView = .compare
 
         XCTAssertEqual(model.compareAssets().map(\.id), assets[4..<7].map(\.id))
         XCTAssertEqual(model.compareGroupKind(), .candidateStack)
@@ -307,7 +307,7 @@ final class AppModelTests: XCTestCase {
 
     func testCompareAssetsLimitLargeCandidateStackAroundSelection() {
         let captureStart = Date(timeIntervalSince1970: 1_900_000_100)
-        let assets = (0..<6).map { index in
+        let assets = (0..<10).map { index in
             makeAsset(
                 id: "stack-\(index)",
                 path: "/Photos/stack-\(index).jpg",
@@ -317,9 +317,9 @@ final class AppModelTests: XCTestCase {
         }
         let model = AppModel(sidebarSections: [], selectedView: .compare, assets: assets)
 
-        model.select(assets[4].id)
+        model.select(assets[9].id)
 
-        XCTAssertEqual(model.compareAssets().map(\.id), assets[2..<6].map(\.id))
+        XCTAssertEqual(model.compareAssets().map(\.id), assets[2..<10].map(\.id))
         XCTAssertEqual(model.compareGroupKind(), .candidateStack)
     }
 
@@ -350,9 +350,9 @@ final class AppModelTests: XCTestCase {
             )
         ]
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: assets)
-        model.selectedView = .compare
 
         model.select(assets[5].id)
+        model.selectedView = .compare
 
         XCTAssertEqual(model.compareAssets().map(\.id), assets[4..<6].map(\.id))
         XCTAssertEqual(model.compareGroupKind(), .candidateStack)
@@ -402,18 +402,18 @@ final class AppModelTests: XCTestCase {
     }
 
     func testComparePreviewRequestIDChangesWhenSelectionChangesInsideSameWindow() {
-        let assets = (0..<6).map { makeAsset(id: "asset-\($0)", size: Int64($0 + 1)) }
+        let assets = (0..<10).map { makeAsset(id: "asset-\($0)", size: Int64($0 + 1)) }
         let model = AppModel(sidebarSections: [], selectedView: .compare, assets: assets)
         let initialRequestID = ComparePreviewRequestID.make(for: model)
 
         model.select(assets[1].id)
 
-        XCTAssertEqual(model.compareAssets().map(\.id), assets[0..<4].map(\.id))
+        XCTAssertEqual(model.compareAssets().map(\.id), assets[0..<8].map(\.id))
         XCTAssertNotEqual(ComparePreviewRequestID.make(for: model), initialRequestID)
     }
 
     func testKeepComparePrimaryRejectsCurrentCompareAlternatesOnly() throws {
-        let assets = (0..<5).map { makeAsset(id: "compare-action-\($0)", size: Int64($0 + 1)) }
+        let assets = (0..<9).map { makeAsset(id: "compare-action-\($0)", size: Int64($0 + 1)) }
         let (model, repository) = try makeModelWithCatalogAssets(
             named: "compare-group-action",
             assets: assets
@@ -427,12 +427,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: assets[1].id).metadata.flag, .pick)
         XCTAssertEqual(try repository.asset(id: assets[2].id).metadata.flag, .reject)
         XCTAssertEqual(try repository.asset(id: assets[3].id).metadata.flag, .reject)
-        XCTAssertNil(try repository.asset(id: assets[4].id).metadata.flag)
+        XCTAssertEqual(try repository.asset(id: assets[4].id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: assets[5].id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: assets[6].id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: assets[7].id).metadata.flag, .reject)
+        XCTAssertNil(try repository.asset(id: assets[8].id).metadata.flag)
         XCTAssertEqual(model.assets[0].metadata.flag, .reject)
         XCTAssertEqual(model.assets[1].metadata.flag, .pick)
         XCTAssertEqual(model.assets[2].metadata.flag, .reject)
         XCTAssertEqual(model.assets[3].metadata.flag, .reject)
-        XCTAssertNil(model.assets[4].metadata.flag)
+        XCTAssertEqual(model.assets[4].metadata.flag, .reject)
+        XCTAssertEqual(model.assets[5].metadata.flag, .reject)
+        XCTAssertEqual(model.assets[6].metadata.flag, .reject)
+        XCTAssertEqual(model.assets[7].metadata.flag, .reject)
+        XCTAssertNil(model.assets[8].metadata.flag)
     }
 
     func testLibraryCountTextShowsLoadedAndTotalWhenGridIsLimited() {
@@ -6364,29 +6372,26 @@ final class AppModelTests: XCTestCase {
             queue: BackgroundWorkQueue(maxRunningCount: 4),
             transport: transport
         )
-        let first = makeAsset(id: "first", size: 1)
-        let second = makeAsset(id: "second", size: 2)
-        let third = makeAsset(id: "third", size: 3)
-        let fourth = makeAsset(id: "fourth", size: 4)
-        let outsideCompareSet = makeAsset(id: "outside-compare-set", size: 5)
+        let compareAssets = (0..<8).map { makeAsset(id: "compare-\($0)", size: Int64($0 + 1)) }
+        let outsideCompareSet = makeAsset(id: "outside-compare-set", size: 9)
         let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "compare-evaluation-skips-uncached",
-            assets: [first, second, third, fourth, outsideCompareSet],
+            assets: compareAssets + [outsideCompareSet],
             workerSupervisor: supervisor
         )
         model.selectedView = .compare
-        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: first.id, level: .grid)))
-        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: third.id, level: .grid)))
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: compareAssets[0].id, level: .grid)))
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: compareAssets[2].id, level: .grid)))
         try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: outsideCompareSet.id, level: .grid)))
 
         try model.requestCompareAssetEvaluations(providers: ["local-image-metrics"])
 
         XCTAssertEqual(model.backgroundWorkQueue.items.map(\.id), [
-            WorkSessionID(rawValue: "evaluation-\(first.id.rawValue)-local-image-metrics"),
-            WorkSessionID(rawValue: "evaluation-\(third.id.rawValue)-local-image-metrics")
+            WorkSessionID(rawValue: "evaluation-\(compareAssets[0].id.rawValue)-local-image-metrics"),
+            WorkSessionID(rawValue: "evaluation-\(compareAssets[2].id.rawValue)-local-image-metrics")
         ])
         XCTAssertEqual(try transport.commands(), [
-            .runEvaluation(assetID: first.id, provider: "local-image-metrics")
+            .runEvaluation(assetID: compareAssets[0].id, provider: "local-image-metrics")
         ])
     }
 

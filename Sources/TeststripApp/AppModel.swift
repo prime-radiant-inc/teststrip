@@ -945,7 +945,7 @@ public final class AppModel {
     static let metadataSyncStateDisplayLimit = pendingMetadataSyncRecoveryBatchSize
     private static let previewGenerationMaximumAutomaticAttempts = 3
     static let sourceAvailabilityBatchSize = 100
-    private static let defaultCompareAssetLimit = 4
+    private static let defaultCompareAssetLimit = 8
     private static let candidateStackMaximumCaptureGap: TimeInterval = 2
 
     public var selectedAsset: Asset? {
@@ -2659,7 +2659,7 @@ public final class AppModel {
         selectedView = .loupe
     }
 
-    public func compareAssets(limit: Int = 4) -> [Asset] {
+    public func compareAssets(limit: Int = 8) -> [Asset] {
         let boundedLimit = max(1, limit)
         if let persistedStack = persistedWorkStackAssets(limit: boundedLimit, anchor: selectedAssetID) {
             return persistedStack
@@ -2677,7 +2677,7 @@ public final class AppModel {
         return compareWindowAssets(limit: boundedLimit, anchor: selectedAssetID)
     }
 
-    public func compareGroupKind(limit: Int = 4) -> CompareGroupKind {
+    public func compareGroupKind(limit: Int = 8) -> CompareGroupKind {
         let boundedLimit = max(1, limit)
         if persistedWorkStackAssets(limit: boundedLimit, anchor: selectedAssetID) != nil {
             return .candidateStack

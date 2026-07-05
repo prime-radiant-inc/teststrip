@@ -23,6 +23,19 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.recommendationText, "Suggests: keep 1 · reject 2")
     }
 
+    func testEightFrameSurveyUsesFourByTwoLayout() {
+        let assets = (0..<8).map { makeAsset(id: "survey-\($0)") }
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[2].id
+        )
+
+        XCTAssertEqual(presentation.surveyColumnCount, 4)
+        XCTAssertEqual(presentation.surveyRowCount, 2)
+        XCTAssertEqual(presentation.orderedAssets.count, 8)
+    }
+
     func testFirstAssetBecomesPrimaryWhenSelectionIsOutsideCompareSet() {
         let assets = [
             makeAsset(id: "first"),

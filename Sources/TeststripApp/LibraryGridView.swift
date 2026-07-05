@@ -2838,6 +2838,8 @@ struct BatchMetadataReviewPresentation: Equatable {
 }
 
 struct CompareSurveyPresentation: Equatable {
+    private static let maximumSurveyColumnCount = 4
+
     var primaryAsset: Asset?
     var alternateAssets: [Asset]
     var framePositionText: String?
@@ -2889,6 +2891,15 @@ struct CompareSurveyPresentation: Equatable {
     var orderedAssets: [Asset] {
         guard let primaryAsset else { return alternateAssets }
         return [primaryAsset] + alternateAssets
+    }
+
+    var surveyColumnCount: Int {
+        min(Self.maximumSurveyColumnCount, max(orderedAssets.count, 1))
+    }
+
+    var surveyRowCount: Int {
+        guard !orderedAssets.isEmpty else { return 0 }
+        return (orderedAssets.count + surveyColumnCount - 1) / surveyColumnCount
     }
 
     var groupActionText: String {
@@ -3398,7 +3409,6 @@ private struct CompareView: View {
     var model: AppModel
     var focusCullingSurface: () -> Void
 
-    private let surveyColumns = [GridItem(.adaptive(minimum: 180), spacing: 12)]
     private let focusMetricColumns = [GridItem(.adaptive(minimum: 78), spacing: 5)]
 
     var body: some View {
@@ -3481,7 +3491,7 @@ private struct CompareView: View {
     }
 
     private func surveyLayout(_ presentation: CompareSurveyPresentation) -> some View {
-        LazyVGrid(columns: surveyColumns, alignment: .leading, spacing: 14) {
+        LazyVGrid(columns: surveyColumns(for: presentation), alignment: .leading, spacing: 14) {
             ForEach(presentation.orderedAssets, id: \.id.rawValue) { asset in
                 VStack(alignment: .leading, spacing: 7) {
                     compareTile(asset, presentation: presentation)
@@ -3491,6 +3501,13 @@ private struct CompareView: View {
             }
         }
         .padding(16)
+    }
+
+    private func surveyColumns(for presentation: CompareSurveyPresentation) -> [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(minimum: 160), spacing: 12),
+            count: presentation.surveyColumnCount
+        )
     }
 
     private func surveyLabel(for asset: Asset, presentation: CompareSurveyPresentation) -> String {
