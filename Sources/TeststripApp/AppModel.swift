@@ -2513,7 +2513,9 @@ public final class AppModel {
     }
 
     public func applySmartCollectionRulePreset(_ preset: SmartCollectionRulePreset) throws {
-        selectedAssetSetID = nil
+        if selectedAssetSet?.isDynamic != true {
+            selectedAssetSetID = nil
+        }
         switch preset {
         case .ratingFourPlus:
             minimumRatingFilter = max(minimumRatingFilter ?? 0, 4)

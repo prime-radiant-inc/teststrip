@@ -4692,6 +4692,96 @@ final class AppModelTests: XCTestCase {
         ])))
     }
 
+    func testApplyingSmartCollectionRulePresetFromSelectedDynamicSetPreservesExistingRules() throws {
+        let ceremonyPick = makeAsset(
+            id: "ceremony-pick",
+            path: "/Photos/Wedding/ceremony-pick.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let ceremonyReject = makeAsset(
+            id: "ceremony-reject",
+            path: "/Photos/Wedding/ceremony-reject.jpg",
+            rating: 5,
+            flag: .reject
+        )
+        let rehearsalPick = makeAsset(
+            id: "rehearsal-pick",
+            path: "/Photos/Wedding/rehearsal-pick.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let lowerRatedCeremonyPick = makeAsset(
+            id: "lower-rated-ceremony-pick",
+            path: "/Photos/Wedding/ceremony-lower-rated-pick.jpg",
+            rating: 3,
+            flag: .pick
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "smart-collection-add-rule-from-dynamic-set",
+            assets: [ceremonyPick, ceremonyReject, rehearsalPick, lowerRatedCeremonyPick]
+        )
+        let dynamicSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "ceremony-keepers"),
+            name: "Ceremony Keepers",
+            query: SetQuery(predicates: [.text("ceremony"), .ratingAtLeast(4)])
+        )
+        try repository.upsert(dynamicSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: dynamicSet.id)
+
+        try model.applySmartCollectionRulePreset(.picked)
+
+        XCTAssertEqual(model.selectedAssetSetID, dynamicSet.id)
+        XCTAssertEqual(model.assets.map(\.id), [ceremonyPick.id])
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Ceremony Keepers", "Search: ceremony", "Rating >= 4", "Pick"])
+        let savedSet = try model.saveCurrentLibraryQuery(named: "Ceremony Picked")
+        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [
+            .text("ceremony"),
+            .ratingAtLeast(4),
+            .flag(.pick)
+        ])))
+    }
+
+    func testApplyingSmartCollectionRulePresetFromManualSetClearsExplicitScope() throws {
+        let manualPick = makeAsset(
+            id: "manual-pick",
+            path: "/Photos/Manual/manual-pick.jpg",
+            rating: 0,
+            flag: .pick
+        )
+        let manualReject = makeAsset(
+            id: "manual-reject",
+            path: "/Photos/Manual/manual-reject.jpg",
+            rating: 0,
+            flag: .reject
+        )
+        let catalogPick = makeAsset(
+            id: "catalog-pick",
+            path: "/Photos/Other/catalog-pick.jpg",
+            rating: 0,
+            flag: .pick
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "smart-collection-add-rule-from-manual-set",
+            assets: [manualPick, manualReject, catalogPick]
+        )
+        let manualSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "manual-review"),
+            name: "Manual Review",
+            assetIDs: [manualPick.id, manualReject.id]
+        )
+        try repository.upsert(manualSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: manualSet.id)
+
+        try model.applySmartCollectionRulePreset(.picked)
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.assets.map(\.id), [manualPick.id, catalogPick.id])
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Pick"])
+    }
+
     func testApplyingRatingPresetDoesNotLoosenStrongerRatingFilter() throws {
         let fiveStar = makeAsset(id: "five-star", path: "/Photos/Job/five.jpg", rating: 5)
         let fourStar = makeAsset(id: "four-star", path: "/Photos/Job/four.jpg", rating: 4)
