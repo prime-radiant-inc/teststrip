@@ -712,7 +712,8 @@ public final class CatalogRepository {
 
     public func pendingPreviewGenerationItems(
         limit: Int? = nil,
-        maximumAttemptCount: Int? = nil
+        maximumAttemptCount: Int? = nil,
+        requiresAvailableOriginal: Bool = false
     ) throws -> [PreviewGenerationItem] {
         if let limit, limit <= 0 {
             return []
@@ -721,20 +722,33 @@ public final class CatalogRepository {
             return []
         }
         var sql = """
-        SELECT asset_id, level
+        SELECT preview_generation_queue.asset_id, preview_generation_queue.level
         FROM preview_generation_queue
         """
-        var bindings: [String] = []
-        if let maximumAttemptCount {
+        if requiresAvailableOriginal {
             sql += """
 
-            WHERE attempt_count < ?
+            INNER JOIN assets ON assets.id = preview_generation_queue.asset_id
             """
+        }
+        var bindings: [String] = []
+        var clauses: [String] = []
+        if let maximumAttemptCount {
+            clauses.append("preview_generation_queue.attempt_count < ?")
             bindings.append("\(maximumAttemptCount)")
+        }
+        if requiresAvailableOriginal {
+            clauses.append("assets.availability NOT IN (?, ?, ?)")
+            bindings.append(SourceAvailability.offline.rawValue)
+            bindings.append(SourceAvailability.missing.rawValue)
+            bindings.append(SourceAvailability.moved.rawValue)
+        }
+        if !clauses.isEmpty {
+            sql += "\nWHERE \(clauses.joined(separator: " AND "))"
         }
         sql += """
 
-        ORDER BY updated_at ASC
+        ORDER BY preview_generation_queue.updated_at ASC
         """
         if let limit {
             sql += " LIMIT ?"

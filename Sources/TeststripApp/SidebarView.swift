@@ -19,6 +19,9 @@ struct SidebarView: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(!row.isSelectable)
+                        .contextMenu {
+                            savedSetContextMenu(for: row)
+                        }
                         .liveMockupPlaceholder(row.liveMockupPlaceholder)
                     }
                 }
@@ -31,6 +34,27 @@ struct SidebarView: View {
     private func select(_ row: SidebarRow) {
         do {
             try model.selectSidebarRow(row)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    @ViewBuilder
+    private func savedSetContextMenu(for row: SidebarRow) -> some View {
+        if model.canToggleAssetSetStarred(row),
+           case .assetSet(let assetSetID) = row.target {
+            let isStarred = model.savedAssetSets.first { $0.id == assetSetID }?.starred ?? false
+            Button {
+                toggleAssetSetStarred(id: assetSetID)
+            } label: {
+                Label(isStarred ? "Remove Star" : "Star Set", systemImage: isStarred ? "star.slash" : "star")
+            }
+        }
+    }
+
+    private func toggleAssetSetStarred(id: AssetSetID) {
+        do {
+            try model.toggleAssetSetStarred(id: id)
         } catch {
             model.errorMessage = error.localizedDescription
         }

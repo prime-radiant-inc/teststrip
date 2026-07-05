@@ -738,6 +738,15 @@ public final class AppModel {
         return pendingMetadataSyncItems.first { $0.assetID == selectedAssetID }
     }
 
+    public var selectedMetadataSyncConflictSidecarMetadata: AssetMetadata? {
+        guard let selectedAssetID,
+              let conflictItem = metadataSyncConflictItems.first(where: { $0.assetID == selectedAssetID }),
+              let sidecarData = try? Data(contentsOf: conflictItem.sidecarURL) else {
+            return nil
+        }
+        return try? XMPPacket.parse(sidecarData).metadata
+    }
+
     public var canRetrySelectedMetadataSync: Bool {
         guard let selectedAsset,
               let pendingItem = selectedPendingMetadataSyncItem else {
@@ -1453,6 +1462,7 @@ public final class AppModel {
             if !newFailedPreviewItemIDs.isEmpty {
                 try? self?.refreshPreviewGenerationQueueStates()
                 self?.refreshLoadedAssetAvailabilityForPreviewFailures(newFailedPreviewItemIDs)
+                try? self?.enqueuePendingPreviewGeneration()
             }
             self?.releaseInactiveWorkerImportContexts(in: queue)
             self?.releaseInactiveEvaluationContexts(in: queue)
@@ -1845,6 +1855,32 @@ public final class AppModel {
         session.starred = starred
         try catalog.repository.save(session)
         try refreshWorkSessions()
+    }
+
+    public func canToggleAssetSetStarred(_ row: SidebarRow) -> Bool {
+        guard catalog != nil,
+              case .assetSet(let id) = row.target else {
+            return false
+        }
+        return savedAssetSets.contains { $0.id == id }
+    }
+
+    public func toggleAssetSetStarred(id: AssetSetID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let assetSet = try catalog.repository.assetSet(id: id)
+        try setAssetSetStarred(id: id, starred: !assetSet.starred)
+    }
+
+    public func setAssetSetStarred(id: AssetSetID, starred: Bool) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        var assetSet = try catalog.repository.assetSet(id: id)
+        assetSet.starred = starred
+        try catalog.repository.upsert(assetSet)
+        try refreshSavedAssetSets()
     }
 
     public func applyAssetSet(id: AssetSetID) throws {
@@ -3124,7 +3160,8 @@ public final class AppModel {
         var requests: [(item: BackgroundWorkItem, command: WorkerCommand, placement: BackgroundWorkQueuePlacement)] = []
         for pendingItem in try catalog.repository.pendingPreviewGenerationItems(
             limit: Self.pendingPreviewRecoveryBatchSize,
-            maximumAttemptCount: Self.previewGenerationMaximumAutomaticAttempts
+            maximumAttemptCount: Self.previewGenerationMaximumAutomaticAttempts,
+            requiresAvailableOriginal: true
         ) {
             let itemID = Self.previewWorkItemID(assetID: pendingItem.assetID, level: pendingItem.level)
             if existingPreviewWorkItemIDs.contains(itemID) {

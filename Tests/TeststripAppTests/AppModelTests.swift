@@ -873,6 +873,19 @@ final class AppModelTests: XCTestCase {
         )
     }
 
+    func testSelectedMetadataConflictSidecarMetadataParsesSelectedSidecar() throws {
+        let sidecarMetadata = AssetMetadata(rating: 5, colorLabel: .green, keywords: ["sidecar"])
+        let (model, _, asset, _, _) = try makeModelWithXMPConflict(
+            named: "selected-conflict-sidecar-metadata",
+            catalogMetadata: AssetMetadata(rating: 4, colorLabel: .red, keywords: ["catalog"]),
+            sidecarMetadata: sidecarMetadata
+        )
+
+        model.select(asset.id)
+
+        XCTAssertEqual(model.selectedMetadataSyncConflictSidecarMetadata, sidecarMetadata)
+    }
+
     func testRatingSelectedAssetDispatchesWorkerMetadataSyncWhenSupervisorConfigured() throws {
         let (model, repository, asset, originalURL, transport) = try makeWorkerMetadataSyncModel(
             named: "app-model-worker-xmp",
@@ -2769,6 +2782,58 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(sidebarRowCount("Five Stars", in: "Saved Sets", of: model), "1")
     }
 
+    func testTogglingSavedAssetSetStarredPersistsAndRefreshesSidebar() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-toggle-saved-set-star")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
+        let savedSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "five-stars"),
+            name: "Five Stars",
+            query: SetQuery(predicates: [.ratingAtLeast(5)])
+        )
+        try repository.upsert(asset)
+        try repository.upsert(savedSet)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        let savedSetRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Saved Sets" }?.rows.first)
+
+        XCTAssertTrue(model.canToggleAssetSetStarred(savedSetRow))
+        XCTAssertNil(model.sidebarSections.first { $0.title == "Starred" })
+
+        try model.toggleAssetSetStarred(id: savedSet.id)
+
+        XCTAssertTrue(try repository.assetSet(id: savedSet.id).starred)
+        XCTAssertEqual(model.starredAssetSets.map(\.id), [savedSet.id])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, ["Five Stars"])
+        XCTAssertEqual(sidebarRowCount("Five Stars", in: "Starred", of: model), "1")
+
+        try model.setAssetSetStarred(id: savedSet.id, starred: false)
+
+        XCTAssertFalse(try repository.assetSet(id: savedSet.id).starred)
+        XCTAssertEqual(model.starredAssetSets, [])
+        XCTAssertNil(model.sidebarSections.first { $0.title == "Starred" })
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, ["Five Stars"])
+    }
+
+    func testCanToggleAssetSetStarredOnlyForSavedSetRowsWithCatalog() throws {
+        let asset = makeAsset(id: "uncataloged", path: "/Photos/uncataloged.jpg", rating: 0)
+        let modelWithoutCatalog = AppModel(sidebarSections: [], selectedView: .grid, assets: [asset])
+        let assetSetRow = SidebarRow(id: "saved", title: "Saved", target: .assetSet(AssetSetID(rawValue: "saved")))
+        let libraryRow = SidebarRow(id: "all", title: "All", target: .allPhotographs)
+
+        XCTAssertFalse(modelWithoutCatalog.canToggleAssetSetStarred(assetSetRow))
+        XCTAssertFalse(modelWithoutCatalog.canToggleAssetSetStarred(libraryRow))
+    }
+
     func testLoadExposesCatalogFoldersInSidebarAndSelectingFolderAppliesFilter() throws {
         let ceremony = makeAsset(id: "ceremony", path: "/Volumes/NAS/Wedding/Ceremony/frame-1.cr2", rating: 4)
         let portraits = makeAsset(id: "portraits", path: "/Volumes/NAS/Wedding/Portraits/frame-2.cr2", rating: 5)
@@ -4461,6 +4526,36 @@ final class AppModelTests: XCTestCase {
             .generatePreview(assetID: assets[1].id, level: .grid)
         ], in: transport))
         XCTAssertTrue(waitForBackgroundWorkItem(refillItemID, in: model))
+    }
+
+    func testPreviewFailureRefillsPendingPreviewRecoveryPastUnavailableOriginal() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, repository, assets) = try makeModelWithPendingPreviewBacklog(
+            named: "pending-preview-refill-after-unavailable-failure",
+            assetCount: 41,
+            workerSupervisor: supervisor
+        )
+        let failedItemID = WorkSessionID(rawValue: "preview-asset-0-grid")
+        let refillItemID = WorkSessionID(rawValue: "preview-asset-40-grid")
+
+        XCTAssertEqual(model.backgroundWorkQueue.items.count, 40)
+        XCTAssertNil(model.backgroundWorkQueue.item(id: refillItemID))
+
+        try repository.updateAvailability(assetID: assets[0].id, availability: .missing)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.failed(
+            itemID: failedItemID,
+            message: "original is missing"
+        )))
+
+        XCTAssertTrue(waitForBackgroundWorkItem(refillItemID, in: model))
+        XCTAssertEqual(
+            try transport.commands().filter { $0 == .generatePreview(assetID: assets[0].id, level: .grid) }.count,
+            1
+        )
     }
 
     @MainActor

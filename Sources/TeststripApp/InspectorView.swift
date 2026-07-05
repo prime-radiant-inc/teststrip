@@ -162,24 +162,39 @@ struct InspectorMetadataSyncStatus: Equatable {
         case conflict
     }
 
+    struct ConflictRow: Equatable, Identifiable {
+        var id: String { title }
+        var title: String
+        var catalogValue: String
+        var sidecarValue: String
+    }
+
     var kind: Kind
     var title: String
     var detail: String
     var sidecarFilename: String
     var sidecarPath: String
     var catalogGenerationText: String
+    var conflictRows: [ConflictRow]
 
     init?(
         asset: Asset,
         pendingItems: [MetadataSyncItem],
-        conflictItems: [MetadataSyncItem]
+        conflictItems: [MetadataSyncItem],
+        conflictSidecarMetadata: AssetMetadata? = nil
     ) {
         if let conflict = conflictItems.first(where: { $0.assetID == asset.id }) {
+            let rows = conflictSidecarMetadata.map {
+                Self.conflictRows(catalog: asset.metadata, sidecar: $0)
+            } ?? []
             self.init(
                 kind: .conflict,
                 item: conflict,
                 title: "XMP conflict",
-                detail: "Catalog and sidecar both changed since the last sync."
+                detail: rows.isEmpty
+                    ? "Catalog and sidecar both changed since the last sync."
+                    : "Review changed fields before choosing whether Catalog or XMP wins.",
+                conflictRows: rows
             )
             return
         }
@@ -188,20 +203,52 @@ struct InspectorMetadataSyncStatus: Equatable {
                 kind: .pending,
                 item: pending,
                 title: "XMP sync pending",
-                detail: "Catalog metadata is saved; sidecar write is waiting to retry."
+                detail: "Catalog metadata is saved; sidecar write is waiting to retry.",
+                conflictRows: []
             )
             return
         }
         return nil
     }
 
-    private init(kind: Kind, item: MetadataSyncItem, title: String, detail: String) {
+    private init(kind: Kind, item: MetadataSyncItem, title: String, detail: String, conflictRows: [ConflictRow]) {
         self.kind = kind
         self.title = title
         self.detail = detail
         self.sidecarFilename = item.sidecarURL.lastPathComponent
         self.sidecarPath = item.sidecarURL.path
         self.catalogGenerationText = "Catalog generation \(item.catalogGeneration)"
+        self.conflictRows = conflictRows
+    }
+
+    private static func conflictRows(catalog: AssetMetadata, sidecar: AssetMetadata) -> [ConflictRow] {
+        [
+            conflictRow(title: "Rating", catalogValue: "\(catalog.rating)", sidecarValue: "\(sidecar.rating)"),
+            conflictRow(title: "Color label", catalogValue: valueText(catalog.colorLabel), sidecarValue: valueText(sidecar.colorLabel)),
+            conflictRow(title: "Flag", catalogValue: valueText(catalog.flag), sidecarValue: valueText(sidecar.flag)),
+            conflictRow(title: "Keywords", catalogValue: catalog.keywords.joined(separator: ", "), sidecarValue: sidecar.keywords.joined(separator: ", ")),
+            conflictRow(title: "Caption", catalogValue: valueText(catalog.caption), sidecarValue: valueText(sidecar.caption)),
+            conflictRow(title: "Creator", catalogValue: valueText(catalog.creator), sidecarValue: valueText(sidecar.creator)),
+            conflictRow(title: "Copyright", catalogValue: valueText(catalog.copyright), sidecarValue: valueText(sidecar.copyright))
+        ].compactMap { $0 }
+    }
+
+    private static func conflictRow(title: String, catalogValue: String, sidecarValue: String) -> ConflictRow? {
+        guard catalogValue != sidecarValue else { return nil }
+        return ConflictRow(title: title, catalogValue: catalogValue, sidecarValue: sidecarValue)
+    }
+
+    private static func valueText(_ label: ColorLabel?) -> String {
+        label?.rawValue ?? "-"
+    }
+
+    private static func valueText(_ flag: PickFlag?) -> String {
+        flag?.rawValue ?? "-"
+    }
+
+    private static func valueText(_ value: String?) -> String {
+        guard let value, !value.isEmpty else { return "-" }
+        return value
     }
 }
 
@@ -322,7 +369,8 @@ struct InspectorView: View {
         if let syncStatus = InspectorMetadataSyncStatus(
             asset: asset,
             pendingItems: model.pendingMetadataSyncItems,
-            conflictItems: model.metadataSyncConflictItems
+            conflictItems: model.metadataSyncConflictItems,
+            conflictSidecarMetadata: model.selectedMetadataSyncConflictSidecarMetadata
         ) {
             metadataSyncStatus(syncStatus)
         }
@@ -372,6 +420,27 @@ struct InspectorView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+            }
+            if !status.conflictRows.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(status.conflictRows) { row in
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(row.title)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 72, alignment: .leading)
+                            Text(row.catalogValue)
+                                .font(.caption2.monospaced())
+                                .lineLimit(1)
+                            Image(systemName: "arrow.right")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text(row.sidecarValue)
+                                .font(.caption2.monospaced())
+                                .lineLimit(1)
+                        }
+                    }
+                }
             }
             switch status.kind {
             case .pending:

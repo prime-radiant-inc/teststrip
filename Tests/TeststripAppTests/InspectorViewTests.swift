@@ -183,6 +183,31 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(status.catalogGenerationText, "Catalog generation 5")
     }
 
+    func testMetadataSyncStatusPresentationShowsConflictFieldDifferences() throws {
+        let asset = makeAsset(
+            id: "conflict",
+            metadata: AssetMetadata(rating: 4, colorLabel: .red, flag: .pick, keywords: ["catalog"])
+        )
+        let conflict = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: URL(fileURLWithPath: "/Photos/conflict.jpg.xmp"),
+            catalogGeneration: 5,
+            lastSyncedFingerprint: "newer"
+        )
+
+        let status = try XCTUnwrap(InspectorMetadataSyncStatus(
+            asset: asset,
+            pendingItems: [],
+            conflictItems: [conflict],
+            conflictSidecarMetadata: AssetMetadata(rating: 5, colorLabel: .green, flag: .reject, keywords: ["sidecar"])
+        ))
+
+        XCTAssertEqual(status.detail, "Review changed fields before choosing whether Catalog or XMP wins.")
+        XCTAssertEqual(status.conflictRows.map(\.title), ["Rating", "Color label", "Flag", "Keywords"])
+        XCTAssertEqual(status.conflictRows.map(\.catalogValue), ["4", "red", "pick", "catalog"])
+        XCTAssertEqual(status.conflictRows.map(\.sidecarValue), ["5", "green", "reject", "sidecar"])
+    }
+
     func testMetadataDraftFormatsPortableMetadataFromAsset() {
         let asset = makeAsset(
             id: "draft-asset",

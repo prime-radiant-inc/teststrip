@@ -341,6 +341,32 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(retryableItems.map(\.assetID.rawValue).sorted(), ["pending", "retryable"])
     }
 
+    func testPendingPreviewGenerationItemsCanRequireAvailableOriginals() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-available-originals")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let online = Asset.testAsset(id: AssetID(rawValue: "online"), path: "/Photos/online.jpg", rating: 0)
+        var stale = Asset.testAsset(id: AssetID(rawValue: "stale"), path: "/Photos/stale.jpg", rating: 0)
+        var offline = Asset.testAsset(id: AssetID(rawValue: "offline"), path: "/Volumes/NAS/offline.jpg", rating: 0)
+        var missing = Asset.testAsset(id: AssetID(rawValue: "missing"), path: "/Photos/missing.jpg", rating: 0)
+        var moved = Asset.testAsset(id: AssetID(rawValue: "moved"), path: "/Photos/moved.jpg", rating: 0)
+        stale.availability = .stale
+        offline.availability = .offline
+        missing.availability = .missing
+        moved.availability = .moved
+        try repository.upsert([offline, missing, moved, online, stale])
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: offline.id, level: .grid))
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: missing.id, level: .grid))
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: moved.id, level: .grid))
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: online.id, level: .grid))
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: stale.id, level: .grid))
+
+        let runnableItems = try repository.pendingPreviewGenerationItems(requiresAvailableOriginal: true)
+
+        XCTAssertEqual(runnableItems.map(\.assetID), [online.id, stale.id])
+    }
+
     func testFetchesPreviewGenerationQueueStates() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-states")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
