@@ -121,7 +121,21 @@ public struct ImageIODecodeProvider: DecodeProvider {
               height > 0 else {
             throw TeststripError.unsupportedFormat("ImageIO could not read dimensions for \(filename)")
         }
+        if orientationRotatesDisplayBounds(properties[kCGImagePropertyOrientation]) {
+            return (height, width)
+        }
         return (width, height)
+    }
+
+    private static func orientationRotatesDisplayBounds(_ value: Any?) -> Bool {
+        let orientation: Int?
+        if let value = value as? NSNumber {
+            orientation = value.intValue
+        } else {
+            orientation = value as? Int
+        }
+        guard let orientation else { return false }
+        return [5, 6, 7, 8].contains(orientation)
     }
 
     private static func stringValue(_ value: Any?) -> String? {

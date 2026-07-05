@@ -30,6 +30,17 @@ final class DecodeRegistryTests: XCTestCase {
         XCTAssertEqual(dimensions.pixelHeight, 80)
     }
 
+    func testImageIODimensionsApplyOrientationThatRotatesDisplayBounds() throws {
+        let dimensions = try ImageIODecodeProvider.dimensions(from: [
+            kCGImagePropertyPixelWidth: 6000,
+            kCGImagePropertyPixelHeight: 4000,
+            kCGImagePropertyOrientation: NSNumber(value: 6)
+        ], filename: "portrait.jpg")
+
+        XCTAssertEqual(dimensions.pixelWidth, 4000)
+        XCTAssertEqual(dimensions.pixelHeight, 6000)
+    }
+
     func testImageIOTechnicalMetadataReadsCameraLensISOAndCaptureDate() throws {
         let provenance = ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
         var components = DateComponents()
