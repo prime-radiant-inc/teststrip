@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `e7813c7 Preflight stale originals before preview render`
+- Snapshot commit: `9e2c7fb Tolerate skipped source files during folder import`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter WorkerCommandExecutorTests`, `swift test --filter SourceAvailabilityTests/testProbeMarksChangedOriginalStale`, `swift test --filter LibraryGridLayoutTests --filter LibraryGridChromeTests`, focused XMP conflict/reconnect tests, and catalog-scale verifier tests all passed across the latest slices.
-- Last broad unit verification: `swift test` passed with 705 tests, 1 skipped, and 0 failures after the stale-preview preflight slice.
+- Last focused unit verification: `swift test --filter LibraryImportServiceTests/testAddFolderContinuesWhenOneSourceDisappearsBeforeCataloging`, `swift test --filter LibraryImportServiceTests`, `swift test --filter FolderImportTests`, and `swift test --filter AppModelTests` all passed after the skipped-source import slice. Earlier worker/source, grid layout/chrome, XMP conflict/reconnect, and catalog-scale verifier focused tests passed across the preceding slices.
+- Last broad unit verification: `swift test` passed with 708 tests, 1 skipped, and 0 failures after the skipped-source import slice.
 - Last app workflow verification: `./script/build_and_run.sh --verify-smoke` launched an isolated smoke catalog after the inspector XMP merge action, and `./script/capture_app_window.sh Teststrip /tmp/teststrip-inspector-conflict-action-smoke.png` captured a normal Library window. That smoke did not show an active XMP conflict; the conflict action ordering and model merge path are covered by focused tests. Additional UI automation was intentionally avoided for the footer-density slice to minimize focus stealing while Jesse is using the machine. Earlier no app launch was run for the diagnostics slice to minimize focus stealing; `./script/build_and_run.sh --verify-smoke` launched an isolated smoke catalog after the Activity row-control change, and `./script/capture_app_window.sh Teststrip /tmp/teststrip-worker-control-smoke.png` captured a normal Library window with Activity idle state visible. Earlier `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import/click UI automation was intentionally deferred for several import/grid slices to avoid unnecessary focus stealing while Jesse was using the machine; those slices were covered by focused presentation/policy tests and full unit runs. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import.
 
 ### Recent Completed Slices
@@ -99,6 +99,7 @@
 - `8b4fcfc`: preserved existing unambiguous Adobe-style `frame.xmp` sidecar paths when reconnecting remounted source roots.
 - `2c1baac`: moved grid density and thumbnail-size controls into the Library footer and made grid spacing derive from the same density presentation, matching the Studio mockup footer while preserving true-aspect thumbnails.
 - `e7813c7`: preflighted preview generation for stale originals so changed source bytes do not silently refresh cached previews or clear pending preview work.
+- `9e2c7fb`: made add-in-place folder imports tolerate a scanned source file disappearing before cataloging, report skipped source files in `LibraryImportResult`, and surface skipped-file counts in AppModel import completion copy while leaving card-copy conflicts fail-fast.
 
 ## Product Decisions To Preserve
 
@@ -162,6 +163,7 @@ Current behavior:
 - Card/import copy flow exists at the service level through ingest planning and app UI plumbing.
 - Imports record catalog source roots.
 - Imports catalog assets before downstream analysis.
+- Add-in-place folder imports can skip and report source files that disappear or become unreadable after scan, so one flaky NAS/cloud/removable file no longer fails the whole import. Card/camera copy conflicts remain fail-fast.
 - Import worker activity is persisted to `work_sessions` while queued/running.
 - Interrupted queued/running/paused ingest sessions reconcile as failed on next load instead of disappearing or falsely appearing active.
 - Duplicate and empty imports now report clearly.
