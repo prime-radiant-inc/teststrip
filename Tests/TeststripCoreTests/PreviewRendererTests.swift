@@ -25,6 +25,24 @@ final class PreviewRendererTests: XCTestCase {
         XCTAssertLessThanOrEqual(max(dimensions.width, dimensions.height), PreviewLevel.grid.maxPixelDimension!)
     }
 
+    func testRendererPreservesSourceAspectRatioWhenBoundingGridPreview() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "preview-render-aspect")
+        let source = directory.appendingPathComponent("source.jpg")
+        let output = directory.appendingPathComponent("grid.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 800, height: 1200)
+
+        let renderer = PreviewRenderer()
+        try renderer.render(sourceURL: source, level: .grid, destinationURL: output)
+
+        let dimensions = try renderer.dimensions(of: output)
+        XCTAssertLessThanOrEqual(max(dimensions.width, dimensions.height), PreviewLevel.grid.maxPixelDimension!)
+        XCTAssertEqual(
+            Double(dimensions.width) / Double(dimensions.height),
+            800.0 / 1200.0,
+            accuracy: 0.01
+        )
+    }
+
     func testRendererWrapsDestinationDirectoryCreationFailureAsIO() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "preview-render-directory-error")
         let source = directory.appendingPathComponent("source.jpg")
