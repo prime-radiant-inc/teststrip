@@ -218,16 +218,18 @@ public final class CatalogRepository {
                 COUNT(*) AS asset_count
             FROM assets
             GROUP BY folder_path
-            ORDER BY folder_path COLLATE NOCASE ASC
             """
         )
-        return try rows.map { row in
+        let folders = try rows.map { row in
             guard let path = row["folder_path"],
                   let countString = row["asset_count"],
                   let assetCount = Int(countString) else {
-                throw CatalogError.sqlite("folder query returned incomplete row")
+                throw CatalogError.sqlite("folder row is missing required columns")
             }
             return CatalogFolder(path: path, name: Self.folderName(forFolderPath: path), assetCount: assetCount)
+        }
+        return folders.sorted { lhs, rhs in
+            lhs.path.localizedStandardCompare(rhs.path) == .orderedAscending
         }
     }
 

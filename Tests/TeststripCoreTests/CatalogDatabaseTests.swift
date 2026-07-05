@@ -445,6 +445,31 @@ final class CatalogDatabaseTests: XCTestCase {
         ])
     }
 
+    func testCatalogFoldersAreAggregatedInDatabase() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-folders-aggregate-query")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert([
+            Asset.testAsset(id: AssetID(rawValue: "ceremony-1"), path: "/Volumes/NAS/Wedding/Ceremony/frame-1.jpg", rating: 0),
+            Asset.testAsset(id: AssetID(rawValue: "ceremony-2"), path: "/Volumes/NAS/Wedding/Ceremony/frame-2.jpg", rating: 0),
+            Asset.testAsset(id: AssetID(rawValue: "travel"), path: "/Volumes/NAS/Travel/frame-3.jpg", rating: 0)
+        ])
+        var rowQueries: [String] = []
+        database.rowQueryObserver = { sql in
+            rowQueries.append(sql.replacingOccurrences(of: "\n", with: " "))
+        }
+
+        XCTAssertEqual(try repository.folders(), [
+            CatalogFolder(path: "/Volumes/NAS/Travel/", name: "Travel", assetCount: 1),
+            CatalogFolder(path: "/Volumes/NAS/Wedding/Ceremony/", name: "Ceremony", assetCount: 2)
+        ])
+        let folderQuery = try XCTUnwrap(rowQueries.first)
+        XCTAssertTrue(folderQuery.contains("COUNT(*) AS asset_count"))
+        XCTAssertTrue(folderQuery.contains("GROUP BY folder_path"))
+        XCTAssertFalse(folderQuery.contains("SELECT original_path FROM assets"))
+    }
+
     func testTextSearchMatchesEvaluationLabelsAndText() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-search")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
