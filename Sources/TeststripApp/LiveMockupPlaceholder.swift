@@ -67,7 +67,7 @@ public enum LiveMockupPlaceholders {
         id: "sidebar.people",
         title: "People navigation",
         intendedBehavior: "Browse face groups and named people once people recognition and grouping are productized.",
-        currentFallback: "Selectable live mockup that shows real face-signal coverage and face-signal review entrypoints, but no named identities until clustering and naming ship."
+        currentFallback: "Selectable live mockup with unnamed face review entrypoints backed by real face signals; naming remains disabled and there are no named identities until clustering ships."
     )
 
     public static let peopleFaceActions = LiveMockupPlaceholder(
@@ -288,7 +288,7 @@ public enum LiveMockupDesignSurfaces {
             title: "People",
             status: .liveMockup,
             placeholder: .peopleSidebar,
-            currentImplementation: "People route is selectable and shows catalog face-signal coverage plus face-signal review entrypoints, but no named identities, suggestions, or naming workflows are built."
+            currentImplementation: "People route is selectable and shows unnamed face review entrypoints backed by catalog face signals; naming remains disabled and no named identities, suggestions, or naming workflows are built."
         ),
         LiveMockupDesignSurface(
             designID: "5b",

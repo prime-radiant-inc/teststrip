@@ -88,19 +88,19 @@ struct PeopleView: View {
                     .shadow(color: .black.opacity(0.35), radius: 8, y: 3)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Named people are not built yet")
+                    Text("Naming is not built yet")
                         .font(.headline.weight(.semibold))
-                    Text("This route is ready for face clustering and naming, but it only shows local face-signal coverage today.")
+                    Text("Unnamed face review is live from local face signals; clustering, naming, and merge decisions stay disabled until identity grouping ships.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
                     HStack(spacing: 6) {
-                        ForEach(["Name clusters", "Merge duplicates", "Dismiss false positives"], id: \.self) { title in
-                            Button(title) {}
+                        ForEach(presentation.faceActionRows) { row in
+                            Button(row.title) {}
                                 .buttonStyle(.bordered)
                                 .controlSize(.small)
-                                .disabled(true)
-                                .liveMockupPlaceholder(.peopleFaceActions)
+                                .disabled(!row.isEnabled)
+                                .liveMockupPlaceholder(row.placeholder)
                         }
                     }
                 }
@@ -189,34 +189,42 @@ struct PeoplePresentation: Equatable {
     }
 
     var statusTitle: String {
-        photosWithFaceSignals > 0 ? "TESTSTRIP · FACE GROUPING NOT BUILT" : "TESTSTRIP · NO FACE SIGNALS YET"
+        photosWithFaceSignals > 0 ? "TESTSTRIP · FACE REVIEW QUEUE" : "TESTSTRIP · NO FACE REVIEW SIGNALS"
     }
 
     var statusDetail: String {
         if photosWithFaceSignals > 0 {
-            return "\(photosWithFaceSignals) photos have face signals. Naming starts after clustering ships."
+            return "Review \(photosWithFaceSignals) photos with unnamed face signals. Naming and clustering are still disabled."
         }
-        return "Run evaluation on catalog photos to populate local face signals."
+        return "Run evaluation on catalog photos to populate local face review queues."
     }
 
     var signalRows: [PeopleSignalRow] {
         [
             PeopleSignalRow(
                 id: "face-count",
-                title: "Photos with faces",
-                detail: "Assets with local face signals",
+                title: "Unnamed faces",
+                detail: "Review assets with local face detections",
                 countText: "\(photosWithDetectedFaces)",
                 systemImage: "person.crop.rectangle.stack",
                 filterKind: faceSignalKind
             ),
             PeopleSignalRow(
                 id: "face-quality",
-                title: "Face quality reads",
-                detail: "Assets with face-quality measurements",
+                title: "Face quality review",
+                detail: "Review assets with face-quality measurements",
                 countText: "\(photosWithFaceQualitySignals)",
                 systemImage: "face.smiling",
                 filterKind: photosWithFaceQualitySignals > 0 ? .faceQuality : nil
             )
+        ]
+    }
+
+    var faceActionRows: [PeopleFaceActionRow] {
+        [
+            PeopleFaceActionRow(title: "Name clusters"),
+            PeopleFaceActionRow(title: "Merge duplicates"),
+            PeopleFaceActionRow(title: "Dismiss false positives")
         ]
     }
 }
@@ -232,4 +240,11 @@ struct PeopleSignalRow: Equatable, Identifiable {
     var isActionEnabled: Bool {
         filterKind != nil
     }
+}
+
+struct PeopleFaceActionRow: Equatable, Identifiable {
+    var id: String { title }
+    var title: String
+    var isEnabled = false
+    var placeholder = LiveMockupPlaceholders.peopleFaceActions
 }
