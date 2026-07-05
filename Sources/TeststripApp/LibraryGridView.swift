@@ -237,6 +237,7 @@ struct LibraryGridView: View {
 
     private var libraryTopBar: some View {
         let presentation = LibraryTopBarPresentation(
+            catalogTitle: model.catalogDisplayName,
             libraryTitle: model.libraryTitle,
             libraryCountText: model.libraryCountText,
             selectedView: model.selectedView,
@@ -2676,15 +2677,18 @@ struct LibraryTopBarPresentation: Equatable {
     var selectedView: LibraryViewMode
 
     init(
+        catalogTitle: String,
         libraryTitle: String,
         libraryCountText: String,
         selectedView: LibraryViewMode,
         activeFilterChips: [String]
     ) {
+        let trimmedCatalogTitle = catalogTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedTitle = libraryTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedCatalogTitle = trimmedCatalogTitle.isEmpty ? "Local Catalog" : trimmedCatalogTitle
         let resolvedTitle = trimmedTitle.isEmpty ? "All Photographs" : trimmedTitle
 
-        self.catalogTitle = "Master Catalog"
+        self.catalogTitle = resolvedCatalogTitle
         self.catalogSubtitle = libraryCountText
         self.scopeTitle = resolvedTitle
         self.breadcrumbItems = Self.breadcrumbItems(scopeTitle: resolvedTitle, selectedView: selectedView)

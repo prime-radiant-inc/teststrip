@@ -4,13 +4,14 @@ import XCTest
 final class LibraryTopBarPresentationTests: XCTestCase {
     func testAllPhotographsUsesCatalogIdentityAndLibraryBreadcrumb() {
         let presentation = LibraryTopBarPresentation(
+            catalogTitle: "Wedding Archive",
             libraryTitle: "All Photographs",
             libraryCountText: "486,204 photographs",
             selectedView: .grid,
             activeFilterChips: []
         )
 
-        XCTAssertEqual(presentation.catalogTitle, "Master Catalog")
+        XCTAssertEqual(presentation.catalogTitle, "Wedding Archive")
         XCTAssertEqual(presentation.catalogSubtitle, "486,204 photographs")
         XCTAssertEqual(presentation.scopeTitle, "All Photographs")
         XCTAssertEqual(presentation.breadcrumbItems, ["Library", "All Photographs"])
@@ -19,6 +20,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
 
     func testFilteredScopeKeepsAllPhotographsAsBreadcrumbParent() {
         let presentation = LibraryTopBarPresentation(
+            catalogTitle: "Wedding Archive",
             libraryTitle: "Patagonia Picks",
             libraryCountText: "Showing 84 of 486,204 photographs",
             selectedView: .grid,
@@ -32,6 +34,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
     func testSearchTimelineCopilotAndPeopleAreDirectLibraryRoutes() {
         XCTAssertEqual(
             LibraryTopBarPresentation(
+                catalogTitle: "Wedding Archive",
                 libraryTitle: "Search",
                 libraryCountText: "12 photographs",
                 selectedView: .search,
@@ -41,6 +44,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             LibraryTopBarPresentation(
+                catalogTitle: "Wedding Archive",
                 libraryTitle: "Timeline",
                 libraryCountText: "12 photographs",
                 selectedView: .timeline,
@@ -50,6 +54,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             LibraryTopBarPresentation(
+                catalogTitle: "Wedding Archive",
                 libraryTitle: "Copilot",
                 libraryCountText: "12 photographs",
                 selectedView: .copilot,
@@ -59,6 +64,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             LibraryTopBarPresentation(
+                catalogTitle: "Wedding Archive",
                 libraryTitle: "People",
                 libraryCountText: "12 photographs",
                 selectedView: .people,
@@ -70,6 +76,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
 
     func testModeItemsExposeOnlyImplementedGoToMarketRoutes() {
         let presentation = LibraryTopBarPresentation(
+            catalogTitle: "Wedding Archive",
             libraryTitle: "All Photographs",
             libraryCountText: "1 photograph",
             selectedView: .compare,
@@ -82,6 +89,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
 
     func testPartialTopBarRoutesCarryLiveMockupPlaceholders() {
         let presentation = LibraryTopBarPresentation(
+            catalogTitle: "Wedding Archive",
             libraryTitle: "All Photographs",
             libraryCountText: "1 photograph",
             selectedView: .grid,

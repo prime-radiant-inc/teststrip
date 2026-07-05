@@ -1118,6 +1118,11 @@ public final class AppModel {
         return "All Photographs"
     }
 
+    public var catalogDisplayName: String {
+        let name = catalog?.paths.root.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? "Local Catalog" : name
+    }
+
     public var canUndoMetadataChange: Bool {
         !metadataUndoStack.isEmpty
     }

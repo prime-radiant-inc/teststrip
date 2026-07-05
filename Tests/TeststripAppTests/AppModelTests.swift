@@ -478,6 +478,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.libraryTitle, "Ceremony Picks")
     }
 
+    func testCatalogDisplayNameUsesCatalogRootName() throws {
+        let directory = try makeTemporaryDirectory(named: "catalog-display-name")
+        let root = directory.appendingPathComponent("Wedding Archive", isDirectory: true)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("Previews", isDirectory: true))
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let catalog = AppCatalog(
+            paths: AppCatalogPaths(
+                root: root,
+                catalogURL: root.appendingPathComponent("catalog.sqlite"),
+                previewCacheRoot: root.appendingPathComponent("Previews", isDirectory: true)
+            ),
+            repository: CatalogRepository(database: database),
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [], catalog: catalog)
+
+        XCTAssertEqual(model.catalogDisplayName, "Wedding Archive")
+    }
+
     func testRatingSelectedAssetUpdatesCatalogAndLoadedAsset() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-rating")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
