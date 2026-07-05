@@ -691,6 +691,7 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Add a dedicated preview render throughput benchmark for a small real-image sample directory.
 - [x] Add metadata/XMP bulk edit benchmark.
 - [x] Add a repeatable catalog-scale verifier script with alpha thresholds for page/filter query timings.
+- [x] Add a repeatable preview-render verifier script with alpha thresholds for generated preview correctness and timing.
 - [x] Add a repeatable metadata-write verifier script with alpha thresholds for catalog/XMP writeback correctness and timing.
 - [ ] Add memory and CPU snapshots to app workflow scripts where practical.
 - [x] Set initial green thresholds for the 100k alpha catalog verifier after measuring current local behavior.
