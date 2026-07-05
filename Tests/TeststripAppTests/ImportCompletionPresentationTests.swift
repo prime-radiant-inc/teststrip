@@ -10,13 +10,15 @@ final class ImportCompletionPresentationTests: XCTestCase {
             existingPhotoCount: 0,
             previewFailureCount: 0,
             failureText: nil,
-            previewStatusText: "Previews ready"
+            previewStatusText: "Previews ready",
+            stackCount: 3,
+            stackedPhotoCount: 8
         ))
 
         XCTAssertEqual(presentation.title, "12 photos imported")
         XCTAssertEqual(presentation.detail, "Imported 12 photos from Card A")
         XCTAssertEqual(presentation.metricRows.map(\.label), ["Imported set", "Previews", "Cull scope"])
-        XCTAssertEqual(presentation.metricRows.map(\.value), ["12 photos", "Ready", "Ready"])
+        XCTAssertEqual(presentation.metricRows.map(\.value), ["12 photos", "Ready", "3 stacks"])
         XCTAssertEqual(presentation.enabledActions.map(\.kind), [.startCulling, .reviewImportedFrames, .openInLibrary, .stackGrouping])
         XCTAssertEqual(presentation.placeholderActions.map(\.kind), [.faceNaming, .keywordSuggestions])
     }
@@ -29,7 +31,9 @@ final class ImportCompletionPresentationTests: XCTestCase {
             existingPhotoCount: 0,
             previewFailureCount: 2,
             failureText: "2 preview failures",
-            previewStatusText: "2 preview failures"
+            previewStatusText: "2 preview failures",
+            stackCount: 1,
+            stackedPhotoCount: 3
         ))
 
         XCTAssertEqual(presentation.metricRows.first { $0.id == "previews" }?.value, "2 issues")
@@ -54,7 +58,7 @@ final class ImportCompletionPresentationTests: XCTestCase {
     }
 
     func testAddsManualCompareAndStackCullActionsWithoutClaimingSimilarityGrouping() throws {
-        let presentation = ImportCompletionPresentation.presentation(for: summary())
+        let presentation = ImportCompletionPresentation.presentation(for: summary(stackCount: 2, stackedPhotoCount: 5))
 
         let compareAction = try XCTUnwrap(presentation.actionRows.first { $0.kind == .reviewImportedFrames })
         XCTAssertTrue(compareAction.isEnabled)
@@ -65,8 +69,18 @@ final class ImportCompletionPresentationTests: XCTestCase {
         let stackAction = try XCTUnwrap(presentation.actionRows.first { $0.kind == .stackGrouping })
         XCTAssertTrue(stackAction.isEnabled)
         XCTAssertEqual(stackAction.title, "Cull stacks")
-        XCTAssertEqual(stackAction.detail, "Time-adjacent stack rail")
+        XCTAssertEqual(stackAction.detail, "2 stacks · 5 photos")
         XCTAssertNil(stackAction.placeholder)
+    }
+
+    func testDisablesStackCullActionWhenNoStacksAreDetected() throws {
+        let presentation = ImportCompletionPresentation.presentation(for: summary(stackCount: 0, stackedPhotoCount: 0))
+
+        let stackAction = try XCTUnwrap(presentation.actionRows.first { $0.kind == .stackGrouping })
+        XCTAssertFalse(stackAction.isEnabled)
+        XCTAssertEqual(stackAction.detail, "No time-adjacent stacks")
+        XCTAssertNil(stackAction.placeholder)
+        XCTAssertFalse(presentation.enabledActions.contains { $0.kind == .stackGrouping })
     }
 
     func testOpenImportActionNamesImportedSetInsteadOfWholeLibrary() throws {
@@ -122,7 +136,9 @@ final class ImportCompletionPresentationTests: XCTestCase {
         existingPhotoCount: Int = 0,
         previewFailureCount: Int = 0,
         failureText: String? = nil,
-        previewStatusText: String = "Previews ready"
+        previewStatusText: String = "Previews ready",
+        stackCount: Int = 0,
+        stackedPhotoCount: Int = 0
     ) -> ImportCompletionSummary {
         ImportCompletionSummary(
             activityID: "import-1",
@@ -135,6 +151,8 @@ final class ImportCompletionPresentationTests: XCTestCase {
             previewFailureCount: previewFailureCount,
             failureText: failureText,
             previewStatusText: previewStatusText,
+            stackCount: stackCount,
+            stackedPhotoCount: stackedPhotoCount,
             cullingSessionName: "Imported 12 photos from Card A Cull"
         )
     }

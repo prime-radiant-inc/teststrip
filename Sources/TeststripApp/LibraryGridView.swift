@@ -922,7 +922,7 @@ struct LibraryGridView: View {
         case .keywordSuggestions:
             applyLatestImportKeywordSuggestion()
         case .stackGrouping:
-            beginCullingFromLatestImportCompletion()
+            beginStackCullingFromLatestImportCompletion()
         case .faceNaming:
             break
         }
@@ -1839,6 +1839,15 @@ struct LibraryGridView: View {
     private func beginCullingFromLatestImportCompletion() {
         do {
             try model.beginCullingFromLatestImportCompletion()
+            focusCullingSurface()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func beginStackCullingFromLatestImportCompletion() {
+        do {
+            try model.beginStackCullingFromLatestImportCompletion()
             focusCullingSurface()
         } catch {
             model.errorMessage = error.localizedDescription
@@ -4139,7 +4148,7 @@ struct ImportCompletionPresentation: Equatable {
     }
 
     var placeholderActions: [ImportCompletionActionPresentation] {
-        actionRows.filter { !$0.isEnabled }
+        actionRows.filter { !$0.isEnabled && $0.placeholder != nil }
     }
 
     static func presentation(
@@ -4152,14 +4161,7 @@ struct ImportCompletionPresentation: Equatable {
             metricRows: [
                 importedSetMetric(for: summary),
                 previewMetric(for: summary),
-                ImportCompletionMetricRow(
-                    id: "cull-scope",
-                    value: "Ready",
-                    label: "Cull scope",
-                    detail: "Uses the imported set",
-                    systemImage: "checkmark.seal.fill",
-                    tone: .orange
-                )
+                cullScopeMetric(for: summary)
             ],
             actionRows: [
                 ImportCompletionActionPresentation(
@@ -4192,9 +4194,9 @@ struct ImportCompletionPresentation: Equatable {
                 ImportCompletionActionPresentation(
                     kind: .stackGrouping,
                     title: "Cull stacks",
-                    detail: "Time-adjacent stack rail",
+                    detail: stackCullActionDetail(for: summary),
                     systemImage: "square.stack.3d.up",
-                    isEnabled: true,
+                    isEnabled: summary.stackCount > 0,
                     isPrimary: false,
                     placeholder: nil
                 ),
@@ -4249,6 +4251,38 @@ struct ImportCompletionPresentation: Equatable {
 
     private static func photoCountText(_ count: Int) -> String {
         "\(count) \(count == 1 ? "photo" : "photos")"
+    }
+
+    private static func stackCountText(_ count: Int) -> String {
+        "\(count) \(count == 1 ? "stack" : "stacks")"
+    }
+
+    private static func cullScopeMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
+        guard summary.stackCount > 0 else {
+            return ImportCompletionMetricRow(
+                id: "cull-scope",
+                value: "Ready",
+                label: "Cull scope",
+                detail: "Uses the imported set",
+                systemImage: "checkmark.seal.fill",
+                tone: .orange
+            )
+        }
+        return ImportCompletionMetricRow(
+            id: "cull-scope",
+            value: stackCountText(summary.stackCount),
+            label: "Cull scope",
+            detail: "\(photoCountText(summary.stackedPhotoCount)) in time-adjacent stacks",
+            systemImage: "square.stack.3d.up.fill",
+            tone: .orange
+        )
+    }
+
+    private static func stackCullActionDetail(for summary: ImportCompletionSummary) -> String {
+        guard summary.stackCount > 0 else {
+            return "No time-adjacent stacks"
+        }
+        return "\(stackCountText(summary.stackCount)) · \(photoCountText(summary.stackedPhotoCount))"
     }
 
     private static func keywordSuggestionAction(

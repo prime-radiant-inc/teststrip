@@ -541,6 +541,8 @@ public struct ImportCompletionSummary: Identifiable, Equatable, Sendable {
     public var previewFailureCount: Int
     public var failureText: String?
     public var previewStatusText: String
+    public var stackCount: Int = 0
+    public var stackedPhotoCount: Int = 0
     public var cullingSessionName: String
 
     public var id: String { activityID }
@@ -1279,6 +1281,7 @@ public final class AppModel {
         let importedPhotoCount = activity.totalUnitCount ?? activity.completedUnitCount
         let newPhotoCount = activity.completedUnitCount
         let existingPhotoCount = max(importedPhotoCount - newPhotoCount, 0)
+        let stackSummary = latestImportStackSummary(activity: activity)
         return ImportCompletionSummary(
             activityID: activity.id,
             title: "Import complete",
@@ -1290,6 +1293,8 @@ public final class AppModel {
             previewFailureCount: previewFailureCount,
             failureText: failureText,
             previewStatusText: failureText ?? activePreviewGenerationStatusText ?? "Previews ready",
+            stackCount: stackSummary.stackCount,
+            stackedPhotoCount: stackSummary.stackedPhotoCount,
             cullingSessionName: "\(activity.detail) Cull"
         )
     }
@@ -1302,6 +1307,23 @@ public final class AppModel {
             return max(activity.failureCount, deferredFailureCount)
         } catch {
             return activity.failureCount
+        }
+    }
+
+    private func latestImportStackSummary(activity: AppWorkActivity) -> (stackCount: Int, stackedPhotoCount: Int) {
+        guard let catalog else { return (0, 0) }
+        do {
+            let assetIDs = try latestImportOutputAssetIDs(activityID: activity.id, repository: catalog.repository)
+            let importAssets = try catalog.repository.assets(ids: assetIDs, limit: assetIDs.count)
+            let stacks = AssetStackBuilder(maximumCaptureGap: Self.candidateStackMaximumCaptureGap)
+                .stacks(from: importAssets)
+                .filter { $0.assetIDs.count > 1 }
+            return (
+                stackCount: stacks.count,
+                stackedPhotoCount: stacks.reduce(0) { $0 + $1.assetIDs.count }
+            )
+        } catch {
+            return (0, 0)
         }
     }
 
@@ -1913,6 +1935,22 @@ public final class AppModel {
         return try beginCullingSession(named: summary.cullingSessionName)
     }
 
+    @discardableResult
+    public func beginStackCullingFromLatestImportCompletion() throws -> WorkSession {
+        let summary = try openLatestImportCompletion()
+        let stackIntent = summary.stackCount > 0
+            ? "Cull \(Self.stackCountDescription(summary.stackCount)) from latest import"
+            : ""
+        let session = try beginCullingSession(named: summary.cullingSessionName, intent: stackIntent)
+        let stackCount = cullingStacks().count
+        if selectFirstCullingStackIfAvailable() {
+            statusMessage = "Started stack cull with \(Self.stackCountDescription(stackCount))"
+        } else {
+            statusMessage = "Started \(session.title); no time-adjacent stacks found"
+        }
+        return session
+    }
+
     public func reviewLatestImportInCompare() throws {
         _ = try openLatestImportCompletion()
         selectedView = .compare
@@ -2475,6 +2513,16 @@ public final class AppModel {
 
     private func selectPreviousStackForCulling() {
         selectCullingStack(.previous)
+    }
+
+    @discardableResult
+    private func selectFirstCullingStackIfAvailable() -> Bool {
+        guard let firstStack = cullingStacks().first,
+              let firstAssetID = firstStack.assetIDs.first else {
+            return false
+        }
+        selectAssetID(firstAssetID)
+        return true
     }
 
     private func acceptSelectedStackSelectionForCulling() throws {
@@ -5302,6 +5350,10 @@ public final class AppModel {
 
     private static func photoCountDescription(_ count: Int) -> String {
         "\(count) \(count == 1 ? "photo" : "photos")"
+    }
+
+    private static func stackCountDescription(_ count: Int) -> String {
+        "\(count) \(count == 1 ? "stack" : "stacks")"
     }
 
     private static func isImportCompletionActivity(_ activity: AppWorkActivity) -> Bool {

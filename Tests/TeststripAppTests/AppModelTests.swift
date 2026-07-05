@@ -7794,6 +7794,38 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary.photoCountText, "1 photo")
     }
 
+    func testLatestImportCompletionSummaryReportsTimeAdjacentStacks() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let first = makeAsset(
+            id: "stack-summary-first",
+            path: "/Photos/Import/stack-summary-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let second = makeAsset(
+            id: "stack-summary-second",
+            path: "/Photos/Import/stack-summary-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let singleton = makeAsset(
+            id: "stack-summary-singleton",
+            path: "/Photos/Import/stack-summary-singleton.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(10))
+        )
+        let (model, _) = try makeModelWithCompletedImportSession(
+            named: "import-summary-stack-counts",
+            assets: [first, second, singleton],
+            outputAssetIDs: [first.id, second.id, singleton.id]
+        )
+
+        let summary = try XCTUnwrap(model.latestImportCompletionSummary)
+
+        XCTAssertEqual(summary.stackCount, 1)
+        XCTAssertEqual(summary.stackedPhotoCount, 2)
+    }
+
     @MainActor
     func testBeginningCullingFromLatestImportUsesImportOutputSet() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-summary-cull")
@@ -7817,6 +7849,44 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetSetID, outputSetID)
         XCTAssertEqual(model.assets.map(\.originalURL), [image])
         XCTAssertEqual(model.selectedView, .loupe)
+    }
+
+    func testBeginningStackCullingFromLatestImportSelectsFirstDetectedStack() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let singleton = makeAsset(
+            id: "stack-cull-singleton",
+            path: "/Photos/Import/stack-cull-singleton.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let stackFirst = makeAsset(
+            id: "stack-cull-first",
+            path: "/Photos/Import/stack-cull-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(10))
+        )
+        let stackSecond = makeAsset(
+            id: "stack-cull-second",
+            path: "/Photos/Import/stack-cull-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(11))
+        )
+        let (model, repository) = try makeModelWithCompletedImportSession(
+            named: "stack-culling-from-import",
+            assets: [singleton, stackFirst, stackSecond],
+            outputAssetIDs: [singleton.id, stackFirst.id, stackSecond.id]
+        )
+
+        let session = try model.beginStackCullingFromLatestImportCompletion()
+
+        XCTAssertEqual(session.inputSetIDs.first?.rawValue, "latest-import-output")
+        XCTAssertEqual(session.intent, "Cull 1 stack from latest import")
+        XCTAssertEqual(model.selectedAssetID, stackFirst.id)
+        XCTAssertEqual(model.selectedView, .loupe)
+        XCTAssertEqual(model.statusMessage, "Started stack cull with 1 stack")
+        XCTAssertNil(try repository.asset(id: singleton.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: stackFirst.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: stackSecond.id).metadata.flag)
     }
 
     @MainActor
@@ -8516,6 +8586,50 @@ final class AppModelTests: XCTestCase {
             )
         )
         return (try AppModel.load(catalog: catalog, workerSupervisor: workerSupervisor), repository, previewCache)
+    }
+
+    private func makeModelWithCompletedImportSession(
+        named name: String,
+        assets: [Asset],
+        outputAssetIDs: [AssetID]
+    ) throws -> (AppModel, CatalogRepository) {
+        let directory = try makeTemporaryDirectory(named: name)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(assets)
+        let outputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "latest-import-output"),
+            name: "Imported photos",
+            assetIDs: outputAssetIDs
+        )
+        try repository.upsert(outputSet)
+        try repository.save(WorkSession(
+            id: WorkSessionID(rawValue: "latest-import-session"),
+            kind: .ingest,
+            intent: "Import photos",
+            title: "Import photos",
+            detail: "Imported \(outputAssetIDs.count) photos from Import",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [outputSet.id],
+            completedUnitCount: outputAssetIDs.count,
+            totalUnitCount: outputAssetIDs.count,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        ))
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        return (try AppModel.load(catalog: catalog), repository)
     }
 
     private func makeComparePreviewModel(
