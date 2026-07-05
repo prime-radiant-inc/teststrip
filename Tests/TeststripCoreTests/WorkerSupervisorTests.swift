@@ -473,6 +473,40 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(try transport.commands(), [importCommand, .cancelAll, previewCommand])
     }
 
+    func testCancellingOneOfMultipleDispatchedItemsFailsOtherStoppedDispatchedWork() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 3),
+            transport: transport,
+            maxDispatchedCommandCount: 2
+        )
+        let importItem = BackgroundWorkItem.testItem(id: "import")
+        let previewItem = BackgroundWorkItem.testItem(id: "preview")
+        let queuedItem = BackgroundWorkItem.testItem(id: "queued")
+        let importCommand = WorkerCommand.importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true))
+        let previewCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
+        let queuedCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .grid)
+        try supervisor.enqueue(importItem, command: importCommand)
+        try supervisor.enqueue(previewItem, command: previewCommand)
+        try supervisor.enqueue(queuedItem, command: queuedCommand)
+
+        try supervisor.cancel(id: importItem.id)
+
+        XCTAssertEqual(supervisor.queue.item(id: importItem.id)?.status, .cancelled)
+        XCTAssertEqual(supervisor.queue.item(id: previewItem.id)?.status, .failed)
+        XCTAssertEqual(
+            supervisor.queue.item(id: previewItem.id)?.detail,
+            "Worker stopped because another command was cancelled: generate grid preview for asset-1"
+        )
+        XCTAssertEqual(supervisor.queue.item(id: queuedItem.id)?.status, .running)
+        XCTAssertFalse(supervisor.isCommandDispatched(for: importItem.id))
+        XCTAssertFalse(supervisor.isCommandDispatched(for: previewItem.id))
+        XCTAssertTrue(supervisor.isCommandDispatched(for: queuedItem.id))
+        XCTAssertEqual(transport.launchCount, 2)
+        XCTAssertEqual(transport.terminateCount, 1)
+        XCTAssertEqual(try transport.commands(), [importCommand, previewCommand, .cancelAll, queuedCommand])
+    }
+
     func testFoundationTransportLaunchesWritesAndTerminatesProcess() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-transport")
         let scriptURL = root.appendingPathComponent("record-worker.sh")

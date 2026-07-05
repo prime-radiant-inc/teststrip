@@ -185,6 +185,13 @@ public final class WorkerSupervisor: @unchecked Sendable {
         commandsByItemID[itemID] = nil
         for stoppedItemID in stoppedDispatchedItemIDs {
             cancelTimeout(for: stoppedItemID)
+            guard stoppedItemID != itemID else { continue }
+            let command = commandsByItemID[stoppedItemID]
+            commandsByItemID[stoppedItemID] = nil
+            queue.markFailed(
+                id: stoppedItemID,
+                detail: Self.stoppedBecauseAnotherCommandWasCancelledDetail(command: command)
+            )
         }
         queue.cancel(id: itemID)
         try dispatchRunnableItems()
@@ -350,6 +357,12 @@ public final class WorkerSupervisor: @unchecked Sendable {
 
     private static func stoppedBecauseAnotherCommandTimedOutDetail(command: WorkerCommand?) -> String {
         let detail = "Worker stopped because another command timed out"
+        guard let command else { return detail }
+        return "\(detail): \(command.operationDescription)"
+    }
+
+    private static func stoppedBecauseAnotherCommandWasCancelledDetail(command: WorkerCommand?) -> String {
+        let detail = "Worker stopped because another command was cancelled"
         guard let command else { return detail }
         return "\(detail): \(command.operationDescription)"
     }
