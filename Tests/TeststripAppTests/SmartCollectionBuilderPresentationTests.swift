@@ -30,7 +30,8 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
         XCTAssertFalse(SmartCollectionBuilderPresentation(
             proposedName: "   ",
             ruleChips: ["Pick"],
-            matchCount: 1
+            matchCount: 1,
+            typedRuleText: "pick"
         ).canCreate)
         XCTAssertFalse(SmartCollectionBuilderPresentation(
             proposedName: "No Rules",
@@ -72,6 +73,29 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.previewCountText(visibleCount: 0), "no live preview yet")
+    }
+
+    func testTypedRuleInputUsesExistingSearchIntentParser() {
+        XCTAssertTrue(SmartCollectionBuilderPresentation(
+            proposedName: "Typed",
+            ruleChips: [],
+            matchCount: 12,
+            typedRuleText: " rating:4 pick "
+        ).canApplyTypedRule)
+
+        XCTAssertTrue(SmartCollectionBuilderPresentation(
+            proposedName: "Text Search",
+            ruleChips: [],
+            matchCount: 12,
+            typedRuleText: "best group portraits"
+        ).canApplyTypedRule)
+
+        XCTAssertFalse(SmartCollectionBuilderPresentation(
+            proposedName: "Empty",
+            ruleChips: [],
+            matchCount: 12,
+            typedRuleText: "   "
+        ).canApplyTypedRule)
     }
 
     func testSuggestedTemplateRowsExposeConcretePresetActions() {

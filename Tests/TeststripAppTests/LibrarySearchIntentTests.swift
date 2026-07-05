@@ -52,6 +52,15 @@ final class LibrarySearchIntentTests: XCTestCase {
         XCTAssertEqual(noKeywords.chips, ["Needs Keywords"])
     }
 
+    func testParsesRatingFieldFilter() {
+        let intent = LibrarySearchIntent.parse("rating:4 pick")
+
+        XCTAssertNil(intent.residualText)
+        XCTAssertEqual(intent.predicates, [.ratingAtLeast(4), .flag(.pick)])
+        XCTAssertEqual(intent.chips, ["Rating >= 4", "Pick"])
+        XCTAssertEqual(intent.nameParts, ["4+ Stars", "Pick"])
+    }
+
     func testParsesAdvancedFilterFields() {
         let start = Self.utcDate(year: 2026, month: 2, day: 1)
         let end = Self.utcDate(year: 2026, month: 3, day: 1)

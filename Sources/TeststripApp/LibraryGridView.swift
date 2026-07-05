@@ -12,6 +12,7 @@ struct LibraryGridView: View {
     @State private var isShowingSourceReconnectSheet = false
     @State private var savedSearchName = ""
     @State private var savedSearchStarred = false
+    @State private var savedSearchRuleText = ""
     @State private var manualSetName = ""
     @State private var manualSetStarred = false
     @State private var snapshotSetName = ""
@@ -1112,10 +1113,12 @@ struct LibraryGridView: View {
         SmartCollectionBuilderPopover(
             name: $savedSearchName,
             starred: $savedSearchStarred,
+            ruleText: $savedSearchRuleText,
             presentation: SmartCollectionBuilderPresentation(
                 proposedName: savedSearchName,
                 ruleChips: model.activeLibraryFilterChips,
                 matchCount: model.totalAssetCount,
+                typedRuleText: savedSearchRuleText,
                 reviewQueueCounts: model.reviewQueueCounts
             ),
             previewAssets: Array(model.assets.prefix(18)),
@@ -1123,6 +1126,7 @@ struct LibraryGridView: View {
             previewCacheGeneration: { model.previewCacheGeneration(for: $0) },
             cancel: { isSavingSearch = false },
             applyRulePreset: applySmartCollectionRulePreset,
+            applyRuleText: applySmartCollectionRuleText,
             save: saveCurrentSearch
         )
     }
@@ -1350,12 +1354,14 @@ struct LibraryGridView: View {
     private struct SmartCollectionBuilderPopover: View {
         @Binding var name: String
         @Binding var starred: Bool
+        @Binding var ruleText: String
         var presentation: SmartCollectionBuilderPresentation
         var previewAssets: [Asset]
         var previewURL: (AssetID) -> URL?
         var previewCacheGeneration: (AssetID) -> Int
         var cancel: () -> Void
         var applyRulePreset: (SmartCollectionRulePreset) -> Void
+        var applyRuleText: () -> Void
         var save: () -> Void
 
         var body: some View {
@@ -1452,6 +1458,21 @@ struct LibraryGridView: View {
                                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
                         }
                     }
+                }
+                HStack(spacing: 8) {
+                    TextField("Rule", text: $ruleText)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit {
+                            applyRuleText()
+                        }
+                    Button {
+                        applyRuleText()
+                    } label: {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!presentation.canApplyTypedRule)
+                    .help("Apply typed rule")
                 }
                 Menu {
                     ForEach(presentation.addRuleRows) { row in
@@ -1975,6 +1996,7 @@ struct LibraryGridView: View {
     private func showSaveSearchPopover() {
         savedSearchName = model.suggestedSavedSearchName
         savedSearchStarred = false
+        savedSearchRuleText = model.librarySearchText
         isSavingSearch = true
     }
 
@@ -1996,6 +2018,17 @@ struct LibraryGridView: View {
     private func applySmartCollectionRulePreset(_ preset: SmartCollectionRulePreset) {
         do {
             try model.applySmartCollectionRulePreset(preset)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applySmartCollectionRuleText() {
+        let intent = LibrarySearchIntent.parse(savedSearchRuleText)
+        guard intent.residualText != nil || !intent.predicates.isEmpty else { return }
+        do {
+            try model.applySmartCollectionRuleText(savedSearchRuleText)
+            savedSearchRuleText = ""
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -4909,6 +4942,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
     var proposedName: String
     var ruleChips: [String]
     var matchCount: Int
+    var typedRuleText: String = ""
     var reviewQueueCounts: [ReviewQueue: Int] = [:]
 
     var suggestedTemplateRows: [SmartCollectionSuggestedTemplateRow] {
@@ -4933,6 +4967,11 @@ struct SmartCollectionBuilderPresentation: Equatable {
 
     var canCreate: Bool {
         !proposedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !ruleChips.isEmpty
+    }
+
+    var canApplyTypedRule: Bool {
+        let intent = LibrarySearchIntent.parse(typedRuleText)
+        return intent.residualText != nil || !intent.predicates.isEmpty
     }
 
     func previewCountText(visibleCount: Int) -> String {

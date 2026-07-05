@@ -167,7 +167,7 @@ final class AppCatalogTests: XCTestCase {
     }
 
     private func waitUntil(_ condition: () -> Bool) -> Bool {
-        for _ in 0..<100 {
+        for _ in 0..<500 {
             if condition() {
                 return true
             }

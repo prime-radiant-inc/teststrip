@@ -2678,6 +2678,18 @@ public final class AppModel {
         try reload()
     }
 
+    public func applySmartCollectionRuleText(_ text: String) throws {
+        let normalizedText = Self.normalizedRuleText(text)
+        guard !normalizedText.isEmpty else {
+            throw TeststripError.invalidState("smart collection rule text is required")
+        }
+        if selectedAssetSet?.isDynamic != true {
+            selectedAssetSetID = nil
+        }
+        librarySearchText = normalizedText
+        try reload()
+    }
+
     @discardableResult
     public func saveSelectedAssetAsManualSet(named name: String, starred: Bool = false) throws -> AssetSet {
         guard catalog != nil else {
@@ -5577,6 +5589,13 @@ public final class AppModel {
     private static func append(_ row: ActiveLibraryFilterRow, to rows: inout [ActiveLibraryFilterRow]) {
         guard !rows.contains(where: { $0.title == row.title }) else { return }
         rows.append(row)
+    }
+
+    private static func normalizedRuleText(_ text: String) -> String {
+        text
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     private static func activeLibraryFilterRow(for predicate: SetQuery.Predicate) -> ActiveLibraryFilterRow? {

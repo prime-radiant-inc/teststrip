@@ -122,6 +122,9 @@ public struct LibrarySearchIntent: Equatable, Sendable {
         case "iso":
             guard let iso = positiveInteger(from: value) else { return nil }
             return singleFieldPredicate(.isoAtLeast(iso), chip: "ISO >= \(iso)", namePart: "ISO \(iso)+")
+        case "rating", "rated", "star", "stars":
+            guard let rating = ratingValue(from: normalizedToken(value)) else { return nil }
+            return singleFieldPredicate(.ratingAtLeast(rating), chip: "Rating >= \(rating)", namePart: "\(rating)+ Stars")
         case "from", "after", "since":
             guard let date = captureDate(from: value) else { return nil }
             return singleFieldPredicate(.capturedAtOrAfter(date), chip: "From \(value)", namePart: "From \(value)")
