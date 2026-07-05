@@ -3635,6 +3635,42 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.statusMessage, "Renamed Ceremony Keepers")
     }
 
+    func testFreezingDynamicSavedAssetSetCreatesSelectedSnapshot() throws {
+        let firstKeeper = makeAsset(id: "first-keeper", path: "/Photos/first.jpg", rating: 5)
+        let reject = makeAsset(id: "reject", path: "/Photos/reject.jpg", rating: 1)
+        let secondKeeper = makeAsset(id: "second-keeper", path: "/Photos/second.jpg", rating: 5)
+        let savedSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "five-stars"),
+            name: "Five Stars",
+            query: SetQuery(predicates: [.ratingAtLeast(5)])
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-freeze-saved-set",
+            assets: [firstKeeper, reject, secondKeeper]
+        )
+        try repository.upsert(savedSet)
+        try model.refreshSavedAssetSets()
+
+        let snapshot = try model.freezeAssetSetSnapshot(id: savedSet.id)
+
+        XCTAssertEqual(snapshot.name, "Five Stars Snapshot")
+        XCTAssertEqual(snapshot.membership, .snapshot([firstKeeper.id, secondKeeper.id]))
+        XCTAssertEqual(try repository.assetSet(id: snapshot.id), snapshot)
+        XCTAssertEqual(model.savedAssetSets.map(\.id), [savedSet.id, snapshot.id])
+        XCTAssertEqual(model.selectedAssetSetID, snapshot.id)
+        XCTAssertEqual(model.assets.map(\.id), [firstKeeper.id, secondKeeper.id])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, ["Five Stars", "Five Stars Snapshot"])
+        XCTAssertEqual(sidebarRowCount("Five Stars Snapshot", in: "Saved Sets", of: model), "2")
+        XCTAssertEqual(model.statusMessage, "Saved Five Stars Snapshot")
+
+        var changedKeeper = firstKeeper
+        changedKeeper.metadata.rating = 1
+        try repository.upsert(changedKeeper)
+        try model.reload()
+
+        XCTAssertEqual(model.assets.map(\.id), [firstKeeper.id, secondKeeper.id])
+    }
+
     func testSidebarContextActionsExposeSavedSetRenameAndStarToggle() throws {
         let asset = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
         let savedSet = AssetSet.dynamic(
@@ -3654,10 +3690,34 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(actions.map(\.kind), [
             .renameAssetSet(savedSet.id),
+            .freezeAssetSetSnapshot(savedSet.id),
             .toggleAssetSetStarred(savedSet.id)
         ])
-        XCTAssertEqual(actions.map(\.title), ["Rename Set", "Star Set"])
-        XCTAssertEqual(actions.map(\.systemImage), ["pencil", "star"])
+        XCTAssertEqual(actions.map(\.title), ["Rename Set", "Freeze Snapshot...", "Star Set"])
+        XCTAssertEqual(actions.map(\.systemImage), ["pencil", "camera.aperture", "star"])
+    }
+
+    func testSidebarContextActionsDoNotExposeFreezeForManualSavedSets() throws {
+        let asset = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
+        let savedSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "manual-keepers"),
+            name: "Manual Keepers",
+            assetIDs: [asset.id]
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-manual-set-context-actions",
+            assets: [asset]
+        )
+        try repository.upsert(savedSet)
+        try model.refreshSavedAssetSets()
+        let savedSetRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Saved Sets" }?.rows.first)
+
+        let actions = model.sidebarContextActions(for: savedSetRow)
+
+        XCTAssertEqual(actions.map(\.kind), [
+            .renameAssetSet(savedSet.id),
+            .toggleAssetSetStarred(savedSet.id)
+        ])
     }
 
     func testCanToggleAssetSetStarredOnlyForSavedSetRowsWithCatalog() throws {

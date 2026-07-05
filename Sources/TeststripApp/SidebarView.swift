@@ -5,6 +5,9 @@ struct SidebarView: View {
     var model: AppModel
     @State private var renamingAssetSetID: AssetSetID?
     @State private var assetSetRenameText = ""
+    @State private var freezingAssetSetID: AssetSetID?
+    @State private var assetSetSnapshotName = ""
+    @State private var assetSetSnapshotStarred = false
 
     var body: some View {
         List {
@@ -38,6 +41,14 @@ struct SidebarView: View {
                 rename: saveAssetSetRename
             )
         }
+        .sheet(isPresented: isFreezingAssetSetSnapshot) {
+            FreezeAssetSetSnapshotSheet(
+                name: $assetSetSnapshotName,
+                starred: $assetSetSnapshotStarred,
+                cancel: cancelAssetSetSnapshot,
+                freeze: saveAssetSetSnapshot
+            )
+        }
     }
 
     private var isRenamingAssetSet: Binding<Bool> {
@@ -46,6 +57,17 @@ struct SidebarView: View {
             set: { isPresented in
                 if !isPresented {
                     cancelAssetSetRename()
+                }
+            }
+        )
+    }
+
+    private var isFreezingAssetSetSnapshot: Binding<Bool> {
+        Binding(
+            get: { freezingAssetSetID != nil },
+            set: { isPresented in
+                if !isPresented {
+                    cancelAssetSetSnapshot()
                 }
             }
         )
@@ -76,6 +98,12 @@ struct SidebarView: View {
             assetSetRenameText = row.title
             return
         }
+        if case .freezeAssetSetSnapshot(let id) = action.kind {
+            freezingAssetSetID = id
+            assetSetSnapshotName = "\(row.title) Snapshot"
+            assetSetSnapshotStarred = false
+            return
+        }
         do {
             try model.performSidebarContextAction(action)
         } catch {
@@ -96,6 +124,26 @@ struct SidebarView: View {
     private func cancelAssetSetRename() {
         renamingAssetSetID = nil
         assetSetRenameText = ""
+    }
+
+    private func saveAssetSetSnapshot() {
+        guard let freezingAssetSetID else { return }
+        do {
+            try model.freezeAssetSetSnapshot(
+                id: freezingAssetSetID,
+                named: assetSetSnapshotName,
+                starred: assetSetSnapshotStarred
+            )
+            cancelAssetSetSnapshot()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func cancelAssetSetSnapshot() {
+        freezingAssetSetID = nil
+        assetSetSnapshotName = ""
+        assetSetSnapshotStarred = false
     }
 
     private func iconName(for target: SidebarRowTarget) -> String {
@@ -246,6 +294,36 @@ private struct RenameAssetSetSheet: View {
                 }
                 Button("Rename") {
                     rename()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(16)
+    }
+}
+
+private struct FreezeAssetSetSnapshotSheet: View {
+    @Binding var name: String
+    @Binding var starred: Bool
+    var cancel: () -> Void
+    var freeze: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Freeze Snapshot")
+                .font(.headline)
+            TextField("Name", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 280)
+            Toggle("Starred", isOn: $starred)
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    cancel()
+                }
+                Button("Create") {
+                    freeze()
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

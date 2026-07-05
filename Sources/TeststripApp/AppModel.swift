@@ -230,6 +230,7 @@ public enum SidebarRowTarget: Equatable, Sendable {
 
 public enum SidebarRowContextActionKind: Equatable, Sendable {
     case renameAssetSet(AssetSetID)
+    case freezeAssetSetSnapshot(AssetSetID)
     case toggleAssetSetStarred(AssetSetID)
     case toggleWorkSessionStarred(WorkSessionID)
 }
@@ -243,6 +244,8 @@ public struct SidebarRowContextAction: Identifiable, Equatable, Sendable {
         switch kind {
         case .renameAssetSet(let id):
             return "rename-asset-set-\(id.rawValue)"
+        case .freezeAssetSetSnapshot(let id):
+            return "freeze-asset-set-snapshot-\(id.rawValue)"
         case .toggleAssetSetStarred(let id):
             return "toggle-asset-set-starred-\(id.rawValue)"
         case .toggleWorkSessionStarred(let id):
@@ -2127,18 +2130,28 @@ public final class AppModel {
                   let assetSet = savedAssetSets.first(where: { $0.id == id }) else {
                 return []
             }
-            return [
+            var actions = [
                 SidebarRowContextAction(
                     kind: .renameAssetSet(id),
                     title: "Rename Set",
                     systemImage: "pencil"
-                ),
+                )
+            ]
+            if case .dynamic = assetSet.membership {
+                actions.append(SidebarRowContextAction(
+                    kind: .freezeAssetSetSnapshot(id),
+                    title: "Freeze Snapshot...",
+                    systemImage: "camera.aperture"
+                ))
+            }
+            actions.append(
                 SidebarRowContextAction(
                     kind: .toggleAssetSetStarred(id),
                     title: assetSet.starred ? "Remove Star" : "Star Set",
                     systemImage: assetSet.starred ? "star.slash" : "star"
                 )
-            ]
+            )
+            return actions
         case .workSession(let id):
             guard canToggleWorkSessionStarred(row),
                   let activity = workActivity(id: id) else {
@@ -2160,6 +2173,8 @@ public final class AppModel {
         switch action.kind {
         case .renameAssetSet:
             throw TeststripError.invalidState("rename requires a new saved set name")
+        case .freezeAssetSetSnapshot(let id):
+            try freezeAssetSetSnapshot(id: id)
         case .toggleAssetSetStarred(let id):
             try toggleAssetSetStarred(id: id)
         case .toggleWorkSessionStarred(let id):
@@ -2224,6 +2239,32 @@ public final class AppModel {
         try catalog.repository.upsert(assetSet)
         try refreshSavedAssetSets()
         statusMessage = "Renamed \(trimmedName)"
+    }
+
+    @discardableResult
+    public func freezeAssetSetSnapshot(id: AssetSetID, named name: String? = nil, starred: Bool = false) throws -> AssetSet {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let source = try catalog.repository.assetSet(id: id)
+        guard case .dynamic(let query) = source.membership else {
+            throw TeststripError.invalidState("only smart collections can be frozen")
+        }
+        let snapshotName = (name ?? "\(source.name) Snapshot").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !snapshotName.isEmpty else {
+            throw TeststripError.invalidState("snapshot set name is required")
+        }
+        let assetIDs = try catalog.repository.assetIDs(matching: query)
+        guard !assetIDs.isEmpty else {
+            throw TeststripError.invalidState("there are no photos to snapshot")
+        }
+        let snapshot = AssetSet(
+            id: .new(),
+            name: snapshotName,
+            membership: .snapshot(assetIDs),
+            starred: starred
+        )
+        return try saveAndSelect(snapshot)
     }
 
     private func workActivity(id: WorkSessionID) -> AppWorkActivity? {
