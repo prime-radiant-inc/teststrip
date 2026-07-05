@@ -1314,7 +1314,7 @@ public final class AppModel {
     }
 
     public var canSaveSelectedAssetAsManualSet: Bool {
-        catalog != nil && selectedAssetID != nil
+        catalog != nil && !currentManualSelectionAssetIDs.isEmpty
     }
 
     public var canSaveCurrentAssetScopeSnapshot: Bool {
@@ -1443,12 +1443,18 @@ public final class AppModel {
     }
 
     public var suggestedManualSetName: String {
+        let batchAssetIDs = selectedBatchAssetIDsInLoadedOrder
+        if batchAssetIDs.count > 1 {
+            return "\(batchAssetIDs.count) Selected Photos"
+        }
+        if let batchAssetID = batchAssetIDs.first,
+           let batchAsset = assets.first(where: { $0.id == batchAssetID }) {
+            return Self.manualSetName(for: batchAsset)
+        }
         guard let selectedAsset else {
             return "Selection"
         }
-        let filename = selectedAsset.originalURL.deletingPathExtension().lastPathComponent
-        let trimmedFilename = filename.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedFilename.isEmpty ? "Selection" : trimmedFilename
+        return Self.manualSetName(for: selectedAsset)
     }
 
     public var suggestedSnapshotSetName: String {
@@ -1926,6 +1932,20 @@ public final class AppModel {
         assets.map(\.id).filter { selectedBatchAssetIDs.contains($0) }
     }
 
+    private var currentManualSelectionAssetIDs: [AssetID] {
+        let batchAssetIDs = selectedBatchAssetIDsInLoadedOrder
+        if !batchAssetIDs.isEmpty {
+            return batchAssetIDs
+        }
+        return selectedAssetID.map { [$0] } ?? []
+    }
+
+    private static func manualSetName(for asset: Asset) -> String {
+        let filename = asset.originalURL.deletingPathExtension().lastPathComponent
+        let trimmedFilename = filename.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedFilename.isEmpty ? "Selection" : trimmedFilename
+    }
+
     public func selectSidebarRow(_ row: SidebarRow) throws {
         try selectSidebarTarget(row.target)
     }
@@ -2245,8 +2265,9 @@ public final class AppModel {
         guard catalog != nil else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        guard let selectedAssetID else {
-            throw TeststripError.invalidState("no selected asset")
+        let assetIDs = currentManualSelectionAssetIDs
+        guard !assetIDs.isEmpty else {
+            throw TeststripError.invalidState("no selected assets")
         }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
@@ -2255,7 +2276,7 @@ public final class AppModel {
         let assetSet = AssetSet(
             id: .new(),
             name: trimmedName,
-            membership: .manual([selectedAssetID]),
+            membership: .manual(assetIDs),
             starred: starred
         )
         return try saveAndSelect(assetSet)

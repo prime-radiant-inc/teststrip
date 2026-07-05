@@ -4364,6 +4364,27 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(sidebarRowCount("Keeper", in: "Starred", of: model), "1")
     }
 
+    func testSavingSelectionAsManualSetUsesSelectedBatchInLoadedOrder() throws {
+        let first = makeAsset(id: "first", path: "/Photos/first.jpg", rating: 1)
+        let second = makeAsset(id: "second", path: "/Photos/second.jpg", rating: 2)
+        let third = makeAsset(id: "third", path: "/Photos/third.jpg", rating: 3)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "manual-set-selected-batch",
+            assets: [first, second, third]
+        )
+        model.setBatchSelection(third.id, isSelected: true)
+        model.setBatchSelection(first.id, isSelected: true)
+
+        let savedSet = try model.saveSelectedAssetAsManualSet(named: " Batch Keepers ")
+
+        XCTAssertEqual(savedSet.name, "Batch Keepers")
+        XCTAssertEqual(savedSet.membership, .manual([first.id, third.id]))
+        XCTAssertEqual(try repository.assetSet(id: savedSet.id), savedSet)
+        XCTAssertEqual(model.selectedAssetSetID, savedSet.id)
+        XCTAssertEqual(model.assets.map(\.id), [first.id, third.id])
+        XCTAssertEqual(sidebarRowCount("Batch Keepers", in: "Saved Sets", of: model), "2")
+    }
+
     func testSavingSelectedAssetAsManualSetRequiresSelection() throws {
         let directory = try makeTemporaryDirectory(named: "manual-set-no-selection")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -4388,6 +4409,21 @@ final class AppModelTests: XCTestCase {
         let uncatalogedModel = AppModel(sidebarSections: [], selectedView: .grid, assets: [asset])
 
         XCTAssertFalse(uncatalogedModel.canSaveSelectedAssetAsManualSet)
+    }
+
+    func testManualSetSaveAffordancesReflectSelectedBatch() throws {
+        let first = makeAsset(id: "batch-one", path: "/Photos/batch-one.jpg", rating: 1)
+        let second = makeAsset(id: "batch-two", path: "/Photos/batch-two.jpg", rating: 2)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "manual-set-selected-batch-affordance",
+            assets: [first, second]
+        )
+        model.selectedAssetID = nil
+        model.setBatchSelection(second.id, isSelected: true)
+        model.setBatchSelection(first.id, isSelected: true)
+
+        XCTAssertTrue(model.canSaveSelectedAssetAsManualSet)
+        XCTAssertEqual(model.suggestedManualSetName, "2 Selected Photos")
     }
 
     func testBeginningCullingSessionUsesSelectedAssetSetAsInput() throws {

@@ -544,7 +544,7 @@ struct LibraryGridView: View {
                     }
                     .buttonStyle(.borderless)
                     .disabled(!model.canSaveSelectedAssetAsManualSet)
-                    .help("Save selected photo as set")
+                    .help("Save selected photos as set")
                     .popover(isPresented: $isSavingManualSet) {
                         saveManualSetPopover
                     }
