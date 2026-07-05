@@ -2026,43 +2026,20 @@ public final class AppModel {
 
     private func candidateStackAssets(limit: Int, anchor: AssetID?) -> [Asset]? {
         guard !assets.isEmpty else { return nil }
-        guard let selectedIndex = anchor.flatMap({ selectedID in
-            assets.firstIndex { $0.id == selectedID }
-        }) else {
+        guard let selectedAssetID = anchor,
+              assets.contains(where: { $0.id == selectedAssetID }) else {
             return nil
         }
-        guard assets[selectedIndex].technicalMetadata?.capturedAt != nil else {
+        let stack = AssetStackBuilder(maximumCaptureGap: Self.candidateStackMaximumCaptureGap)
+            .stacks(from: assets)
+            .first { $0.assetIDs.contains(selectedAssetID) }
+        guard let stack, stack.assetIDs.count > 1 else {
             return nil
         }
 
-        var startIndex = selectedIndex
-        while startIndex > 0,
-              Self.isCandidateStackNeighbor(assets[startIndex - 1], assets[startIndex]) {
-            startIndex -= 1
-        }
-
-        var endIndex = selectedIndex
-        while endIndex + 1 < assets.count,
-              Self.isCandidateStackNeighbor(assets[endIndex], assets[endIndex + 1]) {
-            endIndex += 1
-        }
-
-        guard endIndex > startIndex else {
-            return nil
-        }
-        return Self.limitedCompareAssets(Array(assets[startIndex...endIndex]), limit: limit, anchor: anchor)
-    }
-
-    private static func isCandidateStackNeighbor(_ first: Asset, _ second: Asset) -> Bool {
-        guard let firstCapture = first.technicalMetadata?.capturedAt,
-              let secondCapture = second.technicalMetadata?.capturedAt else {
-            return false
-        }
-        guard first.originalURL.deletingLastPathComponent().standardizedFileURL.path
-            == second.originalURL.deletingLastPathComponent().standardizedFileURL.path else {
-            return false
-        }
-        return abs(firstCapture.timeIntervalSince(secondCapture)) <= candidateStackMaximumCaptureGap
+        let stackAssetIDs = Set(stack.assetIDs)
+        let stackAssets = assets.filter { stackAssetIDs.contains($0.id) }
+        return Self.limitedCompareAssets(stackAssets, limit: limit, anchor: anchor)
     }
 
     private static func limitedCompareAssets(_ assets: [Asset], limit: Int, anchor: AssetID?) -> [Asset] {
