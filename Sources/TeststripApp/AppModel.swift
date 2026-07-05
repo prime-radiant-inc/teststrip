@@ -230,6 +230,7 @@ public enum SidebarRowTarget: Equatable, Sendable {
 
 public enum SidebarRowContextActionKind: Equatable, Sendable {
     case renameAssetSet(AssetSetID)
+    case duplicateAssetSet(AssetSetID)
     case freezeAssetSetSnapshot(AssetSetID)
     case toggleAssetSetStarred(AssetSetID)
     case toggleWorkSessionStarred(WorkSessionID)
@@ -244,6 +245,8 @@ public struct SidebarRowContextAction: Identifiable, Equatable, Sendable {
         switch kind {
         case .renameAssetSet(let id):
             return "rename-asset-set-\(id.rawValue)"
+        case .duplicateAssetSet(let id):
+            return "duplicate-asset-set-\(id.rawValue)"
         case .freezeAssetSetSnapshot(let id):
             return "freeze-asset-set-snapshot-\(id.rawValue)"
         case .toggleAssetSetStarred(let id):
@@ -2137,6 +2140,11 @@ public final class AppModel {
                     systemImage: "pencil"
                 )
             ]
+            actions.append(SidebarRowContextAction(
+                kind: .duplicateAssetSet(id),
+                title: "Duplicate Set...",
+                systemImage: "plus.square.on.square"
+            ))
             if case .dynamic = assetSet.membership {
                 actions.append(SidebarRowContextAction(
                     kind: .freezeAssetSetSnapshot(id),
@@ -2173,6 +2181,8 @@ public final class AppModel {
         switch action.kind {
         case .renameAssetSet:
             throw TeststripError.invalidState("rename requires a new saved set name")
+        case .duplicateAssetSet(let id):
+            try duplicateAssetSet(id: id)
         case .freezeAssetSetSnapshot(let id):
             try freezeAssetSetSnapshot(id: id)
         case .toggleAssetSetStarred(let id):
@@ -2239,6 +2249,25 @@ public final class AppModel {
         try catalog.repository.upsert(assetSet)
         try refreshSavedAssetSets()
         statusMessage = "Renamed \(trimmedName)"
+    }
+
+    @discardableResult
+    public func duplicateAssetSet(id: AssetSetID, named name: String? = nil, starred: Bool = false) throws -> AssetSet {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let source = try catalog.repository.assetSet(id: id)
+        let duplicateName = (name ?? "Copy of \(source.name)").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !duplicateName.isEmpty else {
+            throw TeststripError.invalidState("saved set name is required")
+        }
+        let duplicate = AssetSet(
+            id: .new(),
+            name: duplicateName,
+            membership: source.membership,
+            starred: starred
+        )
+        return try saveAndSelect(duplicate)
     }
 
     @discardableResult

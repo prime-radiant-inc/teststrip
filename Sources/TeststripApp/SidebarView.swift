@@ -5,6 +5,9 @@ struct SidebarView: View {
     var model: AppModel
     @State private var renamingAssetSetID: AssetSetID?
     @State private var assetSetRenameText = ""
+    @State private var duplicatingAssetSetID: AssetSetID?
+    @State private var assetSetDuplicateName = ""
+    @State private var assetSetDuplicateStarred = false
     @State private var freezingAssetSetID: AssetSetID?
     @State private var assetSetSnapshotName = ""
     @State private var assetSetSnapshotStarred = false
@@ -41,12 +44,24 @@ struct SidebarView: View {
                 rename: saveAssetSetRename
             )
         }
+        .sheet(isPresented: isDuplicatingAssetSet) {
+            SaveAssetSetSheet(
+                title: "Duplicate Set",
+                actionTitle: "Create",
+                name: $assetSetDuplicateName,
+                starred: $assetSetDuplicateStarred,
+                cancel: cancelAssetSetDuplicate,
+                save: saveAssetSetDuplicate
+            )
+        }
         .sheet(isPresented: isFreezingAssetSetSnapshot) {
-            FreezeAssetSetSnapshotSheet(
+            SaveAssetSetSheet(
+                title: "Freeze Snapshot",
+                actionTitle: "Create",
                 name: $assetSetSnapshotName,
                 starred: $assetSetSnapshotStarred,
                 cancel: cancelAssetSetSnapshot,
-                freeze: saveAssetSetSnapshot
+                save: saveAssetSetSnapshot
             )
         }
     }
@@ -57,6 +72,17 @@ struct SidebarView: View {
             set: { isPresented in
                 if !isPresented {
                     cancelAssetSetRename()
+                }
+            }
+        )
+    }
+
+    private var isDuplicatingAssetSet: Binding<Bool> {
+        Binding(
+            get: { duplicatingAssetSetID != nil },
+            set: { isPresented in
+                if !isPresented {
+                    cancelAssetSetDuplicate()
                 }
             }
         )
@@ -98,6 +124,12 @@ struct SidebarView: View {
             assetSetRenameText = row.title
             return
         }
+        if case .duplicateAssetSet(let id) = action.kind {
+            duplicatingAssetSetID = id
+            assetSetDuplicateName = "Copy of \(row.title)"
+            assetSetDuplicateStarred = false
+            return
+        }
         if case .freezeAssetSetSnapshot(let id) = action.kind {
             freezingAssetSetID = id
             assetSetSnapshotName = "\(row.title) Snapshot"
@@ -124,6 +156,26 @@ struct SidebarView: View {
     private func cancelAssetSetRename() {
         renamingAssetSetID = nil
         assetSetRenameText = ""
+    }
+
+    private func saveAssetSetDuplicate() {
+        guard let duplicatingAssetSetID else { return }
+        do {
+            try model.duplicateAssetSet(
+                id: duplicatingAssetSetID,
+                named: assetSetDuplicateName,
+                starred: assetSetDuplicateStarred
+            )
+            cancelAssetSetDuplicate()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func cancelAssetSetDuplicate() {
+        duplicatingAssetSetID = nil
+        assetSetDuplicateName = ""
+        assetSetDuplicateStarred = false
     }
 
     private func saveAssetSetSnapshot() {
@@ -303,15 +355,17 @@ private struct RenameAssetSetSheet: View {
     }
 }
 
-private struct FreezeAssetSetSnapshotSheet: View {
+private struct SaveAssetSetSheet: View {
+    var title: String
+    var actionTitle: String
     @Binding var name: String
     @Binding var starred: Bool
     var cancel: () -> Void
-    var freeze: () -> Void
+    var save: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Freeze Snapshot")
+            Text(title)
                 .font(.headline)
             TextField("Name", text: $name)
                 .textFieldStyle(.roundedBorder)
@@ -322,8 +376,8 @@ private struct FreezeAssetSetSnapshotSheet: View {
                 Button("Cancel") {
                     cancel()
                 }
-                Button("Create") {
-                    freeze()
+                Button(actionTitle) {
+                    save()
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
