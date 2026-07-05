@@ -109,7 +109,7 @@ public enum LiveMockupPlaceholders {
         id: "keywording.batch",
         title: "Batch keywording",
         intendedBehavior: "Apply Teststrip-suggested keywords, captions, creator, and copyright to a selected batch.",
-        currentFallback: "Single-selected asset keyword/caption/creator/copyright controls write through catalog and XMP; batch keywording surface is not built."
+        currentFallback: "Single-selected metadata controls and the latest-import keyword action write through catalog and XMP; richer batch keywording review is not built."
     )
 
     public static let exportWorkflow = LiveMockupPlaceholder(
@@ -130,7 +130,7 @@ public enum LiveMockupPlaceholders {
         id: "import.complete-summary",
         title: "Import complete summary",
         intendedBehavior: "Show the import-complete payoff surface with imported-set actions, preview status, culling entrypoints, and follow-up workflow suggestions.",
-        currentFallback: "Expanded post-import panel backed by the completed import work session and output set, with unbuilt stack/face/keyword follow-ups disabled and annotated."
+        currentFallback: "Expanded post-import panel backed by the completed import work session and output set, with stack and face follow-ups disabled and annotated."
     )
 
     public static let cullingAssistVerdict = LiveMockupPlaceholder(

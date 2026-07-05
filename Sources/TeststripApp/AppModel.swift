@@ -990,6 +990,16 @@ public final class AppModel {
         batchKeywordSuggestions(for: assets)
     }
 
+    public var latestImportBatchKeywordSuggestions: [BatchKeywordSuggestion] {
+        guard let catalog,
+              let assetIDs = try? latestImportOutputAssetIDs(repository: catalog.repository),
+              !assetIDs.isEmpty,
+              let importedAssets = try? catalog.repository.assets(ids: assetIDs, limit: assetIDs.count) else {
+            return []
+        }
+        return batchKeywordSuggestions(for: importedAssets)
+    }
+
     public var starredAssetSets: [AssetSet] {
         Self.visibleSavedAssetSets(savedAssetSets).filter(\.starred)
     }
@@ -1613,6 +1623,16 @@ public final class AppModel {
         return try beginCullingSession(named: summary.cullingSessionName)
     }
 
+    @discardableResult
+    public func acceptLatestImportBatchKeywordSuggestion(_ keyword: String) throws -> Int {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let assetIDs = try latestImportOutputAssetIDs(repository: catalog.repository)
+        _ = try openLatestImportCompletion()
+        return try acceptBatchKeywordSuggestion(keyword, assetIDs: assetIDs)
+    }
+
     public func canToggleWorkSessionStarred(_ activity: AppWorkActivity) -> Bool {
         catalog != nil && persistedWorkActivityIDs.contains(activity.id)
     }
@@ -2050,16 +2070,20 @@ public final class AppModel {
 
     @discardableResult
     public func acceptVisibleBatchKeywordSuggestion(_ keyword: String) throws -> Int {
+        try acceptBatchKeywordSuggestion(keyword, assetIDs: assets.map(\.id))
+    }
+
+    @discardableResult
+    private func acceptBatchKeywordSuggestion(_ keyword: String, assetIDs: [AssetID]) throws -> Int {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
         let cleanedKeyword = Self.cleanedKeyword(keyword)
         guard !cleanedKeyword.isEmpty else { return 0 }
-        let visibleAssetIDs = assets.map(\.id)
         var appliedCount = 0
 
-        for assetID in visibleAssetIDs {
-            guard try visibleAssetNeedsSuggestedKeyword(assetID: assetID, keyword: cleanedKeyword) else {
+        for assetID in assetIDs {
+            guard try assetNeedsSuggestedKeyword(assetID: assetID, keyword: cleanedKeyword) else {
                 continue
             }
             let originalAsset = try catalog.repository.asset(id: assetID)
@@ -2274,7 +2298,7 @@ public final class AppModel {
             }
     }
 
-    private func visibleAssetNeedsSuggestedKeyword(assetID: AssetID, keyword: String) throws -> Bool {
+    private func assetNeedsSuggestedKeyword(assetID: AssetID, keyword: String) throws -> Bool {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -3936,6 +3960,23 @@ public final class AppModel {
             return ids
         case .dynamic:
             return nil
+        }
+    }
+
+    private func latestImportOutputAssetIDs(repository: CatalogRepository) throws -> [AssetID] {
+        guard let summary = latestImportCompletionSummary else {
+            throw TeststripError.invalidState("no completed import")
+        }
+        let session = try repository.session(id: WorkSessionID(rawValue: summary.activityID))
+        guard let outputSetID = session.outputSetIDs.first else {
+            return []
+        }
+        let assetSet = try assetSetForSelection(id: outputSetID, repository: repository)
+        switch assetSet.membership {
+        case .manual(let ids), .snapshot(let ids):
+            return ids
+        case .dynamic(let query):
+            return try repository.assetIDs(matching: query)
         }
     }
 

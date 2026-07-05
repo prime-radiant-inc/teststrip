@@ -697,7 +697,10 @@ struct LibraryGridView: View {
     }
 
     private func importCompletionSummary(_ summary: ImportCompletionSummary) -> some View {
-        let presentation = ImportCompletionPresentation.presentation(for: summary)
+        let presentation = ImportCompletionPresentation.presentation(
+            for: summary,
+            batchKeywordSuggestions: model.latestImportBatchKeywordSuggestions
+        )
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "checkmark.circle.fill")
@@ -824,7 +827,9 @@ struct LibraryGridView: View {
             beginCullingFromLatestImportCompletion()
         case .openInLibrary:
             openLatestImportCompletion()
-        case .stackGrouping, .faceNaming, .keywordSuggestions:
+        case .keywordSuggestions:
+            applyLatestImportKeywordSuggestion()
+        case .stackGrouping, .faceNaming:
             break
         }
     }
@@ -1731,6 +1736,15 @@ struct LibraryGridView: View {
         do {
             try model.beginCullingFromLatestImportCompletion()
             focusCullingSurface()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyLatestImportKeywordSuggestion() {
+        guard let keyword = model.latestImportBatchKeywordSuggestions.first?.keyword else { return }
+        do {
+            try model.acceptLatestImportBatchKeywordSuggestion(keyword)
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -3619,7 +3633,10 @@ struct ImportCompletionPresentation: Equatable {
         actionRows.filter { !$0.isEnabled }
     }
 
-    static func presentation(for summary: ImportCompletionSummary) -> ImportCompletionPresentation {
+    static func presentation(
+        for summary: ImportCompletionSummary,
+        batchKeywordSuggestions: [BatchKeywordSuggestion] = []
+    ) -> ImportCompletionPresentation {
         ImportCompletionPresentation(
             title: "\(summary.photoCountText) imported",
             detail: summary.detail,
@@ -3679,16 +3696,34 @@ struct ImportCompletionPresentation: Equatable {
                     isPrimary: false,
                     placeholder: .peopleFaceActions
                 ),
-                ImportCompletionActionPresentation(
-                    kind: .keywordSuggestions,
-                    title: "Keyword suggestions",
-                    detail: "Batch suggested keywords not built",
-                    systemImage: "tag",
-                    isEnabled: false,
-                    isPrimary: false,
-                    placeholder: .keywordingBatch
-                )
+                keywordSuggestionAction(batchKeywordSuggestions: batchKeywordSuggestions)
             ]
+        )
+    }
+
+    private static func keywordSuggestionAction(
+        batchKeywordSuggestions: [BatchKeywordSuggestion]
+    ) -> ImportCompletionActionPresentation {
+        guard let suggestion = batchKeywordSuggestions.first else {
+            return ImportCompletionActionPresentation(
+                kind: .keywordSuggestions,
+                title: "Keyword suggestions",
+                detail: "Batch suggested keywords not built",
+                systemImage: "tag",
+                isEnabled: false,
+                isPrimary: false,
+                placeholder: .keywordingBatch
+            )
+        }
+
+        return ImportCompletionActionPresentation(
+            kind: .keywordSuggestions,
+            title: "Apply \(suggestion.keyword)",
+            detail: "\(suggestion.assetCountText) at \(suggestion.confidenceText)",
+            systemImage: "tag.fill",
+            isEnabled: true,
+            isPrimary: false,
+            placeholder: nil
         )
     }
 

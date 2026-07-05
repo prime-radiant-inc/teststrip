@@ -33,6 +33,27 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.enabledActions.map(\.kind), [.startCulling, .openInLibrary])
     }
 
+    func testEnablesKeywordSuggestionActionWhenBatchSuggestionsExist() throws {
+        let presentation = ImportCompletionPresentation.presentation(
+            for: summary(),
+            batchKeywordSuggestions: [
+                BatchKeywordSuggestion(
+                    keyword: "mountain",
+                    assetCount: 3,
+                    averageConfidence: 0.82,
+                    providerName: "apple-vision",
+                    modelName: "Vision"
+                )
+            ]
+        )
+
+        let action = try XCTUnwrap(presentation.actionRows.first { $0.kind == .keywordSuggestions })
+        XCTAssertTrue(action.isEnabled)
+        XCTAssertEqual(action.title, "Apply mountain")
+        XCTAssertEqual(action.detail, "3 photos at 82%")
+        XCTAssertNil(action.placeholder)
+    }
+
     func testUnbuiltFollowUpsAreDisabledAndAnnotated() {
         let presentation = ImportCompletionPresentation.presentation(for: summary())
 
