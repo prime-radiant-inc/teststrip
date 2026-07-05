@@ -1661,6 +1661,7 @@ public final class AppModel {
         switch row.target {
         case .allPhotographs:
             selectedAssetSetID = nil
+            selectedView = .grid
             try clearLibraryFilters()
         case .search:
             selectedAssetSetID = nil

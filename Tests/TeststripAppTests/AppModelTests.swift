@@ -2450,6 +2450,28 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 
+    func testSelectingAllPhotographsSidebarRowReturnsToGridAndClearsFilters() throws {
+        let filtered = makeAsset(id: "filtered", path: "/Photos/Job/filtered.jpg", rating: 5, keywords: ["selected"])
+        let unfiltered = makeAsset(id: "unfiltered", path: "/Photos/Job/unfiltered.jpg", rating: 2)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-all-photographs-sidebar",
+            assets: [filtered, unfiltered]
+        )
+        model.selectedView = .copilot
+        model.minimumRatingFilter = 5
+        try model.applyLibraryFilters()
+        XCTAssertEqual(model.assets.map(\.id), [filtered.id])
+        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
+        let allPhotographsRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-all" })
+
+        try model.selectSidebarRow(allPhotographsRow)
+
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.librarySearchText, "")
+        XCTAssertNil(model.minimumRatingFilter)
+        XCTAssertEqual(model.assets.map(\.id), [filtered.id, unfiltered.id])
+    }
+
     func testReviewQueueCountsRefreshAfterMetadataChanges() throws {
         let asset = makeAsset(
             id: "metadata-target",
