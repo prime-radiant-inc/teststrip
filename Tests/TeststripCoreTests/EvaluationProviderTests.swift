@@ -181,7 +181,7 @@ final class EvaluationProviderTests: XCTestCase {
         XCTAssertEqual(signals.map(\.kind), [.aesthetics])
     }
 
-    func testLocalImageMetricsProviderEmitsExposureAndColorSignalsFromPreview() throws {
+    func testLocalImageMetricsProviderEmitsExposureColorAndFocusSignalsFromPreview() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "local-image-metrics")
         let previewURL = directory.appendingPathComponent("preview.png")
         try writeSolidPNG(to: previewURL, width: 1200, height: 800, red: 0.2, green: 0.4, blue: 0.8)
@@ -190,15 +190,15 @@ final class EvaluationProviderTests: XCTestCase {
 
         let signals = try provider.evaluate(assetID: assetID, previewURL: previewURL)
 
-        XCTAssertEqual(signals.map(\.kind), [.exposure, .colorPalette])
-        XCTAssertEqual(signals.map(\.assetID), [assetID, assetID])
-        XCTAssertEqual(signals.map(\.provenance.provider), ["local-image-metrics", "local-image-metrics"])
+        XCTAssertEqual(signals.map(\.kind), [.exposure, .colorPalette, .focus])
+        XCTAssertEqual(signals.map(\.assetID), [assetID, assetID, assetID])
+        XCTAssertEqual(signals.map(\.provenance.provider), ["local-image-metrics", "local-image-metrics", "local-image-metrics"])
 
         guard case .score(let exposure)? = signals.first?.value else {
             return XCTFail("expected exposure score")
         }
 
-        guard case .vector(let color)? = signals.last?.value else {
+        guard case .vector(let color)? = signals.first(where: { $0.kind == .colorPalette })?.value else {
             return XCTFail("expected color vector")
         }
         XCTAssertEqual(color.count, 3)
@@ -206,6 +206,26 @@ final class EvaluationProviderTests: XCTestCase {
         XCTAssertLessThan(color[0], color[1])
         XCTAssertLessThan(color[1], color[2])
         XCTAssertEqual(exposure, 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2], accuracy: 0.0001)
+
+        guard case .score(let focus)? = signals.first(where: { $0.kind == .focus })?.value else {
+            return XCTFail("expected focus score")
+        }
+        XCTAssertEqual(focus, 0, accuracy: 0.0001)
+    }
+
+    func testLocalImageMetricsFocusScoreReflectsPreviewEdgeDetail() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "local-image-focus")
+        let flatURL = directory.appendingPathComponent("flat.png")
+        let detailedURL = directory.appendingPathComponent("detailed.png")
+        try writeSolidPNG(to: flatURL, width: 64, height: 64, red: 0.5, green: 0.5, blue: 0.5)
+        try writeCheckerboardPNG(to: detailedURL, width: 64, height: 64, cellSize: 4)
+        let provider = LocalImageMetricsEvaluationProvider()
+
+        let flatFocus = try focusScore(from: provider.evaluate(assetID: AssetID(rawValue: "flat"), previewURL: flatURL))
+        let detailedFocus = try focusScore(from: provider.evaluate(assetID: AssetID(rawValue: "detailed"), previewURL: detailedURL))
+
+        XCTAssertLessThan(flatFocus, 0.01)
+        XCTAssertGreaterThan(detailedFocus, flatFocus + 0.2)
     }
 
     func testAppleVisionProviderMapsAnalysisToSignals() throws {
@@ -356,4 +376,42 @@ private func writeSolidPNG(to url: URL, width: Int, height: Int, red: CGFloat, g
     guard CGImageDestinationFinalize(destination) else {
         throw TeststripError.io("could not write test png")
     }
+}
+
+private func writeCheckerboardPNG(to url: URL, width: Int, height: Int, cellSize: Int) throws {
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    guard let context = CGContext(
+        data: nil,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else {
+        throw TeststripError.io("could not create test bitmap context")
+    }
+    for y in stride(from: 0, to: height, by: cellSize) {
+        for x in stride(from: 0, to: width, by: cellSize) {
+            let isLight = ((x / cellSize) + (y / cellSize)).isMultiple(of: 2)
+            context.setFillColor(CGColor(gray: isLight ? 1.0 : 0.0, alpha: 1.0))
+            context.fill(CGRect(x: x, y: y, width: cellSize, height: cellSize))
+        }
+    }
+    guard let image = context.makeImage(),
+          let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+        throw TeststripError.io("could not create test png")
+    }
+    CGImageDestinationAddImage(destination, image, nil)
+    guard CGImageDestinationFinalize(destination) else {
+        throw TeststripError.io("could not write test png")
+    }
+}
+
+private func focusScore(from signals: [EvaluationSignal]) throws -> Double {
+    let signal = try XCTUnwrap(signals.first { $0.kind == .focus })
+    guard case .score(let score) = signal.value else {
+        throw TeststripError.invalidState("expected focus score")
+    }
+    return score
 }
