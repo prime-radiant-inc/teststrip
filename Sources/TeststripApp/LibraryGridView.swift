@@ -1997,6 +1997,14 @@ private struct LoupeView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
+                Button {
+                    keepSelectedStackFrame()
+                } label: {
+                    Label(presentation.keepActionTitle, systemImage: "checkmark.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help(presentation.keepActionHelp)
                 HStack(spacing: 5) {
                     ForEach(presentation.items, id: \.assetID.rawValue) { item in
                         Button {
@@ -2227,6 +2235,14 @@ private struct LoupeView: View {
     private func applyCullingShortcut(_ shortcut: CullingShortcut) {
         do {
             try model.applyCullingShortcut(shortcut)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func keepSelectedStackFrame() {
+        do {
+            try model.keepSelectedStackFrameAndRejectAlternates()
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -2690,6 +2706,8 @@ struct CullingStackRailPresentation: Equatable {
     var titleText: String
     var positionText: String
     var rationaleText: String?
+    let keepActionTitle = "Keep"
+    let keepActionHelp = "Keep selected frame and reject stack alternates"
 
     init(
         assets: [Asset],

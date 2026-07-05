@@ -22,6 +22,8 @@ final class CullingStackRailPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.titleText, "Stack 1 of 2")
         XCTAssertEqual(presentation.positionText, "Frame 2 of 3")
         XCTAssertEqual(presentation.rationaleText, "Same folder, captured within 2s")
+        XCTAssertEqual(presentation.keepActionTitle, "Keep")
+        XCTAssertEqual(presentation.keepActionHelp, "Keep selected frame and reject stack alternates")
         XCTAssertEqual(presentation.items.map(\.assetID), assets[0..<3].map(\.id))
         XCTAssertEqual(presentation.items.map(\.label), ["1", "2", "3"])
         XCTAssertEqual(presentation.items.map(\.isSelected), [false, true, false])

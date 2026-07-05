@@ -2141,6 +2141,33 @@ public final class AppModel {
         }
     }
 
+    public func keepSelectedStackFrameAndRejectAlternates() throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard let selectedAssetID else {
+            throw TeststripError.invalidState("no selected asset")
+        }
+        let stacks = AssetStackBuilder(
+            maximumCaptureGap: Self.candidateStackMaximumCaptureGap
+        ).stacks(from: assets)
+        guard let stack = stacks.first(where: { $0.assetIDs.contains(selectedAssetID) }),
+              stack.assetIDs.count > 1 else {
+            throw TeststripError.invalidState("selected asset is not in a culling stack")
+        }
+        let nextAssetID = nextAssetID(after: stack)
+
+        for assetID in stack.assetIDs {
+            var metadata = try catalog.repository.asset(id: assetID).metadata
+            metadata.flag = assetID == selectedAssetID ? .pick : .reject
+            try applyMetadataSnapshot(assetID: assetID, metadata: metadata)
+        }
+
+        if let nextAssetID {
+            selectAssetID(nextAssetID)
+        }
+    }
+
     public func applyCullingShortcut(_ shortcut: CullingShortcut) throws {
         switch shortcut {
         case .previousPhoto:
@@ -2188,6 +2215,18 @@ public final class AppModel {
             return
         }
         selectAssetID(assets[min(index + 1, assets.count - 1)].id)
+    }
+
+    private func nextAssetID(after stack: AssetStack) -> AssetID? {
+        let stackAssetIDs = Set(stack.assetIDs)
+        guard let lastStackIndex = assets.lastIndex(where: { stackAssetIDs.contains($0.id) }) else {
+            return nil
+        }
+        let nextIndex = assets.index(after: lastStackIndex)
+        guard assets.indices.contains(nextIndex) else {
+            return nil
+        }
+        return assets[nextIndex].id
     }
 
     private func selectPreviousAssetForCulling() throws {

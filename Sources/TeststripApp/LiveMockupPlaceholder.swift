@@ -151,7 +151,7 @@ public enum LiveMockupPlaceholders {
         id: "culling.stack-cull",
         title: "Stack cull",
         intendedBehavior: "Group bursts or near-duplicates into stacks and cull the strongest candidate within each stack.",
-        currentFallback: "Survey Compare can form loaded-scope candidate stacks from adjacent same-folder capture times; real similarity and near-duplicate grouping are still pending."
+        currentFallback: "Loupe culling can keep a selected same-folder capture-time stack frame and reject alternates; real similarity and near-duplicate grouping are still pending."
     )
 
     public static let focusCompare = LiveMockupPlaceholder(
@@ -260,7 +260,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Stack cull",
             status: .liveMockup,
             placeholder: .cullingStackCull,
-            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, and loaded-scope candidate stacks; automatic burst/near-duplicate similarity grouping is not built."
+            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, and loaded-scope same-folder capture-time stacks with a keep-selected/reject-alternates action; automatic burst/near-duplicate similarity grouping is not built."
         ),
         LiveMockupDesignSurface(
             designID: "3b",

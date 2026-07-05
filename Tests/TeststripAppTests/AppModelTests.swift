@@ -1520,6 +1520,48 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, secondID)
     }
 
+    func testKeepingSelectedStackFrameRejectsAlternatesAndAdvancesPastStack() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let first = makeAsset(
+            id: "stack-first",
+            path: "/Photos/Job/stack-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let selected = makeAsset(
+            id: "stack-selected",
+            path: "/Photos/Job/stack-selected.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let alternate = makeAsset(
+            id: "stack-alternate",
+            path: "/Photos/Job/stack-alternate.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1.8))
+        )
+        let next = makeAsset(
+            id: "stack-next",
+            path: "/Photos/Other/stack-next.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(4))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "keep-selected-stack-frame",
+            assets: [first, selected, alternate, next]
+        )
+        model.select(selected.id)
+
+        try model.keepSelectedStackFrameAndRejectAlternates()
+
+        XCTAssertEqual(try repository.asset(id: first.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: selected.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .reject)
+        XCTAssertNil(try repository.asset(id: next.id).metadata.flag)
+        XCTAssertEqual(model.assets.map(\.metadata.flag), [.reject, .pick, .reject, nil])
+        XCTAssertEqual(model.selectedAssetID, next.id)
+    }
+
     func testCullingShortcutLoadsNextPageWhenAdvancingPastLoadedAssets() throws {
         let model = try makeModelWithSeededCatalog(named: "culling-next-page", count: 121)
         model.select(AssetID(rawValue: "asset-119"))
