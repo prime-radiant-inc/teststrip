@@ -2867,6 +2867,7 @@ public final class AppModel {
         guard let selectedAssetID else {
             throw TeststripError.invalidState("no selected asset")
         }
+        let selectedWorkStackSetID = selectedWorkStackAssetIDs?.contains(selectedAssetID) == true ? selectedAssetSetID : nil
         let stack: AssetStack?
         let nextAssetID: AssetID?
         if let selectedWorkStackAssetIDs,
@@ -2886,6 +2887,9 @@ public final class AppModel {
             var metadata = try catalog.repository.asset(id: assetID).metadata
             metadata.flag = assetID == selectedAssetID ? .pick : .reject
             try applyMetadataSnapshot(assetID: assetID, metadata: metadata)
+        }
+        if let selectedWorkStackSetID {
+            try updatePersistedStackCullingSessionProgress(selectedStackSetID: selectedWorkStackSetID)
         }
 
         if try selectPersistedCullingStack(.next) {
@@ -5660,12 +5664,97 @@ public final class AppModel {
 
     private func activePersistedStackCullingSession(repository: CatalogRepository) throws -> WorkSession? {
         guard let selectedAssetSetID else { return nil }
+        return try activePersistedStackCullingSession(for: selectedAssetSetID, repository: repository)
+    }
+
+    private func activePersistedStackCullingSession(
+        for selectedAssetSetID: AssetSetID,
+        repository: CatalogRepository
+    ) throws -> WorkSession? {
         let cullingSessions = try repository.workSessions(
             kind: .culling,
             statuses: [.queued, .running, .paused, .completed, .failed, .cancelled]
         )
         return cullingSessions.first { session in
             session.inputSetIDs.contains(selectedAssetSetID)
+        }
+    }
+
+    private func updatePersistedStackCullingSessionProgress(selectedStackSetID: AssetSetID) throws {
+        guard let catalog,
+              var session = try activePersistedStackCullingSession(
+                for: selectedStackSetID,
+                repository: catalog.repository
+              ) else {
+            return
+        }
+        switch session.status {
+        case .failed, .cancelled:
+            return
+        case .queued, .running, .paused, .completed:
+            break
+        }
+
+        let completedUnitCount = try decidedPersistedStackUnitCount(
+            session: session,
+            repository: catalog.repository
+        )
+        let totalUnitCount: Int
+        if let existingTotalUnitCount = session.totalUnitCount {
+            totalUnitCount = existingTotalUnitCount
+        } else {
+            totalUnitCount = try persistedStackUnitCount(
+                session: session,
+                repository: catalog.repository
+            )
+        }
+        session.completedUnitCount = min(completedUnitCount, totalUnitCount)
+        session.totalUnitCount = totalUnitCount
+        session.status = totalUnitCount > 0 && session.completedUnitCount >= totalUnitCount ? .completed : .running
+        session.updatedAt = Date()
+        try catalog.repository.save(session)
+        try refreshWorkSessions()
+    }
+
+    private func decidedPersistedStackUnitCount(
+        session: WorkSession,
+        repository: CatalogRepository
+    ) throws -> Int {
+        var count = 0
+        for stackSetID in session.inputSetIDs where Self.isWorkStackSetID(stackSetID) {
+            let stackAssetIDs = try explicitAssetIDs(in: stackSetID, repository: repository)
+            guard !stackAssetIDs.isEmpty else { continue }
+            let isDecided = try stackAssetIDs.allSatisfy { assetID in
+                try repository.asset(id: assetID).metadata.flag != nil
+            }
+            if isDecided {
+                count += stackAssetIDs.count
+            }
+        }
+        return count
+    }
+
+    private func persistedStackUnitCount(
+        session: WorkSession,
+        repository: CatalogRepository
+    ) throws -> Int {
+        var count = 0
+        for stackSetID in session.inputSetIDs where Self.isWorkStackSetID(stackSetID) {
+            count += try explicitAssetIDs(in: stackSetID, repository: repository).count
+        }
+        return count
+    }
+
+    private func explicitAssetIDs(
+        in assetSetID: AssetSetID,
+        repository: CatalogRepository
+    ) throws -> [AssetID] {
+        let assetSet = try assetSetForSelection(id: assetSetID, repository: repository)
+        switch assetSet.membership {
+        case .manual(let ids), .snapshot(let ids):
+            return ids
+        case .dynamic:
+            return []
         }
     }
 

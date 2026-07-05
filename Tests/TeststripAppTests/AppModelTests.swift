@@ -2223,6 +2223,50 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, alternate.id)
     }
 
+    func testAcceptingPersistedStackSelectionUpdatesCullingSessionProgress() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "persisted-stack-progress",
+            sessionID: "progress-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstAlternate.id)
+
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+
+        let session = try fixture.repository.session(id: WorkSessionID(rawValue: "progress-session"))
+        XCTAssertEqual(session.completedUnitCount, 2)
+        XCTAssertEqual(session.status, .running)
+        XCTAssertEqual(fixture.model.recentWork.first?.id, "progress-session")
+        XCTAssertEqual(fixture.model.recentWork.first?.completedUnitCount, 2)
+        XCTAssertEqual(fixture.model.recentWork.first?.totalUnitCount, 4)
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
+    }
+
+    func testAcceptingFinalPersistedStackSelectionCompletesCullingSession() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "persisted-stack-completion",
+            sessionID: "complete-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+
+        let session = try fixture.repository.session(id: WorkSessionID(rawValue: "complete-session"))
+        XCTAssertEqual(session.completedUnitCount, 4)
+        XCTAssertEqual(session.status, .completed)
+        XCTAssertEqual(fixture.model.recentWork.first?.id, "complete-session")
+        XCTAssertEqual(fixture.model.recentWork.first?.status, .completed)
+        XCTAssertEqual(fixture.model.recentWork.first?.completedUnitCount, 4)
+        XCTAssertEqual(try fixture.repository.asset(id: fixture.firstLead.id).metadata.flag, .pick)
+        XCTAssertEqual(try fixture.repository.asset(id: fixture.firstAlternate.id).metadata.flag, .reject)
+        XCTAssertEqual(try fixture.repository.asset(id: fixture.secondLead.id).metadata.flag, .pick)
+        XCTAssertEqual(try fixture.repository.asset(id: fixture.secondAlternate.id).metadata.flag, .reject)
+    }
+
     func testSelectedCullingStackScopeUsesPersistedStackSetMembership() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let lead = makeAsset(
@@ -9848,6 +9892,76 @@ final class AppModelTests: XCTestCase {
         case .dynamic:
             []
         }
+    }
+
+    private struct PersistedStackCullingFixture {
+        var model: AppModel
+        var repository: CatalogRepository
+        var firstLead: Asset
+        var firstAlternate: Asset
+        var secondLead: Asset
+        var secondAlternate: Asset
+        var firstSet: AssetSet
+        var secondSet: AssetSet
+    }
+
+    private func makePersistedStackCullingFixture(
+        named name: String,
+        sessionID: String
+    ) throws -> PersistedStackCullingFixture {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let firstLead = makeAsset(
+            id: "\(name)-first-lead",
+            path: "/Photos/Stack/\(name)-first-lead.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let firstAlternate = makeAsset(
+            id: "\(name)-first-alternate",
+            path: "/Photos/Stack/\(name)-first-alternate.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let secondLead = makeAsset(
+            id: "\(name)-second-lead",
+            path: "/Photos/Stack/\(name)-second-lead.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(20))
+        )
+        let secondAlternate = makeAsset(
+            id: "\(name)-second-alternate",
+            path: "/Photos/Stack/\(name)-second-alternate.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(21))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: name,
+            assets: [firstLead, firstAlternate, secondLead, secondAlternate]
+        )
+        let firstSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "work-stack-\(sessionID)-1"),
+            name: "Cull Stack 1",
+            assetIDs: [firstLead.id, firstAlternate.id]
+        )
+        let secondSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "work-stack-\(sessionID)-2"),
+            name: "Cull Stack 2",
+            assetIDs: [secondLead.id, secondAlternate.id]
+        )
+        try repository.upsert(firstSet)
+        try repository.upsert(secondSet)
+        try repository.save(cullingSession(id: sessionID, inputSetIDs: [firstSet.id, secondSet.id], totalUnitCount: 4))
+
+        return PersistedStackCullingFixture(
+            model: model,
+            repository: repository,
+            firstLead: firstLead,
+            firstAlternate: firstAlternate,
+            secondLead: secondLead,
+            secondAlternate: secondAlternate,
+            firstSet: firstSet,
+            secondSet: secondSet
+        )
     }
 
     private func cullingSession(id: String, inputSetIDs: [AssetSetID], totalUnitCount: Int) -> WorkSession {
