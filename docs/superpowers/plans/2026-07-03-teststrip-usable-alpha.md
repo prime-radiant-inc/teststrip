@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `9e2c7fb Tolerate skipped source files during folder import`
+- Snapshot commit: `881d892 Expose idle worker stop and skipped import counts`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter LibraryImportServiceTests/testAddFolderContinuesWhenOneSourceDisappearsBeforeCataloging`, `swift test --filter LibraryImportServiceTests`, `swift test --filter FolderImportTests`, and `swift test --filter AppModelTests` all passed after the skipped-source import slice. Earlier worker/source, grid layout/chrome, XMP conflict/reconnect, and catalog-scale verifier focused tests passed across the preceding slices.
-- Last broad unit verification: `swift test` passed with 708 tests, 1 skipped, and 0 failures after the skipped-source import slice.
+- Last focused unit verification: `swift test --filter 'WorkerProtocolTests/testImportCompletionEventRoundTripsImportedAssetIDs|WorkerCommandExecutorTests/testImportFolderCommandReportsSkippedSourceFileCount|AppModelTests/testWorkerImportCompletionReportsSkippedSourceFiles|WorkerSupervisorTests/testStoppingIdleWorkerProcessTerminatesTransportWithoutChangingQueue|WorkerSupervisorTests/testStoppingIdleWorkerProcessDoesNotTerminateActiveWork|AppModelTests/testIdleWorkerProcessCanBeStoppedWithoutCancellingCompletedWork|AppDiagnosticsTests'` and `swift test --filter 'WorkerCommandExecutorTests|WorkerProtocolTests|WorkerEntrypointTests|WorkerSupervisorTests|AppModelTests|AppDiagnosticsTests'` passed after the worker skipped-count and idle-stop slice. Earlier import resilience, worker/source, grid layout/chrome, XMP conflict/reconnect, and catalog-scale verifier focused tests passed across the preceding slices.
+- Last broad unit verification: `swift test` passed with 713 tests, 1 skipped, and 0 failures after the worker skipped-count and idle-stop slice.
 - Last app workflow verification: `./script/build_and_run.sh --verify-smoke` launched an isolated smoke catalog after the inspector XMP merge action, and `./script/capture_app_window.sh Teststrip /tmp/teststrip-inspector-conflict-action-smoke.png` captured a normal Library window. That smoke did not show an active XMP conflict; the conflict action ordering and model merge path are covered by focused tests. Additional UI automation was intentionally avoided for the footer-density slice to minimize focus stealing while Jesse is using the machine. Earlier no app launch was run for the diagnostics slice to minimize focus stealing; `./script/build_and_run.sh --verify-smoke` launched an isolated smoke catalog after the Activity row-control change, and `./script/capture_app_window.sh Teststrip /tmp/teststrip-worker-control-smoke.png` captured a normal Library window with Activity idle state visible. Earlier `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import/click UI automation was intentionally deferred for several import/grid slices to avoid unnecessary focus stealing while Jesse was using the machine; those slices were covered by focused presentation/policy tests and full unit runs. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import.
 
 ### Recent Completed Slices
@@ -100,6 +100,7 @@
 - `2c1baac`: moved grid density and thumbnail-size controls into the Library footer and made grid spacing derive from the same density presentation, matching the Studio mockup footer while preserving true-aspect thumbnails.
 - `e7813c7`: preflighted preview generation for stale originals so changed source bytes do not silently refresh cached previews or clear pending preview work.
 - `9e2c7fb`: made add-in-place folder imports tolerate a scanned source file disappearing before cataloging, report skipped source files in `LibraryImportResult`, and surface skipped-file counts in AppModel import completion copy while leaving card-copy conflicts fail-fast.
+- `881d892`: carried skipped source-file counts through worker-backed imports and exposed idle worker process state plus a stop-idle-worker control in Activity/diagnostics.
 
 ## Product Decisions To Preserve
 
@@ -164,6 +165,7 @@ Current behavior:
 - Imports record catalog source roots.
 - Imports catalog assets before downstream analysis.
 - Add-in-place folder imports can skip and report source files that disappear or become unreadable after scan, so one flaky NAS/cloud/removable file no longer fails the whole import. Card/camera copy conflicts remain fail-fast.
+- Worker-backed add-in-place imports preserve skipped source-file counts through the worker result/protocol/event path, so direct and helper-backed completion copy stay consistent.
 - Import worker activity is persisted to `work_sessions` while queued/running.
 - Interrupted queued/running/paused ingest sessions reconcile as failed on next load instead of disappearing or falsely appearing active.
 - Duplicate and empty imports now report clearly.
@@ -263,7 +265,9 @@ Current behavior:
 - Work is visible through app-model projections and Activity UI.
 - Queue dispatch can pause/resume. Already-dispatched synchronous helper work remains running and timeout-protected rather than being mislabeled as paused.
 - Activity rows can cancel individual active background items; queued cancellations leave the helper and unrelated work alone, while dispatched cancellations terminate/restart the helper only where the synchronous worker protocol requires it.
+- Activity shows when the helper process is idle and exposes a stop control that terminates only when no queued, running, or paused work remains.
 - Worker commands and JSON-lines protocol live in core so the app and worker share the same contract.
+- Worker import completion events carry skipped source-file counts as required protocol data instead of allowing helper-backed imports to silently lose that state.
 - WorkerSupervisor supports batch enqueue for sets of background work that should produce a single queue-change notification.
 - `FoundationWorkerTransport` launches the helper, writes commands to stdin, and streams stdout/stderr responses.
 - Worker stderr fails the oldest dispatched item and keeps the queue moving.
@@ -383,9 +387,11 @@ Teststrip reaches usable alpha when a photographer can:
 
 ## Next Build Slices
 
+**Current priority note:** Jesse redirected the near-term push toward working feature coverage and designer mockup parity rather than latency-first tuning. Keep the preview/backlog evidence because it matters for pro catalogs, but lead with pulling the remaining designer surfaces into SwiftUI as honest live mockups, filling them out progressively, and using code-level placeholder markers for dead or scaffolded UI. Keep focus-stealing UI automation minimal while Jesse is using the computer.
+
 ### Slice 1: Preview Throughput And UI Coalescing
 
-**Why this is first:** A photo manager that imports but then burns CPU and drains previews slowly will feel broken. This is the highest-leverage next slice because it affects import, browsing, NAS/offline workflows, and culling.
+**Why this still matters:** A photo manager that imports but then burns CPU and drains previews slowly will feel broken. This remains important for import, browsing, NAS/offline workflows, and culling, but it is no longer the lead lane ahead of working feature coverage and mockup parity.
 
 **Files to inspect first:**
 
