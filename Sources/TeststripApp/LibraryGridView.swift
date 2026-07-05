@@ -901,7 +901,8 @@ struct LibraryGridView: View {
     private func importCompletionSummary(_ summary: ImportCompletionSummary) -> some View {
         let presentation = ImportCompletionPresentation.presentation(
             for: summary,
-            batchKeywordSuggestions: model.latestImportBatchKeywordSuggestions
+            batchKeywordSuggestions: model.latestImportBatchKeywordSuggestions,
+            faceReviewAssetCount: model.reviewQueueCounts[.facesFound] ?? 0
         )
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
@@ -1036,7 +1037,7 @@ struct LibraryGridView: View {
         case .stackGrouping:
             beginStackCullingFromLatestImportCompletion()
         case .faceNaming:
-            break
+            reviewFaceQueueFromImportCompletion()
         }
     }
 
@@ -2070,6 +2071,14 @@ struct LibraryGridView: View {
             batchMetadataDraft = BatchMetadataDraft()
             isAllCatalogBatchMetadataConfirmed = false
             isReviewingBatchMetadata = true
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func reviewFaceQueueFromImportCompletion() {
+        do {
+            try model.selectSidebarTarget(.reviewQueue(.facesFound))
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -5182,7 +5191,8 @@ struct ImportCompletionPresentation: Equatable {
 
     static func presentation(
         for summary: ImportCompletionSummary,
-        batchKeywordSuggestions: [BatchKeywordSuggestion] = []
+        batchKeywordSuggestions: [BatchKeywordSuggestion] = [],
+        faceReviewAssetCount: Int = 0
     ) -> ImportCompletionPresentation {
         ImportCompletionPresentation(
             title: title(for: summary),
@@ -5229,15 +5239,7 @@ struct ImportCompletionPresentation: Equatable {
                     isPrimary: false,
                     placeholder: nil
                 ),
-                ImportCompletionActionPresentation(
-                    kind: .faceNaming,
-                    title: "Name faces",
-                    detail: "Face clustering and naming not built",
-                    systemImage: "person.2",
-                    isEnabled: false,
-                    isPrimary: false,
-                    placeholder: .peopleFaceActions
-                ),
+                faceReviewAction(faceReviewAssetCount: faceReviewAssetCount),
                 keywordSuggestionAction(batchKeywordSuggestions: batchKeywordSuggestions)
             ]
         )
@@ -5337,6 +5339,29 @@ struct ImportCompletionPresentation: Equatable {
                 : "Review \(suggestionCount) keyword suggestions",
             detail: "Top: \(suggestion.keyword) - \(suggestion.assetCountText) at \(suggestion.confidenceText)",
             systemImage: "tag.fill",
+            isEnabled: true,
+            isPrimary: false,
+            placeholder: nil
+        )
+    }
+
+    private static func faceReviewAction(faceReviewAssetCount: Int) -> ImportCompletionActionPresentation {
+        guard faceReviewAssetCount > 0 else {
+            return ImportCompletionActionPresentation(
+                kind: .faceNaming,
+                title: "Review faces",
+                detail: "No face signals yet",
+                systemImage: "person.2",
+                isEnabled: false,
+                isPrimary: false,
+                placeholder: nil
+            )
+        }
+        return ImportCompletionActionPresentation(
+            kind: .faceNaming,
+            title: faceReviewAssetCount == 1 ? "Review 1 face photo" : "Review \(faceReviewAssetCount) face photos",
+            detail: "Open Faces Found review",
+            systemImage: "person.2.fill",
             isEnabled: true,
             isPrimary: false,
             placeholder: nil

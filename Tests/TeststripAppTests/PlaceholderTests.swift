@@ -70,14 +70,15 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertFalse(placeholder.currentFallback.localizedCaseInsensitiveContains("static placeholder copy"))
     }
 
-    func testImportCompleteLedgerTracksLiveActionsAndRemainingDisabledFollowups() throws {
+    func testImportCompleteLedgerTracksLiveActionsAndFaceReviewHandoff() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "import.complete-summary" })
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "4b" })
 
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("culling, stack-cull, compare, and keyword actions live"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("face follow-ups stay disabled"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("culling, stack-cull, compare, keyword, and face-review actions live"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("automatic identity naming remains disabled"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("culling, stack-cull, compare, and keyword actions"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("face naming remains a disabled placeholder"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("faces found review handoff"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("automatic naming remains disabled"))
     }
 
     func testCompareLedgerTracksStackCullActionsAndRemainingSimilarityGap() throws {

@@ -20,7 +20,7 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.metricRows.map(\.label), ["Imported set", "Previews", "Cull scope"])
         XCTAssertEqual(presentation.metricRows.map(\.value), ["12 photos", "Ready", "3 stacks"])
         XCTAssertEqual(presentation.enabledActions.map(\.kind), [.startCulling, .reviewImportedFrames, .openInLibrary, .stackGrouping])
-        XCTAssertEqual(presentation.placeholderActions.map(\.kind), [.faceNaming])
+        XCTAssertEqual(presentation.placeholderActions.map(\.kind), [])
     }
 
     func testSurfacesPreviewFailuresWithoutBlockingImportActions() {
@@ -131,18 +131,32 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertNil(action.placeholder)
     }
 
-    func testUnbuiltFollowUpsAreDisabledAndAnnotated() {
+    func testFaceReviewActionUsesDisabledEmptyStateWithoutFaceSignals() throws {
         let presentation = ImportCompletionPresentation.presentation(for: summary())
 
-        XCTAssertEqual(presentation.placeholderActions.map(\.placeholder?.id), [
-            LiveMockupPlaceholders.peopleFaceActions.id
-        ])
-        XCTAssertTrue(presentation.placeholderActions.allSatisfy { !$0.isEnabled })
+        let action = try XCTUnwrap(presentation.actionRows.first { $0.kind == .faceNaming })
+        XCTAssertFalse(action.isEnabled)
+        XCTAssertEqual(action.title, "Review faces")
+        XCTAssertEqual(action.detail, "No face signals yet")
+        XCTAssertNil(action.placeholder)
 
         let visibleText = presentation.metricRows.flatMap { [$0.value, $0.label, $0.detail] }
             + presentation.actionRows.flatMap { [$0.title, $0.detail] }
         XCTAssertFalse(visibleText.contains { $0.contains("28 stacks") })
         XCTAssertFalse(visibleText.contains { $0.contains("3 new faces") })
+    }
+
+    func testEnablesFaceReviewActionWhenFaceSignalsExist() throws {
+        let presentation = ImportCompletionPresentation.presentation(
+            for: summary(),
+            faceReviewAssetCount: 3
+        )
+
+        let action = try XCTUnwrap(presentation.actionRows.first { $0.kind == .faceNaming })
+        XCTAssertTrue(action.isEnabled)
+        XCTAssertEqual(action.title, "Review 3 face photos")
+        XCTAssertEqual(action.detail, "Open Faces Found review")
+        XCTAssertNil(action.placeholder)
     }
 
     private func summary(
