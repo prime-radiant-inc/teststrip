@@ -95,7 +95,7 @@ public enum LiveMockupPlaceholders {
         id: "search.refine",
         title: "Search refine rail",
         intendedBehavior: "Show parsed facets, query refinements, and agent-suggested set actions beside search results.",
-        currentFallback: "Search view shows a deterministic Teststrip Reads rail from active filter chips, and known target rows are actionable; suggested refinements and agent set actions are not built."
+        currentFallback: "Search view shows a deterministic Teststrip Reads rail from active filter chips, known target rows are actionable, and existing save/freeze/review workflows appear as suggested actions; agent-generated refinements are not built."
     )
 
     public static let smartCollectionsBuilder = LiveMockupPlaceholder(
@@ -302,7 +302,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Search",
             status: .partial,
             placeholder: .agenticSearch,
-            currentImplementation: "Search route preserves catalog query/filter state, parsed chips, saved-set counts, and results grid; suggested refinements and broader natural-language planning are not built."
+            currentImplementation: "Search route preserves catalog query/filter state, parsed chips, saved-set counts, results grid, and suggested actions for existing save/freeze/review workflows; agent-generated refinements and broader natural-language planning are not built."
         ),
         LiveMockupDesignSurface(
             designID: "5d",

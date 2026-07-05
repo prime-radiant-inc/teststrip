@@ -23,6 +23,67 @@ final class SearchWorkspacePresentationTests: XCTestCase {
         ])
     }
 
+    func testSuggestedActionsExposeExistingSetAndReviewWorkflows() {
+        let presentation = SearchWorkspacePresentation(
+            suggestedName: "Pick 4+ Stars",
+            totalAssetCount: 42,
+            savedSetCount: 6,
+            starredSetCount: 2,
+            activeFilterChips: ["Pick", "Rating >= 4"],
+            canSaveDynamicSet: true,
+            canSaveSnapshotSet: true,
+            reviewQueueCounts: [
+                .needsKeywords: 9,
+                .providerFailures: 0,
+                .likelyIssues: 2
+            ]
+        )
+
+        XCTAssertEqual(presentation.suggestedActions, [
+            SearchWorkspaceSuggestedAction(
+                action: .saveDynamicSet,
+                title: "Save dynamic set",
+                detail: "Pick 4+ Stars updates as the catalog changes",
+                systemImage: "bookmark"
+            ),
+            SearchWorkspaceSuggestedAction(
+                action: .saveSnapshotSet,
+                title: "Freeze 42 results",
+                detail: "Capture this exact result set",
+                systemImage: "camera.viewfinder"
+            ),
+            SearchWorkspaceSuggestedAction(
+                action: .openReviewQueue(.needsKeywords),
+                title: "Review Needs Keywords",
+                detail: "9 photos",
+                systemImage: "tag"
+            ),
+            SearchWorkspaceSuggestedAction(
+                action: .openReviewQueue(.likelyIssues),
+                title: "Review Likely Issues",
+                detail: "2 photos",
+                systemImage: "exclamationmark.triangle"
+            )
+        ])
+    }
+
+    func testSuggestedActionsStayEmptyWithoutAvailableWorkflows() {
+        let presentation = SearchWorkspacePresentation(
+            suggestedName: "All Photographs",
+            totalAssetCount: 0,
+            savedSetCount: 0,
+            starredSetCount: 0,
+            activeFilterChips: [],
+            canSaveDynamicSet: false,
+            canSaveSnapshotSet: false,
+            reviewQueueCounts: [
+                .needsKeywords: 0
+            ]
+        )
+
+        XCTAssertEqual(presentation.suggestedActions, [])
+    }
+
     func testUsesAllPhotographsRefineRowWhenNoFiltersAreActive() {
         let presentation = SearchWorkspacePresentation(
             suggestedName: "All Photographs",

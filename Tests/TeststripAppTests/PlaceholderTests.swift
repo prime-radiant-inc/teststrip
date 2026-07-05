@@ -139,11 +139,12 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("all-scope batch metadata review is not built"))
     }
 
-    func testSearchRefineLedgerTracksActionableKnownTargetsWithoutAgentSuggestions() throws {
+    func testSearchRefineLedgerTracksSuggestedActionsWithoutGeneratedRefinements() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "search.refine" })
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("known target rows are actionable"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("agent set actions are not built"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("suggested actions"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("agent-generated refinements are not built"))
     }
 
     func testSearchSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {

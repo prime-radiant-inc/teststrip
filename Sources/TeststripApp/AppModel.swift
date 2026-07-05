@@ -130,6 +130,41 @@ public enum ReviewQueue: String, Equatable, Hashable, Sendable {
     case providerFailures
 }
 
+public struct ReviewQueuePresentation: Equatable, Sendable {
+    public var title: String
+    public var systemImage: String
+
+    public init(title: String, systemImage: String) {
+        self.title = title
+        self.systemImage = systemImage
+    }
+}
+
+public extension ReviewQueue {
+    var presentation: ReviewQueuePresentation {
+        switch self {
+        case .picks:
+            return ReviewQueuePresentation(title: "Picks", systemImage: "flag.fill")
+        case .rejects:
+            return ReviewQueuePresentation(title: "Rejects", systemImage: "xmark.circle")
+        case .fiveStars:
+            return ReviewQueuePresentation(title: "5 Stars", systemImage: "star.fill")
+        case .needsKeywords:
+            return ReviewQueuePresentation(title: "Needs Keywords", systemImage: "tag")
+        case .needsEvaluation:
+            return ReviewQueuePresentation(title: "Needs Evaluation", systemImage: "wand.and.stars")
+        case .facesFound:
+            return ReviewQueuePresentation(title: "Faces Found", systemImage: "person.2")
+        case .ocrFound:
+            return ReviewQueuePresentation(title: "OCR Found", systemImage: "text.viewfinder")
+        case .likelyIssues:
+            return ReviewQueuePresentation(title: "Likely Issues", systemImage: "exclamationmark.triangle")
+        case .providerFailures:
+            return ReviewQueuePresentation(title: "Provider Failures", systemImage: "bolt.horizontal.circle")
+        }
+    }
+}
+
 extension EvaluationKind {
     var displayName: String {
         switch self {
@@ -5853,7 +5888,7 @@ public final class AppModel {
         reviewQueueSidebarOrder.map { queue in
             SidebarRow(
                 id: "review-\(queue.rawValue)",
-                title: reviewQueueTitle(queue),
+                title: queue.presentation.title,
                 countText: reviewQueueCounts[queue].map(sidebarCountText),
                 target: .reviewQueue(queue)
             )
@@ -5871,29 +5906,6 @@ public final class AppModel {
         .likelyIssues,
         .providerFailures
     ]
-
-    private static func reviewQueueTitle(_ queue: ReviewQueue) -> String {
-        switch queue {
-        case .picks:
-            return "Picks"
-        case .rejects:
-            return "Rejects"
-        case .fiveStars:
-            return "5 Stars"
-        case .needsKeywords:
-            return "Needs Keywords"
-        case .needsEvaluation:
-            return "Needs Evaluation"
-        case .facesFound:
-            return "Faces Found"
-        case .ocrFound:
-            return "OCR Found"
-        case .likelyIssues:
-            return "Likely Issues"
-        case .providerFailures:
-            return "Provider Failures"
-        }
-    }
 
     private static func reviewQueueCounts(repository: CatalogRepository) throws -> [ReviewQueue: Int] {
         var counts: [ReviewQueue: Int] = [:]

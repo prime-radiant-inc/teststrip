@@ -92,26 +92,7 @@ struct SidebarView: View {
     }
 
     private func reviewQueueIconName(_ queue: ReviewQueue) -> String {
-        switch queue {
-        case .picks:
-            return "flag.fill"
-        case .rejects:
-            return "xmark.circle"
-        case .fiveStars:
-            return "star.fill"
-        case .needsKeywords:
-            return "tag"
-        case .needsEvaluation:
-            return "wand.and.stars"
-        case .facesFound:
-            return "person.2"
-        case .ocrFound:
-            return "text.viewfinder"
-        case .likelyIssues:
-            return "exclamationmark.triangle"
-        case .providerFailures:
-            return "bolt.horizontal.circle"
-        }
+        queue.presentation.systemImage
     }
 
     private func evaluationKindIconName(_ kind: EvaluationKind) -> String {

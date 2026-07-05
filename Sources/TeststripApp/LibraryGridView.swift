@@ -48,7 +48,12 @@ struct LibraryGridView: View {
             } else if model.selectedView == .copilot {
                 CopilotView(model: model)
             } else if model.selectedView == .search {
-                SearchWorkspaceView(model: model, assetGrid: AnyView(assetGrid))
+                SearchWorkspaceView(
+                    model: model,
+                    assetGrid: AnyView(assetGrid),
+                    saveDynamicSet: showSaveSearchPopover,
+                    saveSnapshotSet: showSaveSnapshotSetPopover
+                )
             } else if model.selectedView == .timeline {
                 TimelineWorkspaceView(
                     model: model,
@@ -501,9 +506,7 @@ struct LibraryGridView: View {
                     }
 
                     Button {
-                        savedSearchName = model.suggestedSavedSearchName
-                        savedSearchStarred = false
-                        isSavingSearch = true
+                        showSaveSearchPopover()
                     } label: {
                         Image(systemName: "bookmark")
                     }
@@ -516,9 +519,7 @@ struct LibraryGridView: View {
                     .liveMockupPlaceholder(.smartCollectionsBuilder)
 
                     Button {
-                        snapshotSetName = model.suggestedSnapshotSetName
-                        snapshotSetStarred = false
-                        isSavingSnapshotSet = true
+                        showSaveSnapshotSetPopover()
                     } label: {
                         Image(systemName: "camera.viewfinder")
                     }
@@ -1873,6 +1874,18 @@ struct LibraryGridView: View {
             suppressedSelectionScrollAssetID = assetID.rawValue
         }
         model.select(assetID)
+    }
+
+    private func showSaveSearchPopover() {
+        savedSearchName = model.suggestedSavedSearchName
+        savedSearchStarred = false
+        isSavingSearch = true
+    }
+
+    private func showSaveSnapshotSetPopover() {
+        snapshotSetName = model.suggestedSnapshotSetName
+        snapshotSetStarred = false
+        isSavingSnapshotSet = true
     }
 
     private func saveCurrentSearch() {
@@ -3581,6 +3594,30 @@ struct SearchWorkspaceRefineGroup: Equatable, Identifiable {
     var id: String { title }
 }
 
+enum SearchWorkspaceSuggestedActionKind: Equatable {
+    case saveDynamicSet
+    case saveSnapshotSet
+    case openReviewQueue(ReviewQueue)
+}
+
+struct SearchWorkspaceSuggestedAction: Equatable, Identifiable {
+    var action: SearchWorkspaceSuggestedActionKind
+    var title: String
+    var detail: String
+    var systemImage: String
+
+    var id: String {
+        switch action {
+        case .saveDynamicSet:
+            return "save-dynamic-set"
+        case .saveSnapshotSet:
+            return "save-snapshot-set"
+        case .openReviewQueue(let queue):
+            return "review-\(queue.rawValue)"
+        }
+    }
+}
+
 struct SearchWorkspacePresentation: Equatable {
     var title: String
     var resultCountText: String
@@ -3588,6 +3625,7 @@ struct SearchWorkspacePresentation: Equatable {
     var starredSetCountText: String
     var refineRows: [SearchWorkspaceRefineRow]
     var refineGroups: [SearchWorkspaceRefineGroup]
+    var suggestedActions: [SearchWorkspaceSuggestedAction]
 
     init(
         suggestedName: String,
@@ -3595,7 +3633,10 @@ struct SearchWorkspacePresentation: Equatable {
         savedSetCount: Int,
         starredSetCount: Int,
         activeFilterChips: [String],
-        activeFilterRows: [ActiveLibraryFilterRow]? = nil
+        activeFilterRows: [ActiveLibraryFilterRow]? = nil,
+        canSaveDynamicSet: Bool = false,
+        canSaveSnapshotSet: Bool = false,
+        reviewQueueCounts: [ReviewQueue: Int] = [:]
     ) {
         title = suggestedName
         resultCountText = "\(totalAssetCount)"
@@ -3608,6 +3649,13 @@ struct SearchWorkspacePresentation: Equatable {
             refineRows = rows.map { SearchWorkspaceRefineRow(title: $0.title, value: "active", target: $0.target) }
         }
         refineGroups = Self.groupRefineRows(refineRows)
+        suggestedActions = Self.suggestedActions(
+            suggestedName: suggestedName,
+            totalAssetCount: totalAssetCount,
+            canSaveDynamicSet: canSaveDynamicSet,
+            canSaveSnapshotSet: canSaveSnapshotSet,
+            reviewQueueCounts: reviewQueueCounts
+        )
     }
 
     private static func groupRefineRows(_ rows: [SearchWorkspaceRefineRow]) -> [SearchWorkspaceRefineGroup] {
@@ -3666,11 +3714,58 @@ struct SearchWorkspacePresentation: Equatable {
         }
         return "Metadata"
     }
+
+    private static func suggestedActions(
+        suggestedName: String,
+        totalAssetCount: Int,
+        canSaveDynamicSet: Bool,
+        canSaveSnapshotSet: Bool,
+        reviewQueueCounts: [ReviewQueue: Int]
+    ) -> [SearchWorkspaceSuggestedAction] {
+        var actions: [SearchWorkspaceSuggestedAction] = []
+        if canSaveDynamicSet {
+            actions.append(SearchWorkspaceSuggestedAction(
+                action: .saveDynamicSet,
+                title: "Save dynamic set",
+                detail: "\(suggestedName) updates as the catalog changes",
+                systemImage: "bookmark"
+            ))
+        }
+        if canSaveSnapshotSet {
+            actions.append(SearchWorkspaceSuggestedAction(
+                action: .saveSnapshotSet,
+                title: totalAssetCount == 1 ? "Freeze 1 result" : "Freeze \(totalAssetCount) results",
+                detail: "Capture this exact result set",
+                systemImage: "camera.viewfinder"
+            ))
+        }
+        for queue in reviewQueueActionOrder {
+            guard let count = reviewQueueCounts[queue], count > 0 else { continue }
+            actions.append(SearchWorkspaceSuggestedAction(
+                action: .openReviewQueue(queue),
+                title: "Review \(queue.presentation.title)",
+                detail: count == 1 ? "1 photo" : "\(count) photos",
+                systemImage: queue.presentation.systemImage
+            ))
+        }
+        return actions
+    }
+
+    private static let reviewQueueActionOrder: [ReviewQueue] = [
+        .needsKeywords,
+        .needsEvaluation,
+        .facesFound,
+        .ocrFound,
+        .likelyIssues,
+        .providerFailures
+    ]
 }
 
 private struct SearchWorkspaceView: View {
     var model: AppModel
     var assetGrid: AnyView
+    var saveDynamicSet: () -> Void
+    var saveSnapshotSet: () -> Void
 
     private var presentation: SearchWorkspacePresentation {
         SearchWorkspacePresentation(
@@ -3679,7 +3774,10 @@ private struct SearchWorkspaceView: View {
             savedSetCount: model.savedAssetSets.count,
             starredSetCount: model.starredAssetSets.count,
             activeFilterChips: model.activeLibraryFilterChips,
-            activeFilterRows: model.activeLibraryFilterRows
+            activeFilterRows: model.activeLibraryFilterRows,
+            canSaveDynamicSet: model.canSaveCurrentLibraryQuery,
+            canSaveSnapshotSet: model.canSaveCurrentAssetScopeSnapshot,
+            reviewQueueCounts: model.reviewQueueCounts
         )
     }
 
@@ -3756,6 +3854,18 @@ private struct SearchWorkspaceView: View {
                     }
                 }
             }
+            if !presentation.suggestedActions.isEmpty {
+                Divider()
+                    .padding(.vertical, 2)
+                Text("Suggested Actions")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(presentation.suggestedActions) { action in
+                        suggestedActionRow(action)
+                    }
+                }
+            }
             Spacer(minLength: 0)
         }
         .padding(14)
@@ -3810,6 +3920,46 @@ private struct SearchWorkspaceView: View {
             .help("Open \(row.title)")
         } else {
             content
+        }
+    }
+
+    private func suggestedActionRow(_ suggestedAction: SearchWorkspaceSuggestedAction) -> some View {
+        Button {
+            performSuggestedAction(suggestedAction.action)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: suggestedAction.systemImage)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .frame(width: 14)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(suggestedAction.title)
+                        .font(.caption.weight(.medium))
+                        .lineLimit(1)
+                    Text(suggestedAction.detail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .help(suggestedAction.detail)
+    }
+
+    private func performSuggestedAction(_ action: SearchWorkspaceSuggestedActionKind) {
+        switch action {
+        case .saveDynamicSet:
+            saveDynamicSet()
+        case .saveSnapshotSet:
+            saveSnapshotSet()
+        case .openReviewQueue(let queue):
+            do {
+                try model.selectSidebarTarget(.reviewQueue(queue))
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
         }
     }
 
