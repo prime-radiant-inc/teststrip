@@ -554,6 +554,28 @@ public typealias AppCardImportTaskFactory = @Sendable (
     @escaping LibraryImportProgressHandler
 ) -> Task<AppImportOutput, Error>
 
+public struct SecurityScopedResourceAccess: Sendable {
+    public var requiresSuccessfulAccess: Bool
+    public var startAccessing: @Sendable (URL) -> Bool
+    public var stopAccessing: @Sendable (URL) -> Void
+
+    public init(
+        requiresSuccessfulAccess: Bool,
+        startAccessing: @escaping @Sendable (URL) -> Bool,
+        stopAccessing: @escaping @Sendable (URL) -> Void
+    ) {
+        self.requiresSuccessfulAccess = requiresSuccessfulAccess
+        self.startAccessing = startAccessing
+        self.stopAccessing = stopAccessing
+    }
+
+    public static let permissive = SecurityScopedResourceAccess(
+        requiresSuccessfulAccess: false,
+        startAccessing: { $0.startAccessingSecurityScopedResource() },
+        stopAccessing: { $0.stopAccessingSecurityScopedResource() }
+    )
+}
+
 private struct MetadataChange: Equatable {
     var assetID: AssetID
     var before: AssetMetadata
@@ -631,6 +653,9 @@ public final class AppModel {
 
     @ObservationIgnored
     private let workerExecutableURL: URL?
+
+    @ObservationIgnored
+    private let resourceAccess: SecurityScopedResourceAccess
 
     @ObservationIgnored
     private var activeImportTask: Task<AppImportOutput, Error>?
@@ -1213,7 +1238,8 @@ public final class AppModel {
         workerSupervisor: WorkerSupervisor? = nil,
         importTaskFactory: AppImportTaskFactory? = nil,
         cardImportTaskFactory: AppCardImportTaskFactory? = nil,
-        workerExecutableURL: URL? = nil
+        workerExecutableURL: URL? = nil,
+        resourceAccess: SecurityScopedResourceAccess = .permissive
     ) {
         let resolvedTotalAssetCount = totalAssetCount ?? assets.count
         self.sidebarSections = sidebarSections.isEmpty ? Self.defaultSidebarSections(
@@ -1274,6 +1300,7 @@ public final class AppModel {
         self.catalog = catalog
         self.workerSupervisor = workerSupervisor
         self.workerExecutableURL = workerExecutableURL
+        self.resourceAccess = resourceAccess
         self.previewCacheGenerationsByAssetID = [:]
         self.evaluationAssetIDsByItemID = [:]
         self.evaluationProvidersByItemID = [:]
@@ -1404,7 +1431,8 @@ public final class AppModel {
         importTaskFactory: AppImportTaskFactory? = nil,
         cardImportTaskFactory: AppCardImportTaskFactory? = nil,
         workerSupervisor: WorkerSupervisor? = nil,
-        workerExecutableURL: URL? = nil
+        workerExecutableURL: URL? = nil,
+        resourceAccess: SecurityScopedResourceAccess = .permissive
     ) throws -> AppModel {
         try reconcileInterruptedIngestWorkSessions(repository: catalog.repository)
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
@@ -1456,7 +1484,8 @@ public final class AppModel {
             workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory,
             cardImportTaskFactory: cardImportTaskFactory,
-            workerExecutableURL: workerExecutableURL
+            workerExecutableURL: workerExecutableURL,
+            resourceAccess: resourceAccess
         )
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
@@ -2960,8 +2989,24 @@ public final class AppModel {
     ) {
         guard let workerSupervisor else { return }
         let itemID = WorkSessionID(rawValue: "import-\(UUID().uuidString)")
-        let didAccessSource = source.startAccessingSecurityScopedResource()
-        let didAccessDestination = destinationRoot?.startAccessingSecurityScopedResource() ?? false
+        let didAccessSource: Bool
+        let didAccessDestination: Bool
+        do {
+            didAccessSource = try startAccessingImportResource(source)
+            do {
+                if let destinationRoot {
+                    didAccessDestination = try startAccessingImportResource(destinationRoot)
+                } else {
+                    didAccessDestination = false
+                }
+            } catch {
+                stopAccessingImportResource(source, didAccess: didAccessSource)
+                throw error
+            }
+        } catch {
+            failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: error.localizedDescription)
+            return
+        }
         let context = WorkerImportContext(
             source: source,
             destinationRoot: destinationRoot,
@@ -3360,12 +3405,23 @@ public final class AppModel {
         workerImportContextsByItemID.removeAll()
     }
 
-    private func stopAccessingWorkerImportResources(_ context: WorkerImportContext) {
-        if context.didAccessSource {
-            context.source.stopAccessingSecurityScopedResource()
+    private func startAccessingImportResource(_ url: URL) throws -> Bool {
+        let didAccess = resourceAccess.startAccessing(url)
+        if resourceAccess.requiresSuccessfulAccess && !didAccess {
+            throw TeststripError.invalidState("Import permission was not granted for \(url.lastPathComponent)")
         }
-        if context.didAccessDestination {
-            context.destinationRoot?.stopAccessingSecurityScopedResource()
+        return didAccess
+    }
+
+    private func stopAccessingImportResource(_ url: URL, didAccess: Bool) {
+        guard didAccess else { return }
+        resourceAccess.stopAccessing(url)
+    }
+
+    private func stopAccessingWorkerImportResources(_ context: WorkerImportContext) {
+        stopAccessingImportResource(context.source, didAccess: context.didAccessSource)
+        if let destinationRoot = context.destinationRoot {
+            stopAccessingImportResource(destinationRoot, didAccess: context.didAccessDestination)
         }
     }
 
@@ -4061,10 +4117,19 @@ public final class AppModel {
             enqueueWorkerImport(source: folderURL, destinationRoot: nil, command: .importFolder(root: folderURL))
             return
         }
+        let didAccess: Bool
+        do {
+            didAccess = try startAccessingImportResource(folderURL)
+        } catch {
+            failImportBeforeStart(folderURL: folderURL, reason: error.localizedDescription)
+            return
+        }
         startImportActivity(folderURL: folderURL)
-        guard let activityID = activeWork?.id else { return }
+        guard let activityID = activeWork?.id else {
+            stopAccessingImportResource(folderURL, didAccess: didAccess)
+            return
+        }
 
-        let didAccess = folderURL.startAccessingSecurityScopedResource()
         let task = importTaskFactory(
             catalog.paths,
             folderURL,
@@ -4073,9 +4138,7 @@ public final class AppModel {
         activeImportTask = task
         Task { @MainActor [weak self] in
             defer {
-                if didAccess {
-                    folderURL.stopAccessingSecurityScopedResource()
-                }
+                self?.stopAccessingImportResource(folderURL, didAccess: didAccess)
             }
             do {
                 let output = try await task.value
@@ -4132,11 +4195,27 @@ public final class AppModel {
             )
             return
         }
+        let didAccessSource: Bool
+        let didAccessDestination: Bool
+        do {
+            didAccessSource = try startAccessingImportResource(source)
+            do {
+                didAccessDestination = try startAccessingImportResource(destinationRoot)
+            } catch {
+                stopAccessingImportResource(source, didAccess: didAccessSource)
+                throw error
+            }
+        } catch {
+            failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: error.localizedDescription)
+            return
+        }
         startImportActivity(folderURL: source, destinationRoot: destinationRoot)
-        guard let activityID = activeWork?.id else { return }
+        guard let activityID = activeWork?.id else {
+            stopAccessingImportResource(source, didAccess: didAccessSource)
+            stopAccessingImportResource(destinationRoot, didAccess: didAccessDestination)
+            return
+        }
 
-        let didAccessSource = source.startAccessingSecurityScopedResource()
-        let didAccessDestination = destinationRoot.startAccessingSecurityScopedResource()
         let task = cardImportTaskFactory(
             catalog.paths,
             source,
@@ -4146,12 +4225,8 @@ public final class AppModel {
         activeImportTask = task
         Task { @MainActor [weak self] in
             defer {
-                if didAccessSource {
-                    source.stopAccessingSecurityScopedResource()
-                }
-                if didAccessDestination {
-                    destinationRoot.stopAccessingSecurityScopedResource()
-                }
+                self?.stopAccessingImportResource(source, didAccess: didAccessSource)
+                self?.stopAccessingImportResource(destinationRoot, didAccess: didAccessDestination)
             }
             do {
                 let output = try await task.value

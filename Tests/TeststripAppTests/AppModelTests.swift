@@ -5512,6 +5512,183 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBeginImportFolderContinuesWhenSecurityScopeIsUnavailableByDefault() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-local-import-optional-security-scope")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let access = RecordingSecurityScopedResourceAccess(requiresSuccessfulAccess: false)
+        let importTask = RecordingCall()
+        let model = try AppModel.load(
+            catalog: catalog,
+            importTaskFactory: { _, _, _ in
+                importTask.call()
+                return Task {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            },
+            resourceAccess: access.value
+        )
+
+        model.beginImportFolder(photoFolder)
+
+        XCTAssertTrue(importTask.wasCalled)
+        XCTAssertTrue(model.isImporting)
+        XCTAssertEqual(access.startedURLs, [photoFolder])
+        XCTAssertEqual(access.stoppedURLs, [])
+    }
+
+    @MainActor
+    func testBeginImportFolderRejectsSecurityScopeDenialWhenRequired() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-local-import-required-security-scope")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let access = RecordingSecurityScopedResourceAccess(requiresSuccessfulAccess: true)
+        let importTask = RecordingCall()
+        let model = try AppModel.load(
+            catalog: catalog,
+            importTaskFactory: { _, _, _ in
+                importTask.call()
+                return Task {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            },
+            resourceAccess: access.value
+        )
+
+        model.beginImportFolder(photoFolder)
+
+        XCTAssertFalse(importTask.wasCalled)
+        XCTAssertFalse(model.isImporting)
+        XCTAssertNil(model.activeWork)
+        XCTAssertEqual(model.errorMessage, "Import permission was not granted for photos")
+        XCTAssertEqual(model.statusMessage, nil)
+        XCTAssertEqual(access.startedURLs, [photoFolder])
+        XCTAssertEqual(access.stoppedURLs, [])
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.status, .failed)
+        XCTAssertEqual(activity.detail, "Import failed from photos: Import permission was not granted for photos")
+    }
+
+    @MainActor
+    func testBeginImportCardStopsGrantedSourceWhenDestinationScopeIsDenied() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-local-card-destination-scope-denied")
+        let source = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let destinationRoot = directory.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let access = RecordingSecurityScopedResourceAccess(
+            requiresSuccessfulAccess: true,
+            grantedURLs: [source]
+        )
+        let importTask = RecordingCall()
+        let model = try AppModel.load(
+            catalog: catalog,
+            cardImportTaskFactory: { _, _, _, _ in
+                importTask.call()
+                return Task {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            },
+            resourceAccess: access.value
+        )
+
+        model.beginImportCard(source: source, destinationRoot: destinationRoot)
+
+        XCTAssertFalse(importTask.wasCalled)
+        XCTAssertFalse(model.isImporting)
+        XCTAssertNil(model.activeWork)
+        XCTAssertEqual(model.errorMessage, "Import permission was not granted for Library")
+        XCTAssertEqual(access.startedURLs, [source, destinationRoot])
+        XCTAssertEqual(access.stoppedURLs, [source])
+    }
+
+    @MainActor
+    func testBeginImportFolderWithWorkerRejectsSecurityScopeDenialWhenRequiredWithoutEnqueueing() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-required-security-scope")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let access = RecordingSecurityScopedResourceAccess(requiresSuccessfulAccess: true)
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor, resourceAccess: access.value)
+
+        model.beginImportFolder(photoFolder)
+
+        XCTAssertFalse(model.isImporting)
+        XCTAssertEqual(model.errorMessage, "Import permission was not granted for photos")
+        XCTAssertEqual(model.statusMessage, nil)
+        XCTAssertEqual(model.backgroundWorkQueue.items, [])
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(access.startedURLs, [photoFolder])
+        XCTAssertEqual(access.stoppedURLs, [])
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.status, .failed)
+        XCTAssertEqual(activity.detail, "Import failed from photos: Import permission was not granted for photos")
+    }
+
+    @MainActor
+    func testBeginImportFolderWithWorkerHoldsSecurityScopeUntilCompletion() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-holds-security-scope")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let access = RecordingSecurityScopedResourceAccess(
+            requiresSuccessfulAccess: true,
+            grantedURLs: [photoFolder]
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor, resourceAccess: access.value)
+
+        model.beginImportFolder(photoFolder)
+        let itemID = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first?.id)
+
+        XCTAssertEqual(access.startedURLs, [photoFolder])
+        XCTAssertEqual(access.stoppedURLs, [])
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: itemID,
+            message: "imported 0 photos",
+            importedAssetIDs: [],
+            newAssetCount: 0,
+            existingAssetCount: 0
+        )))
+
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+        XCTAssertEqual(access.stoppedURLs, [photoFolder])
+    }
+
+    @MainActor
     func testBeginImportCardWithWorkerRejectsMissingSourceWithoutEnqueueing() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-card-missing-source")
         let missingSource = directory.appendingPathComponent("missing-card", isDirectory: true)
@@ -7047,6 +7224,39 @@ private extension BackgroundWorkItem {
             detail: "Rendering cached previews",
             completedUnitCount: 0,
             totalUnitCount: 10
+        )
+    }
+}
+
+private final class RecordingCall: @unchecked Sendable {
+    private(set) var wasCalled = false
+
+    func call() {
+        wasCalled = true
+    }
+}
+
+private final class RecordingSecurityScopedResourceAccess: @unchecked Sendable {
+    let requiresSuccessfulAccess: Bool
+    private let grantedPaths: Set<String>
+    private(set) var startedURLs: [URL] = []
+    private(set) var stoppedURLs: [URL] = []
+
+    init(requiresSuccessfulAccess: Bool, grantedURLs: [URL] = []) {
+        self.requiresSuccessfulAccess = requiresSuccessfulAccess
+        self.grantedPaths = Set(grantedURLs.map(\.path))
+    }
+
+    var value: SecurityScopedResourceAccess {
+        SecurityScopedResourceAccess(
+            requiresSuccessfulAccess: requiresSuccessfulAccess,
+            startAccessing: { url in
+                self.startedURLs.append(url)
+                return self.grantedPaths.contains(url.path)
+            },
+            stopAccessing: { url in
+                self.stoppedURLs.append(url)
+            }
         )
     }
 }

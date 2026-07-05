@@ -436,7 +436,8 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Show clear runtime failed-folder/card-source errors before worker/local import starts.
 - [x] Show clear runtime missing card-destination errors before worker/local card import starts.
 - [x] Reject unsafe card destinations at the core ingest boundary, including missing roots, non-folders, source-as-destination, destinations nested inside the source, and sources nested inside the destination.
-- [ ] Show clear true panel/security-scope errors.
+- [x] Add an injectable required security-scope access policy with clear pre-start import errors.
+- [ ] Enable required security-scope policy in a sandboxed packaged build once signing/entitlements exist.
 - [x] Add model/presentation tests for import state transitions rather than brittle SwiftUI snapshots.
 - [x] Extend AX import verifier to catch apparent no-op after submit and sheet-dismissed-with-no-visible-progress states. Current coverage adds a post-submit visible-feedback gate and `feedback_visible_seconds`.
 - [ ] Add the imported-grid selection/rating AX probe in Slice 3.
