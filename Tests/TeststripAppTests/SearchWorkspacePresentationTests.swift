@@ -1,4 +1,5 @@
 import XCTest
+import TeststripCore
 @testable import TeststripApp
 
 final class SearchWorkspacePresentationTests: XCTestCase {
@@ -104,6 +105,40 @@ final class SearchWorkspacePresentationTests: XCTestCase {
             SearchWorkspaceRefineGroup(title: "Source & XMP", rows: [
                 SearchWorkspaceRefineRow(title: "Source: Offline", value: "active"),
                 SearchWorkspaceRefineRow(title: "XMP Pending", value: "active")
+            ])
+        ])
+    }
+
+    func testGroupsSelectedSavedSetAsScopeAndShowsSavedRules() {
+        let setID = AssetSetID(rawValue: "ceremony-keepers")
+        let presentation = SearchWorkspacePresentation(
+            suggestedName: "Ceremony Keepers",
+            totalAssetCount: 18,
+            savedSetCount: 3,
+            starredSetCount: 1,
+            activeFilterChips: [],
+            activeFilterRows: [
+                ActiveLibraryFilterRow(title: "Ceremony Keepers", target: .assetSet(setID)),
+                ActiveLibraryFilterRow(title: "Search: ceremony"),
+                ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
+                ActiveLibraryFilterRow(title: "Rating >= 5", target: .reviewQueue(.fiveStars)),
+                ActiveLibraryFilterRow(title: "Needs Keywords", target: .reviewQueue(.needsKeywords))
+            ]
+        )
+
+        XCTAssertEqual(presentation.refineGroups, [
+            SearchWorkspaceRefineGroup(title: "Scope", rows: [
+                SearchWorkspaceRefineRow(title: "Ceremony Keepers", value: "active", target: .assetSet(setID))
+            ]),
+            SearchWorkspaceRefineGroup(title: "Decisions", rows: [
+                SearchWorkspaceRefineRow(title: "Pick", value: "active", target: .reviewQueue(.picks)),
+                SearchWorkspaceRefineRow(title: "Rating >= 5", value: "active", target: .reviewQueue(.fiveStars))
+            ]),
+            SearchWorkspaceRefineGroup(title: "Metadata", rows: [
+                SearchWorkspaceRefineRow(title: "Search: ceremony", value: "active")
+            ]),
+            SearchWorkspaceRefineGroup(title: "Review Queues", rows: [
+                SearchWorkspaceRefineRow(title: "Needs Keywords", value: "active", target: .reviewQueue(.needsKeywords))
             ])
         ])
     }

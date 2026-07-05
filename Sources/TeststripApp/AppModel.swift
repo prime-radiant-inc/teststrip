@@ -1084,6 +1084,12 @@ public final class AppModel {
         if let selectedAssetSet {
             Self.append(ActiveLibraryFilterRow(title: selectedAssetSet.name, target: .assetSet(selectedAssetSet.id)), to: &rows)
         }
+        if let selectedDynamicSetQuery {
+            for predicate in selectedDynamicSetQuery.predicates {
+                guard let row = Self.activeLibraryFilterRow(for: predicate) else { continue }
+                Self.append(row, to: &rows)
+            }
+        }
         let searchIntent = LibrarySearchIntent.parse(librarySearchText)
         if let residualSearch = searchIntent.residualText {
             Self.append(ActiveLibraryFilterRow(title: "Search: \(residualSearch)"), to: &rows)
@@ -4243,6 +4249,51 @@ public final class AppModel {
     private static func append(_ row: ActiveLibraryFilterRow, to rows: inout [ActiveLibraryFilterRow]) {
         guard !rows.contains(where: { $0.title == row.title }) else { return }
         rows.append(row)
+    }
+
+    private static func activeLibraryFilterRow(for predicate: SetQuery.Predicate) -> ActiveLibraryFilterRow? {
+        switch predicate {
+        case .text(let text):
+            ActiveLibraryFilterRow(title: "Search: \(text)")
+        case .ratingAtLeast(let rating):
+            ActiveLibraryFilterRow(title: "Rating >= \(rating)", target: sidebarTarget(for: predicate))
+        case .flag(let flag):
+            ActiveLibraryFilterRow(title: flag.rawValue.capitalized, target: sidebarTarget(for: predicate))
+        case .colorLabel(let label):
+            ActiveLibraryFilterRow(title: "\(label.rawValue.capitalized) Label")
+        case .keyword(let keyword):
+            ActiveLibraryFilterRow(title: "Keyword: \(keyword)")
+        case .missingKeywords:
+            ActiveLibraryFilterRow(title: "Needs Keywords", target: sidebarTarget(for: predicate))
+        case .availability(let availability):
+            ActiveLibraryFilterRow(title: "Source: \(availability.rawValue.capitalized)", target: sidebarTarget(for: predicate))
+        case .folderPrefix(let path):
+            ActiveLibraryFilterRow(title: "Folder: \(URL(fileURLWithPath: path).lastPathComponent)")
+        case .camera(let camera):
+            ActiveLibraryFilterRow(title: "Camera: \(camera)")
+        case .lens(let lens):
+            ActiveLibraryFilterRow(title: "Lens: \(lens)")
+        case .isoAtLeast(let iso):
+            ActiveLibraryFilterRow(title: "ISO >= \(iso)")
+        case .capturedAtOrAfter(let date):
+            ActiveLibraryFilterRow(title: "From \(date.formatted(date: .abbreviated, time: .omitted))")
+        case .capturedBefore(let date):
+            ActiveLibraryFilterRow(title: "Before \(date.formatted(date: .abbreviated, time: .omitted))")
+        case .evaluationKind(let kind):
+            ActiveLibraryFilterRow(title: "Signal: \(kind.displayName)", target: sidebarTarget(for: predicate))
+        case .unevaluated:
+            ActiveLibraryFilterRow(title: "Needs Evaluation", target: sidebarTarget(for: predicate))
+        case .likelyIssue:
+            ActiveLibraryFilterRow(title: "Likely Issues", target: sidebarTarget(for: predicate))
+        case .evaluationFailure:
+            ActiveLibraryFilterRow(title: "Provider Failures", target: sidebarTarget(for: predicate))
+        case .metadataSyncPending:
+            ActiveLibraryFilterRow(title: "XMP Pending", target: sidebarTarget(for: predicate))
+        case .metadataSyncConflict:
+            ActiveLibraryFilterRow(title: "XMP Conflicts", target: sidebarTarget(for: predicate))
+        case .importBatch(let id):
+            ActiveLibraryFilterRow(title: "Import: \(id)")
+        }
     }
 
     private static func sidebarTarget(for predicate: SetQuery.Predicate) -> SidebarRowTarget? {

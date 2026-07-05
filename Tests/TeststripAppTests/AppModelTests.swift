@@ -2239,6 +2239,34 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.activeLibraryFilterChips, model.activeLibraryFilterRows.map(\.title))
     }
 
+    func testActiveLibraryFilterRowsExposeSelectedDynamicSetRules() {
+        let set = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "ceremony-keepers"),
+            name: "Ceremony Keepers",
+            query: SetQuery(predicates: [
+                .text("ceremony"),
+                .flag(.pick),
+                .ratingAtLeast(5),
+                .missingKeywords
+            ])
+        )
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: [],
+            savedAssetSets: [set],
+            selectedAssetSetID: set.id
+        )
+
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Ceremony Keepers", target: .assetSet(set.id)),
+            ActiveLibraryFilterRow(title: "Search: ceremony"),
+            ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
+            ActiveLibraryFilterRow(title: "Rating >= 5", target: .reviewQueue(.fiveStars)),
+            ActiveLibraryFilterRow(title: "Needs Keywords", target: .reviewQueue(.needsKeywords))
+        ])
+    }
+
     func testTimelineSidebarRowOpensTimelineView() throws {
         let calendar = Self.gregorianUTC
         let asset = makeAsset(

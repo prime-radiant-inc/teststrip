@@ -3321,11 +3321,20 @@ struct SearchWorkspacePresentation: Equatable {
         let order = ["Scope", "Decisions", "Metadata", "Review Queues", "Signals", "Source & XMP"]
         var groupedRows: [String: [SearchWorkspaceRefineRow]] = [:]
         for row in rows {
-            groupedRows[groupTitle(for: row.title), default: []].append(row)
+            groupedRows[groupTitle(for: row), default: []].append(row)
         }
         return order.compactMap { title in
             guard let rows = groupedRows[title], !rows.isEmpty else { return nil }
             return SearchWorkspaceRefineGroup(title: title, rows: rows)
+        }
+    }
+
+    private static func groupTitle(for row: SearchWorkspaceRefineRow) -> String {
+        switch row.target {
+        case .assetSet?:
+            return "Scope"
+        default:
+            return groupTitle(for: row.title)
         }
     }
 
