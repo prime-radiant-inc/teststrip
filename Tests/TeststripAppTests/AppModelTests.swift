@@ -2187,6 +2187,45 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 
+    func testSelectingSidebarTargetAppliesReviewQueueWithoutConstructingSidebarRow() throws {
+        let evaluated = makeAsset(id: "evaluated-target", path: "/Photos/Target/evaluated.jpg", rating: 0)
+        let unevaluated = makeAsset(id: "unevaluated-target", path: "/Photos/Target/unevaluated.jpg", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "sidebar-target-review-queue",
+            assets: [evaluated, unevaluated]
+        )
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: evaluated.id, kind: .object, value: .label("camera"), confidence: 0.8, provenance: provenance)
+        ])
+
+        try model.selectSidebarTarget(.reviewQueue(.needsEvaluation))
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertTrue(model.needsEvaluationFilter)
+        XCTAssertEqual(model.assets.map(\.id), [unevaluated.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
+    func testActiveLibraryFilterRowsBridgeConcreteFiltersToExistingTargets() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        model.librarySearchText = "picks 5 stars needs evaluation"
+        model.availabilityFilter = .missing
+        model.evaluationKindFilter = .faceQuality
+        model.metadataSyncPendingFilter = true
+
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
+            ActiveLibraryFilterRow(title: "Rating >= 5", target: .reviewQueue(.fiveStars)),
+            ActiveLibraryFilterRow(title: "Needs Evaluation", target: .reviewQueue(.needsEvaluation)),
+            ActiveLibraryFilterRow(title: "Source: Missing", target: .sourceAvailability(.missing)),
+            ActiveLibraryFilterRow(title: "Signal: Face Quality", target: .evaluationKind(.faceQuality)),
+            ActiveLibraryFilterRow(title: "XMP Pending", target: .metadataSyncPending)
+        ])
+        XCTAssertEqual(model.activeLibraryFilterChips, model.activeLibraryFilterRows.map(\.title))
+    }
+
     func testTimelineSidebarRowOpensTimelineView() throws {
         let calendar = Self.gregorianUTC
         let asset = makeAsset(

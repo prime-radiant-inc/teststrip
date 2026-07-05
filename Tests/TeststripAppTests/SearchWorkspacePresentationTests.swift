@@ -32,8 +32,40 @@ final class SearchWorkspacePresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.refineRows, [
-            SearchWorkspaceRefineRow(title: "All photographs", value: "current scope")
+            SearchWorkspaceRefineRow(title: "All photographs", value: "current scope", target: .allPhotographs)
         ])
+    }
+
+    func testRefineRowsPreserveActionTargetsWhenGrouped() {
+        let presentation = SearchWorkspacePresentation(
+            suggestedName: "Review Targets",
+            totalAssetCount: 18,
+            savedSetCount: 3,
+            starredSetCount: 1,
+            activeFilterChips: [],
+            activeFilterRows: [
+                ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
+                ActiveLibraryFilterRow(title: "Signal: Face Quality", target: .evaluationKind(.faceQuality)),
+                ActiveLibraryFilterRow(title: "XMP Pending", target: .metadataSyncPending),
+                ActiveLibraryFilterRow(title: "Camera: Canon", target: nil)
+            ]
+        )
+
+        XCTAssertEqual(presentation.refineRows.map(\.target), [
+            .reviewQueue(.picks),
+            .evaluationKind(.faceQuality),
+            .metadataSyncPending,
+            nil
+        ])
+        XCTAssertEqual(
+            presentation.refineGroups.flatMap(\.rows).map(\.target),
+            [
+                .reviewQueue(.picks),
+                nil,
+                .evaluationKind(.faceQuality),
+                .metadataSyncPending
+            ]
+        )
     }
 
     func testGroupsActiveFiltersIntoMockupRefineSections() {

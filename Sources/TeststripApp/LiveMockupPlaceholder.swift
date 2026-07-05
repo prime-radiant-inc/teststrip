@@ -95,7 +95,7 @@ public enum LiveMockupPlaceholders {
         id: "search.refine",
         title: "Search refine rail",
         intendedBehavior: "Show parsed facets, query refinements, and agent-suggested set actions beside search results.",
-        currentFallback: "Search view now shows a deterministic Teststrip Reads rail from active filter chips; suggested refinements and agent set actions are not built."
+        currentFallback: "Search view shows a deterministic Teststrip Reads rail from active filter chips, and known target rows are actionable; suggested refinements and agent set actions are not built."
     )
 
     public static let smartCollectionsBuilder = LiveMockupPlaceholder(

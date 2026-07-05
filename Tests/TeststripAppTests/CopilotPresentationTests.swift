@@ -36,9 +36,19 @@ final class CopilotPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.metricRows.map(\.value), ["1204", "2", "1", "4"])
         XCTAssertEqual(presentation.reviewRows.map(\.title), ["Needs Evaluation", "Likely Issues", "Provider Failures"])
         XCTAssertEqual(presentation.reviewRows.map(\.countText), ["81", "5", "2"])
+        XCTAssertEqual(presentation.reviewRows.map(\.target), [
+            .reviewQueue(.needsEvaluation),
+            .reviewQueue(.likelyIssues),
+            .reviewQueue(.providerFailures)
+        ])
         XCTAssertTrue(presentation.reviewRows.allSatisfy(\.isActionEnabled))
         XCTAssertEqual(presentation.signalRows.map(\.title), ["Objects", "Focus", "Text"])
         XCTAssertEqual(presentation.signalRows.map(\.countText), ["77", "52", "11"])
+        XCTAssertEqual(presentation.signalRows.map(\.target), [
+            .evaluationKind(.object),
+            .evaluationKind(.focus),
+            .evaluationKind(.ocrText)
+        ])
     }
 
     func testPresentationStaysHonestWhenNoSignalsExist() {

@@ -178,6 +178,18 @@ public struct SidebarRow: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct ActiveLibraryFilterRow: Identifiable, Equatable, Sendable {
+    public var title: String
+    public var target: SidebarRowTarget?
+
+    public var id: String { title }
+
+    public init(title: String, target: SidebarRowTarget? = nil) {
+        self.title = title
+        self.target = target
+    }
+}
+
 public enum SidebarRowTone: String, Equatable, Sendable {
     case neutral
     case accent
@@ -1055,76 +1067,98 @@ public final class AppModel {
     }
 
     public var activeLibraryFilterChips: [String] {
-        var chips: [String] = []
+        activeLibraryFilterRows.map(\.title)
+    }
+
+    public var activeLibraryFilterRows: [ActiveLibraryFilterRow] {
+        var rows: [ActiveLibraryFilterRow] = []
         if let selectedAssetSet {
-            chips.append(selectedAssetSet.name)
+            Self.append(ActiveLibraryFilterRow(title: selectedAssetSet.name, target: .assetSet(selectedAssetSet.id)), to: &rows)
         }
         let searchIntent = LibrarySearchIntent.parse(librarySearchText)
         if let residualSearch = searchIntent.residualText {
-            chips.append("Search: \(residualSearch)")
+            Self.append(ActiveLibraryFilterRow(title: "Search: \(residualSearch)"), to: &rows)
         }
-        for chip in searchIntent.chips {
-            Self.append(chip, to: &chips)
+        for (index, chip) in searchIntent.chips.enumerated() {
+            let target = searchIntent.predicates.indices.contains(index)
+                ? Self.sidebarTarget(for: searchIntent.predicates[index])
+                : nil
+            Self.append(ActiveLibraryFilterRow(title: chip, target: target), to: &rows)
         }
         let trimmedKeyword = keywordFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedKeyword.isEmpty {
-            Self.append("Keyword: \(trimmedKeyword)", to: &chips)
+            Self.append(ActiveLibraryFilterRow(title: "Keyword: \(trimmedKeyword)"), to: &rows)
         }
         let trimmedFolder = folderFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedFolder.isEmpty {
-            Self.append("Folder: \(URL(fileURLWithPath: trimmedFolder).lastPathComponent)", to: &chips)
+            Self.append(ActiveLibraryFilterRow(title: "Folder: \(URL(fileURLWithPath: trimmedFolder).lastPathComponent)"), to: &rows)
         }
         if let minimumRatingFilter {
-            Self.append("Rating >= \(minimumRatingFilter)", to: &chips)
+            Self.append(
+                ActiveLibraryFilterRow(
+                    title: "Rating >= \(minimumRatingFilter)",
+                    target: minimumRatingFilter == 5 ? .reviewQueue(.fiveStars) : nil
+                ),
+                to: &rows
+            )
         }
         if let flagFilter {
-            Self.append(flagFilter.rawValue.capitalized, to: &chips)
+            Self.append(
+                ActiveLibraryFilterRow(title: flagFilter.rawValue.capitalized, target: Self.sidebarTarget(for: .flag(flagFilter))),
+                to: &rows
+            )
         }
         if let colorLabelFilter {
-            Self.append("\(colorLabelFilter.rawValue.capitalized) Label", to: &chips)
+            Self.append(ActiveLibraryFilterRow(title: "\(colorLabelFilter.rawValue.capitalized) Label"), to: &rows)
         }
         let trimmedCamera = cameraFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedCamera.isEmpty {
-            Self.append("Camera: \(trimmedCamera)", to: &chips)
+            Self.append(ActiveLibraryFilterRow(title: "Camera: \(trimmedCamera)"), to: &rows)
         }
         let trimmedLens = lensFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedLens.isEmpty {
-            Self.append("Lens: \(trimmedLens)", to: &chips)
+            Self.append(ActiveLibraryFilterRow(title: "Lens: \(trimmedLens)"), to: &rows)
         }
         if let minimumISOFilter {
-            Self.append("ISO >= \(minimumISOFilter)", to: &chips)
+            Self.append(ActiveLibraryFilterRow(title: "ISO >= \(minimumISOFilter)"), to: &rows)
         }
         if let captureDateStartFilter {
-            Self.append("From \(captureDateStartFilter.formatted(date: .abbreviated, time: .omitted))", to: &chips)
+            Self.append(ActiveLibraryFilterRow(title: "From \(captureDateStartFilter.formatted(date: .abbreviated, time: .omitted))"), to: &rows)
         }
         if let captureDateEndFilter {
-            Self.append("Before \(captureDateEndFilter.formatted(date: .abbreviated, time: .omitted))", to: &chips)
+            Self.append(ActiveLibraryFilterRow(title: "Before \(captureDateEndFilter.formatted(date: .abbreviated, time: .omitted))"), to: &rows)
         }
         if let availabilityFilter {
-            Self.append("Source: \(availabilityFilter.rawValue.capitalized)", to: &chips)
+            Self.append(
+                ActiveLibraryFilterRow(title: "Source: \(availabilityFilter.rawValue.capitalized)", target: .sourceAvailability(availabilityFilter)),
+                to: &rows
+            )
         }
         if let evaluationKindFilter {
-            Self.append("Signal: \(evaluationKindFilter.displayName)", to: &chips)
+            Self.append(
+                ActiveLibraryFilterRow(title: "Signal: \(evaluationKindFilter.displayName)", target: .evaluationKind(evaluationKindFilter)),
+                to: &rows
+            )
         }
         if needsKeywordsFilter {
-            Self.append("Needs Keywords", to: &chips)
+            Self.append(ActiveLibraryFilterRow(title: "Needs Keywords", target: .reviewQueue(.needsKeywords)), to: &rows)
         }
         if needsEvaluationFilter {
-            Self.append("Needs Evaluation", to: &chips)
+            Self.append(ActiveLibraryFilterRow(title: "Needs Evaluation", target: .reviewQueue(.needsEvaluation)), to: &rows)
         }
         if likelyIssuesFilter {
-            Self.append("Likely Issues", to: &chips)
+            Self.append(ActiveLibraryFilterRow(title: "Likely Issues", target: .reviewQueue(.likelyIssues)), to: &rows)
         }
         if providerFailuresFilter {
-            Self.append("Provider Failures", to: &chips)
+            Self.append(ActiveLibraryFilterRow(title: "Provider Failures", target: .reviewQueue(.providerFailures)), to: &rows)
         }
         if metadataSyncPendingFilter {
-            Self.append("XMP Pending", to: &chips)
+            Self.append(ActiveLibraryFilterRow(title: "XMP Pending", target: .metadataSyncPending), to: &rows)
         }
         if metadataSyncConflictFilter {
-            Self.append("XMP Conflicts", to: &chips)
+            Self.append(ActiveLibraryFilterRow(title: "XMP Conflicts", target: .metadataSyncConflicts), to: &rows)
         }
-        return chips
+        return rows
     }
 
     public var canSaveSelectedAssetAsManualSet: Bool {
@@ -1687,7 +1721,11 @@ public final class AppModel {
     }
 
     public func selectSidebarRow(_ row: SidebarRow) throws {
-        switch row.target {
+        try selectSidebarTarget(row.target)
+    }
+
+    public func selectSidebarTarget(_ target: SidebarRowTarget) throws {
+        switch target {
         case .allPhotographs:
             selectedAssetSetID = nil
             selectedView = .grid
@@ -4160,6 +4198,40 @@ public final class AppModel {
     private static func append(_ value: String, to values: inout [String]) {
         guard !values.contains(value) else { return }
         values.append(value)
+    }
+
+    private static func append(_ row: ActiveLibraryFilterRow, to rows: inout [ActiveLibraryFilterRow]) {
+        guard !rows.contains(where: { $0.title == row.title }) else { return }
+        rows.append(row)
+    }
+
+    private static func sidebarTarget(for predicate: SetQuery.Predicate) -> SidebarRowTarget? {
+        switch predicate {
+        case .ratingAtLeast(let rating):
+            rating == 5 ? .reviewQueue(.fiveStars) : nil
+        case .flag(.pick):
+            .reviewQueue(.picks)
+        case .flag(.reject):
+            .reviewQueue(.rejects)
+        case .missingKeywords:
+            .reviewQueue(.needsKeywords)
+        case .availability(let availability):
+            .sourceAvailability(availability)
+        case .evaluationKind(let kind):
+            .evaluationKind(kind)
+        case .unevaluated:
+            .reviewQueue(.needsEvaluation)
+        case .likelyIssue:
+            .reviewQueue(.likelyIssues)
+        case .evaluationFailure:
+            .reviewQueue(.providerFailures)
+        case .metadataSyncPending:
+            .metadataSyncPending
+        case .metadataSyncConflict:
+            .metadataSyncConflicts
+        default:
+            nil
+        }
     }
 
     private func currentLibraryQuery() -> SetQuery? {

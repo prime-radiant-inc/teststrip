@@ -3211,6 +3211,7 @@ private extension View {
 struct SearchWorkspaceRefineRow: Equatable, Identifiable {
     var title: String
     var value: String
+    var target: SidebarRowTarget? = nil
 
     var id: String { "\(title)|\(value)" }
 }
@@ -3235,16 +3236,18 @@ struct SearchWorkspacePresentation: Equatable {
         totalAssetCount: Int,
         savedSetCount: Int,
         starredSetCount: Int,
-        activeFilterChips: [String]
+        activeFilterChips: [String],
+        activeFilterRows: [ActiveLibraryFilterRow]? = nil
     ) {
         title = suggestedName
         resultCountText = "\(totalAssetCount)"
         savedSetCountText = "\(savedSetCount)"
         starredSetCountText = "\(starredSetCount)"
-        if activeFilterChips.isEmpty {
-            refineRows = [SearchWorkspaceRefineRow(title: "All photographs", value: "current scope")]
+        let rows = activeFilterRows ?? activeFilterChips.map { ActiveLibraryFilterRow(title: $0) }
+        if rows.isEmpty {
+            refineRows = [SearchWorkspaceRefineRow(title: "All photographs", value: "current scope", target: .allPhotographs)]
         } else {
-            refineRows = activeFilterChips.map { SearchWorkspaceRefineRow(title: $0, value: "active") }
+            refineRows = rows.map { SearchWorkspaceRefineRow(title: $0.title, value: "active", target: $0.target) }
         }
         refineGroups = Self.groupRefineRows(refineRows)
     }
@@ -3308,7 +3311,8 @@ private struct SearchWorkspaceView: View {
             totalAssetCount: model.totalAssetCount,
             savedSetCount: model.savedAssetSets.count,
             starredSetCount: model.starredAssetSets.count,
-            activeFilterChips: model.activeLibraryFilterChips
+            activeFilterChips: model.activeLibraryFilterChips,
+            activeFilterRows: model.activeLibraryFilterRows
         )
     }
 
@@ -3356,12 +3360,7 @@ private struct SearchWorkspaceView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(presentation.refineRows) { row in
-                            Text(row.title)
-                                .font(.caption.weight(.medium))
-                                .lineLimit(1)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                            refineChip(row)
                         }
                     }
                 }
@@ -3385,20 +3384,7 @@ private struct SearchWorkspaceView: View {
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                         ForEach(group.rows) { row in
-                            HStack(spacing: 8) {
-                                Image(systemName: row.value == "active" ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(row.value == "active" ? .orange : .secondary)
-                                    .font(.caption)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(row.title)
-                                        .font(.caption.weight(.medium))
-                                        .lineLimit(1)
-                                    Text(row.value)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
+                            refineRailRow(row)
                         }
                     }
                 }
@@ -3408,6 +3394,65 @@ private struct SearchWorkspaceView: View {
         .padding(14)
         .frame(width: 214, alignment: .topLeading)
         .liveMockupPlaceholder(.searchRefine)
+    }
+
+    @ViewBuilder
+    private func refineChip(_ row: SearchWorkspaceRefineRow) -> some View {
+        let chip = Text(row.title)
+            .font(.caption.weight(.medium))
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+        if row.target != nil {
+            Button {
+                selectRefineRow(row)
+            } label: {
+                chip
+            }
+            .buttonStyle(.plain)
+            .help("Open \(row.title)")
+        } else {
+            chip
+        }
+    }
+
+    @ViewBuilder
+    private func refineRailRow(_ row: SearchWorkspaceRefineRow) -> some View {
+        let content = HStack(spacing: 8) {
+            Image(systemName: row.value == "active" ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(row.value == "active" ? .orange : .secondary)
+                .font(.caption)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.title)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                Text(row.value)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        if row.target != nil {
+            Button {
+                selectRefineRow(row)
+            } label: {
+                content
+            }
+            .buttonStyle(.plain)
+            .help("Open \(row.title)")
+        } else {
+            content
+        }
+    }
+
+    private func selectRefineRow(_ row: SearchWorkspaceRefineRow) {
+        guard let target = row.target else { return }
+        do {
+            try model.selectSidebarTarget(target)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     private func searchMetric(title: String, value: String) -> some View {

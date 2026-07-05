@@ -167,7 +167,7 @@ struct CopilotView: View {
     private func select(_ row: CopilotActionRow) {
         guard let target = row.target else { return }
         do {
-            try model.selectSidebarRow(SidebarRow(id: "copilot-\(row.id)", title: row.title, target: target))
+            try model.selectSidebarTarget(target)
         } catch {
             model.errorMessage = error.localizedDescription
         }
