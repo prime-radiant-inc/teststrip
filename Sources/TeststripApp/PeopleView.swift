@@ -41,25 +41,38 @@ struct PeopleView: View {
             HStack(spacing: 7) {
                 Image(systemName: "sparkles")
                     .foregroundStyle(.orange)
-                Text(presentation.statusTitle)
+                Text(presentation.reviewStripTitle)
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.orange)
+                Spacer(minLength: 0)
+                Text("0 matched")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
 
-            Text(presentation.statusDetail)
+            Text(presentation.reviewStripDetail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 12)], alignment: .leading, spacing: 12) {
-                ForEach(presentation.signalRows) { row in
-                    Button {
-                        selectPeopleSignal(row)
-                    } label: {
-                        peopleSignalCard(row)
+            if presentation.reviewCards.isEmpty {
+                Text(presentation.namedPeopleEmptyText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], alignment: .leading, spacing: 12) {
+                    ForEach(presentation.reviewCards) { card in
+                        Button {
+                            selectPeopleReviewCard(card)
+                        } label: {
+                            peopleReviewCard(card)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!card.isActionEnabled)
+                        .help(card.isActionEnabled ? card.suggestedActionTitle : "Face naming is not built yet")
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!row.isActionEnabled)
-                    .help(row.isActionEnabled ? "Show \(row.title.lowercased())" : row.detail)
                 }
             }
         }
@@ -73,14 +86,14 @@ struct PeopleView: View {
 
     private var pendingPeoplePanel: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text("PEOPLE GROUPS")
+            Text(presentation.namedPeopleTitle)
                 .font(.caption2.monospaced().weight(.semibold))
                 .foregroundStyle(.secondary)
 
             HStack(alignment: .top, spacing: 12) {
                 Circle()
                     .fill(avatarGradient(seed: "pending-face-groups", colors: [.orange, .brown]))
-                    .frame(width: 74, height: 74)
+                    .frame(width: 58, height: 58)
                     .overlay {
                         Circle()
                             .strokeBorder(Color.white.opacity(0.12))
@@ -88,9 +101,9 @@ struct PeopleView: View {
                     .shadow(color: .black.opacity(0.35), radius: 8, y: 3)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Naming is not built yet")
+                    Text("Named people are not built yet")
                         .font(.headline.weight(.semibold))
-                    Text("Unnamed face review is live from local face signals; clustering, naming, and merge decisions stay disabled until identity grouping ships.")
+                    Text(presentation.namedPeopleEmptyText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -114,40 +127,51 @@ struct PeopleView: View {
         }
     }
 
-    private func peopleSignalCard(_ row: PeopleSignalRow) -> some View {
+    private func peopleReviewCard(_ card: PeopleReviewCard) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: row.systemImage)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.orange)
-                .frame(width: 42, height: 42)
-                .background(Color.orange.opacity(0.12), in: Circle())
+            Circle()
+                .fill(avatarGradient(seed: card.id, colors: card.gradientColors))
+                .frame(width: 52, height: 52)
+                .overlay {
+                    Circle()
+                        .strokeBorder(Color.white.opacity(0.12))
+                }
             VStack(alignment: .leading, spacing: 6) {
-                Text(row.title)
-                    .font(.caption.weight(.semibold))
-                Text(row.detail)
+                Text(card.countText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text(card.suggestedActionTitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(card.isActionEnabled ? .primary : .secondary)
+                    if !card.isNamingEnabled {
+                        Image(systemName: "lock")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .liveMockupPlaceholder(.peopleFaceActions)
+                    }
+                }
+                Text(card.title)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
-            Text(row.countText)
-                .font(.caption.monospacedDigit().weight(.semibold))
-                .foregroundStyle(.primary)
-            if row.isActionEnabled {
+            Spacer(minLength: 0)
+            if card.isActionEnabled {
                 Image(systemName: "arrow.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
         }
         .padding(12)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(Color.white.opacity(0.07))
         }
     }
 
-    private func selectPeopleSignal(_ row: PeopleSignalRow) {
-        guard let kind = row.filterKind else { return }
+    private func selectPeopleReviewCard(_ card: PeopleReviewCard) {
+        guard let kind = card.filterKind else { return }
         do {
             try model.selectPeopleSignal(kind)
         } catch {
@@ -199,6 +223,59 @@ struct PeoplePresentation: Equatable {
         return "Run evaluation on catalog photos to populate local face review queues."
     }
 
+    var reviewStripTitle: String {
+        guard photosWithFaceSignals > 0 else {
+            return "TESTSTRIP · NO FACE REVIEW SIGNALS"
+        }
+        return "TESTSTRIP · \(Self.photoCountDescription(photosWithDetectedFaces).uppercased()) NEED FACE REVIEW"
+    }
+
+    var reviewStripDetail: String {
+        guard photosWithFaceSignals > 0 else {
+            return "Run evaluation on catalog photos to populate local face review queues."
+        }
+        if photosWithFaceQualitySignals > 0 {
+            return "\(Self.photoCountDescription(photosWithFaceQualitySignals)) have face-quality signals; named people are not built yet."
+        }
+        return "\(Self.photoCountDescription(photosWithDetectedFaces)) have local face detections; named people are not built yet."
+    }
+
+    var reviewCards: [PeopleReviewCard] {
+        var cards: [PeopleReviewCard] = []
+        if photosWithDetectedFaces > 0, let faceSignalKind {
+            cards.append(PeopleReviewCard(
+                id: "unnamed-faces",
+                title: "Unnamed faces",
+                countText: Self.photoCountDescription(photosWithDetectedFaces),
+                suggestedActionTitle: "Review faces",
+                filterKind: faceSignalKind,
+                gradientColors: [.orange, .brown]
+            ))
+        }
+        if photosWithFaceQualitySignals > 0 {
+            cards.append(PeopleReviewCard(
+                id: "face-quality",
+                title: "Face quality checks",
+                countText: Self.photoCountDescription(photosWithFaceQualitySignals),
+                suggestedActionTitle: "Review quality",
+                filterKind: .faceQuality,
+                gradientColors: [.orange, .yellow]
+            ))
+        }
+        return cards
+    }
+
+    var namedPeopleTitle: String {
+        "ALL PEOPLE"
+    }
+
+    var namedPeopleEmptyText: String {
+        if photosWithFaceSignals > 0 {
+            return "Named people will appear here after face clustering and confirmation ship."
+        }
+        return "Run evaluation to find faces before naming people."
+    }
+
     var signalRows: [PeopleSignalRow] {
         [
             PeopleSignalRow(
@@ -227,6 +304,10 @@ struct PeoplePresentation: Equatable {
             PeopleFaceActionRow(title: "Dismiss false positives")
         ]
     }
+
+    private static func photoCountDescription(_ count: Int) -> String {
+        count == 1 ? "1 photo" : "\(count) photos"
+    }
 }
 
 struct PeopleSignalRow: Equatable, Identifiable {
@@ -236,6 +317,20 @@ struct PeopleSignalRow: Equatable, Identifiable {
     var countText: String
     var systemImage: String
     var filterKind: EvaluationKind?
+
+    var isActionEnabled: Bool {
+        filterKind != nil
+    }
+}
+
+struct PeopleReviewCard: Equatable, Identifiable {
+    var id: String
+    var title: String
+    var countText: String
+    var suggestedActionTitle: String
+    var filterKind: EvaluationKind?
+    var isNamingEnabled = false
+    var gradientColors: [Color]
 
     var isActionEnabled: Bool {
         filterKind != nil

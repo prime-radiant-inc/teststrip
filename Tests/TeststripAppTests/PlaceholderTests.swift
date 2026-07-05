@@ -107,9 +107,13 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5a" })
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("unnamed face review"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("face-review strip"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("named-people empty state"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("naming remains disabled"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("no named identities"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("unnamed face review"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("face-review strip"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("named-people empty state"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("naming remains disabled"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("no named identities"))
     }
