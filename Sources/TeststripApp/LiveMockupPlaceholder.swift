@@ -68,7 +68,7 @@ public enum LiveMockupPlaceholders {
         id: "sidebar.people",
         title: "People navigation",
         intendedBehavior: "Browse face groups and named people once people recognition and grouping are productized.",
-        currentFallback: "Selectable People route with an unnamed face review strip, Apple Vision scan action for visible cached previews, face-review strip affordances backed by real face signals, manual Name selection confirmation, persisted named people rows when user-confirmed groups exist, and a named-people empty state; automatic clustering and face-level naming remain disabled."
+        currentFallback: "Selectable People route with an unnamed face review strip, Apple Vision scan action for visible cached previews, face-review strip affordances backed by real face signals, manual Name selection confirmation, selected-photo face-review dismissal, persisted named people rows, and manual merge between confirmed people; automatic clustering, split, and face-box-level naming remain disabled."
     )
 
     public static let peopleFaceActions = LiveMockupPlaceholder(
@@ -297,7 +297,7 @@ public enum LiveMockupDesignSurfaces {
             title: "People",
             status: .partial,
             placeholder: .peopleSidebar,
-            currentImplementation: "People route is selectable and shows an unnamed face review strip, Apple Vision scan action for visible cached previews, face-review strip affordances, catalog-backed review entrypoints, manual Name selection confirmation, persisted named people rows when user-confirmed groups exist, and a named-people empty state; automatic clustering and face-level naming remain disabled."
+            currentImplementation: "People route is selectable and shows an unnamed face review strip, Apple Vision scan action for visible cached previews, face-review strip affordances, catalog-backed review entrypoints, manual Name selection confirmation, selected-photo face-review dismissal, persisted named people rows, and manual merge between confirmed people; automatic clustering, split, and face-box-level naming remain disabled."
         ),
         LiveMockupDesignSurface(
             designID: "5b",

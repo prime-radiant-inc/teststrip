@@ -118,6 +118,15 @@ struct PeopleView: View {
             .disabled(!model.canConfirmSelectedPerson)
             .help(model.canConfirmSelectedPerson ? "Create a confirmed person group from the selected photos" : "Select photos before naming a person")
 
+            Button {
+                dismissSelectedFaceReviewAssets()
+            } label: {
+                Label("Dismiss face review", systemImage: "eye.slash")
+            }
+            .controlSize(.small)
+            .disabled(!model.canDismissSelectedFaceReviewAssets)
+            .help(model.canDismissSelectedFaceReviewAssets ? "Remove the selected photos from People face-review queues" : "Select photos before dismissing face review")
+
             if presentation.namedPeople.isEmpty {
                 HStack(alignment: .top, spacing: 12) {
                     Circle()
@@ -212,6 +221,20 @@ struct PeopleView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
+            if presentation.namedPeople.count > 1 {
+                Menu {
+                    ForEach(presentation.namedPeople.filter { $0.id != person.id }) { target in
+                        Button("Merge into \(target.name)") {
+                            mergePerson(person, into: target)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrow.triangle.merge")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Merge this person into another confirmed group")
+            }
         }
         .padding(12)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
@@ -276,6 +299,22 @@ struct PeopleView: View {
     private func requestVisibleFaceScan() {
         do {
             try model.requestVisibleAssetEvaluations(providers: ["apple-vision"])
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func mergePerson(_ person: NamedPersonPresentation, into target: NamedPersonPresentation) {
+        do {
+            try model.mergePerson(sourceID: person.id, into: target.id)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func dismissSelectedFaceReviewAssets() {
+        do {
+            try model.dismissSelectedFaceReviewAssets()
         } catch {
             model.errorMessage = error.localizedDescription
         }

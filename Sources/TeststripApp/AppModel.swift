@@ -1589,6 +1589,10 @@ public final class AppModel {
         catalog != nil && !selectedPeopleCandidateAssetIDs.isEmpty
     }
 
+    public var canDismissSelectedFaceReviewAssets: Bool {
+        catalog != nil && !selectedPeopleCandidateAssetIDs.isEmpty
+    }
+
     private var selectedPeopleCandidateAssetIDs: [AssetID] {
         let batchAssetIDs = selectedBatchAssetIDsInCatalogOrder
         if !batchAssetIDs.isEmpty {
@@ -1628,6 +1632,28 @@ public final class AppModel {
             throw CatalogError.notFound(id)
         }
         return person
+    }
+
+    public func mergePerson(sourceID: String, into targetID: String) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        try catalog.repository.mergePerson(sourceID: sourceID, into: targetID)
+        catalogPeople = try catalog.repository.people()
+    }
+
+    public func dismissSelectedFaceReviewAssets() throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let assetIDs = selectedPeopleCandidateAssetIDs
+        guard !assetIDs.isEmpty else {
+            throw TeststripError.invalidState("select photos before dismissing face review")
+        }
+        try catalog.repository.dismissFaceAssets(assetIDs)
+        catalogPeople = try catalog.repository.people()
+        refreshCatalogEvaluationKindSummaries()
+        try loadCatalogPage(preferredSelection: nil)
     }
 
     public init(

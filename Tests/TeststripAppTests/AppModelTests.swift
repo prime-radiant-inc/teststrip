@@ -4082,6 +4082,57 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.assetIDs(personID: "person-maya"), [batchA.id, batchB.id])
     }
 
+    func testMergePersonPersistsAndRefreshesCatalogPeople() throws {
+        let targetAsset = makeAsset(id: "target-asset", path: "/Volumes/NAS/Wedding/target.jpg", rating: 4)
+        let sourceAsset = makeAsset(id: "source-asset", path: "/Volumes/NAS/Wedding/source.jpg", rating: 4)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-merge-person",
+            assets: [targetAsset, sourceAsset],
+            configureRepository: { repository in
+                try repository.upsertPerson(id: "target", name: "Maya")
+                try repository.upsertPerson(id: "source", name: "Maya duplicate")
+                try repository.assignAssets([targetAsset.id], toPersonID: "target")
+                try repository.assignAssets([sourceAsset.id], toPersonID: "source")
+            }
+        )
+
+        try model.mergePerson(sourceID: "source", into: "target")
+
+        XCTAssertEqual(model.catalogPeople, [CatalogPerson(id: "target", name: "Maya", assetCount: 2)])
+        XCTAssertEqual(try repository.assetIDs(personID: "target"), [targetAsset.id, sourceAsset.id])
+        XCTAssertEqual(try repository.assetIDs(personID: "source"), [])
+    }
+
+    func testDismissSelectedFaceReviewAssetsPersistsAndRefreshesReviewQueue() throws {
+        let dismissed = makeAsset(id: "dismissed-face", path: "/Volumes/NAS/Wedding/dismissed.jpg", rating: 4)
+        let active = makeAsset(id: "active-face", path: "/Volumes/NAS/Wedding/active.jpg", rating: 4)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-dismiss-face-review",
+            assets: [dismissed, active],
+            configureRepository: { repository in
+                try repository.recordEvaluationSignals([
+                    EvaluationSignal(assetID: dismissed.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
+                    EvaluationSignal(assetID: active.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance)
+                ])
+                try repository.upsertPerson(id: "person-maya", name: "Maya")
+                try repository.assignAssets([dismissed.id], toPersonID: "person-maya")
+            }
+        )
+        try model.selectSidebarTarget(.reviewQueue(.facesFound))
+        model.selectedAssetID = dismissed.id
+
+        try model.dismissSelectedFaceReviewAssets()
+
+        XCTAssertEqual(try repository.dismissedFaceAssetIDs(), [dismissed.id])
+        XCTAssertEqual(model.assets.map(\.id), [active.id])
+        XCTAssertEqual(model.reviewQueueCounts[.facesFound], 1)
+        XCTAssertEqual(model.catalogEvaluationKindSummaries, [
+            CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 1)
+        ])
+        XCTAssertEqual(model.catalogPeople, [CatalogPerson(id: "person-maya", name: "Maya", assetCount: 0)])
+    }
+
     func testLoadExposesSourceAvailabilityRowsInSidebarAndSelectingRowAppliesFilter() throws {
         let online = makeAsset(id: "online", path: "/Volumes/NAS/Job/online.cr2", rating: 4)
         let offline = makeAsset(id: "offline", path: "/Volumes/NAS/Job/offline.cr2", rating: 4, availability: .offline)
@@ -9939,11 +9990,13 @@ final class AppModelTests: XCTestCase {
     private func makeModelWithCatalogAssets(
         named name: String,
         assets: [Asset],
+        configureRepository: (CatalogRepository) throws -> Void = { _ in },
         workerSupervisor: WorkerSupervisor? = nil
     ) throws -> (AppModel, CatalogRepository) {
         let result = try makeModelWithCatalogAssetsAndPreviewCache(
             named: name,
             assets: assets,
+            configureRepository: configureRepository,
             workerSupervisor: workerSupervisor
         )
         return (result.model, result.repository)
@@ -9952,6 +10005,7 @@ final class AppModelTests: XCTestCase {
     private func makeModelWithCatalogAssetsAndPreviewCache(
         named name: String,
         assets: [Asset],
+        configureRepository: (CatalogRepository) throws -> Void = { _ in },
         workerSupervisor: WorkerSupervisor? = nil
     ) throws -> (model: AppModel, repository: CatalogRepository, previewCache: PreviewCache) {
         let directory = try makeTemporaryDirectory(named: name)
@@ -9959,6 +10013,7 @@ final class AppModelTests: XCTestCase {
         try database.migrate()
         let repository = CatalogRepository(database: database)
         try repository.upsert(assets)
+        try configureRepository(repository)
         let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
         let catalog = AppCatalog(
             paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),

@@ -674,6 +674,14 @@ public final class CatalogRepository {
             """
             SELECT kind, COUNT(DISTINCT asset_id) AS asset_count
             FROM evaluation_signals
+            WHERE NOT (
+                kind IN ('faceCount', 'faceQuality')
+                AND EXISTS (
+                    SELECT 1
+                    FROM dismissed_face_assets
+                    WHERE dismissed_face_assets.asset_id = evaluation_signals.asset_id
+                )
+            )
             GROUP BY kind
             ORDER BY kind COLLATE NOCASE ASC
             """
@@ -1247,9 +1255,22 @@ public final class CatalogRepository {
                 )
                 bindings.append("\(date.timeIntervalSince1970)")
             case .evaluationKind(let kind):
-                clauses.append(
-                    "EXISTS (SELECT 1 FROM evaluation_signals WHERE evaluation_signals.asset_id = assets.id AND kind = ?)"
-                )
+                if kind == .faceCount || kind == .faceQuality {
+                    clauses.append(
+                        """
+                        EXISTS (SELECT 1 FROM evaluation_signals WHERE evaluation_signals.asset_id = assets.id AND kind = ?)
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM dismissed_face_assets
+                            WHERE dismissed_face_assets.asset_id = assets.id
+                        )
+                        """
+                    )
+                } else {
+                    clauses.append(
+                        "EXISTS (SELECT 1 FROM evaluation_signals WHERE evaluation_signals.asset_id = assets.id AND kind = ?)"
+                    )
+                }
                 bindings.append(kind.rawValue)
             case .unevaluated:
                 clauses.append(
@@ -1272,7 +1293,15 @@ public final class CatalogRepository {
                                     OR CAST(json_extract(value_json, '$.score._0') AS REAL) >= 0.88
                                 )
                             )
-                            OR (kind = 'faceQuality' AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.5)
+                            OR (
+                                kind = 'faceQuality'
+                                AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.5
+                                AND NOT EXISTS (
+                                    SELECT 1
+                                    FROM dismissed_face_assets
+                                    WHERE dismissed_face_assets.asset_id = assets.id
+                                )
+                            )
                           )
                     )
                     """
