@@ -21,6 +21,18 @@ public struct IngestProgress: Equatable, Sendable {
 
 public typealias IngestProgressHandler = @Sendable (IngestProgress) -> Void
 
+public struct IngestSkippedSourceFile: Equatable, Sendable {
+    public var sourceURL: URL
+    public var message: String
+
+    public init(sourceURL: URL, message: String) {
+        self.sourceURL = sourceURL
+        self.message = message
+    }
+}
+
+public typealias IngestSkippedSourceFileHandler = (IngestSkippedSourceFile) -> Void
+
 public struct IngestService: Sendable {
     private static let eagerCatalogPersistenceLimit = 10
     private static let catalogPersistenceBatchSize = 500
@@ -48,6 +60,7 @@ public struct IngestService: Sendable {
         files sourceFiles: [URL],
         plan: IngestPlan,
         repository: CatalogRepository,
+        skippedSourceFile: IngestSkippedSourceFileHandler? = nil,
         progress: IngestProgressHandler? = nil
     ) throws -> [Asset] {
         try validate(plan: plan)
@@ -56,73 +69,80 @@ public struct IngestService: Sendable {
         var importedSidecars: [ImportedSidecarSync] = []
         var sidecarConflicts: [SidecarSyncConflict] = []
         let sidecarStore = XMPSidecarStore()
-        for sourceFile in sourceFiles {
+        for (sourceIndex, sourceFile) in sourceFiles.enumerated() {
             try Task.checkCancellation()
-            let originalURL = try originalURL(for: sourceFile, plan: plan)
-            let existingAsset = try repository.asset(originalURL: originalURL)
-            let assetID = existingAsset?.id ?? .new()
-            try prepareOriginalFile(sourceFile: sourceFile, originalURL: originalURL, plan: plan, existingAsset: existingAsset)
-            let fingerprint = try fingerprint(for: originalURL)
-            var metadata = existingAsset?.metadata ?? AssetMetadata()
-            let sidecarURL = sidecarStore.sidecarURL(forOriginalAt: originalURL)
-            if FileManager.default.fileExists(atPath: sidecarURL.path) {
-                let sidecarData = try Data(contentsOf: sidecarURL)
-                let sidecarModificationDate = try sidecarStore.modificationDate(forSidecarAt: sidecarURL)
-                let catalogGeneration: Int
-                let lastSynced: MetadataSyncItem?
-                if existingAsset != nil {
-                    catalogGeneration = try repository.catalogGeneration(assetID: assetID)
-                    lastSynced = try repository.metadataSyncItem(assetID: assetID)
-                } else {
-                    catalogGeneration = 1
-                    lastSynced = nil
-                }
-                let decision = try MetadataSyncPlanner().decision(
-                    catalogMetadata: metadata,
-                    catalogGeneration: catalogGeneration,
-                    lastSynced: lastSynced,
-                    sidecarData: sidecarData,
-                    sidecarModificationDate: sidecarModificationDate
-                )
-                if case .importSidecar(let sidecarMetadata) = decision {
-                    metadata = sidecarMetadata
-                    importedSidecars.append(ImportedSidecarSync(
-                        assetID: assetID,
-                        sidecarURL: sidecarURL,
-                        sidecarData: sidecarData
-                    ))
-                } else if case .conflict = decision {
-                    sidecarConflicts.append(SidecarSyncConflict(
-                        assetID: assetID,
-                        sidecarURL: sidecarURL,
+            do {
+                let originalURL = try originalURL(for: sourceFile, plan: plan)
+                let existingAsset = try repository.asset(originalURL: originalURL)
+                let assetID = existingAsset?.id ?? .new()
+                try prepareOriginalFile(sourceFile: sourceFile, originalURL: originalURL, plan: plan, existingAsset: existingAsset)
+                let fingerprint = try fingerprint(for: originalURL)
+                var metadata = existingAsset?.metadata ?? AssetMetadata()
+                let sidecarURL = sidecarStore.sidecarURL(forOriginalAt: originalURL)
+                if FileManager.default.fileExists(atPath: sidecarURL.path) {
+                    let sidecarData = try Data(contentsOf: sidecarURL)
+                    let sidecarModificationDate = try sidecarStore.modificationDate(forSidecarAt: sidecarURL)
+                    let catalogGeneration: Int
+                    let lastSynced: MetadataSyncItem?
+                    if existingAsset != nil {
+                        catalogGeneration = try repository.catalogGeneration(assetID: assetID)
+                        lastSynced = try repository.metadataSyncItem(assetID: assetID)
+                    } else {
+                        catalogGeneration = 1
+                        lastSynced = nil
+                    }
+                    let decision = try MetadataSyncPlanner().decision(
+                        catalogMetadata: metadata,
                         catalogGeneration: catalogGeneration,
-                        lastSyncedFingerprint: try repository.lastMetadataSyncFingerprint(assetID: assetID)
-                    ))
+                        lastSynced: lastSynced,
+                        sidecarData: sidecarData,
+                        sidecarModificationDate: sidecarModificationDate
+                    )
+                    if case .importSidecar(let sidecarMetadata) = decision {
+                        metadata = sidecarMetadata
+                        importedSidecars.append(ImportedSidecarSync(
+                            assetID: assetID,
+                            sidecarURL: sidecarURL,
+                            sidecarData: sidecarData
+                        ))
+                    } else if case .conflict = decision {
+                        sidecarConflicts.append(SidecarSyncConflict(
+                            assetID: assetID,
+                            sidecarURL: sidecarURL,
+                            catalogGeneration: catalogGeneration,
+                            lastSyncedFingerprint: try repository.lastMetadataSyncFingerprint(assetID: assetID)
+                        ))
+                    }
                 }
+                let asset = Asset(
+                    id: assetID,
+                    originalURL: originalURL,
+                    volumeIdentifier: volumeIdentifier(for: originalURL),
+                    fingerprint: fingerprint,
+                    availability: .online,
+                    metadata: metadata,
+                    technicalMetadata: technicalMetadata(for: originalURL) ?? existingAsset?.technicalMetadata
+                )
+                assets.append(asset)
+                pendingCatalogAssets.append(asset)
+                let catalogedAssetIDs = try flushCatalogAssetsIfNeeded(
+                    pendingCatalogAssets: &pendingCatalogAssets,
+                    importedAssetCount: assets.count,
+                    isFinalAsset: sourceIndex == sourceFiles.indices.last,
+                    repository: repository
+                )
+                progress?(IngestProgress(
+                    completedUnitCount: sourceIndex + 1,
+                    totalUnitCount: sourceFiles.count,
+                    originalURL: originalURL,
+                    catalogedAssetIDs: catalogedAssetIDs
+                ))
+            } catch TeststripError.io(let message) {
+                guard let skippedSourceFile else {
+                    throw TeststripError.io(message)
+                }
+                skippedSourceFile(IngestSkippedSourceFile(sourceURL: sourceFile, message: message))
             }
-            let asset = Asset(
-                id: assetID,
-                originalURL: originalURL,
-                volumeIdentifier: volumeIdentifier(for: originalURL),
-                fingerprint: fingerprint,
-                availability: .online,
-                metadata: metadata,
-                technicalMetadata: technicalMetadata(for: originalURL) ?? existingAsset?.technicalMetadata
-            )
-            assets.append(asset)
-            pendingCatalogAssets.append(asset)
-            let catalogedAssetIDs = try flushCatalogAssetsIfNeeded(
-                pendingCatalogAssets: &pendingCatalogAssets,
-                importedAssetCount: assets.count,
-                isFinalAsset: assets.count == sourceFiles.count,
-                repository: repository
-            )
-            progress?(IngestProgress(
-                completedUnitCount: assets.count,
-                totalUnitCount: sourceFiles.count,
-                originalURL: originalURL,
-                catalogedAssetIDs: catalogedAssetIDs
-            ))
         }
         _ = try flushCatalogAssets(&pendingCatalogAssets, repository: repository)
         for importedSidecar in importedSidecars {

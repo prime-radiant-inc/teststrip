@@ -7394,6 +7394,98 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBackgroundImportReportsSkippedSourceFilesInCompletionCopy() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-skipped-source")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        let skipped = photoFolder.appendingPathComponent("two.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "imported"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let model = try AppModel.load(
+            catalog: catalog,
+            importTaskFactory: { paths, _, _ in
+                Task.detached {
+                    let backgroundCatalog = try AppCatalog.open(paths: paths)
+                    try backgroundCatalog.repository.upsert(importedAsset)
+                    return AppImportOutput(
+                        result: LibraryImportResult(
+                            importedAssets: [importedAsset],
+                            previewFailures: [],
+                            skippedSourceFiles: [
+                                LibrarySkippedSourceFile(
+                                    sourceURL: skipped,
+                                    message: "could not fingerprint \(skipped.path)"
+                                )
+                            ],
+                            newAssetCount: 1,
+                            existingAssetCount: 0
+                        ),
+                        assets: try backgroundCatalog.repository.allAssets(limit: 500),
+                        totalAssetCount: try backgroundCatalog.repository.assetCount()
+                    )
+                }
+            }
+        )
+
+        model.beginImportFolder(photoFolder)
+        try await waitForActivityStatus(.completed, in: model)
+
+        XCTAssertEqual(model.statusMessage, "Imported 1 photo (1 file skipped)")
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.detail, "Imported 1 photo from photos (1 file skipped)")
+        XCTAssertEqual(activity.failureCount, 0)
+    }
+
+    @MainActor
+    func testBackgroundImportReportsNoPhotosImportedWhenEverySourceFileIsSkipped() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-all-skipped")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let firstSkipped = photoFolder.appendingPathComponent("one.png")
+        let secondSkipped = photoFolder.appendingPathComponent("two.png")
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(
+            catalog: catalog,
+            importTaskFactory: { _, _, _ in
+                Task {
+                    AppImportOutput(
+                        result: LibraryImportResult(
+                            importedAssets: [],
+                            previewFailures: [],
+                            skippedSourceFiles: [
+                                LibrarySkippedSourceFile(sourceURL: firstSkipped, message: "could not fingerprint \(firstSkipped.path)"),
+                                LibrarySkippedSourceFile(sourceURL: secondSkipped, message: "could not fingerprint \(secondSkipped.path)")
+                            ],
+                            newAssetCount: 0,
+                            existingAssetCount: 0
+                        ),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            }
+        )
+
+        model.beginImportFolder(photoFolder)
+        try await waitForActivityStatus(.completed, in: model)
+
+        XCTAssertEqual(model.statusMessage, "No photos imported (2 files skipped)")
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.detail, "No photos imported from photos (2 files skipped)")
+    }
+
+    @MainActor
     func testBackgroundCardImportCopiesIntoDestinationAndRecordsActivity() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-card-import")
         let source = directory.appendingPathComponent("DCIM", isDirectory: true)

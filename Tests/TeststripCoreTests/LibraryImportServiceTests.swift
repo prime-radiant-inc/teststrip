@@ -109,6 +109,33 @@ final class LibraryImportServiceTests: XCTestCase {
         )
     }
 
+    func testAddFolderContinuesWhenOneSourceDisappearsBeforeCataloging() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-disappearing-source")
+        let survivor = root.appendingPathComponent("one.jpg")
+        let disappearing = root.appendingPathComponent("two.jpg")
+        try TestDirectories.writeTestJPEG(to: survivor, width: 1200, height: 800)
+        try TestDirectories.writeTestJPEG(to: disappearing, width: 800, height: 1200)
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+
+        let result = try service.addFolderInPlace(root, repository: repository, previewPolicy: .deferGeneration) { progress in
+            if progress.detail == "Cataloging 2 photos" {
+                try? FileManager.default.removeItem(at: disappearing)
+            }
+        }
+
+        XCTAssertEqual(result.importedAssets.map(\.originalURL), [survivor])
+        XCTAssertEqual(result.skippedSourceFiles.count, 1)
+        XCTAssertEqual(result.skippedSourceFiles[0].sourceURL, disappearing)
+        XCTAssertTrue(result.skippedSourceFiles[0].message.contains("could not fingerprint"))
+        XCTAssertEqual(try repository.allAssets(limit: 10).map(\.originalURL), [survivor])
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: result.importedAssets[0].id, level: .micro),
+            PreviewGenerationItem(assetID: result.importedAssets[0].id, level: .grid)
+        ])
+    }
+
     func testAddFolderReportsPreviewProgress() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-progress")
         try TestDirectories.writeTestJPEG(to: root.appendingPathComponent("one.jpg"), width: 1200, height: 800)

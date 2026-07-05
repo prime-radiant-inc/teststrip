@@ -5013,13 +5013,16 @@ public final class AppModel {
         try? refreshPreviewGenerationQueueStates()
         try? refreshCatalogSidebarCounts()
         statusMessage = Self.importCompletionStatus(result: result)
-        if !result.previewFailures.isEmpty {
-            statusMessage?.append(" (\(result.previewFailures.count) preview failures)")
+        if let warningText = Self.importCompletionWarningText(result: result) {
+            statusMessage?.append(" (\(warningText))")
         }
     }
 
     private static func importCompletionStatus(result: LibraryImportResult) -> String {
         guard !result.importedAssets.isEmpty else {
+            if !result.skippedSourceFiles.isEmpty {
+                return "No photos imported"
+            }
             return "No supported photos found"
         }
         guard result.newAssetCount > 0 else {
@@ -5032,6 +5035,19 @@ public final class AppModel {
             status.append(" (\(result.existingAssetCount) \(existingLabel) already in catalog)")
         }
         return status
+    }
+
+    private static func importCompletionWarningText(result: LibraryImportResult) -> String? {
+        var warnings: [String] = []
+        if !result.skippedSourceFiles.isEmpty {
+            let fileLabel = result.skippedSourceFiles.count == 1 ? "file" : "files"
+            warnings.append("\(result.skippedSourceFiles.count) \(fileLabel) skipped")
+        }
+        if !result.previewFailures.isEmpty {
+            let previewLabel = result.previewFailures.count == 1 ? "preview failure" : "preview failures"
+            warnings.append("\(result.previewFailures.count) \(previewLabel)")
+        }
+        return warnings.isEmpty ? nil : warnings.joined(separator: ", ")
     }
 
     private func startImportActivity(folderURL: URL, destinationRoot: URL? = nil) {
@@ -5104,13 +5120,17 @@ public final class AppModel {
     }
 
     private static func importCompletionDetail(result: LibraryImportResult, sourceDescription: String) -> String {
+        let warningSuffix = importCompletionWarningText(result: result).map { " (\($0))" } ?? ""
         if result.importedAssets.isEmpty {
-            return "No supported photos found in \(sourceDescription)"
+            if result.skippedSourceFiles.isEmpty {
+                return "No supported photos found in \(sourceDescription)"
+            }
+            return "No photos imported from \(sourceDescription)\(warningSuffix)"
         }
         if result.newAssetCount == 0 {
-            return "No new photos found in \(sourceDescription)"
+            return "No new photos found in \(sourceDescription)\(warningSuffix)"
         }
-        return "\(importCompletionStatus(result: result)) from \(sourceDescription)"
+        return "\(importCompletionStatus(result: result)) from \(sourceDescription)\(warningSuffix)"
     }
 
     private func failImportActivity(id: String? = nil, folderURL: URL, destinationRoot: URL? = nil, error: Error) {

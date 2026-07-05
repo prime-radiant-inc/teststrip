@@ -12,20 +12,33 @@ public struct LibraryPreviewFailure: Equatable, Sendable {
     }
 }
 
+public struct LibrarySkippedSourceFile: Equatable, Sendable {
+    public var sourceURL: URL
+    public var message: String
+
+    public init(sourceURL: URL, message: String) {
+        self.sourceURL = sourceURL
+        self.message = message
+    }
+}
+
 public struct LibraryImportResult: Sendable {
     public var importedAssets: [Asset]
     public var previewFailures: [LibraryPreviewFailure]
+    public var skippedSourceFiles: [LibrarySkippedSourceFile]
     public var newAssetCount: Int
     public var existingAssetCount: Int
 
     public init(
         importedAssets: [Asset],
         previewFailures: [LibraryPreviewFailure],
+        skippedSourceFiles: [LibrarySkippedSourceFile] = [],
         newAssetCount: Int? = nil,
         existingAssetCount: Int = 0
     ) {
         self.importedAssets = importedAssets
         self.previewFailures = previewFailures
+        self.skippedSourceFiles = skippedSourceFiles
         self.newAssetCount = newAssetCount ?? max(importedAssets.count - existingAssetCount, 0)
         self.existingAssetCount = existingAssetCount
     }
@@ -172,7 +185,19 @@ public struct LibraryImportService: Sendable {
             interval: Self.ingestProgressInterval,
             eagerLimit: Self.eagerIngestProgressLimit
         )
-        let assets = try ingestService.ingest(files: sourceFiles, plan: plan, repository: repository) { ingestProgress in
+        var skippedSourceFiles: [LibrarySkippedSourceFile] = []
+        let skippedSourceFileHandler: IngestSkippedSourceFileHandler? = plan.mode == .addInPlace ? { skippedSourceFile in
+            skippedSourceFiles.append(LibrarySkippedSourceFile(
+                sourceURL: skippedSourceFile.sourceURL,
+                message: skippedSourceFile.message
+            ))
+        } : nil
+        let assets = try ingestService.ingest(
+            files: sourceFiles,
+            plan: plan,
+            repository: repository,
+            skippedSourceFile: skippedSourceFileHandler
+        ) { ingestProgress in
             if ingestProgressCoalescer.shouldReport(
                 completedCount: ingestProgress.completedUnitCount,
                 totalCount: ingestProgress.totalUnitCount
@@ -209,6 +234,7 @@ public struct LibraryImportService: Sendable {
             return LibraryImportResult(
                 importedAssets: assets,
                 previewFailures: [],
+                skippedSourceFiles: skippedSourceFiles,
                 newAssetCount: newAssetCount,
                 existingAssetCount: existingAssetCount
             )
@@ -224,6 +250,7 @@ public struct LibraryImportService: Sendable {
         return LibraryImportResult(
             importedAssets: assets,
             previewFailures: previewResult.previewFailures,
+            skippedSourceFiles: skippedSourceFiles,
             newAssetCount: newAssetCount,
             existingAssetCount: existingAssetCount
         )
