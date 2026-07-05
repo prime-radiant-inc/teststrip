@@ -165,13 +165,14 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("freeform rule editing is not built"))
     }
 
-    func testSearchRefineLedgerTracksSuggestedActionsWithoutGeneratedRefinements() throws {
+    func testSearchRefineLedgerTracksGeneratedRefinementsAndSuggestedActions() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "search.refine" })
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("known target rows are actionable"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("related filters"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("generated refinements"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("suggested actions"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("agent-generated refinements are not built"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("broader natural-language planning is not built"))
     }
 
     func testEmptyFoldersSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {

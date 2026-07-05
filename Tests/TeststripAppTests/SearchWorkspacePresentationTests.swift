@@ -112,6 +112,48 @@ final class SearchWorkspacePresentationTests: XCTestCase {
         ])
     }
 
+    func testGeneratedRefinementsSuggestConcreteRulesWithoutRepeatingActiveFilters() {
+        let presentation = SearchWorkspacePresentation(
+            suggestedName: "Ceremony Review",
+            totalAssetCount: 42,
+            savedSetCount: 2,
+            starredSetCount: 1,
+            activeFilterChips: [],
+            activeFilterRows: [
+                ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
+                ActiveLibraryFilterRow(title: "Camera: Canon", target: nil)
+            ],
+            reviewQueueCounts: [
+                .picks: 7,
+                .fiveStars: 4,
+                .needsKeywords: 12,
+                .facesFound: 3,
+                .providerFailures: 1
+            ]
+        )
+
+        XCTAssertEqual(presentation.generatedRefinements, [
+            SearchWorkspaceGeneratedRefinement(
+                preset: .ratingFourPlus,
+                title: "Narrow to rated keepers",
+                detail: "4 five-star photos available",
+                systemImage: "star.fill"
+            ),
+            SearchWorkspaceGeneratedRefinement(
+                preset: .needsKeywords,
+                title: "Find missing keywords",
+                detail: "12 photos need keywords",
+                systemImage: "tag"
+            ),
+            SearchWorkspaceGeneratedRefinement(
+                preset: .facesFound,
+                title: "Review photos with faces",
+                detail: "3 photos have face signals",
+                systemImage: "person.2"
+            )
+        ])
+    }
+
     func testUsesAllPhotographsRefineRowWhenNoFiltersAreActive() {
         let presentation = SearchWorkspacePresentation(
             suggestedName: "All Photographs",

@@ -3793,6 +3793,15 @@ struct SearchWorkspaceSuggestedAction: Equatable, Identifiable {
     }
 }
 
+struct SearchWorkspaceGeneratedRefinement: Equatable, Identifiable {
+    var preset: SmartCollectionRulePreset
+    var title: String
+    var detail: String
+    var systemImage: String
+
+    var id: String { preset.id }
+}
+
 struct SearchWorkspacePresentation: Equatable {
     var title: String
     var resultCountText: String
@@ -3800,6 +3809,7 @@ struct SearchWorkspacePresentation: Equatable {
     var starredSetCountText: String
     var refineRows: [SearchWorkspaceRefineRow]
     var refineGroups: [SearchWorkspaceRefineGroup]
+    var generatedRefinements: [SearchWorkspaceGeneratedRefinement]
     var relatedFilterRows: [SearchWorkspaceRefineRow]
     var suggestedActions: [SearchWorkspaceSuggestedAction]
 
@@ -3825,6 +3835,10 @@ struct SearchWorkspacePresentation: Equatable {
             refineRows = rows.map { SearchWorkspaceRefineRow(title: $0.title, value: "active", target: $0.target) }
         }
         refineGroups = Self.groupRefineRows(refineRows)
+        generatedRefinements = Self.generatedRefinements(
+            reviewQueueCounts: reviewQueueCounts,
+            activeRows: refineRows
+        )
         relatedFilterRows = Self.relatedFilterRows(
             reviewQueueCounts: reviewQueueCounts,
             activeRows: refineRows
@@ -3893,6 +3907,136 @@ struct SearchWorkspacePresentation: Equatable {
             return "Source & XMP"
         }
         return "Metadata"
+    }
+
+    private static func generatedRefinements(
+        reviewQueueCounts: [ReviewQueue: Int],
+        activeRows: [SearchWorkspaceRefineRow]
+    ) -> [SearchWorkspaceGeneratedRefinement] {
+        let candidates: [(queue: ReviewQueue, preset: SmartCollectionRulePreset)] = [
+            (.fiveStars, .ratingFourPlus),
+            (.picks, .picked),
+            (.needsKeywords, .needsKeywords),
+            (.facesFound, .facesFound),
+            (.needsEvaluation, .needsEvaluation),
+            (.likelyIssues, .likelyIssues),
+            (.providerFailures, .providerFailures)
+        ]
+        return candidates.compactMap { candidate in
+            guard let count = reviewQueueCounts[candidate.queue], count > 0 else { return nil }
+            guard !isPresetActive(candidate.preset, activeRows: activeRows) else { return nil }
+            return generatedRefinement(preset: candidate.preset, count: count)
+        }
+        .prefix(3)
+        .map { $0 }
+    }
+
+    private static func generatedRefinement(
+        preset: SmartCollectionRulePreset,
+        count: Int
+    ) -> SearchWorkspaceGeneratedRefinement {
+        switch preset {
+        case .ratingFourPlus:
+            return SearchWorkspaceGeneratedRefinement(
+                preset: preset,
+                title: "Narrow to rated keepers",
+                detail: count == 1 ? "1 five-star photo available" : "\(count) five-star photos available",
+                systemImage: preset.systemImage
+            )
+        case .picked:
+            return SearchWorkspaceGeneratedRefinement(
+                preset: preset,
+                title: "Narrow to picks",
+                detail: count == 1 ? "1 picked photo available" : "\(count) picked photos available",
+                systemImage: preset.systemImage
+            )
+        case .needsKeywords:
+            return SearchWorkspaceGeneratedRefinement(
+                preset: preset,
+                title: "Find missing keywords",
+                detail: count == 1 ? "1 photo needs keywords" : "\(count) photos need keywords",
+                systemImage: preset.systemImage
+            )
+        case .facesFound:
+            return SearchWorkspaceGeneratedRefinement(
+                preset: preset,
+                title: "Review photos with faces",
+                detail: count == 1 ? "1 photo has face signals" : "\(count) photos have face signals",
+                systemImage: preset.systemImage
+            )
+        case .needsEvaluation:
+            return SearchWorkspaceGeneratedRefinement(
+                preset: preset,
+                title: "Find unevaluated photos",
+                detail: count == 1 ? "1 photo needs evaluation" : "\(count) photos need evaluation",
+                systemImage: preset.systemImage
+            )
+        case .likelyIssues:
+            return SearchWorkspaceGeneratedRefinement(
+                preset: preset,
+                title: "Review likely issues",
+                detail: count == 1 ? "1 photo has likely issues" : "\(count) photos have likely issues",
+                systemImage: preset.systemImage
+            )
+        case .providerFailures:
+            return SearchWorkspaceGeneratedRefinement(
+                preset: preset,
+                title: "Check provider failures",
+                detail: count == 1 ? "1 provider failure" : "\(count) provider failures",
+                systemImage: preset.systemImage
+            )
+        default:
+            return SearchWorkspaceGeneratedRefinement(
+                preset: preset,
+                title: preset.title,
+                detail: count == 1 ? "1 matching photo" : "\(count) matching photos",
+                systemImage: preset.systemImage
+            )
+        }
+    }
+
+    private static func isPresetActive(
+        _ preset: SmartCollectionRulePreset,
+        activeRows: [SearchWorkspaceRefineRow]
+    ) -> Bool {
+        activeRows.contains { row in
+            switch preset {
+            case .ratingFourPlus:
+                return row.target == .reviewQueue(.fiveStars) || row.title.hasPrefix("Rating")
+            case .picked:
+                return row.target == .reviewQueue(.picks) || row.title == "Pick"
+            case .rejected:
+                return row.target == .reviewQueue(.rejects) || row.title == "Reject"
+            case .needsKeywords:
+                return row.target == .reviewQueue(.needsKeywords) || row.title == "Needs Keywords"
+            case .needsEvaluation:
+                return row.target == .reviewQueue(.needsEvaluation) || row.title == "Needs Evaluation"
+            case .onlineSources:
+                return row.target == .sourceAvailability(.online) || row.title == "Source: Online"
+            case .offlineSources:
+                return row.target == .sourceAvailability(.offline) || row.title == "Source: Offline"
+            case .facesFound:
+                return row.target == .reviewQueue(.facesFound)
+                    || row.target == .evaluationKind(.faceCount)
+                    || row.title == "Faces Found"
+                    || row.title == "Signal: Face Count"
+            case .ocrFound:
+                return row.target == .reviewQueue(.ocrFound)
+                    || row.target == .evaluationKind(.ocrText)
+                    || row.title == "OCR Found"
+                    || row.title == "Signal: OCR Text"
+            case .objectSignals:
+                return row.target == .evaluationKind(.object) || row.title == "Signal: Object"
+            case .likelyIssues:
+                return row.target == .reviewQueue(.likelyIssues) || row.title == "Likely Issues"
+            case .providerFailures:
+                return row.target == .reviewQueue(.providerFailures) || row.title == "Provider Failures"
+            case .xmpPending:
+                return row.target == .metadataSyncPending || row.title == "XMP Pending"
+            case .xmpConflicts:
+                return row.target == .metadataSyncConflicts || row.title == "XMP Conflicts"
+            }
+        }
     }
 
     private static func relatedFilterRows(
@@ -4065,6 +4209,18 @@ private struct SearchWorkspaceView: View {
                     }
                 }
             }
+            if !presentation.generatedRefinements.isEmpty {
+                Divider()
+                    .padding(.vertical, 2)
+                Text("Generated Refinements")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(presentation.generatedRefinements) { refinement in
+                        generatedRefinementRow(refinement)
+                    }
+                }
+            }
             if !presentation.relatedFilterRows.isEmpty {
                 Divider()
                     .padding(.vertical, 2)
@@ -4146,6 +4302,31 @@ private struct SearchWorkspaceView: View {
         }
     }
 
+    private func generatedRefinementRow(_ refinement: SearchWorkspaceGeneratedRefinement) -> some View {
+        Button {
+            applyGeneratedRefinement(refinement)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: refinement.systemImage)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .frame(width: 14)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(refinement.title)
+                        .font(.caption.weight(.medium))
+                        .lineLimit(1)
+                    Text(refinement.detail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .help(refinement.detail)
+    }
+
     private func suggestedActionRow(_ suggestedAction: SearchWorkspaceSuggestedAction) -> some View {
         Button {
             performSuggestedAction(suggestedAction.action)
@@ -4169,6 +4350,14 @@ private struct SearchWorkspaceView: View {
         }
         .buttonStyle(.plain)
         .help(suggestedAction.detail)
+    }
+
+    private func applyGeneratedRefinement(_ refinement: SearchWorkspaceGeneratedRefinement) {
+        do {
+            try model.applySmartCollectionRulePreset(refinement.preset)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     private func performSuggestedAction(_ action: SearchWorkspaceSuggestedActionKind) {
