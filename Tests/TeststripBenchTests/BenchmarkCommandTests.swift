@@ -35,6 +35,13 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "preview-render", "250"]), .previewRender(count: 250))
     }
 
+    func testRealCorpusSmokeCommandParsesPhotoDirectory() throws {
+        XCTAssertEqual(
+            BenchmarkCommand.parse(["TeststripBench", "real-corpus-smoke", "/tmp/teststrip-real-corpus"]),
+            .realCorpusSmoke(photoDirectory: URL(fileURLWithPath: "/tmp/teststrip-real-corpus"))
+        )
+    }
+
     func testSamplePreviewRenderCommandParsesPhotoDirectory() throws {
         XCTAssertEqual(
             BenchmarkCommand.parse(["TeststripBench", "sample-preview-render", "/tmp/teststrip-samples"]),
@@ -158,6 +165,56 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(result.sourceImageCount, 2)
         XCTAssertEqual(result.catalogAssetCount, 2)
         XCTAssertEqual(result.cachedPreviewCount, 4)
+    }
+
+    func testRealCorpusSmokeImportsRepresentativePhotosWithoutMutatingSources() throws {
+        let root = try makeTemporaryDirectory(named: "real-corpus-smoke")
+        let photoDirectory = try makeTemporaryDirectory(named: "real-corpus-photos")
+        let jpeg = photoDirectory.appendingPathComponent("one.jpg")
+        let dng = photoDirectory.appendingPathComponent("two.dng")
+        let raf = photoDirectory.appendingPathComponent("three.raf")
+        let x3f = photoDirectory.appendingPathComponent("four.x3f")
+        try writeTestPNG(to: jpeg)
+        try writeTestPNG(to: dng)
+        try writeTestPNG(to: raf)
+        try XMPPacket(metadata: AssetMetadata(rating: 4, keywords: ["corpus"])).xmlData()
+            .write(to: dng.appendingPathExtension("xmp"))
+        try Data("unsupported raw placeholder".utf8).write(to: x3f)
+
+        let result = try RealCorpusSmoke(root: root, photoDirectory: photoDirectory).run()
+
+        XCTAssertEqual(result.candidatePhotoCount, 4)
+        XCTAssertEqual(result.selectedPhotoCount, 4)
+        XCTAssertEqual(result.importedAssetCount, 4)
+        XCTAssertEqual(result.catalogAssetCount, 4)
+        XCTAssertEqual(result.workingStillCount, 1)
+        XCTAssertEqual(result.bestEffortRawCount, 2)
+        XCTAssertEqual(result.unsupportedCount, 1)
+        XCTAssertEqual(result.previewEligibleCount, 3)
+        XCTAssertEqual(result.pendingPreviewCount, 6)
+        XCTAssertEqual(result.fullImageDecodeCount, 1)
+        XCTAssertEqual(result.adjacentSidecarCount, 1)
+        XCTAssertEqual(result.importedSidecarSyncCount, 1)
+        XCTAssertEqual(result.adjacentSidecarNotImportedCount, 0)
+        XCTAssertEqual(result.unchangedOriginalCount, 4)
+        XCTAssertEqual(result.unchangedSidecarCount, 1)
+        XCTAssertEqual(result.selectedExtensions, ["dng": 1, "jpg": 1, "raf": 1, "x3f": 1])
+    }
+
+    func testRealCorpusSmokeSelectionDoesNotDuplicateJpegWhenSpecificRawIsSameFile() throws {
+        let root = try makeTemporaryDirectory(named: "real-corpus-selection")
+        let photoDirectory = try makeTemporaryDirectory(named: "real-corpus-selection-photos")
+        let dng = photoDirectory.appendingPathComponent("one.dng")
+        let raf = photoDirectory.appendingPathComponent("two.raf")
+        try writeTestPNG(to: dng)
+        try writeTestPNG(to: raf)
+
+        let result = try RealCorpusSmoke(root: root, photoDirectory: photoDirectory).run()
+
+        XCTAssertEqual(result.selectedPhotoCount, 2)
+        XCTAssertEqual(result.bestEffortRawCount, 2)
+        XCTAssertEqual(result.workingStillCount, 0)
+        XCTAssertEqual(result.pendingPreviewCount, 4)
     }
 
     func testLocalHTTPModelSmokeEvaluatesOpenAICompatibleEndpoint() throws {

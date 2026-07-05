@@ -22,6 +22,8 @@ case .metadataWrite(let count):
     try runMetadataWriteBenchmark(count: count, root: root)
 case .previewRender(let count):
     try runPreviewRenderBenchmark(count: count, root: root)
+case .realCorpusSmoke(let photoDirectory):
+    try runRealCorpusSmoke(photoDirectory: photoDirectory, root: root)
 case .samplePreviewRender(let photoDirectory):
     try runSamplePreviewRenderBenchmark(photoDirectory: photoDirectory, root: root)
 case .seedAppCatalog(let applicationSupportDirectory, let count):
@@ -158,6 +160,50 @@ private func runPreviewRenderBenchmark(count: Int, root: URL) throws {
     print("source images: \(result.sourceImageCount)")
     print("rendered previews: \(result.renderedPreviewCount)")
     print("cached previews: \(result.cachedPreviewCount)")
+    try printMachineReadableSummary(recorder.summary)
+}
+
+private func runRealCorpusSmoke(photoDirectory: URL, root: URL) throws {
+    var recorder = BenchmarkSummaryRecorder(benchmark: "real_corpus_smoke", count: 0)
+
+    print("TeststripBench real corpus smoke")
+    print("photo directory: \(photoDirectory.path)")
+    let result = try measure("real corpus smoke", recorder: &recorder, key: "real_corpus_smoke") {
+        try RealCorpusSmoke(root: root, photoDirectory: photoDirectory).run()
+    }
+    recorder.recordMetric("candidate_photos", result.candidatePhotoCount)
+    recorder.recordMetric("selected_photos", result.selectedPhotoCount)
+    recorder.recordMetric("imported_assets", result.importedAssetCount)
+    recorder.recordMetric("catalog_assets", result.catalogAssetCount)
+    recorder.recordMetric("working_stills", result.workingStillCount)
+    recorder.recordMetric("best_effort_raws", result.bestEffortRawCount)
+    recorder.recordMetric("unsupported_files", result.unsupportedCount)
+    recorder.recordMetric("preview_eligible_assets", result.previewEligibleCount)
+    recorder.recordMetric("pending_previews", result.pendingPreviewCount)
+    recorder.recordMetric("full_image_decode_assets", result.fullImageDecodeCount)
+    recorder.recordMetric("adjacent_sidecars", result.adjacentSidecarCount)
+    recorder.recordMetric("imported_sidecar_sync_items", result.importedSidecarSyncCount)
+    recorder.recordMetric("adjacent_sidecars_not_imported", result.adjacentSidecarNotImportedCount)
+    recorder.recordMetric("unchanged_originals", result.unchangedOriginalCount)
+    recorder.recordMetric("unchanged_sidecars", result.unchangedSidecarCount)
+    for (fileExtension, count) in result.selectedExtensions.sorted(by: { $0.key < $1.key }) {
+        recorder.recordMetric("selected_\(fileExtension)_files", count)
+    }
+    print("candidate photos: \(result.candidatePhotoCount)")
+    print("selected photos: \(result.selectedPhotoCount)")
+    print("imported assets: \(result.importedAssetCount)")
+    print("catalog assets: \(result.catalogAssetCount)")
+    print("working stills: \(result.workingStillCount)")
+    print("best-effort RAWs: \(result.bestEffortRawCount)")
+    print("unsupported files: \(result.unsupportedCount)")
+    print("preview-eligible assets: \(result.previewEligibleCount)")
+    print("pending previews: \(result.pendingPreviewCount)")
+    print("full-image decode assets: \(result.fullImageDecodeCount)")
+    print("adjacent sidecars: \(result.adjacentSidecarCount)")
+    print("imported sidecar sync items: \(result.importedSidecarSyncCount)")
+    print("adjacent sidecars not imported: \(result.adjacentSidecarNotImportedCount)")
+    print("unchanged originals: \(result.unchangedOriginalCount)")
+    print("unchanged sidecars: \(result.unchangedSidecarCount)")
     try printMachineReadableSummary(recorder.summary)
 }
 

@@ -10,6 +10,7 @@ public enum BenchmarkCommand: Equatable {
     case localHTTPSmoke(endpoint: URL, model: String, imagePath: String?, timeout: TimeInterval)
     case metadataWrite(count: Int)
     case previewRender(count: Int)
+    case realCorpusSmoke(photoDirectory: URL)
     case samplePreviewRender(photoDirectory: URL)
     case seedAppCatalog(applicationSupportDirectory: URL, count: Int)
     case seedSampleCatalog(applicationSupportDirectory: URL, photoDirectory: URL)
@@ -44,6 +45,10 @@ public enum BenchmarkCommand: Equatable {
         }
         if firstArgument == "preview-render" {
             return .previewRender(count: Int(userArguments.dropFirst().first ?? "250") ?? 250)
+        }
+        if firstArgument == "real-corpus-smoke" {
+            let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
+            return .realCorpusSmoke(photoDirectory: URL(fileURLWithPath: directory))
         }
         if firstArgument == "sample-preview-render" {
             let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
