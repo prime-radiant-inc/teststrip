@@ -2275,6 +2275,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
     }
 
+    func testKeepingAllFramesInPersistedStackMarksEveryFrameAsPickAndAdvancesProgress() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "persisted-stack-keep-all",
+            sessionID: "keep-all-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstAlternate.id)
+
+        try fixture.model.keepAllFramesInSelectedCullingStack()
+
+        XCTAssertEqual(try fixture.repository.asset(id: fixture.firstLead.id).metadata.flag, .pick)
+        XCTAssertEqual(try fixture.repository.asset(id: fixture.firstAlternate.id).metadata.flag, .pick)
+        XCTAssertNil(try fixture.repository.asset(id: fixture.secondLead.id).metadata.flag)
+        XCTAssertNil(try fixture.repository.asset(id: fixture.secondAlternate.id).metadata.flag)
+
+        let session = try fixture.repository.session(id: WorkSessionID(rawValue: "keep-all-session"))
+        XCTAssertEqual(session.completedUnitCount, 2)
+        XCTAssertEqual(session.status, .running)
+        XCTAssertEqual(fixture.model.recentWork.first?.id, "keep-all-session")
+        XCTAssertEqual(fixture.model.recentWork.first?.completedUnitCount, 2)
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
+    }
+
     func testAcceptingFinalPersistedStackSelectionCompletesCullingSession() throws {
         let fixture = try makePersistedStackCullingFixture(
             named: "persisted-stack-completion",

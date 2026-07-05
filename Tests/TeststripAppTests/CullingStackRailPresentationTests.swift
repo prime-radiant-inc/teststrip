@@ -45,11 +45,11 @@ final class CullingStackRailPresentationTests: XCTestCase {
 
         let actions = presentation.actions
         XCTAssertEqual(actions.map(\.title), ["Keep frame 2 · cut 2", "Keep top 2", "Keep all 3"])
-        XCTAssertEqual(actions.map(\.isEnabled), [true, false, false])
-        XCTAssertEqual(actions.map(\.liveMockupPlaceholder), [nil, .cullingStackCull, .cullingStackCull])
+        XCTAssertEqual(actions.map(\.isEnabled), [true, false, true])
+        XCTAssertEqual(actions.map(\.liveMockupPlaceholder), [nil, .cullingStackCull, nil])
         XCTAssertEqual(actions[0].help, "Keep selected frame and reject stack alternates")
         XCTAssertTrue(actions[1].help.localizedCaseInsensitiveContains("ranking"))
-        XCTAssertTrue(actions[2].help.localizedCaseInsensitiveContains("unchanged"))
+        XCTAssertTrue(actions[2].help.localizedCaseInsensitiveContains("keep every frame"))
     }
 
     func testRecommendedActionUsesPersistedQualitySignals() {
@@ -77,8 +77,8 @@ final class CullingStackRailPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.items.map(\.isRecommended), [false, false, true])
         XCTAssertEqual(presentation.actions.map(\.title), ["Keep frame 2 · cut 2", "Keep recommended 3", "Keep all 3"])
-        XCTAssertEqual(presentation.actions.map(\.isEnabled), [true, true, false])
-        XCTAssertEqual(presentation.actions.map(\.liveMockupPlaceholder), [nil, nil, .cullingStackCull])
+        XCTAssertEqual(presentation.actions.map(\.isEnabled), [true, true, true])
+        XCTAssertEqual(presentation.actions.map(\.liveMockupPlaceholder), [nil, nil, nil])
         XCTAssertEqual(presentation.actions[1].action, .keepRecommended(alternateID))
         XCTAssertTrue(presentation.actions[1].help.localizedCaseInsensitiveContains("focus"))
     }

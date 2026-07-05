@@ -2937,37 +2937,42 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        guard let selectedAssetID else {
-            throw TeststripError.invalidState("no selected asset")
-        }
-        let selectedWorkStackSetID = selectedWorkStackAssetIDs?.contains(selectedAssetID) == true ? selectedAssetSetID : nil
-        let stack: AssetStack?
-        let nextAssetID: AssetID?
-        if let selectedWorkStackAssetIDs,
-           selectedWorkStackAssetIDs.contains(selectedAssetID) {
-            stack = AssetStack(assetIDs: selectedWorkStackAssetIDs)
-            nextAssetID = nil
-        } else {
-            let stacks = cullingStacks()
-            stack = stacks.first { $0.assetIDs.contains(selectedAssetID) }
-            nextAssetID = stack.map(nextAssetID(after:)) ?? nil
-        }
-        guard let stack, stack.assetIDs.count > 1 else {
-            throw TeststripError.invalidState("selected asset is not in a culling stack")
-        }
+        let context = try selectedCullingStackDecisionContext()
 
-        for assetID in stack.assetIDs {
+        for assetID in context.stack.assetIDs {
             var metadata = try catalog.repository.asset(id: assetID).metadata
-            metadata.flag = assetID == selectedAssetID ? .pick : .reject
+            metadata.flag = assetID == context.selectedAssetID ? .pick : .reject
             try applyMetadataSnapshot(assetID: assetID, metadata: metadata)
         }
-        if let selectedWorkStackSetID {
+        if let selectedWorkStackSetID = context.selectedWorkStackSetID {
             try updatePersistedStackCullingSessionProgress(selectedStackSetID: selectedWorkStackSetID)
         }
 
         if try selectPersistedCullingStack(.next) {
             return
-        } else if let nextAssetID {
+        } else if let nextAssetID = context.nextAssetID {
+            selectAssetID(nextAssetID)
+        }
+    }
+
+    public func keepAllFramesInSelectedCullingStack() throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let context = try selectedCullingStackDecisionContext()
+
+        for assetID in context.stack.assetIDs {
+            var metadata = try catalog.repository.asset(id: assetID).metadata
+            metadata.flag = .pick
+            try applyMetadataSnapshot(assetID: assetID, metadata: metadata)
+        }
+        if let selectedWorkStackSetID = context.selectedWorkStackSetID {
+            try updatePersistedStackCullingSessionProgress(selectedStackSetID: selectedWorkStackSetID)
+        }
+
+        if try selectPersistedCullingStack(.next) {
+            return
+        } else if let nextAssetID = context.nextAssetID {
             selectAssetID(nextAssetID)
         }
     }
@@ -3156,6 +3161,34 @@ public final class AppModel {
             return
         }
         try keepSelectedStackFrameAndRejectAlternates()
+    }
+
+    private func selectedCullingStackDecisionContext() throws -> (
+        stack: AssetStack,
+        selectedAssetID: AssetID,
+        selectedWorkStackSetID: AssetSetID?,
+        nextAssetID: AssetID?
+    ) {
+        guard let selectedAssetID else {
+            throw TeststripError.invalidState("no selected asset")
+        }
+
+        let selectedWorkStackSetID = selectedWorkStackAssetIDs?.contains(selectedAssetID) == true ? selectedAssetSetID : nil
+        let stack: AssetStack?
+        let nextAssetID: AssetID?
+        if let selectedWorkStackAssetIDs,
+           selectedWorkStackAssetIDs.contains(selectedAssetID) {
+            stack = AssetStack(assetIDs: selectedWorkStackAssetIDs)
+            nextAssetID = nil
+        } else {
+            let stacks = cullingStacks()
+            stack = stacks.first { $0.assetIDs.contains(selectedAssetID) }
+            nextAssetID = stack.map(nextAssetID(after:)) ?? nil
+        }
+        guard let stack, stack.assetIDs.count > 1 else {
+            throw TeststripError.invalidState("selected asset is not in a culling stack")
+        }
+        return (stack, selectedAssetID, selectedWorkStackSetID, nextAssetID)
     }
 
     @discardableResult

@@ -2618,7 +2618,15 @@ private struct LoupeView: View {
         case .keepTopRankedPlaceholder:
             break
         case .keepAll:
-            break
+            keepAllFramesInSelectedStack()
+        }
+    }
+
+    private func keepAllFramesInSelectedStack() {
+        do {
+            try model.keepAllFramesInSelectedCullingStack()
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 
@@ -3304,9 +3312,9 @@ struct CullingStackRailPresentation: Equatable {
             CullingStackActionPresentation(
                 action: .keepAll,
                 title: "Keep all \(stackScope.assetIDs.count)",
-                isEnabled: false,
-                help: "Leaves all frames in the stack unchanged once stack decisions are persisted.",
-                liveMockupPlaceholder: .cullingStackCull
+                isEnabled: true,
+                help: "Keep every frame in this stack.",
+                liveMockupPlaceholder: nil
             )
         ]
     }
