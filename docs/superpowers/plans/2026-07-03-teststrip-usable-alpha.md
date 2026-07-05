@@ -320,7 +320,7 @@ Current behavior:
 - Compare now uses a survey-style live mockup instead of the original flat adaptive grid: the selected frame becomes the primary candidate, the visible survey grid orders that primary first followed by alternates, metadata-backed decision badges and focus/quality metric lanes render on tiles, preview/evaluation requests stay scoped to cached progressive compare behavior, Pick/Reject/Loupe actions write through existing metadata/navigation paths, and the current compare set can apply the primary recommendation by marking the primary Pick and visible alternates Reject.
 - The import-complete summary is an expanded partial payoff panel with real import count, preview status, Open/Cull actions, dismiss behavior, and disabled/annotated stack grouping, face naming, and batch keyword suggestion follow-ups.
 - Import Path shows a pre-import plan for in-place cataloging, XMP sidecars, cached previews, and managed background work.
-- Folder and card import confirmation now perform a capped source preview count using supported photo extensions, show counted bytes, and display honest `N+` copy when the cap is hit. Typed Import Path now resolves into the same confirmation sheet before starting work.
+- Folder and card import confirmation now perform a capped source preview count using recognized photo-file extensions, show counted bytes, and display honest `N+` copy when the cap is hit. Typed Import Path now resolves into the same confirmation sheet before starting work.
 - Active import work shows the shared progress banner immediately, even when the grid has no visible assets yet.
 - Import progress copy now distinguishes starting, scanning, cataloging, copying, and preview-building phases with tested presentation rules and visible counts where available.
 - Completed imports show an expanded summary panel with the imported photo count, preview status/failure count, Open action for the imported output set, Cull action that starts a culling work session from that set, disabled unbuilt follow-ups, and dismiss behavior.
@@ -429,7 +429,7 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Disable duplicate import submission while an import is starting or running.
 - [x] Surface completed import count and whether preview generation is continuing after catalog/import completion.
 - [x] Surface a clearer current import phase while path submission is scanning and cataloging.
-- [x] Show clear empty-folder/no-supported-photo preflight state before import starts.
+- [x] Show clear empty-folder/no-recognized-photo-file preflight state before import starts.
 - [x] Show clear typed-path file and unreadable-folder errors before import confirmation.
 - [x] Show clear missing/unreadable source preflight errors in the import confirmation sheet.
 - [x] Show clear duplicate import errors while another import is running.

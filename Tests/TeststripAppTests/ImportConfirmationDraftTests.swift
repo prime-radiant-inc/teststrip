@@ -49,7 +49,7 @@ final class ImportConfirmationDraftTests: XCTestCase {
         )))
     }
 
-    func testSourceSummaryCountsSupportedPhotosAndBytes() throws {
+    func testSourceSummaryCountsRecognizedPhotoFilesAndBytes() throws {
         let directory = try makeTemporaryDirectory(named: "import-source-summary")
         let nested = directory.appendingPathComponent("Nested", isDirectory: true)
         try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
@@ -66,7 +66,7 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(summary.photoCount, 2)
         XCTAssertEqual(summary.byteCount, 8)
         XCTAssertFalse(summary.reachedLimit)
-        XCTAssertEqual(summary.countText, "2 supported photos")
+        XCTAssertEqual(summary.countText, "2 recognized photo files")
         XCTAssertEqual(summary.byteCountText, "8 bytes")
         XCTAssertEqual(summary.detailText, "Ready to catalog from import-source-summary")
     }
@@ -86,8 +86,8 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(summary.photoCount, 2)
         XCTAssertEqual(summary.byteCount, 2)
         XCTAssertTrue(summary.reachedLimit)
-        XCTAssertEqual(summary.countText, "2+ supported photos")
-        XCTAssertEqual(summary.detailText, "Preview counted the first 2 supported photos")
+        XCTAssertEqual(summary.countText, "2+ recognized photo files")
+        XCTAssertEqual(summary.detailText, "Preview counted the first 2 recognized photo files")
     }
 
     func testSourceSummaryStopsAtEntryLimitBeforeExhaustingUnsupportedFiles() throws {
@@ -107,7 +107,7 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(summary.scannedEntryCount, 2)
         XCTAssertFalse(summary.reachedLimit)
         XCTAssertTrue(summary.reachedEntryLimit)
-        XCTAssertEqual(summary.countText, "No supported photos found yet")
+        XCTAssertEqual(summary.countText, "No recognized photo files found yet")
         XCTAssertEqual(summary.detailText, "Preview scanned the first 2 files; import will keep scanning")
     }
 
@@ -122,8 +122,8 @@ final class ImportConfirmationDraftTests: XCTestCase {
             entryLimit: 20
         )
 
-        XCTAssertEqual(summary.countText, "No supported photos found")
-        XCTAssertEqual(summary.detailText, "Choose a folder with supported photos before importing")
+        XCTAssertEqual(summary.countText, "No recognized photo files found")
+        XCTAssertEqual(summary.detailText, "Choose a folder with recognized photo files before importing")
         XCTAssertFalse(summary.canStartImport)
     }
 
@@ -159,7 +159,7 @@ final class ImportConfirmationDraftTests: XCTestCase {
         let draft = ImportConfirmationDraft.folder(directory, supportedExtensions: ["jpg"])
 
         XCTAssertFalse(draft.canStartImport)
-        XCTAssertEqual(draft.sourceSummary.detailText, "Choose a folder with supported photos before importing")
+        XCTAssertEqual(draft.sourceSummary.detailText, "Choose a folder with recognized photo files before importing")
     }
 
     func testCardDraftBlocksStartWhenDestinationMatchesSource() throws {

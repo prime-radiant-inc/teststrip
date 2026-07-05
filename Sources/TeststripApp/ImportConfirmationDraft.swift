@@ -128,13 +128,13 @@ struct ImportSourceSummary: Equatable {
         }
         if photoCount == 0 {
             if reachedEntryLimit {
-                return "No supported photos found yet"
+                return "No recognized photo files found yet"
             }
-            return "No supported photos found"
+            return "No recognized photo files found"
         }
         let suffix = reachedLimit || reachedEntryLimit ? "+" : ""
-        let noun = photoCount == 1 ? "photo" : "photos"
-        return "\(photoCount)\(suffix) supported \(noun)"
+        let noun = photoCount == 1 ? "photo file" : "photo files"
+        return "\(photoCount)\(suffix) recognized \(noun)"
     }
 
     var byteCountText: String {
@@ -157,10 +157,11 @@ struct ImportSourceSummary: Equatable {
             return "Preview scanned the first \(scannedEntryCount) \(noun); import will keep scanning"
         }
         if reachedLimit {
-            return "Preview counted the first \(photoCount) supported photos"
+            let noun = photoCount == 1 ? "photo file" : "photo files"
+            return "Preview counted the first \(photoCount) recognized \(noun)"
         }
         if photoCount == 0 {
-            return "Choose a folder with supported photos before importing"
+            return "Choose a folder with recognized photo files before importing"
         }
         let sourceName = sourceURL.lastPathComponent.isEmpty ? sourceURL.path : sourceURL.lastPathComponent
         return "Ready to catalog from \(sourceName)"
