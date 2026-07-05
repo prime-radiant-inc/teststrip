@@ -52,30 +52,14 @@ struct PeopleView: View {
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 12)], alignment: .leading, spacing: 12) {
                 ForEach(presentation.signalRows) { row in
-                    HStack(spacing: 12) {
-                        Image(systemName: row.systemImage)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.orange)
-                            .frame(width: 42, height: 42)
-                            .background(Color.orange.opacity(0.12), in: Circle())
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(row.title)
-                                .font(.caption.weight(.semibold))
-                            Text(row.detail)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Text(row.countText)
-                            .font(.caption.monospacedDigit().weight(.semibold))
-                            .foregroundStyle(.primary)
+                    Button {
+                        selectPeopleSignal(row)
+                    } label: {
+                        peopleSignalCard(row)
                     }
-                    .padding(12)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Color.white.opacity(0.07))
-                    }
+                    .buttonStyle(.plain)
+                    .disabled(!row.isActionEnabled)
+                    .help(row.isActionEnabled ? "Show \(row.title.lowercased())" : row.detail)
                 }
             }
         }
@@ -130,6 +114,47 @@ struct PeopleView: View {
         }
     }
 
+    private func peopleSignalCard(_ row: PeopleSignalRow) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: row.systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.orange)
+                .frame(width: 42, height: 42)
+                .background(Color.orange.opacity(0.12), in: Circle())
+            VStack(alignment: .leading, spacing: 6) {
+                Text(row.title)
+                    .font(.caption.weight(.semibold))
+                Text(row.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(row.countText)
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(.primary)
+            if row.isActionEnabled {
+                Image(systemName: "arrow.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.white.opacity(0.07))
+        }
+    }
+
+    private func selectPeopleSignal(_ row: PeopleSignalRow) {
+        guard let kind = row.filterKind else { return }
+        do {
+            try model.selectPeopleSignal(kind)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
     private func avatarGradient(seed: String, colors: [Color]) -> LinearGradient {
         let seedValue = seed.unicodeScalars.reduce(0) { partialResult, scalar in
             partialResult + Int(scalar.value)
@@ -142,14 +167,18 @@ struct PeopleView: View {
 struct PeoplePresentation: Equatable {
     var totalAssetCount: Int
     var photosWithFaceSignals: Int
+    var photosWithDetectedFaces: Int
     var photosWithFaceQualitySignals: Int
+    private var faceSignalKind: EvaluationKind?
 
     init(totalAssetCount: Int, evaluationSummaries: [CatalogEvaluationKindSummary]) {
         self.totalAssetCount = totalAssetCount
         let faceCountSignals = evaluationSummaries.first { $0.kind == .faceCount }?.assetCount ?? 0
         let faceQualitySignals = evaluationSummaries.first { $0.kind == .faceQuality }?.assetCount ?? 0
         self.photosWithFaceSignals = max(faceCountSignals, faceQualitySignals)
+        self.photosWithDetectedFaces = faceCountSignals > 0 ? faceCountSignals : faceQualitySignals
         self.photosWithFaceQualitySignals = faceQualitySignals
+        self.faceSignalKind = faceCountSignals > 0 ? .faceCount : (faceQualitySignals > 0 ? .faceQuality : nil)
     }
 
     var headerSummary: String {
@@ -176,15 +205,17 @@ struct PeoplePresentation: Equatable {
                 id: "face-count",
                 title: "Photos with faces",
                 detail: "Assets with local face signals",
-                countText: "\(photosWithFaceSignals)",
-                systemImage: "person.crop.rectangle.stack"
+                countText: "\(photosWithDetectedFaces)",
+                systemImage: "person.crop.rectangle.stack",
+                filterKind: faceSignalKind
             ),
             PeopleSignalRow(
                 id: "face-quality",
                 title: "Face quality reads",
                 detail: "Assets with face-quality measurements",
                 countText: "\(photosWithFaceQualitySignals)",
-                systemImage: "face.smiling"
+                systemImage: "face.smiling",
+                filterKind: photosWithFaceQualitySignals > 0 ? .faceQuality : nil
             )
         ]
     }
@@ -196,4 +227,9 @@ struct PeopleSignalRow: Equatable, Identifiable {
     var detail: String
     var countText: String
     var systemImage: String
+    var filterKind: EvaluationKind?
+
+    var isActionEnabled: Bool {
+        filterKind != nil
+    }
 }

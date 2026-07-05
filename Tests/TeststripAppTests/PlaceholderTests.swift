@@ -80,6 +80,16 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertEqual(peopleRow.target, .people)
     }
 
+    func testPeopleLedgerTracksFaceSignalReviewEntrypointsWithoutNamedIdentities() throws {
+        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "sidebar.people" })
+        let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5a" })
+
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("face-signal review entrypoints"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("no named identities"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("face-signal review entrypoints"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("no named identities"))
+    }
+
     func testSearchSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
         let model = AppModel.demo()
         let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })

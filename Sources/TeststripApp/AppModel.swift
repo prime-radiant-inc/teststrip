@@ -1567,11 +1567,7 @@ public final class AppModel {
             selectedView = .grid
             try reload()
         case .evaluationKind(let kind):
-            selectedAssetSetID = nil
-            clearLibraryQueryFilters()
-            evaluationKindFilter = kind
-            selectedView = .grid
-            try reload()
+            try applyEvaluationKindFilter(kind)
         case .metadataSyncPending:
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
@@ -3581,6 +3577,10 @@ public final class AppModel {
         try reload()
     }
 
+    public func selectPeopleSignal(_ kind: EvaluationKind) throws {
+        try applyEvaluationKindFilter(kind)
+    }
+
     public func selectTimelineDay(_ day: CatalogTimelineDay, calendar: Calendar = .current) throws {
         try selectTimelineDateRange(startDate: day.startDate(calendar: calendar), endDate: day.endDate(calendar: calendar))
     }
@@ -3605,6 +3605,14 @@ public final class AppModel {
         captureDateStartFilter = startDate
         captureDateEndFilter = endDate
         selectedView = .timeline
+        try reload()
+    }
+
+    private func applyEvaluationKindFilter(_ kind: EvaluationKind) throws {
+        selectedAssetSetID = nil
+        clearLibraryQueryFilters()
+        evaluationKindFilter = kind
+        selectedView = .grid
         try reload()
     }
 

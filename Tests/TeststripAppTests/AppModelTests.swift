@@ -1845,6 +1845,48 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [.evaluationKind(.focus)])))
     }
 
+    func testSelectingPeopleSignalAppliesEvaluationFilterAndShowsMatchingAssets() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-people-signal-filter")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let faceCount = makeAsset(id: "face-count", path: "/Photos/People/face-count.jpg", rating: 0)
+        let faceQuality = makeAsset(id: "face-quality", path: "/Photos/People/face-quality.jpg", rating: 0)
+        let object = makeAsset(id: "object", path: "/Photos/People/object.jpg", rating: 0)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.upsert([faceCount, faceQuality, object])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: faceCount.id, kind: .faceCount, value: .count(2), confidence: 0.91, provenance: provenance),
+            EvaluationSignal(assetID: faceQuality.id, kind: .faceQuality, value: .score(0.82), confidence: 0.82, provenance: provenance),
+            EvaluationSignal(assetID: object.id, kind: .object, value: .label("camera"), confidence: 0.74, provenance: provenance)
+        ])
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        try model.selectPeopleSignal(.faceCount)
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.evaluationKindFilter, .faceCount)
+        XCTAssertEqual(model.assets.map(\.id), [faceCount.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+
+        try model.selectPeopleSignal(.faceQuality)
+
+        XCTAssertEqual(model.evaluationKindFilter, .faceQuality)
+        XCTAssertEqual(model.assets.map(\.id), [faceQuality.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
     func testTimelineSidebarRowOpensTimelineView() throws {
         let calendar = Self.gregorianUTC
         let asset = makeAsset(
