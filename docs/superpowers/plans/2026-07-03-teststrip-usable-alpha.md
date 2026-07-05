@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `905a59a Add People face review strip`
+- Snapshot commit: `ee204a9 Add metadata write verifier`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter PeoplePresentationTests` and `swift test --filter 'PeoplePresentationTests|LiveMockupPlaceholderTests/testPeopleLedgerTracksUnnamedFaceReviewEntrypointsWithoutNamedIdentities|AppModelTests/testSelectingPeopleSignalAppliesEvaluationFilterAndShowsMatchingAssets'` passed after the People face-review strip slice. Earlier worker skipped-count/idle-stop, import resilience, worker/source, grid layout/chrome, XMP conflict/reconnect, and catalog-scale verifier focused tests passed across the preceding slices.
-- Last broad unit verification: `swift test` passed with 713 tests, 1 skipped, and 0 failures after the People face-review strip slice.
+- Last focused unit verification: `bash script/test_metadata_write_verifier_metrics.sh`, `bash script/test_catalog_scale_verifier_metrics.sh`, `./script/verify_metadata_write.sh 25 5`, and `swift test --filter BenchmarkCommandTests` passed after the metadata write verifier slice. Earlier People, worker skipped-count/idle-stop, import resilience, worker/source, grid layout/chrome, XMP conflict/reconnect, and catalog-scale verifier focused tests passed across the preceding slices.
+- Last broad unit verification: `swift test` passed with 713 tests, 1 skipped, and 0 failures after the metadata write verifier slice.
 - Last app workflow verification: `./script/build_and_run.sh --verify-smoke` launched an isolated smoke catalog after the inspector XMP merge action, and `./script/capture_app_window.sh Teststrip /tmp/teststrip-inspector-conflict-action-smoke.png` captured a normal Library window. That smoke did not show an active XMP conflict; the conflict action ordering and model merge path are covered by focused tests. Additional UI automation was intentionally avoided for the footer-density slice to minimize focus stealing while Jesse is using the machine. Earlier no app launch was run for the diagnostics slice to minimize focus stealing; `./script/build_and_run.sh --verify-smoke` launched an isolated smoke catalog after the Activity row-control change, and `./script/capture_app_window.sh Teststrip /tmp/teststrip-worker-control-smoke.png` captured a normal Library window with Activity idle state visible. Earlier `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import/click UI automation was intentionally deferred for several import/grid slices to avoid unnecessary focus stealing while Jesse was using the machine; those slices were covered by focused presentation/policy tests and full unit runs. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import.
 
 ### Recent Completed Slices
@@ -102,6 +102,7 @@
 - `9e2c7fb`: made add-in-place folder imports tolerate a scanned source file disappearing before cataloging, report skipped source files in `LibraryImportResult`, and surface skipped-file counts in AppModel import completion copy while leaving card-copy conflicts fail-fast.
 - `881d892`: carried skipped source-file counts through worker-backed imports and exposed idle worker process state plus a stop-idle-worker control in Activity/diagnostics.
 - `905a59a`: pulled the People mockup closer to live SwiftUI with an unnamed face-review strip, catalog-backed face review cards, and an explicit named-people empty state while keeping naming/merge/dismiss disabled.
+- `ee204a9`: added a repeatable metadata-write verifier script that checks catalog updates, XMP sidecars, synced fingerprints, zero pending sync, and unchanged originals through the benchmark summary contract.
 
 ## Product Decisions To Preserve
 
@@ -652,6 +653,7 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Add a dedicated preview render throughput benchmark for a small real-image sample directory.
 - [x] Add metadata/XMP bulk edit benchmark.
 - [x] Add a repeatable catalog-scale verifier script with alpha thresholds for page/filter query timings.
+- [x] Add a repeatable metadata-write verifier script with alpha thresholds for catalog/XMP writeback correctness and timing.
 - [ ] Add memory and CPU snapshots to app workflow scripts where practical.
 - [x] Set initial green thresholds for the 100k alpha catalog verifier after measuring current local behavior.
 - [ ] Set red/yellow/green thresholds for app workflow and larger 500k/1M stress paths after measuring current local behavior.
@@ -702,6 +704,8 @@ For scale checks:
 ```bash
 swift run TeststripBench catalog-baseline
 swift run TeststripBench catalog-stress
+script/verify_catalog_scale.sh 100000
+script/verify_metadata_write.sh 1000
 swift run TeststripBench local-http-smoke <endpoint> <model> <image> [timeout]
 ```
 

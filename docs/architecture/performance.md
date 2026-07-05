@@ -19,9 +19,12 @@ For repeatable alpha regression checks, run:
 
 ```bash
 script/verify_catalog_scale.sh 100000
+script/verify_metadata_write.sh 1000
 ```
 
-The verifier parses the benchmark summary, checks the asset count, and enforces the current 0.2s default threshold for first/middle/filtered page loads and representative filter counts. Seed time is reported by `TeststripBench` but intentionally excluded from the filter/page threshold.
+The catalog verifier parses the benchmark summary, checks the asset count, and enforces the current 0.2s default threshold for first/middle/filtered page loads and representative filter counts. Seed time is reported by `TeststripBench` but intentionally excluded from the filter/page threshold.
+
+The metadata-write verifier wraps the `metadata-write` benchmark and enforces catalog update count, sidecar count, synced fingerprint count, zero pending sync items, unchanged originals, and the current 5s default metadata-write threshold. Override the timing gate with `TESTSTRIP_METADATA_WRITE_MAX_SECONDS` when intentionally measuring slower hardware or stress paths.
 
 Additional focused commands cover the other hot paths that currently matter for alpha:
 
@@ -65,5 +68,6 @@ On July 4, 2026, local debug runs produced:
 | `swift run TeststripBench preview-render 100` | 1.551s | 100 generated JPEG sources, 400 rendered previews, 400 cached previews |
 | `swift run TeststripBench sample-preview-render sample-data/photos/wordpress-photo-directory` | 0.202s | 12 real sample-photo sources, 12 catalog assets, 24 cached previews |
 | `swift run TeststripBench metadata-write 1000` | 1.451s | 1,000 catalog updates, 1,000 sidecars, 1,000 synced fingerprints, 0 pending sync items, 1,000 unchanged originals |
+| `script/verify_metadata_write.sh 25 5` | 0.048s | 25 catalog updates, 25 sidecars, 25 synced fingerprints, 0 pending sync items, 25 unchanged originals |
 
 These runs prove the benchmark harnesses are executable and exercise real app paths, not that the alpha has final performance thresholds. The generated-image `preview-render` command isolates renderer/cache throughput; the real-image `sample-preview-render` command includes sample import and immediate preview generation overhead.
