@@ -749,6 +749,7 @@ public final class AppModel {
     public var assets: [Asset]
     public var totalAssetCount: Int
     public var selectedAssetID: AssetID?
+    public private(set) var selectedBatchAssetIDs: Set<AssetID>
     public var statusMessage: String?
     public var errorMessage: String?
     public var activeWork: AppWorkActivity?
@@ -1537,6 +1538,7 @@ public final class AppModel {
         self.assets = assets
         self.totalAssetCount = resolvedTotalAssetCount
         self.selectedAssetID = assets.first?.id
+        self.selectedBatchAssetIDs = []
         self.statusMessage = statusMessage
         self.errorMessage = errorMessage
         self.activeWork = activeWork
@@ -1874,6 +1876,31 @@ public final class AppModel {
         selectAssetID(assetID)
     }
 
+    public var selectedBatchAssetCount: Int {
+        selectedBatchAssetIDsInLoadedOrder.count
+    }
+
+    public func isBatchSelected(_ assetID: AssetID) -> Bool {
+        selectedBatchAssetIDs.contains(assetID)
+    }
+
+    public func setBatchSelection(_ assetID: AssetID, isSelected: Bool) {
+        guard assets.contains(where: { $0.id == assetID }) else { return }
+        if isSelected {
+            selectedBatchAssetIDs.insert(assetID)
+        } else {
+            selectedBatchAssetIDs.remove(assetID)
+        }
+    }
+
+    public func toggleBatchSelection(_ assetID: AssetID) {
+        setBatchSelection(assetID, isSelected: !selectedBatchAssetIDs.contains(assetID))
+    }
+
+    public func clearBatchSelection() {
+        selectedBatchAssetIDs.removeAll()
+    }
+
     private func selectAssetID(_ assetID: AssetID?) {
         selectedAssetID = assetID
         updateCompareSetAfterSelectionChange(to: assetID)
@@ -1893,6 +1920,10 @@ public final class AppModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private var selectedBatchAssetIDsInLoadedOrder: [AssetID] {
+        assets.map(\.id).filter { selectedBatchAssetIDs.contains($0) }
     }
 
     public func selectSidebarRow(_ row: SidebarRow) throws {
@@ -2898,6 +2929,22 @@ public final class AppModel {
     ) throws -> Int {
         try applyBatchMetadata(
             assetIDs: assets.map(\.id),
+            keywordText: keywordText,
+            caption: caption,
+            creator: creator,
+            copyright: copyright
+        )
+    }
+
+    @discardableResult
+    public func applySelectedBatchMetadata(
+        keywordText: String,
+        caption: String,
+        creator: String,
+        copyright: String
+    ) throws -> Int {
+        try applyBatchMetadata(
+            assetIDs: selectedBatchAssetIDsInLoadedOrder,
             keywordText: keywordText,
             caption: caption,
             creator: creator,
@@ -4875,9 +4922,11 @@ public final class AppModel {
         }
 
         if let selectedAssetID, assets.contains(where: { $0.id == selectedAssetID }) {
+            pruneBatchSelectionToLoadedAssets()
             return
         }
         selectedAssetID = assets.first?.id
+        pruneBatchSelectionToLoadedAssets()
     }
 
     private func replaceAssets(
@@ -4895,6 +4944,11 @@ public final class AppModel {
         } else {
             selectedAssetID = assets.first?.id
         }
+        pruneBatchSelectionToLoadedAssets()
+    }
+
+    private func pruneBatchSelectionToLoadedAssets() {
+        selectedBatchAssetIDs.formIntersection(Set(assets.map(\.id)))
     }
 
     private func loadCatalogPage(preferredSelection: AssetID?) throws {

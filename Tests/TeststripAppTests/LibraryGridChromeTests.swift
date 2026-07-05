@@ -118,6 +118,7 @@ final class LibraryGridChromeTests: XCTestCase {
 
         let presentation = BatchMetadataReviewPresentation(
             visibleAssetCount: 12,
+            selectedAssetCount: 0,
             currentScopeAssetCount: 121,
             selectedScope: .visible,
             requiresAllCatalogConfirmation: false,
@@ -140,12 +141,43 @@ final class LibraryGridChromeTests: XCTestCase {
         XCTAssertEqual(presentation.applyTitle, "Apply to visible batch")
     }
 
+    func testBatchMetadataReviewPresentationSummarizesSelectedBatch() {
+        var draft = BatchMetadataDraft()
+        draft.keywords = "keepers"
+
+        let presentation = BatchMetadataReviewPresentation(
+            visibleAssetCount: 12,
+            selectedAssetCount: 2,
+            currentScopeAssetCount: 121,
+            selectedScope: .selected,
+            requiresAllCatalogConfirmation: false,
+            isAllCatalogConfirmed: false,
+            suggestions: [
+                BatchKeywordSuggestion(
+                    keyword: "mountain",
+                    assetCount: 5,
+                    averageConfidence: 0.84,
+                    providerName: "apple-vision",
+                    modelName: "Vision"
+                )
+            ],
+            draft: draft
+        )
+
+        XCTAssertEqual(presentation.countText, "2 selected photos")
+        XCTAssertEqual(presentation.suggestionRows, [])
+        XCTAssertTrue(presentation.isApplyEnabled)
+        XCTAssertEqual(presentation.applyTitle, "Apply to selected batch")
+        XCTAssertNil(presentation.confirmationText)
+    }
+
     func testBatchMetadataReviewPresentationSummarizesCurrentScopeAndHidesVisibleSuggestions() {
         var draft = BatchMetadataDraft()
         draft.keywords = "portfolio"
 
         let presentation = BatchMetadataReviewPresentation(
             visibleAssetCount: 12,
+            selectedAssetCount: 0,
             currentScopeAssetCount: 121,
             selectedScope: .currentScope,
             requiresAllCatalogConfirmation: false,
@@ -174,6 +206,7 @@ final class LibraryGridChromeTests: XCTestCase {
 
         let unconfirmed = BatchMetadataReviewPresentation(
             visibleAssetCount: 12,
+            selectedAssetCount: 0,
             currentScopeAssetCount: 121,
             selectedScope: .currentScope,
             requiresAllCatalogConfirmation: true,
@@ -183,6 +216,7 @@ final class LibraryGridChromeTests: XCTestCase {
         )
         let confirmed = BatchMetadataReviewPresentation(
             visibleAssetCount: 12,
+            selectedAssetCount: 0,
             currentScopeAssetCount: 121,
             selectedScope: .currentScope,
             requiresAllCatalogConfirmation: true,

@@ -740,6 +740,127 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.pendingMetadataSyncItems(), [])
     }
 
+    func testSelectedBatchMetadataAppliesOnlySelectedAssetsAndWritesXmpSidecars() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-selected-batch-metadata")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let firstURL = photosDirectory.appendingPathComponent("first.cr2")
+        let secondURL = photosDirectory.appendingPathComponent("second.cr2")
+        let outsideURL = photosDirectory.appendingPathComponent("outside.cr2")
+        try Data("first original raw bytes".utf8).write(to: firstURL)
+        try Data("second original raw bytes".utf8).write(to: secondURL)
+        try Data("outside original raw bytes".utf8).write(to: outsideURL)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let first = Asset(
+            id: AssetID(rawValue: "selected-batch-metadata-first"),
+            originalURL: firstURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata(keywords: ["existing"])
+        )
+        let second = Asset(
+            id: AssetID(rawValue: "selected-batch-metadata-second"),
+            originalURL: secondURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 11, modificationDate: Date(timeIntervalSince1970: 11)),
+            availability: .online,
+            metadata: AssetMetadata(keywords: ["existing"])
+        )
+        let outside = Asset(
+            id: AssetID(rawValue: "selected-batch-metadata-outside"),
+            originalURL: outsideURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 12, modificationDate: Date(timeIntervalSince1970: 12)),
+            availability: .online,
+            metadata: AssetMetadata(keywords: ["existing"])
+        )
+        try repository.upsert([first, second, outside])
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        model.setBatchSelection(first.id, isSelected: true)
+        model.setBatchSelection(second.id, isSelected: true)
+
+        let appliedCount = try model.applySelectedBatchMetadata(
+            keywordText: "portfolio, existing",
+            caption: "  Selected keepers  ",
+            creator: "  Jesse  ",
+            copyright: ""
+        )
+
+        XCTAssertEqual(model.selectedBatchAssetCount, 2)
+        XCTAssertEqual(appliedCount, 2)
+        XCTAssertEqual(model.statusMessage, "Applied batch metadata to 2 photos")
+        for asset in [first, second] {
+            let catalogMetadata = try repository.asset(id: asset.id).metadata
+            let sidecarData = try Data(contentsOf: asset.originalURL.appendingPathExtension("xmp"))
+            let sidecarMetadata = try XMPPacket.parse(sidecarData).metadata
+
+            XCTAssertEqual(catalogMetadata.keywords, ["existing", "portfolio"])
+            XCTAssertEqual(catalogMetadata.caption, "Selected keepers")
+            XCTAssertEqual(catalogMetadata.creator, "Jesse")
+            XCTAssertEqual(sidecarMetadata.keywords, ["existing", "portfolio"])
+            XCTAssertEqual(sidecarMetadata.caption, "Selected keepers")
+            XCTAssertEqual(sidecarMetadata.creator, "Jesse")
+        }
+        XCTAssertEqual(try repository.asset(id: outside.id).metadata.keywords, ["existing"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outside.originalURL.appendingPathExtension("xmp").path))
+        XCTAssertEqual(try Data(contentsOf: firstURL), Data("first original raw bytes".utf8))
+        XCTAssertEqual(try Data(contentsOf: secondURL), Data("second original raw bytes".utf8))
+        XCTAssertEqual(try Data(contentsOf: outsideURL), Data("outside original raw bytes".utf8))
+    }
+
+    func testBatchSelectionDoesNotReplacePrimarySelection() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-selected-batch-primary")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let first = Asset(
+            id: AssetID(rawValue: "selected-batch-primary-first"),
+            originalURL: photosDirectory.appendingPathComponent("first.cr2"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let second = Asset(
+            id: AssetID(rawValue: "selected-batch-primary-second"),
+            originalURL: photosDirectory.appendingPathComponent("second.cr2"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 11, modificationDate: Date(timeIntervalSince1970: 11)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert([first, second])
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+
+        XCTAssertEqual(model.selectedAssetID, first.id)
+
+        model.setBatchSelection(second.id, isSelected: true)
+
+        XCTAssertEqual(model.selectedBatchAssetCount, 1)
+        XCTAssertEqual(model.selectedAssetID, first.id)
+    }
+
     func testCurrentScopeBatchMetadataAppliesBeyondLoadedPageAndWritesXmpSidecars() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-current-scope-batch-metadata")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)

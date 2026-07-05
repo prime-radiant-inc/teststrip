@@ -139,12 +139,14 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "keywording.batch" })
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5e" })
 
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("visible/current-scope metadata popover"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("selected/visible/current-scope metadata popover"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("command-selected loaded assets"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("all-catalog confirmation"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("multi-select batch review is not built"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("visible/current-scope metadata popover"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("range and cross-page selection are not built"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("selected/visible/current-scope metadata popover"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("command-selected loaded assets"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("all-catalog confirmation"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("multi-select batch review is not built"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("range and cross-page selection are not built"))
     }
 
     func testSearchRefineLedgerTracksSuggestedActionsWithoutGeneratedRefinements() throws {

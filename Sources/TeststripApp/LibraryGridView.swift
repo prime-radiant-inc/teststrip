@@ -146,7 +146,7 @@ struct LibraryGridView: View {
 
             Button {
                 batchMetadataDraft = BatchMetadataDraft()
-                batchMetadataScope = .visible
+                batchMetadataScope = model.selectedBatchAssetCount > 0 ? .selected : .visible
                 isAllCatalogBatchMetadataConfirmed = false
                 isReviewingBatchMetadata = true
             } label: {
@@ -767,6 +767,7 @@ struct LibraryGridView: View {
     private var batchMetadataPopover: some View {
         let presentation = BatchMetadataReviewPresentation(
             visibleAssetCount: model.assets.count,
+            selectedAssetCount: model.selectedBatchAssetCount,
             currentScopeAssetCount: model.totalAssetCount,
             selectedScope: batchMetadataScope,
             requiresAllCatalogConfirmation: batchMetadataScope == .currentScope && !model.hasActiveLibraryFilters,
@@ -1640,7 +1641,8 @@ struct LibraryGridView: View {
                     asset: asset,
                     previewURL: model.gridPreviewURL(for: asset.id),
                     previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
-                    isSelected: model.selectedAssetID == asset.id
+                    isSelected: model.selectedAssetID == asset.id,
+                    isBatchSelected: model.isBatchSelected(asset.id)
                 )
                 .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
                     selectAssetFromGrid(assetID)
@@ -1736,6 +1738,18 @@ struct LibraryGridView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+            }
+            if model.selectedBatchAssetCount > 0 {
+                Label("\(model.selectedBatchAssetCount) selected", systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                Button {
+                    model.clearBatchSelection()
+                } label: {
+                    Image(systemName: "xmark.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("Clear selected batch")
             }
             Spacer()
             thumbnailDensityControl
@@ -2023,6 +2037,13 @@ struct LibraryGridView: View {
     private func applyVisibleBatchMetadataDraft() {
         do {
             switch batchMetadataScope {
+            case .selected:
+                try model.applySelectedBatchMetadata(
+                    keywordText: batchMetadataDraft.keywords,
+                    caption: batchMetadataDraft.caption,
+                    creator: batchMetadataDraft.creator,
+                    copyright: batchMetadataDraft.copyright
+                )
             case .visible:
                 try model.applyVisibleBatchMetadata(
                     keywordText: batchMetadataDraft.keywords,
@@ -2706,6 +2727,7 @@ struct BatchMetadataDraft: Equatable {
 }
 
 enum BatchMetadataScopeMode: String, CaseIterable, Identifiable {
+    case selected
     case visible
     case currentScope
 
@@ -2713,6 +2735,8 @@ enum BatchMetadataScopeMode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .selected:
+            return "Selected"
         case .visible:
             return "Visible"
         case .currentScope:
@@ -2730,6 +2754,7 @@ struct BatchMetadataReviewPresentation: Equatable {
 
     init(
         visibleAssetCount: Int,
+        selectedAssetCount: Int,
         currentScopeAssetCount: Int,
         selectedScope: BatchMetadataScopeMode,
         requiresAllCatalogConfirmation: Bool,
@@ -2738,6 +2763,12 @@ struct BatchMetadataReviewPresentation: Equatable {
         draft: BatchMetadataDraft
     ) {
         switch selectedScope {
+        case .selected:
+            countText = "\(selectedAssetCount) selected \(selectedAssetCount == 1 ? "photo" : "photos")"
+            suggestionRows = []
+            isApplyEnabled = selectedAssetCount > 0 && draft.hasContentToApply
+            applyTitle = "Apply to selected batch"
+            confirmationText = nil
         case .visible:
             countText = "\(visibleAssetCount) visible \(visibleAssetCount == 1 ? "photo" : "photos")"
             suggestionRows = BatchKeywordSuggestionPresentation.rows(for: suggestions, limit: 6)
@@ -3427,7 +3458,8 @@ private struct CompareView: View {
                 asset: asset,
                 previewURL: model.loupePreviewURL(for: asset.id),
                 previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
-                isSelected: model.selectedAssetID == asset.id
+                isSelected: model.selectedAssetID == asset.id,
+                isBatchSelected: model.isBatchSelected(asset.id)
             )
             .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
                 model.select(assetID)
@@ -3671,7 +3703,11 @@ private extension View {
         }
         return Button {
             focusCullingSurface()
-            selectAsset(asset.id)
+            if NSEvent.modifierFlags.contains(.command) {
+                model.toggleBatchSelection(asset.id)
+            } else {
+                selectAsset(asset.id)
+            }
         } label: {
             contentShape(Rectangle())
         }
@@ -3680,11 +3716,17 @@ private extension View {
             .accessibilityElement()
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(asset.originalURL.lastPathComponent)
-            .accessibilityValue(model.selectedAssetID == asset.id ? "Selected" : "Not selected")
+            .accessibilityValue(assetSelectionAccessibilityValue(for: asset, model: model))
             .accessibilityAction {
                 focusCullingSurface()
                 selectAsset(asset.id)
             }
+    }
+
+    private func assetSelectionAccessibilityValue(for asset: Asset, model: AppModel) -> String {
+        let primaryState = model.selectedAssetID == asset.id ? "Selected" : "Not selected"
+        guard model.isBatchSelected(asset.id) else { return primaryState }
+        return "\(primaryState), batch selected"
     }
 }
 
@@ -4387,7 +4429,8 @@ private struct TimelineWorkspaceView: View {
                             asset: asset,
                             previewURL: model.gridPreviewURL(for: asset.id),
                             previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
-                            isSelected: model.selectedAssetID == asset.id
+                            isSelected: model.selectedAssetID == asset.id,
+                            isBatchSelected: model.isBatchSelected(asset.id)
                         )
                         .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
                             selectAsset(assetID)
@@ -5071,6 +5114,7 @@ private struct AssetGridCell: View {
     var previewURL: URL?
     var previewCacheGeneration: Int
     var isSelected: Bool
+    var isBatchSelected = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -5102,6 +5146,12 @@ private struct AssetGridCell: View {
                         .padding(6)
                 }
             }
+            .overlay(alignment: .topLeading) {
+                if isBatchSelected {
+                    batchSelectionBadge
+                        .padding(6)
+                }
+            }
             .background(
                 RoundedRectangle(cornerRadius: 5)
                     .fill(Color.gray.opacity(0.35))
@@ -5118,6 +5168,13 @@ private struct AssetGridCell: View {
             scaling: AssetGridPreviewPolicy.thumbnailScaling,
             cacheGeneration: previewCacheGeneration
         )
+    }
+
+    private var batchSelectionBadge: some View {
+        Image(systemName: "checkmark.circle.fill")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(.black.opacity(0.82), Color.orange)
+            .accessibilityLabel("Batch selected")
     }
 
     private var metadataOverlay: some View {
