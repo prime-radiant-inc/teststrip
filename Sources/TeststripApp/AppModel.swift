@@ -1462,7 +1462,7 @@ public final class AppModel {
             if !newFailedPreviewItemIDs.isEmpty {
                 try? self?.refreshPreviewGenerationQueueStates()
                 self?.refreshLoadedAssetAvailabilityForPreviewFailures(newFailedPreviewItemIDs)
-                try? self?.enqueuePendingPreviewGeneration()
+                try? self?.enqueuePendingPreviewGeneration(excluding: newFailedPreviewItemIDs)
             }
             self?.releaseInactiveWorkerImportContexts(in: queue)
             self?.releaseInactiveEvaluationContexts(in: queue)
@@ -3145,7 +3145,7 @@ public final class AppModel {
         }
     }
 
-    private func enqueuePendingPreviewGeneration() throws {
+    private func enqueuePendingPreviewGeneration(excluding excludedItemIDs: Set<WorkSessionID> = []) throws {
         guard let catalog, let workerSupervisor else { return }
         var existingPreviewWorkItemIDs = Self.previewGenerationWorkItemIDs(in: backgroundWorkQueue)
         let availableSlotCount = max(
@@ -3164,6 +3164,9 @@ public final class AppModel {
             requiresAvailableOriginal: true
         ) {
             let itemID = Self.previewWorkItemID(assetID: pendingItem.assetID, level: pendingItem.level)
+            if excludedItemIDs.contains(itemID) {
+                continue
+            }
             if existingPreviewWorkItemIDs.contains(itemID) {
                 continue
             }
