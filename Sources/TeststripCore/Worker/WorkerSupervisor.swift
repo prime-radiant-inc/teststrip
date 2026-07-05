@@ -101,6 +101,23 @@ public final class WorkerSupervisor: @unchecked Sendable {
         dispatchedItemIDs.contains(itemID)
     }
 
+    public var isWorkerProcessRunning: Bool {
+        transport.isRunning
+    }
+
+    public var canStopIdleWorkerProcess: Bool {
+        transport.isRunning && dispatchedItemIDs.isEmpty && !queue.items.contains { Self.isActiveWorkStatus($0.status) }
+    }
+
+    @discardableResult
+    public func stopIdleWorkerProcess() -> Bool {
+        guard canStopIdleWorkerProcess else {
+            return false
+        }
+        transport.terminate()
+        return true
+    }
+
     @discardableResult
     public func promoteQueuedItem(id itemID: WorkSessionID) throws -> Bool {
         guard queue.promoteQueuedItem(id: itemID) else {
@@ -246,7 +263,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         case .completed(let itemID, let message):
             guard let itemID else { return }
             completeDispatchedItem(id: itemID, detail: message, event: event)
-        case .completedImport(let itemID, let message, _, _, _):
+        case .completedImport(let itemID, let message, _, _, _, _):
             guard let itemID else { return }
             completeDispatchedItem(id: itemID, detail: message, event: event)
         case .failed(let itemID, let message):
@@ -372,6 +389,10 @@ public final class WorkerSupervisor: @unchecked Sendable {
             return "\(Int(timeout)) seconds"
         }
         return "\(timeout) seconds"
+    }
+
+    private static func isActiveWorkStatus(_ status: WorkSessionStatus) -> Bool {
+        [.queued, .running, .paused].contains(status)
     }
 
     private func notifyQueueChanged() {

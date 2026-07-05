@@ -14,6 +14,21 @@ struct ActivityView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+            if let idleWorkerStatusText = model.idleWorkerStatusText {
+                HStack(spacing: 6) {
+                    Text(idleWorkerStatusText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Button {
+                        model.stopIdleWorkerProcess()
+                    } label: {
+                        Image(systemName: "stop.circle")
+                    }
+                    .buttonStyle(.plain)
+                    .help("Stop idle worker")
+                }
+            }
             let activities = model.visibleWorkActivities
             if !activities.isEmpty {
                 ForEach(Array(activities.prefix(4).enumerated()), id: \.element.id) { index, activity in

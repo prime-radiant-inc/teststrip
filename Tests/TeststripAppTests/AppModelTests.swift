@@ -6170,6 +6170,44 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.visibleWorkActivity?.status, .cancelled)
     }
 
+    @MainActor
+    func testIdleWorkerProcessCanBeStoppedWithoutCancellingCompletedWork() async throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, previewCache, asset) = try makeModelWithPreviewCache(
+            named: "idle-worker-stop",
+            workerSupervisor: supervisor
+        )
+        try model.requestPreview(assetID: asset.id, level: .medium)
+        let itemID = WorkSessionID(rawValue: "preview-\(asset.id.rawValue)-medium")
+        XCTAssertEqual(try transport.commands(), [
+            .generatePreview(assetID: asset.id, level: .medium)
+        ])
+        let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .medium))
+        try writePreviewPlaceholder(to: previewURL)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: itemID,
+            message: "generated medium preview"
+        )))
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+
+        XCTAssertTrue(model.isWorkerProcessRunning)
+        XCTAssertTrue(model.canStopIdleWorkerProcess)
+        XCTAssertEqual(model.idleWorkerStatusText, "Worker idle")
+
+        model.stopIdleWorkerProcess()
+
+        XCTAssertFalse(model.isWorkerProcessRunning)
+        XCTAssertNil(model.idleWorkerStatusText)
+        XCTAssertFalse(transport.isRunning)
+        XCTAssertEqual(transport.terminateCount, 1)
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: itemID)?.status, .completed)
+        XCTAssertEqual(model.statusMessage, "Worker stopped")
+    }
+
     func testCancellingQueuedEvaluationWorkPreservesRunningPreviewAndDoesNotCancelAll() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -6356,7 +6394,8 @@ final class AppModelTests: XCTestCase {
             message: "imported 1 photo from photos",
             importedAssetIDs: [importedAsset.id],
             newAssetCount: 1,
-            existingAssetCount: 0
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0
         )))
 
         try await waitForSelectedAsset(importedAsset.id, in: model)
@@ -6408,7 +6447,8 @@ final class AppModelTests: XCTestCase {
             message: "imported 1 photo from photos",
             importedAssetIDs: [importedAsset.id],
             newAssetCount: 1,
-            existingAssetCount: 0
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0
         )))
         try await waitForSelectedAsset(importedAsset.id, in: model)
         try catalog.repository.recordPreviewGenerationFailure(
@@ -6427,6 +6467,50 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary.previewFailureCount, 1)
         XCTAssertEqual(summary.failureText, "1 preview failure")
         XCTAssertEqual(summary.previewStatusText, "1 preview failure")
+    }
+
+    @MainActor
+    func testWorkerImportCompletionReportsSkippedSourceFiles() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-skipped-source")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "worker-imported"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 1
+        )))
+
+        try await waitForSelectedAsset(importedAsset.id, in: model)
+
+        XCTAssertEqual(model.statusMessage, "Imported 1 photo (1 file skipped)")
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.detail, "Imported 1 photo from photos (1 file skipped)")
     }
 
     @MainActor
@@ -6741,7 +6825,8 @@ final class AppModelTests: XCTestCase {
             message: "imported 0 photos",
             importedAssetIDs: [],
             newAssetCount: 0,
-            existingAssetCount: 0
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0
         )))
 
         try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
@@ -7337,7 +7422,8 @@ final class AppModelTests: XCTestCase {
             message: "imported 1 photo from DCIM to Library",
             importedAssetIDs: [importedAsset.id],
             newAssetCount: 1,
-            existingAssetCount: 0
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0
         )))
 
         try await waitForSelectedAsset(importedAsset.id, in: model)
@@ -8558,6 +8644,7 @@ private final class RecordingWorkerTransport: WorkerTransport {
     var errorHandler: ((String) -> Void)?
 
     private(set) var lines: [String] = []
+    private(set) var terminateCount = 0
     private(set) var isRunning = false
 
     func launch() throws {
@@ -8569,6 +8656,7 @@ private final class RecordingWorkerTransport: WorkerTransport {
     }
 
     func terminate() {
+        terminateCount += 1
         isRunning = false
     }
 

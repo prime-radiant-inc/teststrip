@@ -284,7 +284,8 @@ final class WorkerCommandExecutorTests: XCTestCase {
             "imported 1 photo from photos",
             importedAssetIDs: [asset.id],
             newAssetCount: 1,
-            existingAssetCount: 0
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0
         ))
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
             PreviewGenerationItem(assetID: asset.id, level: .micro),
@@ -305,7 +306,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
         let firstResult = try executor.execute(.importFolder(root: sourceRoot))
-        guard case .completedImport(_, let importedAssetIDs, 1, 0) = firstResult else {
+        guard case .completedImport(_, let importedAssetIDs, 1, 0, 0) = firstResult else {
             XCTFail("expected first import to report one new asset")
             return
         }
@@ -316,7 +317,40 @@ final class WorkerCommandExecutorTests: XCTestCase {
             "imported 1 photo from photos",
             importedAssetIDs: importedAssetIDs,
             newAssetCount: 0,
-            existingAssetCount: 1
+            existingAssetCount: 1,
+            skippedSourceFileCount: 0
+        ))
+    }
+
+    func testImportFolderCommandReportsSkippedSourceFileCount() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-import-folder-skipped-source")
+        let sourceRoot = root.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+        let survivor = sourceRoot.appendingPathComponent("one.jpg")
+        let disappearing = sourceRoot.appendingPathComponent("two.jpg")
+        try TestDirectories.writeTestJPEG(to: survivor, width: 1600, height: 1000)
+        try TestDirectories.writeTestJPEG(to: disappearing, width: 1000, height: 1600)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
+
+        let result = try executor.execute(.importFolder(root: sourceRoot)) { progress in
+            if progress.detail == "Cataloging 2 photos" {
+                try? FileManager.default.removeItem(at: disappearing)
+            }
+        }
+
+        let imported = try repository.allAssets(limit: 10)
+        let asset = try XCTUnwrap(imported.first)
+        XCTAssertEqual(imported.map(\.originalURL), [survivor])
+        XCTAssertEqual(result, .completedImport(
+            "imported 1 photo from photos",
+            importedAssetIDs: [asset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 1
         ))
     }
 
@@ -376,7 +410,8 @@ final class WorkerCommandExecutorTests: XCTestCase {
             "imported 1 photo from DCIM to Library",
             importedAssetIDs: [asset.id],
             newAssetCount: 1,
-            existingAssetCount: 0
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0
         ))
         XCTAssertEqual(try repository.asset(id: asset.id).metadata, metadata)
         XCTAssertEqual(try Data(contentsOf: XMPSidecarStore().sidecarURL(forOriginalAt: destination)), sidecarData)

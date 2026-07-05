@@ -26,6 +26,7 @@ public struct LibraryImportResult: Sendable {
     public var importedAssets: [Asset]
     public var previewFailures: [LibraryPreviewFailure]
     public var skippedSourceFiles: [LibrarySkippedSourceFile]
+    public var skippedSourceFileCount: Int
     public var newAssetCount: Int
     public var existingAssetCount: Int
 
@@ -33,12 +34,14 @@ public struct LibraryImportResult: Sendable {
         importedAssets: [Asset],
         previewFailures: [LibraryPreviewFailure],
         skippedSourceFiles: [LibrarySkippedSourceFile] = [],
+        skippedSourceFileCount: Int? = nil,
         newAssetCount: Int? = nil,
         existingAssetCount: Int = 0
     ) {
         self.importedAssets = importedAssets
         self.previewFailures = previewFailures
         self.skippedSourceFiles = skippedSourceFiles
+        self.skippedSourceFileCount = skippedSourceFileCount ?? skippedSourceFiles.count
         self.newAssetCount = newAssetCount ?? max(importedAssets.count - existingAssetCount, 0)
         self.existingAssetCount = existingAssetCount
     }

@@ -134,7 +134,8 @@ final class WorkerSupervisorTests: XCTestCase {
             message: "imported 1 photo from Photos",
             importedAssetIDs: [AssetID(rawValue: "asset-1")],
             newAssetCount: 1,
-            existingAssetCount: 0
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0
         )
         try supervisor.enqueue(item, command: command)
 
@@ -449,6 +450,52 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertFalse(transport.isRunning)
         XCTAssertEqual(transport.terminateCount, 1)
         XCTAssertEqual(try transport.commands(), [command, .pause, .resume, .cancelAll])
+    }
+
+    func testStoppingIdleWorkerProcessTerminatesTransportWithoutChangingQueue() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let item = BackgroundWorkItem.testItem(id: "preview")
+        let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        try supervisor.enqueue(item, command: command)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: item.id,
+            message: "generated medium preview"
+        )))
+        XCTAssertTrue(waitUntil {
+            supervisor.queue.item(id: item.id)?.status == .completed
+        })
+        let queueBeforeStop = supervisor.queue
+
+        XCTAssertTrue(supervisor.isWorkerProcessRunning)
+        XCTAssertTrue(supervisor.canStopIdleWorkerProcess)
+        XCTAssertTrue(supervisor.stopIdleWorkerProcess())
+
+        XCTAssertFalse(transport.isRunning)
+        XCTAssertEqual(transport.terminateCount, 1)
+        XCTAssertEqual(supervisor.queue, queueBeforeStop)
+    }
+
+    func testStoppingIdleWorkerProcessDoesNotTerminateActiveWork() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let item = BackgroundWorkItem.testItem(id: "preview")
+        let command = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .medium)
+        try supervisor.enqueue(item, command: command)
+
+        XCTAssertTrue(supervisor.isWorkerProcessRunning)
+        XCTAssertFalse(supervisor.canStopIdleWorkerProcess)
+        XCTAssertFalse(supervisor.stopIdleWorkerProcess())
+
+        XCTAssertTrue(transport.isRunning)
+        XCTAssertEqual(transport.terminateCount, 0)
+        XCTAssertEqual(supervisor.queue.item(id: item.id)?.status, .running)
     }
 
     func testCancellingDispatchedItemPreservesQueuedWork() throws {

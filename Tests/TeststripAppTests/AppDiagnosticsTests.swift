@@ -40,9 +40,11 @@ final class AppDiagnosticsTests: XCTestCase {
             maxRunningCount: 2,
             items: [runningPreview, queuedXMP, failedRecognition]
         )
+        let transport = AppDiagnosticsRecordingWorkerTransport()
+        try transport.launch()
         let workerSupervisor = WorkerSupervisor(
             queue: workerQueue,
-            transport: AppDiagnosticsRecordingWorkerTransport()
+            transport: transport
         )
         let recentFailure = AppWorkActivity(
             id: "import-failed",
@@ -94,6 +96,7 @@ final class AppDiagnosticsTests: XCTestCase {
         XCTAssertEqual(diagnostics.previewCachePath, paths.previewCacheRoot.path)
         XCTAssertEqual(diagnostics.workerExecutablePath, workerURL.path)
         XCTAssertTrue(diagnostics.workerEnabled)
+        XCTAssertTrue(diagnostics.workerProcessRunning)
         XCTAssertEqual(diagnostics.loadedAssetCount, 0)
         XCTAssertEqual(diagnostics.totalAssetCount, 42)
         XCTAssertEqual(diagnostics.pendingBackgroundWorkCount, 2)
@@ -134,6 +137,7 @@ final class AppDiagnosticsTests: XCTestCase {
             )
         ])
         XCTAssertTrue(model.diagnosticsReportText.contains("Catalog database: \(paths.catalogURL.path)"))
+        XCTAssertTrue(model.diagnosticsReportText.contains("Worker process: running"))
         XCTAssertTrue(model.diagnosticsReportText.contains("XMP pending/conflicts: 1/1"))
         XCTAssertTrue(model.diagnosticsReportText.contains("recognition recognition-failed: Local model timeout"))
     }
@@ -147,6 +151,7 @@ final class AppDiagnosticsTests: XCTestCase {
         XCTAssertNil(diagnostics.previewCachePath)
         XCTAssertNil(diagnostics.workerExecutablePath)
         XCTAssertFalse(diagnostics.workerEnabled)
+        XCTAssertFalse(diagnostics.workerProcessRunning)
         XCTAssertEqual(diagnostics.pendingBackgroundWorkCount, 0)
         XCTAssertEqual(diagnostics.recentFailures, [])
         XCTAssertTrue(AppModel.demo().diagnosticsReportText.contains("Catalog database: Unavailable"))
@@ -164,6 +169,7 @@ final class AppDiagnosticsTests: XCTestCase {
         XCTAssertEqual(diagnostics.workerExecutablePath, missingWorkerURL.path)
         XCTAssertTrue(diagnostics.workerConfigured)
         XCTAssertFalse(diagnostics.workerEnabled)
+        XCTAssertFalse(diagnostics.workerProcessRunning)
     }
 
     private func makeTemporaryDirectory(named name: String) throws -> URL {

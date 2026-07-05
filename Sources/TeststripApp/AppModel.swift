@@ -345,6 +345,7 @@ public struct AppDiagnosticsSnapshot: Equatable, Sendable {
     public var workerExecutablePath: String?
     public var workerConfigured: Bool
     public var workerEnabled: Bool
+    public var workerProcessRunning: Bool
     public var loadedAssetCount: Int
     public var totalAssetCount: Int
     public var pendingBackgroundWorkCount: Int
@@ -366,6 +367,7 @@ public struct AppDiagnosticsSnapshot: Equatable, Sendable {
         workerExecutablePath: String?,
         workerConfigured: Bool,
         workerEnabled: Bool,
+        workerProcessRunning: Bool,
         loadedAssetCount: Int,
         totalAssetCount: Int,
         pendingBackgroundWorkCount: Int,
@@ -382,6 +384,7 @@ public struct AppDiagnosticsSnapshot: Equatable, Sendable {
         self.workerExecutablePath = workerExecutablePath
         self.workerConfigured = workerConfigured
         self.workerEnabled = workerEnabled
+        self.workerProcessRunning = workerProcessRunning
         self.loadedAssetCount = loadedAssetCount
         self.totalAssetCount = totalAssetCount
         self.pendingBackgroundWorkCount = pendingBackgroundWorkCount
@@ -418,6 +421,7 @@ public enum AppDiagnosticsReport {
             "Preview cache: \(snapshot.previewCachePath ?? "Unavailable")",
             "Worker executable: \(snapshot.workerExecutablePath ?? "Unavailable")",
             "Worker enabled: \(snapshot.workerEnabled ? "yes" : "no")",
+            "Worker process: \(snapshot.workerProcessRunning ? "running" : "stopped")",
             "Assets loaded/total: \(snapshot.loadedAssetCount)/\(snapshot.totalAssetCount)",
             "Background active: \(snapshot.pendingBackgroundWorkCount)",
             "XMP pending/conflicts: \(snapshot.pendingMetadataSyncCount)/\(snapshot.metadataSyncConflictCount)",
@@ -988,6 +992,18 @@ public final class AppModel {
         return backgroundWorkQueue.runningItems.isEmpty ? "Queue paused" : "Queue paused after current task"
     }
 
+    public var isWorkerProcessRunning: Bool {
+        workerSupervisor?.isWorkerProcessRunning ?? false
+    }
+
+    public var canStopIdleWorkerProcess: Bool {
+        workerSupervisor?.canStopIdleWorkerProcess ?? false
+    }
+
+    public var idleWorkerStatusText: String? {
+        canStopIdleWorkerProcess ? "Worker idle" : nil
+    }
+
     public var canCancelBackgroundWork: Bool {
         backgroundWorkQueue.items.contains { [.queued, .running, .paused].contains($0.status) }
     }
@@ -1008,6 +1024,7 @@ public final class AppModel {
             workerExecutablePath: workerExecutableURL?.path,
             workerConfigured: workerExecutableURL != nil,
             workerEnabled: workerSupervisor != nil,
+            workerProcessRunning: isWorkerProcessRunning,
             loadedAssetCount: assets.count,
             totalAssetCount: totalAssetCount,
             pendingBackgroundWorkCount: backgroundWorkQueue.items.filter { Self.isActiveBackgroundWorkStatus($0.status) }.count,
@@ -3239,6 +3256,12 @@ public final class AppModel {
         }
     }
 
+    public func stopIdleWorkerProcess() {
+        guard workerSupervisor?.stopIdleWorkerProcess() == true else { return }
+        syncBackgroundWorkQueueFromSupervisor()
+        statusMessage = "Worker stopped"
+    }
+
     public func cancelBackgroundWork(id itemID: WorkSessionID) {
         do {
             if let workerSupervisor {
@@ -3657,12 +3680,20 @@ public final class AppModel {
                     errorMessage = error.localizedDescription
                 }
             }
-        case .completedImport(let itemID, _, let importedAssetIDs, let newAssetCount, let existingAssetCount):
+        case .completedImport(
+            let itemID,
+            _,
+            let importedAssetIDs,
+            let newAssetCount,
+            let existingAssetCount,
+            let skippedSourceFileCount
+        ):
             handleWorkerImportCompleted(
                 itemID: itemID,
                 importedAssetIDs: importedAssetIDs,
                 newAssetCount: newAssetCount,
-                existingAssetCount: existingAssetCount
+                existingAssetCount: existingAssetCount,
+                skippedSourceFileCount: skippedSourceFileCount
             )
         case .accepted, .progress, .failed:
             return
@@ -3897,7 +3928,8 @@ public final class AppModel {
         itemID: WorkSessionID?,
         importedAssetIDs: [AssetID],
         newAssetCount: Int,
-        existingAssetCount: Int
+        existingAssetCount: Int,
+        skippedSourceFileCount: Int
     ) {
         guard let itemID,
               let context = workerImportContextsByItemID.removeValue(forKey: itemID) else {
@@ -3917,6 +3949,7 @@ public final class AppModel {
             let result = LibraryImportResult(
                 importedAssets: importedAssets,
                 previewFailures: [],
+                skippedSourceFileCount: skippedSourceFileCount,
                 newAssetCount: newAssetCount,
                 existingAssetCount: existingAssetCount
             )
@@ -5020,7 +5053,7 @@ public final class AppModel {
 
     private static func importCompletionStatus(result: LibraryImportResult) -> String {
         guard !result.importedAssets.isEmpty else {
-            if !result.skippedSourceFiles.isEmpty {
+            if result.skippedSourceFileCount > 0 {
                 return "No photos imported"
             }
             return "No supported photos found"
@@ -5039,9 +5072,9 @@ public final class AppModel {
 
     private static func importCompletionWarningText(result: LibraryImportResult) -> String? {
         var warnings: [String] = []
-        if !result.skippedSourceFiles.isEmpty {
-            let fileLabel = result.skippedSourceFiles.count == 1 ? "file" : "files"
-            warnings.append("\(result.skippedSourceFiles.count) \(fileLabel) skipped")
+        if result.skippedSourceFileCount > 0 {
+            let fileLabel = result.skippedSourceFileCount == 1 ? "file" : "files"
+            warnings.append("\(result.skippedSourceFileCount) \(fileLabel) skipped")
         }
         if !result.previewFailures.isEmpty {
             let previewLabel = result.previewFailures.count == 1 ? "preview failure" : "preview failures"
@@ -5122,7 +5155,7 @@ public final class AppModel {
     private static func importCompletionDetail(result: LibraryImportResult, sourceDescription: String) -> String {
         let warningSuffix = importCompletionWarningText(result: result).map { " (\($0))" } ?? ""
         if result.importedAssets.isEmpty {
-            if result.skippedSourceFiles.isEmpty {
+            if result.skippedSourceFileCount == 0 {
                 return "No supported photos found in \(sourceDescription)"
             }
             return "No photos imported from \(sourceDescription)\(warningSuffix)"

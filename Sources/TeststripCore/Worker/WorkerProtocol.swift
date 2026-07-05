@@ -14,7 +14,14 @@ public enum WorkerEvent: Equatable, Sendable {
     case accepted(itemID: WorkSessionID?, message: String)
     case progress(itemID: WorkSessionID?, completedUnitCount: Int, totalUnitCount: Int?, detail: String, catalogedAssetIDs: [AssetID])
     case completed(itemID: WorkSessionID?, message: String)
-    case completedImport(itemID: WorkSessionID?, message: String, importedAssetIDs: [AssetID], newAssetCount: Int, existingAssetCount: Int)
+    case completedImport(
+        itemID: WorkSessionID?,
+        message: String,
+        importedAssetIDs: [AssetID],
+        newAssetCount: Int,
+        existingAssetCount: Int,
+        skippedSourceFileCount: Int
+    )
     case failed(itemID: WorkSessionID?, message: String)
 
     public var itemID: WorkSessionID? {
@@ -22,7 +29,7 @@ public enum WorkerEvent: Equatable, Sendable {
         case .accepted(let itemID, _),
              .progress(let itemID, _, _, _, _),
              .completed(let itemID, _),
-             .completedImport(let itemID, _, _, _, _),
+             .completedImport(let itemID, _, _, _, _, _),
              .failed(let itemID, _):
             return itemID
         }
@@ -33,7 +40,7 @@ public enum WorkerEvent: Equatable, Sendable {
         case .accepted(_, let message),
              .progress(_, _, _, let message, _),
              .completed(_, let message),
-             .completedImport(_, let message, _, _, _),
+             .completedImport(_, let message, _, _, _, _),
              .failed(_, let message):
             return message
         }
@@ -171,7 +178,14 @@ public enum WorkerProtocolEncoder {
                 completedUnitCount: nil,
                 totalUnitCount: nil
             )
-        case .completedImport(let itemID, let message, let importedAssetIDs, let newAssetCount, let existingAssetCount):
+        case .completedImport(
+            let itemID,
+            let message,
+            let importedAssetIDs,
+            let newAssetCount,
+            let existingAssetCount,
+            let skippedSourceFileCount
+        ):
             envelope = WorkerEventEnvelope(
                 event: "completed",
                 itemID: itemID?.rawValue,
@@ -181,7 +195,8 @@ public enum WorkerProtocolEncoder {
                 completedUnitCount: nil,
                 totalUnitCount: nil,
                 newAssetCount: newAssetCount,
-                existingAssetCount: existingAssetCount
+                existingAssetCount: existingAssetCount,
+                skippedSourceFileCount: skippedSourceFileCount
             )
         case .failed(let itemID, let message):
             envelope = WorkerEventEnvelope(
@@ -270,7 +285,8 @@ public enum WorkerProtocolEncoder {
                     message: envelope.message,
                     importedAssetIDs: importedAssetIDs.map(AssetID.init(rawValue:)),
                     newAssetCount: try envelope.requiredNewAssetCount(),
-                    existingAssetCount: try envelope.requiredExistingAssetCount()
+                    existingAssetCount: try envelope.requiredExistingAssetCount(),
+                    skippedSourceFileCount: try envelope.requiredSkippedSourceFileCount()
                 )
             }
             return .completed(itemID: itemID, message: envelope.message)
@@ -365,6 +381,7 @@ public enum WorkerProtocolEncoder {
         var totalUnitCount: Int?
         var newAssetCount: Int? = nil
         var existingAssetCount: Int? = nil
+        var skippedSourceFileCount: Int? = nil
 
         func requiredCompletedUnitCount() throws -> Int {
             guard let completedUnitCount else {
@@ -412,6 +429,18 @@ public enum WorkerProtocolEncoder {
                 )
             }
             return existingAssetCount
+        }
+
+        func requiredSkippedSourceFileCount() throws -> Int {
+            guard let skippedSourceFileCount else {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.skippedSourceFileCount],
+                        debugDescription: "Missing skippedSourceFileCount"
+                    )
+                )
+            }
+            return skippedSourceFileCount
         }
     }
 }
