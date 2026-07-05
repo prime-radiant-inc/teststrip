@@ -5,6 +5,7 @@ import TeststripCore
 public enum LibraryViewMode: String, Sendable {
     case grid
     case search
+    case copilot
     case loupe
     case compare
     case timeline
@@ -131,6 +132,7 @@ extension EvaluationKind {
 public enum SidebarRowTarget: Equatable, Sendable {
     case allPhotographs
     case search
+    case copilot
     case timeline
     case people
     case placeholder
@@ -835,6 +837,9 @@ public final class AppModel {
     public var libraryTitle: String {
         if selectedView == .search {
             return "Search"
+        }
+        if selectedView == .copilot {
+            return "Copilot"
         }
         if selectedView == .timeline {
             return "Timeline"
@@ -1660,6 +1665,9 @@ public final class AppModel {
         case .search:
             selectedAssetSetID = nil
             selectedView = .search
+        case .copilot:
+            selectedAssetSetID = nil
+            selectedView = .copilot
         case .timeline:
             selectedAssetSetID = nil
             selectedView = .timeline
@@ -4926,6 +4934,16 @@ public final class AppModel {
                 tone: .accent,
                 target: .search,
                 liveMockupPlaceholder: .agenticSearch
+            )
+        )
+        libraryRows.append(
+            SidebarRow(
+                id: "library-copilot",
+                title: "Copilot",
+                detailText: "Review work",
+                tone: .accent,
+                target: .copilot,
+                liveMockupPlaceholder: .copilotLibrary
             )
         )
         libraryRows.append(

@@ -43,6 +43,8 @@ struct LibraryGridView: View {
         Group {
             if model.selectedView == .people {
                 PeopleView(model: model)
+            } else if model.selectedView == .copilot {
+                CopilotView(model: model)
             } else if model.selectedView == .search {
                 SearchWorkspaceView(model: model, assetGrid: AnyView(assetGrid))
             } else if model.selectedView == .timeline {
@@ -2240,6 +2242,7 @@ struct LibraryTopBarPresentation: Equatable {
     private static let modeItems = [
         LibraryTopBarModeItem(title: "Grid", systemImage: "square.grid.3x3.fill", mode: .grid),
         LibraryTopBarModeItem(title: "Search", systemImage: "magnifyingglass", mode: .search),
+        LibraryTopBarModeItem(title: "Copilot", systemImage: "wand.and.stars", mode: .copilot),
         LibraryTopBarModeItem(title: "Timeline", systemImage: "calendar", mode: .timeline),
         LibraryTopBarModeItem(title: "Loupe", systemImage: "rectangle.inset.filled", mode: .loupe),
         LibraryTopBarModeItem(title: "Compare", systemImage: "rectangle.grid.2x2", mode: .compare),
@@ -2247,7 +2250,7 @@ struct LibraryTopBarPresentation: Equatable {
     ]
 
     private static func breadcrumbItems(scopeTitle: String, selectedView: LibraryViewMode) -> [String] {
-        if selectedView == .search || selectedView == .timeline || selectedView == .people {
+        if selectedView == .search || selectedView == .copilot || selectedView == .timeline || selectedView == .people {
             return ["Library", scopeTitle]
         }
         if scopeTitle == "All Photographs" {

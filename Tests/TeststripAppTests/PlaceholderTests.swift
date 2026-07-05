@@ -17,6 +17,7 @@ final class LiveMockupPlaceholderTests: XCTestCase {
 
         XCTAssertTrue(ids.isSuperset(of: [
             "library.top-chrome",
+            "library.copilot",
             "search.agentic",
             "search.refine",
             "smart-collections.builder",
@@ -104,6 +105,17 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("no named identities"))
     }
 
+    func testCopilotLedgerTracksLiveRouteWithoutAutonomousActions() throws {
+        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "library.copilot" })
+        let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "1b" })
+
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("copilot route"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("review queues"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("autonomous"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("copilot route"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("autonomous"))
+    }
+
     func testSearchSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
         let model = AppModel.demo()
         let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
@@ -112,6 +124,16 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertEqual(searchRow.liveMockupPlaceholder, .agenticSearch)
         XCTAssertTrue(searchRow.isSelectable)
         XCTAssertEqual(searchRow.target, .search)
+    }
+
+    func testCopilotSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
+        let model = AppModel.demo()
+        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
+        let copilotRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-copilot" })
+
+        XCTAssertEqual(copilotRow.liveMockupPlaceholder, .copilotLibrary)
+        XCTAssertTrue(copilotRow.isSelectable)
+        XCTAssertEqual(copilotRow.target, .copilot)
     }
 
     func testSelectingPeopleSidebarRowOpensPeopleView() throws {
@@ -134,6 +156,20 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         try model.selectSidebarRow(searchRow)
 
         XCTAssertEqual(model.selectedView, .search)
+        XCTAssertEqual(model.librarySearchText, "ceremony")
+        XCTAssertEqual(model.minimumRatingFilter, 4)
+    }
+
+    func testSelectingCopilotSidebarRowOpensCopilotWithoutClearingScope() throws {
+        let model = AppModel.demo()
+        model.librarySearchText = "ceremony"
+        model.minimumRatingFilter = 4
+        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
+        let copilotRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-copilot" })
+
+        try model.selectSidebarRow(copilotRow)
+
+        XCTAssertEqual(model.selectedView, .copilot)
         XCTAssertEqual(model.librarySearchText, "ceremony")
         XCTAssertEqual(model.minimumRatingFilter, 4)
     }
