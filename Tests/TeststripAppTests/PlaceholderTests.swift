@@ -148,6 +148,17 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("agent-generated refinements are not built"))
     }
 
+    func testEmptyFoldersSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
+        let model = AppModel.demo()
+        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
+        let foldersRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-folders" })
+
+        XCTAssertEqual(foldersRow.title, "Folders")
+        XCTAssertEqual(foldersRow.detailText, "No folders yet")
+        XCTAssertEqual(foldersRow.liveMockupPlaceholder?.id, "sidebar.folders-empty")
+        XCTAssertFalse(foldersRow.isSelectable)
+    }
+
     func testSearchSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
         let model = AppModel.demo()
         let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })

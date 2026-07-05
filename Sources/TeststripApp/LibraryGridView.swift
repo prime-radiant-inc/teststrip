@@ -1219,9 +1219,9 @@ struct LibraryGridView: View {
                 .foregroundStyle(.orange)
             ForEach(steps) { step in
                 HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
+                    Image(systemName: importPlanStepSystemImage(for: step.stage))
                         .font(.caption)
-                        .foregroundStyle(.green)
+                        .foregroundStyle(importPlanStepTint(for: step.stage))
                     VStack(alignment: .leading, spacing: 2) {
                         Text(step.title)
                             .font(.caption.weight(.semibold))
@@ -1236,6 +1236,24 @@ struct LibraryGridView: View {
         .padding(10)
         .frame(width: width, alignment: .leading)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func importPlanStepSystemImage(for stage: ImportPlanStepStage) -> String {
+        switch stage {
+        case .importWork:
+            "checkmark.circle.fill"
+        case .followUpSetup:
+            "sparkles"
+        }
+    }
+
+    private func importPlanStepTint(for stage: ImportPlanStepStage) -> Color {
+        switch stage {
+        case .importWork:
+            .green
+        case .followUpSetup:
+            .orange
+        }
     }
 
     private var sourceReconnectSheet: some View {

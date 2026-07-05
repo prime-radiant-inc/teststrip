@@ -26,6 +26,26 @@ final class ImportConfirmationDraftTests: XCTestCase {
             ImportPlanStep(
                 title: "Use the managed background queue",
                 detail: "Preview and metadata work remains visible, pausable, and cancellable."
+            ),
+            ImportPlanStep(
+                title: "Prepare imported-set culling",
+                detail: "The imported output set is kept as a working scope so Open and Cull can resume it immediately.",
+                stage: .followUpSetup
+            ),
+            ImportPlanStep(
+                title: "Detect likely stacks",
+                detail: "Time-adjacent frames unlock stack culling when a burst or sequence is found after import.",
+                stage: .followUpSetup
+            ),
+            ImportPlanStep(
+                title: "Prepare keyword review",
+                detail: "Local object labels stay provisional until you accept them into keywords/XMP.",
+                stage: .followUpSetup
+            ),
+            ImportPlanStep(
+                title: "Prepare face review",
+                detail: "Detected faces route to Faces Found review; naming waits for future clustering.",
+                stage: .followUpSetup
             )
         ])
     }
@@ -47,6 +67,15 @@ final class ImportConfirmationDraftTests: XCTestCase {
             title: "Use the managed background queue",
             detail: "Copy, preview, and metadata work remains visible, pausable, and cancellable."
         )))
+        XCTAssertEqual(
+            draft.planSteps.filter { $0.stage == .followUpSetup }.map(\.title),
+            [
+                "Prepare imported-set culling",
+                "Detect likely stacks",
+                "Prepare keyword review",
+                "Prepare face review"
+            ]
+        )
     }
 
     func testSourceSummaryCountsRecognizedPhotoFilesAndBytes() throws {

@@ -17,6 +17,7 @@ public extension LiveMockupPlaceholder {
     static let timelineLibrary = LiveMockupPlaceholders.timelineLibrary
     static let peopleSidebar = LiveMockupPlaceholders.peopleSidebar
     static let peopleFaceActions = LiveMockupPlaceholders.peopleFaceActions
+    static let foldersEmpty = LiveMockupPlaceholders.foldersEmpty
     static let placesMap = LiveMockupPlaceholders.placesMap
     static let topChrome = LiveMockupPlaceholders.topChrome
     static let agenticSearch = LiveMockupPlaceholders.agenticSearch
@@ -77,6 +78,13 @@ public enum LiveMockupPlaceholders {
         currentFallback: "Disabled controls inside the placeholder People view."
     )
 
+    public static let foldersEmpty = LiveMockupPlaceholder(
+        id: "sidebar.folders-empty",
+        title: "Empty folders navigation",
+        intendedBehavior: "Show imported/cataloged source folders in the Library sidebar once folder roots exist.",
+        currentFallback: "Disabled sidebar row shown only before any folders have been cataloged."
+    )
+
     public static let placesMap = LiveMockupPlaceholder(
         id: "places.map",
         title: "Places map",
@@ -123,7 +131,7 @@ public enum LiveMockupPlaceholders {
         id: "import.plan",
         title: "Import plan",
         intendedBehavior: "Explain copy/catalog/XMP/preview/background work before import starts, including later agentic follow-up work.",
-        currentFallback: "Folder and card confirmation sheets show the non-destructive cataloging plan and managed background-work summary."
+        currentFallback: "Folder and card confirmation sheets show the non-destructive cataloging plan, managed background-work summary, and honest follow-up setup rows for culling, stacks, keyword review, and face review."
     )
 
     public static let importCompleteSummary = LiveMockupPlaceholder(
@@ -182,6 +190,7 @@ public enum LiveMockupPlaceholders {
         topChrome,
         peopleSidebar,
         peopleFaceActions,
+        foldersEmpty,
         placesMap,
         agenticSearch,
         searchRefine,
@@ -274,7 +283,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Import",
             status: .partial,
             placeholder: .importPlan,
-            currentImplementation: "Folder/card import confirmation explains non-destructive cataloging, XMP, previews, and managed background work; automatic stack/cull/keyword/face follow-up is not run during import."
+            currentImplementation: "Folder/card import confirmation explains non-destructive cataloging, XMP, previews, managed background work, and follow-up setup for imported-set culling, likely stacks, keyword review, and face review; geo/map follow-up and automatic naming are not run during import."
         ),
         LiveMockupDesignSurface(
             designID: "4b",

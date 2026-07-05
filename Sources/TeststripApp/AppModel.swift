@@ -5784,7 +5784,14 @@ public final class AppModel {
             )
         )
         if catalogFolders.isEmpty {
-            libraryRows.append(SidebarRow(id: "library-folders", title: "Folders", detailText: "No folders yet"))
+            libraryRows.append(
+                SidebarRow(
+                    id: "library-folders",
+                    title: "Folders",
+                    detailText: "No folders yet",
+                    liveMockupPlaceholder: .foldersEmpty
+                )
+            )
         }
         libraryRows.append(
             SidebarRow(

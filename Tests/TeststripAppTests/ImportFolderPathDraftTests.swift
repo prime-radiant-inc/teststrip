@@ -21,8 +21,44 @@ final class ImportFolderPathDraftTests: XCTestCase {
             ImportPlanStep(
                 title: "Use the managed background queue",
                 detail: "Preview and metadata work remains visible, pausable, and cancellable."
+            ),
+            ImportPlanStep(
+                title: "Prepare imported-set culling",
+                detail: "The imported output set is kept as a working scope so Open and Cull can resume it immediately.",
+                stage: .followUpSetup
+            ),
+            ImportPlanStep(
+                title: "Detect likely stacks",
+                detail: "Time-adjacent frames unlock stack culling when a burst or sequence is found after import.",
+                stage: .followUpSetup
+            ),
+            ImportPlanStep(
+                title: "Prepare keyword review",
+                detail: "Local object labels stay provisional until you accept them into keywords/XMP.",
+                stage: .followUpSetup
+            ),
+            ImportPlanStep(
+                title: "Prepare face review",
+                detail: "Detected faces route to Faces Found review; naming waits for future clustering.",
+                stage: .followUpSetup
             )
         ])
+    }
+
+    func testImportPlanKeepsAgenticFollowUpsHonestAndScoped() {
+        let draft = ImportFolderPathDraft(path: "/Photos/Job")
+        let followUps = draft.planSteps.filter { $0.stage == .followUpSetup }
+
+        XCTAssertEqual(followUps.map(\.title), [
+            "Prepare imported-set culling",
+            "Detect likely stacks",
+            "Prepare keyword review",
+            "Prepare face review"
+        ])
+        XCTAssertFalse(draft.planSteps.contains { step in
+            let copy = "\(step.title) \(step.detail)".lowercased()
+            return copy.contains("geo") || copy.contains("map")
+        })
     }
 
     @MainActor
