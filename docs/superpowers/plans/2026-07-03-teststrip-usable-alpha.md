@@ -440,9 +440,26 @@ Teststrip reaches usable alpha when a photographer can:
 - Run local-first evaluation on selected or scoped images and see provenance-backed signals.
 - Use search/sets/work sessions enough to cull or collect an arbitrary set, not only an import batch.
 
+## Functional Alpha Gates
+
+These are the current alpha gates. Performance must remain respectable enough to avoid obviously broken workflows, but the alpha focus is functionality and designer mockup parity rather than deeper latency tuning.
+
+- [ ] **Import and source flow:** A user can add an existing folder in place, copy/import from a card-style source, understand preflight failures, see unambiguous progress, open the imported result set, and recover from duplicate/empty/unreadable-source cases without wondering whether the app is stuck.
+- [ ] **Real corpus smoke:** The ignored local corpus under `sample-data/photos/jesse-pictures` imports without committing sample files, catalogs mixed JPEG/DNG/RAF files honestly, preserves originals, and exposes unsupported/partial RAW files without overclaiming preview support.
+- [ ] **Library browsing and mockup parity:** The Library grid, loupe, inspector, filter rail, top chrome, footer density controls, and sidebar are close enough to the designer mockups to use as the actual alpha surface, with dead or scaffolded UI marked by `LiveMockupPlaceholder`.
+- [ ] **Selection, rating, and metadata:** Imported photos can be clicked, selected, rated, labeled, flagged, rejected, keyworded, and inspected with immediate catalog updates and no destructive writes to originals.
+- [ ] **Catalog-first XMP:** Portable metadata writes catalog first, mirrors automatically to XMP when possible, shows pending/conflict states, supports safe conflict resolution, and leaves originals untouched.
+- [ ] **Culling over arbitrary sets:** Culling works over any saved search, frozen snapshot, manual set, work-session output set, latest import, or detected stack set. Compare/survey supports the current eight-frame layout and can apply Pick/Reject decisions to the active set.
+- [ ] **Search, sets, and work sessions:** Users can build and save practical smart collections, freeze snapshots, save manual selections, revisit recent/starred work sessions, and treat “photos from this work session” as a queryable set rather than a separate top-level container.
+- [ ] **People alpha:** People is no longer only a placeholder. The app can run local face evaluation, show face-review queues, persist minimal user-confirmed people/grouping state, and support naming/merge/dismiss review actions without implying Apple Photos-level identity recognition.
+- [ ] **Recognition and provisional labels:** Local-first evaluation produces visible provenance-backed signals for faces, objects/content, OCR, focus, exposure, color/look, aesthetics, and provider failures. Machine labels remain provisional until the user accepts them into metadata/XMP.
+- [ ] **Offline and reconnect behavior:** Cached previews allow browsing and culling when originals are on an offline NAS/removable/cloud-backed volume, and reconnect preserves unambiguous sidecar paths and source-root identity.
+- [ ] **Worker control:** Long-running import, preview, metadata, source, and recognition work is visible, cancelable, and recoverable. The user can stop idle worker work, and runaway background work is treated as an alpha blocker.
+- [ ] **Dev build and verification:** The macOS dev app builds reliably with the helper staged, focused tests cover new behavior, smoke verification uses non-focus-stealing captures by default, and focus-stealing UI automation is reserved for explicit approval or idle time.
+
 ## Next Build Slices
 
-**Current priority note:** Jesse redirected the near-term push toward working feature coverage and designer mockup parity rather than latency-first tuning. Keep the preview/backlog evidence because it matters for pro catalogs, but lead with pulling the remaining designer surfaces into SwiftUI as honest live mockups, filling them out progressively, and using code-level placeholder markers for dead or scaffolded UI. Keep focus-stealing UI automation minimal while Jesse is using the computer.
+**Current priority note:** Jesse redirected the near-term push toward working feature coverage and designer mockup parity rather than latency-first tuning. Keep the preview/backlog evidence because it matters for pro catalogs, but do not spend alpha effort optimizing latency unless a feature gate is unusable. Lead with pulling the remaining designer surfaces into SwiftUI as honest live mockups, filling them out progressively, and replacing placeholder paths with real workflows. Keep focus-stealing UI automation minimal while Jesse is using the computer.
 
 ### Slice 1: Preview Throughput And UI Coalescing
 
