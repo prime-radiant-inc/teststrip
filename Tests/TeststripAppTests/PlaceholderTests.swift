@@ -122,22 +122,24 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertEqual(peopleRow.target, .people)
     }
 
-    func testPeopleLedgerTracksUnnamedFaceReviewEntrypointsWithoutNamedIdentities() throws {
+    func testPeopleLedgerTracksUnnamedFaceReviewAndPersistedNamedRows() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "sidebar.people" })
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5a" })
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("unnamed face review"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Apple Vision scan action"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("face-review strip"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("persisted named people rows"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("named-people empty state"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("naming remains disabled"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("no named identities"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("automatic clustering"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("face-level naming remain disabled"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("unnamed face review"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("Apple Vision scan action"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("face-review strip"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("persisted named people rows"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("named-people empty state"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("naming remains disabled"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("no named identities"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("automatic clustering"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("face-level naming remain disabled"))
     }
 
     func testCopilotLedgerTracksLiveRouteWithoutAutonomousActions() throws {

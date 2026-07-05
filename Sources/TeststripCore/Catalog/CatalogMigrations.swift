@@ -1,5 +1,5 @@
 enum CatalogMigrations {
-    static let version = 11
+    static let version = 12
 
     static let statements = [
         """
@@ -116,6 +116,30 @@ enum CatalogMigrations {
             updated_at REAL NOT NULL
         )
         """,
-        "CREATE INDEX IF NOT EXISTS idx_source_roots_updated_at ON source_roots(updated_at)"
+        "CREATE INDEX IF NOT EXISTS idx_source_roots_updated_at ON source_roots(updated_at)",
+        """
+        CREATE TABLE IF NOT EXISTS people (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_people_name ON people(name COLLATE NOCASE)",
+        """
+        CREATE TABLE IF NOT EXISTS person_assets (
+            person_id TEXT NOT NULL,
+            asset_id TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            PRIMARY KEY (person_id, asset_id)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_person_assets_asset ON person_assets(asset_id)",
+        """
+        CREATE TABLE IF NOT EXISTS dismissed_face_assets (
+            asset_id TEXT PRIMARY KEY NOT NULL,
+            created_at REAL NOT NULL
+        )
+        """
     ]
 }

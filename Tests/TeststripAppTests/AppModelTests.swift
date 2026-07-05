@@ -4024,6 +4024,33 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 
+    func testLoadExposesCatalogPeople() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-people")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = makeAsset(id: "maya-frame", path: "/Volumes/NAS/Wedding/maya.jpg", rating: 4)
+        try repository.upsert(asset)
+        try repository.upsertPerson(id: "person-maya", name: "Maya")
+        try repository.assignAssets([asset.id], toPersonID: "person-maya")
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+
+        let model = try AppModel.load(catalog: catalog)
+
+        XCTAssertEqual(model.catalogPeople, [
+            CatalogPerson(id: "person-maya", name: "Maya", assetCount: 1)
+        ])
+    }
+
     func testLoadExposesSourceAvailabilityRowsInSidebarAndSelectingRowAppliesFilter() throws {
         let online = makeAsset(id: "online", path: "/Volumes/NAS/Job/online.cr2", rating: 4)
         let offline = makeAsset(id: "offline", path: "/Volumes/NAS/Job/offline.cr2", rating: 4, availability: .offline)

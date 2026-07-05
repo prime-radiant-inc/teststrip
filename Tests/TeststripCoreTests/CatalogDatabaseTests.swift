@@ -656,6 +656,65 @@ final class CatalogDatabaseTests: XCTestCase {
         ])
     }
 
+    func testPersistsNamedPeopleAndAssetAssignments() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-people")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let first = Asset.testAsset(id: AssetID(rawValue: "first"), path: "/Volumes/NAS/Job/first.jpg", rating: 0)
+        let second = Asset.testAsset(id: AssetID(rawValue: "second"), path: "/Volumes/NAS/Job/second.jpg", rating: 0)
+        try repository.upsert([first, second])
+
+        try repository.upsertPerson(id: "person-maya", name: "Maya")
+        try repository.assignAssets([first.id, second.id], toPersonID: "person-maya")
+
+        XCTAssertEqual(try repository.people(), [
+            CatalogPerson(id: "person-maya", name: "Maya", assetCount: 2)
+        ])
+        XCTAssertEqual(try repository.assetIDs(personID: "person-maya"), [first.id, second.id])
+    }
+
+    func testMergesPeopleWithoutDuplicatingAssignments() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-people-merge")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let shared = Asset.testAsset(id: AssetID(rawValue: "shared"), path: "/Volumes/NAS/Job/shared.jpg", rating: 0)
+        let sourceOnly = Asset.testAsset(id: AssetID(rawValue: "source-only"), path: "/Volumes/NAS/Job/source.jpg", rating: 0)
+        try repository.upsert([shared, sourceOnly])
+        try repository.upsertPerson(id: "target", name: "Maya")
+        try repository.upsertPerson(id: "source", name: "Maya duplicate")
+        try repository.assignAssets([shared.id], toPersonID: "target")
+        try repository.assignAssets([shared.id, sourceOnly.id], toPersonID: "source")
+
+        try repository.mergePerson(sourceID: "source", into: "target")
+
+        XCTAssertEqual(try repository.people(), [
+            CatalogPerson(id: "target", name: "Maya", assetCount: 2)
+        ])
+        XCTAssertEqual(try repository.assetIDs(personID: "target"), [shared.id, sourceOnly.id])
+        XCTAssertEqual(try repository.assetIDs(personID: "source"), [])
+    }
+
+    func testDismissingFaceAssetRemovesPersonAssignments() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-dismiss-face")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset.testAsset(id: AssetID(rawValue: "false-positive"), path: "/Volumes/NAS/Job/false-positive.jpg", rating: 0)
+        try repository.upsert(asset)
+        try repository.upsertPerson(id: "person-maya", name: "Maya")
+        try repository.assignAssets([asset.id], toPersonID: "person-maya")
+
+        try repository.dismissFaceAssets([asset.id])
+
+        XCTAssertEqual(try repository.people(), [
+            CatalogPerson(id: "person-maya", name: "Maya", assetCount: 0)
+        ])
+        XCTAssertEqual(try repository.assetIDs(personID: "person-maya"), [])
+        XCTAssertEqual(try repository.dismissedFaceAssetIDs(), [asset.id])
+    }
+
     func testSearchesAssetsWithTechnicalMetadataPredicates() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-search")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

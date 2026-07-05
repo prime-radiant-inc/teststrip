@@ -68,7 +68,7 @@ public enum LiveMockupPlaceholders {
         id: "sidebar.people",
         title: "People navigation",
         intendedBehavior: "Browse face groups and named people once people recognition and grouping are productized.",
-        currentFallback: "Selectable live mockup with an unnamed face review strip, Apple Vision scan action for visible cached previews, face-review strip affordances backed by real face signals, and a named-people empty state; naming remains disabled and there are no named identities until clustering ships."
+        currentFallback: "Selectable People route with an unnamed face review strip, Apple Vision scan action for visible cached previews, face-review strip affordances backed by real face signals, persisted named people rows when user-confirmed groups exist, and a named-people empty state; automatic clustering and face-level naming remain disabled."
     )
 
     public static let peopleFaceActions = LiveMockupPlaceholder(
@@ -295,9 +295,9 @@ public enum LiveMockupDesignSurfaces {
         LiveMockupDesignSurface(
             designID: "5a",
             title: "People",
-            status: .liveMockup,
+            status: .partial,
             placeholder: .peopleSidebar,
-            currentImplementation: "People route is selectable and shows an unnamed face review strip, Apple Vision scan action for visible cached previews, face-review strip affordances, catalog-backed review entrypoints, and a named-people empty state; naming remains disabled and no named identities, suggestions, or naming workflows are built."
+            currentImplementation: "People route is selectable and shows an unnamed face review strip, Apple Vision scan action for visible cached previews, face-review strip affordances, catalog-backed review entrypoints, persisted named people rows when user-confirmed groups exist, and a named-people empty state; automatic clustering and face-level naming remain disabled."
         ),
         LiveMockupDesignSurface(
             designID: "5b",

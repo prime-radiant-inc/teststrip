@@ -389,6 +389,129 @@ public final class CatalogRepository {
         return try rows.map(decodeAssetSet)
     }
 
+    public func upsertPerson(id: String, name: String) throws {
+        let trimmedID = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedID.isEmpty else {
+            throw TeststripError.invalidState("person id is required")
+        }
+        guard !trimmedName.isEmpty else {
+            throw TeststripError.invalidState("person name is required")
+        }
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT INTO people (id, name, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                updated_at = excluded.updated_at
+            """,
+            bindings: [trimmedID, trimmedName, now, now]
+        )
+    }
+
+    public func assignAssets(_ assetIDs: [AssetID], toPersonID personID: String) throws {
+        let trimmedPersonID = personID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPersonID.isEmpty else {
+            throw TeststripError.invalidState("person id is required")
+        }
+        guard !assetIDs.isEmpty else { return }
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.transaction {
+            for assetID in assetIDs {
+                try database.execute(
+                    """
+                    INSERT OR IGNORE INTO person_assets (person_id, asset_id, created_at)
+                    VALUES (?, ?, ?)
+                    """,
+                    bindings: [trimmedPersonID, assetID.rawValue, now]
+                )
+                try database.execute(
+                    "DELETE FROM dismissed_face_assets WHERE asset_id = ?",
+                    bindings: [assetID.rawValue]
+                )
+            }
+        }
+    }
+
+    public func mergePerson(sourceID: String, into targetID: String) throws {
+        let trimmedSourceID = sourceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTargetID = targetID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSourceID.isEmpty, !trimmedTargetID.isEmpty else {
+            throw TeststripError.invalidState("person id is required")
+        }
+        guard trimmedSourceID != trimmedTargetID else { return }
+        try database.transaction {
+            try database.execute(
+                """
+                INSERT OR IGNORE INTO person_assets (person_id, asset_id, created_at)
+                SELECT ?, asset_id, created_at
+                FROM person_assets
+                WHERE person_id = ?
+                """,
+                bindings: [trimmedTargetID, trimmedSourceID]
+            )
+            try database.execute("DELETE FROM person_assets WHERE person_id = ?", bindings: [trimmedSourceID])
+            try database.execute("DELETE FROM people WHERE id = ?", bindings: [trimmedSourceID])
+        }
+    }
+
+    public func dismissFaceAssets(_ assetIDs: [AssetID]) throws {
+        guard !assetIDs.isEmpty else { return }
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.transaction {
+            for assetID in assetIDs {
+                try database.execute(
+                    "INSERT OR IGNORE INTO dismissed_face_assets (asset_id, created_at) VALUES (?, ?)",
+                    bindings: [assetID.rawValue, now]
+                )
+                try database.execute("DELETE FROM person_assets WHERE asset_id = ?", bindings: [assetID.rawValue])
+            }
+        }
+    }
+
+    public func people() throws -> [CatalogPerson] {
+        let rows = try database.rows(
+            """
+            SELECT people.id, people.name, COUNT(person_assets.asset_id) AS asset_count
+            FROM people
+            LEFT JOIN person_assets ON person_assets.person_id = people.id
+            GROUP BY people.id, people.name
+            ORDER BY people.name COLLATE NOCASE ASC
+            """
+        )
+        return try rows.map { row in
+            guard let id = row["id"], let name = row["name"], let countString = row["asset_count"], let assetCount = Int(countString) else {
+                throw CatalogError.sqlite("person row is missing required columns")
+            }
+            return CatalogPerson(id: id, name: name, assetCount: assetCount)
+        }
+    }
+
+    public func assetIDs(personID: String) throws -> [AssetID] {
+        let rows = try database.rows(
+            "SELECT asset_id FROM person_assets WHERE person_id = ? ORDER BY rowid ASC",
+            bindings: [personID]
+        )
+        return try rows.map { row in
+            guard let id = row["asset_id"] else {
+                throw CatalogError.sqlite("person asset row is missing asset_id")
+            }
+            return AssetID(rawValue: id)
+        }
+    }
+
+    public func dismissedFaceAssetIDs() throws -> [AssetID] {
+        let rows = try database.rows("SELECT asset_id FROM dismissed_face_assets ORDER BY rowid ASC")
+        return try rows.map { row in
+            guard let id = row["asset_id"] else {
+                throw CatalogError.sqlite("dismissed face row is missing asset_id")
+            }
+            return AssetID(rawValue: id)
+        }
+    }
+
     public func save(_ session: WorkSession) throws {
         try database.execute(
             """

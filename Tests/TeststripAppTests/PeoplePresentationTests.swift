@@ -3,6 +3,23 @@ import XCTest
 @testable import TeststripCore
 
 final class PeoplePresentationTests: XCTestCase {
+    func testBuildsNamedPeopleFromConfirmedCatalogPeople() {
+        let presentation = PeoplePresentation(
+            totalAssetCount: 1204,
+            namedPeople: [
+                CatalogPerson(id: "person-maya", name: "Maya", assetCount: 2),
+                CatalogPerson(id: "person-lee", name: "Lee", assetCount: 1)
+            ],
+            evaluationSummaries: [
+                CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 3)
+            ]
+        )
+
+        XCTAssertEqual(presentation.headerSummary, "2 people · 3 photos with face signals")
+        XCTAssertEqual(presentation.namedPeople.map(\.name), ["Maya", "Lee"])
+        XCTAssertEqual(presentation.namedPeople.map(\.countText), ["2 confirmed photos", "1 confirmed photo"])
+    }
+
     func testBuildsFaceReviewStripFromRealFaceSignals() {
         let presentation = PeoplePresentation(
             totalAssetCount: 1204,

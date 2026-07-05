@@ -886,6 +886,7 @@ public final class AppModel {
     public var sourceRoots: [CatalogSourceRoot]
     public var sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary]
     public var catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary]
+    public var catalogPeople: [CatalogPerson]
     public var reviewQueueCounts: [ReviewQueue: Int]
     public var selectedAssetSetID: AssetSetID?
 
@@ -1618,6 +1619,7 @@ public final class AppModel {
         sourceRoots: [CatalogSourceRoot] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
+        catalogPeople: [CatalogPerson] = [],
         reviewQueueCounts: [ReviewQueue: Int] = [:],
         selectedAssetSetID: AssetSetID? = nil,
         workerSupervisor: WorkerSupervisor? = nil,
@@ -1691,6 +1693,7 @@ public final class AppModel {
         self.sourceRoots = sourceRoots
         self.sourceAvailabilitySummaries = sourceAvailabilitySummaries
         self.catalogEvaluationKindSummaries = catalogEvaluationKindSummaries
+        self.catalogPeople = catalogPeople
         self.reviewQueueCounts = reviewQueueCounts
         self.selectedAssetSetID = selectedAssetSetID
         self.catalog = catalog
@@ -1786,6 +1789,7 @@ public final class AppModel {
         let sourceRoots = try repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: repository)
         let catalogEvaluationKindSummaries = try repository.evaluationKindSummaries()
+        let catalogPeople = try repository.people()
         let reviewQueueCounts = try Self.reviewQueueCounts(repository: repository)
         let metadataSyncState = try Self.metadataSyncState(
             repository: repository,
@@ -1831,6 +1835,7 @@ public final class AppModel {
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+            catalogPeople: catalogPeople,
             reviewQueueCounts: reviewQueueCounts
         )
     }
@@ -1853,6 +1858,7 @@ public final class AppModel {
         let sourceRoots = try catalog.repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         let catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
+        let catalogPeople = try catalog.repository.people()
         let reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
         let metadataSyncState = try Self.metadataSyncState(
             repository: catalog.repository,
@@ -1899,6 +1905,7 @@ public final class AppModel {
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
+            catalogPeople: catalogPeople,
             reviewQueueCounts: reviewQueueCounts,
             workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory,

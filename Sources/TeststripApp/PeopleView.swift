@@ -7,6 +7,7 @@ struct PeopleView: View {
     private var presentation: PeoplePresentation {
         PeoplePresentation(
             totalAssetCount: model.totalAssetCount,
+            namedPeople: model.catalogPeople,
             evaluationSummaries: model.catalogEvaluationKindSummaries,
             canRequestVisibleFaceScan: model.canRequestVisibleAssetEvaluations
         )
@@ -101,40 +102,74 @@ struct PeopleView: View {
                 .font(.caption2.monospaced().weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            HStack(alignment: .top, spacing: 12) {
-                Circle()
-                    .fill(avatarGradient(seed: "pending-face-groups", colors: [.orange, .brown]))
-                    .frame(width: 58, height: 58)
-                    .overlay {
-                        Circle()
-                            .strokeBorder(Color.white.opacity(0.12))
-                    }
-                    .shadow(color: .black.opacity(0.35), radius: 8, y: 3)
+            if presentation.namedPeople.isEmpty {
+                HStack(alignment: .top, spacing: 12) {
+                    Circle()
+                        .fill(avatarGradient(seed: "pending-face-groups", colors: [.orange, .brown]))
+                        .frame(width: 58, height: 58)
+                        .overlay {
+                            Circle()
+                                .strokeBorder(Color.white.opacity(0.12))
+                        }
+                        .shadow(color: .black.opacity(0.35), radius: 8, y: 3)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Named people are not built yet")
-                        .font(.headline.weight(.semibold))
-                    Text(presentation.namedPeopleEmptyText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Named people are not built yet")
+                            .font(.headline.weight(.semibold))
+                        Text(presentation.namedPeopleEmptyText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
 
-                    HStack(spacing: 6) {
-                        ForEach(presentation.faceActionRows) { row in
-                            Button(row.title) {}
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .disabled(!row.isEnabled)
-                                .liveMockupPlaceholder(row.placeholder)
+                        HStack(spacing: 6) {
+                            ForEach(presentation.faceActionRows) { row in
+                                Button(row.title) {}
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                    .disabled(!row.isEnabled)
+                                    .liveMockupPlaceholder(row.placeholder)
+                            }
                         }
                     }
                 }
+                .padding(14)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Color.white.opacity(0.07))
+                }
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], alignment: .leading, spacing: 12) {
+                    ForEach(presentation.namedPeople) { person in
+                        namedPersonCard(person)
+                    }
+                }
             }
-            .padding(14)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(Color.white.opacity(0.07))
+        }
+    }
+
+    private func namedPersonCard(_ person: NamedPersonPresentation) -> some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(avatarGradient(seed: person.id, colors: [.orange, .pink]))
+                .frame(width: 52, height: 52)
+                .overlay {
+                    Circle()
+                        .strokeBorder(Color.white.opacity(0.12))
+                }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(person.name)
+                    .font(.headline.weight(.semibold))
+                Text(person.countText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.white.opacity(0.07))
         }
     }
 
@@ -209,6 +244,7 @@ struct PeopleView: View {
 
 struct PeoplePresentation: Equatable {
     var totalAssetCount: Int
+    var namedPeople: [NamedPersonPresentation]
     var photosWithFaceSignals: Int
     var photosWithDetectedFaces: Int
     var photosWithFaceQualitySignals: Int
@@ -217,10 +253,12 @@ struct PeoplePresentation: Equatable {
 
     init(
         totalAssetCount: Int,
+        namedPeople: [CatalogPerson] = [],
         evaluationSummaries: [CatalogEvaluationKindSummary],
         canRequestVisibleFaceScan: Bool = false
     ) {
         self.totalAssetCount = totalAssetCount
+        self.namedPeople = namedPeople.map { NamedPersonPresentation(person: $0) }
         let faceCountSignals = evaluationSummaries.first { $0.kind == .faceCount }?.assetCount ?? 0
         let faceQualitySignals = evaluationSummaries.first { $0.kind == .faceQuality }?.assetCount ?? 0
         self.photosWithFaceSignals = max(faceCountSignals, faceQualitySignals)
@@ -235,6 +273,9 @@ struct PeoplePresentation: Equatable {
     }
 
     var headerSummary: String {
+        if !namedPeople.isEmpty {
+            return "\(namedPeople.count) people · \(photosWithFaceSignals) photos with face signals"
+        }
         if photosWithFaceSignals > 0 {
             return "0 people · \(photosWithFaceSignals) photos with face signals"
         }
@@ -369,6 +410,22 @@ struct PeopleScanAction: Equatable {
     var title: String
     var detail: String
     var systemImage: String
+}
+
+struct NamedPersonPresentation: Equatable, Identifiable {
+    var id: String
+    var name: String
+    var assetCount: Int
+
+    init(person: CatalogPerson) {
+        self.id = person.id
+        self.name = person.name
+        self.assetCount = person.assetCount
+    }
+
+    var countText: String {
+        assetCount == 1 ? "1 confirmed photo" : "\(assetCount) confirmed photos"
+    }
 }
 
 struct PeopleReviewCard: Equatable, Identifiable {
