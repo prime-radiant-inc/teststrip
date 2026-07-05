@@ -1224,6 +1224,41 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }.count, 200)
     }
 
+    func testLoadBoundsPreviewGenerationQueueStateSample() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-preview-queue-state-limit")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assets = (0..<205).map { index in
+            Asset(
+                id: AssetID(rawValue: "preview-state-limit-\(index)"),
+                originalURL: URL(fileURLWithPath: "/Photos/frame-\(index).cr2"),
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: Int64(index + 1), modificationDate: Date(timeIntervalSince1970: TimeInterval(index + 1))),
+                availability: .online,
+                metadata: AssetMetadata()
+            )
+        }
+        try repository.upsert(assets)
+        for asset in assets {
+            try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .grid))
+        }
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+
+        let model = try AppModel.load(catalog: catalog)
+
+        XCTAssertEqual(model.previewGenerationQueueStates.count, AppModel.previewGenerationQueueStateDisplayLimit)
+        XCTAssertEqual(try repository.previewGenerationQueueStates().count, 205)
+    }
+
     func testRetrySelectedPendingMetadataSyncWritesSidecarWithoutWorker() throws {
         let directory = try makeTemporaryDirectory(named: "retry-selected-pending-xmp")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
@@ -3963,6 +3998,72 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.visibleWorkActivity?.kind, .previewGeneration)
     }
 
+    func testLoadCapsPendingPreviewQueueStateHydration() throws {
+        var queueStateQueries: [String] = []
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+
+        let (model, _, _) = try makeModelWithPendingPreviewBacklog(
+            named: "pending-preview-bounded-state",
+            assetCount: AppModel.previewGenerationQueueStateDisplayLimit + 40,
+            workerSupervisor: supervisor
+        ) { database in
+            database.rowQueryObserver = { sql in
+                if sql.contains("SELECT asset_id, level, attempt_count"),
+                   sql.contains("FROM preview_generation_queue") {
+                    queueStateQueries.append(sql.replacingOccurrences(of: "\n", with: " "))
+                }
+            }
+        }
+
+        XCTAssertEqual(model.previewGenerationQueueStates.count, AppModel.previewGenerationQueueStateDisplayLimit)
+        XCTAssertFalse(queueStateQueries.isEmpty)
+        XCTAssertTrue(queueStateQueries.allSatisfy { sql in
+            sql.contains("LIMIT ?") || sql.contains("WHERE asset_id = ?")
+        })
+    }
+
+    func testSelectingAssetLoadsPreviewFailureOutsideQueueStateSample() throws {
+        let directory = try makeTemporaryDirectory(named: "selected-preview-failure-outside-sample")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assets = (0..<(AppModel.previewGenerationQueueStateDisplayLimit + 1)).map { index in
+            makeAsset(id: "preview-failure-sample-\(index)", size: Int64(index + 1))
+        }
+        let failedAsset = try XCTUnwrap(assets.last)
+        try repository.upsert(assets)
+        for asset in assets.dropLast() {
+            try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .grid))
+        }
+        try repository.recordPreviewGenerationFailure(
+            assetID: failedAsset.id,
+            level: .grid,
+            errorMessage: "could not render preview"
+        )
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        XCTAssertEqual(model.previewGenerationQueueStates.count, AppModel.previewGenerationQueueStateDisplayLimit)
+
+        model.select(failedAsset.id)
+
+        XCTAssertEqual(model.selectedPreviewGenerationFailures.first?.item.assetID, failedAsset.id)
+        XCTAssertEqual(model.selectedPreviewGenerationFailures.first?.lastErrorMessage, "could not render preview")
+    }
+
     func testLoadSkipsAutomaticPreviewRetryAfterRepeatedFailures() throws {
         let directory = try makeTemporaryDirectory(named: "pending-preview-retry-exhausted")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -4213,7 +4314,8 @@ final class AppModelTests: XCTestCase {
         ) { database in
             database.rowQueryObserver = { sql in
                 if sql.contains("SELECT asset_id, level, attempt_count"),
-                   sql.contains("FROM preview_generation_queue") {
+                   sql.contains("FROM preview_generation_queue"),
+                   sql.contains("LIMIT ?") {
                     queueStateQueryCount += 1
                 }
                 if sql == "SELECT * FROM assets WHERE id = ?" {

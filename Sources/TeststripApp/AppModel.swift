@@ -692,6 +692,7 @@ public final class AppModel {
     private static let assetPageSize = 120
     private static let loadedAssetWindowSize = assetPageSize * 2
     private static let pendingPreviewRecoveryBatchSize = 40
+    static let previewGenerationQueueStateDisplayLimit = pendingPreviewRecoveryBatchSize
     private static let pendingMetadataSyncRecoveryBatchSize = 200
     private static let previewGenerationMaximumAutomaticAttempts = 3
     static let sourceAvailabilityBatchSize = 100
@@ -1430,7 +1431,10 @@ public final class AppModel {
             starredWork: starredWork,
             pendingMetadataSyncItems: pendingMetadataSyncItems,
             metadataSyncConflictItems: metadataSyncConflictItems,
-            previewGenerationQueueStates: try repository.previewGenerationQueueStates(),
+            previewGenerationQueueStates: try previewGenerationQueueStates(
+                repository: repository,
+                selectedAssetID: assets.first?.id
+            ),
             savedAssetSets: savedAssetSets,
             assetSetCounts: assetSetCounts,
             catalogFolders: catalogFolders,
@@ -1488,7 +1492,10 @@ public final class AppModel {
             starredWork: starredWork,
             pendingMetadataSyncItems: pendingMetadataSyncItems,
             metadataSyncConflictItems: metadataSyncConflictItems,
-            previewGenerationQueueStates: try catalog.repository.previewGenerationQueueStates(),
+            previewGenerationQueueStates: try previewGenerationQueueStates(
+                repository: catalog.repository,
+                selectedAssetID: assets.first?.id
+            ),
             savedAssetSets: savedAssetSets,
             assetSetCounts: assetSetCounts,
             catalogFolders: catalogFolders,
@@ -1506,6 +1513,30 @@ public final class AppModel {
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
         return model
+    }
+
+    private static func previewGenerationQueueStates(
+        repository: CatalogRepository,
+        selectedAssetID: AssetID?
+    ) throws -> [PreviewGenerationQueueState] {
+        var states = try repository.previewGenerationQueueStates(limit: previewGenerationQueueStateDisplayLimit)
+        if let selectedAssetID {
+            try mergePreviewGenerationQueueStates(for: selectedAssetID, repository: repository, into: &states)
+        }
+        return states
+    }
+
+    private static func mergePreviewGenerationQueueStates(
+        for assetID: AssetID,
+        repository: CatalogRepository,
+        into states: inout [PreviewGenerationQueueState]
+    ) throws {
+        states.removeAll { $0.item.assetID == assetID }
+        for level in PreviewLevel.allCases {
+            if let state = try repository.previewGenerationQueueState(assetID: assetID, level: level) {
+                states.append(state)
+            }
+        }
     }
 
     private static func reconcileInterruptedIngestWorkSessions(repository: CatalogRepository) throws {
@@ -1536,6 +1567,11 @@ public final class AppModel {
         selectedAssetID = assetID
         updateCompareSetAfterSelectionChange(to: assetID)
         guard let assetID else { return }
+        do {
+            try refreshSelectedPreviewGenerationQueueStates(for: assetID)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
         do {
             try enqueueMetadataSyncCheck(for: assetID)
         } catch {
@@ -2668,7 +2704,19 @@ public final class AppModel {
 
     private func refreshPreviewGenerationQueueStates() throws {
         guard let catalog else { return }
-        previewGenerationQueueStates = try catalog.repository.previewGenerationQueueStates()
+        previewGenerationQueueStates = try Self.previewGenerationQueueStates(
+            repository: catalog.repository,
+            selectedAssetID: selectedAssetID
+        )
+    }
+
+    private func refreshSelectedPreviewGenerationQueueStates(for assetID: AssetID) throws {
+        guard let catalog else { return }
+        try Self.mergePreviewGenerationQueueStates(
+            for: assetID,
+            repository: catalog.repository,
+            into: &previewGenerationQueueStates
+        )
     }
 
     private func refreshSourceAvailabilitySummaries() throws {
