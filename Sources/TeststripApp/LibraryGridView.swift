@@ -380,6 +380,7 @@ struct LibraryGridView: View {
         .help(item.title)
         .accessibilityLabel(item.title)
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .liveMockupPlaceholder(item.liveMockupPlaceholder)
     }
 
     @ViewBuilder
@@ -2536,6 +2537,7 @@ struct LibraryTopBarModeItem: Equatable, Identifiable {
     var title: String
     var systemImage: String
     var mode: LibraryViewMode
+    var liveMockupPlaceholder: LiveMockupPlaceholder?
 
     var id: String {
         mode.rawValue
@@ -2573,12 +2575,12 @@ struct LibraryTopBarPresentation: Equatable {
 
     private static let modeItems = [
         LibraryTopBarModeItem(title: "Grid", systemImage: "square.grid.3x3.fill", mode: .grid),
-        LibraryTopBarModeItem(title: "Search", systemImage: "magnifyingglass", mode: .search),
-        LibraryTopBarModeItem(title: "Copilot", systemImage: "wand.and.stars", mode: .copilot),
-        LibraryTopBarModeItem(title: "Timeline", systemImage: "calendar", mode: .timeline),
+        LibraryTopBarModeItem(title: "Search", systemImage: "magnifyingglass", mode: .search, liveMockupPlaceholder: .agenticSearch),
+        LibraryTopBarModeItem(title: "Copilot", systemImage: "wand.and.stars", mode: .copilot, liveMockupPlaceholder: .copilotLibrary),
+        LibraryTopBarModeItem(title: "Timeline", systemImage: "calendar", mode: .timeline, liveMockupPlaceholder: .timelineLibrary),
         LibraryTopBarModeItem(title: "Loupe", systemImage: "rectangle.inset.filled", mode: .loupe),
-        LibraryTopBarModeItem(title: "Compare", systemImage: "rectangle.grid.2x2", mode: .compare),
-        LibraryTopBarModeItem(title: "People", systemImage: "person.2", mode: .people)
+        LibraryTopBarModeItem(title: "Compare", systemImage: "rectangle.grid.2x2", mode: .compare, liveMockupPlaceholder: .compareSurvey),
+        LibraryTopBarModeItem(title: "People", systemImage: "person.2", mode: .people, liveMockupPlaceholder: .peopleSidebar)
     ]
 
     private static func breadcrumbItems(scopeTitle: String, selectedView: LibraryViewMode) -> [String] {
