@@ -38,18 +38,6 @@ enum ImportSourcePreflight {
     }
 }
 
-enum ImportDestinationPreflight {
-    static func blockingReason(for destinationURL: URL, fileManager: FileManager = .default) -> String? {
-        ImportFolderPreflight.blockingReason(
-            for: destinationURL,
-            label: "Destination",
-            requiresReadableAccess: false,
-            requiresWritableAccess: true,
-            fileManager: fileManager
-        )
-    }
-}
-
 struct ImportSourceSummary: Equatable {
     static let defaultScanLimit = 300
     static let defaultEntryLimit = 2_000
@@ -188,13 +176,15 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     var mode: Mode
     var sourceURL: URL
     var destinationRootURL: URL?
+    var destinationUnavailableReason: String?
     var sourceSummary: ImportSourceSummary
 
     var id: String {
         [
             title,
             sourceURL.standardizedFileURL.path,
-            destinationRootURL?.standardizedFileURL.path ?? ""
+            destinationRootURL?.standardizedFileURL.path ?? "",
+            destinationUnavailableReason ?? ""
         ].joined(separator: "|")
     }
 
@@ -206,6 +196,7 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
             mode: .folder,
             sourceURL: sourceURL,
             destinationRootURL: nil,
+            destinationUnavailableReason: nil,
             sourceSummary: ImportSourceSummary.scan(sourceURL: sourceURL, supportedExtensions: supportedExtensions)
         )
     }
@@ -219,6 +210,10 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
             mode: .card,
             sourceURL: sourceURL,
             destinationRootURL: destinationRootURL,
+            destinationUnavailableReason: CardImportDestinationPreflight.blockingReason(
+                source: sourceURL,
+                destinationRoot: destinationRootURL
+            ),
             sourceSummary: ImportSourceSummary.scan(sourceURL: sourceURL, supportedExtensions: supportedExtensions)
         )
     }
@@ -250,7 +245,7 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     }
 
     var canStartImport: Bool {
-        sourceSummary.canStartImport
+        sourceSummary.canStartImport && destinationUnavailableReason == nil
     }
 
     var planSteps: [ImportPlanStep] {

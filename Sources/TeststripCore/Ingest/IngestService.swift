@@ -35,6 +35,7 @@ public struct IngestService: Sendable {
 
     public func files(for plan: IngestPlan, progress: FolderScanProgressHandler? = nil) throws -> [URL] {
         try Task.checkCancellation()
+        try validate(plan: plan)
         return try scanner.scan(root: plan.sourceRoot, progress: progress)
     }
 
@@ -49,6 +50,7 @@ public struct IngestService: Sendable {
         repository: CatalogRepository,
         progress: IngestProgressHandler? = nil
     ) throws -> [Asset] {
+        try validate(plan: plan)
         var assets: [Asset] = []
         var pendingCatalogAssets: [Asset] = []
         var importedSidecars: [ImportedSidecarSync] = []
@@ -140,6 +142,19 @@ public struct IngestService: Sendable {
             ))
         }
         return assets
+    }
+
+    private func validate(plan: IngestPlan) throws {
+        guard plan.mode == .copyToDestination else { return }
+        guard let destinationRoot = plan.destinationRoot else {
+            throw TeststripError.invalidState("copy ingest requires destination root")
+        }
+        if let blockingReason = CardImportDestinationPreflight.blockingReason(
+            source: plan.sourceRoot,
+            destinationRoot: destinationRoot
+        ) {
+            throw TeststripError.invalidState(blockingReason)
+        }
     }
 
     private func flushCatalogAssetsIfNeeded(

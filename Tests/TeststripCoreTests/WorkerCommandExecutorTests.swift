@@ -319,6 +319,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let sourceRoot = root.appendingPathComponent("DCIM", isDirectory: true)
         let destinationRoot = root.appendingPathComponent("Library", isDirectory: true)
         try FileManager.default.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
         let source = sourceRoot.appendingPathComponent("source.jpg")
         try TestDirectories.writeTestJPEG(to: source, width: 1600, height: 1000)
         let metadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["keeper"])

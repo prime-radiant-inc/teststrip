@@ -4118,7 +4118,7 @@ public final class AppModel {
             failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: blockingReason)
             return
         }
-        if let blockingReason = ImportDestinationPreflight.blockingReason(for: destinationRoot) {
+        if let blockingReason = CardImportDestinationPreflight.blockingReason(source: source, destinationRoot: destinationRoot) {
             failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: blockingReason)
             return
         }

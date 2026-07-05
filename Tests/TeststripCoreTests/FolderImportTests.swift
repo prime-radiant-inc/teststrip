@@ -259,6 +259,7 @@ final class FolderImportTests: XCTestCase {
         let secondDirectory = source.appendingPathComponent("101CANON", isDirectory: true)
         try FileManager.default.createDirectory(at: firstDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: secondDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let firstSource = firstDirectory.appendingPathComponent("IMG_0001.CR2")
         let secondSource = secondDirectory.appendingPathComponent("IMG_0001.CR2")
         try Data("first".utf8).write(to: firstSource)
@@ -284,11 +285,96 @@ final class FolderImportTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: secondDestination, encoding: .utf8), "second")
     }
 
+    func testCopyFromCardRejectsMissingDestinationRoot() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-missing-destination")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try Data("raw bytes".utf8).write(to: source.appendingPathComponent("IMG_0001.CR2"))
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["cr2"]))
+
+        XCTAssertThrowsError(
+            try service.ingest(
+                plan: IngestPlanner.copyFromCard(source: source, destinationRoot: destination),
+                repository: repository
+            )
+        ) { error in
+            XCTAssertEqual(error as? TeststripError, .invalidState("Destination folder is missing"))
+        }
+    }
+
+    func testCopyFromCardRejectsDestinationRootThatIsFile() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-file-destination")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try Data("raw bytes".utf8).write(to: source.appendingPathComponent("IMG_0001.CR2"))
+        try Data("not a directory".utf8).write(to: destination)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["cr2"]))
+
+        XCTAssertThrowsError(
+            try service.ingest(
+                plan: IngestPlanner.copyFromCard(source: source, destinationRoot: destination),
+                repository: repository
+            )
+        ) { error in
+            XCTAssertEqual(error as? TeststripError, .invalidState("Destination is not a folder"))
+        }
+    }
+
+    func testCopyFromCardRejectsDestinationMatchingSource() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-matching-destination")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try Data("raw bytes".utf8).write(to: source.appendingPathComponent("IMG_0001.CR2"))
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["cr2"]))
+
+        XCTAssertThrowsError(
+            try service.ingest(
+                plan: IngestPlanner.copyFromCard(source: source, destinationRoot: source),
+                repository: repository
+            )
+        ) { error in
+            XCTAssertEqual(error as? TeststripError, .invalidState("Destination must be different from the card source"))
+        }
+    }
+
+    func testCopyFromCardRejectsDestinationInsideSource() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-nested-destination")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = source.appendingPathComponent("Photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try Data("raw bytes".utf8).write(to: source.appendingPathComponent("IMG_0001.CR2"))
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["cr2"]))
+
+        XCTAssertThrowsError(
+            try service.ingest(
+                plan: IngestPlanner.copyFromCard(source: source, destinationRoot: destination),
+                repository: repository
+            )
+        ) { error in
+            XCTAssertEqual(error as? TeststripError, .invalidState("Destination cannot be inside the card source"))
+        }
+    }
+
     func testCopyFromCardCopiesAdjacentSidecarAndImportsMetadataFromDestination() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-sidecar")
         let source = root.appendingPathComponent("DCIM", isDirectory: true)
         let destination = root.appendingPathComponent("Photos", isDirectory: true)
         try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let sourceFile = source.appendingPathComponent("IMG_0001.CR2")
         try Data("raw bytes".utf8).write(to: sourceFile)
         let metadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["keeper"])
@@ -363,6 +449,7 @@ final class FolderImportTests: XCTestCase {
         let destination = root.appendingPathComponent("Photos", isDirectory: true)
         let sourceDirectory = source.appendingPathComponent("100CANON", isDirectory: true)
         try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let sourceFile = sourceDirectory.appendingPathComponent("IMG_0001.CR2")
         try Data("source".utf8).write(to: sourceFile)
         let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))

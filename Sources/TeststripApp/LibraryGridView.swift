@@ -1001,6 +1001,12 @@ struct LibraryGridView: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
+                if let destinationUnavailableReason = draft.destinationUnavailableReason {
+                    Text(destinationUnavailableReason)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)

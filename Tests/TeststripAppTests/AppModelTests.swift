@@ -5634,6 +5634,65 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBeginImportCardWithWorkerRejectsDestinationMatchingSourceWithoutEnqueueing() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-card-matching-destination")
+        let source = directory.appendingPathComponent("DCIM", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportCard(source: source, destinationRoot: source)
+
+        XCTAssertFalse(model.isImporting)
+        XCTAssertEqual(model.errorMessage, "Destination must be different from the card source")
+        XCTAssertEqual(model.statusMessage, nil)
+        XCTAssertEqual(model.backgroundWorkQueue.items, [])
+        XCTAssertEqual(try transport.commands(), [])
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.status, .failed)
+        XCTAssertEqual(activity.detail, "Import failed from DCIM to DCIM: Destination must be different from the card source")
+    }
+
+    @MainActor
+    func testBeginImportCardRejectsDestinationInsideSourceWithoutStartingLocalImport() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-local-card-nested-destination")
+        let source = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let nestedDestination = source.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: nestedDestination, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(
+            catalog: catalog,
+            cardImportTaskFactory: { _, _, _, _ in
+                Task {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            }
+        )
+
+        model.beginImportCard(source: source, destinationRoot: nestedDestination)
+
+        XCTAssertFalse(model.isImporting)
+        XCTAssertNil(model.activeWork)
+        XCTAssertEqual(model.errorMessage, "Destination cannot be inside the card source")
+        XCTAssertEqual(model.statusMessage, nil)
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.status, .failed)
+        XCTAssertEqual(activity.detail, "Import failed from DCIM to Library: Destination cannot be inside the card source")
+    }
+
+    @MainActor
     func testWorkerImportPersistsRunningActivityAndReloadMarksItInterrupted() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-interrupted")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
@@ -6103,6 +6162,7 @@ final class AppModelTests: XCTestCase {
         let source = directory.appendingPathComponent("DCIM", isDirectory: true)
         let destination = directory.appendingPathComponent("Library", isDirectory: true)
         try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let image = source.appendingPathComponent("one.png")
         try writeTestPNG(to: image)
         let metadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["keeper"])
