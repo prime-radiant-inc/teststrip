@@ -9,8 +9,10 @@ APP_NAME="Teststrip"
 BUNDLE_ID="com.teststrip.app"
 MIN_SYSTEM_VERSION="14.0"
 APPLICATION_SUPPORT_ENV_KEY="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY"
+REQUIRED_SECURITY_SCOPE_ENV_KEY="TESTSTRIP_REQUIRE_SECURITY_SCOPED_IMPORTS"
 ISOLATED=0
 ISOLATED_APPLICATION_SUPPORT=""
+SANDBOXED=0
 SMOKE=0
 SMOKE_ASSET_COUNT="${TESTSTRIP_SMOKE_ASSET_COUNT:-24}"
 SAMPLE_PHOTOS=0
@@ -26,9 +28,11 @@ APP_HELPERS="$APP_CONTENTS/Helpers"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 WORKER_BINARY="$APP_HELPERS/$WORKER_PRODUCT_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
+APP_ENTITLEMENTS="$ROOT_DIR/config/macos/Teststrip.entitlements"
+WORKER_ENTITLEMENTS="$ROOT_DIR/config/macos/TeststripWorker.entitlements"
 
 usage() {
-  echo "usage: $0 [run|--verify|--isolated|--verify-isolated|--smoke|--verify-smoke|--sample-photos|--verify-sample-photos|--debug|--logs|--telemetry]" >&2
+  echo "usage: $0 [run|--build|--build-sandboxed|--sandboxed|--verify|--verify-sandboxed|--isolated|--verify-isolated|--smoke|--verify-smoke|--sample-photos|--verify-sample-photos|--debug|--logs|--telemetry]" >&2
 }
 
 stop_running_app() {
@@ -81,12 +85,21 @@ build_app_bundle() {
 </plist>
 PLIST
 
-  codesign --force --sign - "$WORKER_BINARY" >/dev/null
-  codesign --force --sign - "$APP_BUNDLE" >/dev/null
+  local worker_codesign=(codesign --force --sign -)
+  local app_codesign=(codesign --force --sign -)
+  if [[ "$SANDBOXED" == "1" ]]; then
+    worker_codesign+=(--entitlements "$WORKER_ENTITLEMENTS")
+    app_codesign+=(--entitlements "$APP_ENTITLEMENTS")
+  fi
+  "${worker_codesign[@]}" "$WORKER_BINARY" >/dev/null
+  "${app_codesign[@]}" "$APP_BUNDLE" >/dev/null
 }
 
 open_app() {
   local open_args=(-n "$APP_BUNDLE")
+  if [[ "$SANDBOXED" == "1" ]]; then
+    open_args=(--env "$REQUIRED_SECURITY_SCOPE_ENV_KEY=1" "${open_args[@]}")
+  fi
   if [[ "$ISOLATED" == "1" ]]; then
     prepare_isolated_catalog
     if [[ "$SMOKE" == "1" ]]; then
@@ -112,6 +125,9 @@ verify_app() {
       echo "$APP_NAME is running from $APP_BUNDLE"
       if [[ "$ISOLATED" == "1" ]]; then
         echo "$APP_NAME is using isolated application support at $ISOLATED_APPLICATION_SUPPORT"
+      fi
+      if [[ "$SANDBOXED" == "1" ]]; then
+        echo "$APP_NAME is signed with sandbox entitlements"
       fi
       return 0
     fi
@@ -147,7 +163,19 @@ seed_sample_catalog() {
 }
 
 case "$MODE" in
-  run|--verify|verify|--debug|debug|--logs|logs|--telemetry|telemetry)
+  run|--build|build|--verify|verify|--debug|debug|--logs|logs|--telemetry|telemetry)
+    ;;
+  --build-sandboxed|build-sandboxed)
+    MODE="--build"
+    SANDBOXED=1
+    ;;
+  --sandboxed|sandboxed)
+    MODE="run"
+    SANDBOXED=1
+    ;;
+  --verify-sandboxed|verify-sandboxed)
+    MODE="--verify"
+    SANDBOXED=1
     ;;
   --isolated|isolated)
     MODE="run"
@@ -187,10 +215,15 @@ case "$MODE" in
     ;;
 esac
 
-stop_running_app
+if [[ "$MODE" != "--build" && "$MODE" != "build" ]]; then
+  stop_running_app
+fi
 build_app_bundle
 
 case "$MODE" in
+  --build|build)
+    echo "Built $APP_BUNDLE"
+    ;;
   run)
     open_app
     ;;

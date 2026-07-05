@@ -653,6 +653,12 @@ public struct SecurityScopedResourceAccess: Sendable {
         startAccessing: { $0.startAccessingSecurityScopedResource() },
         stopAccessing: { $0.stopAccessingSecurityScopedResource() }
     )
+
+    public static let required = SecurityScopedResourceAccess(
+        requiresSuccessfulAccess: true,
+        startAccessing: { $0.startAccessingSecurityScopedResource() },
+        stopAccessing: { $0.stopAccessingSecurityScopedResource() }
+    )
 }
 
 private struct MetadataChange: Equatable {
@@ -738,6 +744,9 @@ public final class AppModel {
 
     @ObservationIgnored
     private let workerSupervisor: WorkerSupervisor?
+
+    @ObservationIgnored
+    private let workerImportsEnabled: Bool
 
     @ObservationIgnored
     private let workerExecutableURL: URL?
@@ -1429,8 +1438,10 @@ public final class AppModel {
         importTaskFactory: AppImportTaskFactory? = nil,
         cardImportTaskFactory: AppCardImportTaskFactory? = nil,
         workerExecutableURL: URL? = nil,
-        resourceAccess: SecurityScopedResourceAccess = .permissive
+        resourceAccess: SecurityScopedResourceAccess = .permissive,
+        workerImportsEnabled: Bool? = nil
     ) {
+        let resolvedWorkerImportsEnabled = workerImportsEnabled ?? (workerSupervisor != nil)
         let resolvedTotalAssetCount = totalAssetCount ?? assets.count
         let resolvedPendingMetadataSyncCount = pendingMetadataSyncCount ?? pendingMetadataSyncItems.count
         let resolvedMetadataSyncConflictCount = metadataSyncConflictCount ?? metadataSyncConflictItems.count
@@ -1495,6 +1506,7 @@ public final class AppModel {
         self.selectedAssetSetID = selectedAssetSetID
         self.catalog = catalog
         self.workerSupervisor = workerSupervisor
+        self.workerImportsEnabled = resolvedWorkerImportsEnabled
         self.workerExecutableURL = workerExecutableURL
         self.resourceAccess = resourceAccess
         self.previewCacheGenerationsByAssetID = [:]
@@ -1503,7 +1515,9 @@ public final class AppModel {
         self.metadataSyncAssetIDsByItemID = [:]
         self.availabilityAssetIDsByItemID = [:]
         self.evaluationSignalGenerationsByAssetID = [:]
-        let importPreviewPolicy: LibraryImportPreviewPolicy = workerSupervisor == nil ? .generateImmediately : .deferGeneration
+        // User-selected file grants are process-scoped, so local imports must render
+        // their first previews before releasing a required security-scoped folder.
+        let importPreviewPolicy: LibraryImportPreviewPolicy = workerSupervisor == nil || !resolvedWorkerImportsEnabled ? .generateImmediately : .deferGeneration
         self.importTaskFactory = importTaskFactory ?? { paths, folderURL, progress in
             Self.defaultImportTask(
                 paths: paths,
@@ -1638,7 +1652,8 @@ public final class AppModel {
         cardImportTaskFactory: AppCardImportTaskFactory? = nil,
         workerSupervisor: WorkerSupervisor? = nil,
         workerExecutableURL: URL? = nil,
-        resourceAccess: SecurityScopedResourceAccess = .permissive
+        resourceAccess: SecurityScopedResourceAccess = .permissive,
+        workerImportsEnabled: Bool? = nil
     ) throws -> AppModel {
         try reconcileInterruptedIngestWorkSessions(repository: catalog.repository)
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
@@ -1700,7 +1715,8 @@ public final class AppModel {
             importTaskFactory: importTaskFactory,
             cardImportTaskFactory: cardImportTaskFactory,
             workerExecutableURL: workerExecutableURL,
-            resourceAccess: resourceAccess
+            resourceAccess: resourceAccess,
+            workerImportsEnabled: workerImportsEnabled
         )
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
@@ -4971,7 +4987,7 @@ public final class AppModel {
         }
         errorMessage = nil
         statusMessage = "Importing \(folderURL.lastPathComponent)..."
-        if workerSupervisor != nil {
+        if workerSupervisor != nil && workerImportsEnabled {
             enqueueWorkerImport(source: folderURL, destinationRoot: nil, command: .importFolder(root: folderURL))
             return
         }
@@ -5045,7 +5061,7 @@ public final class AppModel {
         }
         errorMessage = nil
         statusMessage = "Importing \(source.lastPathComponent)..."
-        if workerSupervisor != nil {
+        if workerSupervisor != nil && workerImportsEnabled {
             enqueueWorkerImport(
                 source: source,
                 destinationRoot: destinationRoot,

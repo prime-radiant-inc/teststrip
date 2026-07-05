@@ -70,6 +70,15 @@ final class AppCatalogTests: XCTestCase {
         ])
     }
 
+    func testRuntimePolicyRequiresSecurityScopeAndDisablesWorkerImportsWhenConfigured() {
+        let policy = AppCatalog.runtimePolicy(environment: [
+            AppCatalog.requiredSecurityScopedImportAccessEnvironmentKey: "1"
+        ])
+
+        XCTAssertTrue(policy.requiresSuccessfulSecurityScopedImportAccess)
+        XCTAssertFalse(policy.workerImportsEnabled)
+    }
+
     func testLoadModelWithWorkerExecutableUsesManagedWorkKindLimits() throws {
         let root = try makeTemporaryDirectory(named: "app-catalog-worker-limits")
         let paths = AppCatalog.defaultPaths(

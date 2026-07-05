@@ -13,11 +13,25 @@ public struct AppCatalogPaths: Equatable, Sendable {
     }
 }
 
+public struct AppCatalogRuntimePolicy: Equatable, Sendable {
+    public var requiresSuccessfulSecurityScopedImportAccess: Bool
+    public var workerImportsEnabled: Bool
+
+    public init(
+        requiresSuccessfulSecurityScopedImportAccess: Bool,
+        workerImportsEnabled: Bool
+    ) {
+        self.requiresSuccessfulSecurityScopedImportAccess = requiresSuccessfulSecurityScopedImportAccess
+        self.workerImportsEnabled = workerImportsEnabled
+    }
+}
+
 public struct AppCatalog {
     public static let applicationSupportDirectoryEnvironmentKey = "TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY"
     public static let localHTTPModelEndpointEnvironmentKey = "TESTSTRIP_LOCAL_HTTP_MODEL_ENDPOINT"
     public static let localHTTPModelNameEnvironmentKey = "TESTSTRIP_LOCAL_HTTP_MODEL"
     public static let localHTTPModelTimeoutEnvironmentKey = "TESTSTRIP_LOCAL_HTTP_MODEL_TIMEOUT"
+    public static let requiredSecurityScopedImportAccessEnvironmentKey = "TESTSTRIP_REQUIRE_SECURITY_SCOPED_IMPORTS"
     static let managedWorkerKindRunningLimits: [WorkSessionKind: Int] = [
         .sourceScan: 1,
         .xmpSync: 1,
@@ -98,6 +112,7 @@ public struct AppCatalog {
         workerExecutableURL: URL? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) throws -> AppModel {
+        let runtimePolicy = runtimePolicy(environment: environment)
         let workerSupervisor: WorkerSupervisor? = workerExecutableURL.flatMap { executableURL -> WorkerSupervisor? in
             guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
                 return nil
@@ -113,7 +128,19 @@ public struct AppCatalog {
         return try AppModel.load(
             catalog: open(paths: paths),
             workerSupervisor: workerSupervisor,
-            workerExecutableURL: workerExecutableURL
+            workerExecutableURL: workerExecutableURL,
+            resourceAccess: runtimePolicy.requiresSuccessfulSecurityScopedImportAccess ? .required : .permissive,
+            workerImportsEnabled: runtimePolicy.workerImportsEnabled
+        )
+    }
+
+    public static func runtimePolicy(environment: [String: String] = ProcessInfo.processInfo.environment) -> AppCatalogRuntimePolicy {
+        let requiresSecurityScope = configuredEnvironmentBoolean(
+            environment[requiredSecurityScopedImportAccessEnvironmentKey]
+        )
+        return AppCatalogRuntimePolicy(
+            requiresSuccessfulSecurityScopedImportAccess: requiresSecurityScope,
+            workerImportsEnabled: !requiresSecurityScope
         )
     }
 
@@ -150,5 +177,12 @@ public struct AppCatalog {
             return nil
         }
         return trimmed
+    }
+
+    private static func configuredEnvironmentBoolean(_ value: String?) -> Bool {
+        guard let configuredValue = configuredEnvironmentValue(value)?.lowercased() else {
+            return false
+        }
+        return ["1", "true", "yes", "on"].contains(configuredValue)
     }
 }

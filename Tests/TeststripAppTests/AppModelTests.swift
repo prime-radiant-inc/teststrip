@@ -6882,6 +6882,44 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBeginImportFolderWithWorkerImportsDisabledRunsLocalImportAndGeneratesPreview() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-local-import-with-worker-disabled")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let imageURL = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: imageURL)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let access = RecordingSecurityScopedResourceAccess(
+            requiresSuccessfulAccess: true,
+            grantedURLs: [photoFolder]
+        )
+        let model = try AppModel.load(
+            catalog: catalog,
+            workerSupervisor: supervisor,
+            resourceAccess: access.value,
+            workerImportsEnabled: false
+        )
+
+        model.beginImportFolder(photoFolder)
+
+        let assetID = try await waitForFirstAsset(in: model)
+        let previewURL = try await waitForGridPreview(assetID: assetID, in: model)
+        try await waitForStatusMessage("Imported 1 photo", in: model)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
+        XCTAssertEqual(model.backgroundWorkQueue.items, [])
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(access.startedURLs, [photoFolder])
+        XCTAssertEqual(access.stoppedURLs, [photoFolder])
+        XCTAssertEqual(model.statusMessage, "Imported 1 photo")
+    }
+
+    @MainActor
     func testBeginImportCardWithWorkerRejectsMissingSourceWithoutEnqueueing() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-card-missing-source")
         let missingSource = directory.appendingPathComponent("missing-card", isDirectory: true)
@@ -8585,6 +8623,39 @@ final class AppModelTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTFail("timed out waiting for selected asset \(assetID.rawValue)")
+    }
+
+    @MainActor
+    private func waitForFirstAsset(in model: AppModel) async throws -> AssetID {
+        for _ in 0..<100 {
+            if let assetID = model.assets.first?.id {
+                return assetID
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        throw TeststripError.invalidState("timed out waiting for first asset")
+    }
+
+    @MainActor
+    private func waitForGridPreview(assetID: AssetID, in model: AppModel) async throws -> URL {
+        for _ in 0..<100 {
+            if let previewURL = model.gridPreviewURL(for: assetID) {
+                return previewURL
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        throw TeststripError.invalidState("timed out waiting for grid preview")
+    }
+
+    @MainActor
+    private func waitForStatusMessage(_ statusMessage: String, in model: AppModel) async throws {
+        for _ in 0..<100 {
+            if model.statusMessage == statusMessage {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        throw TeststripError.invalidState("timed out waiting for status \(statusMessage)")
     }
 
     @MainActor
