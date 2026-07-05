@@ -102,11 +102,57 @@ final class TimelinePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.scrubber.months.map(\.isFocused), [false, true, false])
         XCTAssertEqual(presentation.scrubber.months[1].year, 2026)
         XCTAssertEqual(presentation.scrubber.months[1].month, 2)
+        XCTAssertEqual(presentation.scrubber.focusedMonthID, "2026-02")
+        XCTAssertEqual(presentation.scrubber.focusedDayID, "2026-02-04")
         XCTAssertEqual(presentation.scrubber.focusText, "February 2026 / February 4")
         XCTAssertEqual(presentation.scrubber.days.map(\.title), ["February 5", "February 4"])
         XCTAssertEqual(presentation.scrubber.days.map(\.countText), ["8", "3"])
         XCTAssertEqual(presentation.scrubber.days.map(\.isFocused), [false, true])
         XCTAssertEqual(presentation.scrubber.days[1].timelineDay, CatalogTimelineDay(year: 2026, month: 2, day: 4, assetCount: 3))
+    }
+
+    func testTimelineContentScrollPolicyCentersFocusedDayBeforeFocusedMonth() {
+        let scrubber = TimelineScrubberPresentation(
+            months: [
+                TimelineScrubberMonthPresentation(title: "March 2026", year: 2026, month: 3, assetCount: 9, dayCount: 1, isFocused: false),
+                TimelineScrubberMonthPresentation(title: "February 2026", year: 2026, month: 2, assetCount: 11, dayCount: 2, isFocused: true)
+            ],
+            days: [
+                TimelineScrubberDayPresentation(
+                    title: "February 4",
+                    assetCount: 3,
+                    timelineDay: CatalogTimelineDay(year: 2026, month: 2, day: 4, assetCount: 3),
+                    isFocused: true
+                )
+            ],
+            focusText: "February 2026 / February 4"
+        )
+
+        XCTAssertEqual(TimelineContentScrollPolicy.focusedTargetID(for: scrubber), "timeline-day-2026-02-04")
+    }
+
+    func testTimelineContentScrollPolicyFallsBackToFocusedMonth() {
+        let scrubber = TimelineScrubberPresentation(
+            months: [
+                TimelineScrubberMonthPresentation(title: "March 2026", year: 2026, month: 3, assetCount: 9, dayCount: 1, isFocused: true)
+            ],
+            days: [],
+            focusText: "March 2026"
+        )
+
+        XCTAssertEqual(TimelineContentScrollPolicy.focusedTargetID(for: scrubber), "timeline-month-2026-03")
+    }
+
+    func testTimelineContentScrollPolicyDoesNotScrollWithoutFocus() {
+        let scrubber = TimelineScrubberPresentation(
+            months: [
+                TimelineScrubberMonthPresentation(title: "March 2026", year: 2026, month: 3, assetCount: 9, dayCount: 1, isFocused: false)
+            ],
+            days: [],
+            focusText: nil
+        )
+
+        XCTAssertNil(TimelineContentScrollPolicy.focusedTargetID(for: scrubber))
     }
 
     private static var gregorianUTC: Calendar {

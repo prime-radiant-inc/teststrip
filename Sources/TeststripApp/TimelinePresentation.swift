@@ -260,6 +260,34 @@ struct TimelineScrubberPresentation: Equatable {
     var months: [TimelineScrubberMonthPresentation]
     var days: [TimelineScrubberDayPresentation]
     var focusText: String?
+
+    var focusedMonthID: String? {
+        months.first(where: \.isFocused)?.id
+    }
+
+    var focusedDayID: String? {
+        days.first(where: \.isFocused)?.id
+    }
+}
+
+enum TimelineContentScrollPolicy {
+    static func focusedTargetID(for scrubber: TimelineScrubberPresentation) -> String? {
+        if let focusedDayID = scrubber.focusedDayID {
+            return dayTargetID(for: focusedDayID)
+        }
+        if let focusedMonthID = scrubber.focusedMonthID {
+            return monthTargetID(for: focusedMonthID)
+        }
+        return nil
+    }
+
+    static func monthTargetID(for monthID: String) -> String {
+        "timeline-month-\(monthID)"
+    }
+
+    static func dayTargetID(for dayID: String) -> String {
+        "timeline-day-\(dayID)"
+    }
 }
 
 struct TimelineScrubberMonthPresentation: Identifiable, Equatable {

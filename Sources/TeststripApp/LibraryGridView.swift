@@ -4118,22 +4118,31 @@ private struct TimelineWorkspaceView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                timelineHeader
-                if presentation.months.isEmpty {
-                    emptyTimeline
-                        .frame(maxWidth: .infinity, minHeight: 280)
-                } else {
-                    ForEach(presentation.months) { month in
-                        monthSection(month)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    timelineHeader
+                    if presentation.months.isEmpty {
+                        emptyTimeline
+                            .frame(maxWidth: .infinity, minHeight: 280)
+                    } else {
+                        ForEach(presentation.months) { month in
+                            monthSection(month)
+                                .id(TimelineContentScrollPolicy.monthTargetID(for: month.id))
+                        }
                     }
                 }
+                .padding(12)
             }
-            .padding(12)
+            .background(Color.black.opacity(0.18))
+            .liveMockupPlaceholder(.timelineLibrary)
+            .onAppear {
+                scrollTimelineTarget(TimelineContentScrollPolicy.focusedTargetID(for: presentation.scrubber), with: proxy)
+            }
+            .onChange(of: TimelineContentScrollPolicy.focusedTargetID(for: presentation.scrubber)) { _, targetID in
+                scrollTimelineTarget(targetID, with: proxy)
+            }
         }
-        .background(Color.black.opacity(0.18))
-        .liveMockupPlaceholder(.timelineLibrary)
     }
 
     private var timelineHeader: some View {
@@ -4215,71 +4224,96 @@ private struct TimelineWorkspaceView: View {
                     .foregroundStyle(.orange)
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(scrubber.months) { month in
-                        Button {
-                            selectTimelineMonth(year: month.year, month: month.month)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(month.title)
-                                    .font(.caption.weight(.semibold))
-                                    .lineLimit(1)
-                                Text(month.countText)
-                                    .font(.caption2.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            .frame(width: 118, height: 42, alignment: .leading)
-                            .padding(.horizontal, 8)
-                            .background(
-                                month.isFocused ? Color.orange.opacity(0.18) : Color.white.opacity(0.06),
-                                in: RoundedRectangle(cornerRadius: 6)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(month.isFocused ? Color.orange.opacity(0.75) : Color.white.opacity(0.08), lineWidth: 1)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .help("Show photos from \(month.title)")
-                    }
-                }
-                .padding(.vertical, 1)
-            }
-
-            if !scrubber.days.isEmpty {
+            ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
-                        ForEach(scrubber.days) { day in
+                        ForEach(scrubber.months) { month in
                             Button {
-                                selectTimelineDay(day.timelineDay)
+                                selectTimelineMonth(year: month.year, month: month.month)
                             } label: {
-                                HStack(spacing: 6) {
-                                    Text(day.title)
-                                        .font(.caption2.weight(.semibold))
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(month.title)
+                                        .font(.caption.weight(.semibold))
                                         .lineLimit(1)
-                                    Text(day.countText)
+                                    Text(month.countText)
                                         .font(.caption2.monospacedDigit())
                                         .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                 }
-                                .frame(width: 92, height: 26)
+                                .frame(width: 118, height: 42, alignment: .leading)
+                                .padding(.horizontal, 8)
                                 .background(
-                                    day.isFocused ? Color.orange.opacity(0.16) : Color.white.opacity(0.05),
-                                    in: RoundedRectangle(cornerRadius: 5)
+                                    month.isFocused ? Color.orange.opacity(0.18) : Color.white.opacity(0.06),
+                                    in: RoundedRectangle(cornerRadius: 6)
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 5)
-                                        .stroke(day.isFocused ? Color.orange.opacity(0.65) : Color.white.opacity(0.08), lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(month.isFocused ? Color.orange.opacity(0.75) : Color.white.opacity(0.08), lineWidth: 1)
                                 )
                             }
                             .buttonStyle(.plain)
-                            .help("Show photos from \(day.title)")
+                            .help("Show photos from \(month.title)")
+                            .id(month.id)
                         }
                     }
                     .padding(.vertical, 1)
                 }
+                .onAppear {
+                    scrollTimelineTarget(scrubber.focusedMonthID, with: proxy)
+                }
+                .onChange(of: scrubber.focusedMonthID) { _, focusedMonthID in
+                    scrollTimelineTarget(focusedMonthID, with: proxy)
+                }
             }
+
+            if !scrubber.days.isEmpty {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(scrubber.days) { day in
+                                Button {
+                                    selectTimelineDay(day.timelineDay)
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Text(day.title)
+                                            .font(.caption2.weight(.semibold))
+                                            .lineLimit(1)
+                                        Text(day.countText)
+                                            .font(.caption2.monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .frame(width: 92, height: 26)
+                                    .background(
+                                        day.isFocused ? Color.orange.opacity(0.16) : Color.white.opacity(0.05),
+                                        in: RoundedRectangle(cornerRadius: 5)
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 5)
+                                            .stroke(day.isFocused ? Color.orange.opacity(0.65) : Color.white.opacity(0.08), lineWidth: 1)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .help("Show photos from \(day.title)")
+                                .id(day.id)
+                            }
+                        }
+                        .padding(.vertical, 1)
+                    }
+                    .onAppear {
+                        scrollTimelineTarget(scrubber.focusedDayID, with: proxy)
+                    }
+                    .onChange(of: scrubber.focusedDayID) { _, focusedDayID in
+                        scrollTimelineTarget(focusedDayID, with: proxy)
+                    }
+                }
+            }
+        }
+    }
+
+    private func scrollTimelineTarget(_ targetID: String?, with proxy: ScrollViewProxy) {
+        guard let targetID else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            proxy.scrollTo(targetID, anchor: .center)
         }
     }
 
@@ -4322,6 +4356,7 @@ private struct TimelineWorkspaceView: View {
 
             ForEach(month.days) { day in
                 daySection(day)
+                    .id(TimelineContentScrollPolicy.dayTargetID(for: day.id))
             }
         }
     }

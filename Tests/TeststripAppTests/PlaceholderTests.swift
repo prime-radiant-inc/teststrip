@@ -57,9 +57,10 @@ final class LiveMockupPlaceholderTests: XCTestCase {
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("year-density ribbon"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("focused month/day scrubber"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("scroll-position syncing centers focused chips and sections"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("year-density ribbon"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("focused month/day scrubber"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("scroll-position syncing remains pending"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("scroll-position syncing centers focused chips and sections"))
     }
 
     func testImportCompleteLedgerTracksLiveActionsAndRemainingDisabledFollowups() throws {

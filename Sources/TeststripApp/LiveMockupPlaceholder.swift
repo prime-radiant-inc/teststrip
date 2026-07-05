@@ -54,7 +54,7 @@ public enum LiveMockupPlaceholders {
         id: "library.timeline",
         title: "Timeline library direction",
         intendedBehavior: "Navigate decade-scale catalogs through a year/month/day density ribbon and scrubber.",
-        currentFallback: "Catalog-backed capture-day counts, day drill-down, year-density ribbon, focused month/day scrubber, and month/year drill-down controls exist; scroll-position syncing remains pending."
+        currentFallback: "Catalog-backed capture-day counts, day drill-down, year-density ribbon, focused month/day scrubber, month/year drill-down controls, and scroll-position syncing centers focused chips and sections."
     )
 
     public static let topChrome = LiveMockupPlaceholder(
@@ -248,7 +248,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Timeline",
             status: .partial,
             placeholder: .timelineLibrary,
-            currentImplementation: "Timeline route uses catalog-backed capture-day counts, a year-density ribbon, focused month/day scrubber, day drill-down, and month/year drill-down into existing date predicates; scroll-position syncing remains pending."
+            currentImplementation: "Timeline route uses catalog-backed capture-day counts, a year-density ribbon, focused month/day scrubber, day drill-down, month/year drill-down into existing date predicates, and scroll-position syncing centers focused chips and sections."
         ),
         LiveMockupDesignSurface(
             designID: "2a",
