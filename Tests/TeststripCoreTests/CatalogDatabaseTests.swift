@@ -262,6 +262,52 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [item])
     }
 
+    func testPreviewGenerationFailureAssetCountCountsDistinctFailedAssetsInScope() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-failure-count")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let failedBothLevels = AssetID(rawValue: "failed-both-levels")
+        let failedGridOnly = AssetID(rawValue: "failed-grid-only")
+        let pendingOnly = AssetID(rawValue: "pending-only")
+        let failedOutsideScope = AssetID(rawValue: "failed-outside-scope")
+
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: failedBothLevels, level: .micro))
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: failedBothLevels, level: .grid))
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: failedGridOnly, level: .grid))
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: pendingOnly, level: .grid))
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: failedOutsideScope, level: .grid))
+        try repository.recordPreviewGenerationFailure(
+            assetID: failedBothLevels,
+            level: .micro,
+            errorMessage: "could not render micro preview"
+        )
+        try repository.recordPreviewGenerationFailure(
+            assetID: failedBothLevels,
+            level: .grid,
+            errorMessage: "could not render grid preview"
+        )
+        try repository.recordPreviewGenerationFailure(
+            assetID: failedGridOnly,
+            level: .grid,
+            errorMessage: "could not render grid preview"
+        )
+        try repository.recordPreviewGenerationFailure(
+            assetID: failedOutsideScope,
+            level: .grid,
+            errorMessage: "outside current import"
+        )
+
+        let count = try repository.previewGenerationFailureAssetCount(assetIDs: [
+            failedBothLevels,
+            failedGridOnly,
+            pendingOnly
+        ])
+
+        XCTAssertEqual(count, 2)
+        XCTAssertEqual(try repository.previewGenerationFailureAssetCount(assetIDs: []), 0)
+    }
+
     func testPendingPreviewGenerationItemsCanFilterByAttemptCount() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-attempt-filter")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

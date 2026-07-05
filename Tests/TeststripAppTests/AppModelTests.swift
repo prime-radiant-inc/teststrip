@@ -6017,6 +6017,62 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testLatestImportCompletionSummarySurfacesDeferredPreviewFailuresForWorkerImport() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-preview-failure-summary")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "worker-imported"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        try catalog.repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: importedAsset.id, level: .micro))
+        try catalog.repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: importedAsset.id, level: .grid))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0
+        )))
+        try await waitForSelectedAsset(importedAsset.id, in: model)
+        try catalog.repository.recordPreviewGenerationFailure(
+            assetID: importedAsset.id,
+            level: .micro,
+            errorMessage: "could not render micro preview"
+        )
+        try catalog.repository.recordPreviewGenerationFailure(
+            assetID: importedAsset.id,
+            level: .grid,
+            errorMessage: "could not render grid preview"
+        )
+
+        let summary = try XCTUnwrap(model.latestImportCompletionSummary)
+
+        XCTAssertEqual(summary.previewFailureCount, 1)
+        XCTAssertEqual(summary.failureText, "1 preview failure")
+        XCTAssertEqual(summary.previewStatusText, "1 preview failure")
+    }
+
+    @MainActor
     func testWorkerImportWaitingForDispatchPresentsAsWaiting() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-waiting-for-dispatch")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)

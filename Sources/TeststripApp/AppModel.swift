@@ -1143,7 +1143,7 @@ public final class AppModel {
         guard let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
             return nil
         }
-        let previewFailureCount = activity.failureCount
+        let previewFailureCount = latestImportPreviewFailureCount(activity: activity)
         let failureText = previewFailureCount > 0
             ? "\(previewFailureCount) preview \(previewFailureCount == 1 ? "failure" : "failures")"
             : nil
@@ -1163,6 +1163,17 @@ public final class AppModel {
             previewStatusText: failureText ?? activePreviewGenerationStatusText ?? "Previews ready",
             cullingSessionName: "\(activity.detail) Cull"
         )
+    }
+
+    private func latestImportPreviewFailureCount(activity: AppWorkActivity) -> Int {
+        guard let catalog else { return activity.failureCount }
+        do {
+            let assetIDs = try latestImportOutputAssetIDs(activityID: activity.id, repository: catalog.repository)
+            let deferredFailureCount = try catalog.repository.previewGenerationFailureAssetCount(assetIDs: assetIDs)
+            return max(activity.failureCount, deferredFailureCount)
+        } catch {
+            return activity.failureCount
+        }
     }
 
     public var suggestedSavedSearchName: String {
@@ -4290,10 +4301,14 @@ public final class AppModel {
     }
 
     private func latestImportOutputAssetIDs(repository: CatalogRepository) throws -> [AssetID] {
-        guard let summary = latestImportCompletionSummary else {
+        guard let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
             throw TeststripError.invalidState("no completed import")
         }
-        let session = try repository.session(id: WorkSessionID(rawValue: summary.activityID))
+        return try latestImportOutputAssetIDs(activityID: activity.id, repository: repository)
+    }
+
+    private func latestImportOutputAssetIDs(activityID: String, repository: CatalogRepository) throws -> [AssetID] {
+        let session = try repository.session(id: WorkSessionID(rawValue: activityID))
         guard let outputSetID = session.outputSetIDs.first else {
             return []
         }

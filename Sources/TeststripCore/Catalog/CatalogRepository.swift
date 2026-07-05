@@ -775,6 +775,31 @@ public final class CatalogRepository {
         return try rows.map(decodePreviewGenerationQueueState)
     }
 
+    public func previewGenerationFailureAssetCount(assetIDs: [AssetID]) throws -> Int {
+        guard !assetIDs.isEmpty else { return 0 }
+        var seenAssetIDs = Set<AssetID>()
+        let uniqueAssetIDs = assetIDs.filter { seenAssetIDs.insert($0).inserted }
+        var count = 0
+        for chunk in Self.chunks(uniqueAssetIDs, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try database.rows(
+                """
+                SELECT COUNT(DISTINCT asset_id) AS count
+                FROM preview_generation_queue
+                WHERE asset_id IN (\(placeholders))
+                    AND attempt_count > 0
+                    AND COALESCE(last_error, '') != ''
+                """,
+                bindings: chunk.map(\.rawValue)
+            )
+            guard let countString = rows.first?["count"], let chunkCount = Int(countString) else {
+                throw CatalogError.sqlite("preview generation failure count query returned no count")
+            }
+            count += chunkCount
+        }
+        return count
+    }
+
     public func metadataSyncConflictItems(limit: Int? = nil) throws -> [MetadataSyncItem] {
         try metadataSyncItems(status: "conflict", limit: limit)
     }
