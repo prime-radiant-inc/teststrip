@@ -74,7 +74,11 @@ public final class FoundationWorkerTransport: WorkerTransport, @unchecked Sendab
         guard isRunning, let inputPipe else {
             throw TeststripError.invalidState("worker process is not running")
         }
-        inputPipe.fileHandleForWriting.write(Data(line.utf8))
+        var data = Data(line.utf8)
+        if !line.hasSuffix("\n") {
+            data.append(0x0A)
+        }
+        inputPipe.fileHandleForWriting.write(data)
     }
 
     public func terminate() {

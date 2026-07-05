@@ -571,12 +571,42 @@ final class WorkerSupervisorTests: XCTestCase {
         try transport.launch()
         try transport.writeLine("hello worker\n")
 
-        XCTAssertTrue(waitUntil { file(outputURL, contains: "hello worker") })
+        XCTAssertTrue(
+            waitUntil(timeout: workerTransportTimeout) { file(outputURL, contains: "hello worker") },
+            "worker subprocess did not record the line sent through stdin"
+        )
         XCTAssertTrue(transport.isRunning)
 
         transport.terminate()
 
-        XCTAssertTrue(waitUntil { !transport.isRunning })
+        XCTAssertTrue(
+            waitUntil(timeout: workerTransportTimeout) { !transport.isRunning },
+            "worker subprocess did not terminate after transport termination"
+        )
+    }
+
+    func testFoundationTransportFramesBareWriteLineInput() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-transport-bare-line")
+        let scriptURL = root.appendingPathComponent("record-worker.sh")
+        let outputURL = root.appendingPathComponent("worker-output.txt")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          printf '%s\\n' "$line" >> "$1"
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        chmod(scriptURL.path, 0o755)
+        let transport = FoundationWorkerTransport(executableURL: scriptURL, arguments: [outputURL.path])
+
+        try transport.launch()
+        try transport.writeLine("hello worker")
+
+        XCTAssertTrue(
+            waitUntil(timeout: workerTransportTimeout) { file(outputURL, contains: "hello worker") },
+            "writeLine should frame input as one newline-delimited worker message"
+        )
+        transport.terminate()
     }
 
     func testFoundationTransportReportsWorkerOutputLines() throws {
@@ -597,7 +627,10 @@ final class WorkerSupervisorTests: XCTestCase {
         try transport.launch()
         try transport.writeLine("hello worker\n")
 
-        XCTAssertTrue(waitUntil { outputLines == ["completed hello worker"] })
+        XCTAssertTrue(
+            waitUntil(timeout: workerTransportTimeout) { outputLines == ["completed hello worker"] },
+            "worker stdout line was not delivered to the transport output handler"
+        )
         transport.terminate()
     }
 
@@ -619,7 +652,10 @@ final class WorkerSupervisorTests: XCTestCase {
         try transport.launch()
         try transport.writeLine("bad preview\n")
 
-        XCTAssertTrue(waitUntil { errorLines == ["error bad preview"] })
+        XCTAssertTrue(
+            waitUntil(timeout: workerTransportTimeout) { errorLines == ["error bad preview"] },
+            "worker stderr line was not delivered to the transport error handler"
+        )
         transport.terminate()
     }
 }
@@ -709,6 +745,8 @@ private extension BackgroundWorkItem {
         )
     }
 }
+
+private let workerTransportTimeout: TimeInterval = 30
 
 private func waitUntil(timeout: TimeInterval = 2, predicate: () -> Bool) -> Bool {
     let deadline = Date().addingTimeInterval(timeout)
