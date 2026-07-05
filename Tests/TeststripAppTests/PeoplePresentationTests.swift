@@ -32,7 +32,7 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.headerSummary, "0 people · 44 photos with face signals")
         XCTAssertEqual(presentation.reviewStripTitle, "TESTSTRIP · 3 PHOTOS NEED FACE REVIEW")
         XCTAssertEqual(presentation.reviewStripStatusText, "2 queues")
-        XCTAssertEqual(presentation.reviewStripDetail, "44 photos have face-quality signals; named people are not built yet.")
+        XCTAssertEqual(presentation.reviewStripDetail, "44 photos have face-quality signals; review queues can be named from selected photos.")
         XCTAssertEqual(presentation.reviewCards.map(\.title), ["Unnamed faces", "Face quality checks"])
         XCTAssertEqual(presentation.reviewCards.map(\.countText), ["3 photos", "44 photos"])
         XCTAssertEqual(presentation.reviewCards.map(\.suggestedActionTitle), ["Review faces", "Review quality"])
@@ -40,7 +40,7 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.reviewCards.map(\.target), [.reviewQueue(.facesFound), .evaluationKind(.faceQuality)])
         XCTAssertTrue(presentation.reviewCards.allSatisfy { !$0.isNamingEnabled })
         XCTAssertEqual(presentation.namedPeopleTitle, "ALL PEOPLE")
-        XCTAssertEqual(presentation.namedPeopleEmptyText, "Named people will appear here after face clustering and confirmation ship.")
+        XCTAssertEqual(presentation.namedPeopleEmptyText, "No confirmed people yet. Review face queues, select photos, then name the selection.")
     }
 
     func testFaceReviewStripStaysHonestWithoutFaceSignals() {
@@ -106,7 +106,7 @@ final class PeoplePresentationTests: XCTestCase {
     func testPresentationKeepsNamingActionsDisabledWithoutClusters() {
         let presentation = PeoplePresentation(totalAssetCount: 42, evaluationSummaries: [])
 
-        XCTAssertEqual(presentation.faceActionRows.map(\.title), ["Name clusters", "Merge duplicates", "Dismiss false positives"])
+        XCTAssertEqual(presentation.faceActionRows.map(\.title), ["Auto cluster", "Split person", "Face-box naming"])
         XCTAssertEqual(presentation.faceActionRows.map(\.isEnabled), [false, false, false])
         XCTAssertEqual(
             presentation.faceActionRows.map(\.placeholder.id),

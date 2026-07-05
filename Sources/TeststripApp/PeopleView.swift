@@ -139,7 +139,7 @@ struct PeopleView: View {
                         .shadow(color: .black.opacity(0.35), radius: 8, y: 3)
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Named people are not built yet")
+                        Text("No confirmed people yet")
                             .font(.headline.weight(.semibold))
                         Text(presentation.namedPeopleEmptyText)
                             .font(.caption)
@@ -403,9 +403,9 @@ struct PeoplePresentation: Equatable {
             return "Run evaluation on catalog photos to populate local face review queues."
         }
         if photosWithFaceQualitySignals > 0 {
-            return "\(Self.photoCountDescription(photosWithFaceQualitySignals)) have face-quality signals; named people are not built yet."
+            return "\(Self.photoCountDescription(photosWithFaceQualitySignals)) have face-quality signals; review queues can be named from selected photos."
         }
-        return "\(Self.photoCountDescription(photosWithDetectedFaces)) have local face detections; named people are not built yet."
+        return "\(Self.photoCountDescription(photosWithDetectedFaces)) have local face detections; review queues can be named from selected photos."
     }
 
     var reviewCards: [PeopleReviewCard] {
@@ -441,7 +441,7 @@ struct PeoplePresentation: Equatable {
 
     var namedPeopleEmptyText: String {
         if photosWithFaceSignals > 0 {
-            return "Named people will appear here after face clustering and confirmation ship."
+            return "No confirmed people yet. Review face queues, select photos, then name the selection."
         }
         return "Run evaluation to find faces before naming people."
     }
@@ -469,9 +469,9 @@ struct PeoplePresentation: Equatable {
 
     var faceActionRows: [PeopleFaceActionRow] {
         [
-            PeopleFaceActionRow(title: "Name clusters"),
-            PeopleFaceActionRow(title: "Merge duplicates"),
-            PeopleFaceActionRow(title: "Dismiss false positives")
+            PeopleFaceActionRow(title: "Auto cluster"),
+            PeopleFaceActionRow(title: "Split person"),
+            PeopleFaceActionRow(title: "Face-box naming")
         ]
     }
 
