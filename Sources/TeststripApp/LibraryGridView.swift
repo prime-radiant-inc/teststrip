@@ -3801,6 +3801,16 @@ struct ImportProgressPresentation: Equatable {
     }
 
     private static func phaseText(for activity: AppWorkActivity) -> String {
+        switch activity.status {
+        case .queued:
+            return "Waiting"
+        case .paused:
+            return "Paused"
+        case .running:
+            break
+        case .completed, .failed, .cancelled:
+            break
+        }
         let lowercasedDetail = activity.detail.lowercased()
         if lowercasedDetail.contains("preview") || lowercasedDetail.contains("generated") {
             return "Building previews"

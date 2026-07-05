@@ -24,6 +24,32 @@ final class ImportProgressPresentationTests: XCTestCase {
         XCTAssertNil(presentation.countText)
     }
 
+    func testQueuedActivityShowsWaitingState() {
+        let presentation = ImportProgressPresentation.presentation(for: activity(
+            status: .queued,
+            detail: "Importing from photos",
+            completed: 0,
+            total: nil
+        ))
+
+        XCTAssertEqual(presentation.phaseText, "Waiting")
+        XCTAssertEqual(presentation.detail, "Importing from photos")
+        XCTAssertNil(presentation.countText)
+    }
+
+    func testPausedActivityShowsPausedState() {
+        let presentation = ImportProgressPresentation.presentation(for: activity(
+            status: .paused,
+            detail: "Cataloging 12 of 100 photos",
+            completed: 12,
+            total: 100
+        ))
+
+        XCTAssertEqual(presentation.phaseText, "Paused")
+        XCTAssertEqual(presentation.detail, "Cataloging 12 of 100 photos")
+        XCTAssertEqual(presentation.countText, "12 of 100")
+    }
+
     func testCatalogingProgressShowsCatalogingPhaseAndCount() {
         let presentation = ImportProgressPresentation.presentation(for: activity(
             detail: "Cataloging 12 of 100 photos",
@@ -47,10 +73,15 @@ final class ImportProgressPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.countText, "2 of 10")
     }
 
-    private func activity(detail: String, completed: Int, total: Int?) -> AppWorkActivity {
+    private func activity(
+        status: WorkSessionStatus = .running,
+        detail: String,
+        completed: Int,
+        total: Int?
+    ) -> AppWorkActivity {
         AppWorkActivity(
             kind: .ingest,
-            status: .running,
+            status: status,
             title: "Import photos",
             detail: detail,
             completedUnitCount: completed,
