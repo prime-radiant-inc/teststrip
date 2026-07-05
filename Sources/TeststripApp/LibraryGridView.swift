@@ -2170,7 +2170,8 @@ private struct LoupeView: View {
     private var cullingStackRail: some View {
         let presentation = CullingStackRailPresentation(
             assets: model.assets,
-            selectedAssetID: model.selectedAssetID
+            selectedAssetID: model.selectedAssetID,
+            evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals()
         )
         if presentation.isVisible {
             HStack(spacing: 10) {
@@ -2204,7 +2205,9 @@ private struct LoupeView: View {
                     .liveMockupPlaceholder(primaryAction.liveMockupPlaceholder)
                 }
                 ForEach(Array(presentation.actions.dropFirst())) { action in
-                    Button(action.title) {}
+                    Button(action.title) {
+                        performCullingStackAction(action.action)
+                    }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .disabled(!action.isEnabled)
@@ -2451,6 +2454,24 @@ private struct LoupeView: View {
             try model.keepSelectedStackFrameAndRejectAlternates()
         } catch {
             model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func keepRecommendedStackFrame(_ assetID: AssetID) {
+        model.select(assetID)
+        keepSelectedStackFrame()
+    }
+
+    private func performCullingStackAction(_ action: CullingStackAction) {
+        switch action {
+        case .keepSelectedAndRejectAlternates:
+            keepSelectedStackFrame()
+        case .keepRecommended(let assetID):
+            keepRecommendedStackFrame(assetID)
+        case .keepTopRankedPlaceholder:
+            break
+        case .keepAll:
+            break
         }
     }
 
@@ -2976,6 +2997,7 @@ struct CullingStackRailPresentation: Equatable {
         var assetID: AssetID
         var label: String
         var isSelected: Bool
+        var isRecommended: Bool
     }
 
     var items: [Item]
@@ -2989,6 +3011,7 @@ struct CullingStackRailPresentation: Equatable {
     init(
         assets: [Asset],
         selectedAssetID: AssetID?,
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]] = [:],
         stackBuilder: AssetStackBuilder = AssetStackBuilder()
     ) {
         guard let selectedAssetID else {
@@ -3026,12 +3049,17 @@ struct CullingStackRailPresentation: Equatable {
             actions = []
             return
         }
+        let recommendation = CullingStackRecommendation.recommendation(
+            stackAssetIDs: stack.assetIDs,
+            evaluationSignalsByAssetID: evaluationSignalsByAssetID
+        )
 
         items = stack.assetIDs.enumerated().map { index, assetID in
             Item(
                 assetID: assetID,
                 label: "\(index + 1)",
-                isSelected: assetID == selectedAssetID
+                isSelected: assetID == selectedAssetID,
+                isRecommended: assetID == recommendation?.assetID
             )
         }
         titleText = "Stack \(stackIndex + 1) of \(stacks.count)"
@@ -3047,13 +3075,7 @@ struct CullingStackRailPresentation: Equatable {
                 help: keepActionHelp,
                 liveMockupPlaceholder: nil
             ),
-            CullingStackActionPresentation(
-                action: .keepTopRanked,
-                title: "Keep top 2",
-                isEnabled: false,
-                help: "Keeps the top-ranked frames once stack ranking is available.",
-                liveMockupPlaceholder: .cullingStackCull
-            ),
+            Self.recommendedAction(for: recommendation),
             CullingStackActionPresentation(
                 action: .keepAll,
                 title: "Keep all \(stack.assetIDs.count)",
@@ -3067,11 +3089,34 @@ struct CullingStackRailPresentation: Equatable {
     var isVisible: Bool {
         !items.isEmpty
     }
+
+    private static func recommendedAction(
+        for recommendation: CullingStackRecommendation?
+    ) -> CullingStackActionPresentation {
+        guard let recommendation else {
+            return CullingStackActionPresentation(
+                action: .keepTopRankedPlaceholder,
+                title: "Keep top 2",
+                isEnabled: false,
+                help: "Keeps the top-ranked frames once stack ranking is available.",
+                liveMockupPlaceholder: .cullingStackCull
+            )
+        }
+
+        return CullingStackActionPresentation(
+            action: .keepRecommended(recommendation.assetID),
+            title: "Keep recommended \(recommendation.frameLabel)",
+            isEnabled: true,
+            help: "Keep frame \(recommendation.frameLabel) based on focus and quality signals.",
+            liveMockupPlaceholder: nil
+        )
+    }
 }
 
 enum CullingStackAction: Equatable {
     case keepSelectedAndRejectAlternates
-    case keepTopRanked
+    case keepTopRankedPlaceholder
+    case keepRecommended(AssetID)
     case keepAll
 }
 
@@ -3082,7 +3127,70 @@ struct CullingStackActionPresentation: Equatable, Identifiable {
     var help: String
     var liveMockupPlaceholder: LiveMockupPlaceholder?
 
-    var id: CullingStackAction { action }
+    var id: String {
+        switch action {
+        case .keepSelectedAndRejectAlternates:
+            return "keep-selected-and-reject-alternates"
+        case .keepTopRankedPlaceholder:
+            return "keep-top-ranked-placeholder"
+        case .keepRecommended(let assetID):
+            return "keep-recommended-\(assetID.rawValue)"
+        case .keepAll:
+            return "keep-all"
+        }
+    }
+}
+
+private struct CullingStackRecommendation: Equatable {
+    var assetID: AssetID
+    var frameLabel: String
+    var score: Double
+
+    static func recommendation(
+        stackAssetIDs: [AssetID],
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
+    ) -> CullingStackRecommendation? {
+        let candidates = stackAssetIDs.enumerated().compactMap { index, assetID -> CullingStackRecommendation? in
+            guard let score = qualityScore(for: evaluationSignalsByAssetID[assetID] ?? []) else {
+                return nil
+            }
+            return CullingStackRecommendation(assetID: assetID, frameLabel: "\(index + 1)", score: score)
+        }
+        return candidates.max { lhs, rhs in
+            if lhs.score != rhs.score {
+                return lhs.score < rhs.score
+            }
+            return lhs.frameLabel > rhs.frameLabel
+        }
+    }
+
+    private static func qualityScore(for signals: [EvaluationSignal]) -> Double? {
+        var scoreByKind: [EvaluationKind: Double] = [:]
+        for signal in signals {
+            guard let weightedScore = weightedQualityScore(for: signal) else { continue }
+            scoreByKind[signal.kind] = max(scoreByKind[signal.kind] ?? 0, weightedScore)
+        }
+        guard !scoreByKind.isEmpty else { return nil }
+        return scoreByKind.values.reduce(0, +)
+    }
+
+    private static func weightedQualityScore(for signal: EvaluationSignal) -> Double? {
+        guard case .score(let score) = signal.value else { return nil }
+        let clampedScore = min(max(score, 0), 1)
+        let confidence = min(max(signal.confidence, 0), 1)
+        switch signal.kind {
+        case .focus:
+            return clampedScore * confidence * 100
+        case .faceQuality:
+            return clampedScore * confidence * 80
+        case .aesthetics:
+            return clampedScore * confidence * 50
+        case .motionBlur:
+            return (1 - clampedScore) * confidence * 60
+        default:
+            return nil
+        }
+    }
 }
 
 private struct CompareView: View {

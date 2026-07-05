@@ -2506,6 +2506,16 @@ public final class AppModel {
         ).stacks(from: assets).filter { $0.assetIDs.count > 1 }
     }
 
+    public func selectedCullingStackEvaluationSignals() -> [AssetID: [EvaluationSignal]] {
+        guard let selectedAssetID,
+              let stack = cullingStacks().first(where: { $0.assetIDs.contains(selectedAssetID) }) else {
+            return [:]
+        }
+        return Dictionary(uniqueKeysWithValues: stack.assetIDs.map { assetID in
+            (assetID, evaluationSignals(for: assetID))
+        })
+    }
+
     private func selectNextStackForCulling() {
         selectCullingStack(.next)
     }
