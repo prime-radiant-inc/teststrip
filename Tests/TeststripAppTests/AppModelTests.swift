@@ -6973,6 +6973,27 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .grid)
     }
 
+    func testLatestImportCompletionSummarySeparatesExistingReimportedPhotos() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-summary-reimport")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(catalog: catalog)
+
+        _ = try model.importFolder(photoFolder)
+        _ = try model.importFolder(photoFolder)
+        let summary = try XCTUnwrap(model.latestImportCompletionSummary)
+
+        XCTAssertEqual(summary.detail, "No new photos found in photos")
+        XCTAssertEqual(summary.importedPhotoCount, 1)
+        XCTAssertEqual(summary.newPhotoCount, 0)
+        XCTAssertEqual(summary.existingPhotoCount, 1)
+        XCTAssertEqual(summary.photoCountText, "1 photo")
+    }
+
     @MainActor
     func testBeginningCullingFromLatestImportUsesImportOutputSet() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-summary-cull")

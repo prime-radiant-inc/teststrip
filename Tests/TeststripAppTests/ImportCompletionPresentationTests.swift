@@ -6,6 +6,8 @@ final class ImportCompletionPresentationTests: XCTestCase {
         let presentation = ImportCompletionPresentation.presentation(for: summary(
             importedPhotoCount: 12,
             photoCountText: "12 photos",
+            newPhotoCount: 12,
+            existingPhotoCount: 0,
             previewFailureCount: 0,
             failureText: nil,
             previewStatusText: "Previews ready"
@@ -23,6 +25,8 @@ final class ImportCompletionPresentationTests: XCTestCase {
         let presentation = ImportCompletionPresentation.presentation(for: summary(
             importedPhotoCount: 4,
             photoCountText: "4 photos",
+            newPhotoCount: 4,
+            existingPhotoCount: 0,
             previewFailureCount: 2,
             failureText: "2 preview failures",
             previewStatusText: "2 preview failures"
@@ -31,6 +35,22 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.metricRows.first { $0.id == "previews" }?.value, "2 issues")
         XCTAssertEqual(presentation.metricRows.first { $0.id == "previews" }?.detail, "2 preview failures")
         XCTAssertEqual(presentation.enabledActions.map(\.kind), [.startCulling, .reviewImportedFrames, .openInLibrary])
+    }
+
+    func testExistingOnlyImportDoesNotClaimNewPhotos() {
+        let presentation = ImportCompletionPresentation.presentation(for: summary(
+            importedPhotoCount: 1,
+            photoCountText: "1 photo",
+            newPhotoCount: 0,
+            existingPhotoCount: 1,
+            previewFailureCount: 0,
+            failureText: nil,
+            previewStatusText: "No previews needed"
+        ))
+
+        XCTAssertEqual(presentation.title, "No new photos imported")
+        XCTAssertEqual(presentation.metricRows.first?.value, "1 photo already in catalog")
+        XCTAssertEqual(presentation.metricRows.first?.label, "Matched set")
     }
 
     func testAddsManualCompareActionWithoutClaimingStackGrouping() throws {
@@ -83,6 +103,8 @@ final class ImportCompletionPresentationTests: XCTestCase {
     private func summary(
         importedPhotoCount: Int = 1,
         photoCountText: String = "1 photo",
+        newPhotoCount: Int = 1,
+        existingPhotoCount: Int = 0,
         previewFailureCount: Int = 0,
         failureText: String? = nil,
         previewStatusText: String = "Previews ready"
@@ -93,6 +115,8 @@ final class ImportCompletionPresentationTests: XCTestCase {
             detail: "Imported 12 photos from Card A",
             importedPhotoCount: importedPhotoCount,
             photoCountText: photoCountText,
+            newPhotoCount: newPhotoCount,
+            existingPhotoCount: existingPhotoCount,
             previewFailureCount: previewFailureCount,
             failureText: failureText,
             previewStatusText: previewStatusText,

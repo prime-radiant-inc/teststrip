@@ -3754,17 +3754,10 @@ struct ImportCompletionPresentation: Equatable {
         batchKeywordSuggestions: [BatchKeywordSuggestion] = []
     ) -> ImportCompletionPresentation {
         ImportCompletionPresentation(
-            title: "\(summary.photoCountText) imported",
+            title: title(for: summary),
             detail: summary.detail,
             metricRows: [
-                ImportCompletionMetricRow(
-                    id: "imported-set",
-                    value: summary.photoCountText,
-                    label: "Imported set",
-                    detail: "Ready to browse and cull",
-                    systemImage: "rectangle.stack.fill",
-                    tone: .green
-                ),
+                importedSetMetric(for: summary),
                 previewMetric(for: summary),
                 ImportCompletionMetricRow(
                     id: "cull-scope",
@@ -3824,6 +3817,45 @@ struct ImportCompletionPresentation: Equatable {
                 keywordSuggestionAction(batchKeywordSuggestions: batchKeywordSuggestions)
             ]
         )
+    }
+
+    private static func title(for summary: ImportCompletionSummary) -> String {
+        if summary.newPhotoCount == 0, summary.existingPhotoCount > 0 {
+            return "No new photos imported"
+        }
+        return "\(photoCountText(summary.newPhotoCount)) imported"
+    }
+
+    private static func importedSetMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
+        if summary.newPhotoCount == 0, summary.existingPhotoCount > 0 {
+            return ImportCompletionMetricRow(
+                id: "imported-set",
+                value: "\(photoCountText(summary.existingPhotoCount)) already in catalog",
+                label: "Matched set",
+                detail: "No new files added",
+                systemImage: "rectangle.stack",
+                tone: .yellow
+            )
+        }
+
+        let detail: String
+        if summary.existingPhotoCount > 0 {
+            detail = "\(photoCountText(summary.existingPhotoCount)) already in catalog"
+        } else {
+            detail = "Ready to browse and cull"
+        }
+        return ImportCompletionMetricRow(
+            id: "imported-set",
+            value: photoCountText(summary.newPhotoCount),
+            label: "Imported set",
+            detail: detail,
+            systemImage: "rectangle.stack.fill",
+            tone: .green
+        )
+    }
+
+    private static func photoCountText(_ count: Int) -> String {
+        "\(count) \(count == 1 ? "photo" : "photos")"
     }
 
     private static func keywordSuggestionAction(

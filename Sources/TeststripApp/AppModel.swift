@@ -464,6 +464,8 @@ public struct ImportCompletionSummary: Identifiable, Equatable, Sendable {
     public var detail: String
     public var importedPhotoCount: Int
     public var photoCountText: String
+    public var newPhotoCount: Int
+    public var existingPhotoCount: Int
     public var previewFailureCount: Int
     public var failureText: String?
     public var previewStatusText: String
@@ -1122,12 +1124,17 @@ public final class AppModel {
         let failureText = previewFailureCount > 0
             ? "\(previewFailureCount) preview \(previewFailureCount == 1 ? "failure" : "failures")"
             : nil
+        let importedPhotoCount = activity.totalUnitCount ?? activity.completedUnitCount
+        let newPhotoCount = activity.completedUnitCount
+        let existingPhotoCount = max(importedPhotoCount - newPhotoCount, 0)
         return ImportCompletionSummary(
             activityID: activity.id,
             title: "Import complete",
             detail: activity.detail,
-            importedPhotoCount: activity.completedUnitCount,
-            photoCountText: Self.photoCountDescription(activity.completedUnitCount),
+            importedPhotoCount: importedPhotoCount,
+            photoCountText: Self.photoCountDescription(importedPhotoCount),
+            newPhotoCount: newPhotoCount,
+            existingPhotoCount: existingPhotoCount,
             previewFailureCount: previewFailureCount,
             failureText: failureText,
             previewStatusText: failureText ?? activePreviewGenerationStatusText ?? "Previews ready",
@@ -4639,7 +4646,7 @@ public final class AppModel {
                 result: result,
                 sourceDescription: importSourceDescription(folderURL: folderURL, destinationRoot: destinationRoot)
             ),
-            completedUnitCount: result.importedAssets.count,
+            completedUnitCount: result.newAssetCount,
             totalUnitCount: result.importedAssets.count,
             failureCount: result.previewFailures.count
         )
@@ -4702,7 +4709,8 @@ public final class AppModel {
     }
 
     private static func isImportCompletionActivity(_ activity: AppWorkActivity) -> Bool {
-        activity.kind == .ingest && activity.status == .completed && activity.completedUnitCount > 0
+        let importedPhotoCount = activity.totalUnitCount ?? activity.completedUnitCount
+        return activity.kind == .ingest && activity.status == .completed && importedPhotoCount > 0
     }
 
     private func saveImportOutputSet(for activity: AppWorkActivity, result: LibraryImportResult) -> [AssetSetID] {
