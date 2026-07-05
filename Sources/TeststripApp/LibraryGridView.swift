@@ -2942,12 +2942,20 @@ struct SearchWorkspaceRefineRow: Equatable, Identifiable {
     var id: String { "\(title)|\(value)" }
 }
 
+struct SearchWorkspaceRefineGroup: Equatable, Identifiable {
+    var title: String
+    var rows: [SearchWorkspaceRefineRow]
+
+    var id: String { title }
+}
+
 struct SearchWorkspacePresentation: Equatable {
     var title: String
     var resultCountText: String
     var savedSetCountText: String
     var starredSetCountText: String
     var refineRows: [SearchWorkspaceRefineRow]
+    var refineGroups: [SearchWorkspaceRefineGroup]
 
     init(
         suggestedName: String,
@@ -2965,6 +2973,55 @@ struct SearchWorkspacePresentation: Equatable {
         } else {
             refineRows = activeFilterChips.map { SearchWorkspaceRefineRow(title: $0, value: "active") }
         }
+        refineGroups = Self.groupRefineRows(refineRows)
+    }
+
+    private static func groupRefineRows(_ rows: [SearchWorkspaceRefineRow]) -> [SearchWorkspaceRefineGroup] {
+        let order = ["Scope", "Decisions", "Metadata", "Review Queues", "Signals", "Source & XMP"]
+        var groupedRows: [String: [SearchWorkspaceRefineRow]] = [:]
+        for row in rows {
+            groupedRows[groupTitle(for: row.title), default: []].append(row)
+        }
+        return order.compactMap { title in
+            guard let rows = groupedRows[title], !rows.isEmpty else { return nil }
+            return SearchWorkspaceRefineGroup(title: title, rows: rows)
+        }
+    }
+
+    private static func groupTitle(for rowTitle: String) -> String {
+        if rowTitle == "All photographs" {
+            return "Scope"
+        }
+        if rowTitle == "Pick"
+            || rowTitle == "Reject"
+            || rowTitle.hasPrefix("Rating")
+            || rowTitle.hasSuffix("Label") {
+            return "Decisions"
+        }
+        if rowTitle.hasPrefix("Search:")
+            || rowTitle.hasPrefix("Camera:")
+            || rowTitle.hasPrefix("Lens:")
+            || rowTitle.hasPrefix("Keyword:")
+            || rowTitle.hasPrefix("Folder:")
+            || rowTitle.hasPrefix("ISO")
+            || rowTitle.hasPrefix("From ")
+            || rowTitle.hasPrefix("Before ") {
+            return "Metadata"
+        }
+        if rowTitle == "Needs Keywords"
+            || rowTitle == "Needs Evaluation"
+            || rowTitle == "Likely Issues"
+            || rowTitle == "Provider Failures" {
+            return "Review Queues"
+        }
+        if rowTitle.hasPrefix("Signal:") {
+            return "Signals"
+        }
+        if rowTitle.hasPrefix("Source:")
+            || rowTitle.hasPrefix("XMP") {
+            return "Source & XMP"
+        }
+        return "Metadata"
     }
 }
 
@@ -3048,20 +3105,27 @@ private struct SearchWorkspaceView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(presentation.refineRows) { row in
-                    HStack(spacing: 8) {
-                        Image(systemName: row.value == "active" ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(row.value == "active" ? .orange : .secondary)
-                            .font(.caption)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(row.title)
-                                .font(.caption.weight(.medium))
-                                .lineLimit(1)
-                            Text(row.value)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(presentation.refineGroups) { group in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(group.title)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        ForEach(group.rows) { row in
+                            HStack(spacing: 8) {
+                                Image(systemName: row.value == "active" ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(row.value == "active" ? .orange : .secondary)
+                                    .font(.caption)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(row.title)
+                                        .font(.caption.weight(.medium))
+                                        .lineLimit(1)
+                                    Text(row.value)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
                         }
                     }
                 }
