@@ -831,6 +831,27 @@ final class CatalogDatabaseTests: XCTestCase {
         )
     }
 
+    func testDeletesAssetSetWithoutDeletingAssets() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-sets-delete")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset.testAsset(id: AssetID(rawValue: "keeper"), path: "/Photos/keeper.jpg", rating: 0)
+        let set = AssetSet.manual(
+            id: AssetSetID(rawValue: "keepers"),
+            name: "Keepers",
+            assetIDs: [asset.id]
+        )
+        try repository.upsert(asset)
+        try repository.upsert(set)
+
+        try repository.deleteAssetSet(id: set.id)
+
+        XCTAssertThrowsError(try repository.assetSet(id: set.id))
+        XCTAssertEqual(try repository.assetSets(), [])
+        XCTAssertEqual(try repository.asset(id: asset.id), asset)
+    }
+
     func testFetchesAssetsForExplicitSetMembershipInSavedOrder() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-set-assets")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

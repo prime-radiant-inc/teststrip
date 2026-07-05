@@ -318,6 +318,7 @@ public enum SidebarRowContextActionKind: Equatable, Sendable {
     case duplicateAssetSet(AssetSetID)
     case freezeAssetSetSnapshot(AssetSetID)
     case toggleAssetSetStarred(AssetSetID)
+    case deleteAssetSet(AssetSetID)
     case toggleWorkSessionStarred(WorkSessionID)
 }
 
@@ -336,6 +337,8 @@ public struct SidebarRowContextAction: Identifiable, Equatable, Sendable {
             return "freeze-asset-set-snapshot-\(id.rawValue)"
         case .toggleAssetSetStarred(let id):
             return "toggle-asset-set-starred-\(id.rawValue)"
+        case .deleteAssetSet(let id):
+            return "delete-asset-set-\(id.rawValue)"
         case .toggleWorkSessionStarred(let id):
             return "toggle-work-session-starred-\(id.rawValue)"
         }
@@ -2292,6 +2295,11 @@ public final class AppModel {
                     systemImage: assetSet.starred ? "star.slash" : "star"
                 )
             )
+            actions.append(SidebarRowContextAction(
+                kind: .deleteAssetSet(id),
+                title: "Delete Set...",
+                systemImage: "trash"
+            ))
             return actions
         case .workSession(let id):
             guard canToggleWorkSessionStarred(row),
@@ -2320,6 +2328,8 @@ public final class AppModel {
             try freezeAssetSetSnapshot(id: id)
         case .toggleAssetSetStarred(let id):
             try toggleAssetSetStarred(id: id)
+        case .deleteAssetSet(let id):
+            try deleteAssetSet(id: id)
         case .toggleWorkSessionStarred(let id):
             try toggleWorkSessionStarred(id: id)
         }
@@ -2382,6 +2392,20 @@ public final class AppModel {
         try catalog.repository.upsert(assetSet)
         try refreshSavedAssetSets()
         statusMessage = "Renamed \(trimmedName)"
+    }
+
+    public func deleteAssetSet(id: AssetSetID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let assetSet = try catalog.repository.assetSet(id: id)
+        try catalog.repository.deleteAssetSet(id: id)
+        if selectedAssetSetID == id {
+            selectedAssetSetID = nil
+            try reload()
+        }
+        try refreshSavedAssetSets()
+        statusMessage = "Deleted \(assetSet.name)"
     }
 
     @discardableResult

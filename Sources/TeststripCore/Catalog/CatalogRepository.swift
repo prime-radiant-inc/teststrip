@@ -375,6 +375,10 @@ public final class CatalogRepository {
         return try decodeAssetSet(row)
     }
 
+    public func deleteAssetSet(id: AssetSetID) throws {
+        try database.execute("DELETE FROM asset_sets WHERE id = ?", bindings: [id.rawValue])
+    }
+
     public func assetSets(starredOnly: Bool = false) throws -> [AssetSet] {
         let rows: [[String: String]]
         if starredOnly {

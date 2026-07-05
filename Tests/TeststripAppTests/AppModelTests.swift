@@ -3837,6 +3837,33 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.statusMessage, "Saved Copy of Keepers")
     }
 
+    func testDeletingSavedAssetSetPersistsRefreshesSidebarAndClearsActiveScope() throws {
+        let keeper = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
+        let reject = makeAsset(id: "reject", path: "/Photos/reject.jpg", rating: 1)
+        let savedSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "five-stars"),
+            name: "Five Stars",
+            query: SetQuery(predicates: [.ratingAtLeast(5)])
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-delete-saved-set",
+            assets: [keeper, reject]
+        )
+        try repository.upsert(savedSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: savedSet.id)
+
+        try model.deleteAssetSet(id: savedSet.id)
+
+        XCTAssertThrowsError(try repository.assetSet(id: savedSet.id))
+        XCTAssertEqual(model.savedAssetSets, [])
+        XCTAssertEqual(model.starredAssetSets, [])
+        XCTAssertNil(model.sidebarSections.first { $0.title == "Saved Sets" })
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id, reject.id])
+        XCTAssertEqual(model.statusMessage, "Deleted Five Stars")
+    }
+
     func testSidebarContextActionsExposeSavedSetRenameAndStarToggle() throws {
         let asset = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
         let savedSet = AssetSet.dynamic(
@@ -3858,10 +3885,11 @@ final class AppModelTests: XCTestCase {
             .renameAssetSet(savedSet.id),
             .duplicateAssetSet(savedSet.id),
             .freezeAssetSetSnapshot(savedSet.id),
-            .toggleAssetSetStarred(savedSet.id)
+            .toggleAssetSetStarred(savedSet.id),
+            .deleteAssetSet(savedSet.id)
         ])
-        XCTAssertEqual(actions.map(\.title), ["Rename Set", "Duplicate Set...", "Freeze Snapshot...", "Star Set"])
-        XCTAssertEqual(actions.map(\.systemImage), ["pencil", "plus.square.on.square", "camera.aperture", "star"])
+        XCTAssertEqual(actions.map(\.title), ["Rename Set", "Duplicate Set...", "Freeze Snapshot...", "Star Set", "Delete Set..."])
+        XCTAssertEqual(actions.map(\.systemImage), ["pencil", "plus.square.on.square", "camera.aperture", "star", "trash"])
     }
 
     func testSidebarContextActionsDoNotExposeFreezeForManualSavedSets() throws {
@@ -3884,7 +3912,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(actions.map(\.kind), [
             .renameAssetSet(savedSet.id),
             .duplicateAssetSet(savedSet.id),
-            .toggleAssetSetStarred(savedSet.id)
+            .toggleAssetSetStarred(savedSet.id),
+            .deleteAssetSet(savedSet.id)
         ])
     }
 

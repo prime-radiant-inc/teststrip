@@ -11,6 +11,8 @@ struct SidebarView: View {
     @State private var freezingAssetSetID: AssetSetID?
     @State private var assetSetSnapshotName = ""
     @State private var assetSetSnapshotStarred = false
+    @State private var deletingAssetSetID: AssetSetID?
+    @State private var deletingAssetSetName = ""
 
     var body: some View {
         List {
@@ -64,6 +66,16 @@ struct SidebarView: View {
                 save: saveAssetSetSnapshot
             )
         }
+        .confirmationDialog("Delete Set?", isPresented: isDeletingAssetSet, titleVisibility: .visible) {
+            Button("Delete Set", role: .destructive) {
+                confirmAssetSetDelete()
+            }
+            Button("Cancel", role: .cancel) {
+                cancelAssetSetDelete()
+            }
+        } message: {
+            Text(assetSetDeleteMessage)
+        }
     }
 
     private var isRenamingAssetSet: Binding<Bool> {
@@ -97,6 +109,23 @@ struct SidebarView: View {
                 }
             }
         )
+    }
+
+    private var isDeletingAssetSet: Binding<Bool> {
+        Binding(
+            get: { deletingAssetSetID != nil },
+            set: { isPresented in
+                if !isPresented {
+                    cancelAssetSetDelete()
+                }
+            }
+        )
+    }
+
+    private var assetSetDeleteMessage: String {
+        let name = deletingAssetSetName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let target = name.isEmpty ? "this saved set" : "\"\(name)\""
+        return "This removes \(target) from Teststrip. Photos, originals, metadata, and XMP sidecars stay untouched. Work history that references this set may no longer reopen it."
     }
 
     private func select(_ row: SidebarRow) {
@@ -134,6 +163,11 @@ struct SidebarView: View {
             freezingAssetSetID = id
             assetSetSnapshotName = "\(row.title) Snapshot"
             assetSetSnapshotStarred = false
+            return
+        }
+        if case .deleteAssetSet(let id) = action.kind {
+            deletingAssetSetID = id
+            deletingAssetSetName = row.title
             return
         }
         do {
@@ -196,6 +230,21 @@ struct SidebarView: View {
         freezingAssetSetID = nil
         assetSetSnapshotName = ""
         assetSetSnapshotStarred = false
+    }
+
+    private func confirmAssetSetDelete() {
+        guard let deletingAssetSetID else { return }
+        do {
+            try model.deleteAssetSet(id: deletingAssetSetID)
+            cancelAssetSetDelete()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func cancelAssetSetDelete() {
+        deletingAssetSetID = nil
+        deletingAssetSetName = ""
     }
 
     private func iconName(for target: SidebarRowTarget) -> String {
