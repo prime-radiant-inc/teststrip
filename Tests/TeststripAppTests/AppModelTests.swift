@@ -1829,6 +1829,64 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, alternate.id)
     }
 
+    func testSelectedCullingStackScopeUsesPersistedStackSetMembership() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(
+            id: "persisted-scope-lead",
+            path: "/Photos/Stack/lead.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let alternate = makeAsset(
+            id: "persisted-scope-alternate",
+            path: "/Photos/Other/alternate.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(60))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "persisted-stack-scope",
+            assets: [lead, alternate]
+        )
+        let stackSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "work-stack-cull-session-1"),
+            name: "Cull Stack 1",
+            assetIDs: [lead.id, alternate.id]
+        )
+        let provenance = ProviderProvenance(
+            provider: "local-image-metrics",
+            model: "sharpness",
+            version: "1",
+            settingsHash: "default"
+        )
+        let leadSignal = EvaluationSignal(
+            assetID: lead.id,
+            kind: .focus,
+            value: .score(0.72),
+            confidence: 0.84,
+            provenance: provenance
+        )
+        let alternateSignal = EvaluationSignal(
+            assetID: alternate.id,
+            kind: .focus,
+            value: .score(0.93),
+            confidence: 0.89,
+            provenance: provenance
+        )
+        try repository.upsert(stackSet)
+        try repository.save(cullingSession(id: "cull-session", inputSetIDs: [stackSet.id], totalUnitCount: 2))
+        try repository.recordEvaluationSignals([leadSignal, alternateSignal])
+        try model.applyAssetSet(id: stackSet.id)
+        model.select(alternate.id)
+
+        let scope = try XCTUnwrap(model.selectedCullingStackScope)
+        XCTAssertEqual(scope.assetIDs, [lead.id, alternate.id])
+        XCTAssertEqual(scope.stackIndex, 1)
+        XCTAssertEqual(scope.stackCount, 1)
+        XCTAssertEqual(scope.rationaleText, "Saved stack from culling session")
+        XCTAssertEqual(model.selectedCullingStackEvaluationSignals()[lead.id], [leadSignal])
+        XCTAssertEqual(model.selectedCullingStackEvaluationSignals()[alternate.id], [alternateSignal])
+    }
+
     func testCullingShortcutMovesBetweenPersistedStackSets() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let firstLead = makeAsset(
@@ -1872,14 +1930,45 @@ final class AppModelTests: XCTestCase {
         try repository.upsert(firstSet)
         try repository.upsert(secondSet)
         try repository.save(cullingSession(id: "cull-session", inputSetIDs: [firstSet.id, secondSet.id], totalUnitCount: 4))
+        let firstAlternateSignal = EvaluationSignal(
+            assetID: firstAlternate.id,
+            kind: .focus,
+            value: .score(0.91),
+            confidence: 0.88,
+            provenance: ProviderProvenance(provider: "local-image-metrics", model: "sharpness", version: "1", settingsHash: "default")
+        )
+        try repository.recordEvaluationSignals([firstAlternateSignal])
         try model.applyAssetSet(id: firstSet.id)
         model.select(firstAlternate.id)
+
+        XCTAssertEqual(
+            model.selectedCullingStackScope,
+            CullingStackScope(
+                assetIDs: [firstLead.id, firstAlternate.id],
+                stackIndex: 1,
+                stackCount: 2,
+                rationaleText: "Saved stack from culling session"
+            )
+        )
+        XCTAssertEqual(model.selectedCullingStackEvaluationSignals(), [
+            firstLead.id: [],
+            firstAlternate.id: [firstAlternateSignal]
+        ])
 
         try model.applyCullingShortcut(.nextStack)
 
         XCTAssertEqual(model.selectedAssetSetID, secondSet.id)
         XCTAssertEqual(model.assets.map(\.id), [secondLead.id, secondAlternate.id])
         XCTAssertEqual(model.selectedAssetID, secondLead.id)
+        XCTAssertEqual(
+            model.selectedCullingStackScope,
+            CullingStackScope(
+                assetIDs: [secondLead.id, secondAlternate.id],
+                stackIndex: 2,
+                stackCount: 2,
+                rationaleText: "Saved stack from culling session"
+            )
+        )
 
         try model.applyCullingShortcut(.previousStack)
 

@@ -83,6 +83,31 @@ final class CullingStackRailPresentationTests: XCTestCase {
         XCTAssertTrue(presentation.actions[1].help.localizedCaseInsensitiveContains("focus"))
     }
 
+    func testExplicitPersistedStackScopeDoesNotRequireLoadedTimeAdjacency() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "lead", path: "/Photos/Job/lead.cr2", capturedAt: capturedAt)
+        let selected = makeAsset(id: "selected", path: "/Photos/Other/selected.cr2", capturedAt: capturedAt.addingTimeInterval(60))
+        let presentation = CullingStackRailPresentation(
+            assets: [lead, selected],
+            selectedAssetID: selected.id,
+            explicitStackScope: CullingStackScope(
+                assetIDs: [lead.id, selected.id],
+                stackIndex: 2,
+                stackCount: 5,
+                rationaleText: "Saved stack from culling session"
+            ),
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 2)
+        )
+
+        XCTAssertTrue(presentation.isVisible)
+        XCTAssertEqual(presentation.titleText, "Stack 2 of 5")
+        XCTAssertEqual(presentation.positionText, "Frame 2 of 2")
+        XCTAssertEqual(presentation.rationaleText, "Saved stack from culling session")
+        XCTAssertEqual(presentation.keepActionTitle, "Keep frame 2 · cut 1")
+        XCTAssertEqual(presentation.items.map(\.assetID), [lead.id, selected.id])
+        XCTAssertEqual(presentation.items.map(\.isSelected), [false, true])
+    }
+
     func testHidesForSingletonSelection() {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let asset = makeAsset(id: "single", path: "/Photos/Job/single.cr2", capturedAt: capturedAt)

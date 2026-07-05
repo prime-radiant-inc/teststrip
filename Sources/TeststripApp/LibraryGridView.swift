@@ -2203,7 +2203,8 @@ private struct LoupeView: View {
         let presentation = CullingStackRailPresentation(
             assets: model.assets,
             selectedAssetID: model.selectedAssetID,
-            evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals()
+            evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals(),
+            explicitStackScope: model.selectedCullingStackScope
         )
         if presentation.isVisible {
             HStack(spacing: 10) {
@@ -3045,6 +3046,7 @@ struct CullingStackRailPresentation: Equatable {
         assets: [Asset],
         selectedAssetID: AssetID?,
         evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]] = [:],
+        explicitStackScope: CullingStackScope? = nil,
         stackBuilder: AssetStackBuilder = AssetStackBuilder()
     ) {
         guard let selectedAssetID else {
@@ -3058,21 +3060,33 @@ struct CullingStackRailPresentation: Equatable {
             return
         }
 
-        let stacks = stackBuilder.stacks(from: assets)
-        guard let stackIndex = stacks.firstIndex(where: { $0.assetIDs.contains(selectedAssetID) }) else {
-            items = []
-            titleText = ""
-            positionText = ""
-            rationaleText = nil
-            keepActionTitle = ""
-            keepActionHelp = ""
-            actions = []
-            return
+        let stackScope: CullingStackScope
+        if let explicitStackScope,
+           explicitStackScope.assetIDs.contains(selectedAssetID) {
+            stackScope = explicitStackScope
+        } else {
+            let stacks = stackBuilder.stacks(from: assets)
+            guard let stackIndex = stacks.firstIndex(where: { $0.assetIDs.contains(selectedAssetID) }) else {
+                items = []
+                titleText = ""
+                positionText = ""
+                rationaleText = nil
+                keepActionTitle = ""
+                keepActionHelp = ""
+                actions = []
+                return
+            }
+            let stack = stacks[stackIndex]
+            stackScope = CullingStackScope(
+                assetIDs: stack.assetIDs,
+                stackIndex: stackIndex + 1,
+                stackCount: stacks.count,
+                rationaleText: stack.rationale
+            )
         }
 
-        let stack = stacks[stackIndex]
-        guard stack.assetIDs.count > 1,
-              let selectedIndex = stack.assetIDs.firstIndex(of: selectedAssetID) else {
+        guard stackScope.assetIDs.count > 1,
+              let selectedIndex = stackScope.assetIDs.firstIndex(of: selectedAssetID) else {
             items = []
             titleText = ""
             positionText = ""
@@ -3083,11 +3097,11 @@ struct CullingStackRailPresentation: Equatable {
             return
         }
         let recommendation = CullingStackRecommendation.recommendation(
-            stackAssetIDs: stack.assetIDs,
+            stackAssetIDs: stackScope.assetIDs,
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
 
-        items = stack.assetIDs.enumerated().map { index, assetID in
+        items = stackScope.assetIDs.enumerated().map { index, assetID in
             Item(
                 assetID: assetID,
                 label: "\(index + 1)",
@@ -3095,10 +3109,15 @@ struct CullingStackRailPresentation: Equatable {
                 isRecommended: assetID == recommendation?.assetID
             )
         }
-        titleText = "Stack \(stackIndex + 1) of \(stacks.count)"
-        positionText = "Frame \(selectedIndex + 1) of \(stack.assetIDs.count)"
-        rationaleText = stack.rationale
-        keepActionTitle = "Keep frame \(selectedIndex + 1) · cut \(stack.assetIDs.count - 1)"
+        if let stackIndex = stackScope.stackIndex,
+           let stackCount = stackScope.stackCount {
+            titleText = "Stack \(stackIndex) of \(stackCount)"
+        } else {
+            titleText = "Stack"
+        }
+        positionText = "Frame \(selectedIndex + 1) of \(stackScope.assetIDs.count)"
+        rationaleText = stackScope.rationaleText
+        keepActionTitle = "Keep frame \(selectedIndex + 1) · cut \(stackScope.assetIDs.count - 1)"
         keepActionHelp = "Keep selected frame and reject stack alternates"
         actions = [
             CullingStackActionPresentation(
@@ -3111,7 +3130,7 @@ struct CullingStackRailPresentation: Equatable {
             Self.recommendedAction(for: recommendation),
             CullingStackActionPresentation(
                 action: .keepAll,
-                title: "Keep all \(stack.assetIDs.count)",
+                title: "Keep all \(stackScope.assetIDs.count)",
                 isEnabled: false,
                 help: "Leaves all frames in the stack unchanged once stack decisions are persisted.",
                 liveMockupPlaceholder: .cullingStackCull

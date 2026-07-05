@@ -46,6 +46,25 @@ public struct CullingProgressSummary: Equatable, Sendable {
     }
 }
 
+public struct CullingStackScope: Equatable, Sendable {
+    public var assetIDs: [AssetID]
+    public var stackIndex: Int?
+    public var stackCount: Int?
+    public var rationaleText: String?
+
+    public init(
+        assetIDs: [AssetID],
+        stackIndex: Int? = nil,
+        stackCount: Int? = nil,
+        rationaleText: String? = nil
+    ) {
+        self.assetIDs = assetIDs
+        self.stackIndex = stackIndex
+        self.stackCount = stackCount
+        self.rationaleText = rationaleText
+    }
+}
+
 public enum CullingShortcut: Equatable, Sendable {
     case previousPhoto
     case nextPhoto
@@ -2607,6 +2626,13 @@ public final class AppModel {
     }
 
     public func selectedCullingStackEvaluationSignals() -> [AssetID: [EvaluationSignal]] {
+        if let selectedAssetID,
+           let selectedWorkStackAssetIDs,
+           selectedWorkStackAssetIDs.contains(selectedAssetID) {
+            return Dictionary(uniqueKeysWithValues: selectedWorkStackAssetIDs.map { assetID in
+                (assetID, evaluationSignals(for: assetID))
+            })
+        }
         guard let selectedAssetID,
               let stack = cullingStacks().first(where: { $0.assetIDs.contains(selectedAssetID) }) else {
             return [:]
@@ -2614,6 +2640,19 @@ public final class AppModel {
         return Dictionary(uniqueKeysWithValues: stack.assetIDs.map { assetID in
             (assetID, evaluationSignals(for: assetID))
         })
+    }
+
+    public var selectedCullingStackScope: CullingStackScope? {
+        guard let selectedWorkStackAssetIDs else {
+            return nil
+        }
+        let position = try? selectedPersistedCullingStackPosition()
+        return CullingStackScope(
+            assetIDs: selectedWorkStackAssetIDs,
+            stackIndex: position?.index,
+            stackCount: position?.count,
+            rationaleText: "Saved stack from culling session"
+        )
     }
 
     private func selectNextStackForCulling() throws {
@@ -5155,6 +5194,17 @@ public final class AppModel {
             return nil
         }
         return session.inputSetIDs[targetIndex]
+    }
+
+    private func selectedPersistedCullingStackPosition() throws -> (index: Int, count: Int)? {
+        guard let catalog,
+              let selectedAssetSetID,
+              Self.isWorkStackSetID(selectedAssetSetID),
+              let session = try activePersistedStackCullingSession(repository: catalog.repository),
+              let selectedIndex = session.inputSetIDs.firstIndex(of: selectedAssetSetID) else {
+            return nil
+        }
+        return (selectedIndex + 1, session.inputSetIDs.count)
     }
 
     private func activePersistedStackCullingSession(repository: CatalogRepository) throws -> WorkSession? {
