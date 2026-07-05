@@ -3611,6 +3611,55 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, ["Five Stars"])
     }
 
+    func testRenamingSavedAssetSetPersistsAndRefreshesSidebar() throws {
+        let asset = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
+        let savedSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "five-stars"),
+            name: "Five Stars",
+            query: SetQuery(predicates: [.ratingAtLeast(5)])
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-rename-saved-set",
+            assets: [asset]
+        )
+        try repository.upsert(savedSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: savedSet.id)
+
+        try model.renameAssetSet(id: savedSet.id, to: " Ceremony Keepers ")
+
+        XCTAssertEqual(try repository.assetSet(id: savedSet.id).name, "Ceremony Keepers")
+        XCTAssertEqual(model.savedAssetSets.first?.name, "Ceremony Keepers")
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, ["Ceremony Keepers"])
+        XCTAssertEqual(model.activeLibraryFilterRows.first?.title, "Ceremony Keepers")
+        XCTAssertEqual(model.statusMessage, "Renamed Ceremony Keepers")
+    }
+
+    func testSidebarContextActionsExposeSavedSetRenameAndStarToggle() throws {
+        let asset = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
+        let savedSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "five-stars"),
+            name: "Five Stars",
+            query: SetQuery(predicates: [.ratingAtLeast(5)])
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-saved-set-context-actions",
+            assets: [asset]
+        )
+        try repository.upsert(savedSet)
+        try model.refreshSavedAssetSets()
+        let savedSetRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Saved Sets" }?.rows.first)
+
+        let actions = model.sidebarContextActions(for: savedSetRow)
+
+        XCTAssertEqual(actions.map(\.kind), [
+            .renameAssetSet(savedSet.id),
+            .toggleAssetSetStarred(savedSet.id)
+        ])
+        XCTAssertEqual(actions.map(\.title), ["Rename Set", "Star Set"])
+        XCTAssertEqual(actions.map(\.systemImage), ["pencil", "star"])
+    }
+
     func testCanToggleAssetSetStarredOnlyForSavedSetRowsWithCatalog() throws {
         let asset = makeAsset(id: "uncataloged", path: "/Photos/uncataloged.jpg", rating: 0)
         let modelWithoutCatalog = AppModel(sidebarSections: [], selectedView: .grid, assets: [asset])

@@ -3,6 +3,8 @@ import TeststripCore
 
 struct SidebarView: View {
     var model: AppModel
+    @State private var renamingAssetSetID: AssetSetID?
+    @State private var assetSetRenameText = ""
 
     var body: some View {
         List {
@@ -29,6 +31,24 @@ struct SidebarView: View {
         }
         .frame(minWidth: 220)
         .navigationTitle("Teststrip")
+        .sheet(isPresented: isRenamingAssetSet) {
+            RenameAssetSetSheet(
+                name: $assetSetRenameText,
+                cancel: cancelAssetSetRename,
+                rename: saveAssetSetRename
+            )
+        }
+    }
+
+    private var isRenamingAssetSet: Binding<Bool> {
+        Binding(
+            get: { renamingAssetSetID != nil },
+            set: { isPresented in
+                if !isPresented {
+                    cancelAssetSetRename()
+                }
+            }
+        )
     }
 
     private func select(_ row: SidebarRow) {
@@ -43,19 +63,39 @@ struct SidebarView: View {
     private func sidebarContextMenu(for row: SidebarRow) -> some View {
         ForEach(model.sidebarContextActions(for: row)) { action in
             Button {
-                performSidebarContextAction(action)
+                performSidebarContextAction(action, row: row)
             } label: {
                 Label(action.title, systemImage: action.systemImage)
             }
         }
     }
 
-    private func performSidebarContextAction(_ action: SidebarRowContextAction) {
+    private func performSidebarContextAction(_ action: SidebarRowContextAction, row: SidebarRow) {
+        if case .renameAssetSet(let id) = action.kind {
+            renamingAssetSetID = id
+            assetSetRenameText = row.title
+            return
+        }
         do {
             try model.performSidebarContextAction(action)
         } catch {
             model.errorMessage = error.localizedDescription
         }
+    }
+
+    private func saveAssetSetRename() {
+        guard let renamingAssetSetID else { return }
+        do {
+            try model.renameAssetSet(id: renamingAssetSetID, to: assetSetRenameText)
+            cancelAssetSetRename()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func cancelAssetSetRename() {
+        renamingAssetSetID = nil
+        assetSetRenameText = ""
     }
 
     private func iconName(for target: SidebarRowTarget) -> String {
@@ -184,5 +224,33 @@ private struct SidebarRowView: View {
                 return trimmed.isEmpty ? nil : trimmed
             }
             .joined(separator: ", ")
+    }
+}
+
+private struct RenameAssetSetSheet: View {
+    @Binding var name: String
+    var cancel: () -> Void
+    var rename: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Rename Set")
+                .font(.headline)
+            TextField("Name", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 260)
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    cancel()
+                }
+                Button("Rename") {
+                    rename()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(16)
     }
 }

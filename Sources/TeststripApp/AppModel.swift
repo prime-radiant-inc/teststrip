@@ -229,6 +229,7 @@ public enum SidebarRowTarget: Equatable, Sendable {
 }
 
 public enum SidebarRowContextActionKind: Equatable, Sendable {
+    case renameAssetSet(AssetSetID)
     case toggleAssetSetStarred(AssetSetID)
     case toggleWorkSessionStarred(WorkSessionID)
 }
@@ -240,6 +241,8 @@ public struct SidebarRowContextAction: Identifiable, Equatable, Sendable {
 
     public var id: String {
         switch kind {
+        case .renameAssetSet(let id):
+            return "rename-asset-set-\(id.rawValue)"
         case .toggleAssetSetStarred(let id):
             return "toggle-asset-set-starred-\(id.rawValue)"
         case .toggleWorkSessionStarred(let id):
@@ -2126,6 +2129,11 @@ public final class AppModel {
             }
             return [
                 SidebarRowContextAction(
+                    kind: .renameAssetSet(id),
+                    title: "Rename Set",
+                    systemImage: "pencil"
+                ),
+                SidebarRowContextAction(
                     kind: .toggleAssetSetStarred(id),
                     title: assetSet.starred ? "Remove Star" : "Star Set",
                     systemImage: assetSet.starred ? "star.slash" : "star"
@@ -2150,6 +2158,8 @@ public final class AppModel {
 
     public func performSidebarContextAction(_ action: SidebarRowContextAction) throws {
         switch action.kind {
+        case .renameAssetSet:
+            throw TeststripError.invalidState("rename requires a new saved set name")
         case .toggleAssetSetStarred(let id):
             try toggleAssetSetStarred(id: id)
         case .toggleWorkSessionStarred(let id):
@@ -2199,6 +2209,21 @@ public final class AppModel {
         assetSet.starred = starred
         try catalog.repository.upsert(assetSet)
         try refreshSavedAssetSets()
+    }
+
+    public func renameAssetSet(id: AssetSetID, to name: String) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw TeststripError.invalidState("saved set name is required")
+        }
+        var assetSet = try catalog.repository.assetSet(id: id)
+        assetSet.name = trimmedName
+        try catalog.repository.upsert(assetSet)
+        try refreshSavedAssetSets()
+        statusMessage = "Renamed \(trimmedName)"
     }
 
     private func workActivity(id: WorkSessionID) -> AppWorkActivity? {
