@@ -184,6 +184,91 @@ public extension ReviewQueue {
     }
 }
 
+public enum SmartCollectionRulePreset: String, CaseIterable, Identifiable, Sendable {
+    case ratingFourPlus
+    case picked
+    case rejected
+    case needsKeywords
+    case needsEvaluation
+    case onlineSources
+    case offlineSources
+    case facesFound
+    case ocrFound
+    case objectSignals
+    case likelyIssues
+    case providerFailures
+    case xmpPending
+    case xmpConflicts
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .ratingFourPlus:
+            "4+ stars"
+        case .picked:
+            "Picked"
+        case .rejected:
+            "Rejected"
+        case .needsKeywords:
+            "Needs keywords"
+        case .needsEvaluation:
+            "Needs evaluation"
+        case .onlineSources:
+            "Online sources"
+        case .offlineSources:
+            "Offline sources"
+        case .facesFound:
+            "Faces found"
+        case .ocrFound:
+            "OCR found"
+        case .objectSignals:
+            "Object signals"
+        case .likelyIssues:
+            "Likely issues"
+        case .providerFailures:
+            "Provider failures"
+        case .xmpPending:
+            "XMP pending"
+        case .xmpConflicts:
+            "XMP conflicts"
+        }
+    }
+
+    public var systemImage: String {
+        switch self {
+        case .ratingFourPlus:
+            "star.fill"
+        case .picked:
+            "flag.fill"
+        case .rejected:
+            "xmark.circle"
+        case .needsKeywords:
+            "tag"
+        case .needsEvaluation:
+            "wand.and.stars"
+        case .onlineSources:
+            "externaldrive.fill.badge.checkmark"
+        case .offlineSources:
+            "externaldrive.badge.xmark"
+        case .facesFound:
+            "person.2"
+        case .ocrFound:
+            "text.viewfinder"
+        case .objectSignals:
+            "shippingbox"
+        case .likelyIssues:
+            "exclamationmark.triangle"
+        case .providerFailures:
+            "bolt.horizontal.circle"
+        case .xmpPending:
+            "arrow.triangle.2.circlepath"
+        case .xmpConflicts:
+            "exclamationmark.arrow.triangle.2.circlepath"
+        }
+    }
+}
+
 extension EvaluationKind {
     var displayName: String {
         switch self {
@@ -759,6 +844,8 @@ public final class AppModel {
     public var totalAssetCount: Int
     public var selectedAssetID: AssetID?
     public private(set) var selectedBatchAssetIDs: Set<AssetID>
+    private var selectedBatchAssetIDOrder: [AssetID]
+    private var selectedBatchAssetSortKeys: [AssetID: Int]
     public var statusMessage: String?
     public var errorMessage: String?
     public var activeWork: AppWorkActivity?
@@ -1452,13 +1539,16 @@ public final class AppModel {
     }
 
     public var suggestedManualSetName: String {
-        let batchAssetIDs = selectedBatchAssetIDsInLoadedOrder
+        let batchAssetIDs = selectedBatchAssetIDsInCatalogOrder
         if batchAssetIDs.count > 1 {
             return "\(batchAssetIDs.count) Selected Photos"
         }
         if let batchAssetID = batchAssetIDs.first,
            let batchAsset = assets.first(where: { $0.id == batchAssetID }) {
             return Self.manualSetName(for: batchAsset)
+        }
+        if batchAssetIDs.count == 1 {
+            return "1 Selected Photo"
         }
         guard let selectedAsset else {
             return "Selection"
@@ -1554,6 +1644,8 @@ public final class AppModel {
         self.totalAssetCount = resolvedTotalAssetCount
         self.selectedAssetID = assets.first?.id
         self.selectedBatchAssetIDs = []
+        self.selectedBatchAssetIDOrder = []
+        self.selectedBatchAssetSortKeys = [:]
         self.statusMessage = statusMessage
         self.errorMessage = errorMessage
         self.activeWork = activeWork
@@ -1892,7 +1984,7 @@ public final class AppModel {
     }
 
     public var selectedBatchAssetCount: Int {
-        selectedBatchAssetIDsInLoadedOrder.count
+        selectedBatchAssetIDs.count
     }
 
     public func isBatchSelected(_ assetID: AssetID) -> Bool {
@@ -1900,11 +1992,17 @@ public final class AppModel {
     }
 
     public func setBatchSelection(_ assetID: AssetID, isSelected: Bool) {
-        guard assets.contains(where: { $0.id == assetID }) else { return }
         if isSelected {
-            selectedBatchAssetIDs.insert(assetID)
+            guard let loadedIndex = assets.firstIndex(where: { $0.id == assetID }) else { return }
+            if selectedBatchAssetIDs.insert(assetID).inserted {
+                selectedBatchAssetIDOrder.append(assetID)
+                selectedBatchAssetSortKeys[assetID] = assetPageOffset + loadedIndex
+            }
         } else {
-            selectedBatchAssetIDs.remove(assetID)
+            if selectedBatchAssetIDs.remove(assetID) != nil {
+                selectedBatchAssetIDOrder.removeAll { $0 == assetID }
+                selectedBatchAssetSortKeys.removeValue(forKey: assetID)
+            }
         }
     }
 
@@ -1912,8 +2010,21 @@ public final class AppModel {
         setBatchSelection(assetID, isSelected: !selectedBatchAssetIDs.contains(assetID))
     }
 
+    public func selectBatchRange(to assetID: AssetID) {
+        guard let targetIndex = assets.firstIndex(where: { $0.id == assetID }) else { return }
+        let anchorID = selectedBatchRangeAnchorID(fallback: assetID)
+        guard let anchorIndex = assets.firstIndex(where: { $0.id == anchorID }) else { return }
+        let lowerIndex = min(anchorIndex, targetIndex)
+        let upperIndex = max(anchorIndex, targetIndex)
+        for asset in assets[lowerIndex...upperIndex] {
+            setBatchSelection(asset.id, isSelected: true)
+        }
+    }
+
     public func clearBatchSelection() {
         selectedBatchAssetIDs.removeAll()
+        selectedBatchAssetIDOrder.removeAll()
+        selectedBatchAssetSortKeys.removeAll()
     }
 
     private func selectAssetID(_ assetID: AssetID?) {
@@ -1937,16 +2048,38 @@ public final class AppModel {
         }
     }
 
-    private var selectedBatchAssetIDsInLoadedOrder: [AssetID] {
-        assets.map(\.id).filter { selectedBatchAssetIDs.contains($0) }
+    private var selectedBatchAssetIDsInCatalogOrder: [AssetID] {
+        let fallbackOrder = Dictionary(uniqueKeysWithValues: selectedBatchAssetIDOrder.enumerated().map { ($0.element, $0.offset) })
+        return selectedBatchAssetIDOrder
+            .filter { selectedBatchAssetIDs.contains($0) }
+            .sorted { lhs, rhs in
+                let lhsSortKey = selectedBatchAssetSortKeys[lhs] ?? Int.max
+                let rhsSortKey = selectedBatchAssetSortKeys[rhs] ?? Int.max
+                if lhsSortKey != rhsSortKey {
+                    return lhsSortKey < rhsSortKey
+                }
+                return (fallbackOrder[lhs] ?? Int.max) < (fallbackOrder[rhs] ?? Int.max)
+            }
     }
 
     private var currentManualSelectionAssetIDs: [AssetID] {
-        let batchAssetIDs = selectedBatchAssetIDsInLoadedOrder
+        let batchAssetIDs = selectedBatchAssetIDsInCatalogOrder
         if !batchAssetIDs.isEmpty {
             return batchAssetIDs
         }
         return selectedAssetID.map { [$0] } ?? []
+    }
+
+    private func selectedBatchRangeAnchorID(fallback: AssetID) -> AssetID {
+        if let selectedAssetID, assets.contains(where: { $0.id == selectedAssetID }) {
+            return selectedAssetID
+        }
+        if let latestVisibleBatchID = selectedBatchAssetIDOrder.reversed().first(where: { batchID in
+            assets.contains(where: { $0.id == batchID })
+        }) {
+            return latestVisibleBatchID
+        }
+        return fallback
     }
 
     private static func manualSetName(for asset: Asset) -> String {
@@ -2353,6 +2486,43 @@ public final class AppModel {
             starred: starred
         )
         return try saveAndSelect(assetSet)
+    }
+
+    public func applySmartCollectionRulePreset(_ preset: SmartCollectionRulePreset) throws {
+        selectedAssetSetID = nil
+        switch preset {
+        case .ratingFourPlus:
+            minimumRatingFilter = max(minimumRatingFilter ?? 0, 4)
+        case .picked:
+            flagFilter = .pick
+        case .rejected:
+            flagFilter = .reject
+        case .needsKeywords:
+            needsKeywordsFilter = true
+        case .needsEvaluation:
+            needsEvaluationFilter = true
+        case .onlineSources:
+            availabilityFilter = .online
+        case .offlineSources:
+            availabilityFilter = .offline
+        case .facesFound:
+            evaluationKindFilter = .faceCount
+        case .ocrFound:
+            evaluationKindFilter = .ocrText
+        case .objectSignals:
+            evaluationKindFilter = .object
+        case .likelyIssues:
+            likelyIssuesFilter = true
+        case .providerFailures:
+            providerFailuresFilter = true
+        case .xmpPending:
+            metadataSyncPendingFilter = true
+            metadataSyncConflictFilter = false
+        case .xmpConflicts:
+            metadataSyncPendingFilter = false
+            metadataSyncConflictFilter = true
+        }
+        try reload()
     }
 
     @discardableResult
@@ -3060,7 +3230,7 @@ public final class AppModel {
         copyright: String
     ) throws -> Int {
         try applyBatchMetadata(
-            assetIDs: selectedBatchAssetIDsInLoadedOrder,
+            assetIDs: selectedBatchAssetIDsInCatalogOrder,
             keywordText: keywordText,
             caption: caption,
             creator: creator,
@@ -5088,11 +5258,9 @@ public final class AppModel {
         }
 
         if let selectedAssetID, assets.contains(where: { $0.id == selectedAssetID }) {
-            pruneBatchSelectionToLoadedAssets()
             return
         }
         selectedAssetID = assets.first?.id
-        pruneBatchSelectionToLoadedAssets()
     }
 
     private func replaceAssets(
@@ -5110,11 +5278,6 @@ public final class AppModel {
         } else {
             selectedAssetID = assets.first?.id
         }
-        pruneBatchSelectionToLoadedAssets()
-    }
-
-    private func pruneBatchSelectionToLoadedAssets() {
-        selectedBatchAssetIDs.formIntersection(Set(assets.map(\.id)))
     }
 
     private func loadCatalogPage(preferredSelection: AssetID?) throws {

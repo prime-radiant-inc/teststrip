@@ -1119,6 +1119,7 @@ struct LibraryGridView: View {
             previewURL: { model.gridPreviewURL(for: $0) },
             previewCacheGeneration: { model.previewCacheGeneration(for: $0) },
             cancel: { isSavingSearch = false },
+            applyRulePreset: applySmartCollectionRulePreset,
             save: saveCurrentSearch
         )
     }
@@ -1351,6 +1352,7 @@ struct LibraryGridView: View {
         var previewURL: (AssetID) -> URL?
         var previewCacheGeneration: (AssetID) -> Int
         var cancel: () -> Void
+        var applyRulePreset: (SmartCollectionRulePreset) -> Void
         var save: () -> Void
 
         var body: some View {
@@ -1448,17 +1450,29 @@ struct LibraryGridView: View {
                         }
                     }
                 }
-                Label("Add rule", systemImage: "plus")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 7)
-                            .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4]))
-                            .foregroundStyle(.quaternary)
+                Menu {
+                    ForEach(presentation.addRuleRows) { row in
+                        Button {
+                            applyRulePreset(row.preset)
+                        } label: {
+                            Label(row.title, systemImage: row.systemImage)
+                        }
                     }
-                    .liveMockupPlaceholder(.smartCollectionsBuilder)
+                } label: {
+                    Label("Add rule", systemImage: "plus")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 7)
+                                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4]))
+                                .foregroundStyle(.quaternary)
+                        }
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .liveMockupPlaceholder(.smartCollectionsBuilder)
             }
         }
 
@@ -1949,6 +1963,14 @@ struct LibraryGridView: View {
         do {
             try model.saveCurrentLibraryQuery(named: savedSearchName, starred: savedSearchStarred)
             isSavingSearch = false
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applySmartCollectionRulePreset(_ preset: SmartCollectionRulePreset) {
+        do {
+            try model.applySmartCollectionRulePreset(preset)
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -3703,7 +3725,9 @@ private extension View {
         }
         return Button {
             focusCullingSurface()
-            if NSEvent.modifierFlags.contains(.command) {
+            if NSEvent.modifierFlags.contains(.shift) {
+                model.selectBatchRange(to: asset.id)
+            } else if NSEvent.modifierFlags.contains(.command) {
                 model.toggleBatchSelection(asset.id)
             } else {
                 selectAsset(asset.id)
@@ -4625,6 +4649,10 @@ struct SmartCollectionBuilderPresentation: Equatable {
         ruleChips.map(SmartCollectionRuleRow.init)
     }
 
+    var addRuleRows: [SmartCollectionAddRuleRow] {
+        SmartCollectionRulePreset.allCases.map(SmartCollectionAddRuleRow.init)
+    }
+
     var matchCountText: String {
         "\(matchCount) \(matchCount == 1 ? "match" : "matches")"
     }
@@ -4636,6 +4664,20 @@ struct SmartCollectionBuilderPresentation: Equatable {
     func previewCountText(visibleCount: Int) -> String {
         guard matchCount > 0 else { return "no live preview yet" }
         return "showing \(min(max(visibleCount, 0), matchCount))"
+    }
+}
+
+struct SmartCollectionAddRuleRow: Equatable, Identifiable {
+    var preset: SmartCollectionRulePreset
+    var title: String
+    var systemImage: String
+
+    var id: String { preset.id }
+
+    init(preset: SmartCollectionRulePreset) {
+        self.preset = preset
+        self.title = preset.title
+        self.systemImage = preset.systemImage
     }
 }
 

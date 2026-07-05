@@ -81,4 +81,33 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
             "Best of each trip"
         ])
     }
+
+    func testAddRuleRowsExposeConcretePresetFilters() {
+        let presentation = SmartCollectionBuilderPresentation(
+            proposedName: "Needs Review",
+            ruleChips: ["Pick"],
+            matchCount: 12
+        )
+
+        XCTAssertEqual(
+            presentation.addRuleRows.map(\.title),
+            [
+                "4+ stars",
+                "Picked",
+                "Rejected",
+                "Needs keywords",
+                "Needs evaluation",
+                "Online sources",
+                "Offline sources",
+                "Faces found",
+                "OCR found",
+                "Object signals",
+                "Likely issues",
+                "Provider failures",
+                "XMP pending",
+                "XMP conflicts"
+            ]
+        )
+        XCTAssertTrue(presentation.addRuleRows.allSatisfy { !$0.systemImage.isEmpty })
+    }
 }

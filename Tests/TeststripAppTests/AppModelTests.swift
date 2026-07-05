@@ -920,6 +920,65 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, first.id)
     }
 
+    func testRangeBatchSelectionUsesPrimarySelectionAsAnchor() throws {
+        let first = makeAsset(id: "range-first", path: "/Photos/range-first.jpg", rating: 1)
+        let second = makeAsset(id: "range-second", path: "/Photos/range-second.jpg", rating: 2)
+        let third = makeAsset(id: "range-third", path: "/Photos/range-third.jpg", rating: 3)
+        let fourth = makeAsset(id: "range-fourth", path: "/Photos/range-fourth.jpg", rating: 4)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "batch-range-selection",
+            assets: [first, second, third, fourth]
+        )
+        model.select(second.id)
+
+        model.selectBatchRange(to: fourth.id)
+        let savedSet = try model.saveSelectedAssetAsManualSet(named: "Range")
+
+        XCTAssertEqual(model.selectedAssetID, second.id)
+        XCTAssertEqual(model.selectedBatchAssetCount, 3)
+        XCTAssertFalse(model.isBatchSelected(first.id))
+        XCTAssertTrue(model.isBatchSelected(second.id))
+        XCTAssertTrue(model.isBatchSelected(third.id))
+        XCTAssertTrue(model.isBatchSelected(fourth.id))
+        XCTAssertEqual(savedSet.membership, .manual([second.id, third.id, fourth.id]))
+        XCTAssertEqual(try repository.assetSet(id: savedSet.id), savedSet)
+    }
+
+    func testBatchSelectionSurvivesLoadedPageChangesInCatalogOrder() throws {
+        let model = try makeModelWithSeededCatalog(named: "batch-selection-cross-page", count: 121)
+        model.setBatchSelection(AssetID(rawValue: "asset-0"), isSelected: true)
+
+        try model.loadMoreAssets()
+        model.setBatchSelection(AssetID(rawValue: "asset-120"), isSelected: true)
+        let savedSet = try model.saveSelectedAssetAsManualSet(named: "Cross Page")
+
+        XCTAssertEqual(model.selectedBatchAssetCount, 2)
+        XCTAssertTrue(model.isBatchSelected(AssetID(rawValue: "asset-0")))
+        XCTAssertTrue(model.isBatchSelected(AssetID(rawValue: "asset-120")))
+        XCTAssertEqual(savedSet.membership, .manual([
+            AssetID(rawValue: "asset-0"),
+            AssetID(rawValue: "asset-120")
+        ]))
+    }
+
+    func testBatchSelectionPrunesAssetsOutsideReloadedScope() throws {
+        let keeper = makeAsset(id: "batch-scope-keeper", path: "/Photos/batch-scope-keeper.jpg", rating: 5)
+        let outside = makeAsset(id: "batch-scope-outside", path: "/Photos/batch-scope-outside.jpg", rating: 1)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "batch-selection-filter-scope",
+            assets: [keeper, outside]
+        )
+        model.setBatchSelection(keeper.id, isSelected: true)
+        model.setBatchSelection(outside.id, isSelected: true)
+
+        model.minimumRatingFilter = 5
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.selectedBatchAssetCount, 1)
+        XCTAssertTrue(model.isBatchSelected(keeper.id))
+        XCTAssertFalse(model.isBatchSelected(outside.id))
+    }
+
     func testCurrentScopeBatchMetadataAppliesBeyondLoadedPageAndWritesXmpSidecars() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-current-scope-batch-metadata")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
@@ -4548,6 +4607,115 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["Likely Issues"])
         XCTAssertEqual(model.suggestedSavedSearchName, "Likely Issues")
+    }
+
+    func testApplyingSmartCollectionRulePresetNarrowsCurrentQuery() throws {
+        let keeper = makeAsset(
+            id: "keeper",
+            path: "/Photos/Wedding/ceremony-keeper.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let lowerRatedPick = makeAsset(
+            id: "lower-rated",
+            path: "/Photos/Wedding/ceremony-lower-rated.jpg",
+            rating: 3,
+            flag: .pick
+        )
+        let rejected = makeAsset(
+            id: "rejected",
+            path: "/Photos/Wedding/ceremony-rejected.jpg",
+            rating: 5,
+            flag: .reject
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "smart-collection-add-rule",
+            assets: [keeper, lowerRatedPick, rejected]
+        )
+
+        model.librarySearchText = "ceremony"
+        try model.applySmartCollectionRulePreset(.ratingFourPlus)
+        try model.applySmartCollectionRulePreset(.picked)
+
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Search: ceremony", "Rating >= 4", "Pick"])
+        let savedSet = try model.saveCurrentLibraryQuery(named: "Ceremony Picks")
+        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [
+            .text("ceremony"),
+            .ratingAtLeast(4),
+            .flag(.pick)
+        ])))
+    }
+
+    func testApplyingRatingPresetDoesNotLoosenStrongerRatingFilter() throws {
+        let fiveStar = makeAsset(id: "five-star", path: "/Photos/Job/five.jpg", rating: 5)
+        let fourStar = makeAsset(id: "four-star", path: "/Photos/Job/four.jpg", rating: 4)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "smart-collection-rating-preset",
+            assets: [fiveStar, fourStar]
+        )
+        model.minimumRatingFilter = 5
+
+        try model.applySmartCollectionRulePreset(.ratingFourPlus)
+
+        XCTAssertEqual(model.minimumRatingFilter, 5)
+        XCTAssertEqual(model.assets.map(\.id), [fiveStar.id])
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Rating >= 5"])
+    }
+
+    func testApplyingSourceAndSignalRulePresetsNarrowTogether() throws {
+        let offlineObject = makeAsset(
+            id: "offline-object",
+            path: "/Photos/Job/offline-object.jpg",
+            rating: 0,
+            availability: .offline
+        )
+        let offlinePlain = makeAsset(
+            id: "offline-plain",
+            path: "/Photos/Job/offline-plain.jpg",
+            rating: 0,
+            availability: .offline
+        )
+        let onlineObject = makeAsset(
+            id: "online-object",
+            path: "/Photos/Job/online-object.jpg",
+            rating: 0,
+            availability: .online
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "smart-collection-source-signal-preset",
+            assets: [offlineObject, offlinePlain, onlineObject]
+        )
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: offlineObject.id, kind: .object, value: .label("camera"), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: onlineObject.id, kind: .object, value: .label("camera"), confidence: 0.8, provenance: provenance)
+        ])
+
+        try model.applySmartCollectionRulePreset(.offlineSources)
+        try model.applySmartCollectionRulePreset(.objectSignals)
+
+        XCTAssertEqual(model.availabilityFilter, .offline)
+        XCTAssertEqual(model.evaluationKindFilter, .object)
+        XCTAssertEqual(model.assets.map(\.id), [offlineObject.id])
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Source: Offline", "Signal: Object"])
+    }
+
+    func testApplyingXmpRulePresetUsesSingleMetadataSyncState() throws {
+        let (model, _, _) = try makeModelWithCatalogAsset(named: "smart-collection-xmp-preset")
+        model.metadataSyncConflictFilter = true
+
+        try model.applySmartCollectionRulePreset(.xmpPending)
+
+        XCTAssertTrue(model.metadataSyncPendingFilter)
+        XCTAssertFalse(model.metadataSyncConflictFilter)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["XMP Pending"])
+
+        try model.applySmartCollectionRulePreset(.xmpConflicts)
+
+        XCTAssertFalse(model.metadataSyncPendingFilter)
+        XCTAssertTrue(model.metadataSyncConflictFilter)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["XMP Conflicts"])
     }
 
     func testSavingSelectedAssetCreatesSelectedManualSet() throws {
