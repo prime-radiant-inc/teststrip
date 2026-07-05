@@ -1031,7 +1031,7 @@ struct LibraryGridView: View {
         case .openInLibrary:
             openLatestImportCompletion()
         case .keywordSuggestions:
-            applyLatestImportKeywordSuggestion()
+            reviewLatestImportKeywordSuggestions()
         case .stackGrouping:
             beginStackCullingFromLatestImportCompletion()
         case .faceNaming:
@@ -2062,10 +2062,13 @@ struct LibraryGridView: View {
         }
     }
 
-    private func applyLatestImportKeywordSuggestion() {
-        guard let keyword = model.latestImportBatchKeywordSuggestions.first?.keyword else { return }
+    private func reviewLatestImportKeywordSuggestions() {
         do {
-            try model.acceptLatestImportBatchKeywordSuggestion(keyword)
+            try model.openLatestImportCompletion()
+            batchMetadataScope = .visible
+            batchMetadataDraft = BatchMetadataDraft()
+            isAllCatalogBatchMetadataConfirmed = false
+            isReviewingBatchMetadata = true
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -5296,19 +5299,22 @@ struct ImportCompletionPresentation: Equatable {
         guard let suggestion = batchKeywordSuggestions.first else {
             return ImportCompletionActionPresentation(
                 kind: .keywordSuggestions,
-                title: "Keyword suggestions",
-                detail: "Batch suggested keywords not built",
+                title: "Review keyword suggestions",
+                detail: "No suggested keywords yet",
                 systemImage: "tag",
                 isEnabled: false,
                 isPrimary: false,
-                placeholder: .keywordingBatch
+                placeholder: nil
             )
         }
 
+        let suggestionCount = batchKeywordSuggestions.count
         return ImportCompletionActionPresentation(
             kind: .keywordSuggestions,
-            title: "Apply \(suggestion.keyword)",
-            detail: "\(suggestion.assetCountText) at \(suggestion.confidenceText)",
+            title: suggestionCount == 1
+                ? "Review 1 keyword suggestion"
+                : "Review \(suggestionCount) keyword suggestions",
+            detail: "Top: \(suggestion.keyword) - \(suggestion.assetCountText) at \(suggestion.confidenceText)",
             systemImage: "tag.fill",
             isEnabled: true,
             isPrimary: false,

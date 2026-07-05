@@ -20,7 +20,7 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.metricRows.map(\.label), ["Imported set", "Previews", "Cull scope"])
         XCTAssertEqual(presentation.metricRows.map(\.value), ["12 photos", "Ready", "3 stacks"])
         XCTAssertEqual(presentation.enabledActions.map(\.kind), [.startCulling, .reviewImportedFrames, .openInLibrary, .stackGrouping])
-        XCTAssertEqual(presentation.placeholderActions.map(\.kind), [.faceNaming, .keywordSuggestions])
+        XCTAssertEqual(presentation.placeholderActions.map(\.kind), [.faceNaming])
     }
 
     func testSurfacesPreviewFailuresWithoutBlockingImportActions() {
@@ -93,7 +93,7 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertNil(openAction.placeholder)
     }
 
-    func testEnablesKeywordSuggestionActionWhenBatchSuggestionsExist() throws {
+    func testEnablesKeywordReviewActionWhenBatchSuggestionsExist() throws {
         let presentation = ImportCompletionPresentation.presentation(
             for: summary(),
             batchKeywordSuggestions: [
@@ -103,14 +103,31 @@ final class ImportCompletionPresentationTests: XCTestCase {
                     averageConfidence: 0.82,
                     providerName: "apple-vision",
                     modelName: "Vision"
+                ),
+                BatchKeywordSuggestion(
+                    keyword: "lake",
+                    assetCount: 1,
+                    averageConfidence: 0.91,
+                    providerName: "apple-vision",
+                    modelName: "Vision"
                 )
             ]
         )
 
         let action = try XCTUnwrap(presentation.actionRows.first { $0.kind == .keywordSuggestions })
         XCTAssertTrue(action.isEnabled)
-        XCTAssertEqual(action.title, "Apply mountain")
-        XCTAssertEqual(action.detail, "3 photos at 82%")
+        XCTAssertEqual(action.title, "Review 2 keyword suggestions")
+        XCTAssertEqual(action.detail, "Top: mountain - 3 photos at 82%")
+        XCTAssertNil(action.placeholder)
+    }
+
+    func testKeywordSuggestionActionUsesDisabledEmptyStateWhenNoSuggestionsExist() throws {
+        let presentation = ImportCompletionPresentation.presentation(for: summary())
+
+        let action = try XCTUnwrap(presentation.actionRows.first { $0.kind == .keywordSuggestions })
+        XCTAssertFalse(action.isEnabled)
+        XCTAssertEqual(action.title, "Review keyword suggestions")
+        XCTAssertEqual(action.detail, "No suggested keywords yet")
         XCTAssertNil(action.placeholder)
     }
 
@@ -118,8 +135,7 @@ final class ImportCompletionPresentationTests: XCTestCase {
         let presentation = ImportCompletionPresentation.presentation(for: summary())
 
         XCTAssertEqual(presentation.placeholderActions.map(\.placeholder?.id), [
-            LiveMockupPlaceholders.peopleFaceActions.id,
-            LiveMockupPlaceholders.keywordingBatch.id
+            LiveMockupPlaceholders.peopleFaceActions.id
         ])
         XCTAssertTrue(presentation.placeholderActions.allSatisfy { !$0.isEnabled })
 
