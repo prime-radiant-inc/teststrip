@@ -2320,6 +2320,54 @@ public final class AppModel {
     }
 
     @discardableResult
+    public func beginManualCullingFromCompareSet() throws -> WorkSession {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let compareGroup = compareAssets()
+        guard compareGroup.count > 1 else {
+            throw TeststripError.invalidState("there is no compare set to cull")
+        }
+
+        let selectedCompareAssetID = selectedAssetID.flatMap { selectedID in
+            compareGroup.contains { $0.id == selectedID } ? selectedID : nil
+        } ?? compareGroup[0].id
+        let title = "Compare Manual Cull"
+        let intent = "Manually cull current compare set"
+        let sessionID = WorkSessionID.new()
+        let inputSetIDs = try saveCullingStackInputSets(
+            sessionID: sessionID,
+            title: title,
+            stacks: [AssetStack(assetIDs: compareGroup.map(\.id))]
+        )
+        guard let stackSetID = inputSetIDs.first else {
+            throw TeststripError.invalidState("no compare stack set was created")
+        }
+
+        try applyAssetSet(id: stackSetID)
+        selectAssetID(selectedCompareAssetID)
+        selectedView = .loupe
+
+        let activity = AppWorkActivity(
+            id: sessionID.rawValue,
+            kind: .culling,
+            status: .running,
+            title: title,
+            detail: intent,
+            completedUnitCount: 0,
+            totalUnitCount: compareGroup.count,
+            failureCount: 0
+        )
+        recordRecentActivity(
+            activity,
+            intent: intent,
+            inputSetIDs: inputSetIDs
+        )
+        statusMessage = "Started manual cull for \(Self.photoCountDescription(compareGroup.count))"
+        return try catalog.repository.session(id: sessionID)
+    }
+
+    @discardableResult
     public func acceptLatestImportBatchKeywordSuggestion(_ keyword: String) throws -> Int {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")

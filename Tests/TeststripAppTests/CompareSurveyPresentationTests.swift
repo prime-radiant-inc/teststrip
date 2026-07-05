@@ -171,10 +171,10 @@ final class CompareSurveyPresentationTests: XCTestCase {
         let actions = presentation.groupActions(canApplyPrimaryChoice: true)
 
         XCTAssertEqual(actions.map(\.title), ["Keep primary · reject 1", "Keep all", "Choose manually"])
-        XCTAssertEqual(actions.map(\.isEnabled), [true, true, false])
+        XCTAssertEqual(actions.map(\.isEnabled), [true, true, true])
         XCTAssertNil(actions[0].liveMockupPlaceholder)
         XCTAssertNil(actions[1].liveMockupPlaceholder)
-        XCTAssertEqual(actions[2].liveMockupPlaceholder, .cullingStackCull)
+        XCTAssertNil(actions[2].liveMockupPlaceholder)
     }
 
     func testFocusMetricsUseRealQualitySignalsWithoutClaimingBest() {

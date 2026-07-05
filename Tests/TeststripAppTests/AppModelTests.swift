@@ -464,6 +464,32 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.assets[8].metadata.flag)
     }
 
+    func testBeginManualCullingFromCompareSetCreatesWorkStackScope() throws {
+        let assets = (0..<9).map { makeAsset(id: "compare-manual-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-manual-cull",
+            assets: assets
+        )
+        model.selectedView = .compare
+        model.select(assets[1].id)
+
+        let session = try model.beginManualCullingFromCompareSet()
+
+        let stackSetID = try XCTUnwrap(session.inputSetIDs.first)
+        XCTAssertTrue(stackSetID.rawValue.hasPrefix("work-stack-\(session.id.rawValue)-"))
+        XCTAssertEqual(assetIDs(in: try repository.assetSet(id: stackSetID)), assets[0..<8].map(\.id))
+        XCTAssertEqual(model.selectedAssetSetID, stackSetID)
+        XCTAssertEqual(model.assets.map(\.id), assets[0..<8].map(\.id))
+        XCTAssertEqual(model.selectedAssetID, assets[1].id)
+        XCTAssertEqual(model.selectedView, .loupe)
+        XCTAssertEqual(session.kind, .culling)
+        XCTAssertEqual(session.intent, "Manually cull current compare set")
+        XCTAssertEqual(session.totalUnitCount, 8)
+        XCTAssertEqual(model.selectedCullingStackScope?.assetIDs, assets[0..<8].map(\.id))
+        XCTAssertNil(try repository.asset(id: assets[0].id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: assets[8].id).metadata.flag)
+    }
+
     func testLibraryCountTextShowsLoadedAndTotalWhenGridIsLimited() {
         let asset = Asset(
             id: AssetID(rawValue: "first"),

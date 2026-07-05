@@ -2953,9 +2953,9 @@ struct CompareSurveyPresentation: Equatable {
             CompareSurveyActionPresentation(
                 action: .chooseManually,
                 title: "Choose manually",
-                isEnabled: false,
-                help: "Opens stack-aware manual culling once compare groups are real.",
-                liveMockupPlaceholder: .cullingStackCull
+                isEnabled: canApplyPrimaryChoice && orderedAssets.count > 1,
+                help: "Open this compare set in stack-aware manual culling",
+                liveMockupPlaceholder: nil
             )
         ]
     }
@@ -3710,7 +3710,9 @@ private struct CompareView: View {
                 .disabled(!keepAllAction.isEnabled)
                 .help(keepAllAction.help)
                 .liveMockupPlaceholder(keepAllAction.liveMockupPlaceholder)
-            Button(chooseManuallyAction.title) {}
+            Button(chooseManuallyAction.title) {
+                beginManualCompareCulling()
+            }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .disabled(!chooseManuallyAction.isEnabled)
@@ -3756,6 +3758,15 @@ private struct CompareView: View {
         do {
             focusCullingSurface()
             try model.keepAllCompareAssets()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func beginManualCompareCulling() {
+        do {
+            focusCullingSurface()
+            try model.beginManualCullingFromCompareSet()
         } catch {
             model.errorMessage = error.localizedDescription
         }
