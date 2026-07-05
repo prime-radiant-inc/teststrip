@@ -1190,7 +1190,7 @@ struct LibraryGridView: View {
                 Button("Cancel") {
                     isShowingImportPathSheet = false
                 }
-                Button("Import") {
+                Button(importPathDraft.primaryActionTitle) {
                     importFolderPath()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -1844,9 +1844,9 @@ struct LibraryGridView: View {
 
     private func importFolderPath() {
         do {
-            let folderURL = try importPathDraft.resolveFolderURL()
+            let confirmationDraft = try importPathDraft.makeFolderConfirmationDraft()
             isShowingImportPathSheet = false
-            importConfirmationDraft = .folder(folderURL)
+            importConfirmationDraft = confirmationDraft
         } catch {
             return
         }

@@ -154,14 +154,26 @@ guard setResult == .success else {
     exit(1)
 }
 
-guard let importButton = button(named: "Import", insideSheet: true) else {
-    fputs("Import button not found in Import Path sheet\n", stderr)
+guard let reviewImportButton = button(named: "Review Import", insideSheet: true) else {
+    fputs("Review Import button not found in Import Path sheet\n", stderr)
     exit(1)
 }
 
-let importResult = AXUIElementPerformAction(importButton, kAXPressAction as CFString)
-guard importResult == .success else {
-    fputs("AXPress failed for Import: \(importResult.rawValue)\n", stderr)
+let reviewImportResult = AXUIElementPerformAction(reviewImportButton, kAXPressAction as CFString)
+guard reviewImportResult == .success else {
+    fputs("AXPress failed for Review Import: \(reviewImportResult.rawValue)\n", stderr)
+    exit(1)
+}
+
+guard waitFor({ button(named: "Start Import", insideSheet: true) != nil }),
+      let startImportButton = button(named: "Start Import", insideSheet: true) else {
+    fputs("Start Import button not found in confirmation sheet\n", stderr)
+    exit(1)
+}
+
+let startImportResult = AXUIElementPerformAction(startImportButton, kAXPressAction as CFString)
+guard startImportResult == .success else {
+    fputs("AXPress failed for Start Import: \(startImportResult.rawValue)\n", stderr)
     exit(1)
 }
 

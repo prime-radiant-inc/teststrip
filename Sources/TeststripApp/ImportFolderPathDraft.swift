@@ -96,9 +96,18 @@ struct ImportFolderPathDraft: Equatable {
         ImportPlanSteps.folderInPlace
     }
 
+    var primaryActionTitle: String {
+        "Review Import"
+    }
+
     mutating func reset() {
         path = ""
         errorMessage = nil
+    }
+
+    @MainActor
+    mutating func makeFolderConfirmationDraft() throws -> ImportConfirmationDraft {
+        .folder(try resolveFolderURL())
     }
 
     @MainActor

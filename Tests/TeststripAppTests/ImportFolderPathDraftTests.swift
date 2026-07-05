@@ -61,6 +61,10 @@ final class ImportFolderPathDraftTests: XCTestCase {
         })
     }
 
+    func testPathSheetPrimaryActionShowsReviewStep() {
+        XCTAssertEqual(ImportFolderPathDraft().primaryActionTitle, "Review Import")
+    }
+
     @MainActor
     func testInvalidPathKeepsDraftErrorForSheet() throws {
         var draft = ImportFolderPathDraft(path: "/definitely/not/a/teststrip/import/folder")
@@ -80,6 +84,21 @@ final class ImportFolderPathDraftTests: XCTestCase {
         let resolved = try draft.resolveFolderURL()
 
         XCTAssertEqual(resolved.standardizedFileURL, directory.standardizedFileURL)
+        XCTAssertNil(draft.errorMessage)
+    }
+
+    @MainActor
+    func testValidPathBuildsFolderConfirmationDraft() throws {
+        let directory = try makeTemporaryDirectory(named: "valid-import-confirmation-path")
+        var draft = ImportFolderPathDraft(path: "/definitely/not/a/teststrip/import/folder")
+        XCTAssertThrowsError(try draft.resolveFolderURL())
+
+        draft.path = directory.path
+        let confirmation = try draft.makeFolderConfirmationDraft()
+
+        XCTAssertEqual(confirmation.mode, .folder)
+        XCTAssertEqual(confirmation.sourceURL.standardizedFileURL, directory.standardizedFileURL)
+        XCTAssertEqual(confirmation.primaryActionTitle, "Start Import")
         XCTAssertNil(draft.errorMessage)
     }
 
