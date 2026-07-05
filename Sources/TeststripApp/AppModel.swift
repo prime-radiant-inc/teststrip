@@ -2325,6 +2325,43 @@ public final class AppModel {
         try refreshMetadataSyncState()
     }
 
+    @discardableResult
+    public func retryPendingMetadataSyncInCurrentScope(
+        limit: Int? = nil
+    ) throws -> Int {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard workerSupervisor != nil else {
+            throw TeststripError.invalidState("worker supervisor is not configured")
+        }
+
+        let resolvedLimit = limit ?? Self.metadataSyncStateDisplayLimit
+        var queuedCount = 0
+        for asset in assets.prefix(max(0, resolvedLimit)) {
+            guard let pendingItem = try catalog.repository.pendingMetadataSyncItem(assetID: asset.id) else {
+                continue
+            }
+            guard canAutomaticallyRetryMetadataSync(for: asset, sidecarURL: pendingItem.sidecarURL) else {
+                continue
+            }
+            guard !hasActiveMetadataSyncWork(
+                assetID: asset.id,
+                generation: pendingItem.catalogGeneration
+            ) else {
+                continue
+            }
+
+            try enqueueMetadataSyncWork(pendingItem: pendingItem)
+            queuedCount += 1
+        }
+
+        statusMessage = queuedCount == 1
+            ? "Queued 1 XMP retry"
+            : "Queued \(queuedCount) XMP retries"
+        return queuedCount
+    }
+
     public func undoMetadataChange() throws {
         guard let change = metadataUndoStack.popLast() else { return }
         try applyMetadataSnapshot(assetID: change.assetID, metadata: change.before)

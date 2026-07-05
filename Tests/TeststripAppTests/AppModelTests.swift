@@ -1374,6 +1374,43 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: pending.sidecarURL.path))
     }
 
+    func testRetryPendingMetadataSyncInCurrentScopeQueuesOnlyRetryableItems() throws {
+        let fixture = try makePendingMetadataSyncScopeModel(named: "retry-pending-xmp-scope")
+        fixture.model.metadataSyncPendingFilter = true
+
+        let queuedCount = try fixture.model.retryPendingMetadataSyncInCurrentScope()
+
+        XCTAssertEqual(queuedCount, 1)
+        XCTAssertEqual(try fixture.transport.commands(), [
+            .syncMetadata(assetID: fixture.retryableAssetID)
+        ])
+        XCTAssertEqual(fixture.model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }.count, 1)
+    }
+
+    func testRetryPendingMetadataSyncInCurrentScopeDoesNotDuplicateActiveWork() throws {
+        let fixture = try makePendingMetadataSyncScopeModel(named: "retry-pending-xmp-duplicates")
+        fixture.model.metadataSyncPendingFilter = true
+
+        XCTAssertEqual(try fixture.model.retryPendingMetadataSyncInCurrentScope(), 1)
+        XCTAssertEqual(try fixture.model.retryPendingMetadataSyncInCurrentScope(), 0)
+
+        XCTAssertEqual(try fixture.transport.commands(), [
+            .syncMetadata(assetID: fixture.retryableAssetID)
+        ])
+        XCTAssertEqual(fixture.model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }.count, 1)
+    }
+
+    func testRetryPendingMetadataSyncInCurrentScopeRequiresWorker() throws {
+        let fixture = try makePendingMetadataSyncScopeModel(
+            named: "retry-pending-xmp-missing-worker",
+            includeWorker: false
+        )
+        fixture.model.metadataSyncPendingFilter = true
+
+        XCTAssertThrowsError(try fixture.model.retryPendingMetadataSyncInCurrentScope())
+        XCTAssertEqual(fixture.model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }, [])
+    }
+
     func testRatingCullingCommandUpdatesSelectedAsset() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "rating-command")
 
@@ -7527,6 +7564,101 @@ final class AppModelTests: XCTestCase {
             )
         )
         return (try AppModel.load(catalog: catalog, workerSupervisor: supervisor), repository, asset, originalURL, transport)
+    }
+
+    private func makePendingMetadataSyncScopeModel(
+        named name: String,
+        includeWorker: Bool = true
+    ) throws -> (model: AppModel, transport: RecordingWorkerTransport, retryableAssetID: AssetID) {
+        let directory = try makeTemporaryDirectory(named: name)
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let retryableURL = photosDirectory.appendingPathComponent("retryable.cr2")
+        let offlineURL = photosDirectory.appendingPathComponent("offline.cr2")
+        let blockedURL = photosDirectory.appendingPathComponent("blocked.cr2")
+        try Data("retryable raw bytes".utf8).write(to: retryableURL)
+        try Data("offline raw bytes".utf8).write(to: offlineURL)
+        try Data("blocked raw bytes".utf8).write(to: blockedURL)
+
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let retryable = Asset(
+            id: AssetID(rawValue: "retryable"),
+            originalURL: retryableURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let offline = Asset(
+            id: AssetID(rawValue: "offline"),
+            originalURL: offlineURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 11, modificationDate: Date(timeIntervalSince1970: 11)),
+            availability: .offline,
+            metadata: AssetMetadata()
+        )
+        let blocked = Asset(
+            id: AssetID(rawValue: "blocked"),
+            originalURL: blockedURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 12, modificationDate: Date(timeIntervalSince1970: 12)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert([retryable, offline, blocked])
+
+        let blockedSidecarDirectory = directory.appendingPathComponent("missing-sidecars", isDirectory: true)
+        let pendingItems = [
+            MetadataSyncItem(
+                assetID: retryable.id,
+                sidecarURL: retryableURL.appendingPathExtension("xmp"),
+                catalogGeneration: try repository.catalogGeneration(assetID: retryable.id),
+                lastSyncedFingerprint: nil
+            ),
+            MetadataSyncItem(
+                assetID: offline.id,
+                sidecarURL: offlineURL.appendingPathExtension("xmp"),
+                catalogGeneration: try repository.catalogGeneration(assetID: offline.id),
+                lastSyncedFingerprint: nil
+            ),
+            MetadataSyncItem(
+                assetID: blocked.id,
+                sidecarURL: blockedSidecarDirectory.appendingPathComponent("blocked.cr2.xmp"),
+                catalogGeneration: try repository.catalogGeneration(assetID: blocked.id),
+                lastSyncedFingerprint: nil
+            )
+        ]
+        for item in pendingItems {
+            try repository.recordMetadataSyncPending(item)
+        }
+
+        let transport = RecordingWorkerTransport()
+        let supervisor = includeWorker
+            ? WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 1), transport: transport)
+            : nil
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: [retryable, offline, blocked],
+            totalAssetCount: 3,
+            catalog: catalog,
+            pendingMetadataSyncItems: pendingItems,
+            pendingMetadataSyncCount: pendingItems.count,
+            workerSupervisor: supervisor
+        )
+        return (model, transport, retryable.id)
     }
 
     private func makeModelWithXMPConflict(
