@@ -130,7 +130,7 @@ public enum LiveMockupPlaceholders {
         id: "import.complete-summary",
         title: "Import complete summary",
         intendedBehavior: "Show the import-complete payoff surface with imported-set actions, preview status, culling entrypoints, and follow-up workflow suggestions.",
-        currentFallback: "Expanded post-import panel backed by the completed import work session and output set, with culling, compare, and keyword actions live while stack and face follow-ups stay disabled and annotated."
+        currentFallback: "Expanded post-import panel backed by the completed import work session and output set, with culling, stack-cull, compare, and keyword actions live while face follow-ups stay disabled and annotated."
     )
 
     public static let cullingAssistVerdict = LiveMockupPlaceholder(
@@ -281,7 +281,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Import complete",
             status: .partial,
             placeholder: .importCompleteSummary,
-            currentImplementation: "Expanded import-complete panel exposes imported count, preview status, Open, culling, compare, and keyword actions; stack grouping and face naming remain disabled placeholders."
+            currentImplementation: "Expanded import-complete panel exposes imported count, preview status, Open, culling, stack-cull, compare, and keyword actions; face naming remains a disabled placeholder."
         ),
         LiveMockupDesignSurface(
             designID: "5a",

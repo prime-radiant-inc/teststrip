@@ -849,7 +849,9 @@ struct LibraryGridView: View {
             openLatestImportCompletion()
         case .keywordSuggestions:
             applyLatestImportKeywordSuggestion()
-        case .stackGrouping, .faceNaming:
+        case .stackGrouping:
+            beginCullingFromLatestImportCompletion()
+        case .faceNaming:
             break
         }
     }
@@ -3964,12 +3966,12 @@ struct ImportCompletionPresentation: Equatable {
                 ),
                 ImportCompletionActionPresentation(
                     kind: .stackGrouping,
-                    title: "Stack grouping",
-                    detail: "Manual culling until stack grouping ships",
+                    title: "Cull stacks",
+                    detail: "Time-adjacent stack rail",
                     systemImage: "square.stack.3d.up",
-                    isEnabled: false,
+                    isEnabled: true,
                     isPrimary: false,
-                    placeholder: .cullingStackCull
+                    placeholder: nil
                 ),
                 ImportCompletionActionPresentation(
                     kind: .faceNaming,

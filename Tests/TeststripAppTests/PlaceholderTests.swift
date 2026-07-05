@@ -65,10 +65,10 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "import.complete-summary" })
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "4b" })
 
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("culling, compare, and keyword actions live"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("stack and face follow-ups stay disabled"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("culling, compare, and keyword actions"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("stack grouping and face naming remain disabled"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("culling, stack-cull, compare, and keyword actions live"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("face follow-ups stay disabled"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("culling, stack-cull, compare, and keyword actions"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("face naming remains a disabled placeholder"))
     }
 
     func testCompareLedgerTracksStackCullActionsAndRemainingSimilarityGap() throws {
