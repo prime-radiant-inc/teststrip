@@ -369,6 +369,52 @@ final class FolderImportTests: XCTestCase {
         }
     }
 
+    func testCopyFromCardRejectsSourceInsideDestination() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-nested-source")
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        let source = destination.appendingPathComponent("DCIM", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try Data("raw bytes".utf8).write(to: source.appendingPathComponent("IMG_0001.CR2"))
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["cr2"]))
+
+        XCTAssertThrowsError(
+            try service.ingest(
+                plan: IngestPlanner.copyFromCard(source: source, destinationRoot: destination),
+                repository: repository
+            )
+        ) { error in
+            XCTAssertEqual(error as? TeststripError, .invalidState("Card source cannot be inside the destination"))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("IMG_0001.CR2").path))
+    }
+
+    func testCopyFromCardRejectsSourceInsideDestinationWhenFilesAreProvidedDirectly() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-nested-source-direct")
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        let source = destination.appendingPathComponent("DCIM", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        let sourceFile = source.appendingPathComponent("IMG_0001.CR2")
+        try Data("raw bytes".utf8).write(to: sourceFile)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["cr2"]))
+
+        XCTAssertThrowsError(
+            try service.ingest(
+                files: [sourceFile],
+                plan: IngestPlanner.copyFromCard(source: source, destinationRoot: destination),
+                repository: repository
+            )
+        ) { error in
+            XCTAssertEqual(error as? TeststripError, .invalidState("Card source cannot be inside the destination"))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("IMG_0001.CR2").path))
+    }
+
     func testCopyFromCardCopiesAdjacentSidecarAndImportsMetadataFromDestination() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-sidecar")
         let source = root.appendingPathComponent("DCIM", isDirectory: true)

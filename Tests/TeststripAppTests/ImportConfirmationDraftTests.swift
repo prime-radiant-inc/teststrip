@@ -192,6 +192,22 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(draft.destinationUnavailableReason, "Destination cannot be inside the card source")
     }
 
+    func testCardDraftBlocksStartWhenSourceIsInsideDestination() throws {
+        let destination = try makeTemporaryDirectory(named: "import-card-draft-nested-source")
+        let source = destination.appendingPathComponent("DCIM", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
+
+        let draft = ImportConfirmationDraft.card(
+            source: source,
+            destinationRoot: destination,
+            supportedExtensions: ["jpg"]
+        )
+
+        XCTAssertFalse(draft.canStartImport)
+        XCTAssertEqual(draft.destinationUnavailableReason, "Card source cannot be inside the destination")
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-import-confirmation-\(UUID().uuidString)", isDirectory: true)

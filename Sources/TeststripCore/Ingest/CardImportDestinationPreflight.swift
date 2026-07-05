@@ -25,6 +25,9 @@ public enum CardImportDestinationPreflight {
         if isDirectoryPath(destinationPath, inside: sourcePath) {
             return "Destination cannot be inside the card source"
         }
+        if isDirectoryPath(sourcePath, inside: destinationPath) {
+            return "Card source cannot be inside the destination"
+        }
         return nil
     }
 
