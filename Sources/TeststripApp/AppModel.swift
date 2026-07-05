@@ -3033,36 +3033,41 @@ public final class AppModel {
     }
 
     public func keepSelectedStackFrameAndRejectAlternates() throws {
-        guard let catalog else {
-            throw TeststripError.invalidState("app model has no catalog")
-        }
         let context = try selectedCullingStackDecisionContext()
-
-        for assetID in context.stack.assetIDs {
-            var metadata = try catalog.repository.asset(id: assetID).metadata
-            metadata.flag = assetID == context.selectedAssetID ? .pick : .reject
-            try applyMetadataSnapshot(assetID: assetID, metadata: metadata)
-        }
-        if let selectedWorkStackSetID = context.selectedWorkStackSetID {
-            try updatePersistedStackCullingSessionProgress(selectedStackSetID: selectedWorkStackSetID)
-        }
-
-        if try selectPersistedCullingStack(.next) {
-            return
-        } else if let nextAssetID = context.nextAssetID {
-            selectAssetID(nextAssetID)
-        }
+        try applyCullingStackDecision(context: context, pickedAssetIDs: [context.selectedAssetID])
     }
 
     public func keepAllFramesInSelectedCullingStack() throws {
+        let context = try selectedCullingStackDecisionContext()
+        try applyCullingStackDecision(context: context, pickedAssetIDs: Set(context.stack.assetIDs))
+    }
+
+    public func keepTopRankedFramesInSelectedCullingStack(assetIDs: [AssetID]) throws {
+        let context = try selectedCullingStackDecisionContext()
+        let keepSet = Set(assetIDs)
+        guard !keepSet.isEmpty,
+              keepSet.isSubset(of: Set(context.stack.assetIDs)) else {
+            throw TeststripError.invalidState("top-ranked frames must belong to the selected culling stack")
+        }
+        try applyCullingStackDecision(context: context, pickedAssetIDs: keepSet)
+    }
+
+    private func applyCullingStackDecision(
+        context: (
+            stack: AssetStack,
+            selectedAssetID: AssetID,
+            selectedWorkStackSetID: AssetSetID?,
+            nextAssetID: AssetID?
+        ),
+        pickedAssetIDs: Set<AssetID>
+    ) throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        let context = try selectedCullingStackDecisionContext()
 
         for assetID in context.stack.assetIDs {
             var metadata = try catalog.repository.asset(id: assetID).metadata
-            metadata.flag = .pick
+            metadata.flag = pickedAssetIDs.contains(assetID) ? .pick : .reject
             try applyMetadataSnapshot(assetID: assetID, metadata: metadata)
         }
         if let selectedWorkStackSetID = context.selectedWorkStackSetID {

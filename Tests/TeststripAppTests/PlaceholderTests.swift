@@ -90,9 +90,9 @@ final class LiveMockupPlaceholderTests: XCTestCase {
 
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep a selected"))
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep frame"))
-        XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep top"))
+        XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("top two scored"))
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep all frames"))
-        XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep top remains disabled"))
+        XCTAssertFalse(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep top remains disabled"))
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("session progress"))
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("similarity"))
         XCTAssertTrue(comparePlaceholder.currentFallback.localizedCaseInsensitiveContains("persisted culling stack sets"))

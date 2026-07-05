@@ -2390,6 +2390,82 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
     }
 
+    func testKeepingTopRankedFramesInPersistedStackPicksRankedFramesRejectsTheRestAndAdvancesProgress() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let first = makeAsset(
+            id: "top-ranked-first",
+            path: "/Photos/Stack/top-ranked-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let second = makeAsset(
+            id: "top-ranked-second",
+            path: "/Photos/Stack/top-ranked-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let third = makeAsset(
+            id: "top-ranked-third",
+            path: "/Photos/Stack/top-ranked-third.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(2))
+        )
+        let fourth = makeAsset(
+            id: "top-ranked-fourth",
+            path: "/Photos/Stack/top-ranked-fourth.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(3))
+        )
+        let next = makeAsset(
+            id: "top-ranked-next",
+            path: "/Photos/Stack/top-ranked-next.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(20))
+        )
+        let nextAlternate = makeAsset(
+            id: "top-ranked-next-alternate",
+            path: "/Photos/Stack/top-ranked-next-alternate.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(21))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "keep-top-ranked-persisted-stack",
+            assets: [first, second, third, fourth, next, nextAlternate]
+        )
+        let firstSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "work-stack-top-ranked-session-1"),
+            name: "Cull Stack 1",
+            assetIDs: [first.id, second.id, third.id, fourth.id]
+        )
+        let secondSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "work-stack-top-ranked-session-2"),
+            name: "Cull Stack 2",
+            assetIDs: [next.id, nextAlternate.id]
+        )
+        try repository.upsert(firstSet)
+        try repository.upsert(secondSet)
+        try repository.save(cullingSession(id: "top-ranked-session", inputSetIDs: [firstSet.id, secondSet.id], totalUnitCount: 6))
+        try model.applyAssetSet(id: firstSet.id)
+        model.select(second.id)
+
+        try model.keepTopRankedFramesInSelectedCullingStack(assetIDs: [third.id, second.id])
+
+        XCTAssertEqual(try repository.asset(id: first.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: second.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: third.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: fourth.id).metadata.flag, .reject)
+        XCTAssertNil(try repository.asset(id: next.id).metadata.flag)
+        XCTAssertEqual(model.assets.map(\.metadata.flag), [nil, nil])
+
+        let session = try repository.session(id: WorkSessionID(rawValue: "top-ranked-session"))
+        XCTAssertEqual(session.completedUnitCount, 4)
+        XCTAssertEqual(session.status, .running)
+        XCTAssertEqual(model.recentWork.first?.id, "top-ranked-session")
+        XCTAssertEqual(model.recentWork.first?.completedUnitCount, 4)
+        XCTAssertEqual(model.selectedAssetSetID, secondSet.id)
+        XCTAssertEqual(model.selectedAssetID, next.id)
+    }
+
     func testAcceptingFinalPersistedStackSelectionCompletesCullingSession() throws {
         let fixture = try makePersistedStackCullingFixture(
             named: "persisted-stack-completion",

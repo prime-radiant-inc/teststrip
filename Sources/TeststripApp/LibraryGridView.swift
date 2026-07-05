@@ -2642,12 +2642,22 @@ private struct LoupeView: View {
         keepSelectedStackFrame()
     }
 
+    private func keepTopRankedStackFrames(_ assetIDs: [AssetID]) {
+        do {
+            try model.keepTopRankedFramesInSelectedCullingStack(assetIDs: assetIDs)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
     private func performCullingStackAction(_ action: CullingStackAction) {
         switch action {
         case .keepSelectedAndRejectAlternates:
             keepSelectedStackFrame()
         case .keepRecommended(let assetID):
             keepRecommendedStackFrame(assetID)
+        case .keepTopRanked(let assetIDs):
+            keepTopRankedStackFrames(assetIDs)
         case .keepTopRankedPlaceholder:
             break
         case .keepAll:
@@ -3310,10 +3320,11 @@ struct CullingStackRailPresentation: Equatable {
             actions = []
             return
         }
-        let recommendation = CullingStackRecommendation.recommendation(
+        let rankedCandidates = CullingStackRecommendation.rankedCandidates(
             stackAssetIDs: stackScope.assetIDs,
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
+        let recommendation = rankedCandidates.first
 
         items = stackScope.assetIDs.enumerated().map { index, assetID in
             Item(
@@ -3341,7 +3352,7 @@ struct CullingStackRailPresentation: Equatable {
                 help: keepActionHelp,
                 liveMockupPlaceholder: nil
             ),
-            Self.recommendedAction(for: recommendation),
+            Self.rankedAction(for: rankedCandidates, stackCount: stackScope.assetIDs.count),
             CullingStackActionPresentation(
                 action: .keepAll,
                 title: "Keep all \(stackScope.assetIDs.count)",
@@ -3356,10 +3367,22 @@ struct CullingStackRailPresentation: Equatable {
         !items.isEmpty
     }
 
-    private static func recommendedAction(
-        for recommendation: CullingStackRecommendation?
+    private static func rankedAction(
+        for rankedCandidates: [CullingStackRecommendation],
+        stackCount: Int
     ) -> CullingStackActionPresentation {
-        guard let recommendation else {
+        let topTwo = Array(rankedCandidates.prefix(2))
+        if stackCount > 2, topTwo.count >= 2 {
+            return CullingStackActionPresentation(
+                action: .keepTopRanked(topTwo.map(\.assetID)),
+                title: "Keep top 2",
+                isEnabled: true,
+                help: "Keep the two top-ranked frames based on focus and quality signals.",
+                liveMockupPlaceholder: nil
+            )
+        }
+
+        guard let recommendation = rankedCandidates.first else {
             return CullingStackActionPresentation(
                 action: .keepTopRankedPlaceholder,
                 title: "Keep top 2",
@@ -3382,6 +3405,7 @@ struct CullingStackRailPresentation: Equatable {
 enum CullingStackAction: Equatable {
     case keepSelectedAndRejectAlternates
     case keepTopRankedPlaceholder
+    case keepTopRanked([AssetID])
     case keepRecommended(AssetID)
     case keepAll
 }
@@ -3399,6 +3423,8 @@ struct CullingStackActionPresentation: Equatable, Identifiable {
             return "keep-selected-and-reject-alternates"
         case .keepTopRankedPlaceholder:
             return "keep-top-ranked-placeholder"
+        case .keepTopRanked(let assetIDs):
+            return "keep-top-ranked-\(assetIDs.map(\.rawValue).joined(separator: "-"))"
         case .keepRecommended(let assetID):
             return "keep-recommended-\(assetID.rawValue)"
         case .keepAll:
@@ -3412,21 +3438,21 @@ private struct CullingStackRecommendation: Equatable {
     var frameLabel: String
     var score: Double
 
-    static func recommendation(
+    static func rankedCandidates(
         stackAssetIDs: [AssetID],
         evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
-    ) -> CullingStackRecommendation? {
+    ) -> [CullingStackRecommendation] {
         let candidates = stackAssetIDs.enumerated().compactMap { index, assetID -> CullingStackRecommendation? in
             guard let score = qualityScore(for: evaluationSignalsByAssetID[assetID] ?? []) else {
                 return nil
             }
             return CullingStackRecommendation(assetID: assetID, frameLabel: "\(index + 1)", score: score)
         }
-        return candidates.max { lhs, rhs in
+        return candidates.sorted { lhs, rhs in
             if lhs.score != rhs.score {
-                return lhs.score < rhs.score
+                return lhs.score > rhs.score
             }
-            return lhs.frameLabel > rhs.frameLabel
+            return lhs.frameLabel < rhs.frameLabel
         }
     }
 

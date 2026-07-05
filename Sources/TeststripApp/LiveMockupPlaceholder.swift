@@ -159,7 +159,7 @@ public enum LiveMockupPlaceholders {
         id: "culling.stack-cull",
         title: "Stack cull",
         intendedBehavior: "Group bursts or near-duplicates into stacks and cull the strongest candidate within each stack.",
-        currentFallback: "Loupe culling can keep a selected frame from persisted import stack sets or same-folder capture-time fallback stacks through the Keep frame action, keep all frames in the active stack, reject alternates, and refresh persisted culling session progress; Keep top remains disabled, and real similarity and near-duplicate grouping are still pending."
+        currentFallback: "Loupe culling can keep a selected frame from persisted import stack sets or same-folder capture-time fallback stacks through the Keep frame action, keep the top two scored frames when persisted quality signals rank enough candidates, keep all frames in the active stack, reject alternates, and refresh persisted culling session progress; real similarity and near-duplicate grouping are still pending."
     )
 
     public static let focusCompare = LiveMockupPlaceholder(

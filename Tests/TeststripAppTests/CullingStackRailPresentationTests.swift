@@ -65,9 +65,6 @@ final class CullingStackRailPresentationTests: XCTestCase {
             assets: assets,
             selectedAssetID: AssetID(rawValue: "selected"),
             evaluationSignalsByAssetID: [
-                AssetID(rawValue: "selected"): [
-                    signal(assetID: AssetID(rawValue: "selected"), kind: .focus, score: 0.62)
-                ],
                 alternateID: [
                     signal(assetID: alternateID, kind: .focus, score: 0.94)
                 ]
@@ -81,6 +78,66 @@ final class CullingStackRailPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.actions.map(\.liveMockupPlaceholder), [nil, nil, nil])
         XCTAssertEqual(presentation.actions[1].action, .keepRecommended(alternateID))
         XCTAssertTrue(presentation.actions[1].help.localizedCaseInsensitiveContains("focus"))
+    }
+
+    func testKeepTopActionUsesTwoHighestPersistedQualitySignals() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let assets = [
+            makeAsset(id: "lead", path: "/Photos/Job/lead.cr2", capturedAt: capturedAt),
+            makeAsset(id: "selected", path: "/Photos/Job/selected.cr2", capturedAt: capturedAt.addingTimeInterval(1)),
+            makeAsset(id: "alternate", path: "/Photos/Job/alternate.cr2", capturedAt: capturedAt.addingTimeInterval(1.8)),
+            makeAsset(id: "miss", path: "/Photos/Job/miss.cr2", capturedAt: capturedAt.addingTimeInterval(2.4))
+        ]
+        let selectedID = AssetID(rawValue: "selected")
+        let alternateID = AssetID(rawValue: "alternate")
+
+        let presentation = CullingStackRailPresentation(
+            assets: assets,
+            selectedAssetID: selectedID,
+            evaluationSignalsByAssetID: [
+                AssetID(rawValue: "lead"): [
+                    signal(assetID: AssetID(rawValue: "lead"), kind: .focus, score: 0.41)
+                ],
+                selectedID: [
+                    signal(assetID: selectedID, kind: .focus, score: 0.88)
+                ],
+                alternateID: [
+                    signal(assetID: alternateID, kind: .focus, score: 0.94)
+                ]
+            ],
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 3)
+        )
+
+        XCTAssertEqual(presentation.items.map(\.assetID), assets.map(\.id))
+        XCTAssertEqual(presentation.items.map(\.isRecommended), [false, false, true, false])
+        XCTAssertEqual(presentation.actions.map(\.title), ["Keep frame 2 · cut 3", "Keep top 2", "Keep all 4"])
+        XCTAssertEqual(presentation.actions.map(\.isEnabled), [true, true, true])
+        XCTAssertEqual(presentation.actions.map(\.liveMockupPlaceholder), [nil, nil, nil])
+        XCTAssertEqual(presentation.actions[1].action, .keepTopRanked([alternateID, selectedID]))
+        XCTAssertTrue(presentation.actions[1].help.localizedCaseInsensitiveContains("top-ranked"))
+    }
+
+    func testTwoFrameStackWithTwoSignalsStillOffersSingleRecommendedFrame() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let selected = makeAsset(id: "selected", path: "/Photos/Job/selected.cr2", capturedAt: capturedAt)
+        let alternate = makeAsset(id: "alternate", path: "/Photos/Job/alternate.cr2", capturedAt: capturedAt.addingTimeInterval(1))
+
+        let presentation = CullingStackRailPresentation(
+            assets: [selected, alternate],
+            selectedAssetID: selected.id,
+            evaluationSignalsByAssetID: [
+                selected.id: [
+                    signal(assetID: selected.id, kind: .focus, score: 0.78)
+                ],
+                alternate.id: [
+                    signal(assetID: alternate.id, kind: .focus, score: 0.93)
+                ]
+            ],
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 2)
+        )
+
+        XCTAssertEqual(presentation.actions.map(\.title), ["Keep frame 1 · cut 1", "Keep recommended 2", "Keep all 2"])
+        XCTAssertEqual(presentation.actions[1].action, .keepRecommended(alternate.id))
     }
 
     func testExplicitPersistedStackScopeDoesNotRequireLoadedTimeAdjacency() {
