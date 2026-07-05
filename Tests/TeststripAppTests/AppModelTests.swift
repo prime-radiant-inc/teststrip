@@ -4051,6 +4051,37 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testConfirmSelectedAssetAsPersonPersistsNamedGroup() throws {
+        let asset = makeAsset(id: "selected-face", path: "/Volumes/NAS/Wedding/selected-face.jpg", rating: 4)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-confirm-person",
+            assets: [asset]
+        )
+
+        let person = try model.confirmSelectedAssetsAsPerson(named: " Maya ", id: "person-maya")
+
+        XCTAssertEqual(person, CatalogPerson(id: "person-maya", name: "Maya", assetCount: 1))
+        XCTAssertEqual(model.catalogPeople, [person])
+        XCTAssertEqual(try repository.assetIDs(personID: "person-maya"), [asset.id])
+    }
+
+    func testConfirmSelectedBatchAsPersonUsesBatchInsteadOfPrimarySelection() throws {
+        let primary = makeAsset(id: "primary", path: "/Volumes/NAS/Wedding/primary.jpg", rating: 4)
+        let batchA = makeAsset(id: "batch-a", path: "/Volumes/NAS/Wedding/batch-a.jpg", rating: 4)
+        let batchB = makeAsset(id: "batch-b", path: "/Volumes/NAS/Wedding/batch-b.jpg", rating: 4)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-confirm-person-batch",
+            assets: [primary, batchA, batchB]
+        )
+        model.setBatchSelection(batchA.id, isSelected: true)
+        model.setBatchSelection(batchB.id, isSelected: true)
+
+        let person = try model.confirmSelectedAssetsAsPerson(named: "Maya", id: "person-maya")
+
+        XCTAssertEqual(person, CatalogPerson(id: "person-maya", name: "Maya", assetCount: 2))
+        XCTAssertEqual(try repository.assetIDs(personID: "person-maya"), [batchA.id, batchB.id])
+    }
+
     func testLoadExposesSourceAvailabilityRowsInSidebarAndSelectingRowAppliesFilter() throws {
         let online = makeAsset(id: "online", path: "/Volumes/NAS/Job/online.cr2", rating: 4)
         let offline = makeAsset(id: "offline", path: "/Volumes/NAS/Job/offline.cr2", rating: 4, availability: .offline)

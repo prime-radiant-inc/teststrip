@@ -4,6 +4,9 @@ import TeststripCore
 struct PeopleView: View {
     var model: AppModel
 
+    @State private var isNamingSelection = false
+    @State private var personName = ""
+
     private var presentation: PeoplePresentation {
         PeoplePresentation(
             totalAssetCount: model.totalAssetCount,
@@ -24,6 +27,9 @@ struct PeopleView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(nsColor: .textBackgroundColor).opacity(0.08))
+        .sheet(isPresented: $isNamingSelection) {
+            nameSelectionSheet
+        }
         .liveMockupPlaceholder(.peopleSidebar)
     }
 
@@ -102,6 +108,16 @@ struct PeopleView: View {
                 .font(.caption2.monospaced().weight(.semibold))
                 .foregroundStyle(.secondary)
 
+            Button {
+                personName = ""
+                isNamingSelection = true
+            } label: {
+                Label("Name selection", systemImage: "person.crop.circle.badge.plus")
+            }
+            .controlSize(.small)
+            .disabled(!model.canConfirmSelectedPerson)
+            .help(model.canConfirmSelectedPerson ? "Create a confirmed person group from the selected photos" : "Select photos before naming a person")
+
             if presentation.namedPeople.isEmpty {
                 HStack(alignment: .top, spacing: 12) {
                     Circle()
@@ -144,6 +160,38 @@ struct PeopleView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var nameSelectionSheet: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Name Selection")
+                .font(.headline.weight(.semibold))
+            TextField("Person name", text: $personName)
+                .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    isNamingSelection = false
+                }
+                Button("Create") {
+                    confirmSelectedPerson()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(personName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(18)
+        .frame(width: 320)
+    }
+
+    private func confirmSelectedPerson() {
+        do {
+            try model.confirmSelectedAssetsAsPerson(named: personName)
+            isNamingSelection = false
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 

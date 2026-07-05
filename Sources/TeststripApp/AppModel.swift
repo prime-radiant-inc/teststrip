@@ -1585,6 +1585,18 @@ public final class AppModel {
         return "Catalog Cull"
     }
 
+    public var canConfirmSelectedPerson: Bool {
+        catalog != nil && !selectedPeopleCandidateAssetIDs.isEmpty
+    }
+
+    private var selectedPeopleCandidateAssetIDs: [AssetID] {
+        let batchAssetIDs = selectedBatchAssetIDsInCatalogOrder
+        if !batchAssetIDs.isEmpty {
+            return batchAssetIDs
+        }
+        return selectedAssetID.map { [$0] } ?? []
+    }
+
     public var suggestedReconnectOldRootPath: String {
         if let sourceRoot = sourceRoots.first(where: { $0.unavailableAssetCount > 0 }) {
             return sourceRoot.path
@@ -1593,6 +1605,29 @@ public final class AppModel {
             .filter { $0.availability != .online }
             .map { $0.originalURL.deletingLastPathComponent().standardizedFileURL.path }
         return Self.commonAncestorPath(for: unavailableFolders) ?? ""
+    }
+
+    @discardableResult
+    public func confirmSelectedAssetsAsPerson(named name: String, id: String = "person-\(UUID().uuidString)") throws -> CatalogPerson {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw TeststripError.invalidState("person name is required")
+        }
+        let assetIDs = selectedPeopleCandidateAssetIDs
+        guard !assetIDs.isEmpty else {
+            throw TeststripError.invalidState("select photos before naming a person")
+        }
+
+        try catalog.repository.upsertPerson(id: id, name: trimmedName)
+        try catalog.repository.assignAssets(assetIDs, toPersonID: id)
+        catalogPeople = try catalog.repository.people()
+        guard let person = catalogPeople.first(where: { $0.id == id }) else {
+            throw CatalogError.notFound(id)
+        }
+        return person
     }
 
     public init(
