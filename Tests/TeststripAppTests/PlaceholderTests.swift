@@ -98,6 +98,7 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let peopleRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-people" })
 
         XCTAssertEqual(peopleRow.liveMockupPlaceholder, .peopleSidebar)
+        XCTAssertEqual(peopleRow.detailText, "Face review")
         XCTAssertTrue(peopleRow.isSelectable)
         XCTAssertEqual(peopleRow.target, .people)
     }

@@ -171,9 +171,9 @@ struct PeopleView: View {
     }
 
     private func selectPeopleReviewCard(_ card: PeopleReviewCard) {
-        guard let kind = card.filterKind else { return }
+        guard let target = card.target else { return }
         do {
-            try model.selectPeopleSignal(kind)
+            try model.selectSidebarTarget(target)
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -249,6 +249,7 @@ struct PeoplePresentation: Equatable {
                 countText: Self.photoCountDescription(photosWithDetectedFaces),
                 suggestedActionTitle: "Review faces",
                 filterKind: faceSignalKind,
+                target: faceSignalKind == .faceCount ? .reviewQueue(.facesFound) : .evaluationKind(faceSignalKind),
                 gradientColors: [.orange, .brown]
             ))
         }
@@ -259,6 +260,7 @@ struct PeoplePresentation: Equatable {
                 countText: Self.photoCountDescription(photosWithFaceQualitySignals),
                 suggestedActionTitle: "Review quality",
                 filterKind: .faceQuality,
+                target: .evaluationKind(.faceQuality),
                 gradientColors: [.orange, .yellow]
             ))
         }
@@ -329,11 +331,12 @@ struct PeopleReviewCard: Equatable, Identifiable {
     var countText: String
     var suggestedActionTitle: String
     var filterKind: EvaluationKind?
+    var target: SidebarRowTarget?
     var isNamingEnabled = false
     var gradientColors: [Color]
 
     var isActionEnabled: Bool {
-        filterKind != nil
+        target != nil
     }
 }
 

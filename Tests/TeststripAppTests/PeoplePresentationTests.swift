@@ -19,6 +19,7 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.reviewCards.map(\.countText), ["3 photos", "44 photos"])
         XCTAssertEqual(presentation.reviewCards.map(\.suggestedActionTitle), ["Review faces", "Review quality"])
         XCTAssertEqual(presentation.reviewCards.map(\.filterKind), [.faceCount, .faceQuality])
+        XCTAssertEqual(presentation.reviewCards.map(\.target), [.reviewQueue(.facesFound), .evaluationKind(.faceQuality)])
         XCTAssertTrue(presentation.reviewCards.allSatisfy { !$0.isNamingEnabled })
         XCTAssertEqual(presentation.namedPeopleTitle, "ALL PEOPLE")
         XCTAssertEqual(presentation.namedPeopleEmptyText, "Named people will appear here after face clustering and confirmation ship.")
@@ -52,6 +53,7 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.signalRows.map(\.countText), ["5", "5"])
         XCTAssertEqual(presentation.signalRows.map(\.filterKind), [.faceQuality, .faceQuality])
         XCTAssertEqual(presentation.signalRows.map(\.isActionEnabled), [true, true])
+        XCTAssertEqual(presentation.reviewCards.map(\.target), [.evaluationKind(.faceQuality), .evaluationKind(.faceQuality)])
     }
 
     func testFaceCountRowCountMatchesItsFilterWhenFaceQualityCountIsHigher() {

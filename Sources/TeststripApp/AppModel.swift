@@ -5790,7 +5790,7 @@ public final class AppModel {
             SidebarRow(
                 id: "library-people",
                 title: "People",
-                detailText: "Face groups",
+                detailText: "Face review",
                 tone: .accent,
                 target: .people,
                 liveMockupPlaceholder: .peopleSidebar
