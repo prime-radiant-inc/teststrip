@@ -161,7 +161,7 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertFalse(presentation.groupKindText.localizedCaseInsensitiveContains("burst"))
     }
 
-    func testDisabledGroupActionsCarryLiveMockupPlaceholders() {
+    func testGroupActionsExposeLiveKeepAllAndRemainingManualPlaceholder() {
         let assets = [
             makeAsset(id: "primary"),
             makeAsset(id: "second")
@@ -171,9 +171,9 @@ final class CompareSurveyPresentationTests: XCTestCase {
         let actions = presentation.groupActions(canApplyPrimaryChoice: true)
 
         XCTAssertEqual(actions.map(\.title), ["Keep primary · reject 1", "Keep all", "Choose manually"])
-        XCTAssertEqual(actions.map(\.isEnabled), [true, false, false])
+        XCTAssertEqual(actions.map(\.isEnabled), [true, true, false])
         XCTAssertNil(actions[0].liveMockupPlaceholder)
-        XCTAssertEqual(actions[1].liveMockupPlaceholder, .compareSurvey)
+        XCTAssertNil(actions[1].liveMockupPlaceholder)
         XCTAssertEqual(actions[2].liveMockupPlaceholder, .cullingStackCull)
     }
 

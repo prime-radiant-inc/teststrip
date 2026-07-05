@@ -820,6 +820,12 @@ private struct MetadataChange: Equatable {
     var after: AssetMetadata
 }
 
+private struct CompareFlagChangeSummary {
+    var changedCount = 0
+    var pickedCount = 0
+    var rejectedCount = 0
+}
+
 private struct WorkerImportContext {
     var source: URL
     var destinationRoot: URL?
@@ -2767,7 +2773,7 @@ public final class AppModel {
     }
 
     public func keepComparePrimaryAndRejectAlternates() throws {
-        guard let catalog else {
+        guard catalog != nil else {
             throw TeststripError.invalidState("app model has no catalog")
         }
         let compareGroup = compareAssets()
@@ -2775,17 +2781,55 @@ public final class AppModel {
             throw TeststripError.invalidState("no compare set")
         }
 
-        var changedCount = 0
-        var rejectedCount = 0
+        let summary = try applyCompareFlags(
+            compareGroup.reduce(into: [AssetID: PickFlag]()) { flags, compareAsset in
+                flags[compareAsset.id] = compareAsset.id == primaryAsset.id ? .pick : .reject
+            },
+            to: compareGroup
+        )
+
+        statusMessage = summary.rejectedCount == 0
+            ? "Kept \(primaryAsset.originalURL.lastPathComponent)"
+            : "Kept \(primaryAsset.originalURL.lastPathComponent); rejected \(summary.rejectedCount) alternates"
+    }
+
+    public func keepAllCompareAssets() throws {
+        guard catalog != nil else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let compareGroup = compareAssets()
+        guard !compareGroup.isEmpty else {
+            throw TeststripError.invalidState("no compare set")
+        }
+
+        let summary = try applyCompareFlags(
+            compareGroup.reduce(into: [AssetID: PickFlag]()) { flags, compareAsset in
+                flags[compareAsset.id] = .pick
+            },
+            to: compareGroup
+        )
+
+        statusMessage = "Kept all \(summary.pickedCount) compare frames"
+    }
+
+    private func applyCompareFlags(
+        _ flagsByAssetID: [AssetID: PickFlag],
+        to compareGroup: [Asset]
+    ) throws -> CompareFlagChangeSummary {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        var summary = CompareFlagChangeSummary()
         for compareAsset in compareGroup {
-            let targetFlag: PickFlag = compareAsset.id == primaryAsset.id ? .pick : .reject
-            let originalAsset = try catalog.repository.asset(id: compareAsset.id)
-            guard originalAsset.metadata.flag != targetFlag else {
-                if targetFlag == .reject {
-                    rejectedCount += 1
-                }
-                continue
+            guard let targetFlag = flagsByAssetID[compareAsset.id] else { continue }
+            switch targetFlag {
+            case .pick:
+                summary.pickedCount += 1
+            case .reject:
+                summary.rejectedCount += 1
             }
+            let originalAsset = try catalog.repository.asset(id: compareAsset.id)
+            guard originalAsset.metadata.flag != targetFlag else { continue }
             var updatedMetadata = originalAsset.metadata
             updatedMetadata.flag = targetFlag
             try applyMetadataSnapshot(assetID: compareAsset.id, metadata: updatedMetadata)
@@ -2794,18 +2838,13 @@ public final class AppModel {
                 before: originalAsset.metadata,
                 after: updatedMetadata
             ))
-            if targetFlag == .reject {
-                rejectedCount += 1
-            }
-            changedCount += 1
+            summary.changedCount += 1
         }
 
-        if changedCount > 0 {
+        if summary.changedCount > 0 {
             metadataRedoStack.removeAll()
         }
-        statusMessage = rejectedCount == 0
-            ? "Kept \(primaryAsset.originalURL.lastPathComponent)"
-            : "Kept \(primaryAsset.originalURL.lastPathComponent); rejected \(rejectedCount) alternates"
+        return summary
     }
 
     private func comparePrimaryAsset(in compareGroup: [Asset]) -> Asset? {

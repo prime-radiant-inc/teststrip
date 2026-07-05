@@ -443,6 +443,27 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.assets[8].metadata.flag)
     }
 
+    func testKeepAllCompareAssetsMarksCurrentCompareSetAsPicksOnly() throws {
+        let assets = (0..<9).map { makeAsset(id: "compare-keep-all-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-keep-all-action",
+            assets: assets
+        )
+        model.selectedView = .compare
+        model.select(assets[1].id)
+
+        try model.keepAllCompareAssets()
+
+        for asset in assets[0..<8] {
+            XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .pick)
+        }
+        XCTAssertNil(try repository.asset(id: assets[8].id).metadata.flag)
+        for asset in model.assets[0..<8] {
+            XCTAssertEqual(asset.metadata.flag, .pick)
+        }
+        XCTAssertNil(model.assets[8].metadata.flag)
+    }
+
     func testLibraryCountTextShowsLoadedAndTotalWhenGridIsLimited() {
         let asset = Asset(
             id: AssetID(rawValue: "first"),

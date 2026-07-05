@@ -2946,9 +2946,9 @@ struct CompareSurveyPresentation: Equatable {
             CompareSurveyActionPresentation(
                 action: .keepAll,
                 title: "Keep all",
-                isEnabled: false,
-                help: "Keeps the current compare group unchanged once compare group decisions are persisted.",
-                liveMockupPlaceholder: .compareSurvey
+                isEnabled: canApplyPrimaryChoice && !orderedAssets.isEmpty,
+                help: "Marks every frame in the current compare set as Pick",
+                liveMockupPlaceholder: nil
             ),
             CompareSurveyActionPresentation(
                 action: .chooseManually,
@@ -3702,7 +3702,9 @@ private struct CompareView: View {
                 .disabled(!primaryGroupAction.isEnabled)
                 .help(primaryGroupAction.help)
                 .liveMockupPlaceholder(primaryGroupAction.liveMockupPlaceholder)
-            Button(keepAllAction.title) {}
+            Button(keepAllAction.title) {
+                applyCompareKeepAll()
+            }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .disabled(!keepAllAction.isEnabled)
@@ -3745,6 +3747,15 @@ private struct CompareView: View {
         do {
             focusCullingSurface()
             try model.keepComparePrimaryAndRejectAlternates()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyCompareKeepAll() {
+        do {
+            focusCullingSurface()
+            try model.keepAllCompareAssets()
         } catch {
             model.errorMessage = error.localizedDescription
         }
