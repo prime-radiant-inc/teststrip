@@ -27,6 +27,7 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(identity.extensionBadge, "CR2")
         XCTAssertEqual(identity.availabilityText, "Availability: offline")
         XCTAssertEqual(identity.ratingText, "Rating: 4")
+        XCTAssertEqual(identity.accessibilityValue, "Availability: offline, Rating: 4")
         XCTAssertNil(identity.capturedText)
     }
 

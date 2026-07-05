@@ -108,10 +108,10 @@ func children(of element: AXUIElement) -> [AXUIElement] {
     let navigationChildren = attribute(element, "AXChildrenInNavigationOrder") as? [AXUIElement] ?? []
     let visibleChildren = attribute(element, kAXVisibleChildrenAttribute) as? [AXUIElement] ?? []
     let windows = attribute(element, kAXWindowsAttribute) as? [AXUIElement] ?? []
-    var seen = Set<CFHashCode>()
+    var seen = Set<ObjectIdentifier>()
     var uniqueChildren: [AXUIElement] = []
     for child in directChildren + navigationChildren + visibleChildren + windows {
-        let key = CFHash(child)
+        let key = ObjectIdentifier(child)
         guard seen.insert(key).inserted else { continue }
         uniqueChildren.append(child)
     }
@@ -125,10 +125,10 @@ func accessibleText(_ element: AXUIElement) -> String? {
 }
 
 func walk(_ element: AXUIElement, visit: (AXUIElement) -> Bool) -> AXUIElement? {
-    var visited = Set<CFHashCode>()
+    var visited = Set<ObjectIdentifier>()
     var stack = [element]
     while let current = stack.popLast() {
-        let key = CFHash(current)
+        let key = ObjectIdentifier(current)
         guard visited.insert(key).inserted else { continue }
         if visit(current) {
             return current

@@ -13,6 +13,7 @@ struct InspectorAssetIdentity: Equatable {
     var extensionBadge: String?
     var availabilityText: String
     var ratingText: String
+    var accessibilityValue: String
     var capturedText: String?
 
     init(asset: Asset) {
@@ -24,6 +25,7 @@ struct InspectorAssetIdentity: Equatable {
             : asset.originalURL.deletingPathExtension().lastPathComponent
         availabilityText = "Availability: \(asset.availability.rawValue)"
         ratingText = "Rating: \(asset.metadata.rating)"
+        accessibilityValue = "\(availabilityText), \(ratingText)"
         capturedText = asset.technicalMetadata?.capturedAt?.formatted(date: .abbreviated, time: .shortened)
     }
 }
@@ -362,6 +364,7 @@ struct InspectorView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(identity.fullFilename)
+        .accessibilityValue(identity.accessibilityValue)
     }
 
     @ViewBuilder

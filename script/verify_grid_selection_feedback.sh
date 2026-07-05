@@ -65,10 +65,10 @@ func isImageFilename(_ text: String) -> Bool {
 }
 
 func walk(_ element: AXUIElement, visit: (AXUIElement) -> Bool) -> AXUIElement? {
-    var visited = Set<CFHashCode>()
+    var visited = Set<ObjectIdentifier>()
     var stack = [element]
     while let current = stack.popLast() {
-        let key = CFHash(current)
+        let key = ObjectIdentifier(current)
         guard visited.insert(key).inserted else { continue }
         if visit(current) {
             return current
