@@ -26,9 +26,21 @@ final class CullingKeyCaptureTests: XCTestCase {
             charactersIgnoringModifiers: arrowCharacter(NSRightArrowFunctionKey),
             keyCode: 124
         )
+        let up = try makeKeyEvent(
+            characters: arrowCharacter(NSUpArrowFunctionKey),
+            charactersIgnoringModifiers: arrowCharacter(NSUpArrowFunctionKey),
+            keyCode: 126
+        )
+        let down = try makeKeyEvent(
+            characters: arrowCharacter(NSDownArrowFunctionKey),
+            charactersIgnoringModifiers: arrowCharacter(NSDownArrowFunctionKey),
+            keyCode: 125
+        )
 
         XCTAssertEqual(CullingShortcut(event: left), .previousPhoto)
         XCTAssertEqual(CullingShortcut(event: right), .nextPhoto)
+        XCTAssertEqual(CullingShortcut(event: up), .previousStack)
+        XCTAssertEqual(CullingShortcut(event: down), .nextStack)
     }
 
     func testCullingShortcutMapsSpaceAndReturnKeyEvents() throws {

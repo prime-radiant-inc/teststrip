@@ -1615,6 +1615,81 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, next.id)
     }
 
+    func testCullingShortcutMovesBetweenLoadedStacks() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let firstStackFirst = makeAsset(
+            id: "shortcut-first-stack-first",
+            path: "/Photos/Job/shortcut-first-stack-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let firstStackSecond = makeAsset(
+            id: "shortcut-first-stack-second",
+            path: "/Photos/Job/shortcut-first-stack-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let singleton = makeAsset(
+            id: "shortcut-stack-singleton",
+            path: "/Photos/Job/shortcut-stack-singleton.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(5))
+        )
+        let secondStackFirst = makeAsset(
+            id: "shortcut-second-stack-first",
+            path: "/Photos/Job/shortcut-second-stack-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(10))
+        )
+        let secondStackSecond = makeAsset(
+            id: "shortcut-second-stack-second",
+            path: "/Photos/Job/shortcut-second-stack-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(11))
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "stack-navigation-shortcuts",
+            assets: [firstStackFirst, firstStackSecond, singleton, secondStackFirst, secondStackSecond]
+        )
+        model.select(firstStackSecond.id)
+
+        try model.applyCullingShortcut(.nextStack)
+
+        XCTAssertEqual(model.selectedAssetID, secondStackFirst.id)
+
+        model.select(singleton.id)
+        try model.applyCullingShortcut(.previousStack)
+
+        XCTAssertEqual(model.selectedAssetID, firstStackFirst.id)
+    }
+
+    func testCullingStackShortcutsIgnoreCatalogsWithoutLoadedStacks() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let first = makeAsset(
+            id: "shortcut-stackless-first",
+            path: "/Photos/Job/shortcut-stackless-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let second = makeAsset(
+            id: "shortcut-stackless-second",
+            path: "/Photos/Job/shortcut-stackless-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(5))
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "stack-navigation-without-stacks",
+            assets: [first, second]
+        )
+        model.select(second.id)
+
+        try model.applyCullingShortcut(.nextStack)
+        XCTAssertEqual(model.selectedAssetID, second.id)
+
+        try model.applyCullingShortcut(.previousStack)
+        XCTAssertEqual(model.selectedAssetID, second.id)
+    }
+
     func testCullingShortcutLoadsNextPageWhenAdvancingPastLoadedAssets() throws {
         let model = try makeModelWithSeededCatalog(named: "culling-next-page", count: 121)
         model.select(AssetID(rawValue: "asset-119"))
@@ -1643,6 +1718,8 @@ final class AppModelTests: XCTestCase {
     func testCullingShortcutInterpretsKeyboardKeys() {
         XCTAssertEqual(CullingShortcut(key: .rightArrow), .nextPhoto)
         XCTAssertEqual(CullingShortcut(key: .leftArrow), .previousPhoto)
+        XCTAssertEqual(CullingShortcut(key: .upArrow), .previousStack)
+        XCTAssertEqual(CullingShortcut(key: .downArrow), .nextStack)
         XCTAssertEqual(CullingShortcut(key: .character(" ")), .nextPhoto)
         XCTAssertEqual(CullingShortcut(key: .returnKey), .acceptStackSelection)
         XCTAssertEqual(CullingShortcut(key: .character("5")), .rating(5))

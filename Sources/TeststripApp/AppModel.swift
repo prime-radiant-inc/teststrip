@@ -49,6 +49,8 @@ public struct CullingProgressSummary: Equatable, Sendable {
 public enum CullingShortcut: Equatable, Sendable {
     case previousPhoto
     case nextPhoto
+    case previousStack
+    case nextStack
     case rating(Int)
     case colorLabel(ColorLabel?)
     case pick
@@ -62,6 +64,10 @@ public enum CullingShortcut: Equatable, Sendable {
             self = .previousPhoto
         case .rightArrow:
             self = .nextPhoto
+        case .upArrow:
+            self = .previousStack
+        case .downArrow:
+            self = .nextStack
         case .returnKey:
             self = .acceptStackSelection
         case .character(let character):
@@ -91,8 +97,25 @@ public enum CullingShortcut: Equatable, Sendable {
 public enum CullingShortcutKey: Equatable, Sendable {
     case leftArrow
     case rightArrow
+    case upArrow
+    case downArrow
     case returnKey
     case character(String)
+}
+
+private enum CullingStackNavigationDirection {
+    case previous
+    case next
+}
+
+private struct IndexedCullingStack {
+    var stack: AssetStack
+    var firstIndex: Int
+    var lastIndex: Int
+
+    var firstAssetID: AssetID? {
+        stack.assetIDs.first
+    }
 }
 
 public enum ReviewQueue: String, Equatable, Hashable, Sendable {
@@ -2244,9 +2267,7 @@ public final class AppModel {
         guard let selectedAssetID else {
             throw TeststripError.invalidState("no selected asset")
         }
-        let stacks = AssetStackBuilder(
-            maximumCaptureGap: Self.candidateStackMaximumCaptureGap
-        ).stacks(from: assets)
+        let stacks = cullingStacks()
         guard let stack = stacks.first(where: { $0.assetIDs.contains(selectedAssetID) }),
               stack.assetIDs.count > 1 else {
             throw TeststripError.invalidState("selected asset is not in a culling stack")
@@ -2270,6 +2291,10 @@ public final class AppModel {
             try selectPreviousAssetForCulling()
         case .nextPhoto:
             try selectNextAssetForCulling()
+        case .previousStack:
+            selectPreviousStackForCulling()
+        case .nextStack:
+            selectNextStackForCulling()
         case .rating(let rating):
             try applyCullingCommandAndAdvance(.rating(rating))
         case .colorLabel(let colorLabel):
@@ -2325,6 +2350,61 @@ public final class AppModel {
             return nil
         }
         return assets[nextIndex].id
+    }
+
+    private func cullingStacks() -> [AssetStack] {
+        AssetStackBuilder(
+            maximumCaptureGap: Self.candidateStackMaximumCaptureGap
+        ).stacks(from: assets).filter { $0.assetIDs.count > 1 }
+    }
+
+    private func selectNextStackForCulling() {
+        selectCullingStack(.next)
+    }
+
+    private func selectPreviousStackForCulling() {
+        selectCullingStack(.previous)
+    }
+
+    private func selectCullingStack(_ direction: CullingStackNavigationDirection) {
+        let indexedStacks = cullingStacks().compactMap { stack -> IndexedCullingStack? in
+            let stackAssetIDs = Set(stack.assetIDs)
+            guard let firstIndex = assets.firstIndex(where: { stackAssetIDs.contains($0.id) }),
+                  let lastIndex = assets.lastIndex(where: { stackAssetIDs.contains($0.id) }) else {
+                return nil
+            }
+            return IndexedCullingStack(stack: stack, firstIndex: firstIndex, lastIndex: lastIndex)
+        }
+        guard !indexedStacks.isEmpty else { return }
+
+        guard let selectedAssetID,
+              let selectedIndex = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
+            selectAssetID(direction == .next ? indexedStacks.first?.firstAssetID : indexedStacks.last?.firstAssetID)
+            return
+        }
+
+        let selectedStackIndex = indexedStacks.firstIndex { indexedStack in
+            indexedStack.stack.assetIDs.contains(selectedAssetID)
+        }
+        let targetStack: IndexedCullingStack?
+        switch direction {
+        case .previous:
+            if let selectedStackIndex {
+                targetStack = indexedStacks.indices.contains(selectedStackIndex - 1) ? indexedStacks[selectedStackIndex - 1] : nil
+            } else {
+                targetStack = indexedStacks.last { $0.lastIndex < selectedIndex }
+            }
+        case .next:
+            if let selectedStackIndex {
+                targetStack = indexedStacks.indices.contains(selectedStackIndex + 1) ? indexedStacks[selectedStackIndex + 1] : nil
+            } else {
+                targetStack = indexedStacks.first { $0.firstIndex > selectedIndex }
+            }
+        }
+
+        if let targetStack {
+            selectAssetID(targetStack.firstAssetID)
+        }
     }
 
     private func selectPreviousAssetForCulling() throws {

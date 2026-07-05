@@ -106,6 +106,10 @@ extension CullingShortcut {
             self = .previousPhoto
         case MacKeyCode.rightArrow:
             self = .nextPhoto
+        case MacKeyCode.upArrow:
+            self = .previousStack
+        case MacKeyCode.downArrow:
+            self = .nextStack
         case MacKeyCode.space:
             self = .nextPhoto
         case MacKeyCode.returnKey, MacKeyCode.keypadEnter:
@@ -128,6 +132,8 @@ private enum MacKeyCode {
     static let keypadEnter: UInt16 = 76
     static let leftArrow: UInt16 = 123
     static let rightArrow: UInt16 = 124
+    static let downArrow: UInt16 = 125
+    static let upArrow: UInt16 = 126
 }
 
 private extension Optional where Wrapped == NSResponder {
