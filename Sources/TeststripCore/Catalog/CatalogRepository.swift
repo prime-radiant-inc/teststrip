@@ -1093,8 +1093,32 @@ public final class CatalogRepository {
                     )
                     """
                 )
-            case .importBatch:
-                throw TeststripError.invalidState("import batch queries are not catalog-backed yet")
+            case .importBatch(let batchID):
+                let trimmed = batchID.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else {
+                    clauses.append("0 = 1")
+                    continue
+                }
+                clauses.append(
+                    """
+                    assets.id IN (
+                        SELECT json_extract(output_assets.value, '$.rawValue')
+                        FROM work_sessions
+                        JOIN json_each(work_sessions.output_set_ids_json) output_sets
+                        JOIN asset_sets ON asset_sets.id = json_extract(output_sets.value, '$.rawValue')
+                        JOIN json_each(asset_sets.membership_json, '$.manual._0') output_assets
+                        WHERE work_sessions.id = ?
+                        UNION
+                        SELECT json_extract(output_assets.value, '$.rawValue')
+                        FROM work_sessions
+                        JOIN json_each(work_sessions.output_set_ids_json) output_sets
+                        JOIN asset_sets ON asset_sets.id = json_extract(output_sets.value, '$.rawValue')
+                        JOIN json_each(asset_sets.membership_json, '$.snapshot._0') output_assets
+                        WHERE work_sessions.id = ?
+                    )
+                    """
+                )
+                bindings.append(contentsOf: [trimmed, trimmed])
             }
         }
 

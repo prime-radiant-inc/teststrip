@@ -579,6 +579,7 @@ Teststrip reaches usable alpha when a photographer can:
 
 - [ ] Define the minimum user-facing set types for alpha: import batch, manual selection, saved search, frozen snapshot, and work-session-derived set.
 - [ ] Add query predicates for rating, color label, pick/reject, keyword, date, folder, source availability, XMP state, and evaluation signal kind.
+- [x] Add a catalog-backed import/work-output batch predicate so work-session output sets can be used as a query.
 - [x] Add sidebar sections for recent/starred work sessions next to saved sets/searches.
 - [x] Keep older starred work sessions visible next to the capped recent work list.
 - [x] Make culling operate on the active set, not only the whole library or last import.

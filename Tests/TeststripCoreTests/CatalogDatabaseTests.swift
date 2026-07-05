@@ -751,6 +751,67 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(ids: [second.id, AssetID(rawValue: "missing"), first.id]), 2)
     }
 
+    func testImportBatchQueryMatchesWorkSessionOutputSets() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-import-batch-query")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let first = Asset.testAsset(id: AssetID(rawValue: "first"), path: "/Volumes/NAS/Job/first.cr2", rating: 5)
+        let second = Asset.testAsset(id: AssetID(rawValue: "second"), path: "/Volumes/NAS/Job/second.cr2", rating: 3)
+        let third = Asset.testAsset(id: AssetID(rawValue: "third"), path: "/Volumes/NAS/Job/third.cr2", rating: 5)
+        let outside = Asset.testAsset(id: AssetID(rawValue: "outside"), path: "/Volumes/NAS/Job/outside.cr2", rating: 5)
+        let manualSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "work-output-manual"),
+            name: "Import Output",
+            assetIDs: [second.id, first.id]
+        )
+        let snapshotSet = AssetSet(
+            id: AssetSetID(rawValue: "work-output-snapshot"),
+            name: "Import Snapshot",
+            membership: .snapshot([third.id])
+        )
+        let session = WorkSession(
+            id: WorkSessionID(rawValue: "import-1"),
+            kind: .ingest,
+            intent: "Import card",
+            title: "Import Photos",
+            detail: "Imported 3 photos",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [manualSet.id, snapshotSet.id],
+            completedUnitCount: 3,
+            totalUnitCount: 3,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        )
+        try repository.upsert([first, second, third, outside])
+        try repository.upsert(manualSet)
+        try repository.upsert(snapshotSet)
+        try repository.save(session)
+
+        let query = SetQuery(predicates: [.importBatch(session.id.rawValue), .ratingAtLeast(5)])
+
+        XCTAssertEqual(try repository.allAssets(matching: query, limit: 10).map(\.id), [first.id, third.id])
+        XCTAssertEqual(try repository.assetIDs(matching: query), [first.id, third.id])
+        XCTAssertEqual(try repository.assetCount(matching: query), 2)
+    }
+
+    func testMissingImportBatchQueryMatchesNoAssets() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-missing-import-batch-query")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset.testAsset(id: AssetID(rawValue: "asset"), path: "/Volumes/NAS/Job/asset.cr2", rating: 5)
+        try repository.upsert(asset)
+
+        let query = SetQuery(predicates: [.importBatch("missing-import")])
+
+        XCTAssertEqual(try repository.allAssets(matching: query, limit: 10), [])
+        XCTAssertEqual(try repository.assetIDs(matching: query), [])
+        XCTAssertEqual(try repository.assetCount(matching: query), 0)
+    }
+
     func testPersistsEvaluationSignalsForAsset() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-signals")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
