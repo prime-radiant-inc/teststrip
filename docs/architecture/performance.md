@@ -15,6 +15,14 @@ swift run TeststripBench 250000
 
 The catalog benchmark measures synthetic asset seeding, total count, first-page load, middle-page load, filtered count for 4+ star assets, and filtered first-page load. Its synthetic rows also include representative flag, color label, keyword, source availability, folder, camera, lens, ISO, and capture-date values, and the machine-readable summary records count timings for those common filter predicates. It uses the same `CatalogRepository` APIs as the app grid paging path.
 
+For repeatable alpha regression checks, run:
+
+```bash
+script/verify_catalog_scale.sh 100000
+```
+
+The verifier parses the benchmark summary, checks the asset count, and enforces the current 0.2s default threshold for first/middle/filtered page loads and representative filter counts. Seed time is reported by `TeststripBench` but intentionally excluded from the filter/page threshold.
+
 Additional focused commands cover the other hot paths that currently matter for alpha:
 
 ```bash
@@ -46,6 +54,10 @@ On July 3, 2026, local debug runs produced:
 These are not release-mode acceptance numbers, but they prove the current SQLite-backed catalog path can page 500k and 1M synthetic catalogs without loading the full catalog into app memory.
 
 On July 4, 2026, local debug runs produced:
+
+| Command | Count | Slowest Checked Page/Filter |
+| --- | ---: | ---: |
+| `script/verify_catalog_scale.sh 100000` | 100,000 assets | 0.098s (`count_camera_smokecam_2`) |
 
 | Command | Duration | Primary Counts |
 | --- | ---: | --- |
