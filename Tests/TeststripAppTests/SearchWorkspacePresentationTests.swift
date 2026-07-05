@@ -84,6 +84,34 @@ final class SearchWorkspacePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.suggestedActions, [])
     }
 
+    func testRelatedFiltersSuggestNonActiveReviewQueuesWithCounts() {
+        let presentation = SearchWorkspacePresentation(
+            suggestedName: "Ceremony Review",
+            totalAssetCount: 42,
+            savedSetCount: 2,
+            starredSetCount: 1,
+            activeFilterChips: [],
+            activeFilterRows: [
+                ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
+                ActiveLibraryFilterRow(title: "Needs Keywords", target: .reviewQueue(.needsKeywords))
+            ],
+            reviewQueueCounts: [
+                .picks: 7,
+                .rejects: 0,
+                .fiveStars: 1,
+                .needsKeywords: 9,
+                .facesFound: 2,
+                .providerFailures: 1
+            ]
+        )
+
+        XCTAssertEqual(presentation.relatedFilterRows, [
+            SearchWorkspaceRefineRow(title: "5 Stars", value: "1 photo", target: .reviewQueue(.fiveStars)),
+            SearchWorkspaceRefineRow(title: "Faces Found", value: "2 photos", target: .reviewQueue(.facesFound)),
+            SearchWorkspaceRefineRow(title: "Provider Failures", value: "1 photo", target: .reviewQueue(.providerFailures))
+        ])
+    }
+
     func testUsesAllPhotographsRefineRowWhenNoFiltersAreActive() {
         let presentation = SearchWorkspacePresentation(
             suggestedName: "All Photographs",

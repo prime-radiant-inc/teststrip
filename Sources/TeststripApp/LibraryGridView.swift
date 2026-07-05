@@ -3776,6 +3776,7 @@ struct SearchWorkspacePresentation: Equatable {
     var starredSetCountText: String
     var refineRows: [SearchWorkspaceRefineRow]
     var refineGroups: [SearchWorkspaceRefineGroup]
+    var relatedFilterRows: [SearchWorkspaceRefineRow]
     var suggestedActions: [SearchWorkspaceSuggestedAction]
 
     init(
@@ -3800,6 +3801,10 @@ struct SearchWorkspacePresentation: Equatable {
             refineRows = rows.map { SearchWorkspaceRefineRow(title: $0.title, value: "active", target: $0.target) }
         }
         refineGroups = Self.groupRefineRows(refineRows)
+        relatedFilterRows = Self.relatedFilterRows(
+            reviewQueueCounts: reviewQueueCounts,
+            activeRows: refineRows
+        )
         suggestedActions = Self.suggestedActions(
             suggestedName: suggestedName,
             totalAssetCount: totalAssetCount,
@@ -3866,6 +3871,25 @@ struct SearchWorkspacePresentation: Equatable {
         return "Metadata"
     }
 
+    private static func relatedFilterRows(
+        reviewQueueCounts: [ReviewQueue: Int],
+        activeRows: [SearchWorkspaceRefineRow]
+    ) -> [SearchWorkspaceRefineRow] {
+        reviewQueueFilterOrder.compactMap { queue in
+            guard let count = reviewQueueCounts[queue], count > 0 else { return nil }
+            let presentation = queue.presentation
+            let isActive = activeRows.contains { row in
+                row.target == .reviewQueue(queue) || row.title == presentation.title
+            }
+            guard !isActive else { return nil }
+            return SearchWorkspaceRefineRow(
+                title: presentation.title,
+                value: count == 1 ? "1 photo" : "\(count) photos",
+                target: .reviewQueue(queue)
+            )
+        }
+    }
+
     private static func suggestedActions(
         suggestedName: String,
         totalAssetCount: Int,
@@ -3903,6 +3927,18 @@ struct SearchWorkspacePresentation: Equatable {
     }
 
     private static let reviewQueueActionOrder: [ReviewQueue] = [
+        .needsKeywords,
+        .needsEvaluation,
+        .facesFound,
+        .ocrFound,
+        .likelyIssues,
+        .providerFailures
+    ]
+
+    private static let reviewQueueFilterOrder: [ReviewQueue] = [
+        .picks,
+        .rejects,
+        .fiveStars,
         .needsKeywords,
         .needsEvaluation,
         .facesFound,
@@ -4002,6 +4038,18 @@ private struct SearchWorkspaceView: View {
                         ForEach(group.rows) { row in
                             refineRailRow(row)
                         }
+                    }
+                }
+            }
+            if !presentation.relatedFilterRows.isEmpty {
+                Divider()
+                    .padding(.vertical, 2)
+                Text("Related Filters")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(presentation.relatedFilterRows) { row in
+                        refineRailRow(row)
                     }
                 }
             }

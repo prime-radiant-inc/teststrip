@@ -153,6 +153,7 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "search.refine" })
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("known target rows are actionable"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("related filters"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("suggested actions"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("agent-generated refinements are not built"))
     }
