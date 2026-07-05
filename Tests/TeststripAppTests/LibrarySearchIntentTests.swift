@@ -57,7 +57,7 @@ final class LibrarySearchIntentTests: XCTestCase {
         let end = Self.utcDate(year: 2026, month: 3, day: 1)
 
         let intent = LibrarySearchIntent.parse(
-            "folder:/Volumes/NAS/Wedding color:green iso:800 from:2026-02-01 before:2026-03-01 source:offline signal:focus xmp:pending"
+            "folder:/Volumes/NAS/Wedding color:green iso:800 from:2026-02-01 before:2026-03-01 source:offline signal:focus xmp:pending session:cull-42"
         )
 
         XCTAssertNil(intent.residualText)
@@ -69,7 +69,8 @@ final class LibrarySearchIntentTests: XCTestCase {
             .capturedBefore(end),
             .availability(.offline),
             .evaluationKind(.focus),
-            .metadataSyncPending
+            .metadataSyncPending,
+            .workSession("cull-42")
         ])
         XCTAssertEqual(intent.chips, [
             "Folder: Wedding",
@@ -79,7 +80,8 @@ final class LibrarySearchIntentTests: XCTestCase {
             "Before 2026-03-01",
             "Source: Offline",
             "Signal: Focus",
-            "XMP Pending"
+            "XMP Pending",
+            "Session: cull-42"
         ])
         XCTAssertEqual(intent.nameParts, [
             "Wedding",
@@ -89,7 +91,8 @@ final class LibrarySearchIntentTests: XCTestCase {
             "Before 2026-03-01",
             "Offline",
             "Focus",
-            "XMP Pending"
+            "XMP Pending",
+            "Session cull-42"
         ])
     }
 

@@ -149,6 +149,8 @@ public struct LibrarySearchIntent: Equatable, Sendable {
         case "xmp":
             guard let xmp = xmpPredicate(from: value) else { return nil }
             return singleFieldPredicate(xmp.predicate, chip: xmp.title, namePart: xmp.title)
+        case "session", "worksession":
+            return singleFieldPredicate(.workSession(value), chip: "Session: \(value)", namePart: "Session \(value)")
         default:
             return nil
         }

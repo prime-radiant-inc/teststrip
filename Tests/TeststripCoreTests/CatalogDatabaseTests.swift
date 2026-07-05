@@ -934,6 +934,52 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(matching: query), 0)
     }
 
+    func testWorkSessionQueryMatchesInputAndOutputSets() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-work-session-query")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let input = Asset.testAsset(id: AssetID(rawValue: "input"), path: "/Volumes/NAS/Job/input.cr2", rating: 5)
+        let output = Asset.testAsset(id: AssetID(rawValue: "output"), path: "/Volumes/NAS/Job/output.cr2", rating: 5)
+        let lowRatedOutput = Asset.testAsset(id: AssetID(rawValue: "low-rated-output"), path: "/Volumes/NAS/Job/low.cr2", rating: 3)
+        let outside = Asset.testAsset(id: AssetID(rawValue: "outside"), path: "/Volumes/NAS/Job/outside.cr2", rating: 5)
+        let inputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "work-input-cull"),
+            name: "Cull Input",
+            assetIDs: [input.id]
+        )
+        let outputSet = AssetSet(
+            id: AssetSetID(rawValue: "work-output-cull"),
+            name: "Cull Output",
+            membership: .snapshot([lowRatedOutput.id, output.id])
+        )
+        let session = WorkSession(
+            id: WorkSessionID(rawValue: "cull-1"),
+            kind: .culling,
+            intent: "Choose the keepers",
+            title: "Cull Job",
+            detail: "Session over a manual selection",
+            status: .completed,
+            inputSetIDs: [inputSet.id],
+            outputSetIDs: [outputSet.id],
+            completedUnitCount: 3,
+            totalUnitCount: 3,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        )
+        try repository.upsert([input, output, lowRatedOutput, outside])
+        try repository.upsert(inputSet)
+        try repository.upsert(outputSet)
+        try repository.save(session)
+
+        let query = SetQuery(predicates: [.workSession(session.id.rawValue), .ratingAtLeast(5)])
+
+        XCTAssertEqual(try repository.allAssets(matching: query, limit: 10).map(\.id), [input.id, output.id])
+        XCTAssertEqual(try repository.assetIDs(matching: query), [input.id, output.id])
+        XCTAssertEqual(try repository.assetCount(matching: query), 2)
+    }
+
     func testPersistsEvaluationSignalsForAsset() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-signals")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

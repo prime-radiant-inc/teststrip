@@ -5425,6 +5425,8 @@ public final class AppModel {
             ActiveLibraryFilterRow(title: "XMP Conflicts", target: sidebarTarget(for: predicate))
         case .importBatch(let id):
             ActiveLibraryFilterRow(title: "Import: \(id)")
+        case .workSession(let id):
+            ActiveLibraryFilterRow(title: "Session: \(id)")
         }
     }
 

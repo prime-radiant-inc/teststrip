@@ -1186,26 +1186,16 @@ public final class CatalogRepository {
                     clauses.append("0 = 1")
                     continue
                 }
-                clauses.append(
-                    """
-                    assets.id IN (
-                        SELECT json_extract(output_assets.value, '$.rawValue')
-                        FROM work_sessions
-                        JOIN json_each(work_sessions.output_set_ids_json) output_sets
-                        JOIN asset_sets ON asset_sets.id = json_extract(output_sets.value, '$.rawValue')
-                        JOIN json_each(asset_sets.membership_json, '$.manual._0') output_assets
-                        WHERE work_sessions.id = ?
-                        UNION
-                        SELECT json_extract(output_assets.value, '$.rawValue')
-                        FROM work_sessions
-                        JOIN json_each(work_sessions.output_set_ids_json) output_sets
-                        JOIN asset_sets ON asset_sets.id = json_extract(output_sets.value, '$.rawValue')
-                        JOIN json_each(asset_sets.membership_json, '$.snapshot._0') output_assets
-                        WHERE work_sessions.id = ?
-                    )
-                    """
-                )
-                bindings.append(contentsOf: [trimmed, trimmed])
+                clauses.append(Self.workSessionAssetMembershipClause(setIDColumnNames: ["output_set_ids_json"]))
+                bindings.append(contentsOf: Array(repeating: trimmed, count: 2))
+            case .workSession(let sessionID):
+                let trimmed = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else {
+                    clauses.append("0 = 1")
+                    continue
+                }
+                clauses.append(Self.workSessionAssetMembershipClause(setIDColumnNames: ["input_set_ids_json", "output_set_ids_json"]))
+                bindings.append(contentsOf: Array(repeating: trimmed, count: 4))
             }
         }
 
@@ -1213,6 +1203,27 @@ public final class CatalogRepository {
             return ("", [])
         }
         return (" WHERE " + clauses.joined(separator: " AND "), bindings)
+    }
+
+    private static func workSessionAssetMembershipClause(setIDColumnNames: [String]) -> String {
+        let membershipSelectors = setIDColumnNames.flatMap { columnName in
+            [
+                workSessionAssetMembershipSelector(setIDColumnName: columnName, membershipPath: "$.manual._0"),
+                workSessionAssetMembershipSelector(setIDColumnName: columnName, membershipPath: "$.snapshot._0")
+            ]
+        }
+        return "assets.id IN (\n\(membershipSelectors.joined(separator: "\nUNION\n"))\n)"
+    }
+
+    private static func workSessionAssetMembershipSelector(setIDColumnName: String, membershipPath: String) -> String {
+        """
+        SELECT json_extract(session_assets.value, '$.rawValue')
+        FROM work_sessions
+        JOIN json_each(work_sessions.\(setIDColumnName)) session_sets
+        JOIN asset_sets ON asset_sets.id = json_extract(session_sets.value, '$.rawValue')
+        JOIN json_each(asset_sets.membership_json, '\(membershipPath)') session_assets
+        WHERE work_sessions.id = ?
+        """
     }
 
     private static func likePattern(containing text: String) -> String {

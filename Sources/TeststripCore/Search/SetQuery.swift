@@ -22,6 +22,7 @@ public struct SetQuery: Codable, Equatable, Sendable {
         case metadataSyncPending
         case metadataSyncConflict
         case importBatch(String)
+        case workSession(String)
     }
 
     public var predicates: [Predicate]
