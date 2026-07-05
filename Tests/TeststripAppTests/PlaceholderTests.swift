@@ -60,6 +60,16 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("scrubber remains pending"))
     }
 
+    func testImportCompleteLedgerTracksLiveActionsAndRemainingDisabledFollowups() throws {
+        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "import.complete-summary" })
+        let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "4b" })
+
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("culling, compare, and keyword actions live"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("stack and face follow-ups stay disabled"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("culling, compare, and keyword actions"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("stack grouping and face naming remain disabled"))
+    }
+
     func testPeopleSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
         let model = AppModel.demo()
         let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })

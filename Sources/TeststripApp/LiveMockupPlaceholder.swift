@@ -281,7 +281,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Import complete",
             status: .partial,
             placeholder: .importCompleteSummary,
-            currentImplementation: "Expanded import-complete panel exposes imported count, preview status, Open, Cull, and dismiss; stack grouping, face naming, and batch keyword suggestions remain disabled placeholders."
+            currentImplementation: "Expanded import-complete panel exposes imported count, preview status, Open, culling, compare, and keyword actions; stack grouping and face naming remain disabled placeholders."
         ),
         LiveMockupDesignSurface(
             designID: "5a",
