@@ -2306,7 +2306,7 @@ public final class AppModel {
         case .clearFlag:
             try applyCullingCommandAndAdvance(.clearFlag)
         case .acceptStackSelection:
-            try keepSelectedStackFrameAndRejectAlternates()
+            try acceptSelectedStackSelectionForCulling()
         }
     }
 
@@ -2364,6 +2364,14 @@ public final class AppModel {
 
     private func selectPreviousStackForCulling() {
         selectCullingStack(.previous)
+    }
+
+    private func acceptSelectedStackSelectionForCulling() throws {
+        guard let selectedAssetID,
+              cullingStacks().contains(where: { $0.assetIDs.contains(selectedAssetID) }) else {
+            return
+        }
+        try keepSelectedStackFrameAndRejectAlternates()
     }
 
     private func selectCullingStack(_ direction: CullingStackNavigationDirection) {

@@ -1615,6 +1615,33 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, next.id)
     }
 
+    func testCullingShortcutAcceptStackSelectionNoOpsOutsideStack() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let first = makeAsset(
+            id: "shortcut-accept-stackless-first",
+            path: "/Photos/Job/shortcut-accept-stackless-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let second = makeAsset(
+            id: "shortcut-accept-stackless-second",
+            path: "/Photos/Job/shortcut-accept-stackless-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(5))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "accept-stack-shortcut-outside-stack",
+            assets: [first, second]
+        )
+        model.select(first.id)
+
+        try model.applyCullingShortcut(.acceptStackSelection)
+
+        XCTAssertEqual(model.selectedAssetID, first.id)
+        XCTAssertNil(try repository.asset(id: first.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: second.id).metadata.flag)
+    }
+
     func testCullingShortcutMovesBetweenLoadedStacks() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let firstStackFirst = makeAsset(
