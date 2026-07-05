@@ -12,7 +12,8 @@ struct CopilotView: View {
             reviewQueueCounts: model.reviewQueueCounts,
             evaluationSummaries: model.catalogEvaluationKindSummaries,
             pendingMetadataSyncCount: model.pendingMetadataSyncCount,
-            metadataSyncConflictCount: model.metadataSyncConflictCount
+            metadataSyncConflictCount: model.metadataSyncConflictCount,
+            canRequestVisibleAssetEvaluations: model.canRequestVisibleAssetEvaluations
         )
     }
 
@@ -35,12 +36,36 @@ struct CopilotView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(presentation.statusTitle)
-                .font(.title2.weight(.semibold))
-            Text(presentation.statusDetail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(presentation.statusTitle)
+                    .font(.title2.weight(.semibold))
+                Text(presentation.statusDetail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if !presentation.readChips.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(presentation.readChips, id: \.self) { chip in
+                            Text(chip)
+                                .font(.caption2.weight(.semibold))
+                                .lineLimit(1)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                        }
+                    }
+                }
+            }
+            Spacer()
+            if let primaryAction = presentation.primaryAction {
+                Button {
+                    perform(primaryAction.action)
+                } label: {
+                    Label(primaryAction.title, systemImage: primaryAction.systemImage)
+                }
+                .buttonStyle(.borderedProminent)
+                .help(primaryAction.detail)
+            }
         }
     }
 
@@ -172,6 +197,19 @@ struct CopilotView: View {
             model.errorMessage = error.localizedDescription
         }
     }
+
+    private func perform(_ action: CopilotPrimaryAction) {
+        do {
+            switch action {
+            case .open(let target):
+                try model.selectSidebarTarget(target)
+            case .evaluateVisibleAssets:
+                try model.requestVisibleAssetEvaluations()
+            }
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
 }
 
 struct CopilotMetricRow: Equatable, Identifiable {
@@ -216,6 +254,18 @@ struct CopilotActionRow: Equatable, Identifiable {
     }
 }
 
+enum CopilotPrimaryAction: Equatable {
+    case open(SidebarRowTarget)
+    case evaluateVisibleAssets
+}
+
+struct CopilotPrimaryActionPresentation: Equatable {
+    var title: String
+    var detail: String
+    var systemImage: String
+    var action: CopilotPrimaryAction
+}
+
 struct CopilotPresentation: Equatable {
     var totalAssetCount: Int
     var activeFilterChips: [String]
@@ -224,6 +274,7 @@ struct CopilotPresentation: Equatable {
     var evaluationSummaries: [CatalogEvaluationKindSummary]
     var pendingMetadataSyncCount: Int
     var metadataSyncConflictCount: Int
+    var canRequestVisibleAssetEvaluations: Bool
 
     var statusTitle: String {
         "TESTSTRIP COPILOT"
@@ -299,6 +350,63 @@ struct CopilotPresentation: Equatable {
                 target: .evaluationKind(kind)
             )
         }
+    }
+
+    var readChips: [String] {
+        activeFilterChips.isEmpty ? ["All photographs"] : activeFilterChips
+    }
+
+    var primaryAction: CopilotPrimaryActionPresentation? {
+        if metadataSyncConflictCount > 0 {
+            return CopilotPrimaryActionPresentation(
+                title: "Review XMP Conflicts",
+                detail: "\(metadataSyncConflictCount) metadata \(metadataSyncConflictCount == 1 ? "conflict" : "conflicts") need review",
+                systemImage: "exclamationmark.arrow.triangle.2.circlepath",
+                action: .open(.metadataSyncConflicts)
+            )
+        }
+        if (reviewQueueCounts[.providerFailures] ?? 0) > 0 {
+            let count = reviewQueueCounts[.providerFailures] ?? 0
+            return CopilotPrimaryActionPresentation(
+                title: "Review Provider Failures",
+                detail: "\(count) evaluation \(count == 1 ? "failure" : "failures") need attention",
+                systemImage: "bolt.horizontal.circle",
+                action: .open(.reviewQueue(.providerFailures))
+            )
+        }
+        if (reviewQueueCounts[.likelyIssues] ?? 0) > 0 {
+            let count = reviewQueueCounts[.likelyIssues] ?? 0
+            return CopilotPrimaryActionPresentation(
+                title: "Review Likely Issues",
+                detail: "\(count) likely \(count == 1 ? "issue" : "issues") need review",
+                systemImage: "exclamationmark.triangle",
+                action: .open(.reviewQueue(.likelyIssues))
+            )
+        }
+        if pendingMetadataSyncCount > 0 {
+            return CopilotPrimaryActionPresentation(
+                title: "Review XMP Pending",
+                detail: "\(pendingMetadataSyncCount) metadata \(pendingMetadataSyncCount == 1 ? "write" : "writes") pending",
+                systemImage: "arrow.triangle.2.circlepath",
+                action: .open(.metadataSyncPending)
+            )
+        }
+        if (reviewQueueCounts[.needsEvaluation] ?? 0) > 0 {
+            let count = reviewQueueCounts[.needsEvaluation] ?? 0
+            return CopilotPrimaryActionPresentation(
+                title: "Review Needs Evaluation",
+                detail: "\(count) \(count == 1 ? "photo" : "photos") without local signals",
+                systemImage: "wand.and.stars",
+                action: .open(.reviewQueue(.needsEvaluation))
+            )
+        }
+        guard canRequestVisibleAssetEvaluations else { return nil }
+        return CopilotPrimaryActionPresentation(
+            title: "Run Local Signals",
+            detail: "Evaluate loaded photos with local providers",
+            systemImage: "sparkles",
+            action: .evaluateVisibleAssets
+        )
     }
 
     private var activeReviewCount: Int {

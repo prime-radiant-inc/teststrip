@@ -29,7 +29,8 @@ final class CopilotPresentationTests: XCTestCase {
                 CatalogEvaluationKindSummary(kind: .ocrText, assetCount: 11)
             ],
             pendingMetadataSyncCount: 3,
-            metadataSyncConflictCount: 1
+            metadataSyncConflictCount: 1,
+            canRequestVisibleAssetEvaluations: true
         )
 
         XCTAssertEqual(presentation.metricRows.map(\.title), ["Scope", "Filters", "Work", "XMP"])
@@ -49,6 +50,9 @@ final class CopilotPresentationTests: XCTestCase {
             .evaluationKind(.focus),
             .evaluationKind(.ocrText)
         ])
+        XCTAssertEqual(presentation.readChips, ["Pick", "Needs Evaluation"])
+        XCTAssertEqual(presentation.primaryAction?.title, "Review XMP Conflicts")
+        XCTAssertEqual(presentation.primaryAction?.action, .open(.metadataSyncConflicts))
     }
 
     func testPresentationStaysHonestWhenNoSignalsExist() {
@@ -59,7 +63,8 @@ final class CopilotPresentationTests: XCTestCase {
             reviewQueueCounts: [:],
             evaluationSummaries: [],
             pendingMetadataSyncCount: 0,
-            metadataSyncConflictCount: 0
+            metadataSyncConflictCount: 0,
+            canRequestVisibleAssetEvaluations: false
         )
 
         XCTAssertEqual(presentation.statusTitle, "TESTSTRIP COPILOT")
@@ -67,5 +72,45 @@ final class CopilotPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.metricRows.map(\.value), ["42", "0", "0", "0"])
         XCTAssertEqual(presentation.reviewRows.map(\.isActionEnabled), [false, false, false])
         XCTAssertEqual(presentation.signalRows, [])
+        XCTAssertEqual(presentation.readChips, ["All photographs"])
+        XCTAssertNil(presentation.primaryAction)
+    }
+
+    func testPresentationPrioritizesReviewWorkBeforeRunningMoreSignals() {
+        let presentation = CopilotPresentation(
+            totalAssetCount: 90,
+            activeFilterChips: [],
+            visibleWorkActivities: [],
+            reviewQueueCounts: [
+                .needsEvaluation: 12,
+                .likelyIssues: 4,
+                .providerFailures: 3
+            ],
+            evaluationSummaries: [],
+            pendingMetadataSyncCount: 0,
+            metadataSyncConflictCount: 0,
+            canRequestVisibleAssetEvaluations: true
+        )
+
+        XCTAssertEqual(presentation.primaryAction?.title, "Review Provider Failures")
+        XCTAssertEqual(presentation.primaryAction?.detail, "3 evaluation failures need attention")
+        XCTAssertEqual(presentation.primaryAction?.action, .open(.reviewQueue(.providerFailures)))
+    }
+
+    func testPresentationOffersLoadedSignalRunWhenNoReviewWorkExists() {
+        let presentation = CopilotPresentation(
+            totalAssetCount: 90,
+            activeFilterChips: ["Needs Evaluation"],
+            visibleWorkActivities: [],
+            reviewQueueCounts: [:],
+            evaluationSummaries: [],
+            pendingMetadataSyncCount: 0,
+            metadataSyncConflictCount: 0,
+            canRequestVisibleAssetEvaluations: true
+        )
+
+        XCTAssertEqual(presentation.primaryAction?.title, "Run Local Signals")
+        XCTAssertEqual(presentation.primaryAction?.detail, "Evaluate loaded photos with local providers")
+        XCTAssertEqual(presentation.primaryAction?.action, .evaluateVisibleAssets)
     }
 }
