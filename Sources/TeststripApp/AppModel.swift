@@ -1942,9 +1942,8 @@ public final class AppModel {
             ? "Cull \(Self.stackCountDescription(summary.stackCount)) from latest import"
             : ""
         let session = try beginCullingSession(named: summary.cullingSessionName, intent: stackIntent)
-        let stackCount = cullingStacks().count
-        if selectFirstCullingStackIfAvailable() {
-            statusMessage = "Started stack cull with \(Self.stackCountDescription(stackCount))"
+        if try selectFirstCullingStackIfAvailable() {
+            statusMessage = "Started stack cull with \(Self.stackCountDescription(summary.stackCount))"
         } else {
             statusMessage = "Started \(session.title); no time-adjacent stacks found"
         }
@@ -2516,13 +2515,63 @@ public final class AppModel {
     }
 
     @discardableResult
-    private func selectFirstCullingStackIfAvailable() -> Bool {
+    private func selectFirstCullingStackIfAvailable() throws -> Bool {
+        if let explicitAssetIDs = selectedExplicitAssetIDs,
+           let catalog,
+           let target = try firstCullingStackTarget(
+            assetIDs: explicitAssetIDs,
+            repository: catalog.repository
+           ) {
+            if assets.contains(where: { $0.id == target.assetID }) {
+                selectAssetID(target.assetID)
+            } else {
+                try loadExplicitAssetPage(
+                    assetIDs: explicitAssetIDs,
+                    pageOffset: target.pageOffset,
+                    preferredSelection: target.assetID
+                )
+            }
+            return true
+        }
+
         guard let firstStack = cullingStacks().first,
               let firstAssetID = firstStack.assetIDs.first else {
             return false
         }
         selectAssetID(firstAssetID)
         return true
+    }
+
+    private func firstCullingStackTarget(
+        assetIDs: [AssetID],
+        repository: CatalogRepository
+    ) throws -> (assetID: AssetID, pageOffset: Int)? {
+        guard assetIDs.count > 1 else { return nil }
+
+        let stackBuilder = AssetStackBuilder(maximumCaptureGap: Self.candidateStackMaximumCaptureGap)
+        var previousAsset: Asset?
+        var previousIndex: Int?
+
+        for pageOffset in stride(from: 0, to: assetIDs.count, by: Self.assetPageSize) {
+            let pageAssets = try repository.assets(
+                ids: assetIDs,
+                limit: Self.assetPageSize,
+                offset: pageOffset
+            )
+
+            for (pageIndex, asset) in pageAssets.enumerated() {
+                if let previousAsset,
+                   let previousIndex,
+                   stackBuilder.stacks(from: [previousAsset, asset]).contains(where: { $0.assetIDs.count > 1 }) {
+                    return (previousAsset.id, previousIndex)
+                }
+
+                previousAsset = asset
+                previousIndex = pageOffset + pageIndex
+            }
+        }
+
+        return nil
     }
 
     private func acceptSelectedStackSelectionForCulling() throws {
@@ -4598,6 +4647,23 @@ public final class AppModel {
         )
         replaceAssets(page.assets, pageOffset: page.offset, preferredSelection: preferredSelection)
         totalAssetCount = page.totalAssetCount
+    }
+
+    private func loadExplicitAssetPage(
+        assetIDs: [AssetID],
+        pageOffset: Int,
+        preferredSelection: AssetID
+    ) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let loadedAssets = try catalog.repository.assets(
+            ids: assetIDs,
+            limit: Self.assetPageSize,
+            offset: pageOffset
+        )
+        replaceAssets(loadedAssets, pageOffset: pageOffset, preferredSelection: preferredSelection)
+        totalAssetCount = try catalog.repository.assetCount(ids: assetIDs)
     }
 
     private static func append(_ predicate: SetQuery.Predicate, to predicates: inout [SetQuery.Predicate]) {

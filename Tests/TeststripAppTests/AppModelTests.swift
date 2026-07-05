@@ -7889,6 +7889,45 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(try repository.asset(id: stackSecond.id).metadata.flag)
     }
 
+    func testBeginningStackCullingFromLatestImportLoadsFirstStackBeyondInitialPage() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let singletons = (0..<130).map { index in
+            makeAsset(
+                id: "stack-cull-leading-singleton-\(index)",
+                path: "/Photos/Import/leading-\(index).cr2",
+                rating: 0,
+                technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(TimeInterval(index * 10)))
+            )
+        }
+        let stackFirst = makeAsset(
+            id: "stack-cull-late-first",
+            path: "/Photos/Import/stack-cull-late-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(2_000))
+        )
+        let stackSecond = makeAsset(
+            id: "stack-cull-late-second",
+            path: "/Photos/Import/stack-cull-late-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(2_001))
+        )
+        let assets = singletons + [stackFirst, stackSecond]
+        let (model, _) = try makeModelWithCompletedImportSession(
+            named: "stack-culling-from-import-late-stack",
+            assets: assets,
+            outputAssetIDs: assets.map(\.id)
+        )
+
+        XCTAssertFalse(model.assets.contains { $0.id == stackFirst.id })
+        XCTAssertEqual(model.latestImportCompletionSummary?.stackCount, 1)
+
+        _ = try model.beginStackCullingFromLatestImportCompletion()
+
+        XCTAssertEqual(model.selectedAssetID, stackFirst.id)
+        XCTAssertEqual(model.assets.first?.id, stackFirst.id)
+        XCTAssertEqual(model.selectedView, .loupe)
+    }
+
     @MainActor
     func testReviewingLatestImportInCompareUsesImportOutputSet() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-summary-compare")
