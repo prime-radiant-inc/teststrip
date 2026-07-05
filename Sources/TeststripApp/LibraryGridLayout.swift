@@ -16,6 +16,10 @@ struct LibraryGridLayout: Equatable {
         CGFloat(thumbnailWidth)
     }
 
+    var gridSpacing: CGFloat {
+        densityLabel == "Compact" ? 5 : 11
+    }
+
     var densityLabel: String {
         switch thumbnailWidth {
         case ..<120:
@@ -31,7 +35,30 @@ struct LibraryGridLayout: Equatable {
         "\(Int(thumbnailWidth.rounded())) px, \(densityLabel)"
     }
 
+    var footerDensityControls: [LibraryGridDensityControl] {
+        [
+            LibraryGridDensityControl(
+                title: "Comfortable",
+                thumbnailWidth: Self.defaultThumbnailWidth,
+                isSelected: densityLabel != "Compact"
+            ),
+            LibraryGridDensityControl(
+                title: "Compact",
+                thumbnailWidth: Self.minimumThumbnailWidth,
+                isSelected: densityLabel == "Compact"
+            )
+        ]
+    }
+
     static func clampedThumbnailWidth(_ value: Double) -> Double {
         min(max(value, minimumThumbnailWidth), maximumThumbnailWidth)
     }
+}
+
+struct LibraryGridDensityControl: Equatable, Identifiable {
+    var id: String { title }
+
+    var title: String
+    var thumbnailWidth: Double
+    var isSelected: Bool
 }

@@ -22,6 +22,27 @@ final class LibraryGridLayoutTests: XCTestCase {
         )
     }
 
+    func testGridSpacingFollowsFooterDensityPresentation() {
+        XCTAssertEqual(LibraryGridLayout(thumbnailWidth: 96).gridSpacing, 5)
+        XCTAssertEqual(LibraryGridLayout(thumbnailWidth: 140).gridSpacing, 11)
+        XCTAssertEqual(LibraryGridLayout(thumbnailWidth: 260).gridSpacing, 11)
+    }
+
+    func testFooterDensityControlsReflectSelectedPresentation() {
+        let compactControls = LibraryGridLayout(thumbnailWidth: 96).footerDensityControls
+        XCTAssertEqual(compactControls.map(\.title), ["Comfortable", "Compact"])
+        XCTAssertEqual(compactControls.map(\.thumbnailWidth), [140, 96])
+        XCTAssertEqual(compactControls.map(\.isSelected), [false, true])
+
+        let comfortableControls = LibraryGridLayout(thumbnailWidth: 140).footerDensityControls
+        XCTAssertEqual(comfortableControls.map(\.title), ["Comfortable", "Compact"])
+        XCTAssertEqual(comfortableControls.map(\.thumbnailWidth), [140, 96])
+        XCTAssertEqual(comfortableControls.map(\.isSelected), [true, false])
+
+        let largeControls = LibraryGridLayout(thumbnailWidth: 220).footerDensityControls
+        XCTAssertEqual(largeControls.map(\.isSelected), [true, false])
+    }
+
     func testOverviewThumbnailScalingPreservesFullImage() {
         XCTAssertEqual(AssetGridPreviewPolicy.thumbnailScaling, .fit)
     }

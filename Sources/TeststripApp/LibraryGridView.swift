@@ -32,7 +32,7 @@ struct LibraryGridView: View {
     }
 
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: gridLayout.gridItemMinimumWidth), spacing: 8)]
+        [GridItem(.adaptive(minimum: gridLayout.gridItemMinimumWidth), spacing: gridLayout.gridSpacing)]
     }
 
     private var isImporting: Bool {
@@ -76,8 +76,6 @@ struct LibraryGridView: View {
         }
         .navigationTitle(model.libraryTitle)
         .toolbar {
-            thumbnailSizeControl
-
             Button {
                 cullingSessionName = model.suggestedCullingSessionName
                 cullingSessionIntent = ""
@@ -182,6 +180,35 @@ struct LibraryGridView: View {
                 .foregroundStyle(.secondary)
         }
         .help("Thumbnail size: \(gridLayout.accessibilityValue)")
+    }
+
+    private var thumbnailDensityControl: some View {
+        HStack(spacing: 2) {
+            ForEach(gridLayout.footerDensityControls) { control in
+                Button {
+                    storedThumbnailWidth = control.thumbnailWidth
+                } label: {
+                    Text(control.title)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(control.isSelected ? .primary : .secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 11)
+                        .frame(height: 22)
+                        .background(
+                            control.isSelected ? Color.white.opacity(0.12) : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("\(control.title) grid density")
+                .accessibilityLabel(control.title)
+                .accessibilityValue(control.isSelected ? "Selected" : "Not selected")
+            }
+        }
+        .padding(2)
+        .background(Color.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 7))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Grid Density")
     }
 
     private var libraryTopBar: some View {
@@ -1479,7 +1506,7 @@ struct LibraryGridView: View {
     }
 
     private var assetGrid: some View {
-        LazyVGrid(columns: columns, spacing: 8) {
+        LazyVGrid(columns: columns, spacing: gridLayout.gridSpacing) {
             ForEach(model.assets, id: \.id.rawValue) { asset in
                 AssetGridCell(
                     asset: asset,
@@ -1583,6 +1610,8 @@ struct LibraryGridView: View {
                     .lineLimit(1)
             }
             Spacer()
+            thumbnailDensityControl
+            thumbnailSizeControl
             if model.hasPreviousAssets {
                 Button {
                     loadPreviousAssets()
@@ -1607,7 +1636,7 @@ struct LibraryGridView: View {
             }
         }
         .padding(.horizontal, 12)
-        .frame(height: 34)
+        .frame(height: 38)
         .background(.bar)
     }
 
