@@ -246,6 +246,8 @@ final class WorkerSupervisorTests: XCTestCase {
         try supervisor.enqueue(first, command: firstCommand)
         try supervisor.enqueue(second, command: secondCommand)
 
+        XCTAssertTrue(supervisor.isCommandDispatched(for: first.id))
+        XCTAssertFalse(supervisor.isCommandDispatched(for: second.id))
         transport.emitOutputLine(#"{"event":"completed","itemID":"second","message":"generated large preview"}"#)
 
         XCTAssertEqual(supervisor.queue.item(id: first.id)?.status, .running)

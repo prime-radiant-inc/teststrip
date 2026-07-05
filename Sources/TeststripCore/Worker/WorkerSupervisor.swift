@@ -97,6 +97,10 @@ public final class WorkerSupervisor: @unchecked Sendable {
         notifyQueueChanged()
     }
 
+    public func isCommandDispatched(for itemID: WorkSessionID) -> Bool {
+        dispatchedItemIDs.contains(itemID)
+    }
+
     @discardableResult
     public func promoteQueuedItem(id itemID: WorkSessionID) throws -> Bool {
         guard queue.promoteQueuedItem(id: itemID) else {

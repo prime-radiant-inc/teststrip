@@ -3439,9 +3439,20 @@ public final class AppModel {
 
     private var activeBackgroundImportItem: BackgroundWorkItem? {
         let importItems = workerImportContextsByItemID.keys.compactMap { backgroundWorkQueue.item(id: $0) }
-        return importItems.first { $0.kind == .ingest && $0.status == .running } ??
+        let item = importItems.first { $0.kind == .ingest && $0.status == .running } ??
             importItems.first { $0.kind == .ingest && $0.status == .paused } ??
             importItems.first { $0.kind == .ingest && $0.status == .queued }
+        return item.map(userFacingWorkerImportItem)
+    }
+
+    private func userFacingWorkerImportItem(_ item: BackgroundWorkItem) -> BackgroundWorkItem {
+        guard item.status == .running,
+              workerSupervisor?.isCommandDispatched(for: item.id) == false else {
+            return item
+        }
+        var waitingItem = item
+        waitingItem.status = .queued
+        return waitingItem
     }
 
     private func recordPersistedActiveBackgroundWorkActivities(in queue: BackgroundWorkQueue) {

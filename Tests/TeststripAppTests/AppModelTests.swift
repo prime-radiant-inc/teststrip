@@ -5409,6 +5409,42 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testWorkerImportWaitingForDispatchPresentsAsWaiting() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-import-waiting-for-dispatch")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let previewAsset = Asset(
+            id: AssetID(rawValue: "preview-ahead-of-import"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(previewAsset)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 2),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        try model.requestPreview(assetID: previewAsset.id, level: .grid)
+        model.beginImportFolder(photoFolder)
+
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.items.first { $0.kind == .ingest })
+        XCTAssertEqual(importItem.status, .running)
+        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: previewAsset.id, level: .grid)])
+        let activity = try XCTUnwrap(model.visibleImportActivity)
+        XCTAssertEqual(activity.status, .queued)
+        XCTAssertEqual(ImportProgressPresentation.presentation(for: activity).phaseText, "Waiting")
+    }
+
+    @MainActor
     func testBeginImportFolderDoesNotEnqueueDuplicateImportWhileRunning() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-folder-import-duplicate")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
