@@ -46,7 +46,7 @@ struct PeopleView: View {
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.orange)
                 Spacer(minLength: 0)
-                Text("0 matched")
+                Text(presentation.reviewStripStatusText)
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -257,6 +257,17 @@ struct PeoplePresentation: Equatable {
             return "TESTSTRIP · NO FACE REVIEW SIGNALS"
         }
         return "TESTSTRIP · \(Self.photoCountDescription(photosWithDetectedFaces).uppercased()) NEED FACE REVIEW"
+    }
+
+    var reviewStripStatusText: String {
+        let reviewQueueCount = reviewCards.count
+        if reviewQueueCount > 0 {
+            return reviewQueueCount == 1 ? "1 queue" : "\(reviewQueueCount) queues"
+        }
+        if scanAction != nil {
+            return "Scan ready"
+        }
+        return "0 queues"
     }
 
     var reviewStripDetail: String {

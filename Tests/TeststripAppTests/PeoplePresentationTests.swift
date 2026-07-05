@@ -14,6 +14,7 @@ final class PeoplePresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.headerSummary, "0 people · 44 photos with face signals")
         XCTAssertEqual(presentation.reviewStripTitle, "TESTSTRIP · 3 PHOTOS NEED FACE REVIEW")
+        XCTAssertEqual(presentation.reviewStripStatusText, "2 queues")
         XCTAssertEqual(presentation.reviewStripDetail, "44 photos have face-quality signals; named people are not built yet.")
         XCTAssertEqual(presentation.reviewCards.map(\.title), ["Unnamed faces", "Face quality checks"])
         XCTAssertEqual(presentation.reviewCards.map(\.countText), ["3 photos", "44 photos"])
@@ -30,6 +31,7 @@ final class PeoplePresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.headerSummary, "0 people · 42 photos")
         XCTAssertEqual(presentation.reviewStripTitle, "TESTSTRIP · NO FACE REVIEW SIGNALS")
+        XCTAssertEqual(presentation.reviewStripStatusText, "0 queues")
         XCTAssertEqual(presentation.statusTitle, "TESTSTRIP · NO FACE REVIEW SIGNALS")
         XCTAssertEqual(presentation.statusDetail, "Run evaluation on catalog photos to populate local face review queues.")
         XCTAssertEqual(presentation.reviewCards, [])
@@ -50,6 +52,7 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.scanAction?.title, "Scan visible photos")
         XCTAssertEqual(presentation.scanAction?.detail, "Runs local Apple Vision on cached previews for the current visible result set.")
         XCTAssertEqual(presentation.scanAction?.systemImage, "viewfinder")
+        XCTAssertEqual(presentation.reviewStripStatusText, "Scan ready")
     }
 
     func testUnnamedFaceReviewFallsBackToFaceQualityWhenFaceCountSignalsAreMissing() {
