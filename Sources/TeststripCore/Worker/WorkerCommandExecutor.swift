@@ -178,6 +178,9 @@ public struct WorkerCommandExecutor {
             )
         case .generatePreview(let assetID, let level):
             let asset = try repository.asset(id: assetID)
+            if let availability = try markPreviewBlockingAvailabilityIfNeeded(asset) {
+                throw TeststripError.io("original is \(availability.rawValue) for \(Self.displayName(for: asset))")
+            }
             do {
                 try renderer.render(
                     sourceURL: asset.originalURL,
@@ -185,7 +188,7 @@ public struct WorkerCommandExecutor {
                     destinationURL: previewCache.url(for: PreviewCacheKey(assetID: assetID, level: level))
                 )
             } catch {
-                if let availability = try markUnavailableOriginalIfNeeded(asset) {
+                if let availability = try markPreviewBlockingAvailabilityIfNeeded(asset) {
                     throw TeststripError.io("original is \(availability.rawValue) for \(Self.displayName(for: asset))")
                 }
                 try repository.recordPreviewGenerationFailure(
@@ -234,13 +237,13 @@ public struct WorkerCommandExecutor {
         return name.isEmpty ? asset.id.rawValue : name
     }
 
-    private func markUnavailableOriginalIfNeeded(_ asset: Asset) throws -> SourceAvailability? {
+    private func markPreviewBlockingAvailabilityIfNeeded(_ asset: Asset) throws -> SourceAvailability? {
         let availability = SourceAvailabilityProbe().availability(for: asset)
         switch availability {
-        case .offline, .missing:
+        case .offline, .missing, .stale:
             try repository.updateAvailability(assetID: asset.id, availability: availability)
             return availability
-        case .online, .moved, .stale:
+        case .online, .moved:
             return nil
         }
     }

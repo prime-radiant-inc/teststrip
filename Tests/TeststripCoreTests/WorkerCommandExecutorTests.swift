@@ -13,7 +13,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
             id: AssetID(rawValue: "asset-1"),
             originalURL: source,
             volumeIdentifier: "local",
-            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            fingerprint: try fileFingerprint(for: source),
             availability: .online,
             metadata: AssetMetadata()
         )
@@ -41,7 +41,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
             id: AssetID(rawValue: "asset-1"),
             originalURL: source,
             volumeIdentifier: "local",
-            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            fingerprint: try fileFingerprint(for: source),
             availability: .online,
             metadata: AssetMetadata()
         )
@@ -68,7 +68,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
             id: AssetID(rawValue: "asset-1"),
             originalURL: source,
             volumeIdentifier: "local",
-            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            fingerprint: try fileFingerprint(for: source),
             availability: .online,
             metadata: AssetMetadata()
         )
@@ -152,6 +152,40 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
             PreviewGenerationItem(assetID: asset.id, level: .grid)
         ])
+    }
+
+    func testGeneratePreviewCommandMarksStaleOriginalWithoutClearingPendingPreview() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-preview-stale-source")
+        let source = root.appendingPathComponent("stale-source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1600, height: 1000)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .grid))
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
+
+        XCTAssertThrowsError(try executor.execute(.generatePreview(assetID: asset.id, level: .grid)))
+
+        XCTAssertEqual(try repository.asset(id: asset.id).availability, .stale)
+        let state = try XCTUnwrap(repository.previewGenerationQueueState(assetID: asset.id, level: .grid))
+        XCTAssertEqual(state.attemptCount, 0)
+        XCTAssertNil(state.lastAttemptedAt)
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
+            PreviewGenerationItem(assetID: asset.id, level: .grid)
+        ])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: previewCache.url(
+            for: PreviewCacheKey(assetID: asset.id, level: .grid)
+        ).path))
     }
 
     func testRefreshAvailabilityCommandUpdatesCatalogSourceState() throws {
