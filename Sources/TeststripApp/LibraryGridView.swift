@@ -2911,7 +2911,12 @@ struct CompareSurveyPresentation: Equatable {
     var groupKindText: String
     var recommendationText: String
 
-    init(assets: [Asset], selectedAssetID: AssetID?, groupKind: CompareGroupKind = .nearbyFrames) {
+    init(
+        assets: [Asset],
+        selectedAssetID: AssetID?,
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]] = [:],
+        groupKind: CompareGroupKind = .nearbyFrames
+    ) {
         guard !assets.isEmpty else {
             self.primaryAsset = nil
             self.alternateAssets = []
@@ -2939,17 +2944,36 @@ struct CompareSurveyPresentation: Equatable {
             "Compare set"
         }
 
-        let rejectCount = max(assets.count - 1, 0)
-        if rejectCount == 0 {
-            self.recommendationText = "Suggests: keep 1"
-        } else {
-            self.recommendationText = "Suggests: keep 1 · reject \(rejectCount)"
-        }
+        self.recommendationText = Self.recommendationText(
+            rankedCandidates: CullingStackRecommendation.rankedCandidates(
+                stackAssetIDs: assets.map(\.id),
+                evaluationSignalsByAssetID: evaluationSignalsByAssetID
+            ),
+            primaryAsset: self.primaryAsset,
+            rejectCount: max(assets.count - 1, 0)
+        )
     }
 
     var primaryDecisionText: String {
         guard let primaryAsset else { return "No frame selected" }
         return Self.decisionSummary(for: primaryAsset)
+    }
+
+    private static func recommendationText(
+        rankedCandidates: [CullingStackRecommendation],
+        primaryAsset: Asset?,
+        rejectCount: Int
+    ) -> String {
+        guard let recommendation = rankedCandidates.first else {
+            return "No ranking yet"
+        }
+        guard recommendation.assetID == primaryAsset?.id else {
+            return "Top signal: frame \(recommendation.frameLabel)"
+        }
+        guard rejectCount > 0 else {
+            return "Suggests: keep 1"
+        }
+        return "Suggests: keep 1 · reject \(rejectCount)"
     }
 
     var orderedAssets: [Asset] {
@@ -3492,9 +3516,13 @@ private struct CompareView: View {
     private let focusMetricColumns = [GridItem(.adaptive(minimum: 78), spacing: 5)]
 
     var body: some View {
+        let compareAssets = model.compareAssets()
         let presentation = CompareSurveyPresentation(
-            assets: model.compareAssets(),
+            assets: compareAssets,
             selectedAssetID: model.selectedAssetID,
+            evaluationSignalsByAssetID: Dictionary(uniqueKeysWithValues: compareAssets.map { asset in
+                (asset.id, model.evaluationSignals(for: asset.id))
+            }),
             groupKind: model.compareGroupKind()
         )
 

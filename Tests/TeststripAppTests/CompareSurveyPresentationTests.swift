@@ -20,7 +20,47 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.orderedAssets.map(\.id), [assets[1].id, assets[0].id, assets[2].id])
         XCTAssertEqual(presentation.framePositionText, "Frame 2 of 3")
         XCTAssertEqual(presentation.groupCountText, "3 frames")
+        XCTAssertEqual(presentation.recommendationText, "No ranking yet")
+    }
+
+    func testRecommendationTextUsesPersistedQualitySignalsWhenPrimaryRanksHighest() {
+        let assets = [
+            makeAsset(id: "primary"),
+            makeAsset(id: "second"),
+            makeAsset(id: "third")
+        ]
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: [
+                assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.96)],
+                assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.78)],
+                assets[2].id: [signal(assetID: assets[2].id, kind: .motionBlur, score: 0.8)]
+            ]
+        )
+
         XCTAssertEqual(presentation.recommendationText, "Suggests: keep 1 · reject 2")
+    }
+
+    func testRecommendationTextDoesNotSuggestPrimaryWhenAnotherFrameRanksHighest() {
+        let assets = [
+            makeAsset(id: "primary"),
+            makeAsset(id: "second"),
+            makeAsset(id: "third")
+        ]
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: [
+                assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.72)],
+                assets[2].id: [signal(assetID: assets[2].id, kind: .focus, score: 0.95)]
+            ]
+        )
+
+        XCTAssertEqual(presentation.recommendationText, "Top signal: frame 3")
+        XCTAssertFalse(presentation.recommendationText.localizedCaseInsensitiveContains("suggests"))
     }
 
     func testEightFrameSurveyUsesFourByTwoLayout() {
@@ -233,6 +273,16 @@ final class CompareSurveyPresentationTests: XCTestCase {
                 pixelHeight: 2000,
                 provenance: ProviderProvenance(provider: "test", model: "test", version: "1", settingsHash: "test")
             )
+        )
+    }
+
+    private func signal(assetID: AssetID, kind: EvaluationKind, score: Double) -> EvaluationSignal {
+        EvaluationSignal(
+            assetID: assetID,
+            kind: kind,
+            value: .score(score),
+            confidence: 0.9,
+            provenance: ProviderProvenance(provider: "test", model: "test", version: "1", settingsHash: "test")
         )
     }
 }
