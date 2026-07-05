@@ -19,6 +19,7 @@ For repeatable alpha regression checks, run:
 
 ```bash
 script/verify_catalog_scale.sh 100000
+script/verify_import_preview_drain.sh 100
 script/verify_preview_render.sh 100
 script/verify_metadata_write.sh 1000
 ```
@@ -27,18 +28,21 @@ The catalog verifier parses the benchmark summary, checks the asset count, and e
 
 The metadata-write verifier wraps the `metadata-write` benchmark and enforces catalog update count, sidecar count, synced fingerprint count, zero pending sync items, unchanged originals, and the current 5s default metadata-write threshold. Override the timing gate with `TESTSTRIP_METADATA_WRITE_MAX_SECONDS` when intentionally measuring slower hardware or stress paths.
 
+The import-preview-drain verifier wraps the `import-preview-drain` benchmark and enforces imported/catalog asset counts, queued-preview count before drain, generated-preview count, zero preview failures, zero pending previews after drain, cached-preview count, and the current 5s import / 10s drain thresholds. Override the timing gates with `TESTSTRIP_IMPORT_PREVIEW_DRAIN_MAX_IMPORT_SECONDS` and `TESTSTRIP_IMPORT_PREVIEW_DRAIN_MAX_DRAIN_SECONDS` when intentionally measuring slower hardware or larger source batches.
+
 The preview-render verifier wraps the generated-image `preview-render` benchmark, enforces the source image count, all four cache levels per source, cached-preview count, and the current 5s default preview-render threshold. Override the timing gate with `TESTSTRIP_PREVIEW_RENDER_MAX_SECONDS` when intentionally measuring slower hardware or larger source batches.
 
 Additional focused commands cover the other hot paths that currently matter for alpha:
 
 ```bash
 swift run TeststripBench import-deferred 1000
+swift run TeststripBench import-preview-drain 100
 swift run TeststripBench preview-render 100
 swift run TeststripBench sample-preview-render sample-data/photos/wordpress-photo-directory
 swift run TeststripBench metadata-write 1000
 ```
 
-`import-deferred` creates a synthetic folder, catalogs it in place, and verifies preview work is queued instead of generated synchronously. `preview-render` creates generated JPEG sources and renders all cache levels through `PreviewRenderer`. `sample-preview-render` imports an existing sample-photo directory and generates cached previews through the same immediate-preview import path used by the sample catalog smoke workflow. `metadata-write` updates catalog metadata, writes XMP sidecars, marks sync fingerprints, and verifies the original files were not changed.
+`import-deferred` creates a synthetic folder, catalogs it in place, and verifies preview work is queued instead of generated synchronously. `import-preview-drain` creates generated JPEG sources, imports with preview generation deferred, and drains the queued preview work through `LibraryImportService.resumePendingPreviews`. `preview-render` creates generated JPEG sources and renders all cache levels through `PreviewRenderer`. `sample-preview-render` imports an existing sample-photo directory and generates cached previews through the same immediate-preview import path used by the sample catalog smoke workflow. `metadata-write` updates catalog metadata, writes XMP sidecars, marks sync fingerprints, and verifies the original files were not changed.
 
 Every `TeststripBench` command keeps its human-readable output and also prints one machine-readable summary line:
 
@@ -74,4 +78,10 @@ On July 4, 2026, local debug runs produced:
 | `script/verify_preview_render.sh 100 5` | 1.602s | 100 generated JPEG sources, 400 rendered previews, 400 cached previews |
 | `script/verify_metadata_write.sh 25 5` | 0.048s | 25 catalog updates, 25 sidecars, 25 synced fingerprints, 0 pending sync items, 25 unchanged originals |
 
-These runs prove the benchmark harnesses are executable and exercise real app paths, not that the alpha has final performance thresholds. The generated-image `preview-render` command isolates renderer/cache throughput; the real-image `sample-preview-render` command includes sample import and immediate preview generation overhead.
+On July 5, 2026, a local debug run produced:
+
+| Command | Import | Preview Drain | Primary Counts |
+| --- | ---: | ---: | --- |
+| `script/verify_import_preview_drain.sh 100 5 10` | 0.033s | 0.516s | 100 imported/catalog assets, 200 pending previews before drain, 200 generated previews, 0 failures, 0 pending previews after drain, 200 cached previews |
+
+These runs prove the benchmark harnesses are executable and exercise real app paths, not that the alpha has final performance thresholds. The generated-image `preview-render` command isolates renderer/cache throughput; the real-image `sample-preview-render` command includes sample import and immediate preview generation overhead; the `import-preview-drain` verifier covers the deferred-preview recovery path the app depends on when originals are on slow, remote, removable, or intermittently available storage.

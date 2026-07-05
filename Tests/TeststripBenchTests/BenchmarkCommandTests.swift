@@ -23,6 +23,10 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "import-deferred", "250"]), .importDeferred(count: 250))
     }
 
+    func testImportPreviewDrainCommandParsesCount() throws {
+        XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "import-preview-drain", "250"]), .importPreviewDrain(count: 250))
+    }
+
     func testMetadataWriteCommandParsesCount() throws {
         XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "metadata-write", "250"]), .metadataWrite(count: 250))
     }
@@ -83,6 +87,20 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(result.catalogAssetCount, 250)
         XCTAssertEqual(result.pendingPreviewCount, 500)
         XCTAssertLessThanOrEqual(result.progressEventCount, 8)
+    }
+
+    func testImportPreviewDrainBenchmarkImportsAndDrainsQueuedPreviews() throws {
+        let root = try makeTemporaryDirectory(named: "import-preview-drain-benchmark")
+
+        let result = try ImportPreviewDrainBenchmark(count: 3, root: root).run()
+
+        XCTAssertEqual(result.importedAssetCount, 3)
+        XCTAssertEqual(result.catalogAssetCount, 3)
+        XCTAssertEqual(result.pendingPreviewCountBeforeDrain, 6)
+        XCTAssertEqual(result.generatedPreviewCount, 6)
+        XCTAssertEqual(result.previewFailureCount, 0)
+        XCTAssertEqual(result.pendingPreviewCountAfterDrain, 0)
+        XCTAssertEqual(result.cachedPreviewCount, 6)
     }
 
     func testCatalogScaleBenchmarkMeasuresRepresentativeIndexedFilters() throws {

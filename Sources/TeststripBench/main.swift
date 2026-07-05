@@ -14,6 +14,8 @@ case .catalogScale(let count):
     try runCatalogScaleBenchmark(count: count, root: root)
 case .importDeferred(let count):
     try runDeferredImportBenchmark(count: count, root: root)
+case .importPreviewDrain(let count):
+    try runImportPreviewDrainBenchmark(count: count, root: root)
 case .localHTTPSmoke(let endpoint, let model, let imagePath, let timeout):
     try runLocalHTTPModelSmoke(endpoint: endpoint, model: model, imagePath: imagePath, timeout: timeout)
 case .metadataWrite(let count):
@@ -69,6 +71,29 @@ private func runDeferredImportBenchmark(count: Int, root: URL) throws {
     print("catalog assets: \(result.catalogAssetCount)")
     print("pending previews: \(result.pendingPreviewCount)")
     print("progress events: \(result.progressEventCount)")
+    try printMachineReadableSummary(recorder.summary)
+}
+
+private func runImportPreviewDrainBenchmark(count: Int, root: URL) throws {
+    var recorder = BenchmarkSummaryRecorder(benchmark: "import_preview_drain", count: count)
+
+    print("TeststripBench import preview drain")
+    print("count: \(count)")
+    let result = try ImportPreviewDrainBenchmark(count: count, root: root).run(recordingInto: &recorder)
+    recorder.recordMetric("imported_assets", result.importedAssetCount)
+    recorder.recordMetric("catalog_assets", result.catalogAssetCount)
+    recorder.recordMetric("pending_previews_before_drain", result.pendingPreviewCountBeforeDrain)
+    recorder.recordMetric("generated_previews", result.generatedPreviewCount)
+    recorder.recordMetric("preview_failures", result.previewFailureCount)
+    recorder.recordMetric("pending_previews_after_drain", result.pendingPreviewCountAfterDrain)
+    recorder.recordMetric("cached_previews", result.cachedPreviewCount)
+    print("imported assets: \(result.importedAssetCount)")
+    print("catalog assets: \(result.catalogAssetCount)")
+    print("pending previews before drain: \(result.pendingPreviewCountBeforeDrain)")
+    print("generated previews: \(result.generatedPreviewCount)")
+    print("preview failures: \(result.previewFailureCount)")
+    print("pending previews after drain: \(result.pendingPreviewCountAfterDrain)")
+    print("cached previews: \(result.cachedPreviewCount)")
     try printMachineReadableSummary(recorder.summary)
 }
 
