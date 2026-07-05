@@ -110,14 +110,14 @@ public enum LiveMockupPlaceholders {
         id: "smart-collections.builder",
         title: "Smart collections builder",
         intendedBehavior: "Build saved dynamic sets with structured rules, natural-language criteria, and previews of matching assets.",
-        currentFallback: "Save the current library query as a dynamic saved set."
+        currentFallback: "Builder saves the current library query as a dynamic saved set, previews loaded matches, and offers Add Rule presets for concrete catalog filters; freeform rule editing is not built."
     )
 
     public static let keywordingBatch = LiveMockupPlaceholder(
         id: "keywording.batch",
         title: "Batch keywording",
         intendedBehavior: "Apply Teststrip-suggested keywords, captions, creator, and copyright to a selected batch.",
-        currentFallback: "Single-selected metadata controls plus latest-import/current-scope keyword suggestions and a selected/visible/current-scope metadata popover write command-selected loaded assets through catalog and XMP with all-catalog confirmation; range and cross-page selection are not built."
+        currentFallback: "Single-selected metadata controls plus latest-import/current-scope keyword suggestions and a selected/visible/current-scope metadata popover write command and shift selected assets through catalog and XMP with all-catalog confirmation; freeform bulk keyword review is not built."
     )
 
     public static let exportWorkflow = LiveMockupPlaceholder(
@@ -318,14 +318,14 @@ public enum LiveMockupDesignSurfaces {
             title: "Smart collections",
             status: .partial,
             placeholder: .smartCollectionsBuilder,
-            currentImplementation: "Builder saves the current dynamic query with parsed rule presentation and loaded-result preview; editable arbitrary rule rows and real suggestions are not built."
+            currentImplementation: "Builder saves the current dynamic query with parsed rule presentation, loaded-result preview, and Add Rule presets for concrete filters; freeform rule editing is not built, and real suggestions are still pending."
         ),
         LiveMockupDesignSurface(
             designID: "5e",
             title: "Keywording",
             status: .partial,
             placeholder: .keywordingBatch,
-            currentImplementation: "Selected asset metadata controls edit keywords, caption, creator, and copyright with XMP writeback, plus single-asset, latest-import, current-scope keyword suggestions, and a selected/visible/current-scope metadata popover from object evaluation labels that writes command-selected loaded assets with all-catalog confirmation; range and cross-page selection are not built."
+            currentImplementation: "Selected asset metadata controls edit keywords, caption, creator, and copyright with XMP writeback, plus single-asset, latest-import, current-scope keyword suggestions, and a selected/visible/current-scope metadata popover from object evaluation labels that writes command and shift selected assets with all-catalog confirmation; freeform bulk keyword review is not built."
         ),
         LiveMockupDesignSurface(
             designID: "5f",

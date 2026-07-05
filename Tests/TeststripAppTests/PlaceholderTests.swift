@@ -140,13 +140,25 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5e" })
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("selected/visible/current-scope metadata popover"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("command-selected loaded assets"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("command and shift selected assets"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("all-catalog confirmation"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("range and cross-page selection are not built"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("freeform bulk keyword review is not built"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("selected/visible/current-scope metadata popover"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("command-selected loaded assets"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("command and shift selected assets"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("all-catalog confirmation"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("range and cross-page selection are not built"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("freeform bulk keyword review is not built"))
+    }
+
+    func testSmartCollectionsLedgerTracksRulePresetsWithoutFreeformEditing() throws {
+        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "smart-collections.builder" })
+        let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5d" })
+
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("add rule presets"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("current library query"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("freeform rule editing is not built"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("add rule presets"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("loaded-result preview"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("freeform rule editing is not built"))
     }
 
     func testSearchRefineLedgerTracksSuggestedActionsWithoutGeneratedRefinements() throws {
