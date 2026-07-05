@@ -78,27 +78,69 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
         let presentation = SmartCollectionBuilderPresentation(
             proposedName: "Filtered",
             ruleChips: ["Search: ceremony"],
-            matchCount: 12
+            matchCount: 12,
+            reviewQueueCounts: [
+                .fiveStars: 5,
+                .picks: 4,
+                .facesFound: 2,
+                .needsKeywords: 6
+            ]
         )
 
         XCTAssertEqual(presentation.suggestedTemplateRows, [
             SmartCollectionSuggestedTemplateRow(
                 title: "Picked keepers",
-                detail: "4+ stars and picked",
+                detail: "4 picks, 5 rated",
                 systemImage: "star.circle",
                 presets: [.ratingFourPlus, .picked]
             ),
             SmartCollectionSuggestedTemplateRow(
                 title: "Face review",
-                detail: "faces detected",
+                detail: "2 photos have faces",
                 systemImage: "person.2.circle",
                 presets: [.facesFound]
             ),
             SmartCollectionSuggestedTemplateRow(
-                title: "Metadata sync",
-                detail: "XMP pending",
-                systemImage: "arrow.triangle.2.circlepath.circle",
-                presets: [.xmpPending]
+                title: "Needs keywords",
+                detail: "6 photos need keywords",
+                systemImage: "tag.circle",
+                presets: [.needsKeywords]
+            )
+        ])
+    }
+
+    func testSuggestedTemplateRowsSkipActiveRulesAndRequireCatalogSignals() {
+        XCTAssertEqual(SmartCollectionBuilderPresentation(
+            proposedName: "No Signals",
+            ruleChips: [],
+            matchCount: 12,
+            reviewQueueCounts: [:]
+        ).suggestedTemplateRows, [])
+
+        let presentation = SmartCollectionBuilderPresentation(
+            proposedName: "Picked",
+            ruleChips: ["Pick"],
+            matchCount: 12,
+            reviewQueueCounts: [
+                .fiveStars: 5,
+                .picks: 4,
+                .facesFound: 1,
+                .needsEvaluation: 3
+            ]
+        )
+
+        XCTAssertEqual(presentation.suggestedTemplateRows, [
+            SmartCollectionSuggestedTemplateRow(
+                title: "Face review",
+                detail: "1 photo has faces",
+                systemImage: "person.2.circle",
+                presets: [.facesFound]
+            ),
+            SmartCollectionSuggestedTemplateRow(
+                title: "Needs evaluation",
+                detail: "3 photos need evaluation",
+                systemImage: "wand.and.stars.inverse",
+                presets: [.needsEvaluation]
             )
         ])
     }

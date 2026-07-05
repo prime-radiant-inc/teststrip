@@ -110,7 +110,7 @@ public enum LiveMockupPlaceholders {
         id: "smart-collections.builder",
         title: "Smart collections builder",
         intendedBehavior: "Build saved dynamic sets with structured rules, natural-language criteria, and previews of matching assets.",
-        currentFallback: "Builder saves the current library query as a dynamic saved set, previews loaded matches, offers Add Rule presets for concrete catalog filters, and saved sets have delete set confirmation; freeform rule editing is not built."
+        currentFallback: "Builder saves the current library query as a dynamic saved set, previews loaded matches, offers Add Rule presets for concrete catalog filters, suggestion rows are actionable and derived from review queue counts, and saved sets have delete set confirmation; freeform rule editing and provider-generated suggestions are not built."
     )
 
     public static let keywordingBatch = LiveMockupPlaceholder(
@@ -318,7 +318,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Smart collections",
             status: .partial,
             placeholder: .smartCollectionsBuilder,
-            currentImplementation: "Builder saves the current dynamic query with parsed rule presentation, loaded-result preview, Add Rule presets for concrete filters, and saved-set delete set confirmation; freeform rule editing is not built, and real suggestions are still pending."
+            currentImplementation: "Builder saves the current dynamic query with parsed rule presentation, loaded-result preview, Add Rule presets for concrete filters, suggestion rows are actionable and derived from review queue counts, and saved-set delete set confirmation; freeform rule editing and provider-generated suggestions are not built."
         ),
         LiveMockupDesignSurface(
             designID: "5e",

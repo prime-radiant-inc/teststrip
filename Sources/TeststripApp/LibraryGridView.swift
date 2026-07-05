@@ -1113,7 +1113,8 @@ struct LibraryGridView: View {
             presentation: SmartCollectionBuilderPresentation(
                 proposedName: savedSearchName,
                 ruleChips: model.activeLibraryFilterChips,
-                matchCount: model.totalAssetCount
+                matchCount: model.totalAssetCount,
+                reviewQueueCounts: model.reviewQueueCounts
             ),
             previewAssets: Array(model.assets.prefix(18)),
             previewURL: { model.gridPreviewURL(for: $0) },
@@ -4842,33 +4843,13 @@ enum MetadataSyncFilterOption: String, Equatable {
 }
 
 struct SmartCollectionBuilderPresentation: Equatable {
-    private static let defaultSuggestedTemplateRows = [
-        SmartCollectionSuggestedTemplateRow(
-            title: "Picked keepers",
-            detail: "4+ stars and picked",
-            systemImage: "star.circle",
-            presets: [.ratingFourPlus, .picked]
-        ),
-        SmartCollectionSuggestedTemplateRow(
-            title: "Face review",
-            detail: "faces detected",
-            systemImage: "person.2.circle",
-            presets: [.facesFound]
-        ),
-        SmartCollectionSuggestedTemplateRow(
-            title: "Metadata sync",
-            detail: "XMP pending",
-            systemImage: "arrow.triangle.2.circlepath.circle",
-            presets: [.xmpPending]
-        )
-    ]
-
     var proposedName: String
     var ruleChips: [String]
     var matchCount: Int
+    var reviewQueueCounts: [ReviewQueue: Int] = [:]
 
     var suggestedTemplateRows: [SmartCollectionSuggestedTemplateRow] {
-        Self.defaultSuggestedTemplateRows
+        Self.suggestedTemplateRows(reviewQueueCounts: reviewQueueCounts, activeRuleChips: ruleChips)
     }
 
     var ruleCountText: String {
@@ -4894,6 +4875,101 @@ struct SmartCollectionBuilderPresentation: Equatable {
     func previewCountText(visibleCount: Int) -> String {
         guard matchCount > 0 else { return "no live preview yet" }
         return "showing \(min(max(visibleCount, 0), matchCount))"
+    }
+
+    private static func suggestedTemplateRows(
+        reviewQueueCounts: [ReviewQueue: Int],
+        activeRuleChips: [String]
+    ) -> [SmartCollectionSuggestedTemplateRow] {
+        var rows: [SmartCollectionSuggestedTemplateRow] = []
+        let ratedCount = reviewQueueCounts[.fiveStars] ?? 0
+        let pickedCount = reviewQueueCounts[.picks] ?? 0
+        if ratedCount > 0,
+           pickedCount > 0,
+           !isPresetActive(.ratingFourPlus, activeRuleChips: activeRuleChips),
+           !isPresetActive(.picked, activeRuleChips: activeRuleChips) {
+            rows.append(SmartCollectionSuggestedTemplateRow(
+                title: "Picked keepers",
+                detail: "\(pickedCount) \(pickedCount == 1 ? "pick" : "picks"), \(ratedCount) rated",
+                systemImage: "star.circle",
+                presets: [.ratingFourPlus, .picked]
+            ))
+        }
+
+        let candidates: [(queue: ReviewQueue, preset: SmartCollectionRulePreset, title: String, systemImage: String)] = [
+            (.facesFound, .facesFound, "Face review", "person.2.circle"),
+            (.needsKeywords, .needsKeywords, "Needs keywords", "tag.circle"),
+            (.needsEvaluation, .needsEvaluation, "Needs evaluation", "wand.and.stars.inverse"),
+            (.likelyIssues, .likelyIssues, "Likely issues", "exclamationmark.triangle"),
+            (.providerFailures, .providerFailures, "Provider failures", "bolt.horizontal.circle")
+        ]
+        for candidate in candidates {
+            guard rows.count < 3 else { break }
+            guard let count = reviewQueueCounts[candidate.queue], count > 0 else { continue }
+            guard !isPresetActive(candidate.preset, activeRuleChips: activeRuleChips) else { continue }
+            rows.append(SmartCollectionSuggestedTemplateRow(
+                title: candidate.title,
+                detail: suggestionDetail(for: candidate.queue, count: count),
+                systemImage: candidate.systemImage,
+                presets: [candidate.preset]
+            ))
+        }
+        return rows
+    }
+
+    private static func suggestionDetail(for queue: ReviewQueue, count: Int) -> String {
+        switch queue {
+        case .facesFound:
+            return count == 1 ? "1 photo has faces" : "\(count) photos have faces"
+        case .needsKeywords:
+            return count == 1 ? "1 photo needs keywords" : "\(count) photos need keywords"
+        case .needsEvaluation:
+            return count == 1 ? "1 photo needs evaluation" : "\(count) photos need evaluation"
+        case .likelyIssues:
+            return count == 1 ? "1 photo has likely issues" : "\(count) photos have likely issues"
+        case .providerFailures:
+            return count == 1 ? "1 provider failure" : "\(count) provider failures"
+        default:
+            return count == 1 ? "1 matching photo" : "\(count) matching photos"
+        }
+    }
+
+    private static func isPresetActive(
+        _ preset: SmartCollectionRulePreset,
+        activeRuleChips: [String]
+    ) -> Bool {
+        activeRuleChips.contains { chip in
+            switch preset {
+            case .ratingFourPlus:
+                return chip.hasPrefix("Rating")
+            case .picked:
+                return chip == "Pick"
+            case .rejected:
+                return chip == "Reject"
+            case .needsKeywords:
+                return chip == "Needs Keywords"
+            case .needsEvaluation:
+                return chip == "Needs Evaluation"
+            case .onlineSources:
+                return chip == "Source: Online"
+            case .offlineSources:
+                return chip == "Source: Offline"
+            case .facesFound:
+                return chip == "Faces Found" || chip == "Signal: Face Count"
+            case .ocrFound:
+                return chip == "OCR Found" || chip == "Signal: OCR Text"
+            case .objectSignals:
+                return chip == "Signal: Object"
+            case .likelyIssues:
+                return chip == "Likely Issues"
+            case .providerFailures:
+                return chip == "Provider Failures"
+            case .xmpPending:
+                return chip == "XMP Pending"
+            case .xmpConflicts:
+                return chip == "XMP Conflicts"
+            }
+        }
     }
 }
 

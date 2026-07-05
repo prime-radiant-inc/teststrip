@@ -4724,7 +4724,8 @@ final class AppModelTests: XCTestCase {
         let presentation = SmartCollectionBuilderPresentation(
             proposedName: "Suggested",
             ruleChips: model.activeLibraryFilterChips,
-            matchCount: model.totalAssetCount
+            matchCount: model.totalAssetCount,
+            reviewQueueCounts: model.reviewQueueCounts
         )
         let suggestion = try XCTUnwrap(presentation.suggestedTemplateRows.first { $0.title == "Picked keepers" })
 
