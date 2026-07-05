@@ -71,6 +71,11 @@ final class CopilotPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.statusDetail, "Local evaluation, review queues, and background work are idle.")
         XCTAssertEqual(presentation.metricRows.map(\.value), ["42", "0", "0", "0"])
         XCTAssertEqual(presentation.reviewRows.map(\.isActionEnabled), [false, false, false])
+        XCTAssertEqual(presentation.reviewRows.map(\.statusText), [
+            "All catalog photos have local signals",
+            "No likely issues found",
+            "No provider failures recorded"
+        ])
         XCTAssertEqual(presentation.signalRows, [])
         XCTAssertEqual(presentation.readChips, ["All photographs"])
         XCTAssertNil(presentation.primaryAction)

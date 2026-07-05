@@ -1268,7 +1268,7 @@ public final class AppModel {
         }
         if let evaluationKindFilter {
             Self.append(
-                ActiveLibraryFilterRow(title: "Signal: \(evaluationKindFilter.displayName)", target: .evaluationKind(evaluationKindFilter)),
+                Self.activeLibraryFilterRow(forEvaluationKind: evaluationKindFilter),
                 to: &rows
             )
         }
@@ -1403,7 +1403,7 @@ public final class AppModel {
             Self.append(availabilityFilter.rawValue.capitalized, to: &parts)
         }
         if let evaluationKindFilter {
-            Self.append("\(evaluationKindFilter.displayName) Signal", to: &parts)
+            Self.append(Self.filterName(for: evaluationKindFilter), to: &parts)
         }
         if needsKeywordsFilter {
             Self.append("Needs Keywords", to: &parts)
@@ -4830,7 +4830,7 @@ public final class AppModel {
         case .capturedBefore(let date):
             ActiveLibraryFilterRow(title: "Before \(date.formatted(date: .abbreviated, time: .omitted))")
         case .evaluationKind(let kind):
-            ActiveLibraryFilterRow(title: "Signal: \(kind.displayName)", target: sidebarTarget(for: predicate))
+            activeLibraryFilterRow(forEvaluationKind: kind)
         case .unevaluated:
             ActiveLibraryFilterRow(title: "Needs Evaluation", target: sidebarTarget(for: predicate))
         case .likelyIssue:
@@ -4843,6 +4843,28 @@ public final class AppModel {
             ActiveLibraryFilterRow(title: "XMP Conflicts", target: sidebarTarget(for: predicate))
         case .importBatch(let id):
             ActiveLibraryFilterRow(title: "Import: \(id)")
+        }
+    }
+
+    private static func activeLibraryFilterRow(forEvaluationKind kind: EvaluationKind) -> ActiveLibraryFilterRow {
+        if let queue = reviewQueue(forEvaluationKind: kind) {
+            return ActiveLibraryFilterRow(title: queue.presentation.title, target: .reviewQueue(queue))
+        }
+        return ActiveLibraryFilterRow(title: "Signal: \(kind.displayName)", target: .evaluationKind(kind))
+    }
+
+    private static func filterName(for kind: EvaluationKind) -> String {
+        reviewQueue(forEvaluationKind: kind)?.presentation.title ?? "\(kind.displayName) Signal"
+    }
+
+    private static func reviewQueue(forEvaluationKind kind: EvaluationKind) -> ReviewQueue? {
+        switch kind {
+        case .faceCount:
+            .facesFound
+        case .ocrText:
+            .ocrFound
+        default:
+            nil
         }
     }
 
@@ -4859,7 +4881,11 @@ public final class AppModel {
         case .availability(let availability):
             .sourceAvailability(availability)
         case .evaluationKind(let kind):
-            .evaluationKind(kind)
+            if let queue = reviewQueue(forEvaluationKind: kind) {
+                .reviewQueue(queue)
+            } else {
+                .evaluationKind(kind)
+            }
         case .unevaluated:
             .reviewQueue(.needsEvaluation)
         case .likelyIssue:

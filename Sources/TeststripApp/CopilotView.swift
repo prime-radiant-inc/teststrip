@@ -153,40 +153,50 @@ struct CopilotView: View {
         }
     }
 
+    @ViewBuilder
     private func actionRow(_ row: CopilotActionRow) -> some View {
-        Button {
-            select(row)
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: row.systemImage)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(row.isActionEnabled ? Color.orange : Color.secondary)
-                    .frame(width: 28, height: 28)
-                    .background(Color.orange.opacity(row.isActionEnabled ? 0.12 : 0.04), in: Circle())
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(row.title)
-                        .font(.caption.weight(.semibold))
-                    Text(row.detail)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text(row.countText)
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(row.isActionEnabled ? .primary : .secondary)
-                if row.isActionEnabled {
-                    Image(systemName: "arrow.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
+        if row.isActionEnabled {
+            Button {
+                select(row)
+            } label: {
+                actionRowContent(row)
             }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 7))
+            .buttonStyle(.plain)
+            .help("Open \(row.title)")
+        } else {
+            actionRowContent(row)
+                .help(row.statusText ?? row.detail)
+                .accessibilityElement(children: .combine)
         }
-        .buttonStyle(.plain)
-        .disabled(!row.isActionEnabled)
-        .help(row.isActionEnabled ? "Open \(row.title)" : row.detail)
+    }
+
+    private func actionRowContent(_ row: CopilotActionRow) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: row.systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(row.isActionEnabled ? Color.orange : Color.secondary)
+                .frame(width: 28, height: 28)
+                .background(Color.orange.opacity(row.isActionEnabled ? 0.12 : 0.04), in: Circle())
+            VStack(alignment: .leading, spacing: 3) {
+                Text(row.title)
+                    .font(.caption.weight(.semibold))
+                Text(row.isActionEnabled ? row.detail : (row.statusText ?? row.detail))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(row.countText)
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(row.isActionEnabled ? .primary : .secondary)
+            if row.isActionEnabled {
+                Image(systemName: "arrow.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.black.opacity(row.isActionEnabled ? 0.16 : 0.08), in: RoundedRectangle(cornerRadius: 7))
     }
 
     private func select(_ row: CopilotActionRow) {
@@ -245,6 +255,7 @@ struct CopilotActionRow: Equatable, Identifiable {
     var id: String
     var title: String
     var detail: String
+    var statusText: String?
     var countText: String
     var systemImage: String
     var target: SidebarRowTarget?
@@ -421,10 +432,24 @@ struct CopilotPresentation: Equatable {
             id: "review-\(queue.rawValue)",
             title: title,
             detail: detail,
+            statusText: count == 0 ? reviewStatusText(for: queue) : nil,
             countText: String(count),
             systemImage: systemImage,
             target: count > 0 ? .reviewQueue(queue) : nil
         )
+    }
+
+    private func reviewStatusText(for queue: ReviewQueue) -> String {
+        switch queue {
+        case .needsEvaluation:
+            return "All catalog photos have local signals"
+        case .likelyIssues:
+            return "No likely issues found"
+        case .providerFailures:
+            return "No provider failures recorded"
+        default:
+            return "No photos in this review queue"
+        }
     }
 
     private var signalKindOrder: [EvaluationKind] {

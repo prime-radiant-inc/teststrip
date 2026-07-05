@@ -2505,6 +2505,24 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.activeLibraryFilterChips, model.activeLibraryFilterRows.map(\.title))
     }
 
+    func testReviewQueueSignalFiltersUseUserFacingQueueNames() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+
+        model.evaluationKindFilter = .faceCount
+
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Faces Found", target: .reviewQueue(.facesFound))
+        ])
+        XCTAssertEqual(model.suggestedSavedSearchName, "Faces Found")
+
+        model.evaluationKindFilter = .ocrText
+
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "OCR Found", target: .reviewQueue(.ocrFound))
+        ])
+        XCTAssertEqual(model.suggestedSavedSearchName, "OCR Found")
+    }
+
     func testActiveLibraryFilterRowsExposeSelectedDynamicSetRules() {
         let set = AssetSet.dynamic(
             id: AssetSetID(rawValue: "ceremony-keepers"),
