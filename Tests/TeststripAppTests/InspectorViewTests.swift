@@ -208,6 +208,22 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(status.conflictRows.map(\.sidecarValue), ["5", "green", "reject", "sidecar"])
     }
 
+    func testMetadataConflictActionsExposeMergeBeforeDestructiveChoices() {
+        XCTAssertEqual(InspectorMetadataConflictActionPresentation.actions.map(\.title), [
+            "Merge Missing",
+            "Use Catalog",
+            "Use XMP"
+        ])
+        XCTAssertEqual(InspectorMetadataConflictActionPresentation.actions.map(\.kind), [
+            .mergeMissingSidecarFields,
+            .useCatalog,
+            .useSidecar
+        ])
+        XCTAssertTrue(InspectorMetadataConflictActionPresentation.actions[0].help.localizedCaseInsensitiveContains("missing"))
+        XCTAssertTrue(InspectorMetadataConflictActionPresentation.actions[1].help.localizedCaseInsensitiveContains("overwrite"))
+        XCTAssertTrue(InspectorMetadataConflictActionPresentation.actions[2].help.localizedCaseInsensitiveContains("import"))
+    }
+
     func testMetadataDraftFormatsPortableMetadataFromAsset() {
         let asset = makeAsset(
             id: "draft-asset",

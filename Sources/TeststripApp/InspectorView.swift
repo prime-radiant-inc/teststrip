@@ -459,21 +459,27 @@ struct InspectorView: View {
 
     private func metadataConflictControls() -> some View {
         HStack(spacing: 8) {
-            Button {
-                apply { try model.resolveSelectedMetadataConflictUsingCatalog() }
-            } label: {
-                Label("Use Catalog", systemImage: "internaldrive")
+            ForEach(InspectorMetadataConflictActionPresentation.actions) { action in
+                Button {
+                    applyMetadataConflictAction(action.kind)
+                } label: {
+                    Label(action.title, systemImage: action.systemImage)
+                }
+                .help(action.help)
             }
-            .help("Keep catalog metadata and overwrite the XMP sidecar")
-
-            Button {
-                apply { try model.resolveSelectedMetadataConflictUsingSidecar() }
-            } label: {
-                Label("Use XMP", systemImage: "doc.text")
-            }
-            .help("Import XMP sidecar metadata into the catalog")
         }
         .controlSize(.small)
+    }
+
+    private func applyMetadataConflictAction(_ action: InspectorMetadataConflictActionPresentation.Kind) {
+        switch action {
+        case .mergeMissingSidecarFields:
+            apply { try model.resolveSelectedMetadataConflictByMergingMissingSidecarFields() }
+        case .useCatalog:
+            apply { try model.resolveSelectedMetadataConflictUsingCatalog() }
+        case .useSidecar:
+            apply { try model.resolveSelectedMetadataConflictUsingSidecar() }
+        }
     }
 
     private func metadataControls(for asset: Asset) -> some View {
@@ -779,6 +785,42 @@ struct InspectorView: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
     }
+}
+
+struct InspectorMetadataConflictActionPresentation: Equatable, Identifiable {
+    enum Kind: Equatable {
+        case mergeMissingSidecarFields
+        case useCatalog
+        case useSidecar
+    }
+
+    var kind: Kind
+    var title: String
+    var systemImage: String
+    var help: String
+
+    var id: Kind { kind }
+
+    static let actions = [
+        InspectorMetadataConflictActionPresentation(
+            kind: .mergeMissingSidecarFields,
+            title: "Merge Missing",
+            systemImage: "arrow.triangle.merge",
+            help: "Fill missing catalog metadata from XMP and write the merged sidecar"
+        ),
+        InspectorMetadataConflictActionPresentation(
+            kind: .useCatalog,
+            title: "Use Catalog",
+            systemImage: "internaldrive",
+            help: "Keep catalog metadata and overwrite the XMP sidecar"
+        ),
+        InspectorMetadataConflictActionPresentation(
+            kind: .useSidecar,
+            title: "Use XMP",
+            systemImage: "doc.text",
+            help: "Import XMP sidecar metadata into the catalog"
+        )
+    ]
 }
 
 struct InspectorMetadataDraft: Equatable {
