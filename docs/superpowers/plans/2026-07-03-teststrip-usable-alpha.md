@@ -13,11 +13,11 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `82d3a8f Cover local HTTP evaluation cancellation`
+- Snapshot commit: `e7813c7 Preflight stale originals before preview render`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter AppModelTests/testCancellingRunningLocalHTTPModelEvaluationRestartsWorkerAndStartsNextQueuedWork` passed after documenting worker-level cancellation for local HTTP model evaluation jobs.
-- Last broad unit verification: `swift test` passed with 581 tests after documenting worker-level cancellation for local HTTP model evaluation jobs.
-- Last app workflow verification: no app launch was run for the diagnostics slice to minimize focus stealing while Jesse is using the machine; the new `Support > Copy Diagnostics` command is compile-covered and backed by model/report tests. Before that, no app launch was run for the XMP filter-bar addition for the same reason. `./script/build_and_run.sh --verify-smoke` launched an isolated smoke catalog after the Activity row-control change, and `./script/capture_app_window.sh Teststrip /tmp/teststrip-worker-control-smoke.png` captured a normal Library window with Activity idle state visible. Earlier `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import/click UI automation was intentionally deferred for the import phase and grid click-recentering slices to avoid unnecessary focus stealing while Jesse was using the machine; those slices were covered by focused presentation/policy tests and full unit runs. The previous grid aspect-ratio slice passed `./script/build_and_run.sh --sample-photos` and one Computer Use grid inspection, and the previous People live-mockup route passed Computer Use inspection plus `./script/verify_grid_activation.sh`, `./script/verify_grid_selection_feedback.sh`, `./script/verify_keyboard_culling.sh`, and `TESTSTRIP_AX_TIMEOUT_SECONDS=20 ./script/verify_imported_grid_culling.sh`. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import. Before that, `script/build_and_run.sh --verify-sample-photos` plus Computer Use verified the Needs Keywords review row and real WordPress sample-photo grid behavior.
+- Last focused unit verification: `swift test --filter WorkerCommandExecutorTests`, `swift test --filter SourceAvailabilityTests/testProbeMarksChangedOriginalStale`, `swift test --filter LibraryGridLayoutTests --filter LibraryGridChromeTests`, focused XMP conflict/reconnect tests, and catalog-scale verifier tests all passed across the latest slices.
+- Last broad unit verification: `swift test` passed with 705 tests, 1 skipped, and 0 failures after the stale-preview preflight slice.
+- Last app workflow verification: `./script/build_and_run.sh --verify-smoke` launched an isolated smoke catalog after the inspector XMP merge action, and `./script/capture_app_window.sh Teststrip /tmp/teststrip-inspector-conflict-action-smoke.png` captured a normal Library window. That smoke did not show an active XMP conflict; the conflict action ordering and model merge path are covered by focused tests. Additional UI automation was intentionally avoided for the footer-density slice to minimize focus stealing while Jesse is using the machine. Earlier no app launch was run for the diagnostics slice to minimize focus stealing; `./script/build_and_run.sh --verify-smoke` launched an isolated smoke catalog after the Activity row-control change, and `./script/capture_app_window.sh Teststrip /tmp/teststrip-worker-control-smoke.png` captured a normal Library window with Activity idle state visible. Earlier `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import/click UI automation was intentionally deferred for several import/grid slices to avoid unnecessary focus stealing while Jesse was using the machine; those slices were covered by focused presentation/policy tests and full unit runs. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import.
 
 ### Recent Completed Slices
 
@@ -93,6 +93,12 @@
 - `d8084c2`: bounded import confirmation source-summary scans by total entries visited as well as supported-photo count, so huge unsupported/NAS/cloud folders do not block the confirmation UI before import starts.
 - `9596ac3`: added explicit regression coverage that machine object-label evaluation signals remain provisional suggestions until the user accepts them into catalog metadata/XMP.
 - `82d3a8f`: tightened running-evaluation cancellation coverage to the local HTTP model provider, documenting that cancelling a slow provider call uses worker-level `cancelAll`, marks the evaluation cancelled, and starts queued work.
+- `9b3e066`: expanded catalog-scale benchmark coverage to representative indexed filters and added catalog-first XMP conflict merge resolution for filling missing catalog fields from sidecar metadata.
+- `6aed16b`: added `script/verify_catalog_scale.sh`, a repeatable 100k catalog scale verifier with machine-readable metrics and threshold checks for page/filter queries.
+- `d819fd0`: exposed the lower-risk `Merge Missing` XMP conflict action in the inspector before destructive `Use Catalog` and `Use XMP` choices.
+- `8b4fcfc`: preserved existing unambiguous Adobe-style `frame.xmp` sidecar paths when reconnecting remounted source roots.
+- `2c1baac`: moved grid density and thumbnail-size controls into the Library footer and made grid spacing derive from the same density presentation, matching the Studio mockup footer while preserving true-aspect thumbnails.
+- `e7813c7`: preflighted preview generation for stale originals so changed source bytes do not silently refresh cached previews or clear pending preview work.
 
 ## Product Decisions To Preserve
 
@@ -189,7 +195,7 @@ Current behavior:
 - Launch/load does not synchronously render all pending previews. App-model recovery enqueues bounded worker jobs when a worker supervisor is available.
 - Automatic preview recovery is capped at 40 queued items and enqueued as a batch to avoid one observable queue update per recovered preview.
 - Preview recovery skips unavailable originals and rows that have failed too many automatic attempts.
-- Preview generation updates source availability instead of recording a render failure when an original has gone offline or missing after the catalog last saw it online.
+- Preview generation preflights source availability and keeps preview work pending without burning retry attempts when an original is offline, missing, or stale after the catalog last saw it online.
 - Recent work optimized preview refill responsiveness by avoiding durable write churn and all-work scans while refilling the pending preview queue.
 
 ### Metadata And XMP
@@ -475,6 +481,7 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Refine the inspector asset header with display name, extension badge, captured date, rating, and availability.
 - [x] Bring the loupe/culling surface closer to the mockup with top-level progress, decision counts, and stable flag/rating/label controls.
 - [x] Add the rapid-cull bottom filmstrip with fixed-size thumbnails, current-frame context, and visible rating/flag state.
+- [x] Move library density and thumbnail-size controls into the Studio-style footer and make compact density use tighter grid spacing without cropping true-aspect thumbnails.
 - [x] Fix the root cause if click handling, hit testing, focus capture, selection identity, or grid cell accessibility is wrong.
 - [x] Add the least brittle model/UI tests that would have failed for the root cause.
 - [ ] Verify all grid/culling scripts after Jesse is not actively using the computer.
@@ -526,10 +533,12 @@ Teststrip reaches usable alpha when a photographer can:
 
 **Work:**
 
-- [ ] Add user-facing conflict detail for selected conflicted assets.
-- [ ] Add explicit retry action for pending XMP sync items when a source becomes writable again.
+- [x] Add user-facing conflict detail for selected conflicted assets.
+- [x] Add explicit retry action for pending XMP sync items when a source becomes writable again.
+- [x] Add a lower-risk selected-conflict `Merge Missing` action that fills catalog gaps from sidecar metadata before destructive catalog-vs-XMP choices.
 - [ ] Make bulk metadata edits avoid UI stalls while still recording pending sync before worker dispatch.
-- [ ] Add tests for sidecar changed externally, catalog changed locally, both changed, and offline/read-only pending sync.
+- [x] Add tests for sidecar changed externally, catalog changed locally, both changed, selected merge resolution, and pending sync retry behavior.
+- [x] Preserve unambiguous Adobe-style sidecar paths when reconnecting source roots.
 - [ ] Verify full `swift test` and a small manual app flow that edits rating/label/keyword and inspects sidecar output.
 - [ ] Commit.
 
@@ -607,8 +616,9 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Expand the builder toward the designer mockup with parsed rule rows and a live loaded-result thumbnail preview.
 - [x] Support frozen snapshots separately from dynamic saved searches.
 - [x] Add model tests for predicate round-trip and dynamic-vs-frozen behavior.
-- [ ] Verify that common indexed searches stay under the intended timing target on seeded 500k/1M catalogs.
-- [ ] Commit.
+- [x] Verify common indexed searches through the repeatable 100k alpha-scale catalog verifier.
+- [ ] Extend the same indexed-search threshold gate to seeded 500k/1M catalogs when those runs are cheap enough for routine verification.
+- [x] Commit.
 
 **Acceptance:** Users can create and revisit smart collections without needing an agent/chat interaction.
 
@@ -632,10 +642,12 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Add preview render throughput benchmark for cached generated images.
 - [x] Add a dedicated preview render throughput benchmark for a small real-image sample directory.
 - [x] Add metadata/XMP bulk edit benchmark.
+- [x] Add a repeatable catalog-scale verifier script with alpha thresholds for page/filter query timings.
 - [ ] Add memory and CPU snapshots to app workflow scripts where practical.
-- [ ] Set initial red/yellow/green thresholds for alpha only after measuring current local behavior.
+- [x] Set initial green thresholds for the 100k alpha catalog verifier after measuring current local behavior.
+- [ ] Set red/yellow/green thresholds for app workflow and larger 500k/1M stress paths after measuring current local behavior.
 - [x] Update `docs/architecture/performance.md` with measured evidence and caveats.
-- [ ] Commit.
+- [x] Commit.
 
 **Acceptance:** Future agents cannot accidentally call the app fast without running the same scale checks.
 
