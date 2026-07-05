@@ -1810,6 +1810,7 @@ private struct LoupeView: View {
             } else {
                 unavailableView(title: "No photo selected", systemImage: "photo")
             }
+            cullingStackRail
             cullingFilmstrip
             cullingCommandRail
         }
@@ -1946,6 +1947,57 @@ private struct LoupeView: View {
         .liveMockupPlaceholder(.cullingFilmstrip)
         .task(id: presentation.requestID) {
             requestFilmstripPreviews(for: presentation.visibleAssets)
+        }
+    }
+
+    @ViewBuilder
+    private var cullingStackRail: some View {
+        let presentation = CullingStackRailPresentation(
+            assets: model.assets,
+            selectedAssetID: model.selectedAssetID
+        )
+        if presentation.isVisible {
+            HStack(spacing: 10) {
+                Label(presentation.titleText, systemImage: "rectangle.stack")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+                Text(presentation.positionText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if let rationaleText = presentation.rationaleText {
+                    Text(rationaleText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                HStack(spacing: 5) {
+                    ForEach(presentation.items, id: \.assetID.rawValue) { item in
+                        Button {
+                            model.select(item.assetID)
+                        } label: {
+                            Text(item.label)
+                                .font(.caption2.monospacedDigit().weight(.semibold))
+                                .frame(width: 24, height: 22)
+                                .foregroundStyle(item.isSelected ? Color.black : Color.orange)
+                                .background(item.isSelected ? Color.orange : Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .strokeBorder(Color.orange.opacity(item.isSelected ? 0.4 : 0.26))
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Stack frame \(item.label)")
+                        .accessibilityValue(item.isSelected ? "Selected" : "Not selected")
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 38)
+            .background(Color.black.opacity(0.23))
+            .liveMockupPlaceholder(.cullingStackCull)
         }
     }
 
@@ -2600,6 +2652,67 @@ struct CullingFilmstripPresentation: Equatable {
             selectedIndex.map(String.init) ?? "none",
             String(totalCount)
         ].joined(separator: "\n")
+    }
+}
+
+struct CullingStackRailPresentation: Equatable {
+    struct Item: Equatable {
+        var assetID: AssetID
+        var label: String
+        var isSelected: Bool
+    }
+
+    var items: [Item]
+    var titleText: String
+    var positionText: String
+    var rationaleText: String?
+
+    init(
+        assets: [Asset],
+        selectedAssetID: AssetID?,
+        stackBuilder: AssetStackBuilder = AssetStackBuilder()
+    ) {
+        guard let selectedAssetID else {
+            items = []
+            titleText = ""
+            positionText = ""
+            rationaleText = nil
+            return
+        }
+
+        let stacks = stackBuilder.stacks(from: assets)
+        guard let stackIndex = stacks.firstIndex(where: { $0.assetIDs.contains(selectedAssetID) }) else {
+            items = []
+            titleText = ""
+            positionText = ""
+            rationaleText = nil
+            return
+        }
+
+        let stack = stacks[stackIndex]
+        guard stack.assetIDs.count > 1,
+              let selectedIndex = stack.assetIDs.firstIndex(of: selectedAssetID) else {
+            items = []
+            titleText = ""
+            positionText = ""
+            rationaleText = nil
+            return
+        }
+
+        items = stack.assetIDs.enumerated().map { index, assetID in
+            Item(
+                assetID: assetID,
+                label: "\(index + 1)",
+                isSelected: assetID == selectedAssetID
+            )
+        }
+        titleText = "Stack \(stackIndex + 1) of \(stacks.count)"
+        positionText = "Frame \(selectedIndex + 1) of \(stack.assetIDs.count)"
+        rationaleText = stack.rationale
+    }
+
+    var isVisible: Bool {
+        !items.isEmpty
     }
 }
 
