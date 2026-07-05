@@ -154,9 +154,11 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5d" })
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("add rule presets"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("delete set confirmation"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("current library query"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("freeform rule editing is not built"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("add rule presets"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("delete set confirmation"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("loaded-result preview"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("freeform rule editing is not built"))
     }
