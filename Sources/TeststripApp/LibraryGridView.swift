@@ -1481,25 +1481,47 @@ struct LibraryGridView: View {
                 Label("Teststrip suggests", systemImage: "sparkles")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.orange)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 6)], alignment: .leading, spacing: 6) {
-                    ForEach(SmartCollectionBuilderPresentation.suggestedTemplates, id: \.self) { template in
-                        Text(template)
-                            .font(.caption.weight(.medium))
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 142), spacing: 6)], alignment: .leading, spacing: 6) {
+                    ForEach(presentation.suggestedTemplateRows) { template in
+                        Button {
+                            applySuggestedTemplate(template)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: template.systemImage)
+                                    .font(.caption.weight(.semibold))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(template.title)
+                                        .font(.caption.weight(.medium))
+                                    Text(template.detail)
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange.opacity(0.82))
+                                }
+                                Spacer(minLength: 0)
+                            }
                             .foregroundStyle(.orange)
                             .lineLimit(1)
                             .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.vertical, 5)
                             .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
                             .overlay {
                                 RoundedRectangle(cornerRadius: 6)
                                     .strokeBorder(Color.orange.opacity(0.24))
                             }
+                        }
+                        .buttonStyle(.plain)
+                        .help("Add \(template.detail)")
                     }
                 }
             }
             .padding(10)
             .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
             .liveMockupPlaceholder(.smartCollectionsBuilder)
+        }
+
+        private func applySuggestedTemplate(_ template: SmartCollectionSuggestedTemplateRow) {
+            for preset in template.presets {
+                applyRulePreset(preset)
+            }
         }
 
         private var previewPanel: some View {
@@ -4820,15 +4842,34 @@ enum MetadataSyncFilterOption: String, Equatable {
 }
 
 struct SmartCollectionBuilderPresentation: Equatable {
-    static let suggestedTemplates = [
-        "Sharp keepers",
-        "Golden hour",
-        "Best of each trip"
+    private static let defaultSuggestedTemplateRows = [
+        SmartCollectionSuggestedTemplateRow(
+            title: "Picked keepers",
+            detail: "4+ stars and picked",
+            systemImage: "star.circle",
+            presets: [.ratingFourPlus, .picked]
+        ),
+        SmartCollectionSuggestedTemplateRow(
+            title: "Face review",
+            detail: "faces detected",
+            systemImage: "person.2.circle",
+            presets: [.facesFound]
+        ),
+        SmartCollectionSuggestedTemplateRow(
+            title: "Metadata sync",
+            detail: "XMP pending",
+            systemImage: "arrow.triangle.2.circlepath.circle",
+            presets: [.xmpPending]
+        )
     ]
 
     var proposedName: String
     var ruleChips: [String]
     var matchCount: Int
+
+    var suggestedTemplateRows: [SmartCollectionSuggestedTemplateRow] {
+        Self.defaultSuggestedTemplateRows
+    }
 
     var ruleCountText: String {
         "\(ruleChips.count) \(ruleChips.count == 1 ? "rule" : "rules")"
@@ -4854,6 +4895,15 @@ struct SmartCollectionBuilderPresentation: Equatable {
         guard matchCount > 0 else { return "no live preview yet" }
         return "showing \(min(max(visibleCount, 0), matchCount))"
     }
+}
+
+struct SmartCollectionSuggestedTemplateRow: Equatable, Identifiable {
+    var title: String
+    var detail: String
+    var systemImage: String
+    var presets: [SmartCollectionRulePreset]
+
+    var id: String { title }
 }
 
 struct SmartCollectionAddRuleRow: Equatable, Identifiable {

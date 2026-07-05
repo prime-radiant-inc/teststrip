@@ -4692,6 +4692,50 @@ final class AppModelTests: XCTestCase {
         ])))
     }
 
+    func testApplyingSmartCollectionSuggestedTemplatePresetSequenceNarrowsCurrentQuery() throws {
+        let fiveStarPick = makeAsset(
+            id: "template-five-star-pick",
+            path: "/Photos/Job/template-five-pick.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let fourStarPick = makeAsset(
+            id: "template-four-star-pick",
+            path: "/Photos/Job/template-four-pick.jpg",
+            rating: 4,
+            flag: .pick
+        )
+        let threeStarPick = makeAsset(
+            id: "template-three-star-pick",
+            path: "/Photos/Job/template-three-pick.jpg",
+            rating: 3,
+            flag: .pick
+        )
+        let fiveStarReject = makeAsset(
+            id: "template-five-star-reject",
+            path: "/Photos/Job/template-five-reject.jpg",
+            rating: 5,
+            flag: .reject
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "smart-collection-suggested-template-presets",
+            assets: [fiveStarPick, fourStarPick, threeStarPick, fiveStarReject]
+        )
+        let presentation = SmartCollectionBuilderPresentation(
+            proposedName: "Suggested",
+            ruleChips: model.activeLibraryFilterChips,
+            matchCount: model.totalAssetCount
+        )
+        let suggestion = try XCTUnwrap(presentation.suggestedTemplateRows.first { $0.title == "Picked keepers" })
+
+        for preset in suggestion.presets {
+            try model.applySmartCollectionRulePreset(preset)
+        }
+
+        XCTAssertEqual(model.assets.map(\.id), [fiveStarPick.id, fourStarPick.id])
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Rating >= 4", "Pick"])
+    }
+
     func testApplyingSmartCollectionRulePresetFromSelectedDynamicSetPreservesExistingRules() throws {
         let ceremonyPick = makeAsset(
             id: "ceremony-pick",

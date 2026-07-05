@@ -74,11 +74,32 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.previewCountText(visibleCount: 0), "no live preview yet")
     }
 
-    func testSuggestedTemplatesStayStable() {
-        XCTAssertEqual(SmartCollectionBuilderPresentation.suggestedTemplates, [
-            "Sharp keepers",
-            "Golden hour",
-            "Best of each trip"
+    func testSuggestedTemplateRowsExposeConcretePresetActions() {
+        let presentation = SmartCollectionBuilderPresentation(
+            proposedName: "Filtered",
+            ruleChips: ["Search: ceremony"],
+            matchCount: 12
+        )
+
+        XCTAssertEqual(presentation.suggestedTemplateRows, [
+            SmartCollectionSuggestedTemplateRow(
+                title: "Picked keepers",
+                detail: "4+ stars and picked",
+                systemImage: "star.circle",
+                presets: [.ratingFourPlus, .picked]
+            ),
+            SmartCollectionSuggestedTemplateRow(
+                title: "Face review",
+                detail: "faces detected",
+                systemImage: "person.2.circle",
+                presets: [.facesFound]
+            ),
+            SmartCollectionSuggestedTemplateRow(
+                title: "Metadata sync",
+                detail: "XMP pending",
+                systemImage: "arrow.triangle.2.circlepath.circle",
+                presets: [.xmpPending]
+            )
         ])
     }
 
