@@ -2514,12 +2514,14 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.recentWork.map(\.id), [recent.id.rawValue, starred.id.rawValue])
         XCTAssertEqual(model.starredWork.map(\.id), [starred.id.rawValue])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rowTitles, [recent.detail, starred.title])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rows.map(\.target), [
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Recent Work" }?.rowTitles, [recent.detail, starred.title])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.map(\.target), [
             .workSession(recent.id),
             .workSession(starred.id)
         ])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rows.map(\.isSelectable), [true, true])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred Work" }?.rowTitles, [starred.title])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.map(\.isSelectable), [true, true])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred Work" }?.rows.map(\.isSelectable), [true])
     }
 
     func testWorkSidebarIncludesStarredSessionOutsideDisplayedRecentRows() throws {
@@ -2581,17 +2583,18 @@ final class AppModelTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
-        let workRows = try XCTUnwrap(model.sidebarSections.first { $0.title == "Work" }?.rows)
+        let recentRows = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows)
+        let starredRows = try XCTUnwrap(model.sidebarSections.first { $0.title == "Starred Work" }?.rows)
 
-        XCTAssertEqual(workRows.map(\.title), [
+        XCTAssertEqual(recentRows.map(\.title), [
             "Recent 5",
             "Recent 4",
             "Recent 3",
             "Recent 2",
-            "Recent 1",
-            "Long-running Cull"
+            "Recent 1"
         ])
-        let starredRow = try XCTUnwrap(workRows.first { $0.title == "Long-running Cull" })
+        XCTAssertEqual(starredRows.map(\.title), ["Long-running Cull"])
+        let starredRow = try XCTUnwrap(starredRows.first { $0.title == "Long-running Cull" })
         try model.selectSidebarRow(starredRow)
 
         XCTAssertEqual(model.selectedAssetSetID, inputSet.id)
@@ -2637,7 +2640,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.recentWork.first?.id, session.id.rawValue)
         XCTAssertEqual(model.recentWork.first?.starred, true)
         XCTAssertEqual(model.starredWork.map(\.id), [session.id.rawValue])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rowTitles, [session.title])
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred Work" }?.rowTitles, [session.title])
 
         try model.setWorkSessionStarred(id: session.id, starred: false)
 
@@ -2687,7 +2690,7 @@ final class AppModelTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
-        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Work" }?.rows.first)
+        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
 
         try model.selectSidebarRow(row)
 
@@ -2736,7 +2739,7 @@ final class AppModelTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
-        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Work" }?.rows.first)
+        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
 
         try model.selectSidebarRow(row)
 
@@ -3038,10 +3041,10 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(session.totalUnitCount, 1)
         XCTAssertEqual(model.selectedView, .loupe)
         XCTAssertEqual(model.recentWork.first?.id, session.id.rawValue)
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Work" }?.rowTitles.first, "Ceremony Cull")
+        XCTAssertEqual(model.sidebarSections.first { $0.title == "Recent Work" }?.rowTitles.first, "Ceremony Cull")
 
         try model.clearLibraryFilters()
-        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Work" }?.rows.first)
+        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
         try model.selectSidebarRow(row)
 
         XCTAssertEqual(model.selectedAssetSetID, inputSet.id)
@@ -3075,7 +3078,7 @@ final class AppModelTests: XCTestCase {
         })
 
         try model.clearLibraryFilters()
-        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Work" }?.rows.first)
+        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
         try model.selectSidebarRow(row)
 
         XCTAssertEqual(model.selectedAssetSetID, inputSetID)
@@ -6400,7 +6403,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(reloaded.sidebarSections.contains { section in
             section.title == "Saved Sets" && section.rowTitles.contains("Imported 1 photo from photos")
         })
-        XCTAssertEqual(reloaded.sidebarSections.first { $0.title == "Work" }?.rowTitles.first, "Imported 1 photo from photos")
+        XCTAssertEqual(reloaded.sidebarSections.first { $0.title == "Recent Work" }?.rowTitles.first, "Imported 1 photo from photos")
         let session = try catalog.repository.session(id: WorkSessionID(rawValue: activity.id))
         let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
         let outputSet = try catalog.repository.assetSet(id: outputSetID)
@@ -6410,7 +6413,7 @@ final class AppModelTests: XCTestCase {
             XCTFail("import output set should be manual")
         }
 
-        let row = try XCTUnwrap(reloaded.sidebarSections.first { $0.title == "Work" }?.rows.first)
+        let row = try XCTUnwrap(reloaded.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
         try reloaded.selectSidebarRow(row)
 
         XCTAssertEqual(reloaded.selectedAssetSetID, outputSetID)

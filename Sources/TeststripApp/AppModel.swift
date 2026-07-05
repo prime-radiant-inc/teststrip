@@ -4703,11 +4703,17 @@ public final class AppModel {
         if !visibleSavedAssetSets.isEmpty {
             sections.append(SidebarSection(title: "Saved Sets", rows: visibleSavedAssetSets.map { Self.sidebarRow(for: $0, count: assetSetCounts[$0.id]) }))
         }
-        let workRows = Self.workSidebarRows(recentWork: recentWork, starredWork: starredWork)
-        if workRows.isEmpty {
+        let recentWorkRows = Self.workSidebarRows(for: Array(recentWork.prefix(5)), idPrefix: "work-recent")
+        let starredWorkRows = Self.workSidebarRows(for: Array(starredWork.prefix(5)), idPrefix: "work-starred")
+        if recentWorkRows.isEmpty && starredWorkRows.isEmpty {
             sections.append(SidebarSection(title: "Work", rows: workPlaceholderSidebarRows()))
         } else {
-            sections.append(SidebarSection(title: "Work", rows: workRows))
+            if !recentWorkRows.isEmpty {
+                sections.append(SidebarSection(title: "Recent Work", rows: recentWorkRows))
+            }
+            if !starredWorkRows.isEmpty {
+                sections.append(SidebarSection(title: "Starred Work", rows: starredWorkRows))
+            }
         }
         return sections
     }
@@ -4927,14 +4933,10 @@ public final class AppModel {
         }
     }
 
-    private static func workSidebarRows(
-        recentWork: [AppWorkActivity],
-        starredWork: [AppWorkActivity]
-    ) -> [SidebarRow] {
-        let displayedRecentWork = Array(recentWork.prefix(5))
-        var rows = displayedRecentWork.map { activity in
+    private static func workSidebarRows(for activities: [AppWorkActivity], idPrefix: String) -> [SidebarRow] {
+        activities.map { activity in
             SidebarRow(
-                id: "work-recent-\(activity.id)",
+                id: "\(idPrefix)-\(activity.id)",
                 title: workSidebarTitle(for: activity),
                 detailText: activity.sidebarDetailText,
                 countText: activity.sidebarCountText,
@@ -4942,18 +4944,6 @@ public final class AppModel {
                 target: .workSession(WorkSessionID(rawValue: activity.id))
             )
         }
-        let recentIDs = Set(displayedRecentWork.map(\.id))
-        rows.append(contentsOf: starredWork.prefix(5).filter { !recentIDs.contains($0.id) }.map { activity in
-            SidebarRow(
-                id: "work-starred-\(activity.id)",
-                title: workSidebarTitle(for: activity),
-                detailText: activity.sidebarDetailText,
-                countText: activity.sidebarCountText,
-                tone: activity.sidebarTone,
-                target: .workSession(WorkSessionID(rawValue: activity.id))
-            )
-        })
-        return rows
     }
 
     fileprivate static func sidebarCountText(_ count: Int) -> String {
