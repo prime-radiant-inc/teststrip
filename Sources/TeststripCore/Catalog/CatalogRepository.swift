@@ -607,7 +607,7 @@ public final class CatalogRepository {
                 try upsert(reconnectedAsset)
                 try updateMetadataSyncSidecarPathIfPresent(
                     assetID: asset.id,
-                    sidecarURL: candidateURL.appendingPathExtension("xmp")
+                    sidecarURL: XMPSidecarStore().sidecarURL(forOriginalAt: candidateURL)
                 )
                 result.reconnectedAssetCount += 1
             }

@@ -227,6 +227,46 @@ final class SourceAvailabilityTests: XCTestCase {
         XCTAssertEqual(syncItem.lastSyncedFingerprint, "sidecar-fingerprint")
     }
 
+    func testRepositoryReconnectUsesExistingAdobeStyleSidecarPath() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "source-reconnect-adobe-xmp")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let oldRoot = directory.appendingPathComponent("OfflineArchive", isDirectory: true)
+        let newRoot = directory.appendingPathComponent("MountedArchive", isDirectory: true)
+        let newOriginalURL = newRoot.appendingPathComponent("2024/frame.dng")
+        try FileManager.default.createDirectory(
+            at: newOriginalURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("same raw bytes".utf8).write(to: newOriginalURL)
+        let newSidecarURL = newOriginalURL.deletingPathExtension().appendingPathExtension("xmp")
+        try Data("existing adobe-style sidecar".utf8).write(to: newSidecarURL)
+        let oldOriginalURL = oldRoot.appendingPathComponent("2024/frame.dng")
+        let oldSidecarURL = oldOriginalURL.deletingPathExtension().appendingPathExtension("xmp")
+        let asset = Asset(
+            id: AssetID(rawValue: "source-reconnect-adobe-xmp"),
+            originalURL: oldOriginalURL,
+            volumeIdentifier: "OfflineArchive",
+            fingerprint: try fileFingerprint(for: newOriginalURL),
+            availability: .missing,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try repository.markMetadataSynced(
+            assetID: asset.id,
+            sidecarURL: oldSidecarURL,
+            catalogGeneration: try repository.catalogGeneration(assetID: asset.id),
+            fingerprint: "sidecar-fingerprint"
+        )
+
+        _ = try repository.reconnectSourceRoot(from: oldRoot, to: newRoot)
+
+        let syncItem = try XCTUnwrap(repository.metadataSyncItem(assetID: asset.id))
+        XCTAssertEqual(syncItem.sidecarURL, newSidecarURL)
+        XCTAssertEqual(syncItem.lastSyncedFingerprint, "sidecar-fingerprint")
+    }
+
     private func makeAsset(originalURL: URL, fingerprint: FileFingerprint) -> Asset {
         Asset(
             id: AssetID(rawValue: "source-asset"),
