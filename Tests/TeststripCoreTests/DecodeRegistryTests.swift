@@ -90,10 +90,10 @@ final class DecodeRegistryTests: XCTestCase {
         XCTAssertTrue(jpeg?.canRenderFullImage == true)
     }
 
-    func testImageIOCapabilityMatrixMarksNamedRawFamiliesAsBestEffort() {
+    func testImageIOCapabilityMatrixMarksEveryDeclaredRawFamilyAsBestEffort() {
         let provider = ImageIODecodeProvider()
 
-        for fileExtension in ["dng", "crw", "cr2", "raf"] {
+        for fileExtension in ImageIODecodeProvider.bestEffortRawExtensions.sorted() {
             let capability = provider.capability(forFileExtension: fileExtension)
 
             XCTAssertEqual(capability?.support, .bestEffort, fileExtension)
@@ -102,6 +102,47 @@ final class DecodeRegistryTests: XCTestCase {
             XCTAssertTrue(capability?.canRenderPreview == true, fileExtension)
             XCTAssertFalse(capability?.canRenderFullImage == true, fileExtension)
             XCTAssertTrue(capability?.note.localizedCaseInsensitiveContains("OS") == true, fileExtension)
+        }
+    }
+
+    func testImageIOUnsupportedRawFamiliesAreExcludedFromDecodeRouting() {
+        let provider = ImageIODecodeProvider()
+
+        for fileExtension in ImageIODecodeProvider.knownUnsupportedRawExtensions.sorted() {
+            XCTAssertFalse(ImageIODecodeProvider.supportedExtensions.contains(fileExtension), fileExtension)
+            XCTAssertFalse(provider.canDecode(url: URL(fileURLWithPath: "/tmp/photo.\(fileExtension)")), fileExtension)
+
+            let capability = provider.capability(forFileExtension: fileExtension)
+            XCTAssertEqual(capability?.support, .unsupported, fileExtension)
+            XCTAssertFalse(capability?.canReadMetadata == true, fileExtension)
+            XCTAssertFalse(capability?.canUseEmbeddedPreview == true, fileExtension)
+            XCTAssertFalse(capability?.canRenderPreview == true, fileExtension)
+            XCTAssertFalse(capability?.canRenderFullImage == true, fileExtension)
+        }
+    }
+
+    func testRawFixtureCoverageUsesRealFilesWhenConfigured() throws {
+        let directory = try rawFixtureDirectory()
+        let requiredFixtures = [
+            "dng": "Adobe DNG",
+            "crw": "Canon CRW",
+            "cr2": "Canon CR2",
+            "raf": "Fuji RAF",
+            "x3f": "Sigma/Foveon X3F"
+        ]
+        let provider = ImageIODecodeProvider()
+
+        for (fileExtension, label) in requiredFixtures.sorted(by: { $0.key < $1.key }) {
+            let fixtureURL = directory.appendingPathComponent("sample.\(fileExtension)")
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: fixtureURL.path),
+                "Missing \(label) fixture at \(fixtureURL.path)"
+            )
+            XCTAssertEqual(
+                provider.capability(forFileExtension: fixtureURL.pathExtension)?.support,
+                ImageIODecodeProvider.knownUnsupportedRawExtensions.contains(fileExtension) ? .unsupported : .bestEffort,
+                label
+            )
         }
     }
 
@@ -154,6 +195,14 @@ final class DecodeRegistryTests: XCTestCase {
                 XCTAssertEqual(error as? TeststripError, .unsupportedFormat("ImageIO could not read dimensions for photo.dng"))
             }
         }
+    }
+
+    private func rawFixtureDirectory() throws -> URL {
+        guard let path = ProcessInfo.processInfo.environment["TESTSTRIP_RAW_FIXTURE_DIRECTORY"],
+              !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw XCTSkip("Set TESTSTRIP_RAW_FIXTURE_DIRECTORY with real sample.dng, sample.crw, sample.cr2, sample.raf, and sample.x3f files to run RAW fixture coverage.")
+        }
+        return URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
     }
 }
 

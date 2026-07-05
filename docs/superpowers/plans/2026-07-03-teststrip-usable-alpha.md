@@ -499,7 +499,8 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Document the actual current ImageIO-supported extension set and what Teststrip claims versus merely attempts.
 - [x] Add provider capability metadata for metadata read, embedded-preview usefulness, preview rendering, full render, and unsupported formats.
 - [x] Keep ImageIO as the default provider where it works.
-- [ ] Add fixtures or fixture hooks for DNG, CRW, CR2, Fuji RAW, and Sigma/Foveon RAW. If real sample files are not committed, tests should skip with explicit sample-missing messages instead of pretending coverage exists.
+- [x] Add explicit fixture hooks for DNG, CRW, CR2, Fuji RAW, and Sigma/Foveon RAW. If real sample files are not committed, tests skip with explicit sample-missing messages instead of pretending coverage exists.
+- [ ] Add or collect licensed real RAW sample files for DNG, CRW, CR2, Fuji RAW, and Sigma/Foveon RAW.
 - [x] Add a clean provider capability seam for future LibRaw/RawSpeed-style providers without implementing the whole provider now.
 - [ ] Make import still catalog unsupported/partial formats when metadata or embedded previews can be read.
 - [x] Verify focused decode tests and full `swift test`.
@@ -507,7 +508,7 @@ Teststrip reaches usable alpha when a photographer can:
 
 **Acceptance:** We know exactly which formats work, which are best-effort, and where a future decoder provider plugs in. The app should not silently overpromise RAW support.
 
-**Current result:** Partially accepted. The ImageIO capability matrix and future provider seam are built and documented, and X3F is no longer overclaimed. Remaining work is fixture-backed coverage for DNG, CRW, CR2, Fuji RAW, and long-tail RAW samples, plus deciding whether unsupported-but-important formats should be cataloged through a separate non-decode import path.
+**Current result:** Partially accepted. The ImageIO capability matrix and future provider seam are built and documented, X3F is no longer overclaimed, and opt-in RAW fixture hooks exist through `TESTSTRIP_RAW_FIXTURE_DIRECTORY`. Remaining work is collecting licensed real RAW samples, running fixture-backed coverage for DNG, CRW, CR2, Fuji RAW, and long-tail RAW samples, plus deciding whether unsupported-but-important formats should be cataloged through a separate non-decode import path.
 
 ### Slice 5: XMP Conflict And Pending Sync UX
 
