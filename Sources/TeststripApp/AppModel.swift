@@ -174,6 +174,32 @@ public enum SidebarRowTarget: Equatable, Sendable {
     case workSession(WorkSessionID)
 }
 
+public enum SidebarRowContextActionKind: Equatable, Sendable {
+    case toggleAssetSetStarred(AssetSetID)
+    case toggleWorkSessionStarred(WorkSessionID)
+}
+
+public struct SidebarRowContextAction: Identifiable, Equatable, Sendable {
+    public var kind: SidebarRowContextActionKind
+    public var title: String
+    public var systemImage: String
+
+    public var id: String {
+        switch kind {
+        case .toggleAssetSetStarred(let id):
+            return "toggle-asset-set-starred-\(id.rawValue)"
+        case .toggleWorkSessionStarred(let id):
+            return "toggle-work-session-starred-\(id.rawValue)"
+        }
+    }
+
+    public init(kind: SidebarRowContextActionKind, title: String, systemImage: String) {
+        self.kind = kind
+        self.title = title
+        self.systemImage = systemImage
+    }
+}
+
 public struct SidebarRow: Identifiable, Equatable, Sendable {
     public var id: String
     public var title: String
@@ -1890,6 +1916,54 @@ public final class AppModel {
         catalog != nil && persistedWorkActivityIDs.contains(activity.id)
     }
 
+    public func canToggleWorkSessionStarred(_ row: SidebarRow) -> Bool {
+        guard catalog != nil,
+              case .workSession(let id) = row.target else {
+            return false
+        }
+        return persistedWorkActivityIDs.contains(id.rawValue)
+    }
+
+    public func sidebarContextActions(for row: SidebarRow) -> [SidebarRowContextAction] {
+        switch row.target {
+        case .assetSet(let id):
+            guard canToggleAssetSetStarred(row),
+                  let assetSet = savedAssetSets.first(where: { $0.id == id }) else {
+                return []
+            }
+            return [
+                SidebarRowContextAction(
+                    kind: .toggleAssetSetStarred(id),
+                    title: assetSet.starred ? "Remove Star" : "Star Set",
+                    systemImage: assetSet.starred ? "star.slash" : "star"
+                )
+            ]
+        case .workSession(let id):
+            guard canToggleWorkSessionStarred(row),
+                  let activity = workActivity(id: id) else {
+                return []
+            }
+            return [
+                SidebarRowContextAction(
+                    kind: .toggleWorkSessionStarred(id),
+                    title: activity.starred ? "Remove Star" : "Star Work",
+                    systemImage: activity.starred ? "star.slash" : "star"
+                )
+            ]
+        default:
+            return []
+        }
+    }
+
+    public func performSidebarContextAction(_ action: SidebarRowContextAction) throws {
+        switch action.kind {
+        case .toggleAssetSetStarred(let id):
+            try toggleAssetSetStarred(id: id)
+        case .toggleWorkSessionStarred(let id):
+            try toggleWorkSessionStarred(id: id)
+        }
+    }
+
     public func toggleWorkSessionStarred(id: WorkSessionID) throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
@@ -1932,6 +2006,10 @@ public final class AppModel {
         assetSet.starred = starred
         try catalog.repository.upsert(assetSet)
         try refreshSavedAssetSets()
+    }
+
+    private func workActivity(id: WorkSessionID) -> AppWorkActivity? {
+        recentWork.first { $0.id == id.rawValue } ?? starredWork.first { $0.id == id.rawValue }
     }
 
     public func applyAssetSet(id: AssetSetID) throws {

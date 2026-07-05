@@ -3424,6 +3424,54 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.starredWork, [])
     }
 
+    func testSidebarContextActionsExposeWorkSessionStarToggle() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-work-session-context-actions")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let session = WorkSession(
+            id: WorkSessionID(rawValue: "cull-session"),
+            kind: .culling,
+            intent: "Pick strongest frame",
+            title: "Cull Session",
+            detail: "Pick strongest frame",
+            status: .running,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: 0,
+            totalUnitCount: 10,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        )
+        try repository.save(session)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        let recentRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
+        var action = try XCTUnwrap(model.sidebarContextActions(for: recentRow).first)
+
+        XCTAssertEqual(action.kind, .toggleWorkSessionStarred(session.id))
+        XCTAssertEqual(action.title, "Star Work")
+        XCTAssertEqual(action.systemImage, "star")
+
+        try model.performSidebarContextAction(action)
+
+        XCTAssertEqual(try repository.session(id: session.id).starred, true)
+        let starredRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Starred Work" }?.rows.first)
+        action = try XCTUnwrap(model.sidebarContextActions(for: starredRow).first)
+        XCTAssertEqual(action.kind, .toggleWorkSessionStarred(session.id))
+        XCTAssertEqual(action.title, "Remove Star")
+        XCTAssertEqual(action.systemImage, "star.slash")
+    }
+
     func testSelectingWorkSessionAppliesAssociatedOutputSet() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-select-work-session")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
