@@ -159,7 +159,7 @@ public enum LiveMockupPlaceholders {
         id: "culling.stack-cull",
         title: "Stack cull",
         intendedBehavior: "Group bursts or near-duplicates into stacks and cull the strongest candidate within each stack.",
-        currentFallback: "Loupe culling can keep a selected frame from persisted import stack sets or same-folder capture-time fallback stacks through the Keep frame action and reject alternates; Keep top and Keep all are visible disabled placeholders, and real similarity and near-duplicate grouping are still pending."
+        currentFallback: "Loupe culling can keep a selected frame from persisted import stack sets or same-folder capture-time fallback stacks through the Keep frame action, reject alternates, and refresh persisted culling session progress; Keep top and Keep all are visible disabled placeholders, and real similarity and near-duplicate grouping are still pending."
     )
 
     public static let focusCompare = LiveMockupPlaceholder(
@@ -267,9 +267,9 @@ public enum LiveMockupDesignSurfaces {
         LiveMockupDesignSurface(
             designID: "3a",
             title: "Stack cull",
-            status: .liveMockup,
+            status: .partial,
             placeholder: .cullingStackCull,
-            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, persisted import stack sets, and loaded-scope same-folder capture-time stacks with a keep-selected/reject-alternates action; Return accepts the selected stack frame when a persisted or loaded stack is active, and automatic burst/near-duplicate similarity grouping is not built."
+            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, persisted import stack sets, and loaded-scope same-folder capture-time stacks with a keep-selected/reject-alternates action; Return accepts the selected stack frame when a persisted or loaded stack is active, persisted stack culling sessions refresh progress and complete from decided stack flags, and automatic burst/near-duplicate similarity grouping is not built."
         ),
         LiveMockupDesignSurface(
             designID: "3b",

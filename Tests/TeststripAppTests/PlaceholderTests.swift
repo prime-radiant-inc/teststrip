@@ -85,15 +85,18 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep top"))
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep all"))
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("disabled"))
+        XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("session progress"))
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("similarity"))
         XCTAssertTrue(comparePlaceholder.currentFallback.localizedCaseInsensitiveContains("persisted culling stack sets"))
         XCTAssertTrue(comparePlaceholder.currentFallback.localizedCaseInsensitiveContains("loaded-scope candidate stacks"))
         XCTAssertTrue(rapidCullSurface.currentImplementation.localizedCaseInsensitiveContains("Space advances"))
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("Return accepts"))
+        XCTAssertEqual(stackSurface.status, .partial)
         XCTAssertTrue(compareSurface.currentImplementation.localizedCaseInsensitiveContains("persisted culling stack membership"))
         XCTAssertTrue(compareSurface.currentImplementation.localizedCaseInsensitiveContains("loaded-scope candidate stacks"))
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("persisted import stack sets"))
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("keep-selected/reject-alternates"))
+        XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("sessions refresh progress"))
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("near-duplicate"))
     }
 
