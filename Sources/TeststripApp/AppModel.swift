@@ -2722,6 +2722,81 @@ public final class AppModel {
         return appliedCount
     }
 
+    @discardableResult
+    public func applyVisibleBatchMetadata(
+        keywordText: String,
+        caption: String,
+        creator: String,
+        copyright: String
+    ) throws -> Int {
+        try applyBatchMetadata(
+            assetIDs: assets.map(\.id),
+            keywordText: keywordText,
+            caption: caption,
+            creator: creator,
+            copyright: copyright
+        )
+    }
+
+    @discardableResult
+    private func applyBatchMetadata(
+        assetIDs: [AssetID],
+        keywordText: String,
+        caption: String,
+        creator: String,
+        copyright: String
+    ) throws -> Int {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let keywords = Self.keywords(from: keywordText)
+        let caption = Self.portableText(from: caption)
+        let creator = Self.portableText(from: creator)
+        let copyright = Self.portableText(from: copyright)
+        guard !keywords.isEmpty || caption != nil || creator != nil || copyright != nil else {
+            return 0
+        }
+
+        var appliedCount = 0
+        for assetID in assetIDs {
+            let originalAsset = try catalog.repository.asset(id: assetID)
+            var updatedMetadata = originalAsset.metadata
+            var changed = false
+
+            for keyword in keywords where !Self.keywordList(updatedMetadata.keywords, contains: keyword) {
+                updatedMetadata.keywords.append(keyword)
+                changed = true
+            }
+            if let caption, updatedMetadata.caption != caption {
+                updatedMetadata.caption = caption
+                changed = true
+            }
+            if let creator, updatedMetadata.creator != creator {
+                updatedMetadata.creator = creator
+                changed = true
+            }
+            if let copyright, updatedMetadata.copyright != copyright {
+                updatedMetadata.copyright = copyright
+                changed = true
+            }
+            guard changed else { continue }
+
+            try applyMetadataSnapshot(assetID: assetID, metadata: updatedMetadata)
+            metadataUndoStack.append(MetadataChange(
+                assetID: assetID,
+                before: originalAsset.metadata,
+                after: updatedMetadata
+            ))
+            appliedCount += 1
+        }
+
+        if appliedCount > 0 {
+            metadataRedoStack.removeAll()
+            statusMessage = "Applied batch metadata to \(Self.photoCountDescription(appliedCount))"
+        }
+        return appliedCount
+    }
+
     public func setCaptionForSelectedAsset(_ caption: String) throws {
         try updateSelectedAssetMetadata { metadata in
             metadata.caption = Self.portableText(from: caption)

@@ -111,4 +111,37 @@ final class LibraryGridChromeTests: XCTestCase {
     func testBatchKeywordSuggestionPresentationHidesWhenNoSuggestionsExist() {
         XCTAssertEqual(BatchKeywordSuggestionPresentation.rows(for: []), [])
     }
+
+    func testBatchMetadataReviewPresentationSummarizesVisibleBatchAndDraft() {
+        var draft = BatchMetadataDraft()
+        draft.caption = "  Patagonia selects  "
+
+        let presentation = BatchMetadataReviewPresentation(
+            visibleAssetCount: 12,
+            suggestions: [
+                BatchKeywordSuggestion(
+                    keyword: "mountain",
+                    assetCount: 5,
+                    averageConfidence: 0.84,
+                    providerName: "apple-vision",
+                    modelName: "Vision"
+                )
+            ],
+            draft: draft
+        )
+
+        XCTAssertEqual(presentation.countText, "12 visible photos")
+        XCTAssertEqual(presentation.suggestionRows.map(\.keyword), ["mountain"])
+        XCTAssertTrue(presentation.isApplyEnabled)
+        XCTAssertEqual(presentation.applyTitle, "Apply to visible batch")
+    }
+
+    func testBatchMetadataDraftAppendsSuggestedKeywordsWithoutDuplicates() {
+        var draft = BatchMetadataDraft(keywords: "Mountain, alpine lake")
+
+        draft.appendKeyword(" mountain ")
+        draft.appendKeyword("forest")
+
+        XCTAssertEqual(draft.keywords, "Mountain, alpine lake, forest")
+    }
 }

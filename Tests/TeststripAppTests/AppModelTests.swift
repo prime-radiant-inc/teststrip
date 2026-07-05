@@ -637,6 +637,77 @@ final class AppModelTests: XCTestCase {
         )
     }
 
+    func testVisibleBatchMetadataAppliesPortableFieldsAndWritesXmpSidecars() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-visible-batch-metadata")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let firstURL = photosDirectory.appendingPathComponent("first.cr2")
+        let secondURL = photosDirectory.appendingPathComponent("second.cr2")
+        try Data("first original raw bytes".utf8).write(to: firstURL)
+        try Data("second original raw bytes".utf8).write(to: secondURL)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let first = Asset(
+            id: AssetID(rawValue: "visible-batch-metadata-first"),
+            originalURL: firstURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata(keywords: ["existing"])
+        )
+        let second = Asset(
+            id: AssetID(rawValue: "visible-batch-metadata-second"),
+            originalURL: secondURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 11, modificationDate: Date(timeIntervalSince1970: 11)),
+            availability: .online,
+            metadata: AssetMetadata(keywords: ["existing"])
+        )
+        try repository.upsert([first, second])
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+
+        let appliedCount = try model.applyVisibleBatchMetadata(
+            keywordText: " mountain, existing, ",
+            caption: "  Patagonia selects  ",
+            creator: "  Jesse  ",
+            copyright: "  Copyright Jesse  "
+        )
+
+        XCTAssertEqual(appliedCount, 2)
+        XCTAssertEqual(model.statusMessage, "Applied batch metadata to 2 photos")
+        for asset in [first, second] {
+            let catalogMetadata = try repository.asset(id: asset.id).metadata
+            let sidecarURL = asset.originalURL.appendingPathExtension("xmp")
+            let sidecarData = try Data(contentsOf: sidecarURL)
+            let sidecarMetadata = try XMPPacket.parse(sidecarData).metadata
+
+            XCTAssertEqual(catalogMetadata.keywords, ["existing", "mountain"])
+            XCTAssertEqual(catalogMetadata.caption, "Patagonia selects")
+            XCTAssertEqual(catalogMetadata.creator, "Jesse")
+            XCTAssertEqual(catalogMetadata.copyright, "Copyright Jesse")
+            XCTAssertEqual(sidecarMetadata.keywords, ["existing", "mountain"])
+            XCTAssertEqual(sidecarMetadata.caption, "Patagonia selects")
+            XCTAssertEqual(sidecarMetadata.creator, "Jesse")
+            XCTAssertEqual(sidecarMetadata.copyright, "Copyright Jesse")
+            XCTAssertEqual(
+                try repository.lastMetadataSyncFingerprint(assetID: asset.id),
+                XMPSidecarStore.fingerprint(for: sidecarData)
+            )
+        }
+        XCTAssertEqual(try Data(contentsOf: firstURL), Data("first original raw bytes".utf8))
+        XCTAssertEqual(try Data(contentsOf: secondURL), Data("second original raw bytes".utf8))
+        XCTAssertEqual(try repository.pendingMetadataSyncItems(), [])
+    }
+
     func testRatingSelectedAssetQueuesXmpWhenSidecarCannotBeWritten() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "xmp-pending")
 

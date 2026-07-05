@@ -8,6 +8,7 @@ struct LibraryGridView: View {
     @State private var isSavingManualSet = false
     @State private var isSavingSnapshotSet = false
     @State private var isStartingCullingSession = false
+    @State private var isReviewingBatchMetadata = false
     @State private var isShowingSourceReconnectSheet = false
     @State private var savedSearchName = ""
     @State private var savedSearchStarred = false
@@ -17,6 +18,7 @@ struct LibraryGridView: View {
     @State private var snapshotSetStarred = false
     @State private var cullingSessionName = ""
     @State private var cullingSessionIntent = ""
+    @State private var batchMetadataDraft = BatchMetadataDraft()
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
     @State private var dismissedImportCompletionSummaryID: String?
@@ -134,6 +136,19 @@ struct LibraryGridView: View {
             }
             .disabled(isImporting || !model.canRequestVisibleAssetEvaluations)
             .help("Evaluate visible photos")
+
+            Button {
+                batchMetadataDraft = BatchMetadataDraft()
+                isReviewingBatchMetadata = true
+            } label: {
+                Label("Batch Metadata", systemImage: "tag")
+            }
+            .disabled(isImporting || model.assets.isEmpty)
+            .help("Review visible batch metadata")
+            .popover(isPresented: $isReviewingBatchMetadata) {
+                batchMetadataPopover
+            }
+            .liveMockupPlaceholder(.keywordingBatch)
         }
         .safeAreaInset(edge: .top) {
             topInsetContent
@@ -741,6 +756,75 @@ struct LibraryGridView: View {
             }
             .liveMockupPlaceholder(.keywordingBatch)
         }
+    }
+
+    private var batchMetadataPopover: some View {
+        let presentation = BatchMetadataReviewPresentation(
+            visibleAssetCount: model.assets.count,
+            suggestions: model.visibleBatchKeywordSuggestions,
+            draft: batchMetadataDraft
+        )
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Batch Metadata")
+                        .font(.headline)
+                    Text(presentation.countText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "tag")
+                    .foregroundStyle(.orange)
+            }
+
+            if !presentation.suggestionRows.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("TESTSTRIP SUGGESTS")
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .foregroundStyle(.orange)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(presentation.suggestionRows) { row in
+                                Button {
+                                    batchMetadataDraft.appendKeyword(row.keyword)
+                                } label: {
+                                    Text(row.keyword)
+                                        .font(.caption.weight(.semibold))
+                                        .lineLimit(1)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .help(row.detail)
+                            }
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("Keywords", text: $batchMetadataDraft.keywords)
+                TextField("Caption", text: $batchMetadataDraft.caption)
+                TextField("Creator", text: $batchMetadataDraft.creator)
+                TextField("Copyright", text: $batchMetadataDraft.copyright)
+            }
+            .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Button("Cancel") {
+                    isReviewingBatchMetadata = false
+                }
+                Spacer()
+                Button(presentation.applyTitle) {
+                    applyVisibleBatchMetadataDraft()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!presentation.isApplyEnabled)
+            }
+        }
+        .padding(14)
+        .frame(width: 360)
+        .liveMockupPlaceholder(.keywordingBatch)
     }
 
     private var importProgressBanner: some View {
@@ -1880,6 +1964,21 @@ struct LibraryGridView: View {
         }
     }
 
+    private func applyVisibleBatchMetadataDraft() {
+        do {
+            try model.applyVisibleBatchMetadata(
+                keywordText: batchMetadataDraft.keywords,
+                caption: batchMetadataDraft.caption,
+                creator: batchMetadataDraft.creator,
+                copyright: batchMetadataDraft.copyright
+            )
+            batchMetadataDraft = BatchMetadataDraft()
+            isReviewingBatchMetadata = false
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
     private func evaluateSelectedAsset() {
         do {
             try model.requestSelectedAssetEvaluations()
@@ -2484,6 +2583,53 @@ struct BatchKeywordSuggestionPresentation: Equatable, Identifiable {
                 placeholder: nil
             )
         }
+    }
+}
+
+struct BatchMetadataDraft: Equatable {
+    var keywords: String = ""
+    var caption: String = ""
+    var creator: String = ""
+    var copyright: String = ""
+
+    var hasContentToApply: Bool {
+        !keywords.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !creator.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !copyright.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    mutating func appendKeyword(_ keyword: String) {
+        let cleanedKeyword = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedKeyword.isEmpty else { return }
+        var existingKeywords = keywords
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let key = cleanedKeyword.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+        guard !existingKeywords.contains(where: {
+            $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil) == key
+        }) else { return }
+        existingKeywords.append(cleanedKeyword)
+        keywords = existingKeywords.joined(separator: ", ")
+    }
+}
+
+struct BatchMetadataReviewPresentation: Equatable {
+    var countText: String
+    var suggestionRows: [BatchKeywordSuggestionPresentation]
+    var isApplyEnabled: Bool
+    var applyTitle: String
+
+    init(
+        visibleAssetCount: Int,
+        suggestions: [BatchKeywordSuggestion],
+        draft: BatchMetadataDraft
+    ) {
+        countText = "\(visibleAssetCount) visible \(visibleAssetCount == 1 ? "photo" : "photos")"
+        suggestionRows = BatchKeywordSuggestionPresentation.rows(for: suggestions, limit: 6)
+        isApplyEnabled = visibleAssetCount > 0 && draft.hasContentToApply
+        applyTitle = "Apply to visible batch"
     }
 }
 
