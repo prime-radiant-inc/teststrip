@@ -120,6 +120,8 @@ final class LibraryGridChromeTests: XCTestCase {
             visibleAssetCount: 12,
             currentScopeAssetCount: 121,
             selectedScope: .visible,
+            requiresAllCatalogConfirmation: false,
+            isAllCatalogConfirmed: false,
             suggestions: [
                 BatchKeywordSuggestion(
                     keyword: "mountain",
@@ -146,6 +148,8 @@ final class LibraryGridChromeTests: XCTestCase {
             visibleAssetCount: 12,
             currentScopeAssetCount: 121,
             selectedScope: .currentScope,
+            requiresAllCatalogConfirmation: false,
+            isAllCatalogConfirmed: false,
             suggestions: [
                 BatchKeywordSuggestion(
                     keyword: "mountain",
@@ -162,6 +166,34 @@ final class LibraryGridChromeTests: XCTestCase {
         XCTAssertEqual(presentation.suggestionRows, [])
         XCTAssertTrue(presentation.isApplyEnabled)
         XCTAssertEqual(presentation.applyTitle, "Apply to current scope")
+    }
+
+    func testBatchMetadataReviewPresentationRequiresConfirmationForAllCatalogScope() {
+        var draft = BatchMetadataDraft()
+        draft.creator = "Jesse"
+
+        let unconfirmed = BatchMetadataReviewPresentation(
+            visibleAssetCount: 12,
+            currentScopeAssetCount: 121,
+            selectedScope: .currentScope,
+            requiresAllCatalogConfirmation: true,
+            isAllCatalogConfirmed: false,
+            suggestions: [],
+            draft: draft
+        )
+        let confirmed = BatchMetadataReviewPresentation(
+            visibleAssetCount: 12,
+            currentScopeAssetCount: 121,
+            selectedScope: .currentScope,
+            requiresAllCatalogConfirmation: true,
+            isAllCatalogConfirmed: true,
+            suggestions: [],
+            draft: draft
+        )
+
+        XCTAssertEqual(unconfirmed.confirmationText, "Confirm applying metadata to all 121 catalog photos.")
+        XCTAssertFalse(unconfirmed.isApplyEnabled)
+        XCTAssertTrue(confirmed.isApplyEnabled)
     }
 
     func testBatchMetadataDraftAppendsSuggestedKeywordsWithoutDuplicates() {

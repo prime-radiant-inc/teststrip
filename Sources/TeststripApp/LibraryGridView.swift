@@ -20,6 +20,7 @@ struct LibraryGridView: View {
     @State private var cullingSessionIntent = ""
     @State private var batchMetadataDraft = BatchMetadataDraft()
     @State private var batchMetadataScope: BatchMetadataScopeMode = .visible
+    @State private var isAllCatalogBatchMetadataConfirmed = false
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
     @State private var dismissedImportCompletionSummaryID: String?
@@ -146,6 +147,7 @@ struct LibraryGridView: View {
             Button {
                 batchMetadataDraft = BatchMetadataDraft()
                 batchMetadataScope = .visible
+                isAllCatalogBatchMetadataConfirmed = false
                 isReviewingBatchMetadata = true
             } label: {
                 Label("Batch Metadata", systemImage: "tag")
@@ -767,6 +769,8 @@ struct LibraryGridView: View {
             visibleAssetCount: model.assets.count,
             currentScopeAssetCount: model.totalAssetCount,
             selectedScope: batchMetadataScope,
+            requiresAllCatalogConfirmation: batchMetadataScope == .currentScope && !model.hasActiveLibraryFilters,
+            isAllCatalogConfirmed: isAllCatalogBatchMetadataConfirmed,
             suggestions: model.visibleBatchKeywordSuggestions,
             draft: batchMetadataDraft
         )
@@ -791,6 +795,9 @@ struct LibraryGridView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .onChange(of: batchMetadataScope) { _, _ in
+                isAllCatalogBatchMetadataConfirmed = false
+            }
 
             if !presentation.suggestionRows.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -823,6 +830,11 @@ struct LibraryGridView: View {
                 TextField("Copyright", text: $batchMetadataDraft.copyright)
             }
             .textFieldStyle(.roundedBorder)
+
+            if let confirmationText = presentation.confirmationText {
+                Toggle(confirmationText, isOn: $isAllCatalogBatchMetadataConfirmed)
+                    .font(.caption)
+            }
 
             HStack {
                 Button("Cancel") {
@@ -2027,6 +2039,7 @@ struct LibraryGridView: View {
                 )
             }
             batchMetadataDraft = BatchMetadataDraft()
+            isAllCatalogBatchMetadataConfirmed = false
             isReviewingBatchMetadata = false
         } catch {
             model.errorMessage = error.localizedDescription
@@ -2713,11 +2726,14 @@ struct BatchMetadataReviewPresentation: Equatable {
     var suggestionRows: [BatchKeywordSuggestionPresentation]
     var isApplyEnabled: Bool
     var applyTitle: String
+    var confirmationText: String?
 
     init(
         visibleAssetCount: Int,
         currentScopeAssetCount: Int,
         selectedScope: BatchMetadataScopeMode,
+        requiresAllCatalogConfirmation: Bool,
+        isAllCatalogConfirmed: Bool,
         suggestions: [BatchKeywordSuggestion],
         draft: BatchMetadataDraft
     ) {
@@ -2727,10 +2743,16 @@ struct BatchMetadataReviewPresentation: Equatable {
             suggestionRows = BatchKeywordSuggestionPresentation.rows(for: suggestions, limit: 6)
             isApplyEnabled = visibleAssetCount > 0 && draft.hasContentToApply
             applyTitle = "Apply to visible batch"
+            confirmationText = nil
         case .currentScope:
             countText = "\(currentScopeAssetCount) \(currentScopeAssetCount == 1 ? "photo" : "photos") in current scope"
             suggestionRows = []
-            isApplyEnabled = currentScopeAssetCount > 0 && draft.hasContentToApply
+            confirmationText = requiresAllCatalogConfirmation
+                ? "Confirm applying metadata to all \(currentScopeAssetCount) catalog \(currentScopeAssetCount == 1 ? "photo" : "photos")."
+                : nil
+            isApplyEnabled = currentScopeAssetCount > 0
+                && draft.hasContentToApply
+                && (!requiresAllCatalogConfirmation || isAllCatalogConfirmed)
             applyTitle = "Apply to current scope"
         }
     }
