@@ -12,6 +12,11 @@ public enum LibraryViewMode: String, Sendable {
     case people
 }
 
+public enum CompareGroupKind: Equatable, Sendable {
+    case nearbyFrames
+    case candidateStack
+}
+
 public enum CullingCommand: Equatable, Sendable {
     case rating(Int)
     case colorLabel(ColorLabel?)
@@ -691,6 +696,7 @@ public final class AppModel {
     private static let previewGenerationMaximumAutomaticAttempts = 3
     static let sourceAvailabilityBatchSize = 100
     private static let defaultCompareAssetLimit = 4
+    private static let candidateStackMaximumCaptureGap: TimeInterval = 2
 
     public var selectedAsset: Asset? {
         assets.first { $0.id == selectedAssetID }
@@ -1827,7 +1833,19 @@ public final class AppModel {
                 return Array(anchoredAssets.prefix(boundedLimit))
             }
         }
+        if let candidateStack = candidateStackAssets(limit: boundedLimit, anchor: selectedAssetID) {
+            return candidateStack
+        }
         return compareWindowAssets(limit: boundedLimit, anchor: selectedAssetID)
+    }
+
+    public func compareGroupKind(limit: Int = 4) -> CompareGroupKind {
+        let boundedLimit = max(1, limit)
+        let candidateStackIDs = candidateStackAssets(limit: boundedLimit, anchor: selectedAssetID)?.map(\.id)
+        if let compareAssetIDs, !compareAssetIDs.isEmpty {
+            return compareAssetIDs == candidateStackIDs ? .candidateStack : .nearbyFrames
+        }
+        return candidateStackIDs == nil ? .nearbyFrames : .candidateStack
     }
 
     public var canKeepComparePrimaryAndRejectAlternates: Bool {
@@ -1885,6 +1903,51 @@ public final class AppModel {
     }
 
     private func compareWindowAssets(limit: Int, anchor: AssetID?) -> [Asset] {
+        Self.limitedCompareAssets(assets, limit: limit, anchor: anchor)
+    }
+
+    private func candidateStackAssets(limit: Int, anchor: AssetID?) -> [Asset]? {
+        guard !assets.isEmpty else { return nil }
+        guard let selectedIndex = anchor.flatMap({ selectedID in
+            assets.firstIndex { $0.id == selectedID }
+        }) else {
+            return nil
+        }
+        guard assets[selectedIndex].technicalMetadata?.capturedAt != nil else {
+            return nil
+        }
+
+        var startIndex = selectedIndex
+        while startIndex > 0,
+              Self.isCandidateStackNeighbor(assets[startIndex - 1], assets[startIndex]) {
+            startIndex -= 1
+        }
+
+        var endIndex = selectedIndex
+        while endIndex + 1 < assets.count,
+              Self.isCandidateStackNeighbor(assets[endIndex], assets[endIndex + 1]) {
+            endIndex += 1
+        }
+
+        guard endIndex > startIndex else {
+            return nil
+        }
+        return Self.limitedCompareAssets(Array(assets[startIndex...endIndex]), limit: limit, anchor: anchor)
+    }
+
+    private static func isCandidateStackNeighbor(_ first: Asset, _ second: Asset) -> Bool {
+        guard let firstCapture = first.technicalMetadata?.capturedAt,
+              let secondCapture = second.technicalMetadata?.capturedAt else {
+            return false
+        }
+        guard first.originalURL.deletingLastPathComponent().standardizedFileURL.path
+            == second.originalURL.deletingLastPathComponent().standardizedFileURL.path else {
+            return false
+        }
+        return abs(firstCapture.timeIntervalSince(secondCapture)) <= candidateStackMaximumCaptureGap
+    }
+
+    private static func limitedCompareAssets(_ assets: [Asset], limit: Int, anchor: AssetID?) -> [Asset] {
         guard !assets.isEmpty else { return [] }
         let boundedLimit = max(1, limit)
         let selectedIndex = anchor.flatMap { selectedID in
@@ -1897,7 +1960,10 @@ public final class AppModel {
     }
 
     private func compareWindowAssetIDs(limit: Int, anchor: AssetID?) -> [AssetID] {
-        compareWindowAssets(limit: limit, anchor: anchor).map(\.id)
+        if let candidateStack = candidateStackAssets(limit: limit, anchor: anchor) {
+            return candidateStack.map(\.id)
+        }
+        return compareWindowAssets(limit: limit, anchor: anchor).map(\.id)
     }
 
     private func updateCompareSetAfterViewChange(from previousView: LibraryViewMode) {

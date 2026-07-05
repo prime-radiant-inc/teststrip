@@ -2267,14 +2267,16 @@ struct CompareSurveyPresentation: Equatable {
     var alternateAssets: [Asset]
     var framePositionText: String?
     var groupCountText: String
+    var groupKindText: String
     var recommendationText: String
 
-    init(assets: [Asset], selectedAssetID: AssetID?) {
+    init(assets: [Asset], selectedAssetID: AssetID?, groupKind: CompareGroupKind = .nearbyFrames) {
         guard !assets.isEmpty else {
             self.primaryAsset = nil
             self.alternateAssets = []
             self.framePositionText = nil
             self.groupCountText = "No frames"
+            self.groupKindText = "Compare set"
             self.recommendationText = "No comparison set"
             return
         }
@@ -2289,6 +2291,12 @@ struct CompareSurveyPresentation: Equatable {
         }
         self.framePositionText = "Frame \(primaryIndex + 1) of \(assets.count)"
         self.groupCountText = "\(assets.count) \(assets.count == 1 ? "frame" : "frames")"
+        self.groupKindText = switch groupKind {
+        case .candidateStack:
+            "Candidate stack"
+        case .nearbyFrames:
+            "Compare set"
+        }
 
         let rejectCount = max(assets.count - 1, 0)
         if rejectCount == 0 {
@@ -2602,7 +2610,8 @@ private struct CompareView: View {
     var body: some View {
         let presentation = CompareSurveyPresentation(
             assets: model.compareAssets(),
-            selectedAssetID: model.selectedAssetID
+            selectedAssetID: model.selectedAssetID,
+            groupKind: model.compareGroupKind()
         )
 
         ScrollView {
@@ -2639,6 +2648,9 @@ private struct CompareView: View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Label("Survey Compare", systemImage: "rectangle.grid.2x2")
                 .font(.headline)
+            Text(presentation.groupKindText)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
             Text(presentation.groupCountText)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)

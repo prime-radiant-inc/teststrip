@@ -151,7 +151,7 @@ public enum LiveMockupPlaceholders {
         id: "culling.stack-cull",
         title: "Stack cull",
         intendedBehavior: "Group bursts or near-duplicates into stacks and cull the strongest candidate within each stack.",
-        currentFallback: "Manual compare and ordinary culling over the current asset set."
+        currentFallback: "Survey Compare can form loaded-scope candidate stacks from adjacent same-folder capture times; real similarity and near-duplicate grouping are still pending."
     )
 
     public static let focusCompare = LiveMockupPlaceholder(
@@ -165,7 +165,7 @@ public enum LiveMockupPlaceholders {
         id: "compare.survey",
         title: "Survey compare",
         intendedBehavior: "Show a survey-style comparison surface with primary candidate, alternates, and decision affordances.",
-        currentFallback: "Adaptive compare grid over the current selected neighborhood with heuristic recommendation text, not real stack membership."
+        currentFallback: "Adaptive compare grid over loaded-scope candidate stacks or the current selected neighborhood with heuristic recommendation text, not persisted stack membership."
     )
 
     public static let workHistory = LiveMockupPlaceholder(
@@ -253,14 +253,14 @@ public enum LiveMockupDesignSurfaces {
             title: "Survey and compare",
             status: .partial,
             placeholder: .compareSurvey,
-            currentImplementation: "Compare shows selected primary first, alternates, metadata-backed badges, a focus metric lane, and a current-compare-set action to keep the primary and reject visible alternates; real stack membership and richer stack mutations are not built."
+            currentImplementation: "Compare shows selected primary first, loaded-scope candidate stacks when adjacent same-folder capture times are available, alternates, metadata-backed badges, a focus metric lane, and a current-compare-set action to keep the primary and reject visible alternates; persisted stack membership and richer stack mutations are not built."
         ),
         LiveMockupDesignSurface(
             designID: "3a",
             title: "Stack cull",
             status: .liveMockup,
             placeholder: .cullingStackCull,
-            currentImplementation: "Current app culls arbitrary sets and compare neighborhoods; automatic burst/near-duplicate stack grouping is not built."
+            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, and loaded-scope candidate stacks; automatic burst/near-duplicate similarity grouping is not built."
         ),
         LiveMockupDesignSurface(
             designID: "3b",

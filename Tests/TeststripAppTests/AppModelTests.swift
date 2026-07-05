@@ -264,6 +264,100 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.compareAssets().map(\.id), assets[2..<6].map(\.id))
     }
 
+    func testCompareAssetsUseCandidateStackAroundSelectedCaptureTime() {
+        let captureStart = Date(timeIntervalSince1970: 1_900_000_000)
+        let assets = [
+            makeAsset(id: "lead-0", size: 1),
+            makeAsset(id: "lead-1", size: 2),
+            makeAsset(id: "lead-2", size: 3),
+            makeAsset(id: "lead-3", size: 4),
+            makeAsset(
+                id: "stack-0",
+                path: "/Photos/stack-0.jpg",
+                rating: 0,
+                technicalMetadata: Self.technicalMetadata(capturedAt: captureStart)
+            ),
+            makeAsset(
+                id: "stack-1",
+                path: "/Photos/stack-1.jpg",
+                rating: 0,
+                technicalMetadata: Self.technicalMetadata(capturedAt: captureStart.addingTimeInterval(1))
+            ),
+            makeAsset(
+                id: "stack-2",
+                path: "/Photos/stack-2.jpg",
+                rating: 0,
+                technicalMetadata: Self.technicalMetadata(capturedAt: captureStart.addingTimeInterval(2))
+            ),
+            makeAsset(
+                id: "later",
+                path: "/Photos/later.jpg",
+                rating: 0,
+                technicalMetadata: Self.technicalMetadata(capturedAt: captureStart.addingTimeInterval(12))
+            )
+        ]
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: assets)
+        model.selectedView = .compare
+
+        model.select(assets[5].id)
+
+        XCTAssertEqual(model.compareAssets().map(\.id), assets[4..<7].map(\.id))
+        XCTAssertEqual(model.compareGroupKind(), .candidateStack)
+    }
+
+    func testCompareAssetsLimitLargeCandidateStackAroundSelection() {
+        let captureStart = Date(timeIntervalSince1970: 1_900_000_100)
+        let assets = (0..<6).map { index in
+            makeAsset(
+                id: "stack-\(index)",
+                path: "/Photos/stack-\(index).jpg",
+                rating: 0,
+                technicalMetadata: Self.technicalMetadata(capturedAt: captureStart.addingTimeInterval(TimeInterval(index)))
+            )
+        }
+        let model = AppModel(sidebarSections: [], selectedView: .compare, assets: assets)
+
+        model.select(assets[4].id)
+
+        XCTAssertEqual(model.compareAssets().map(\.id), assets[2..<6].map(\.id))
+        XCTAssertEqual(model.compareGroupKind(), .candidateStack)
+    }
+
+    func testCompareCandidateStackSplitsDifferentFolders() {
+        let captureStart = Date(timeIntervalSince1970: 1_900_000_200)
+        let assets = [
+            makeAsset(id: "lead-0", size: 1),
+            makeAsset(id: "lead-1", size: 2),
+            makeAsset(id: "lead-2", size: 3),
+            makeAsset(id: "lead-3", size: 4),
+            makeAsset(
+                id: "same-folder-0",
+                path: "/Photos/Job/same-folder-0.jpg",
+                rating: 0,
+                technicalMetadata: Self.technicalMetadata(capturedAt: captureStart)
+            ),
+            makeAsset(
+                id: "same-folder-1",
+                path: "/Photos/Job/same-folder-1.jpg",
+                rating: 0,
+                technicalMetadata: Self.technicalMetadata(capturedAt: captureStart.addingTimeInterval(1))
+            ),
+            makeAsset(
+                id: "other-folder",
+                path: "/Photos/Other/other-folder.jpg",
+                rating: 0,
+                technicalMetadata: Self.technicalMetadata(capturedAt: captureStart.addingTimeInterval(2))
+            )
+        ]
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: assets)
+        model.selectedView = .compare
+
+        model.select(assets[5].id)
+
+        XCTAssertEqual(model.compareAssets().map(\.id), assets[4..<6].map(\.id))
+        XCTAssertEqual(model.compareGroupKind(), .candidateStack)
+    }
+
     func testCompareAssetsStayStableWhenSelectingAssetInsideCurrentCompareSet() {
         let assets = (0..<6).map { makeAsset(id: "asset-\($0)", size: Int64($0 + 1)) }
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: assets)

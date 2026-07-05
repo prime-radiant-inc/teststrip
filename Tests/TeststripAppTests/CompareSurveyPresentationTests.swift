@@ -129,6 +129,25 @@ final class CompareSurveyPresentationTests: XCTestCase {
         )
     }
 
+    func testCandidateStackLabelDoesNotClaimDuplicateOrBestShotDetection() {
+        let assets = [
+            makeAsset(id: "primary"),
+            makeAsset(id: "second"),
+            makeAsset(id: "third")
+        ]
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            groupKind: .candidateStack
+        )
+
+        XCTAssertEqual(presentation.groupKindText, "Candidate stack")
+        XCTAssertFalse(presentation.groupKindText.localizedCaseInsensitiveContains("best"))
+        XCTAssertFalse(presentation.groupKindText.localizedCaseInsensitiveContains("duplicate"))
+        XCTAssertFalse(presentation.groupKindText.localizedCaseInsensitiveContains("burst"))
+    }
+
     func testDisabledGroupActionsCarryLiveMockupPlaceholders() {
         let assets = [
             makeAsset(id: "primary"),
