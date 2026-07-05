@@ -78,6 +78,10 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let stackSurface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "3a" })
 
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep a selected"))
+        XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep frame"))
+        XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep top"))
+        XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep all"))
+        XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("disabled"))
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("similarity"))
         XCTAssertTrue(comparePlaceholder.currentFallback.localizedCaseInsensitiveContains("loaded-scope candidate stacks"))
         XCTAssertTrue(compareSurface.currentImplementation.localizedCaseInsensitiveContains("candidate stacks"))

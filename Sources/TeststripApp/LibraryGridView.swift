@@ -2052,14 +2052,28 @@ private struct LoupeView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                Button {
-                    keepSelectedStackFrame()
-                } label: {
-                    Label(presentation.keepActionTitle, systemImage: "checkmark.circle.fill")
+                if let primaryAction = presentation.actions.first {
+                    Button {
+                        keepSelectedStackFrame()
+                    } label: {
+                        Label(primaryAction.title, systemImage: "checkmark.circle.fill")
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .tint(.orange)
+                    .disabled(!primaryAction.isEnabled)
+                    .help(primaryAction.help)
+                    .liveMockupPlaceholder(primaryAction.liveMockupPlaceholder)
                 }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
-                .help(presentation.keepActionHelp)
+                ForEach(Array(presentation.actions.dropFirst())) { action in
+                    Button(action.title) {}
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(!action.isEnabled)
+                        .help(action.help)
+                        .liveMockupPlaceholder(action.liveMockupPlaceholder)
+                }
                 HStack(spacing: 5) {
                     ForEach(presentation.items, id: \.assetID.rawValue) { item in
                         Button {
@@ -2784,8 +2798,9 @@ struct CullingStackRailPresentation: Equatable {
     var titleText: String
     var positionText: String
     var rationaleText: String?
-    let keepActionTitle = "Keep"
-    let keepActionHelp = "Keep selected frame and reject stack alternates"
+    var keepActionTitle: String
+    var keepActionHelp: String
+    var actions: [CullingStackActionPresentation]
 
     init(
         assets: [Asset],
@@ -2797,6 +2812,9 @@ struct CullingStackRailPresentation: Equatable {
             titleText = ""
             positionText = ""
             rationaleText = nil
+            keepActionTitle = ""
+            keepActionHelp = ""
+            actions = []
             return
         }
 
@@ -2806,6 +2824,9 @@ struct CullingStackRailPresentation: Equatable {
             titleText = ""
             positionText = ""
             rationaleText = nil
+            keepActionTitle = ""
+            keepActionHelp = ""
+            actions = []
             return
         }
 
@@ -2816,6 +2837,9 @@ struct CullingStackRailPresentation: Equatable {
             titleText = ""
             positionText = ""
             rationaleText = nil
+            keepActionTitle = ""
+            keepActionHelp = ""
+            actions = []
             return
         }
 
@@ -2829,11 +2853,52 @@ struct CullingStackRailPresentation: Equatable {
         titleText = "Stack \(stackIndex + 1) of \(stacks.count)"
         positionText = "Frame \(selectedIndex + 1) of \(stack.assetIDs.count)"
         rationaleText = stack.rationale
+        keepActionTitle = "Keep frame \(selectedIndex + 1) · cut \(stack.assetIDs.count - 1)"
+        keepActionHelp = "Keep selected frame and reject stack alternates"
+        actions = [
+            CullingStackActionPresentation(
+                action: .keepSelectedAndRejectAlternates,
+                title: keepActionTitle,
+                isEnabled: true,
+                help: keepActionHelp,
+                liveMockupPlaceholder: nil
+            ),
+            CullingStackActionPresentation(
+                action: .keepTopRanked,
+                title: "Keep top 2",
+                isEnabled: false,
+                help: "Keeps the top-ranked frames once stack ranking is available.",
+                liveMockupPlaceholder: .cullingStackCull
+            ),
+            CullingStackActionPresentation(
+                action: .keepAll,
+                title: "Keep all \(stack.assetIDs.count)",
+                isEnabled: false,
+                help: "Leaves all frames in the stack unchanged once stack decisions are persisted.",
+                liveMockupPlaceholder: .cullingStackCull
+            )
+        ]
     }
 
     var isVisible: Bool {
         !items.isEmpty
     }
+}
+
+enum CullingStackAction: Equatable {
+    case keepSelectedAndRejectAlternates
+    case keepTopRanked
+    case keepAll
+}
+
+struct CullingStackActionPresentation: Equatable, Identifiable {
+    var action: CullingStackAction
+    var title: String
+    var isEnabled: Bool
+    var help: String
+    var liveMockupPlaceholder: LiveMockupPlaceholder?
+
+    var id: CullingStackAction { action }
 }
 
 private struct CompareView: View {

@@ -151,7 +151,7 @@ public enum LiveMockupPlaceholders {
         id: "culling.stack-cull",
         title: "Stack cull",
         intendedBehavior: "Group bursts or near-duplicates into stacks and cull the strongest candidate within each stack.",
-        currentFallback: "Loupe culling can keep a selected same-folder capture-time stack frame and reject alternates; real similarity and near-duplicate grouping are still pending."
+        currentFallback: "Loupe culling can keep a selected same-folder capture-time stack frame through the Keep frame action and reject alternates; Keep top and Keep all are visible disabled placeholders, and real similarity and near-duplicate grouping are still pending."
     )
 
     public static let focusCompare = LiveMockupPlaceholder(

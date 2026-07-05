@@ -22,11 +22,34 @@ final class CullingStackRailPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.titleText, "Stack 1 of 2")
         XCTAssertEqual(presentation.positionText, "Frame 2 of 3")
         XCTAssertEqual(presentation.rationaleText, "Same folder, captured within 2s")
-        XCTAssertEqual(presentation.keepActionTitle, "Keep")
+        XCTAssertEqual(presentation.keepActionTitle, "Keep frame 2 · cut 2")
         XCTAssertEqual(presentation.keepActionHelp, "Keep selected frame and reject stack alternates")
         XCTAssertEqual(presentation.items.map(\.assetID), assets[0..<3].map(\.id))
         XCTAssertEqual(presentation.items.map(\.label), ["1", "2", "3"])
         XCTAssertEqual(presentation.items.map(\.isSelected), [false, true, false])
+    }
+
+    func testActionsKeepPrimaryBehaviorSeparateFromFutureStackRanking() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let assets = [
+            makeAsset(id: "lead", path: "/Photos/Job/lead.cr2", capturedAt: capturedAt),
+            makeAsset(id: "selected", path: "/Photos/Job/selected.cr2", capturedAt: capturedAt.addingTimeInterval(1)),
+            makeAsset(id: "alternate", path: "/Photos/Job/alternate.cr2", capturedAt: capturedAt.addingTimeInterval(1.8))
+        ]
+
+        let presentation = CullingStackRailPresentation(
+            assets: assets,
+            selectedAssetID: AssetID(rawValue: "selected"),
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 2)
+        )
+
+        let actions = presentation.actions
+        XCTAssertEqual(actions.map(\.title), ["Keep frame 2 · cut 2", "Keep top 2", "Keep all 3"])
+        XCTAssertEqual(actions.map(\.isEnabled), [true, false, false])
+        XCTAssertEqual(actions.map(\.liveMockupPlaceholder), [nil, .cullingStackCull, .cullingStackCull])
+        XCTAssertEqual(actions[0].help, "Keep selected frame and reject stack alternates")
+        XCTAssertTrue(actions[1].help.localizedCaseInsensitiveContains("ranking"))
+        XCTAssertTrue(actions[2].help.localizedCaseInsensitiveContains("unchanged"))
     }
 
     func testHidesForSingletonSelection() {
