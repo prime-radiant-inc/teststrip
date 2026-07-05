@@ -163,11 +163,13 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5e" })
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("selected/visible/current-scope metadata popover"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("removable selected keyword chips"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("latest-import keyword review"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("command and shift selected assets"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("all-catalog confirmation"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("freeform bulk keyword review is not built"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("selected/visible/current-scope metadata popover"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("removable selected keyword chips"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("latest-import keyword review"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("command and shift selected assets"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("all-catalog confirmation"))

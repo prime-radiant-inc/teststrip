@@ -615,12 +615,25 @@ struct InspectorView: View {
     private func keywordChips(_ keywords: [String]) -> some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 5)], alignment: .leading, spacing: 5) {
             ForEach(keywords, id: \.self) { keyword in
-                Text(keyword)
+                Button {
+                    apply { try model.removeKeywordFromSelectedAsset(keyword) }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(keyword)
+                            .lineLimit(1)
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
+                }
+                .buttonStyle(.plain)
+                .help("Remove \(keyword)")
+                .accessibilityLabel("Remove keyword \(keyword)")
             }
         }
     }

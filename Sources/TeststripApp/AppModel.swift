@@ -3292,6 +3292,14 @@ public final class AppModel {
         }
     }
 
+    public func removeKeywordFromSelectedAsset(_ keyword: String) throws {
+        let key = Self.keywordKey(keyword)
+        guard !key.isEmpty else { return }
+        try updateSelectedAssetMetadata { metadata in
+            metadata.keywords.removeAll { Self.keywordKey($0) == key }
+        }
+    }
+
     public func acceptSuggestedKeywordForSelectedAsset(_ keyword: String) throws {
         let cleanedKeyword = Self.cleanedKeyword(keyword)
         guard !cleanedKeyword.isEmpty else { return }

@@ -117,7 +117,7 @@ public enum LiveMockupPlaceholders {
         id: "keywording.batch",
         title: "Batch keywording",
         intendedBehavior: "Apply Teststrip-suggested keywords, captions, creator, and copyright to a selected batch.",
-        currentFallback: "Single-selected metadata controls plus latest-import keyword review, current-scope keyword suggestions, and a selected/visible/current-scope metadata popover write command and shift selected assets through catalog and XMP with all-catalog confirmation; freeform bulk keyword review is not built."
+        currentFallback: "Single-selected metadata controls with removable selected keyword chips plus latest-import keyword review, current-scope keyword suggestions, and a selected/visible/current-scope metadata popover write command and shift selected assets through catalog and XMP with all-catalog confirmation; freeform bulk keyword review is not built."
     )
 
     public static let exportWorkflow = LiveMockupPlaceholder(
@@ -325,7 +325,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Keywording",
             status: .partial,
             placeholder: .keywordingBatch,
-            currentImplementation: "Selected asset metadata controls edit keywords, caption, creator, and copyright with XMP writeback, plus single-asset suggestions, latest-import keyword review, current-scope keyword suggestions, and a selected/visible/current-scope metadata popover from object evaluation labels that writes command and shift selected assets with all-catalog confirmation; freeform bulk keyword review is not built."
+            currentImplementation: "Selected asset metadata controls edit keywords, caption, creator, and copyright with XMP writeback, removable selected keyword chips, plus single-asset suggestions, latest-import keyword review, current-scope keyword suggestions, and a selected/visible/current-scope metadata popover from object evaluation labels that writes command and shift selected assets with all-catalog confirmation; freeform bulk keyword review is not built."
         ),
         LiveMockupDesignSurface(
             designID: "5f",
