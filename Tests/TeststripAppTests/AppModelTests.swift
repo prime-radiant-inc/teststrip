@@ -1658,6 +1658,37 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.libraryCountText, "Showing 2281-2520 of 100000 photographs")
     }
 
+    func testLoadingSynthetic100kCatalogDoesNotReadEveryFolderPath() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-100k-folder-query")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try seedCatalogAssets(count: 100_000, repository: repository)
+        var rowQueries: [String] = []
+        database.rowQueryObserver = { sql in
+            rowQueries.append(sql.replacingOccurrences(of: "\n", with: " "))
+        }
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+
+        let model = try AppModel.load(catalog: catalog)
+
+        XCTAssertEqual(model.assets.count, 120)
+        XCTAssertEqual(model.catalogFolders, [
+            CatalogFolder(path: "/Volumes/NAS/Photos/", name: "Photos", assetCount: 100_000)
+        ])
+        XCTAssertFalse(rowQueries.contains { sql in
+            sql.contains("SELECT original_path FROM assets")
+        })
+    }
+
     func testLoadPreviousAssetsKeepsLoadedAssetWindowBounded() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-previous-window")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

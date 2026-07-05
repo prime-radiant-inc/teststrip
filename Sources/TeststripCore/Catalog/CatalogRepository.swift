@@ -211,16 +211,23 @@ public final class CatalogRepository {
     }
 
     public func folders() throws -> [CatalogFolder] {
-        let rows = try database.rows("SELECT original_path FROM assets ORDER BY original_path COLLATE NOCASE ASC")
-        var countsByPath: [String: Int] = [:]
-        for row in rows {
-            guard let originalPath = row["original_path"] else { continue }
-            countsByPath[Self.folderPath(forOriginalPath: originalPath), default: 0] += 1
-        }
-        return countsByPath.keys.sorted { lhs, rhs in
-            lhs.localizedStandardCompare(rhs) == .orderedAscending
-        }.map { path in
-            CatalogFolder(path: path, name: Self.folderName(forFolderPath: path), assetCount: countsByPath[path] ?? 0)
+        let rows = try database.rows(
+            """
+            SELECT
+                rtrim(original_path, replace(original_path, '/', '')) AS folder_path,
+                COUNT(*) AS asset_count
+            FROM assets
+            GROUP BY folder_path
+            ORDER BY folder_path COLLATE NOCASE ASC
+            """
+        )
+        return try rows.map { row in
+            guard let path = row["folder_path"],
+                  let countString = row["asset_count"],
+                  let assetCount = Int(countString) else {
+                throw CatalogError.sqlite("folder query returned incomplete row")
+            }
+            return CatalogFolder(path: path, name: Self.folderName(forFolderPath: path), assetCount: assetCount)
         }
     }
 
