@@ -69,6 +69,16 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertNil(stackAction.placeholder)
     }
 
+    func testOpenImportActionNamesImportedSetInsteadOfWholeLibrary() throws {
+        let presentation = ImportCompletionPresentation.presentation(for: summary())
+
+        let openAction = try XCTUnwrap(presentation.actionRows.first { $0.kind == .openInLibrary })
+        XCTAssertTrue(openAction.isEnabled)
+        XCTAssertEqual(openAction.title, "Open imported set")
+        XCTAssertEqual(openAction.detail, "Browse this import")
+        XCTAssertNil(openAction.placeholder)
+    }
+
     func testEnablesKeywordSuggestionActionWhenBatchSuggestionsExist() throws {
         let presentation = ImportCompletionPresentation.presentation(
             for: summary(),

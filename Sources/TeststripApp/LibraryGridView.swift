@@ -4152,8 +4152,8 @@ struct ImportCompletionPresentation: Equatable {
                 ),
                 ImportCompletionActionPresentation(
                     kind: .openInLibrary,
-                    title: "Open in Library",
-                    detail: "Browse everything",
+                    title: "Open imported set",
+                    detail: "Browse this import",
                     systemImage: "rectangle.stack",
                     isEnabled: true,
                     isPrimary: false,
