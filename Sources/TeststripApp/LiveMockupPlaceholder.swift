@@ -61,7 +61,7 @@ public enum LiveMockupPlaceholders {
         id: "library.top-chrome",
         title: "Library top chrome",
         intendedBehavior: "Unify catalog identity, breadcrumbs, agentic search, view switching, and import actions in the dense Studio header.",
-        currentFallback: "In-content header backed by current library state while native toolbar controls remain available; catalog identity is static placeholder copy."
+        currentFallback: "In-content header backed by current library state with real catalog identity, breadcrumbs, view switching, search entry, and import actions while native toolbar controls remain available."
     )
 
     public static let peopleSidebar = LiveMockupPlaceholder(

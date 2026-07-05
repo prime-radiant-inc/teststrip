@@ -63,6 +63,13 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("scroll-position syncing centers focused chips and sections"))
     }
 
+    func testTopChromeLedgerTracksRealCatalogIdentity() throws {
+        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "library.top-chrome" })
+
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("real catalog identity"))
+        XCTAssertFalse(placeholder.currentFallback.localizedCaseInsensitiveContains("static placeholder copy"))
+    }
+
     func testImportCompleteLedgerTracksLiveActionsAndRemainingDisabledFollowups() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "import.complete-summary" })
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "4b" })
