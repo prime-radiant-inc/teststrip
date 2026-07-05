@@ -31,6 +31,16 @@ final class CullingKeyCaptureTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(event: right), .nextPhoto)
     }
 
+    func testCullingShortcutMapsSpaceAndReturnKeyEvents() throws {
+        let space = try makeKeyEvent(characters: " ", charactersIgnoringModifiers: " ", keyCode: 49)
+        let returnKey = try makeKeyEvent(characters: "\r", charactersIgnoringModifiers: "\r", keyCode: 36)
+        let keypadEnter = try makeKeyEvent(characters: "\r", charactersIgnoringModifiers: "\r", keyCode: 76)
+
+        XCTAssertEqual(CullingShortcut(event: space), .nextPhoto)
+        XCTAssertEqual(CullingShortcut(event: returnKey), .acceptStackSelection)
+        XCTAssertEqual(CullingShortcut(event: keypadEnter), .acceptStackSelection)
+    }
+
     func testCullingShortcutIgnoresCommandModifiedKeyEvents() throws {
         let event = try makeKeyEvent(characters: "5", charactersIgnoringModifiers: "5", modifierFlags: .command)
 

@@ -74,6 +74,7 @@ final class LiveMockupPlaceholderTests: XCTestCase {
     func testCompareLedgerTracksStackCullActionsAndRemainingSimilarityGap() throws {
         let stackPlaceholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "culling.stack-cull" })
         let comparePlaceholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "compare.survey" })
+        let rapidCullSurface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "2a" })
         let compareSurface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "2b" })
         let stackSurface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "3a" })
 
@@ -84,6 +85,8 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("disabled"))
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("similarity"))
         XCTAssertTrue(comparePlaceholder.currentFallback.localizedCaseInsensitiveContains("loaded-scope candidate stacks"))
+        XCTAssertTrue(rapidCullSurface.currentImplementation.localizedCaseInsensitiveContains("Space advances"))
+        XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("Return accepts"))
         XCTAssertTrue(compareSurface.currentImplementation.localizedCaseInsensitiveContains("candidate stacks"))
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("keep-selected/reject-alternates"))
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("near-duplicate"))

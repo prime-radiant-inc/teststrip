@@ -54,6 +54,7 @@ public enum CullingShortcut: Equatable, Sendable {
     case pick
     case reject
     case clearFlag
+    case acceptStackSelection
 
     public init?(key: CullingShortcutKey) {
         switch key {
@@ -61,8 +62,11 @@ public enum CullingShortcut: Equatable, Sendable {
             self = .previousPhoto
         case .rightArrow:
             self = .nextPhoto
+        case .returnKey:
+            self = .acceptStackSelection
         case .character(let character):
             switch character.lowercased() {
+            case " ": self = .nextPhoto
             case "0": self = .rating(0)
             case "1": self = .rating(1)
             case "2": self = .rating(2)
@@ -87,6 +91,7 @@ public enum CullingShortcut: Equatable, Sendable {
 public enum CullingShortcutKey: Equatable, Sendable {
     case leftArrow
     case rightArrow
+    case returnKey
     case character(String)
 }
 
@@ -2275,6 +2280,8 @@ public final class AppModel {
             try applyCullingCommandAndAdvance(.reject)
         case .clearFlag:
             try applyCullingCommandAndAdvance(.clearFlag)
+        case .acceptStackSelection:
+            try keepSelectedStackFrameAndRejectAlternates()
         }
     }
 

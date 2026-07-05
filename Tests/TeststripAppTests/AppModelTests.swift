@@ -1575,6 +1575,46 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, next.id)
     }
 
+    func testCullingShortcutAcceptsSelectedStackFrame() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let first = makeAsset(
+            id: "shortcut-stack-first",
+            path: "/Photos/Job/shortcut-stack-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let selected = makeAsset(
+            id: "shortcut-stack-selected",
+            path: "/Photos/Job/shortcut-stack-selected.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let alternate = makeAsset(
+            id: "shortcut-stack-alternate",
+            path: "/Photos/Job/shortcut-stack-alternate.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1.8))
+        )
+        let next = makeAsset(
+            id: "shortcut-stack-next",
+            path: "/Photos/Other/shortcut-stack-next.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(4))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "accept-selected-stack-shortcut",
+            assets: [first, selected, alternate, next]
+        )
+        model.select(selected.id)
+
+        try model.applyCullingShortcut(.acceptStackSelection)
+
+        XCTAssertEqual(try repository.asset(id: first.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: selected.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .reject)
+        XCTAssertEqual(model.selectedAssetID, next.id)
+    }
+
     func testCullingShortcutLoadsNextPageWhenAdvancingPastLoadedAssets() throws {
         let model = try makeModelWithSeededCatalog(named: "culling-next-page", count: 121)
         model.select(AssetID(rawValue: "asset-119"))
@@ -1603,6 +1643,8 @@ final class AppModelTests: XCTestCase {
     func testCullingShortcutInterpretsKeyboardKeys() {
         XCTAssertEqual(CullingShortcut(key: .rightArrow), .nextPhoto)
         XCTAssertEqual(CullingShortcut(key: .leftArrow), .previousPhoto)
+        XCTAssertEqual(CullingShortcut(key: .character(" ")), .nextPhoto)
+        XCTAssertEqual(CullingShortcut(key: .returnKey), .acceptStackSelection)
         XCTAssertEqual(CullingShortcut(key: .character("5")), .rating(5))
         XCTAssertEqual(CullingShortcut(key: .character("6")), .colorLabel(.red))
         XCTAssertEqual(CullingShortcut(key: .character("7")), .colorLabel(.yellow))

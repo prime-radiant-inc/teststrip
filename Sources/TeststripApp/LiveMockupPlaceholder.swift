@@ -246,7 +246,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Rapid cull",
             status: .partial,
             placeholder: .cullingAssistVerdict,
-            currentImplementation: "Loupe-first culling has keyboard pick/reject/rating/labels, progress, filmstrip, and selected-frame signal verdicts; burst-level agentic rationale remains pending."
+            currentImplementation: "Loupe-first culling has keyboard pick/reject/rating/labels, Space advances, progress, filmstrip, and selected-frame signal verdicts; burst-level agentic rationale remains pending."
         ),
         LiveMockupDesignSurface(
             designID: "2b",
@@ -260,7 +260,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Stack cull",
             status: .liveMockup,
             placeholder: .cullingStackCull,
-            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, and loaded-scope same-folder capture-time stacks with a keep-selected/reject-alternates action; automatic burst/near-duplicate similarity grouping is not built."
+            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, and loaded-scope same-folder capture-time stacks with a keep-selected/reject-alternates action; Return accepts the selected stack frame when the stack rail is active, and automatic burst/near-duplicate similarity grouping is not built."
         ),
         LiveMockupDesignSurface(
             designID: "3b",

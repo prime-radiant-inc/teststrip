@@ -3268,6 +3268,7 @@ private extension View {
             .accessibilityLabel(asset.originalURL.lastPathComponent)
             .accessibilityValue(model.selectedAssetID == asset.id ? "Selected" : "Not selected")
             .accessibilityAction {
+                focusCullingSurface()
                 selectAsset(asset.id)
             }
     }

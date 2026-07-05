@@ -106,6 +106,10 @@ extension CullingShortcut {
             self = .previousPhoto
         case MacKeyCode.rightArrow:
             self = .nextPhoto
+        case MacKeyCode.space:
+            self = .nextPhoto
+        case MacKeyCode.returnKey, MacKeyCode.keypadEnter:
+            self = .acceptStackSelection
         default:
             guard
                 let character = event.charactersIgnoringModifiers,
@@ -119,6 +123,9 @@ extension CullingShortcut {
 }
 
 private enum MacKeyCode {
+    static let returnKey: UInt16 = 36
+    static let space: UInt16 = 49
+    static let keypadEnter: UInt16 = 76
     static let leftArrow: UInt16 = 123
     static let rightArrow: UInt16 = 124
 }
