@@ -133,14 +133,14 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("autonomous"))
     }
 
-    func testKeywordingLedgerTracksVisibleBatchMetadataWithoutAllScopeEditing() throws {
+    func testKeywordingLedgerTracksCurrentScopeBatchMetadataGaps() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "keywording.batch" })
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5e" })
 
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("visible-batch metadata popover"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("all-scope batch metadata review is not built"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("visible-batch metadata popover"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("all-scope batch metadata review is not built"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("visible/current-scope metadata popover"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("multi-select batch review is not built"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("visible/current-scope metadata popover"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("all-catalog confirmation is not built"))
     }
 
     func testSearchRefineLedgerTracksSuggestedActionsWithoutGeneratedRefinements() throws {

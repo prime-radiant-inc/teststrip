@@ -740,6 +740,145 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.pendingMetadataSyncItems(), [])
     }
 
+    func testCurrentScopeBatchMetadataAppliesBeyondLoadedPageAndWritesXmpSidecars() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-current-scope-batch-metadata")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let matchingAssets = try (0..<121).map { index in
+            let url = photosDirectory.appendingPathComponent("matching-\(index).cr2")
+            try Data("matching original \(index)".utf8).write(to: url)
+            return Asset(
+                id: AssetID(rawValue: "current-scope-batch-matching-\(index)"),
+                originalURL: url,
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: Int64(index + 10), modificationDate: Date(timeIntervalSince1970: TimeInterval(index + 10))),
+                availability: .online,
+                metadata: AssetMetadata(colorLabel: .green)
+            )
+        }
+        let outsideURL = photosDirectory.appendingPathComponent("outside.cr2")
+        try Data("outside original".utf8).write(to: outsideURL)
+        let outsideAsset = Asset(
+            id: AssetID(rawValue: "current-scope-batch-outside"),
+            originalURL: outsideURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 200, modificationDate: Date(timeIntervalSince1970: 200)),
+            availability: .online,
+            metadata: AssetMetadata(colorLabel: .red)
+        )
+        try repository.upsert(matchingAssets + [outsideAsset])
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        model.colorLabelFilter = .green
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.totalAssetCount, matchingAssets.count)
+        XCTAssertLessThan(model.assets.count, matchingAssets.count)
+        XCTAssertFalse(model.assets.contains { $0.id == matchingAssets.last?.id })
+
+        let appliedCount = try model.applyCurrentScopeBatchMetadata(
+            keywordText: "portfolio",
+            caption: "  Green selects  ",
+            creator: "  Jesse  ",
+            copyright: ""
+        )
+
+        XCTAssertEqual(appliedCount, matchingAssets.count)
+        XCTAssertEqual(model.statusMessage, "Applied batch metadata to 121 photos")
+        let unloadedAsset = try XCTUnwrap(matchingAssets.last)
+        let unloadedMetadata = try repository.asset(id: unloadedAsset.id).metadata
+        let unloadedSidecarData = try Data(contentsOf: unloadedAsset.originalURL.appendingPathExtension("xmp"))
+        let unloadedSidecarMetadata = try XMPPacket.parse(unloadedSidecarData).metadata
+        XCTAssertEqual(unloadedMetadata.keywords, ["portfolio"])
+        XCTAssertEqual(unloadedMetadata.caption, "Green selects")
+        XCTAssertEqual(unloadedMetadata.creator, "Jesse")
+        XCTAssertEqual(unloadedSidecarMetadata.keywords, ["portfolio"])
+        XCTAssertEqual(unloadedSidecarMetadata.caption, "Green selects")
+        XCTAssertEqual(try repository.asset(id: outsideAsset.id).metadata.keywords, [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outsideAsset.originalURL.appendingPathExtension("xmp").path))
+    }
+
+    func testCurrentScopeBatchMetadataAppliesExplicitSetBeyondLoadedPage() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-current-scope-batch-metadata-set")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let setAssets = try (0..<121).map { index in
+            let url = photosDirectory.appendingPathComponent("set-\(index).cr2")
+            try Data("set original \(index)".utf8).write(to: url)
+            return Asset(
+                id: AssetID(rawValue: "current-scope-set-\(index)"),
+                originalURL: url,
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: Int64(index + 10), modificationDate: Date(timeIntervalSince1970: TimeInterval(index + 10))),
+                availability: .online,
+                metadata: AssetMetadata()
+            )
+        }
+        let outsideURL = photosDirectory.appendingPathComponent("outside-set.cr2")
+        try Data("outside original".utf8).write(to: outsideURL)
+        let outsideAsset = Asset(
+            id: AssetID(rawValue: "current-scope-set-outside"),
+            originalURL: outsideURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 200, modificationDate: Date(timeIntervalSince1970: 200)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(setAssets + [outsideAsset])
+        let assetSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "current-scope-set"),
+            name: "Current Scope Set",
+            assetIDs: setAssets.map(\.id)
+        )
+        try repository.upsert(assetSet)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        try model.applyAssetSet(id: assetSet.id)
+
+        XCTAssertEqual(model.totalAssetCount, setAssets.count)
+        XCTAssertLessThan(model.assets.count, setAssets.count)
+        XCTAssertFalse(model.assets.contains { $0.id == setAssets.last?.id })
+
+        let appliedCount = try model.applyCurrentScopeBatchMetadata(
+            keywordText: "portfolio",
+            caption: "",
+            creator: "",
+            copyright: "  Copyright Jesse  "
+        )
+
+        XCTAssertEqual(appliedCount, setAssets.count)
+        let unloadedAsset = try XCTUnwrap(setAssets.last)
+        let unloadedMetadata = try repository.asset(id: unloadedAsset.id).metadata
+        let unloadedSidecarData = try Data(contentsOf: unloadedAsset.originalURL.appendingPathExtension("xmp"))
+        let unloadedSidecarMetadata = try XMPPacket.parse(unloadedSidecarData).metadata
+        XCTAssertEqual(unloadedMetadata.keywords, ["portfolio"])
+        XCTAssertEqual(unloadedMetadata.copyright, "Copyright Jesse")
+        XCTAssertEqual(unloadedSidecarMetadata.keywords, ["portfolio"])
+        XCTAssertEqual(unloadedSidecarMetadata.copyright, "Copyright Jesse")
+        XCTAssertEqual(try repository.asset(id: outsideAsset.id).metadata.keywords, [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outsideAsset.originalURL.appendingPathExtension("xmp").path))
+    }
+
     func testRatingSelectedAssetQueuesXmpWhenSidecarCannotBeWritten() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "xmp-pending")
 

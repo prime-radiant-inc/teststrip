@@ -118,6 +118,8 @@ final class LibraryGridChromeTests: XCTestCase {
 
         let presentation = BatchMetadataReviewPresentation(
             visibleAssetCount: 12,
+            currentScopeAssetCount: 121,
+            selectedScope: .visible,
             suggestions: [
                 BatchKeywordSuggestion(
                     keyword: "mountain",
@@ -134,6 +136,32 @@ final class LibraryGridChromeTests: XCTestCase {
         XCTAssertEqual(presentation.suggestionRows.map(\.keyword), ["mountain"])
         XCTAssertTrue(presentation.isApplyEnabled)
         XCTAssertEqual(presentation.applyTitle, "Apply to visible batch")
+    }
+
+    func testBatchMetadataReviewPresentationSummarizesCurrentScopeAndHidesVisibleSuggestions() {
+        var draft = BatchMetadataDraft()
+        draft.keywords = "portfolio"
+
+        let presentation = BatchMetadataReviewPresentation(
+            visibleAssetCount: 12,
+            currentScopeAssetCount: 121,
+            selectedScope: .currentScope,
+            suggestions: [
+                BatchKeywordSuggestion(
+                    keyword: "mountain",
+                    assetCount: 5,
+                    averageConfidence: 0.84,
+                    providerName: "apple-vision",
+                    modelName: "Vision"
+                )
+            ],
+            draft: draft
+        )
+
+        XCTAssertEqual(presentation.countText, "121 photos in current scope")
+        XCTAssertEqual(presentation.suggestionRows, [])
+        XCTAssertTrue(presentation.isApplyEnabled)
+        XCTAssertEqual(presentation.applyTitle, "Apply to current scope")
     }
 
     func testBatchMetadataDraftAppendsSuggestedKeywordsWithoutDuplicates() {

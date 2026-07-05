@@ -2906,6 +2906,25 @@ public final class AppModel {
     }
 
     @discardableResult
+    public func applyCurrentScopeBatchMetadata(
+        keywordText: String,
+        caption: String,
+        creator: String,
+        copyright: String
+    ) throws -> Int {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        return try applyBatchMetadata(
+            assetIDs: currentAssetScopeIDs(repository: catalog.repository),
+            keywordText: keywordText,
+            caption: caption,
+            creator: creator,
+            copyright: copyright
+        )
+    }
+
+    @discardableResult
     private func applyBatchMetadata(
         assetIDs: [AssetID],
         keywordText: String,

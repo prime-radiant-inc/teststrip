@@ -19,6 +19,7 @@ struct LibraryGridView: View {
     @State private var cullingSessionName = ""
     @State private var cullingSessionIntent = ""
     @State private var batchMetadataDraft = BatchMetadataDraft()
+    @State private var batchMetadataScope: BatchMetadataScopeMode = .visible
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
     @State private var dismissedImportCompletionSummaryID: String?
@@ -144,6 +145,7 @@ struct LibraryGridView: View {
 
             Button {
                 batchMetadataDraft = BatchMetadataDraft()
+                batchMetadataScope = .visible
                 isReviewingBatchMetadata = true
             } label: {
                 Label("Batch Metadata", systemImage: "tag")
@@ -763,6 +765,8 @@ struct LibraryGridView: View {
     private var batchMetadataPopover: some View {
         let presentation = BatchMetadataReviewPresentation(
             visibleAssetCount: model.assets.count,
+            currentScopeAssetCount: model.totalAssetCount,
+            selectedScope: batchMetadataScope,
             suggestions: model.visibleBatchKeywordSuggestions,
             draft: batchMetadataDraft
         )
@@ -779,6 +783,14 @@ struct LibraryGridView: View {
                 Image(systemName: "tag")
                     .foregroundStyle(.orange)
             }
+
+            Picker("Batch scope", selection: $batchMetadataScope) {
+                ForEach(BatchMetadataScopeMode.allCases) { scope in
+                    Text(scope.title).tag(scope)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
 
             if !presentation.suggestionRows.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -1998,12 +2010,22 @@ struct LibraryGridView: View {
 
     private func applyVisibleBatchMetadataDraft() {
         do {
-            try model.applyVisibleBatchMetadata(
-                keywordText: batchMetadataDraft.keywords,
-                caption: batchMetadataDraft.caption,
-                creator: batchMetadataDraft.creator,
-                copyright: batchMetadataDraft.copyright
-            )
+            switch batchMetadataScope {
+            case .visible:
+                try model.applyVisibleBatchMetadata(
+                    keywordText: batchMetadataDraft.keywords,
+                    caption: batchMetadataDraft.caption,
+                    creator: batchMetadataDraft.creator,
+                    copyright: batchMetadataDraft.copyright
+                )
+            case .currentScope:
+                try model.applyCurrentScopeBatchMetadata(
+                    keywordText: batchMetadataDraft.keywords,
+                    caption: batchMetadataDraft.caption,
+                    creator: batchMetadataDraft.creator,
+                    copyright: batchMetadataDraft.copyright
+                )
+            }
             batchMetadataDraft = BatchMetadataDraft()
             isReviewingBatchMetadata = false
         } catch {
@@ -2670,6 +2692,22 @@ struct BatchMetadataDraft: Equatable {
     }
 }
 
+enum BatchMetadataScopeMode: String, CaseIterable, Identifiable {
+    case visible
+    case currentScope
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .visible:
+            return "Visible"
+        case .currentScope:
+            return "Current Scope"
+        }
+    }
+}
+
 struct BatchMetadataReviewPresentation: Equatable {
     var countText: String
     var suggestionRows: [BatchKeywordSuggestionPresentation]
@@ -2678,13 +2716,23 @@ struct BatchMetadataReviewPresentation: Equatable {
 
     init(
         visibleAssetCount: Int,
+        currentScopeAssetCount: Int,
+        selectedScope: BatchMetadataScopeMode,
         suggestions: [BatchKeywordSuggestion],
         draft: BatchMetadataDraft
     ) {
-        countText = "\(visibleAssetCount) visible \(visibleAssetCount == 1 ? "photo" : "photos")"
-        suggestionRows = BatchKeywordSuggestionPresentation.rows(for: suggestions, limit: 6)
-        isApplyEnabled = visibleAssetCount > 0 && draft.hasContentToApply
-        applyTitle = "Apply to visible batch"
+        switch selectedScope {
+        case .visible:
+            countText = "\(visibleAssetCount) visible \(visibleAssetCount == 1 ? "photo" : "photos")"
+            suggestionRows = BatchKeywordSuggestionPresentation.rows(for: suggestions, limit: 6)
+            isApplyEnabled = visibleAssetCount > 0 && draft.hasContentToApply
+            applyTitle = "Apply to visible batch"
+        case .currentScope:
+            countText = "\(currentScopeAssetCount) \(currentScopeAssetCount == 1 ? "photo" : "photos") in current scope"
+            suggestionRows = []
+            isApplyEnabled = currentScopeAssetCount > 0 && draft.hasContentToApply
+            applyTitle = "Apply to current scope"
+        }
     }
 }
 
