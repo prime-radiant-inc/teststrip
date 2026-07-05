@@ -51,6 +51,28 @@ final class LibraryImportServiceTests: XCTestCase {
         ])
     }
 
+    func testAddFolderCatalogsRecognizedUnsupportedRawWithoutPreviewWork() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-catalog-only-raw")
+        let catalogOnlyRaw = root.appendingPathComponent("foveon.X3F")
+        try Data("catalog-only raw bytes".utf8).write(to: catalogOnlyRaw)
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = LibraryImportService(
+            ingestService: IngestService(
+                scanner: FolderScanner(supportedExtensions: ImageIODecodeProvider.catalogableExtensions),
+                decodeRegistry: DecodeRegistry(providers: [ImageIODecodeProvider()])
+            ),
+            previewCache: previewCache
+        )
+
+        let result = try service.addFolderInPlace(root, repository: repository, previewPolicy: .deferGeneration)
+
+        XCTAssertEqual(result.importedAssets.map(\.originalURL), [catalogOnlyRaw])
+        let asset = try XCTUnwrap(result.importedAssets.first)
+        XCTAssertEqual(try repository.asset(id: asset.id).originalURL, catalogOnlyRaw)
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
+    }
+
     func testAddFolderRecordsCatalogSourceRoot() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-source-root")
         let image = root.appendingPathComponent("one.jpg")
@@ -107,6 +129,30 @@ final class LibraryImportServiceTests: XCTestCase {
             try repository.previewGenerationQueueState(assetID: result.importedAssets[0].id, level: .grid)?.attemptCount,
             0
         )
+    }
+
+    func testCatalogsMetadataOnlyDecodeProviderAssetWithoutQueuingPreviews() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-metadata-only")
+        let image = root.appendingPathComponent("one.metadataonly")
+        try Data("metadata-only raw bytes".utf8).write(to: image)
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = LibraryImportService(
+            ingestService: IngestService(
+                scanner: FolderScanner(supportedExtensions: ["metadataonly"]),
+                decodeRegistry: DecodeRegistry(providers: [MetadataOnlyDecodeProvider()])
+            ),
+            previewCache: previewCache
+        )
+
+        let result = try service.addFolderInPlace(root, repository: repository, previewPolicy: .generateImmediately)
+
+        XCTAssertEqual(result.importedAssets.count, 1)
+        XCTAssertEqual(result.previewFailures, [])
+        let asset = try repository.asset(id: result.importedAssets[0].id)
+        XCTAssertEqual(asset.technicalMetadata?.pixelWidth, 6000)
+        XCTAssertEqual(asset.technicalMetadata?.pixelHeight, 4000)
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
     }
 
     func testAddFolderContinuesWhenOneSourceDisappearsBeforeCataloging() throws {
@@ -522,5 +568,34 @@ private final class EarlyCatalogProgressRecorder: @unchecked Sendable {
         lock.withLock {
             (catalogedAssetIDs, assetWasReadable)
         }
+    }
+}
+
+private struct MetadataOnlyDecodeProvider: DecodeProvider {
+    let name = "metadata-only"
+
+    func canDecode(url: URL) -> Bool {
+        url.pathExtension.lowercased() == "metadataonly"
+    }
+
+    func capability(forFileExtension fileExtension: String) -> DecodeCapability? {
+        DecodeCapability(
+            providerName: name,
+            fileExtension: fileExtension,
+            support: .bestEffort,
+            canReadMetadata: true,
+            canUseEmbeddedPreview: false,
+            canRenderPreview: false,
+            canRenderFullImage: false,
+            note: "Metadata-only test provider"
+        )
+    }
+
+    func metadata(for url: URL) throws -> DecodeMetadata {
+        DecodeMetadata(
+            pixelWidth: 6000,
+            pixelHeight: 4000,
+            provenance: ProviderProvenance(provider: name, model: "fixture", version: "1", settingsHash: "default")
+        )
     }
 }

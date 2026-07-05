@@ -88,6 +88,13 @@ final class DecodeRegistryTests: XCTestCase {
         XCTAssertTrue(ImageIODecodeProvider.knownUnsupportedRawExtensions.contains("x3f"))
     }
 
+    func testImageIOCatalogableExtensionsIncludeRecognizedUnsupportedRawFamilies() {
+        XCTAssertTrue(ImageIODecodeProvider.catalogableExtensions.contains("jpg"))
+        XCTAssertTrue(ImageIODecodeProvider.catalogableExtensions.contains("dng"))
+        XCTAssertTrue(ImageIODecodeProvider.catalogableExtensions.contains("x3f"))
+        XCTAssertFalse(ImageIODecodeProvider.catalogableExtensions.contains("lytro"))
+    }
+
     func testImageIOCapabilityMatrixMarksCommonStillFormatsAsWorking() {
         let provider = ImageIODecodeProvider()
 
@@ -183,6 +190,24 @@ final class DecodeRegistryTests: XCTestCase {
         XCTAssertEqual(capability.providerName, "fake")
         XCTAssertEqual(capability.fileExtension, "dng")
         XCTAssertEqual(capability.support, .bestEffort)
+    }
+
+    func testRegistryReturnsRecognizedUnsupportedCapabilityWithoutDecodeRouting() throws {
+        let registry = DecodeRegistry(providers: [ImageIODecodeProvider()])
+
+        let capability = try registry.capability(for: URL(fileURLWithPath: "/tmp/photo.X3F"))
+
+        XCTAssertEqual(capability.fileExtension, "x3f")
+        XCTAssertEqual(capability.support, .unsupported)
+        XCTAssertFalse(capability.canRenderPreview)
+    }
+
+    func testRegistryThrowsForUnrecognizedUnsupportedCapability() {
+        let registry = DecodeRegistry(providers: [ImageIODecodeProvider()])
+
+        XCTAssertThrowsError(try registry.capability(for: URL(fileURLWithPath: "/tmp/photo.lytro"))) { error in
+            XCTAssertEqual(error as? TeststripError, .unsupportedFormat("no decode capability for lytro"))
+        }
     }
 
     func testImageIOCanDecodeUsesSharedSupportedExtensions() {

@@ -979,6 +979,22 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.isBatchSelected(outside.id))
     }
 
+    func testBatchSelectionKeepsMatchingAssetsOutsideReloadedPage() throws {
+        let model = try makeModelWithSeededCatalog(named: "batch-selection-filtered-cross-page", count: 121)
+        let firstKeeperID = AssetID(rawValue: "asset-5")
+        let laterKeeperID = AssetID(rawValue: "asset-119")
+        model.setBatchSelection(firstKeeperID, isSelected: true)
+
+        try model.loadMoreAssets()
+        model.setBatchSelection(laterKeeperID, isSelected: true)
+        model.minimumRatingFilter = 5
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.selectedBatchAssetCount, 2)
+        XCTAssertTrue(model.isBatchSelected(firstKeeperID))
+        XCTAssertTrue(model.isBatchSelected(laterKeeperID))
+    }
+
     func testCurrentScopeBatchMetadataAppliesBeyondLoadedPageAndWritesXmpSidecars() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-current-scope-batch-metadata")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)

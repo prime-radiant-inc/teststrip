@@ -100,6 +100,17 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(summary.detailText, "Ready to catalog from import-source-summary")
     }
 
+    func testFolderDraftCountsRecognizedUnsupportedRawFilesByDefault() throws {
+        let directory = try makeTemporaryDirectory(named: "import-source-summary-catalog-only-raw")
+        try Data("catalog-only raw bytes".utf8).write(to: directory.appendingPathComponent("foveon.X3F"))
+
+        let draft = ImportConfirmationDraft.folder(directory)
+
+        XCTAssertEqual(draft.sourceSummary.photoCount, 1)
+        XCTAssertEqual(draft.sourceSummary.countText, "1 recognized photo file")
+        XCTAssertTrue(draft.canStartImport)
+    }
+
     func testSourceSummaryStopsAtScanLimit() throws {
         let directory = try makeTemporaryDirectory(named: "import-source-summary-limit")
         for index in 0..<3 {

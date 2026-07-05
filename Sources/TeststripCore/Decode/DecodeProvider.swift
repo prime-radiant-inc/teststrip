@@ -84,11 +84,16 @@ public struct DecodeCapability: Codable, Equatable, Sendable {
 public protocol DecodeProvider: Sendable {
     var name: String { get }
     func canDecode(url: URL) -> Bool
+    func canCatalog(url: URL) -> Bool
     func capability(forFileExtension fileExtension: String) -> DecodeCapability?
     func metadata(for url: URL) throws -> DecodeMetadata
 }
 
 public extension DecodeProvider {
+    func canCatalog(url: URL) -> Bool {
+        canDecode(url: url)
+    }
+
     func capability(forFileExtension fileExtension: String) -> DecodeCapability? {
         let normalizedExtension = fileExtension.lowercased()
         let supported = canDecode(url: URL(fileURLWithPath: "/tmp/photo.\(normalizedExtension)"))

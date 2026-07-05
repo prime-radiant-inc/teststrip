@@ -53,7 +53,7 @@ struct ImportSourceSummary: Equatable {
 
     static func scan(
         sourceURL: URL,
-        supportedExtensions: Set<String> = ImageIODecodeProvider.supportedExtensions,
+        supportedExtensions: Set<String> = ImageIODecodeProvider.catalogableExtensions,
         limit: Int = defaultScanLimit,
         entryLimit: Int = defaultEntryLimit
     ) -> ImportSourceSummary {
@@ -191,7 +191,7 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
 
     static func folder(
         _ sourceURL: URL,
-        supportedExtensions: Set<String> = ImageIODecodeProvider.supportedExtensions
+        supportedExtensions: Set<String> = ImageIODecodeProvider.catalogableExtensions
     ) -> ImportConfirmationDraft {
         ImportConfirmationDraft(
             mode: .folder,
@@ -205,7 +205,7 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     static func card(
         source sourceURL: URL,
         destinationRoot destinationRootURL: URL,
-        supportedExtensions: Set<String> = ImageIODecodeProvider.supportedExtensions
+        supportedExtensions: Set<String> = ImageIODecodeProvider.catalogableExtensions
     ) -> ImportConfirmationDraft {
         ImportConfirmationDraft(
             mode: .card,

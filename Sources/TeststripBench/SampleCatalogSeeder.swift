@@ -49,8 +49,12 @@ public struct SampleCatalogSeeder {
         let database = try CatalogDatabase.open(at: catalogURL)
         try database.migrate()
         let repository = CatalogRepository(database: database)
+        let decodeProvider = ImageIODecodeProvider()
         let importService = LibraryImportService(
-            ingestService: IngestService(scanner: FolderScanner(supportedExtensions: ImageIODecodeProvider.supportedExtensions)),
+            ingestService: IngestService(
+                scanner: FolderScanner(supportedExtensions: ImageIODecodeProvider.catalogableExtensions),
+                decodeRegistry: DecodeRegistry(providers: [decodeProvider])
+            ),
             previewCache: previewCache
         )
         let result = try importService.addFolderInPlace(

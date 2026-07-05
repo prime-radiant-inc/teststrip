@@ -38,6 +38,25 @@ final class AppCatalogTests: XCTestCase {
         XCTAssertNil(model.selectedAsset)
     }
 
+    func testDefaultImportServiceCatalogsRecognizedUnsupportedRawWithoutPreviewWork() throws {
+        let root = try makeTemporaryDirectory(named: "app-catalog-catalog-only-raw")
+        let source = root.appendingPathComponent("Source", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        let catalogOnlyRaw = source.appendingPathComponent("foveon.X3F")
+        try Data("catalog-only raw bytes".utf8).write(to: catalogOnlyRaw)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: root.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+
+        let result = try catalog.importService.addFolderInPlace(
+            source,
+            repository: catalog.repository,
+            previewPolicy: .deferGeneration
+        )
+
+        XCTAssertEqual(result.importedAssets.map(\.originalURL), [catalogOnlyRaw])
+        XCTAssertEqual(try catalog.repository.pendingPreviewGenerationItems(), [])
+    }
+
     func testBundledWorkerExecutableURLUsesBundleHelpersDirectory() {
         let bundleURL = URL(fileURLWithPath: "/Applications/Teststrip.app", isDirectory: true)
 

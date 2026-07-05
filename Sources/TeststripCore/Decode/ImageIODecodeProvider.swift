@@ -23,12 +23,23 @@ public struct ImageIODecodeProvider: DecodeProvider {
         result.formUnion(extensions)
     }
 
+    public static let catalogableExtensions: Set<String> = [
+        supportedExtensions,
+        knownUnsupportedRawExtensions
+    ].reduce(into: Set<String>()) { result, extensions in
+        result.formUnion(extensions)
+    }
+
     private let extensions = Self.supportedExtensions
 
     public init() {}
 
     public func canDecode(url: URL) -> Bool {
         capability(forFileExtension: url.pathExtension)?.support != .unsupported
+    }
+
+    public func canCatalog(url: URL) -> Bool {
+        Self.catalogableExtensions.contains(url.pathExtension.lowercased())
     }
 
     public func capability(forFileExtension fileExtension: String) -> DecodeCapability? {

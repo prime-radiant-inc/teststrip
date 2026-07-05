@@ -343,10 +343,23 @@ public struct LibraryImportService: Sendable {
     }
 
     private func shouldGenerateGridPreview(for asset: Asset, existingState: ExistingGridPreviewState?) -> Bool {
+        guard canRenderPreview(for: asset.originalURL) else {
+            return false
+        }
         guard let existingState else {
             return true
         }
         return !existingState.hasCachedPreview || !existingState.fingerprint.matches(asset.fingerprint)
+    }
+
+    private func canRenderPreview(for url: URL) -> Bool {
+        guard let decodeRegistry = ingestService.decodeRegistry else {
+            return true
+        }
+        guard let capability = try? decodeRegistry.capability(for: url) else {
+            return false
+        }
+        return capability.canRenderPreview
     }
 
     private func isPreviewCacheFile(_ url: URL) -> Bool {

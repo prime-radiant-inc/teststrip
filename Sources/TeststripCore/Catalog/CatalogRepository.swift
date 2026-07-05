@@ -119,6 +119,25 @@ public final class CatalogRepository {
         return try rows.map(decodeAssetID)
     }
 
+    public func assetIDs(ids: [AssetID], matching query: SetQuery) throws -> [AssetID] {
+        guard !ids.isEmpty else { return [] }
+        let compiledQuery = try compile(query)
+        var matchingAssetIDs: [AssetID] = []
+        for chunk in Self.chunks(ids, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let idClause = "assets.id IN (\(placeholders))"
+            let whereSQL = compiledQuery.whereSQL.isEmpty
+                ? " WHERE \(idClause)"
+                : "\(compiledQuery.whereSQL) AND \(idClause)"
+            let rows = try database.rows(
+                "SELECT assets.id FROM assets\(whereSQL) ORDER BY rowid ASC",
+                bindings: compiledQuery.bindings + chunk.map(\.rawValue)
+            )
+            matchingAssetIDs.append(contentsOf: try rows.map(decodeAssetID))
+        }
+        return matchingAssetIDs
+    }
+
     public func assets(ids: [AssetID], limit: Int, offset: Int = 0) throws -> [Asset] {
         guard limit > 0 else { return [] }
         var skippedAssetCount = 0

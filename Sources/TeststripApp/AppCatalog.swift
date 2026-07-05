@@ -93,7 +93,7 @@ public struct AppCatalog {
         let repository = CatalogRepository(database: database)
         let previewCache = PreviewCache(root: paths.previewCacheRoot)
         let ingestService = IngestService(
-            scanner: FolderScanner(supportedExtensions: ImageIODecodeProvider.supportedExtensions),
+            scanner: FolderScanner(supportedExtensions: ImageIODecodeProvider.catalogableExtensions),
             decodeRegistry: DecodeRegistry(providers: [ImageIODecodeProvider()])
         )
         let importService = LibraryImportService(ingestService: ingestService, previewCache: previewCache)

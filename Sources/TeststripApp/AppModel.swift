@@ -4952,6 +4952,7 @@ public final class AppModel {
             let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, limit: Self.assetPageSize)
             replaceAssets(loadedAssets, pageOffset: 0)
             totalAssetCount = try catalog.repository.assetCount(ids: explicitAssetIDs)
+            pruneBatchSelection(retaining: Set(explicitAssetIDs))
             return
         }
         let loadedAssets: [Asset]
@@ -4965,6 +4966,7 @@ public final class AppModel {
         }
         replaceAssets(loadedAssets, pageOffset: 0)
         totalAssetCount = count
+        try pruneBatchSelectionToCurrentLibraryQuery(repository: catalog.repository)
     }
 
     public func loadMoreAssets() throws {
@@ -5278,6 +5280,27 @@ public final class AppModel {
         } else {
             selectedAssetID = assets.first?.id
         }
+    }
+
+    private func pruneBatchSelectionToCurrentLibraryQuery(repository: CatalogRepository) throws {
+        guard !selectedBatchAssetIDs.isEmpty,
+              let query = currentLibraryQuery() else {
+            return
+        }
+        let matchingSelectedAssetIDs = try repository.assetIDs(
+            ids: selectedBatchAssetIDsInCatalogOrder,
+            matching: query
+        )
+        pruneBatchSelection(retaining: Set(matchingSelectedAssetIDs))
+    }
+
+    private func pruneBatchSelection(retaining retainedAssetIDs: Set<AssetID>) {
+        guard !selectedBatchAssetIDs.isSubset(of: retainedAssetIDs) else {
+            return
+        }
+        selectedBatchAssetIDs = selectedBatchAssetIDs.intersection(retainedAssetIDs)
+        selectedBatchAssetIDOrder.removeAll { !selectedBatchAssetIDs.contains($0) }
+        selectedBatchAssetSortKeys = selectedBatchAssetSortKeys.filter { selectedBatchAssetIDs.contains($0.key) }
     }
 
     private func loadCatalogPage(preferredSelection: AssetID?) throws {

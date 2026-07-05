@@ -491,6 +491,10 @@ final class CatalogDatabaseTests: XCTestCase {
         let pickQuery = SetQuery(predicates: [.text("CEREMONY"), .ratingAtLeast(4), .flag(.pick)])
         XCTAssertEqual(try repository.allAssets(matching: pickQuery, limit: 10).map(\.id), [keeper.id])
         XCTAssertEqual(try repository.assetCount(matching: pickQuery), 1)
+        XCTAssertEqual(
+            try repository.assetIDs(ids: [reject.id, landscape.id, keeper.id], matching: pickQuery),
+            [keeper.id]
+        )
 
         let colorKeywordQuery = SetQuery(predicates: [.colorLabel(.green), .keyword("patagonia")])
         XCTAssertEqual(try repository.allAssets(matching: colorKeywordQuery, limit: 10).map(\.id), [landscape.id])

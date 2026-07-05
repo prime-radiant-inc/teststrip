@@ -229,7 +229,7 @@ public struct WorkerCommandExecutor {
         let decodeProvider = ImageIODecodeProvider()
         return LibraryImportService(
             ingestService: IngestService(
-                scanner: FolderScanner(supportedExtensions: ImageIODecodeProvider.supportedExtensions),
+                scanner: FolderScanner(supportedExtensions: ImageIODecodeProvider.catalogableExtensions),
                 decodeRegistry: DecodeRegistry(providers: [decodeProvider])
             ),
             previewCache: previewCache

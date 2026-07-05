@@ -294,6 +294,33 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)).path))
     }
 
+    func testImportFolderCommandCatalogsRecognizedUnsupportedRawWithoutPreviewWork() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-import-folder-catalog-only-raw")
+        let sourceRoot = root.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+        let source = sourceRoot.appendingPathComponent("foveon.X3F")
+        try Data("catalog-only raw bytes".utf8).write(to: source)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
+
+        let result = try executor.execute(.importFolder(root: sourceRoot))
+
+        let imported = try repository.allAssets(limit: 10)
+        let asset = try XCTUnwrap(imported.first)
+        XCTAssertEqual(imported.map(\.originalURL), [source])
+        XCTAssertEqual(result, .completedImport(
+            "imported 1 photo from photos",
+            importedAssetIDs: [asset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0
+        ))
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
+    }
+
     func testImportFolderCommandReportsExistingAssetsOnReimport() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-import-folder-reimport")
         let sourceRoot = root.appendingPathComponent("photos", isDirectory: true)
