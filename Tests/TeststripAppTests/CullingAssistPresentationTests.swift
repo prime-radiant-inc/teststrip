@@ -18,7 +18,20 @@ final class CullingAssistPresentationTests: XCTestCase {
         ])
 
         XCTAssertEqual(presentation.title, "Keeper")
-        XCTAssertEqual(presentation.detail, "Aesthetics - local-http - 74% confidence")
+        XCTAssertEqual(presentation.detail, "Aesthetics - local-http - 74% confidence · Focus 91%")
+        XCTAssertEqual(presentation.tone, .positive)
+    }
+
+    func testDetailCombinesQualitySignalsIntoCompactRationale() {
+        let presentation = CullingAssistPresentation.presentation(for: [
+            signal(kind: .focus, value: .score(0.91), confidence: 0.82),
+            signal(kind: .motionBlur, value: .score(0.18), confidence: 0.68),
+            signal(kind: .faceQuality, value: .score(0.84), confidence: 0.71),
+            signal(kind: .object, value: .label("camera"), confidence: 0.88)
+        ])
+
+        XCTAssertEqual(presentation.title, "Motion blur 18%")
+        XCTAssertEqual(presentation.detail, "Motion blur - local-http - 68% confidence · Focus 91% · Face quality 84%")
         XCTAssertEqual(presentation.tone, .positive)
     }
 

@@ -145,7 +145,7 @@ public enum LiveMockupPlaceholders {
         id: "culling.assist-verdict",
         title: "Culling assist verdict",
         intendedBehavior: "Show agentic keeper/reject guidance, rationale, and confidence for the current frame or burst.",
-        currentFallback: "Selected-frame verdict uses persisted evaluation signals when present, but richer rationale and burst-level guidance are not built."
+        currentFallback: "Selected-frame verdict uses persisted evaluation signals with compact supporting quality rationale when present; burst-level guidance is still pending."
     )
 
     public static let cullingFilmstrip = LiveMockupPlaceholder(
@@ -255,7 +255,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Rapid cull",
             status: .partial,
             placeholder: .cullingAssistVerdict,
-            currentImplementation: "Loupe-first culling has keyboard pick/reject/rating/labels, Space advances, progress, filmstrip, and selected-frame signal verdicts; burst-level agentic rationale remains pending."
+            currentImplementation: "Loupe-first culling has keyboard pick/reject/rating/labels, Space advances, progress, filmstrip, and selected-frame signal verdicts with compact supporting quality rationale; burst-level agentic rationale remains pending."
         ),
         LiveMockupDesignSurface(
             designID: "2b",

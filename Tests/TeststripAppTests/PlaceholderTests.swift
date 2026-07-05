@@ -116,6 +116,16 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("near-duplicate"))
     }
 
+    func testRapidCullLedgerTracksCompositeSelectedFrameRationale() throws {
+        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "culling.assist-verdict" })
+        let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "2a" })
+
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("supporting quality rationale"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("burst-level guidance is still pending"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("supporting quality rationale"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("burst-level agentic rationale remains pending"))
+    }
+
     func testPeopleSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
         let model = AppModel.demo()
         let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })

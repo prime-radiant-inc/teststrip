@@ -353,7 +353,7 @@ Current behavior:
 - HTTP responses can be raw JSON or prose/fence-wrapped JSON; the provider extracts the JSON object.
 - Retry behavior exists for transient transport failures and retryable response statuses.
 - Evaluation output is persisted as typed `EvaluationSignal` rows with provider/model/version/settings provenance.
-- Selected-frame evaluation signals now feed a compact culling verdict presentation so the rapid-cull header can show a real `TESTSTRIP READS` state instead of a static placeholder.
+- Selected-frame evaluation signals now feed a compact culling verdict presentation so the rapid-cull header can show a real `TESTSTRIP READS` state with supporting quality rationale instead of a static placeholder.
 - Selected-photo object-label signals now feed Inspector keyword suggestions, remaining provisional until the user explicitly accepts one into keywords/XMP.
 - Survey Compare can show persisted focus, motion blur, exposure, and face-quality signals for each visible contender, and can enqueue evaluation only for compare frames that already have cached previews.
 - `TeststripBench local-http-smoke <endpoint> <model> <image> [timeout]` exercises LM Studio/Ollama-style endpoints.
@@ -395,7 +395,7 @@ Current behavior:
 - Import progress copy now distinguishes starting, scanning, cataloging, copying, and preview-building phases with tested presentation rules and visible counts where available.
 - Completed imports show an expanded summary panel with the imported photo count, preview status/failure count, Open action for the imported output set, Cull action that starts a culling work session from that set, Cull stacks action that persists each detected time-adjacent stack as a hidden work-stack set and starts culling with the first stack set selected, keyword suggestion review through the batch metadata popover, disabled unbuilt face follow-up, and dismiss behavior.
 - Folder and card import entrypoints refuse duplicate import submissions while an import is already running.
-- Culling sessions now start and reopen in loupe view with a culling header, reviewed-progress bar, pick/reject counts, selected-frame `TESTSTRIP READS` verdict, fixed-height bottom filmstrip, stable rating/label/flag command rail, visible frame position, persisted stack-set navigation/acceptance and rail presentation for import stack culls, persisted stack culling work-session progress/completion from decided stack flags, and a concrete Keep recommended action when persisted focus/quality signals identify a best frame in the current stack.
+- Culling sessions now start and reopen in loupe view with a culling header, reviewed-progress bar, pick/reject counts, selected-frame `TESTSTRIP READS` verdict with compact supporting quality rationale, fixed-height bottom filmstrip, stable rating/label/flag command rail, visible frame position, persisted stack-set navigation/acceptance and rail presentation for import stack culls, persisted stack culling work-session progress/completion from decided stack flags, and concrete Keep recommended / Keep top 2 actions when persisted focus/quality signals rank frames in the current stack.
 - Work sessions point to input/output sets, recent and starred work sessions are visible in the sidebar, and older starred sessions remain visible even when they fall outside the displayed recent-work cap.
 - Command-selected, shift-range, and page-spanning batch assets can be saved as manual saved sets in visible/catalog order, with the existing single-photo Save Selection fallback preserved.
 - Saved sets can be renamed, duplicated, or deleted from the sidebar context menu; dynamic saved sets can also be frozen into named/starred static snapshots, with catalog persistence, sidebar/count refresh, immediate duplicate/snapshot selection, and active-scope cleanup when a selected set is deleted.
@@ -652,7 +652,7 @@ These are the current alpha gates. Performance must remain respectable enough to
 
 **Work:**
 
-- [x] Promote selected-frame evaluation signals into the rapid-cull `TESTSTRIP READS` verdict surface with provider confidence detail.
+- [x] Promote selected-frame evaluation signals into the rapid-cull `TESTSTRIP READS` verdict surface with provider confidence detail and compact supporting quality rationale.
 - [x] Promote evaluation results into fuller user-visible signal groups: technical quality, faces, OCR, objects/content, color/look, and provider provenance.
 - [x] Make People face-review cards hand off to existing Faces Found / face-quality review targets without implying finished person clustering.
 - [ ] Add People/face grouping data model only after deciding the smallest useful grouping behavior. Do not imply Apple Photos-level identity recognition unless Teststrip actually owns clustering and naming.

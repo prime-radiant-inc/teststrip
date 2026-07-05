@@ -5218,9 +5218,45 @@ struct CullingAssistPresentation: Equatable {
         }
         return CullingAssistPresentation(
             title: title(for: signal),
-            detail: "\(EvaluationSignalPresentation.displayName(for: signal.kind)) - \(signal.provenance.provider) - \(EvaluationSignalPresentation.percentage(signal.confidence)) confidence",
+            detail: detail(primarySignal: signal, signals: signals),
             tone: tone(for: signal)
         )
+    }
+
+    private static func detail(primarySignal: EvaluationSignal, signals: [EvaluationSignal]) -> String {
+        var parts = [
+            "\(EvaluationSignalPresentation.displayName(for: primarySignal.kind)) - \(primarySignal.provenance.provider) - \(EvaluationSignalPresentation.percentage(primarySignal.confidence)) confidence"
+        ]
+        parts.append(contentsOf: rationaleTexts(for: signals, excluding: primarySignal))
+        return parts.joined(separator: " · ")
+    }
+
+    private static func rationaleTexts(
+        for signals: [EvaluationSignal],
+        excluding primarySignal: EvaluationSignal,
+        limit: Int = 3
+    ) -> [String] {
+        var seenKinds = [primarySignal.kind]
+        var rationales: [String] = []
+        for signal in signals.sorted(by: signalSort) where signal != primarySignal {
+            guard rationales.count < limit,
+                  !seenKinds.contains(signal.kind),
+                  let rationale = rationaleText(for: signal) else {
+                continue
+            }
+            rationales.append(rationale)
+            seenKinds.append(signal.kind)
+        }
+        return rationales
+    }
+
+    private static func rationaleText(for signal: EvaluationSignal) -> String? {
+        switch signal.kind {
+        case .focus, .motionBlur, .exposure, .aesthetics, .faceQuality, .faceCount, .novelty, .colorPalette:
+            return title(for: signal)
+        case .object, .ocrText:
+            return nil
+        }
     }
 
     private static func signalSort(_ lhs: EvaluationSignal, _ rhs: EvaluationSignal) -> Bool {
