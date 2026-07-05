@@ -3,6 +3,7 @@ import TeststripCore
 
 struct TimelinePresentation: Equatable {
     var months: [TimelineMonthPresentation]
+    var scrubber: TimelineScrubberPresentation
     var summaryText: String
     var yearRibbon: TimelineYearRibbonPresentation
 
@@ -22,7 +23,16 @@ struct TimelinePresentation: Equatable {
         calendar: Calendar = .current
     ) {
         let sortedAssets = Self.sortedAssets(loadedAssets)
-        self.months = Self.months(for: timelineDays, loadedAssets: sortedAssets, calendar: calendar)
+        let months = Self.months(for: timelineDays, loadedAssets: sortedAssets, calendar: calendar)
+        self.months = months
+        self.scrubber = Self.scrubber(
+            for: months,
+            focusedMonthID: Self.focusedMonthID(
+                timelineDays: timelineDays,
+                loadedAssets: sortedAssets,
+                calendar: calendar
+            )
+        )
         self.yearRibbon = Self.yearRibbon(
             for: timelineDays,
             loadedAssets: sortedAssets,
@@ -39,6 +49,51 @@ struct TimelinePresentation: Equatable {
         } else {
             self.summaryText = "\(totalAssetCount) \(totalAssetCount == 1 ? "photograph" : "photographs") across \(dayCount) \(dayCount == 1 ? "day" : "days")"
         }
+    }
+
+    private static func focusedMonthID(
+        timelineDays: [CatalogTimelineDay],
+        loadedAssets: [Asset],
+        calendar: Calendar
+    ) -> String? {
+        if let capturedAt = loadedAssets.compactMap({ $0.technicalMetadata?.capturedAt }).first {
+            return TimelineMonthKey(date: capturedAt, calendar: calendar).id
+        }
+        if let firstDay = timelineDays.first {
+            return TimelineMonthKey(day: firstDay).id
+        }
+        return nil
+    }
+
+    private static func scrubber(
+        for months: [TimelineMonthPresentation],
+        focusedMonthID: String?
+    ) -> TimelineScrubberPresentation {
+        let focusedMonth = months.first { $0.id == focusedMonthID }
+            ?? months.first { $0.year != nil && $0.month != nil }
+        let scrubberMonths = months.compactMap { month -> TimelineScrubberMonthPresentation? in
+            guard let year = month.year,
+                  let monthNumber = month.month else {
+                return nil
+            }
+            return TimelineScrubberMonthPresentation(
+                title: month.title,
+                year: year,
+                month: monthNumber,
+                assetCount: month.assetCount,
+                dayCount: month.dayCount,
+                isFocused: month.id == focusedMonth?.id
+            )
+        }
+        let days = focusedMonth?.days.compactMap { day -> TimelineScrubberDayPresentation? in
+            guard let timelineDay = day.timelineDay else { return nil }
+            return TimelineScrubberDayPresentation(
+                title: day.title,
+                assetCount: day.assetCount,
+                timelineDay: timelineDay
+            )
+        } ?? []
+        return TimelineScrubberPresentation(months: scrubberMonths, days: days)
     }
 
     private static func yearRibbon(
@@ -175,6 +230,49 @@ struct TimelineYearRibbonPresentation: Equatable {
     var focusText: String?
 }
 
+struct TimelineScrubberPresentation: Equatable {
+    var months: [TimelineScrubberMonthPresentation]
+    var days: [TimelineScrubberDayPresentation]
+}
+
+struct TimelineScrubberMonthPresentation: Identifiable, Equatable {
+    var id: String
+    var title: String
+    var year: Int
+    var month: Int
+    var assetCount: Int
+    var dayCount: Int
+    var countText: String
+    var isFocused: Bool
+
+    init(title: String, year: Int, month: Int, assetCount: Int, dayCount: Int, isFocused: Bool) {
+        self.id = "\(year)-\(String(format: "%02d", month))"
+        self.title = title
+        self.year = year
+        self.month = month
+        self.assetCount = assetCount
+        self.dayCount = dayCount
+        self.countText = "\(assetCount) \(assetCount == 1 ? "photo" : "photos") / \(dayCount) \(dayCount == 1 ? "day" : "days")"
+        self.isFocused = isFocused
+    }
+}
+
+struct TimelineScrubberDayPresentation: Identifiable, Equatable {
+    var id: String
+    var title: String
+    var assetCount: Int
+    var countText: String
+    var timelineDay: CatalogTimelineDay
+
+    init(title: String, assetCount: Int, timelineDay: CatalogTimelineDay) {
+        self.id = timelineDay.id
+        self.title = title
+        self.assetCount = assetCount
+        self.countText = "\(assetCount)"
+        self.timelineDay = timelineDay
+    }
+}
+
 struct TimelineYearPresentation: Identifiable, Equatable {
     var id: String
     var year: Int
@@ -195,16 +293,22 @@ struct TimelineYearPresentation: Identifiable, Equatable {
 
 struct TimelineMonthPresentation: Identifiable, Equatable {
     var id: String
+    var year: Int?
+    var month: Int?
     var title: String
     var subtitle: String
+    var assetCount: Int
+    var dayCount: Int
     var days: [TimelineDayPresentation]
 
     init(key: TimelineMonthKey, days: [TimelineDayPresentation]) {
         self.id = key.id
+        self.year = key.year
+        self.month = key.month
         self.title = key.title
         self.days = days
-        let assetCount = days.reduce(0) { $0 + $1.assetCount }
-        let dayCount = days.count
+        self.assetCount = days.reduce(0) { $0 + $1.assetCount }
+        self.dayCount = days.count
         self.subtitle = "\(assetCount) \(assetCount == 1 ? "photograph" : "photographs") across \(dayCount) \(dayCount == 1 ? "day" : "days")"
     }
 }

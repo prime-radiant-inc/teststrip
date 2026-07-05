@@ -1895,6 +1895,90 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.captureDateEndFilter, timelineDay.endDate(calendar: calendar))
     }
 
+    func testSelectingTimelineMonthAppliesDateRangeAndLoadsMatchingAssets() throws {
+        let calendar = Self.gregorianUTC
+        let earlyMonth = makeAsset(
+            id: "early-month",
+            path: "/Photos/Timeline/early-month.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Self.date(year: 2026, month: 2, day: 4, hour: 9, calendar: calendar))
+        )
+        let lateMonth = makeAsset(
+            id: "late-month",
+            path: "/Photos/Timeline/late-month.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Self.date(year: 2026, month: 2, day: 28, hour: 21, calendar: calendar))
+        )
+        let otherMonth = makeAsset(
+            id: "other-month",
+            path: "/Photos/Timeline/other-month.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Self.date(year: 2026, month: 3, day: 1, hour: 9, calendar: calendar))
+        )
+        let previousYear = makeAsset(
+            id: "previous-year",
+            path: "/Photos/Timeline/previous-year.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Self.date(year: 2025, month: 2, day: 4, hour: 9, calendar: calendar))
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "timeline-select-month",
+            assets: [otherMonth, earlyMonth, previousYear, lateMonth]
+        )
+
+        try model.selectTimelineMonth(year: 2026, month: 2, calendar: calendar)
+
+        let expectedStart = calendar.date(from: DateComponents(year: 2026, month: 2, day: 1))
+        let expectedEnd = calendar.date(from: DateComponents(year: 2026, month: 3, day: 1))
+        XCTAssertEqual(model.selectedView, .timeline)
+        XCTAssertEqual(model.assets.map(\.id.rawValue).sorted(), ["early-month", "late-month"])
+        XCTAssertEqual(model.totalAssetCount, 2)
+        XCTAssertEqual(model.captureDateStartFilter, expectedStart)
+        XCTAssertEqual(model.captureDateEndFilter, expectedEnd)
+    }
+
+    func testSelectingTimelineYearAppliesDateRangeAndLoadsMatchingAssets() throws {
+        let calendar = Self.gregorianUTC
+        let earlyYear = makeAsset(
+            id: "early-year",
+            path: "/Photos/Timeline/early-year.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Self.date(year: 2026, month: 1, day: 1, hour: 1, calendar: calendar))
+        )
+        let lateYear = makeAsset(
+            id: "late-year",
+            path: "/Photos/Timeline/late-year.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Self.date(year: 2026, month: 12, day: 31, hour: 22, calendar: calendar))
+        )
+        let previousYear = makeAsset(
+            id: "previous-year",
+            path: "/Photos/Timeline/previous-year.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Self.date(year: 2025, month: 12, day: 31, hour: 22, calendar: calendar))
+        )
+        let nextYear = makeAsset(
+            id: "next-year",
+            path: "/Photos/Timeline/next-year.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Self.date(year: 2027, month: 1, day: 1, hour: 1, calendar: calendar))
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "timeline-select-year",
+            assets: [nextYear, earlyYear, previousYear, lateYear]
+        )
+
+        try model.selectTimelineYear(2026, calendar: calendar)
+
+        let expectedStart = calendar.date(from: DateComponents(year: 2026, month: 1, day: 1))
+        let expectedEnd = calendar.date(from: DateComponents(year: 2027, month: 1, day: 1))
+        XCTAssertEqual(model.selectedView, .timeline)
+        XCTAssertEqual(model.assets.map(\.id.rawValue).sorted(), ["early-year", "late-year"])
+        XCTAssertEqual(model.totalAssetCount, 2)
+        XCTAssertEqual(model.captureDateStartFilter, expectedStart)
+        XCTAssertEqual(model.captureDateEndFilter, expectedEnd)
+    }
+
     func testSelectingTimelineDayInSynthetic100kCatalogKeepsLoadedAssetWindowBounded() throws {
         let calendar = Self.gregorianUTC
         let selectedCapturedAt = Self.date(year: 2026, month: 2, day: 4, hour: 9, calendar: calendar)

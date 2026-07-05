@@ -3234,6 +3234,10 @@ private struct TimelineWorkspaceView: View {
             if !presentation.yearRibbon.years.isEmpty {
                 timelineYearRibbon(presentation.yearRibbon)
             }
+
+            if !presentation.scrubber.months.isEmpty {
+                timelineMonthDayScrubber(presentation.scrubber)
+            }
         }
         .padding(14)
         .background(.bar, in: RoundedRectangle(cornerRadius: 8))
@@ -3257,7 +3261,13 @@ private struct TimelineWorkspaceView: View {
             VStack(spacing: 6) {
                 HStack(alignment: .bottom, spacing: 2) {
                     ForEach(ribbon.years) { year in
-                        timelineYearBar(year, focusText: ribbon.focusText)
+                        Button {
+                            selectTimelineYear(year.year)
+                        } label: {
+                            timelineYearBar(year, focusText: ribbon.focusText)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Show photos from \(year.year)")
                     }
                 }
                 .frame(height: 86)
@@ -3273,6 +3283,73 @@ private struct TimelineWorkspaceView: View {
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
                     }
+                }
+            }
+        }
+    }
+
+    private func timelineMonthDayScrubber(_ scrubber: TimelineScrubberPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(scrubber.months) { month in
+                        Button {
+                            selectTimelineMonth(year: month.year, month: month.month)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(month.title)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
+                                Text(month.countText)
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: 118, height: 42, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .background(
+                                month.isFocused ? Color.orange.opacity(0.18) : Color.white.opacity(0.06),
+                                in: RoundedRectangle(cornerRadius: 6)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(month.isFocused ? Color.orange.opacity(0.75) : Color.white.opacity(0.08), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .help("Show photos from \(month.title)")
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+
+            if !scrubber.days.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(scrubber.days) { day in
+                            Button {
+                                selectTimelineDay(day.timelineDay)
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Text(day.title)
+                                        .font(.caption2.weight(.semibold))
+                                        .lineLimit(1)
+                                    Text(day.countText)
+                                        .font(.caption2.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(width: 92, height: 26)
+                                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .help("Show photos from \(day.title)")
+                        }
+                    }
+                    .padding(.vertical, 1)
                 }
             }
         }
@@ -3379,6 +3456,22 @@ private struct TimelineWorkspaceView: View {
     private func selectTimelineDay(_ day: CatalogTimelineDay) {
         do {
             try model.selectTimelineDay(day)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func selectTimelineMonth(year: Int, month: Int) {
+        do {
+            try model.selectTimelineMonth(year: year, month: month)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func selectTimelineYear(_ year: Int) {
+        do {
+            try model.selectTimelineYear(year)
         } catch {
             model.errorMessage = error.localizedDescription
         }

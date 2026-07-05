@@ -49,6 +49,8 @@ final class TimelinePresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.summaryText, "Showing 1 loaded of 11 photographs across 2 days")
         XCTAssertEqual(presentation.months.map(\.title), ["February 2026"])
+        XCTAssertEqual(presentation.months[0].year, 2026)
+        XCTAssertEqual(presentation.months[0].month, 2)
         XCTAssertEqual(presentation.months[0].subtitle, "11 photographs across 2 days")
         XCTAssertEqual(presentation.months[0].days.map(\.title), ["February 5", "February 4"])
         XCTAssertEqual(presentation.months[0].days.map(\.countText), ["8 frames", "3 frames"])
@@ -78,6 +80,31 @@ final class TimelinePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.yearRibbon.years.map(\.isFocused), [false, false, true])
         XCTAssertEqual(presentation.yearRibbon.years.map(\.heightRatio), [1.0 / 3.0, 0, 1.0])
         XCTAssertEqual(presentation.yearRibbon.focusText, "2022 - 30")
+    }
+
+    func testBuildsMonthAndDayScrubberFromCatalogTimelineDays() {
+        let calendar = Self.gregorianUTC
+        let focused = Self.asset(id: "focused", capturedAt: Self.date(year: 2026, month: 2, day: 4, calendar: calendar))
+        let presentation = TimelinePresentation(
+            timelineDays: [
+                CatalogTimelineDay(year: 2026, month: 3, day: 1, assetCount: 9),
+                CatalogTimelineDay(year: 2026, month: 2, day: 5, assetCount: 8),
+                CatalogTimelineDay(year: 2026, month: 2, day: 4, assetCount: 3),
+                CatalogTimelineDay(year: 2026, month: 1, day: 12, assetCount: 2)
+            ],
+            loadedAssets: [focused],
+            totalAssetCount: 22,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(presentation.scrubber.months.map(\.title), ["March 2026", "February 2026", "January 2026"])
+        XCTAssertEqual(presentation.scrubber.months.map(\.countText), ["9 photos / 1 day", "11 photos / 2 days", "2 photos / 1 day"])
+        XCTAssertEqual(presentation.scrubber.months.map(\.isFocused), [false, true, false])
+        XCTAssertEqual(presentation.scrubber.months[1].year, 2026)
+        XCTAssertEqual(presentation.scrubber.months[1].month, 2)
+        XCTAssertEqual(presentation.scrubber.days.map(\.title), ["February 5", "February 4"])
+        XCTAssertEqual(presentation.scrubber.days.map(\.countText), ["8", "3"])
+        XCTAssertEqual(presentation.scrubber.days[1].timelineDay, CatalogTimelineDay(year: 2026, month: 2, day: 4, assetCount: 3))
     }
 
     private static var gregorianUTC: Calendar {

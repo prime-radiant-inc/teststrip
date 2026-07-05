@@ -3582,9 +3582,24 @@ public final class AppModel {
     }
 
     public func selectTimelineDay(_ day: CatalogTimelineDay, calendar: Calendar = .current) throws {
-        guard let startDate = day.startDate(calendar: calendar),
-              let endDate = day.endDate(calendar: calendar) else {
-            throw TeststripError.invalidState("timeline day has an invalid date")
+        try selectTimelineDateRange(startDate: day.startDate(calendar: calendar), endDate: day.endDate(calendar: calendar))
+    }
+
+    public func selectTimelineMonth(year: Int, month: Int, calendar: Calendar = .current) throws {
+        let startDate = calendar.date(from: DateComponents(year: year, month: month, day: 1))
+        let endDate = startDate.flatMap { calendar.date(byAdding: .month, value: 1, to: $0) }
+        try selectTimelineDateRange(startDate: startDate, endDate: endDate)
+    }
+
+    public func selectTimelineYear(_ year: Int, calendar: Calendar = .current) throws {
+        let startDate = calendar.date(from: DateComponents(year: year, month: 1, day: 1))
+        let endDate = startDate.flatMap { calendar.date(byAdding: .year, value: 1, to: $0) }
+        try selectTimelineDateRange(startDate: startDate, endDate: endDate)
+    }
+
+    private func selectTimelineDateRange(startDate: Date?, endDate: Date?) throws {
+        guard let startDate, let endDate else {
+            throw TeststripError.invalidState("timeline selection has an invalid date")
         }
         selectedAssetSetID = nil
         captureDateStartFilter = startDate
