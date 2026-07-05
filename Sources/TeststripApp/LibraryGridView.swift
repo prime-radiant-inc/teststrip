@@ -825,6 +825,8 @@ struct LibraryGridView: View {
         switch kind {
         case .startCulling:
             beginCullingFromLatestImportCompletion()
+        case .reviewImportedFrames:
+            reviewLatestImportInCompare()
         case .openInLibrary:
             openLatestImportCompletion()
         case .keywordSuggestions:
@@ -1735,6 +1737,15 @@ struct LibraryGridView: View {
     private func beginCullingFromLatestImportCompletion() {
         do {
             try model.beginCullingFromLatestImportCompletion()
+            focusCullingSurface()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func reviewLatestImportInCompare() {
+        do {
+            try model.reviewLatestImportInCompare()
             focusCullingSurface()
         } catch {
             model.errorMessage = error.localizedDescription
@@ -3670,6 +3681,15 @@ struct ImportCompletionPresentation: Equatable {
                     placeholder: nil
                 ),
                 ImportCompletionActionPresentation(
+                    kind: .reviewImportedFrames,
+                    title: "Review imported frames",
+                    detail: "Manual Compare over this import",
+                    systemImage: "rectangle.grid.2x2",
+                    isEnabled: true,
+                    isPrimary: false,
+                    placeholder: nil
+                ),
+                ImportCompletionActionPresentation(
                     kind: .openInLibrary,
                     title: "Open in Library",
                     detail: "Browse everything",
@@ -3793,6 +3813,7 @@ struct ImportCompletionMetricRow: Equatable, Identifiable {
 struct ImportCompletionActionPresentation: Equatable, Identifiable {
     enum Kind: String, Equatable {
         case startCulling
+        case reviewImportedFrames
         case openInLibrary
         case stackGrouping
         case faceNaming

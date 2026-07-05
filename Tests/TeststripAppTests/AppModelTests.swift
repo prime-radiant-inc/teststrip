@@ -6607,6 +6607,30 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testReviewingLatestImportInCompareUsesImportOutputSet() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-summary-compare")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(catalog: catalog)
+
+        _ = try await model.importFolderInBackground(photoFolder)
+        let summary = try XCTUnwrap(model.latestImportCompletionSummary)
+        let importSession = try catalog.repository.session(id: WorkSessionID(rawValue: summary.activityID))
+        let outputSetID = try XCTUnwrap(importSession.outputSetIDs.first)
+
+        try model.reviewLatestImportInCompare()
+
+        XCTAssertEqual(model.selectedAssetSetID, outputSetID)
+        XCTAssertEqual(model.assets.map(\.originalURL), [image])
+        XCTAssertEqual(model.selectedView, .compare)
+        XCTAssertEqual(model.compareAssets().map(\.originalURL), [image])
+    }
+
+    @MainActor
     func testCancellingActiveImportRecordsCancelledActivity() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-cancel-import")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)

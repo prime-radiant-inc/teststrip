@@ -1623,6 +1623,11 @@ public final class AppModel {
         return try beginCullingSession(named: summary.cullingSessionName)
     }
 
+    public func reviewLatestImportInCompare() throws {
+        _ = try openLatestImportCompletion()
+        selectedView = .compare
+    }
+
     @discardableResult
     public func acceptLatestImportBatchKeywordSuggestion(_ keyword: String) throws -> Int {
         guard let catalog else {

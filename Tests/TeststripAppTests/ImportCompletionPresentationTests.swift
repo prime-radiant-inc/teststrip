@@ -15,7 +15,7 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.detail, "Imported 12 photos from Card A")
         XCTAssertEqual(presentation.metricRows.map(\.label), ["Imported set", "Previews", "Cull scope"])
         XCTAssertEqual(presentation.metricRows.map(\.value), ["12 photos", "Ready", "Ready"])
-        XCTAssertEqual(presentation.enabledActions.map(\.kind), [.startCulling, .openInLibrary])
+        XCTAssertEqual(presentation.enabledActions.map(\.kind), [.startCulling, .reviewImportedFrames, .openInLibrary])
         XCTAssertEqual(presentation.placeholderActions.map(\.kind), [.stackGrouping, .faceNaming, .keywordSuggestions])
     }
 
@@ -30,7 +30,17 @@ final class ImportCompletionPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.metricRows.first { $0.id == "previews" }?.value, "2 issues")
         XCTAssertEqual(presentation.metricRows.first { $0.id == "previews" }?.detail, "2 preview failures")
-        XCTAssertEqual(presentation.enabledActions.map(\.kind), [.startCulling, .openInLibrary])
+        XCTAssertEqual(presentation.enabledActions.map(\.kind), [.startCulling, .reviewImportedFrames, .openInLibrary])
+    }
+
+    func testAddsManualCompareActionWithoutClaimingStackGrouping() throws {
+        let presentation = ImportCompletionPresentation.presentation(for: summary())
+
+        let action = try XCTUnwrap(presentation.actionRows.first { $0.kind == .reviewImportedFrames })
+        XCTAssertTrue(action.isEnabled)
+        XCTAssertEqual(action.title, "Review imported frames")
+        XCTAssertEqual(action.detail, "Manual Compare over this import")
+        XCTAssertNil(action.placeholder)
     }
 
     func testEnablesKeywordSuggestionActionWhenBatchSuggestionsExist() throws {
