@@ -51,14 +51,15 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(export.currentImplementation.localizedCaseInsensitiveContains("out of scope"))
     }
 
-    func testTimelineLedgerTracksBuiltYearRibbonAndMonthYearControls() throws {
+    func testTimelineLedgerTracksBuiltYearRibbonAndFocusedScrubberControls() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "library.timeline" })
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "1c" })
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("year-density ribbon"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("month and year drill-down"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("focused month/day scrubber"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("year-density ribbon"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("month and year drill-down"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("focused month/day scrubber"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("scroll-position syncing remains pending"))
     }
 
     func testImportCompleteLedgerTracksLiveActionsAndRemainingDisabledFollowups() throws {

@@ -102,8 +102,10 @@ final class TimelinePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.scrubber.months.map(\.isFocused), [false, true, false])
         XCTAssertEqual(presentation.scrubber.months[1].year, 2026)
         XCTAssertEqual(presentation.scrubber.months[1].month, 2)
+        XCTAssertEqual(presentation.scrubber.focusText, "February 2026 / February 4")
         XCTAssertEqual(presentation.scrubber.days.map(\.title), ["February 5", "February 4"])
         XCTAssertEqual(presentation.scrubber.days.map(\.countText), ["8", "3"])
+        XCTAssertEqual(presentation.scrubber.days.map(\.isFocused), [false, true])
         XCTAssertEqual(presentation.scrubber.days[1].timelineDay, CatalogTimelineDay(year: 2026, month: 2, day: 4, assetCount: 3))
     }
 

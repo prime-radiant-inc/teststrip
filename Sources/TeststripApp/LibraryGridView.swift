@@ -4187,6 +4187,12 @@ private struct TimelineWorkspaceView: View {
 
     private func timelineMonthDayScrubber(_ scrubber: TimelineScrubberPresentation) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let focusText = scrubber.focusText {
+                Text(focusText)
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
+
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     ForEach(scrubber.months) { month in
@@ -4236,10 +4242,13 @@ private struct TimelineWorkspaceView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 .frame(width: 92, height: 26)
-                                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5))
+                                .background(
+                                    day.isFocused ? Color.orange.opacity(0.16) : Color.white.opacity(0.05),
+                                    in: RoundedRectangle(cornerRadius: 5)
+                                )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 5)
-                                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                        .stroke(day.isFocused ? Color.orange.opacity(0.65) : Color.white.opacity(0.08), lineWidth: 1)
                                 )
                             }
                             .buttonStyle(.plain)

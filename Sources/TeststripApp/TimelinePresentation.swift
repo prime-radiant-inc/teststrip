@@ -31,6 +31,11 @@ struct TimelinePresentation: Equatable {
                 timelineDays: timelineDays,
                 loadedAssets: sortedAssets,
                 calendar: calendar
+            ),
+            focusedDayID: Self.focusedDayID(
+                timelineDays: timelineDays,
+                loadedAssets: sortedAssets,
+                calendar: calendar
             )
         )
         self.yearRibbon = Self.yearRibbon(
@@ -65,9 +70,21 @@ struct TimelinePresentation: Equatable {
         return nil
     }
 
+    private static func focusedDayID(
+        timelineDays: [CatalogTimelineDay],
+        loadedAssets: [Asset],
+        calendar: Calendar
+    ) -> String? {
+        if let capturedAt = loadedAssets.compactMap({ $0.technicalMetadata?.capturedAt }).first {
+            return TimelineDayKey(date: capturedAt, calendar: calendar).id
+        }
+        return timelineDays.first?.id
+    }
+
     private static func scrubber(
         for months: [TimelineMonthPresentation],
-        focusedMonthID: String?
+        focusedMonthID: String?,
+        focusedDayID: String?
     ) -> TimelineScrubberPresentation {
         let focusedMonth = months.first { $0.id == focusedMonthID }
             ?? months.first { $0.year != nil && $0.month != nil }
@@ -90,10 +107,19 @@ struct TimelinePresentation: Equatable {
             return TimelineScrubberDayPresentation(
                 title: day.title,
                 assetCount: day.assetCount,
-                timelineDay: timelineDay
+                timelineDay: timelineDay,
+                isFocused: timelineDay.id == focusedDayID
             )
         } ?? []
-        return TimelineScrubberPresentation(months: scrubberMonths, days: days)
+        let focusedDayTitle = days.first(where: \.isFocused)?.title
+        let focusText = [focusedMonth?.title, focusedDayTitle]
+            .compactMap { $0 }
+            .joined(separator: " / ")
+        return TimelineScrubberPresentation(
+            months: scrubberMonths,
+            days: days,
+            focusText: focusText.isEmpty ? nil : focusText
+        )
     }
 
     private static func yearRibbon(
@@ -233,6 +259,7 @@ struct TimelineYearRibbonPresentation: Equatable {
 struct TimelineScrubberPresentation: Equatable {
     var months: [TimelineScrubberMonthPresentation]
     var days: [TimelineScrubberDayPresentation]
+    var focusText: String?
 }
 
 struct TimelineScrubberMonthPresentation: Identifiable, Equatable {
@@ -263,13 +290,15 @@ struct TimelineScrubberDayPresentation: Identifiable, Equatable {
     var assetCount: Int
     var countText: String
     var timelineDay: CatalogTimelineDay
+    var isFocused: Bool
 
-    init(title: String, assetCount: Int, timelineDay: CatalogTimelineDay) {
+    init(title: String, assetCount: Int, timelineDay: CatalogTimelineDay, isFocused: Bool) {
         self.id = timelineDay.id
         self.title = title
         self.assetCount = assetCount
         self.countText = "\(assetCount)"
         self.timelineDay = timelineDay
+        self.isFocused = isFocused
     }
 }
 
