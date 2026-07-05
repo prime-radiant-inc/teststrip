@@ -118,6 +118,16 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("autonomous"))
     }
 
+    func testKeywordingLedgerTracksCurrentScopeSuggestionsWithoutFullBatchMetadataEditing() throws {
+        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "keywording.batch" })
+        let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5e" })
+
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("current-scope keyword suggestions"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("full batch metadata review is not built"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("current-scope keyword suggestions"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("full batch metadata review is not built"))
+    }
+
     func testSearchSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
         let model = AppModel.demo()
         let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })

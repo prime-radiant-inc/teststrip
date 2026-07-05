@@ -109,7 +109,7 @@ public enum LiveMockupPlaceholders {
         id: "keywording.batch",
         title: "Batch keywording",
         intendedBehavior: "Apply Teststrip-suggested keywords, captions, creator, and copyright to a selected batch.",
-        currentFallback: "Single-selected metadata controls and the latest-import keyword action write through catalog and XMP; richer batch keywording review is not built."
+        currentFallback: "Single-selected metadata controls plus latest-import and current-scope keyword suggestions write through catalog and XMP; full batch metadata review is not built."
     )
 
     public static let exportWorkflow = LiveMockupPlaceholder(
@@ -316,7 +316,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Keywording",
             status: .partial,
             placeholder: .keywordingBatch,
-            currentImplementation: "Selected asset metadata controls edit keywords, caption, creator, and copyright with XMP writeback, plus accepting single-asset suggested keywords from object evaluation labels; batch keywording is not built."
+            currentImplementation: "Selected asset metadata controls edit keywords, caption, creator, and copyright with XMP writeback, plus single-asset, latest-import, and current-scope keyword suggestions from object evaluation labels; full batch metadata review is not built."
         ),
         LiveMockupDesignSurface(
             designID: "5f",

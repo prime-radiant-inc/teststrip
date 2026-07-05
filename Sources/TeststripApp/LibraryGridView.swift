@@ -510,6 +510,7 @@ struct LibraryGridView: View {
             if !model.activeLibraryFilterChips.isEmpty {
                 activeFilterChips
             }
+            currentBatchKeywordSuggestionBar
         }
         .padding(.bottom, 7)
         .background(.bar)
@@ -668,6 +669,50 @@ struct LibraryGridView: View {
                 }
             }
             .padding(.horizontal, 12)
+        }
+    }
+
+    @ViewBuilder
+    private var currentBatchKeywordSuggestionBar: some View {
+        let rows = BatchKeywordSuggestionPresentation.rows(for: model.visibleBatchKeywordSuggestions)
+        if !rows.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    Image(systemName: "tag")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Text("TESTSTRIP SUGGESTS")
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .foregroundStyle(.orange)
+                    ForEach(rows) { row in
+                        Button {
+                            applyVisibleBatchKeywordSuggestion(row.keyword)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(row.title)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
+                                Text(row.detail)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .strokeBorder(Color.orange.opacity(0.2))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!row.isEnabled)
+                        .help(row.detail)
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+            .liveMockupPlaceholder(.keywordingBatch)
         }
     }
 
@@ -1789,6 +1834,14 @@ struct LibraryGridView: View {
         }
     }
 
+    private func applyVisibleBatchKeywordSuggestion(_ keyword: String) {
+        do {
+            try model.acceptVisibleBatchKeywordSuggestion(keyword)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
     private func evaluateSelectedAsset() {
         do {
             try model.requestSelectedAssetEvaluations()
@@ -2356,6 +2409,29 @@ struct LibraryTopBarPresentation: Equatable {
     private static func filterSummaryText(for chips: [String]) -> String? {
         guard !chips.isEmpty else { return nil }
         return "\(chips.count) \(chips.count == 1 ? "filter" : "filters")"
+    }
+}
+
+struct BatchKeywordSuggestionPresentation: Equatable, Identifiable {
+    var keyword: String
+    var title: String
+    var detail: String
+    var isEnabled: Bool
+    var placeholder: LiveMockupPlaceholder?
+
+    var id: String { keyword }
+
+    static func rows(for suggestions: [BatchKeywordSuggestion], limit: Int = 3) -> [BatchKeywordSuggestionPresentation] {
+        guard limit > 0 else { return [] }
+        return suggestions.prefix(limit).map { suggestion in
+            BatchKeywordSuggestionPresentation(
+                keyword: suggestion.keyword,
+                title: "Apply \(suggestion.keyword)",
+                detail: "\(suggestion.assetCountText) at \(suggestion.confidenceText)",
+                isEnabled: true,
+                placeholder: nil
+            )
+        }
     }
 }
 

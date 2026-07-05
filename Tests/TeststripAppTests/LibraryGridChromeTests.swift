@@ -72,4 +72,43 @@ final class LibraryGridChromeTests: XCTestCase {
         XCTAssertEqual(MetadataSyncFilterOption.conflicts.pendingFilter, false)
         XCTAssertEqual(MetadataSyncFilterOption.conflicts.conflictFilter, true)
     }
+
+    func testBatchKeywordSuggestionPresentationBuildsCurrentScopeActionsFromTopSuggestions() {
+        let rows = BatchKeywordSuggestionPresentation.rows(
+            for: [
+                BatchKeywordSuggestion(
+                    keyword: "mountain",
+                    assetCount: 2,
+                    averageConfidence: 0.7,
+                    providerName: "apple-vision",
+                    modelName: "Vision"
+                ),
+                BatchKeywordSuggestion(
+                    keyword: "lake",
+                    assetCount: 1,
+                    averageConfidence: 0.91,
+                    providerName: "local-http-model",
+                    modelName: "llava"
+                ),
+                BatchKeywordSuggestion(
+                    keyword: "forest",
+                    assetCount: 1,
+                    averageConfidence: 0.62,
+                    providerName: "apple-vision",
+                    modelName: "Vision"
+                )
+            ],
+            limit: 2
+        )
+
+        XCTAssertEqual(rows.map(\.keyword), ["mountain", "lake"])
+        XCTAssertEqual(rows.map(\.title), ["Apply mountain", "Apply lake"])
+        XCTAssertEqual(rows.map(\.detail), ["2 photos at 70%", "1 photo at 91%"])
+        XCTAssertEqual(rows.map(\.isEnabled), [true, true])
+        XCTAssertTrue(rows.allSatisfy { $0.placeholder == nil })
+    }
+
+    func testBatchKeywordSuggestionPresentationHidesWhenNoSuggestionsExist() {
+        XCTAssertEqual(BatchKeywordSuggestionPresentation.rows(for: []), [])
+    }
 }
