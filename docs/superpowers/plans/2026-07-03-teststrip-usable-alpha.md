@@ -13,10 +13,10 @@
 ## Current Snapshot
 
 - Branch: `wip/teststrip-usable-foundation`
-- Snapshot commit: `34cf22a Record running imports in recent work`
+- Snapshot commit: `388ddec Add sandbox-aware import runtime policy`
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Last focused unit verification: `swift test --filter AppModelTests/testBeginImportFolderRecordsRunningActivityImmediately` failed before implementation and passed after; `swift test --filter 'AppModelTests/testBeginImportFolderRecordsRunningActivityImmediately|AppModelTests/testCancellingActiveImportRecordsCancelledActivity|AppModelTests/testCancellingActiveCardImportRecordsCancelledActivity|AppModelTests/testBackgroundImportPersistsCompletedActivityForReload|AppModelTests/testInterruptedWorkerImportPreservesLastProgressDetail|AppModelTests/testBackgroundImportAppliesProgressUpdatesBeforeCompletion'` passed after the running-import work-session slice. Earlier work-session sidebar context actions, metadata verifier, People, worker skipped-count/idle-stop, import resilience, worker/source, grid layout/chrome, XMP conflict/reconnect, and catalog-scale verifier focused tests passed across the preceding slices.
-- Last broad unit verification: `swift test` passed with 715 tests, 1 skipped, and 0 failures after the running-import work-session slice.
+- Last focused unit verification: `swift test --filter 'AppCatalogTests|AppModelTests/testBeginImportFolderWithWorkerImportsDisabledRunsLocalImportAndGeneratesPreview'` passed after the sandbox-aware import runtime policy slice. `bash -n script/build_and_run.sh`, `plutil -lint config/macos/Teststrip.entitlements config/macos/TeststripWorker.entitlements`, and `script/build_and_run.sh --build-sandboxed` plus `codesign -d --entitlements :-` inspection passed without launching the UI. Earlier running-import work-session, work-session sidebar context actions, metadata verifier, People, worker skipped-count/idle-stop, import resilience, worker/source, grid layout/chrome, XMP conflict/reconnect, and catalog-scale verifier focused tests passed across the preceding slices.
+- Last broad unit verification: `swift test` passed with 717 tests, 1 skipped, and 0 failures after the sandbox-aware import runtime policy slice.
 - Last app workflow verification: `./script/build_and_run.sh --verify-smoke` launched an isolated smoke catalog after the work-session sidebar context-action slice; the smoke app was then quit to minimize desktop disruption. Earlier `./script/build_and_run.sh --verify-smoke` launched an isolated smoke catalog after the inspector XMP merge action, and `./script/capture_app_window.sh Teststrip /tmp/teststrip-inspector-conflict-action-smoke.png` captured a normal Library window. That smoke did not show an active XMP conflict; the conflict action ordering and model merge path are covered by focused tests. Additional UI automation was intentionally avoided for the footer-density slice to minimize focus stealing while Jesse is using the machine. Earlier no app launch was run for the diagnostics slice to minimize focus stealing; `./script/build_and_run.sh --verify-smoke` launched an isolated smoke catalog after the Activity row-control change, and `./script/capture_app_window.sh Teststrip /tmp/teststrip-worker-control-smoke.png` captured a normal Library window with Activity idle state visible. Earlier `./script/build_and_run.sh --sample-photos` plus one Computer Use switch to loupe verified the `TESTSTRIP READS` culling verdict pill renders without truncating its primary copy. The previous Computer Use pass opened the Needs Keywords review queue and verified the Smart Collection builder popover showed the proposed name, one active rule, 12 matches, suggestion chips, Starred toggle, and Create/Cancel controls. Before that, Computer Use switch to Compare verified the corrected N-up survey grid: selected primary first, alternates visible, Pick/Reject/Loupe actions present, and no blank side column. Live import/click UI automation was intentionally deferred for several import/grid slices to avoid unnecessary focus stealing while Jesse was using the machine; those slices were covered by focused presentation/policy tests and full unit runs. Earlier repeated `script/build_and_run.sh --verify-smoke` launches plus 600-image AX import probes completed, but the large-import UX blocker remains open. The best intermediate run after coalescing worker-progress reloads showed feedback around 14.9s and target visibility around 34.1s; the latest full-slice run showed feedback around 19.7s, target visibility around 48.9s, and preview drain still incomplete after the verifier's sample window. A submit-only Import Path probe measured the target asset reaching the catalog around 0.12s after submit and import work finishing around 0.53s after submit, which means current slowness is mostly UI/AX visibility and preview-drain behavior rather than raw catalog import.
 
 ### Recent Completed Slices
@@ -105,6 +105,7 @@
 - `ee204a9`: added a repeatable metadata-write verifier script that checks catalog updates, XMP sidecars, synced fingerprints, zero pending sync, and unchanged originals through the benchmark summary contract.
 - `2e50524`: exposed model-backed sidebar context actions so recent/starred work sessions can be starred or unstarred from the same sidebar menu path as saved sets.
 - `34cf22a`: records non-worker imports in Recent Work as soon as they start, persisting the running work session so the sidebar/history no longer waits for completion or cancellation.
+- `388ddec`: added a sandbox-aware runtime policy that requires security-scoped import access in sandboxed runs, keeps imports and initial preview generation in-process when those grants are required, and added explicit sandboxed dev-bundle signing modes with entitlement inspection.
 
 ## Product Decisions To Preserve
 
@@ -355,7 +356,7 @@ Current behavior:
 ### Alpha-Blocking Gaps
 
 - Preview throughput and UI churn under large preview backlogs are not good enough yet. The 600-image import path completed, but many previews were still pending after the initial wait and app CPU stayed high while draining.
-- Import UX is improved but not complete. The app now shows visible active-import feedback, phase labels, post-import preview continuation, an Import Path plan, tested duplicate-import guards, runtime missing folder/card-source/card-destination errors, core card-destination policy guards, and a compact import-complete action summary, but permission/security-scope failures still need work.
+- Import UX is improved but not complete. The app now shows visible active-import feedback, phase labels, post-import preview continuation, an Import Path plan, tested duplicate-import guards, runtime missing folder/card-source/card-destination errors, core card-destination policy guards, a compact import-complete action summary, and a sandbox-aware required security-scope policy for packaged dev runs. Persistent security-scoped bookmarks for source roots and a restrained sandboxed UI import smoke still need work.
 - Clicking/selection needs one more lightweight imported-photo verification pass. Direct grid clicks no longer recenter the thumbnail under the pointer, which was the likely root cause of the weird click feeling, and policy tests cover pointer-vs-programmatic selection scroll behavior. The remaining risk is human/AX confirmation under imported-photo conditions.
 - Library mockup parity is improving but incomplete. The overview grid now uses cataloged dimensions for true aspect-ratio cells, the filter rail is closer to the Studio mockup's Ask/search treatment, the inspector preview size is pinned and fixed above metadata scrolling, the inspector header/metadata controls have initial mockup-derived passes, the culling/loupe chrome now has verdict and filmstrip passes, People has a face-review strip plus named-people empty state, Search has a grouped refine rail, Timeline has a catalog-backed year-density ribbon, Compare has a survey-style pass with metadata badges, Smart Collections has a split builder, the sidebar has richer count/detail rows and real review-queue/saved-set/timeline counts, the top chrome has a first Studio-style pass, and major dead UI gaps plus all designer surfaces are tagged in code, but real stack/focus compare grouping, the Timeline month/day scrubber, and deeper saved-query interactions still need visual passes against the design concept.
 - The current RAW story has an explicit ImageIO capability matrix and provider boundary, but still lacks real RAW fixture coverage and a non-ImageIO provider for unsupported or weakly supported families such as Sigma/Foveon X3F. Lytro support remains out of scope.
@@ -455,7 +456,7 @@ Teststrip reaches usable alpha when a photographer can:
 - [x] Show clear runtime missing card-destination errors before worker/local card import starts.
 - [x] Reject unsafe card destinations at the core ingest boundary, including missing roots, non-folders, source-as-destination, destinations nested inside the source, and sources nested inside the destination.
 - [x] Add an injectable required security-scope access policy with clear pre-start import errors.
-- [ ] Enable required security-scope policy in a sandboxed packaged build once signing/entitlements exist.
+- [x] Enable required security-scope policy in a sandboxed packaged build once signing/entitlements exist.
 - [x] Add model/presentation tests for import state transitions rather than brittle SwiftUI snapshots.
 - [x] Extend AX import verifier to catch apparent no-op after submit and sheet-dismissed-with-no-visible-progress states. Current coverage adds a post-submit visible-feedback gate and `feedback_visible_seconds`.
 - [ ] Add the imported-grid selection/rating AX probe in Slice 3.
@@ -676,7 +677,7 @@ Teststrip reaches usable alpha when a photographer can:
 
 **Work:**
 
-- [ ] Keep dev app bundle signing/helper staging reliable.
+- [x] Keep dev app bundle signing/helper staging reliable.
 - [x] Add diagnostics export for catalog path, preview cache path, worker path, pending work counts, source status counts, and recent worker failures.
 - [ ] Add a reset-only-isolated-test-data helper if current smoke scripts leave confusing state.
 - [ ] Add crash/relaunch recovery smoke for queued/running worker-visible work.
@@ -691,6 +692,7 @@ Use these as the default confidence ladder:
 
 ```bash
 swift test
+./script/build_and_run.sh --build-sandboxed
 ./script/build_and_run.sh --verify-smoke
 ./script/verify_app_workflows.sh Teststrip
 ./script/verify_grid_activation.sh Teststrip
