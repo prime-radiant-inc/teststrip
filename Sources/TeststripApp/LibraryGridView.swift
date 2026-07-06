@@ -4024,7 +4024,11 @@ struct CullingStackRailPresentation: Equatable {
                 help: keepActionHelp,
                 liveMockupPlaceholder: nil
             ),
-            Self.rankedAction(for: rankedCandidates, stackCount: stackScope.assetIDs.count),
+            Self.rankedAction(
+                for: rankedCandidates,
+                stackAssetIDs: stackScope.assetIDs,
+                evaluationSignalsByAssetID: evaluationSignalsByAssetID
+            ),
             CullingStackActionPresentation(
                 action: .keepAll,
                 title: "Keep all \(stackScope.assetIDs.count)",
@@ -4056,10 +4060,11 @@ struct CullingStackRailPresentation: Equatable {
 
     private static func rankedAction(
         for rankedCandidates: [CullingStackRecommendation],
-        stackCount: Int
+        stackAssetIDs: [AssetID],
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
     ) -> CullingStackActionPresentation? {
         let topTwo = Array(rankedCandidates.prefix(2))
-        if stackCount > 2, topTwo.count >= 2 {
+        if stackAssetIDs.count > 2, topTwo.count >= 2 {
             return CullingStackActionPresentation(
                 action: .keepTopRanked(topTwo.map(\.assetID)),
                 title: "Keep top 2",
@@ -4072,11 +4077,19 @@ struct CullingStackRailPresentation: Equatable {
 
         guard let recommendation = rankedCandidates.first else { return nil }
 
+        let phrases = CullingStackRecommendation.rationalePhrases(
+            forWinner: recommendation.assetID,
+            stackAssetIDs: stackAssetIDs,
+            evaluationSignalsByAssetID: evaluationSignalsByAssetID
+        )
+        let help = phrases.isEmpty
+            ? "Keep frame \(recommendation.frameLabel) based on focus and quality signals."
+            : "Keep frame \(recommendation.frameLabel) — \(phrases.joined(separator: ", "))."
         return CullingStackActionPresentation(
             action: .keepRecommended(recommendation.assetID),
             title: "Keep recommended \(recommendation.frameLabel)",
             isEnabled: true,
-            help: "Keep frame \(recommendation.frameLabel) based on focus and quality signals.",
+            help: help,
             liveMockupPlaceholder: nil,
             assistTitle: "Recommended frame \(recommendation.frameLabel)"
         )
@@ -4176,9 +4189,45 @@ private struct CullingStackRecommendation: Equatable {
             return clampedScore * confidence * 45
         case .motionBlur:
             return (1 - clampedScore) * confidence * 60
+        case .eyesOpen:
+            return clampedScore * confidence * 90
+        case .eyeSharpness:
+            return clampedScore * confidence * 70
         default:
             return nil
         }
+    }
+
+    /// Short honest reasons why the winner leads the stack, in display order.
+    static func rationalePhrases(
+        forWinner winner: AssetID,
+        stackAssetIDs: [AssetID],
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
+    ) -> [String] {
+        var phrases: [String] = []
+        let focusScores = stackAssetIDs.compactMap { assetID in
+            bestScore(kind: .focus, in: evaluationSignalsByAssetID[assetID] ?? []).map { (assetID: assetID, score: $0) }
+        }
+        if focusScores.count >= 2,
+           let winnerFocus = focusScores.first(where: { $0.assetID == winner })?.score,
+           focusScores.allSatisfy({ $0.assetID == winner || $0.score < winnerFocus }) {
+            phrases.append("sharpest")
+        }
+        if let eyesOpen = bestScore(kind: .eyesOpen, in: evaluationSignalsByAssetID[winner] ?? []),
+           eyesOpen >= 1.0 {
+            phrases.append("eyes open")
+        }
+        return phrases
+    }
+
+    private static func bestScore(kind: EvaluationKind, in signals: [EvaluationSignal]) -> Double? {
+        signals
+            .filter { $0.kind == kind }
+            .compactMap { signal -> Double? in
+                guard case .score(let score) = signal.value else { return nil }
+                return score
+            }
+            .max()
     }
 }
 
