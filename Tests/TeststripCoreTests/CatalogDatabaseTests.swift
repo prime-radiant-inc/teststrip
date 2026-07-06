@@ -769,6 +769,44 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.evaluationSignals(assetID: dismissed.id).map(\.kind), [.faceCount, .faceQuality])
     }
 
+    func testAssignedPersonAssetRemovesItFromFaceReviewQueries() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-assigned-face-review-query")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assigned = Asset.testAsset(id: AssetID(rawValue: "assigned"), path: "/Volumes/NAS/Job/assigned.jpg", rating: 0)
+        let unnamed = Asset.testAsset(id: AssetID(rawValue: "unnamed"), path: "/Volumes/NAS/Job/unnamed.jpg", rating: 0)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.upsert([assigned, unnamed])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: assigned.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: assigned.id, kind: .faceQuality, value: .score(0.3), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: unnamed.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: unnamed.id, kind: .faceQuality, value: .score(0.3), confidence: 0.8, provenance: provenance)
+        ])
+
+        try repository.upsertPerson(id: "person-maya", name: "Maya")
+        try repository.assignAssets([assigned.id], toPersonID: "person-maya")
+
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.evaluationKind(.faceCount)]), limit: 10).map(\.id),
+            [unnamed.id]
+        )
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.evaluationKind(.faceQuality)]), limit: 10).map(\.id),
+            [unnamed.id]
+        )
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.likelyIssue]), limit: 10).map(\.id),
+            [unnamed.id]
+        )
+        XCTAssertEqual(try repository.evaluationKindSummaries(), [
+            CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 1),
+            CatalogEvaluationKindSummary(kind: .faceQuality, assetCount: 1)
+        ])
+        XCTAssertEqual(try repository.evaluationSignals(assetID: assigned.id).map(\.kind), [.faceCount, .faceQuality])
+    }
+
     func testSearchesAssetsWithTechnicalMetadataPredicates() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-search")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

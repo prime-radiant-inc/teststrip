@@ -4489,6 +4489,34 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.assetIDs(personID: "person-maya"), [asset.id])
     }
 
+    func testConfirmSelectedPersonRemovesAssignedAssetsFromFaceReviewQueue() throws {
+        let selected = makeAsset(id: "selected-face-review", path: "/Volumes/NAS/Wedding/selected-face-review.jpg", rating: 4)
+        let remaining = makeAsset(id: "remaining-face-review", path: "/Volumes/NAS/Wedding/remaining-face-review.jpg", rating: 4)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-confirm-person-refreshes-face-review",
+            assets: [selected, remaining],
+            configureRepository: { repository in
+                try repository.recordEvaluationSignals([
+                    EvaluationSignal(assetID: selected.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
+                    EvaluationSignal(assetID: remaining.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance)
+                ])
+            }
+        )
+        try model.selectSidebarTarget(.reviewQueue(.facesFound))
+        model.selectedAssetID = selected.id
+
+        let person = try model.confirmSelectedAssetsAsPerson(named: "Maya", id: "person-maya")
+
+        XCTAssertEqual(person, CatalogPerson(id: "person-maya", name: "Maya", assetCount: 1))
+        XCTAssertEqual(model.catalogPeople, [person])
+        XCTAssertEqual(model.assets.map(\.id), [remaining.id])
+        XCTAssertEqual(model.reviewQueueCounts[.facesFound], 1)
+        XCTAssertEqual(model.catalogEvaluationKindSummaries, [
+            CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 1)
+        ])
+    }
+
     func testConfirmSelectedBatchAsPersonUsesBatchInsteadOfPrimarySelection() throws {
         let primary = makeAsset(id: "primary", path: "/Volumes/NAS/Wedding/primary.jpg", rating: 4)
         let batchA = makeAsset(id: "batch-a", path: "/Volumes/NAS/Wedding/batch-a.jpg", rating: 4)

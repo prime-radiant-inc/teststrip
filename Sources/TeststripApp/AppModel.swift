@@ -1880,6 +1880,8 @@ public final class AppModel {
         try catalog.repository.upsertPerson(id: id, name: trimmedName)
         try catalog.repository.assignAssets(assetIDs, toPersonID: id)
         catalogPeople = try catalog.repository.people()
+        refreshCatalogEvaluationKindSummaries()
+        try loadCatalogPage(preferredSelection: nil)
         guard let person = catalogPeople.first(where: { $0.id == id }) else {
             throw CatalogError.notFound(id)
         }

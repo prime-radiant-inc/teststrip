@@ -684,10 +684,17 @@ public final class CatalogRepository {
             FROM evaluation_signals
             WHERE NOT (
                 kind IN ('faceCount', 'faceQuality')
-                AND EXISTS (
-                    SELECT 1
-                    FROM dismissed_face_assets
-                    WHERE dismissed_face_assets.asset_id = evaluation_signals.asset_id
+                AND (
+                    EXISTS (
+                        SELECT 1
+                        FROM dismissed_face_assets
+                        WHERE dismissed_face_assets.asset_id = evaluation_signals.asset_id
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM person_assets
+                        WHERE person_assets.asset_id = evaluation_signals.asset_id
+                    )
                 )
             )
             GROUP BY kind
@@ -1295,6 +1302,11 @@ public final class CatalogRepository {
                             FROM dismissed_face_assets
                             WHERE dismissed_face_assets.asset_id = assets.id
                         )
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM person_assets
+                            WHERE person_assets.asset_id = assets.id
+                        )
                         """
                     )
                 } else {
@@ -1331,6 +1343,11 @@ public final class CatalogRepository {
                                     SELECT 1
                                     FROM dismissed_face_assets
                                     WHERE dismissed_face_assets.asset_id = assets.id
+                                )
+                                AND NOT EXISTS (
+                                    SELECT 1
+                                    FROM person_assets
+                                    WHERE person_assets.asset_id = assets.id
                                 )
                             )
                           )
