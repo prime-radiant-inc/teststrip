@@ -6004,6 +6004,13 @@ public final class AppModel {
         session.completedUnitCount = min(completedUnitCount, totalUnitCount)
         session.totalUnitCount = totalUnitCount
         session.status = totalUnitCount > 0 && session.completedUnitCount >= totalUnitCount ? .completed : .running
+        let decisionCounts = try cullingDecisionCounts(in: session, repository: catalog.repository)
+        session.detail = Self.cullingProgressDetail(
+            reviewedCount: session.completedUnitCount,
+            totalUnitCount: totalUnitCount,
+            pickCount: decisionCounts.pick,
+            rejectCount: decisionCounts.reject
+        )
         try refreshCullingSessionOutputSet(session: &session, repository: catalog.repository)
         session.updatedAt = Date()
         try catalog.repository.save(session)
@@ -6041,6 +6048,13 @@ public final class AppModel {
         session.completedUnitCount = min(completedUnitCount, totalUnitCount)
         session.totalUnitCount = totalUnitCount
         session.status = totalUnitCount > 0 && session.completedUnitCount >= totalUnitCount ? .completed : .running
+        let decisionCounts = try cullingDecisionCounts(in: session, repository: catalog.repository)
+        session.detail = Self.cullingProgressDetail(
+            reviewedCount: session.completedUnitCount,
+            totalUnitCount: totalUnitCount,
+            pickCount: decisionCounts.pick,
+            rejectCount: decisionCounts.reject
+        )
         try refreshCullingSessionOutputSet(session: &session, repository: catalog.repository)
         session.updatedAt = Date()
         try catalog.repository.save(session)
@@ -6088,6 +6102,25 @@ public final class AppModel {
             }
         }
         return pickedAssetIDs
+    }
+
+    private func cullingDecisionCounts(
+        in session: WorkSession,
+        repository: CatalogRepository
+    ) throws -> (pick: Int, reject: Int) {
+        var pickCount = 0
+        var rejectCount = 0
+        for assetID in try cullingInputAssetIDs(in: session, repository: repository) {
+            switch try repository.asset(id: assetID).metadata.flag {
+            case .pick:
+                pickCount += 1
+            case .reject:
+                rejectCount += 1
+            case nil:
+                break
+            }
+        }
+        return (pickCount, rejectCount)
     }
 
     private func cullingInputAssetIDs(
@@ -6769,6 +6802,23 @@ public final class AppModel {
 
     private static func stackCountDescription(_ count: Int) -> String {
         "\(count) \(count == 1 ? "stack" : "stacks")"
+    }
+
+    private static func cullingProgressDetail(
+        reviewedCount: Int,
+        totalUnitCount: Int,
+        pickCount: Int,
+        rejectCount: Int
+    ) -> String {
+        [
+            "Reviewed \(reviewedCount) of \(frameCountDescription(totalUnitCount))",
+            "\(pickCount) \(pickCount == 1 ? "pick" : "picks")",
+            "\(rejectCount) \(rejectCount == 1 ? "reject" : "rejects")"
+        ].joined(separator: " · ")
+    }
+
+    private static func frameCountDescription(_ count: Int) -> String {
+        "\(count) \(count == 1 ? "frame" : "frames")"
     }
 
     private static func isImportCompletionActivity(_ activity: AppWorkActivity) -> Bool {

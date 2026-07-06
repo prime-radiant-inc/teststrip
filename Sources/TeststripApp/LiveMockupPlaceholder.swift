@@ -159,7 +159,7 @@ public enum LiveMockupPlaceholders {
         id: "culling.stack-cull",
         title: "Stack cull",
         intendedBehavior: "Group bursts or near-duplicates into stacks and cull the strongest candidate within each stack.",
-        currentFallback: "Loupe culling can keep a selected frame from persisted import stack sets, same-folder capture-time fallback stacks, or visual-similarity vector stacks from Apple Vision/local model signals through the Keep frame action, keep the top two scored frames when persisted quality signals rank enough candidates, keep all frames in the active stack, reject alternates, refresh persisted culling session progress, and write a session Picks output set after accepted frames exist; similarity threshold calibration is still pending."
+        currentFallback: "Loupe culling can keep a selected frame from persisted import stack sets, same-folder capture-time fallback stacks, or visual-similarity vector stacks from Apple Vision/local model signals through the Keep frame action, keep the top two scored frames when persisted quality signals rank enough candidates, keep all frames in the active stack, reject alternates, refresh persisted culling session progress with reviewed/pick/reject history detail, and write a session Picks output set after accepted frames exist; similarity threshold calibration is still pending."
     )
 
     public static let focusCompare = LiveMockupPlaceholder(
@@ -269,7 +269,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Stack cull",
             status: .partial,
             placeholder: .cullingStackCull,
-            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, persisted import stack sets, loaded-scope same-folder capture-time stacks, and visual-similarity vector stacks from Apple Vision/local model signals with keep-selected/reject-alternates and keep-all actions; Return accepts the selected stack frame when a persisted or loaded stack is active, culling sessions refresh progress and write Picks output sets from catalog flags, and near-duplicate threshold calibration remains pending."
+            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, persisted import stack sets, loaded-scope same-folder capture-time stacks, and visual-similarity vector stacks from Apple Vision/local model signals with keep-selected/reject-alternates and keep-all actions; Return accepts the selected stack frame when a persisted or loaded stack is active, culling sessions refresh progress, show reviewed/pick/reject detail in work history, and write Picks output sets from catalog flags, while near-duplicate threshold calibration remains pending."
         ),
         LiveMockupDesignSurface(
             designID: "3b",
