@@ -216,20 +216,21 @@ public struct LibraryImportService: Sendable {
             files: sourceFiles,
             plan: plan,
             repository: repository,
-            skippedSourceFile: skippedSourceFileHandler
-        ) { ingestProgress in
-            if ingestProgressCoalescer.shouldReport(
-                completedCount: ingestProgress.completedUnitCount,
-                totalCount: ingestProgress.totalUnitCount
-            ) {
-                progress?(LibraryImportProgress(
-                    completedUnitCount: ingestProgress.completedUnitCount,
-                    totalUnitCount: ingestProgress.totalUnitCount,
-                    detail: perFileDetail(ingestProgress.completedUnitCount, ingestProgress.totalUnitCount),
-                    catalogedAssetIDs: ingestProgress.catalogedAssetIDs
-                ))
+            skippedSourceFile: skippedSourceFileHandler,
+            progress: { ingestProgress in
+                if ingestProgressCoalescer.shouldReport(
+                    completedCount: ingestProgress.completedUnitCount,
+                    totalCount: ingestProgress.totalUnitCount
+                ) {
+                    progress?(LibraryImportProgress(
+                        completedUnitCount: ingestProgress.completedUnitCount,
+                        totalUnitCount: ingestProgress.totalUnitCount,
+                        detail: perFileDetail(ingestProgress.completedUnitCount, ingestProgress.totalUnitCount),
+                        catalogedAssetIDs: ingestProgress.catalogedAssetIDs
+                    ))
+                }
             }
-        }
+        )
         if !assets.isEmpty {
             try repository.recordSourceRoot(Self.catalogSourceRoot(for: plan))
         }

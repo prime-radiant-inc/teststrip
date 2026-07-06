@@ -65,6 +65,7 @@ public struct IngestService: Sendable {
         plan: IngestPlan,
         repository: CatalogRepository,
         skippedSourceFile: IngestSkippedSourceFileHandler? = nil,
+        secondCopyFailure: IngestSkippedSourceFileHandler? = nil,
         progress: IngestProgressHandler? = nil
     ) throws -> [Asset] {
         try validate(plan: plan)
@@ -86,6 +87,9 @@ public struct IngestService: Sendable {
                     throw TeststripError.io("ingest destination already exists \(originalURL.path)")
                 }
                 try prepareOriginalFile(sourceFile: sourceFile, originalURL: originalURL, plan: plan, existingAsset: existingAsset)
+                if let secondCopyIssue = secondCopyIssue(for: sourceFile, plan: plan) {
+                    secondCopyFailure?(secondCopyIssue)
+                }
                 let fingerprint = try fingerprint(for: originalURL)
                 var metadata = existingAsset?.metadata ?? AssetMetadata()
                 let sidecarURL = sidecarStore.sidecarURL(forOriginalAt: originalURL)
@@ -183,6 +187,14 @@ public struct IngestService: Sendable {
             source: plan.sourceRoot,
             destinationRoot: destinationRoot
         ) {
+            throw TeststripError.invalidState(blockingReason)
+        }
+        if let secondCopyDestination = plan.secondCopyDestination,
+           let blockingReason = CardImportDestinationPreflight.blockingReason(
+               source: plan.sourceRoot,
+               destinationRoot: secondCopyDestination,
+               destinationLabel: "Second copy destination"
+           ) {
             throw TeststripError.invalidState(blockingReason)
         }
     }
@@ -283,29 +295,50 @@ public struct IngestService: Sendable {
         case .addInPlace:
             return
         case .copyToDestination:
-            if FileManager.default.fileExists(atPath: originalURL.path) {
-                if existingAsset != nil {
-                    return
-                }
-                guard FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: originalURL.path) else {
-                    throw TeststripError.io("ingest destination already exists \(originalURL.path)")
-                }
-                try copyAdjacentSidecar(sourceFile: sourceFile, originalURL: originalURL)
+            if existingAsset != nil, FileManager.default.fileExists(atPath: originalURL.path) {
                 return
             }
+            try copyOriginalFile(from: sourceFile, to: originalURL)
+        }
+    }
 
-            let destinationDirectory = originalURL.deletingLastPathComponent()
-            do {
-                try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
-            } catch {
-                throw TeststripError.io("could not create ingest directory \(destinationDirectory.path): \(error.localizedDescription)")
+    private func copyOriginalFile(from sourceFile: URL, to destinationURL: URL) throws {
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            guard FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: destinationURL.path) else {
+                throw TeststripError.io("ingest destination already exists \(destinationURL.path)")
             }
-            do {
-                try FileManager.default.copyItem(at: sourceFile, to: originalURL)
-            } catch {
-                throw TeststripError.io("could not copy \(sourceFile.path) to \(originalURL.path): \(error.localizedDescription)")
-            }
-            try copyAdjacentSidecar(sourceFile: sourceFile, originalURL: originalURL)
+            try copyAdjacentSidecar(sourceFile: sourceFile, originalURL: destinationURL)
+            return
+        }
+
+        let destinationDirectory = destinationURL.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+        } catch {
+            throw TeststripError.io("could not create ingest directory \(destinationDirectory.path): \(error.localizedDescription)")
+        }
+        do {
+            try FileManager.default.copyItem(at: sourceFile, to: destinationURL)
+        } catch {
+            throw TeststripError.io("could not copy \(sourceFile.path) to \(destinationURL.path): \(error.localizedDescription)")
+        }
+        try copyAdjacentSidecar(sourceFile: sourceFile, originalURL: destinationURL)
+    }
+
+    // Backup failures never fail the primary import; they surface per file
+    // through the second-copy failure handler instead.
+    private func secondCopyIssue(for sourceFile: URL, plan: IngestPlan) -> IngestSkippedSourceFile? {
+        guard plan.mode == .copyToDestination, let secondCopyDestination = plan.secondCopyDestination else {
+            return nil
+        }
+        do {
+            let backupURL = try destinationURL(for: sourceFile, plan: plan, destinationRoot: secondCopyDestination)
+            try copyOriginalFile(from: sourceFile, to: backupURL)
+            return nil
+        } catch TeststripError.io(let message) {
+            return IngestSkippedSourceFile(sourceURL: sourceFile, message: "backup copy failed: \(message)")
+        } catch {
+            return IngestSkippedSourceFile(sourceURL: sourceFile, message: "backup copy failed: \(error.localizedDescription)")
         }
     }
 

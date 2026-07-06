@@ -742,6 +742,183 @@ final class FolderImportTests: XCTestCase {
         }
     }
 
+    func testSecondCopyMirrorsOriginalsAndSidecarsUnderSecondCopyRoot() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-second")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        let secondCopy = root.appendingPathComponent("Backup", isDirectory: true)
+        let sourceDirectory = source.appendingPathComponent("100CANON", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondCopy, withIntermediateDirectories: true)
+        let sourceFile = sourceDirectory.appendingPathComponent("IMG_0001.CR2")
+        try Data("raw bytes".utf8).write(to: sourceFile)
+        let sidecarData = try XMPPacket(metadata: AssetMetadata(rating: 5)).xmlData()
+        try sidecarData.write(to: sourceFile.appendingPathExtension("xmp"))
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["cr2"]))
+
+        let imported = try service.ingest(
+            plan: IngestPlanner.copyFromCard(
+                source: source,
+                destinationRoot: destination,
+                secondCopyDestination: secondCopy
+            ),
+            repository: repository
+        )
+
+        let primaryFile = destination
+            .appendingPathComponent("100CANON", isDirectory: true)
+            .appendingPathComponent("IMG_0001.CR2")
+        let backupFile = secondCopy
+            .appendingPathComponent("100CANON", isDirectory: true)
+            .appendingPathComponent("IMG_0001.CR2")
+        XCTAssertEqual(imported.map(\.originalURL), [primaryFile])
+        XCTAssertEqual(try Data(contentsOf: primaryFile), Data("raw bytes".utf8))
+        XCTAssertEqual(try Data(contentsOf: backupFile), Data("raw bytes".utf8))
+        XCTAssertEqual(try Data(contentsOf: primaryFile.appendingPathExtension("xmp")), sidecarData)
+        XCTAssertEqual(try Data(contentsOf: backupFile.appendingPathExtension("xmp")), sidecarData)
+    }
+
+    func testSecondCopyUsesDatedFoldersWhenPolicyIsCapturedDate() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-second-dated")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        let secondCopy = root.appendingPathComponent("Backup", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondCopy, withIntermediateDirectories: true)
+        let sourceFile = source.appendingPathComponent("IMG_0001.jpg")
+        try Data("jpg".utf8).write(to: sourceFile)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(
+            scanner: FolderScanner(supportedExtensions: ["jpg"]),
+            decodeRegistry: DecodeRegistry(providers: [FakeDecodeProvider(
+                technicalMetadata: Self.fakeTechnicalMetadata(capturedAt: Self.utcDate(2025, 1, 3, 10, 30, 0))
+            )])
+        )
+
+        let imported = try service.ingest(
+            plan: IngestPlanner.copyFromCard(
+                source: source,
+                destinationRoot: destination,
+                destinationPolicy: .capturedDate,
+                secondCopyDestination: secondCopy
+            ),
+            repository: repository
+        )
+
+        let primaryFile = destination
+            .appendingPathComponent("2025", isDirectory: true)
+            .appendingPathComponent("2025-01-03", isDirectory: true)
+            .appendingPathComponent("IMG_0001.jpg")
+        let backupFile = secondCopy
+            .appendingPathComponent("2025", isDirectory: true)
+            .appendingPathComponent("2025-01-03", isDirectory: true)
+            .appendingPathComponent("IMG_0001.jpg")
+        XCTAssertEqual(imported.map(\.originalURL), [primaryFile])
+        XCTAssertEqual(try Data(contentsOf: backupFile), Data("jpg".utf8))
+    }
+
+    func testSecondCopyFailureIsReportedPerFileWithoutFailingImport() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-second-failure")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        let secondCopy = root.appendingPathComponent("Backup", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondCopy, withIntermediateDirectories: true)
+        let sourceFile = source.appendingPathComponent("IMG_0001.CR2")
+        try Data("source".utf8).write(to: sourceFile)
+        let conflictingBackup = secondCopy.appendingPathComponent("IMG_0001.CR2")
+        try Data("existing".utf8).write(to: conflictingBackup)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["cr2"]))
+        let plan = IngestPlanner.copyFromCard(
+            source: source,
+            destinationRoot: destination,
+            secondCopyDestination: secondCopy
+        )
+        var secondCopyFailures: [IngestSkippedSourceFile] = []
+
+        let imported = try service.ingest(
+            files: try service.files(for: plan),
+            plan: plan,
+            repository: repository,
+            secondCopyFailure: { secondCopyFailures.append($0) }
+        )
+
+        let primaryFile = destination.appendingPathComponent("IMG_0001.CR2")
+        XCTAssertEqual(imported.map(\.originalURL), [primaryFile])
+        XCTAssertEqual(try Data(contentsOf: primaryFile), Data("source".utf8))
+        XCTAssertEqual(secondCopyFailures.map(\.sourceURL), [sourceFile])
+        XCTAssertEqual(secondCopyFailures.count, 1)
+        XCTAssertTrue(
+            secondCopyFailures[0].message.hasPrefix("backup copy failed: "),
+            "expected honest backup failure message, got \(secondCopyFailures[0].message)"
+        )
+        XCTAssertEqual(try String(contentsOf: conflictingBackup, encoding: .utf8), "existing")
+    }
+
+    func testCopyFromCardRejectsMissingSecondCopyDestination() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-second-missing")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        let secondCopy = root.appendingPathComponent("Backup", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try Data("raw bytes".utf8).write(to: source.appendingPathComponent("IMG_0001.CR2"))
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["cr2"]))
+
+        XCTAssertThrowsError(
+            try service.ingest(
+                plan: IngestPlanner.copyFromCard(
+                    source: source,
+                    destinationRoot: destination,
+                    secondCopyDestination: secondCopy
+                ),
+                repository: repository
+            )
+        ) { error in
+            XCTAssertEqual(error as? TeststripError, .invalidState("Second copy destination folder is missing"))
+        }
+    }
+
+    func testCopyFromCardRejectsSecondCopyDestinationMatchingSource() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-second-matching-source")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try Data("raw bytes".utf8).write(to: source.appendingPathComponent("IMG_0001.CR2"))
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["cr2"]))
+
+        XCTAssertThrowsError(
+            try service.ingest(
+                plan: IngestPlanner.copyFromCard(
+                    source: source,
+                    destinationRoot: destination,
+                    secondCopyDestination: source
+                ),
+                repository: repository
+            )
+        ) { error in
+            XCTAssertEqual(error as? TeststripError, .invalidState("Second copy destination must be different from the card source"))
+        }
+    }
+
     static func fakeTechnicalMetadata(capturedAt: Date?) -> AssetTechnicalMetadata {
         AssetTechnicalMetadata(
             pixelWidth: 100,
