@@ -26,7 +26,7 @@ script/verify_source_availability.sh 1000
 script/verify_offline_reconnect_smoke.sh
 ```
 
-The catalog verifier parses the benchmark summary, checks the asset count, and enforces the current 0.2s default threshold for first/middle/filtered page loads and representative filter counts. Seed time is reported by `TeststripBench` but intentionally excluded from the filter/page threshold.
+The catalog verifier parses the benchmark summary, checks the asset count, and enforces count-aware debug-alpha thresholds for first/middle/filtered page loads and representative filter counts: 0.2s below 500k assets, 0.65s at 500k assets, and 1.5s at 1M assets. Seed time is reported by `TeststripBench` but intentionally excluded from the filter/page threshold. Override the timing gate with `TESTSTRIP_CATALOG_SCALE_MAX_SECONDS` or the script's second argument when intentionally measuring slower hardware or stress paths.
 
 The metadata-write verifier wraps the `metadata-write` benchmark and enforces catalog update count, sidecar count, synced fingerprint count, zero pending sync items, unchanged originals, and the current 5s default metadata-write threshold. Override the timing gate with `TESTSTRIP_METADATA_WRITE_MAX_SECONDS` when intentionally measuring slower hardware or stress paths.
 
@@ -78,6 +78,8 @@ On July 4, 2026, local debug runs produced:
 | Command | Count | Slowest Checked Page/Filter |
 | --- | ---: | ---: |
 | `script/verify_catalog_scale.sh 100000` | 100,000 assets | 0.098s (`count_camera_smokecam_2`) |
+| `script/verify_catalog_scale.sh 500000` | 500,000 assets | 0.507s (`count_camera_smokecam_2`) |
+| `script/verify_catalog_scale.sh 1000000` | 1,000,000 assets | 1.030s (`count_camera_smokecam_2`) |
 
 | Command | Duration | Primary Counts |
 | --- | ---: | --- |

@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/catalog_scale_verifier_metrics.sh"
 
 COUNT="${1:-100000}"
-MAX_SECONDS="${TESTSTRIP_CATALOG_SCALE_MAX_SECONDS:-${2:-0.2}}"
+MAX_SECONDS="${TESTSTRIP_CATALOG_SCALE_MAX_SECONDS:-${2:-$(catalog_scale_default_max_seconds "$COUNT")}}"
 
 output="$(cd "$ROOT_DIR" && swift run TeststripBench "$COUNT")"
 printf '%s\n' "$output"

@@ -49,10 +49,17 @@ test_emit_catalog_scale_metric() {
     "catalog scale metric line"
 }
 
+test_catalog_scale_default_max_seconds_for_count() {
+  assert_equal "0.2" "$(catalog_scale_default_max_seconds 100000)" "100k catalog scale threshold"
+  assert_equal "0.65" "$(catalog_scale_default_max_seconds 500000)" "500k catalog scale threshold"
+  assert_equal "1.5" "$(catalog_scale_default_max_seconds 1000000)" "1M catalog scale threshold"
+}
+
 test_extract_benchmark_summary_payload
 test_benchmark_summary_number
 test_assert_benchmark_summary_number_at_most_passes_at_threshold
 test_assert_benchmark_summary_number_at_most_fails_above_threshold
 test_emit_catalog_scale_metric
+test_catalog_scale_default_max_seconds_for_count
 
 echo "catalog scale verifier metric tests passed"

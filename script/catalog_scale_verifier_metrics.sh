@@ -68,3 +68,14 @@ emit_catalog_scale_metric() {
   local value="$2"
   printf 'teststrip_catalog_scale_metric %s=%s\n' "$key" "$value"
 }
+
+catalog_scale_default_max_seconds() {
+  local count="$1"
+  if [[ "$count" -ge 1000000 ]]; then
+    printf '1.5\n'
+  elif [[ "$count" -ge 500000 ]]; then
+    printf '0.65\n'
+  else
+    printf '0.2\n'
+  fi
+}
