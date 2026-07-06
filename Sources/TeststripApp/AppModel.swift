@@ -5960,9 +5960,68 @@ public final class AppModel {
         session.completedUnitCount = min(completedUnitCount, totalUnitCount)
         session.totalUnitCount = totalUnitCount
         session.status = totalUnitCount > 0 && session.completedUnitCount >= totalUnitCount ? .completed : .running
+        try refreshCullingSessionOutputSet(session: &session, repository: catalog.repository)
         session.updatedAt = Date()
         try catalog.repository.save(session)
         try refreshWorkSessions()
+    }
+
+    private func refreshCullingSessionOutputSet(
+        session: inout WorkSession,
+        repository: CatalogRepository
+    ) throws {
+        let pickedAssetIDs = try pickedAssetIDs(in: session, repository: repository)
+        guard !pickedAssetIDs.isEmpty else { return }
+        let outputSetID = Self.cullingOutputSetID(sessionID: session.id)
+        let outputSet = AssetSet(
+            id: outputSetID,
+            name: "\(session.title) Picks",
+            membership: .snapshot(pickedAssetIDs)
+        )
+        try repository.upsert(outputSet)
+        if !session.outputSetIDs.contains(outputSetID) {
+            session.outputSetIDs.insert(outputSetID, at: 0)
+        }
+        savedAssetSets = try repository.assetSets()
+        assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: repository)
+        rebuildSidebarSections()
+    }
+
+    private func pickedAssetIDs(
+        in session: WorkSession,
+        repository: CatalogRepository
+    ) throws -> [AssetID] {
+        var pickedAssetIDs: [AssetID] = []
+        var seenAssetIDs: Set<AssetID> = []
+        for inputSetID in session.inputSetIDs {
+            let inputAssetIDs = try assetIDs(in: inputSetID, repository: repository)
+            for assetID in inputAssetIDs where seenAssetIDs.insert(assetID).inserted {
+                if try repository.asset(id: assetID).metadata.flag == .pick {
+                    pickedAssetIDs.append(assetID)
+                }
+            }
+        }
+        return pickedAssetIDs
+    }
+
+    private func assetIDs(
+        in assetSetID: AssetSetID,
+        repository: CatalogRepository
+    ) throws -> [AssetID] {
+        let assetSet = try assetSetForSelection(id: assetSetID, repository: repository)
+        return try assetIDs(in: assetSet, repository: repository)
+    }
+
+    private func assetIDs(
+        in assetSet: AssetSet,
+        repository: CatalogRepository
+    ) throws -> [AssetID] {
+        switch assetSet.membership {
+        case .manual(let ids), .snapshot(let ids):
+            return ids
+        case .dynamic(let query):
+            return try repository.assetIDs(matching: query)
+        }
     }
 
     private func decidedPersistedStackUnitCount(
@@ -5999,12 +6058,10 @@ public final class AppModel {
         repository: CatalogRepository
     ) throws -> [AssetID] {
         let assetSet = try assetSetForSelection(id: assetSetID, repository: repository)
-        switch assetSet.membership {
-        case .manual(let ids), .snapshot(let ids):
-            return ids
-        case .dynamic:
+        if case .dynamic = assetSet.membership {
             return []
         }
+        return try assetIDs(in: assetSet, repository: repository)
     }
 
     private func latestImportOutputAssetIDs(repository: CatalogRepository) throws -> [AssetID] {
@@ -6119,6 +6176,10 @@ public final class AppModel {
         assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         rebuildSidebarSections()
         return inputSetID
+    }
+
+    private static func cullingOutputSetID(sessionID: WorkSessionID) -> AssetSetID {
+        AssetSetID(rawValue: "work-output-\(sessionID.rawValue)-picks")
     }
 
     private func assetSetForSelection(id: AssetSetID, repository: CatalogRepository) throws -> AssetSet {

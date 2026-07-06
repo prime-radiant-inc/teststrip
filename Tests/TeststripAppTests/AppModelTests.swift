@@ -2578,6 +2578,14 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try fixture.repository.asset(id: fixture.firstAlternate.id).metadata.flag, .reject)
         XCTAssertEqual(try fixture.repository.asset(id: fixture.secondLead.id).metadata.flag, .pick)
         XCTAssertEqual(try fixture.repository.asset(id: fixture.secondAlternate.id).metadata.flag, .reject)
+
+        let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
+        XCTAssertEqual(assetIDs(in: try fixture.repository.assetSet(id: outputSetID)), [fixture.firstLead.id, fixture.secondLead.id])
+
+        try fixture.model.applyWorkSession(id: session.id)
+
+        XCTAssertEqual(fixture.model.selectedAssetSetID, outputSetID)
+        XCTAssertEqual(fixture.model.assets.map(\.id), [fixture.firstLead.id, fixture.secondLead.id])
     }
 
     func testSelectedCullingStackScopeUsesPersistedStackSetMembership() throws {
