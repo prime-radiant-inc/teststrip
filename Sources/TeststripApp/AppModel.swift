@@ -1032,6 +1032,7 @@ public final class AppModel {
     public var activeWork: AppWorkActivity?
     public var recentWork: [AppWorkActivity]
     public var starredWork: [AppWorkActivity]
+    public var workHistorySearchResults: [AppWorkActivity]
     public var lastCullingMetadataDecision: CullingMetadataDecisionFeedback?
     public var pendingMetadataSyncItems: [MetadataSyncItem]
     public var metadataSyncConflictItems: [MetadataSyncItem]
@@ -2007,6 +2008,7 @@ public final class AppModel {
         activeWork: AppWorkActivity? = nil,
         recentWork: [AppWorkActivity] = [],
         starredWork: [AppWorkActivity] = [],
+        workHistorySearchResults: [AppWorkActivity] = [],
         pendingMetadataSyncItems: [MetadataSyncItem] = [],
         metadataSyncConflictItems: [MetadataSyncItem] = [],
         pendingMetadataSyncCount: Int? = nil,
@@ -2064,6 +2066,7 @@ public final class AppModel {
         self.activeWork = activeWork
         self.recentWork = recentWork
         self.starredWork = starredWork
+        self.workHistorySearchResults = workHistorySearchResults
         self.lastCullingMetadataDecision = nil
         self.pendingMetadataSyncItems = pendingMetadataSyncItems
         self.metadataSyncConflictItems = metadataSyncConflictItems
@@ -5855,6 +5858,7 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
+        try refreshWorkHistorySearchResults(repository: catalog.repository)
         if let explicitAssetIDs = selectedExplicitAssetIDs {
             let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, limit: Self.assetPageSize)
             replaceAssets(loadedAssets, pageOffset: 0)
@@ -5874,6 +5878,17 @@ public final class AppModel {
         replaceAssets(loadedAssets, pageOffset: 0)
         totalAssetCount = count
         try pruneBatchSelectionToCurrentLibraryQuery(repository: catalog.repository)
+    }
+
+    private func refreshWorkHistorySearchResults(repository: CatalogRepository) throws {
+        let residualText = LibrarySearchIntent.parse(librarySearchText).residualText?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let residualText, !residualText.isEmpty else {
+            workHistorySearchResults = []
+            return
+        }
+        workHistorySearchResults = try repository.workSessions(matching: residualText, limit: 5)
+            .map(AppWorkActivity.init)
     }
 
     public func loadMoreAssets() throws {

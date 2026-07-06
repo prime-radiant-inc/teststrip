@@ -4527,6 +4527,7 @@ struct SearchWorkspacePresentation: Equatable {
     var askInterpretation: SearchWorkspaceAskInterpretation?
     var refineRows: [SearchWorkspaceRefineRow]
     var refineGroups: [SearchWorkspaceRefineGroup]
+    var workHistoryRows: [SearchWorkspaceRefineRow]
     var generatedRefinements: [SearchWorkspaceGeneratedRefinement]
     var relatedFilterRows: [SearchWorkspaceRefineRow]
     var suggestedActions: [SearchWorkspaceSuggestedAction]
@@ -4542,7 +4543,8 @@ struct SearchWorkspacePresentation: Equatable {
         canSaveSnapshotSet: Bool = false,
         canStartCulling: Bool = false,
         reviewQueueCounts: [ReviewQueue: Int] = [:],
-        evaluationKindSummaries: [CatalogEvaluationKindSummary] = []
+        evaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
+        workHistory: [AppWorkActivity] = []
     ) {
         title = suggestedName
         resultCountText = "\(totalAssetCount)"
@@ -4556,6 +4558,13 @@ struct SearchWorkspacePresentation: Equatable {
         }
         askInterpretation = Self.askInterpretation(for: refineRows)
         refineGroups = Self.groupRefineRows(refineRows)
+        workHistoryRows = workHistory.map { activity in
+            SearchWorkspaceRefineRow(
+                title: activity.title,
+                value: activity.detail.isEmpty ? activity.status.rawValue : activity.detail,
+                target: .workSession(WorkSessionID(rawValue: activity.id))
+            )
+        }
         generatedRefinements = Self.generatedRefinements(
             reviewQueueCounts: reviewQueueCounts,
             evaluationKindSummaries: evaluationKindSummaries,
@@ -4970,7 +4979,8 @@ private struct SearchWorkspaceView: View {
             canSaveSnapshotSet: model.canSaveCurrentAssetScopeSnapshot,
             canStartCulling: !model.isImporting && model.canBeginCullingSession,
             reviewQueueCounts: model.reviewQueueCounts,
-            evaluationKindSummaries: model.catalogEvaluationKindSummaries
+            evaluationKindSummaries: model.catalogEvaluationKindSummaries,
+            workHistory: model.workHistorySearchResults
         )
     }
 
@@ -5037,6 +5047,16 @@ private struct SearchWorkspaceView: View {
                 .textCase(.uppercase)
             if let askInterpretation = presentation.askInterpretation {
                 askInterpretationRow(askInterpretation)
+            }
+            if !presentation.workHistoryRows.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Work History")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    ForEach(presentation.workHistoryRows) { row in
+                        refineRailRow(row)
+                    }
+                }
             }
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(presentation.refineGroups) { group in

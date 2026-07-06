@@ -295,6 +295,36 @@ final class SearchWorkspacePresentationTests: XCTestCase {
         ])
     }
 
+    func testWorkHistoryRowsExposeReopenTargets() {
+        let presentation = SearchWorkspacePresentation(
+            suggestedName: "ceremony",
+            totalAssetCount: 0,
+            savedSetCount: 0,
+            starredSetCount: 0,
+            activeFilterChips: ["Search: ceremony"],
+            workHistory: [
+                AppWorkActivity(
+                    id: "cull-42",
+                    kind: .culling,
+                    status: .completed,
+                    title: "Cull Ceremony",
+                    detail: "Reviewed ceremony candidates",
+                    completedUnitCount: 42,
+                    totalUnitCount: 42,
+                    failureCount: 0
+                )
+            ]
+        )
+
+        XCTAssertEqual(presentation.workHistoryRows, [
+            SearchWorkspaceRefineRow(
+                title: "Cull Ceremony",
+                value: "Reviewed ceremony candidates",
+                target: .workSession(WorkSessionID(rawValue: "cull-42"))
+            )
+        ])
+    }
+
     func testRefineRowsPreserveActionTargetsWhenGrouped() {
         let presentation = SearchWorkspacePresentation(
             suggestedName: "Review Targets",

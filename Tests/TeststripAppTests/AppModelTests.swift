@@ -5651,6 +5651,80 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .loupe)
     }
 
+    func testSearchWorkspaceExposesMatchingWorkHistoryRows() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-search-work-history")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let keeper = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
+        let reject = makeAsset(id: "reject", path: "/Photos/reject.jpg", rating: 1)
+        try repository.upsert([keeper, reject])
+        let inputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "ceremony-cull-input"),
+            name: "Ceremony Cull Input",
+            assetIDs: [keeper.id, reject.id]
+        )
+        try repository.upsert(inputSet)
+        let session = WorkSession(
+            id: WorkSessionID(rawValue: "ceremony-cull"),
+            kind: .culling,
+            intent: "Pick ceremony keepers",
+            title: "Cull Ceremony",
+            detail: "Reviewed ceremony candidates",
+            status: .completed,
+            inputSetIDs: [inputSet.id],
+            outputSetIDs: [],
+            completedUnitCount: 2,
+            totalUnitCount: 2,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        )
+        let unrelated = WorkSession(
+            id: WorkSessionID(rawValue: "portrait-import"),
+            kind: .ingest,
+            intent: "Import portraits",
+            title: "Import Photos",
+            detail: "Imported portraits",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: 4,
+            totalUnitCount: 4,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 11),
+            updatedAt: Date(timeIntervalSince1970: 30)
+        )
+        try repository.save(session)
+        try repository.save(unrelated)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        model.librarySearchText = "ceremony"
+        try model.reload()
+
+        XCTAssertEqual(model.workHistorySearchResults.map(\.id), [session.id.rawValue])
+        XCTAssertEqual(model.workHistorySearchResults.first?.title, "Cull Ceremony")
+        try model.selectSidebarTarget(.workSession(session.id))
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.librarySearchText, "session:ceremony-cull")
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Session: ceremony-cull", target: .workSession(session.id))
+        ])
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id, reject.id])
+        XCTAssertEqual(model.selectedView, .loupe)
+    }
+
     func testSelectingCullingWorkSessionReopensLoupeView() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-select-culling-work-session")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

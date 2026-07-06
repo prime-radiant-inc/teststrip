@@ -636,6 +636,27 @@ public final class CatalogRepository {
         return try rows.map(decodeWorkSession)
     }
 
+    public func workSessions(matching text: String, limit: Int) throws -> [WorkSession] {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, limit > 0 else { return [] }
+        let pattern = Self.likePattern(containing: trimmed)
+        let rows = try database.rows(
+            """
+            SELECT * FROM work_sessions
+            WHERE LOWER(id) LIKE LOWER(?) ESCAPE '\\'
+               OR LOWER(kind) LIKE LOWER(?) ESCAPE '\\'
+               OR LOWER(intent) LIKE LOWER(?) ESCAPE '\\'
+               OR LOWER(title) LIKE LOWER(?) ESCAPE '\\'
+               OR LOWER(detail) LIKE LOWER(?) ESCAPE '\\'
+               OR LOWER(status) LIKE LOWER(?) ESCAPE '\\'
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            bindings: Array(repeating: pattern, count: 6) + ["\(limit)"]
+        )
+        return try rows.map(decodeWorkSession)
+    }
+
     public func workSessions(kind: WorkSessionKind, statuses: [WorkSessionStatus]) throws -> [WorkSession] {
         guard !statuses.isEmpty else { return [] }
         let placeholders = Array(repeating: "?", count: statuses.count).joined(separator: ", ")

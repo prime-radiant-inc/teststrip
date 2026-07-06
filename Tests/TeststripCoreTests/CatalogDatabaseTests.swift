@@ -1418,6 +1418,69 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.workSessions(limit: 10, starredOnly: true), [older])
     }
 
+    func testSearchesWorkSessionsByHistoryText() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-work-session-search")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let olderCeremony = WorkSession(
+            id: WorkSessionID(rawValue: "older-ceremony"),
+            kind: .culling,
+            intent: "Pick ceremony keepers",
+            title: "Cull Ceremony",
+            detail: "Reviewed ceremony bursts",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: 40,
+            totalUnitCount: 50,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        )
+        let newerCeremony = WorkSession(
+            id: WorkSessionID(rawValue: "newer-ceremony"),
+            kind: .keywording,
+            intent: "Keyword reception photos",
+            title: "Reception Keywords",
+            detail: "Added ceremony and family tags",
+            status: .running,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: 12,
+            totalUnitCount: 30,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 11),
+            updatedAt: Date(timeIntervalSince1970: 30)
+        )
+        let failedImport = WorkSession(
+            id: WorkSessionID(rawValue: "failed-import"),
+            kind: .ingest,
+            intent: "Import card",
+            title: "Import Photos",
+            detail: "Card reader disconnected",
+            status: .failed,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: 0,
+            totalUnitCount: 100,
+            failureCount: 1,
+            createdAt: Date(timeIntervalSince1970: 12),
+            updatedAt: Date(timeIntervalSince1970: 40)
+        )
+        try repository.save(olderCeremony)
+        try repository.save(newerCeremony)
+        try repository.save(failedImport)
+
+        XCTAssertEqual(
+            try repository.workSessions(matching: "ceremony", limit: 10).map(\.id),
+            [newerCeremony.id, olderCeremony.id]
+        )
+        XCTAssertEqual(try repository.workSessions(matching: "failed", limit: 10).map(\.id), [failedImport.id])
+        XCTAssertEqual(try repository.workSessions(matching: "ceremony", limit: 1).map(\.id), [newerCeremony.id])
+        XCTAssertEqual(try repository.workSessions(matching: "ceremony", limit: 0), [])
+    }
+
     func testFetchesAllAssetsInInsertionOrderWhenCreatedAtTies() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
