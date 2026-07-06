@@ -6189,20 +6189,24 @@ struct ImportCompletionPresentation: Equatable {
         if let issueAction = importIssueAction(for: summary) {
             actionRows.append(issueAction)
         }
-        actionRows.append(contentsOf: [
-            flaggedReviewAction(flaggedReviewAssetCount: flaggedReviewAssetCount),
-            ImportCompletionActionPresentation(
-                kind: .stackGrouping,
-                title: "Cull stacks",
-                detail: stackCullActionDetail(for: summary),
-                systemImage: "square.stack.3d.up",
-                isEnabled: summary.stackCount > 0,
-                isPrimary: false,
-                placeholder: nil
-            ),
-            faceReviewAction(faceReviewAssetCount: faceReviewAssetCount),
-            keywordSuggestionAction(batchKeywordSuggestions: batchKeywordSuggestions)
-        ])
+        if let flaggedAction = flaggedReviewAction(flaggedReviewAssetCount: flaggedReviewAssetCount) {
+            actionRows.append(flaggedAction)
+        }
+        actionRows.append(ImportCompletionActionPresentation(
+            kind: .stackGrouping,
+            title: "Cull stacks",
+            detail: stackCullActionDetail(for: summary),
+            systemImage: "square.stack.3d.up",
+            isEnabled: summary.stackCount > 0,
+            isPrimary: false,
+            placeholder: nil
+        ))
+        if let faceAction = faceReviewAction(faceReviewAssetCount: faceReviewAssetCount) {
+            actionRows.append(faceAction)
+        }
+        if let keywordAction = keywordSuggestionAction(batchKeywordSuggestions: batchKeywordSuggestions) {
+            actionRows.append(keywordAction)
+        }
         return ImportCompletionPresentation(
             title: title(for: summary),
             detail: summary.detail,
@@ -6267,13 +6271,14 @@ struct ImportCompletionPresentation: Equatable {
         "\(count) \(count == 1 ? "stack" : "stacks")"
     }
 
-    private static func flaggedReviewAction(flaggedReviewAssetCount: Int) -> ImportCompletionActionPresentation {
-        ImportCompletionActionPresentation(
+    private static func flaggedReviewAction(flaggedReviewAssetCount: Int) -> ImportCompletionActionPresentation? {
+        guard flaggedReviewAssetCount > 0 else { return nil }
+        return ImportCompletionActionPresentation(
             kind: .reviewFlaggedFrames,
-            title: flaggedReviewAssetCount > 0 ? "Review \(flaggedReviewAssetCount) flagged" : "Review flagged",
-            detail: flaggedReviewAssetCount > 0 ? "Review likely issues from this import" : "No flagged frames yet",
+            title: "Review \(flaggedReviewAssetCount) flagged",
+            detail: "Review likely issues from this import",
             systemImage: "exclamationmark.triangle",
-            isEnabled: flaggedReviewAssetCount > 0,
+            isEnabled: true,
             isPrimary: false,
             placeholder: nil
         )
@@ -6363,18 +6368,8 @@ struct ImportCompletionPresentation: Equatable {
 
     private static func keywordSuggestionAction(
         batchKeywordSuggestions: [BatchKeywordSuggestion]
-    ) -> ImportCompletionActionPresentation {
-        guard let suggestion = batchKeywordSuggestions.first else {
-            return ImportCompletionActionPresentation(
-                kind: .keywordSuggestions,
-                title: "Review keyword suggestions",
-                detail: "No suggested keywords yet",
-                systemImage: "tag",
-                isEnabled: false,
-                isPrimary: false,
-                placeholder: nil
-            )
-        }
+    ) -> ImportCompletionActionPresentation? {
+        guard let suggestion = batchKeywordSuggestions.first else { return nil }
 
         let suggestionCount = batchKeywordSuggestions.count
         return ImportCompletionActionPresentation(
@@ -6390,18 +6385,8 @@ struct ImportCompletionPresentation: Equatable {
         )
     }
 
-    private static func faceReviewAction(faceReviewAssetCount: Int) -> ImportCompletionActionPresentation {
-        guard faceReviewAssetCount > 0 else {
-            return ImportCompletionActionPresentation(
-                kind: .faceNaming,
-                title: "Review faces",
-                detail: "No face signals yet",
-                systemImage: "person.2",
-                isEnabled: false,
-                isPrimary: false,
-                placeholder: nil
-            )
-        }
+    private static func faceReviewAction(faceReviewAssetCount: Int) -> ImportCompletionActionPresentation? {
+        guard faceReviewAssetCount > 0 else { return nil }
         return ImportCompletionActionPresentation(
             kind: .faceNaming,
             title: faceReviewAssetCount == 1 ? "Review 1 face photo" : "Review \(faceReviewAssetCount) face photos",

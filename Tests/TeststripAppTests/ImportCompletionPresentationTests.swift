@@ -145,14 +145,20 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertNil(action.placeholder)
     }
 
-    func testFlaggedReviewActionUsesDisabledEmptyStateWithoutCandidates() throws {
+    func testOmitsUnavailableOptionalReviewActionsWithoutCandidates() {
         let presentation = ImportCompletionPresentation.presentation(for: summary())
 
-        let action = try XCTUnwrap(presentation.actionRows.first { $0.kind == .reviewFlaggedFrames })
-        XCTAssertFalse(action.isEnabled)
-        XCTAssertEqual(action.title, "Review flagged")
-        XCTAssertEqual(action.detail, "No flagged frames yet")
-        XCTAssertNil(action.placeholder)
+        XCTAssertNil(presentation.actionRows.first { $0.kind == .reviewFlaggedFrames })
+        XCTAssertNil(presentation.actionRows.first { $0.kind == .keywordSuggestions })
+        XCTAssertNil(presentation.actionRows.first { $0.kind == .faceNaming })
+
+        let visibleText = presentation.metricRows.flatMap { [$0.value, $0.label, $0.detail] }
+            + presentation.actionRows.flatMap { [$0.title, $0.detail] }
+        XCTAssertFalse(visibleText.contains("No flagged frames yet"))
+        XCTAssertFalse(visibleText.contains("No suggested keywords yet"))
+        XCTAssertFalse(visibleText.contains("No face signals yet"))
+        XCTAssertFalse(visibleText.contains { $0.contains("28 stacks") })
+        XCTAssertFalse(visibleText.contains { $0.contains("3 new faces") })
     }
 
     func testSurfacesImportIssuesAsMetricRows() throws {
@@ -204,31 +210,6 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertEqual(action.title, "Review 2 keyword suggestions")
         XCTAssertEqual(action.detail, "Top: mountain - 3 photos at 82%")
         XCTAssertNil(action.placeholder)
-    }
-
-    func testKeywordSuggestionActionUsesDisabledEmptyStateWhenNoSuggestionsExist() throws {
-        let presentation = ImportCompletionPresentation.presentation(for: summary())
-
-        let action = try XCTUnwrap(presentation.actionRows.first { $0.kind == .keywordSuggestions })
-        XCTAssertFalse(action.isEnabled)
-        XCTAssertEqual(action.title, "Review keyword suggestions")
-        XCTAssertEqual(action.detail, "No suggested keywords yet")
-        XCTAssertNil(action.placeholder)
-    }
-
-    func testFaceReviewActionUsesDisabledEmptyStateWithoutFaceSignals() throws {
-        let presentation = ImportCompletionPresentation.presentation(for: summary())
-
-        let action = try XCTUnwrap(presentation.actionRows.first { $0.kind == .faceNaming })
-        XCTAssertFalse(action.isEnabled)
-        XCTAssertEqual(action.title, "Review faces")
-        XCTAssertEqual(action.detail, "No face signals yet")
-        XCTAssertNil(action.placeholder)
-
-        let visibleText = presentation.metricRows.flatMap { [$0.value, $0.label, $0.detail] }
-            + presentation.actionRows.flatMap { [$0.title, $0.detail] }
-        XCTAssertFalse(visibleText.contains { $0.contains("28 stacks") })
-        XCTAssertFalse(visibleText.contains { $0.contains("3 new faces") })
     }
 
     func testEnablesFaceReviewActionWhenFaceSignalsExist() throws {
