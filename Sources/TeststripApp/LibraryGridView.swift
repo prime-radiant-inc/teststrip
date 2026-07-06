@@ -3070,7 +3070,8 @@ private struct LoupeView: View {
                     filmstripTile(
                         for: asset,
                         isSelected: asset.id == model.selectedAssetID,
-                        isRecommended: asset.id == recommendedAssetID
+                        isRecommended: asset.id == recommendedAssetID,
+                        decisionState: presentation.decisionState(for: asset)
                     )
                 }
                 Spacer(minLength: 0)
@@ -3184,7 +3185,12 @@ private struct LoupeView: View {
         }
     }
 
-    private func filmstripTile(for asset: Asset, isSelected: Bool, isRecommended: Bool) -> some View {
+    private func filmstripTile(
+        for asset: Asset,
+        isSelected: Bool,
+        isRecommended: Bool,
+        decisionState: CullingFilmstripPresentation.DecisionState
+    ) -> some View {
         Button {
             model.select(asset.id)
         } label: {
@@ -3216,7 +3222,11 @@ private struct LoupeView: View {
                 }
             }
             .frame(width: 64, height: 44)
+            .opacity(decisionState.isDimmed ? 0.45 : 1.0)
             .clipShape(RoundedRectangle(cornerRadius: 5))
+            .overlay(alignment: .top) {
+                filmstripDecisionBar(decisionState)
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: 5)
                     .strokeBorder(isSelected ? Color.orange : Color.white.opacity(0.12), lineWidth: isSelected ? 2 : 1)
@@ -3224,7 +3234,36 @@ private struct LoupeView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(asset.originalURL.lastPathComponent)
-        .accessibilityValue(isSelected ? "Selected" : (isRecommended ? "Recommended" : "Not selected"))
+        .accessibilityValue(filmstripTileAccessibilityValue(isSelected: isSelected, isRecommended: isRecommended, decisionState: decisionState))
+    }
+
+    @ViewBuilder
+    private func filmstripDecisionBar(_ decisionState: CullingFilmstripPresentation.DecisionState) -> some View {
+        switch decisionState {
+        case .undecided:
+            EmptyView()
+        case .picked:
+            Rectangle().fill(Color.green).frame(height: 3)
+        case .rejected:
+            Rectangle().fill(Color.red).frame(height: 3)
+        }
+    }
+
+    private func filmstripTileAccessibilityValue(
+        isSelected: Bool,
+        isRecommended: Bool,
+        decisionState: CullingFilmstripPresentation.DecisionState
+    ) -> String {
+        var segments = [isSelected ? "Selected" : (isRecommended ? "Recommended" : "Not selected")]
+        switch decisionState {
+        case .undecided:
+            break
+        case .picked:
+            segments.append("Picked")
+        case .rejected:
+            segments.append("Rejected")
+        }
+        return segments.joined(separator: ", ")
     }
 
     @ViewBuilder
@@ -4269,6 +4308,28 @@ struct CullingFilmstripPresentation: Equatable {
             selectedIndex.map(String.init) ?? "none",
             String(totalCount)
         ].joined(separator: "\n")
+    }
+
+    /// A tile's pick/reject state, so the filmstrip can dim rejects and show
+    /// a decision color bar without the view reaching into asset metadata.
+    enum DecisionState: Equatable {
+        case undecided
+        case picked
+        case rejected
+
+        init(flag: PickFlag?) {
+            switch flag {
+            case .pick: self = .picked
+            case .reject: self = .rejected
+            case nil: self = .undecided
+            }
+        }
+
+        var isDimmed: Bool { self == .rejected }
+    }
+
+    func decisionState(for asset: Asset) -> DecisionState {
+        DecisionState(flag: asset.metadata.flag)
     }
 }
 
