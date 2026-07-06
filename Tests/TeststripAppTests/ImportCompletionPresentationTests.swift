@@ -57,6 +57,31 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.metricRows.first?.label, "Matched set")
     }
 
+    func testEmptyImportShowsTerminalResultWithoutImportedSetActions() {
+        let presentation = ImportCompletionPresentation.presentation(for: summary(
+            importedPhotoCount: 0,
+            photoCountText: "0 photos",
+            newPhotoCount: 0,
+            existingPhotoCount: 0,
+            previewFailureCount: 0,
+            failureText: nil,
+            previewStatusText: "No previews needed"
+        ))
+
+        XCTAssertEqual(presentation.title, "No photos imported")
+        XCTAssertEqual(presentation.metricRows.first?.value, "0 photos")
+        XCTAssertEqual(presentation.metricRows.first?.label, "Import result")
+        XCTAssertEqual(presentation.metricRows.first?.detail, "Nothing was added")
+        XCTAssertEqual(presentation.metricRows.first { $0.id == "previews" }?.value, "Not needed")
+        XCTAssertEqual(presentation.metricRows.first { $0.id == "cull-scope" }?.value, "Unavailable")
+        XCTAssertEqual(presentation.actionRows.first { $0.kind == .startCulling }?.isEnabled, false)
+        XCTAssertEqual(presentation.actionRows.first { $0.kind == .reviewImportedFrames }?.isEnabled, false)
+        XCTAssertEqual(presentation.actionRows.first { $0.kind == .openInLibrary }?.isEnabled, false)
+        XCTAssertFalse(presentation.enabledActions.contains { action in
+            action.kind == .startCulling || action.kind == .reviewImportedFrames || action.kind == .openInLibrary
+        })
+    }
+
     func testAddsManualCompareAndStackCullActionsWithoutClaimingSimilarityGrouping() throws {
         let presentation = ImportCompletionPresentation.presentation(for: summary(stackCount: 2, stackedPhotoCount: 5))
 

@@ -1570,7 +1570,8 @@ public final class AppModel {
         let importedPhotoCount = activity.totalUnitCount ?? activity.completedUnitCount
         let newPhotoCount = activity.completedUnitCount
         let existingPhotoCount = max(importedPhotoCount - newPhotoCount, 0)
-        let stackSummary = latestImportStackSummary(activity: activity)
+        let hasImportedPhotos = importedPhotoCount > 0
+        let stackSummary = hasImportedPhotos ? latestImportStackSummary(activity: activity) : (stackCount: 0, stackedPhotoCount: 0)
         return ImportCompletionSummary(
             activityID: activity.id,
             title: "Import complete",
@@ -1581,7 +1582,7 @@ public final class AppModel {
             existingPhotoCount: existingPhotoCount,
             previewFailureCount: previewFailureCount,
             failureText: failureText,
-            previewStatusText: failureText ?? activePreviewGenerationStatusText ?? "Previews ready",
+            previewStatusText: failureText ?? activePreviewGenerationStatusText ?? (hasImportedPhotos ? "Previews ready" : "No previews needed"),
             stackCount: stackSummary.stackCount,
             stackedPhotoCount: stackSummary.stackedPhotoCount,
             cullingSessionName: "\(activity.detail) Cull"
@@ -7082,8 +7083,7 @@ public final class AppModel {
     }
 
     private static func isImportCompletionActivity(_ activity: AppWorkActivity) -> Bool {
-        let importedPhotoCount = activity.totalUnitCount ?? activity.completedUnitCount
-        return activity.kind == .ingest && activity.status == .completed && importedPhotoCount > 0
+        activity.kind == .ingest && activity.status == .completed
     }
 
     private func saveImportOutputSet(for activity: AppWorkActivity, result: LibraryImportResult) -> [AssetSetID] {

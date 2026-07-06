@@ -10061,6 +10061,13 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.statusMessage, "No photos imported (2 files skipped)")
         let activity = try XCTUnwrap(model.recentWork.first)
         XCTAssertEqual(activity.detail, "No photos imported from photos (2 files skipped)")
+        let summary = try XCTUnwrap(model.latestImportCompletionSummary)
+        XCTAssertEqual(summary.detail, "No photos imported from photos (2 files skipped)")
+        XCTAssertEqual(summary.importedPhotoCount, 0)
+        XCTAssertEqual(summary.photoCountText, "0 photos")
+        XCTAssertEqual(summary.newPhotoCount, 0)
+        XCTAssertEqual(summary.existingPhotoCount, 0)
+        XCTAssertEqual(summary.previewStatusText, "No previews needed")
     }
 
     @MainActor

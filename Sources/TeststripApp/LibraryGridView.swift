@@ -5845,7 +5845,8 @@ struct ImportCompletionPresentation: Equatable {
         faceReviewAssetCount: Int = 0,
         canEvaluateImport: Bool = false
     ) -> ImportCompletionPresentation {
-        ImportCompletionPresentation(
+        let hasImportedSet = summary.importedPhotoCount > 0
+        return ImportCompletionPresentation(
             title: title(for: summary),
             detail: summary.detail,
             metricRows: [
@@ -5857,27 +5858,27 @@ struct ImportCompletionPresentation: Equatable {
                 ImportCompletionActionPresentation(
                     kind: .startCulling,
                     title: "Start culling",
-                    detail: "Use the imported set",
+                    detail: hasImportedSet ? "Use the imported set" : "No imported set",
                     systemImage: "checkmark.seal.fill",
-                    isEnabled: true,
+                    isEnabled: hasImportedSet,
                     isPrimary: true,
                     placeholder: nil
                 ),
                 ImportCompletionActionPresentation(
                     kind: .reviewImportedFrames,
                     title: "Review imported frames",
-                    detail: "Manual Compare over this import",
+                    detail: hasImportedSet ? "Manual Compare over this import" : "No imported set",
                     systemImage: "rectangle.grid.2x2",
-                    isEnabled: true,
+                    isEnabled: hasImportedSet,
                     isPrimary: false,
                     placeholder: nil
                 ),
                 ImportCompletionActionPresentation(
                     kind: .openInLibrary,
                     title: "Open imported set",
-                    detail: "Browse this import",
+                    detail: hasImportedSet ? "Browse this import" : "No imported set",
                     systemImage: "rectangle.stack",
-                    isEnabled: true,
+                    isEnabled: hasImportedSet,
                     isPrimary: false,
                     placeholder: nil
                 ),
@@ -5906,6 +5907,9 @@ struct ImportCompletionPresentation: Equatable {
     }
 
     private static func title(for summary: ImportCompletionSummary) -> String {
+        if summary.importedPhotoCount == 0 {
+            return "No photos imported"
+        }
         if summary.newPhotoCount == 0, summary.existingPhotoCount > 0 {
             return "No new photos imported"
         }
@@ -5913,6 +5917,16 @@ struct ImportCompletionPresentation: Equatable {
     }
 
     private static func importedSetMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
+        if summary.importedPhotoCount == 0 {
+            return ImportCompletionMetricRow(
+                id: "imported-set",
+                value: photoCountText(0),
+                label: "Import result",
+                detail: "Nothing was added",
+                systemImage: "exclamationmark.triangle",
+                tone: .yellow
+            )
+        }
         if summary.newPhotoCount == 0, summary.existingPhotoCount > 0 {
             return ImportCompletionMetricRow(
                 id: "imported-set",
@@ -5949,6 +5963,16 @@ struct ImportCompletionPresentation: Equatable {
     }
 
     private static func cullScopeMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
+        guard summary.importedPhotoCount > 0 else {
+            return ImportCompletionMetricRow(
+                id: "cull-scope",
+                value: "Unavailable",
+                label: "Cull scope",
+                detail: "No imported set",
+                systemImage: "slash.circle",
+                tone: .yellow
+            )
+        }
         guard summary.stackCount > 0 else {
             return ImportCompletionMetricRow(
                 id: "cull-scope",
@@ -6029,6 +6053,16 @@ struct ImportCompletionPresentation: Equatable {
     }
 
     private static func previewMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
+        guard summary.importedPhotoCount > 0 else {
+            return ImportCompletionMetricRow(
+                id: "previews",
+                value: "Not needed",
+                label: "Previews",
+                detail: summary.previewStatusText,
+                systemImage: "photo.stack",
+                tone: .blue
+            )
+        }
         if summary.previewFailureCount > 0 {
             return ImportCompletionMetricRow(
                 id: "previews",
