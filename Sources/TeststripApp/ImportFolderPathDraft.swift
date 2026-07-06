@@ -76,6 +76,12 @@ enum ImportPlanSteps {
             stage: .followUpSetup
         )
     ]
+
+    static let autoEvaluation = ImportPlanStep(
+        title: "Read imported frames",
+        detail: "Focus, exposure, and face reads queue over cached previews as they finish; reads stay provisional until you act.",
+        stage: .followUpSetup
+    )
 }
 
 struct ImportFolderPathDraft: Equatable {

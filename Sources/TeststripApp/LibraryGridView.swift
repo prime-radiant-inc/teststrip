@@ -1487,6 +1487,16 @@ struct LibraryGridView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             importPlanView(steps: draft.planSteps, width: 440)
+            Toggle(
+                "Read imported frames automatically",
+                isOn: Binding(
+                    get: { importConfirmationDraft?.evaluateAfterImport ?? true },
+                    set: { importConfirmationDraft?.evaluateAfterImport = $0 }
+                )
+            )
+            .toggleStyle(.checkbox)
+            .font(.caption)
+            .help("Queues the standard evaluation passes over the imported set's cached previews as previews complete. Reads stay provisional; nothing is written without your action.")
             HStack {
                 Spacer()
                 Button("Cancel") {
@@ -2251,13 +2261,13 @@ struct LibraryGridView: View {
         switch draft.mode {
         case .folder:
             FolderSelectionPanel.rememberImportFolder(draft.sourceURL)
-            importFolder(draft.sourceURL)
+            importFolder(draft.sourceURL, evaluateAfterImport: draft.evaluateAfterImport)
         case .card:
             guard let destinationRootURL = draft.destinationRootURL else {
                 model.errorMessage = "Card import destination is missing"
                 return
             }
-            importCard(source: draft.sourceURL, destinationRoot: destinationRootURL)
+            importCard(source: draft.sourceURL, destinationRoot: destinationRootURL, evaluateAfterImport: draft.evaluateAfterImport)
         }
     }
 
@@ -2272,12 +2282,12 @@ struct LibraryGridView: View {
         }
     }
 
-    private func importFolder(_ folderURL: URL) {
-        model.beginImportFolder(folderURL)
+    private func importFolder(_ folderURL: URL, evaluateAfterImport: Bool = true) {
+        model.beginImportFolder(folderURL, evaluateAfterImport: evaluateAfterImport)
     }
 
-    private func importCard(source: URL, destinationRoot: URL) {
-        model.beginImportCard(source: source, destinationRoot: destinationRoot)
+    private func importCard(source: URL, destinationRoot: URL, evaluateAfterImport: Bool = true) {
+        model.beginImportCard(source: source, destinationRoot: destinationRoot, evaluateAfterImport: evaluateAfterImport)
     }
 
     private var importActivity: AppWorkActivity? {

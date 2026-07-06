@@ -1272,6 +1272,10 @@ public final class AppModel {
     @ObservationIgnored
     private var workerImportContextsByItemID: [WorkSessionID: WorkerImportContext]
 
+    // Captured per import at begin time; only one import runs at a time (isImporting guard).
+    @ObservationIgnored
+    private var importAutoEvaluationEnabled = true
+
     @ObservationIgnored
     private var activeSecurityScopedSourceRootURLs: [URL]
 
@@ -7850,6 +7854,7 @@ public final class AppModel {
     @discardableResult
     @MainActor
     public func importFolderInBackground(_ folderURL: URL) async throws -> LibraryImportResult {
+        importAutoEvaluationEnabled = true
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -7886,6 +7891,7 @@ public final class AppModel {
     @discardableResult
     @MainActor
     public func importCardInBackground(source: URL, destinationRoot: URL) async throws -> LibraryImportResult {
+        importAutoEvaluationEnabled = true
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -7921,7 +7927,8 @@ public final class AppModel {
     }
 
     @MainActor
-    public func beginImportFolder(_ folderURL: URL) {
+    public func beginImportFolder(_ folderURL: URL, evaluateAfterImport: Bool = true) {
+        importAutoEvaluationEnabled = evaluateAfterImport
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
             return
@@ -7992,7 +7999,8 @@ public final class AppModel {
     }
 
     @MainActor
-    public func beginImportCard(source: URL, destinationRoot: URL) {
+    public func beginImportCard(source: URL, destinationRoot: URL, evaluateAfterImport: Bool = true) {
+        importAutoEvaluationEnabled = evaluateAfterImport
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
             return
