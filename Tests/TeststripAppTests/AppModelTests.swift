@@ -2672,6 +2672,56 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, next.id)
     }
 
+    func testLoadedStackSelectionUpdatesActiveCullingSessionProgressAndOutputSet() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let first = makeAsset(
+            id: "loaded-stack-cull-first",
+            path: "/Photos/Job/loaded-stack-cull-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let selected = makeAsset(
+            id: "loaded-stack-cull-selected",
+            path: "/Photos/Job/loaded-stack-cull-selected.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let alternate = makeAsset(
+            id: "loaded-stack-cull-alternate",
+            path: "/Photos/Job/loaded-stack-cull-alternate.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1.8))
+        )
+        let next = makeAsset(
+            id: "loaded-stack-cull-next",
+            path: "/Photos/Other/loaded-stack-cull-next.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(4))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "loaded-stack-cull-session-progress",
+            assets: [first, selected, alternate, next]
+        )
+        model.select(selected.id)
+        let startedSession = try model.beginCullingSession(named: "Loaded Stack Cull")
+
+        try model.keepSelectedStackFrameAndRejectAlternates()
+
+        XCTAssertEqual(try repository.asset(id: first.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: selected.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .reject)
+        XCTAssertNil(try repository.asset(id: next.id).metadata.flag)
+        XCTAssertEqual(model.selectedAssetID, next.id)
+
+        let session = try repository.session(id: startedSession.id)
+        XCTAssertEqual(session.status, .running)
+        XCTAssertEqual(session.completedUnitCount, 3)
+        XCTAssertEqual(session.totalUnitCount, 4)
+        XCTAssertEqual(session.detail, "Reviewed 3 of 4 frames · 1 pick · 2 rejects")
+        let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
+        XCTAssertEqual(assetIDs(in: try repository.assetSet(id: outputSetID)), [selected.id])
+    }
+
     func testCullingShortcutAcceptsSelectedStackFrame() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let first = makeAsset(

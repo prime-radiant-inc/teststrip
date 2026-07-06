@@ -3500,6 +3500,8 @@ public final class AppModel {
         }
         if let selectedWorkStackSetID = context.selectedWorkStackSetID {
             try updatePersistedStackCullingSessionProgress(selectedStackSetID: selectedWorkStackSetID)
+        } else {
+            try updateActiveCullingSessionProgressAfterFlagChange()
         }
 
         if try selectPersistedCullingStack(.next) {
