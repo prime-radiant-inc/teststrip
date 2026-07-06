@@ -25,10 +25,14 @@ struct InspectorAssetIdentity: Equatable {
         displayName = extensionText.isEmpty
             ? asset.originalURL.lastPathComponent
             : asset.originalURL.deletingPathExtension().lastPathComponent
-        availabilityText = "Availability: \(asset.availability.rawValue)"
+        availabilityText = Self.availabilityText(for: asset.availability)
         ratingText = "Rating: \(asset.metadata.rating)"
         accessibilityValue = "\(availabilityText), \(ratingText)"
         capturedText = asset.technicalMetadata?.capturedAt?.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private static func availabilityText(for availability: SourceAvailability) -> String {
+        AssetSourceStatusPresentation.presentation(for: availability)?.detail ?? "Original available"
     }
 }
 

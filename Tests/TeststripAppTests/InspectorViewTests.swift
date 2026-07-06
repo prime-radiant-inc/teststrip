@@ -29,9 +29,9 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(identity.fullFilename, "frame-001.CR2")
         XCTAssertEqual(identity.displayName, "frame-001")
         XCTAssertEqual(identity.extensionBadge, "CR2")
-        XCTAssertEqual(identity.availabilityText, "Availability: offline")
+        XCTAssertEqual(identity.availabilityText, "Original offline; cached previews only")
         XCTAssertEqual(identity.ratingText, "Rating: 4")
-        XCTAssertEqual(identity.accessibilityValue, "Availability: offline, Rating: 4")
+        XCTAssertEqual(identity.accessibilityValue, "Original offline; cached previews only, Rating: 4")
         XCTAssertNil(identity.capturedText)
     }
 
