@@ -10454,7 +10454,17 @@ final class AppModelTests: XCTestCase {
         model.beginImportFolder(photoFolder)
 
         try await waitForStatusMessage("Imported 1 photo", in: model)
+        let sourceRoot = try XCTUnwrap(model.sourceRoots.first)
+        XCTAssertEqual(sourceRoot.path, photoFolder.path)
+        XCTAssertEqual(sourceRoot.assetCount, 1)
+        XCTAssertEqual(sourceRoot.securityScopedBookmarkData, bookmarkData)
         XCTAssertEqual(try catalog.repository.sourceRoots().first?.securityScopedBookmarkData, bookmarkData)
+
+        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
+        let sourceRootRow = try XCTUnwrap(sourceSection.rows.first { $0.title == "photos" })
+        XCTAssertEqual(sourceRootRow.detailText, photoFolder.path)
+        XCTAssertEqual(sourceRootRow.countText, "1")
+        XCTAssertEqual(sourceRootRow.target, .folder("\(photoFolder.path)/"))
     }
 
     @MainActor
@@ -10767,9 +10777,17 @@ final class AppModelTests: XCTestCase {
         model.beginImportCard(source: source, destinationRoot: destinationRoot)
 
         try await waitForStatusMessage("Imported 1 photo", in: model)
-        let sourceRoot = try XCTUnwrap(try catalog.repository.sourceRoots().first)
+        let sourceRoot = try XCTUnwrap(model.sourceRoots.first)
         XCTAssertEqual(sourceRoot.path, destinationRoot.path)
+        XCTAssertEqual(sourceRoot.assetCount, 1)
         XCTAssertEqual(sourceRoot.securityScopedBookmarkData, bookmarkData)
+        XCTAssertEqual(try catalog.repository.sourceRoots().first?.securityScopedBookmarkData, bookmarkData)
+
+        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
+        let sourceRootRow = try XCTUnwrap(sourceSection.rows.first { $0.title == "Library" })
+        XCTAssertEqual(sourceRootRow.detailText, destinationRoot.path)
+        XCTAssertEqual(sourceRootRow.countText, "1")
+        XCTAssertEqual(sourceRootRow.target, .folder("\(destinationRoot.path)/"))
     }
 
     @MainActor
