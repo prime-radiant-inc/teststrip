@@ -1277,6 +1277,9 @@ public final class AppModel {
     private var importAutoEvaluationEnabled = true
 
     @ObservationIgnored
+    private var pendingImportEvaluationAssetIDs: Set<AssetID> = []
+
+    @ObservationIgnored
     private var activeSecurityScopedSourceRootURLs: [URL]
 
     @ObservationIgnored
@@ -5683,6 +5686,32 @@ public final class AppModel {
         }
     }
 
+    // Seeds the provisional read pass for a finished import. Bounded by the
+    // import's asset list; each queued pass is a normal cancellable
+    // .recognition work item, so Activity shows and controls all of it.
+    private func scheduleImportAutoEvaluationIfEnabled(result: LibraryImportResult) {
+        guard importAutoEvaluationEnabled, workerSupervisor != nil else { return }
+        let importedAssetIDs = result.importedAssets.map(\.id)
+        guard !importedAssetIDs.isEmpty else { return }
+        pendingImportEvaluationAssetIDs = Set(importedAssetIDs)
+        enqueueImportEvaluationsForCachedPreviews(assetIDs: importedAssetIDs)
+    }
+
+    private func enqueueImportEvaluationsForCachedPreviews(assetIDs: [AssetID]) {
+        guard workerSupervisor != nil else { return }
+        for assetID in assetIDs where pendingImportEvaluationAssetIDs.contains(assetID) {
+            guard hasCachedPreview(for: assetID) else { continue }
+            pendingImportEvaluationAssetIDs.remove(assetID)
+            for provider in AppModel.defaultEvaluationProviderNames {
+                do {
+                    try requestEvaluation(assetID: assetID, provider: provider)
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
     public func requestCompareAssetEvaluations(providers: [String] = AppModel.defaultEvaluationProviderNames) throws {
         let compareAssets = compareAssets()
         guard !compareAssets.isEmpty else {
@@ -5862,6 +5891,11 @@ public final class AppModel {
                 } catch {
                     errorMessage = error.localizedDescription
                 }
+            }
+            if completedPreview,
+               let itemID,
+               let previewAssetID = Self.previewAssetID(from: itemID) {
+                enqueueImportEvaluationsForCachedPreviews(assetIDs: [previewAssetID])
             }
         case .completedImport(
             let itemID,
@@ -6148,6 +6182,7 @@ public final class AppModel {
                 destinationRoot: context.destinationRoot,
                 result: result
             )
+            scheduleImportAutoEvaluationIfEnabled(result: result)
             presentCompletedImportResultIfNeeded(result: result, outputSetIDs: outputSetIDs)
         } catch {
             statusMessage = nil
@@ -7880,6 +7915,7 @@ public final class AppModel {
             try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
             let outputSetIDs = recordCompletedImportActivity(folderURL: folderURL, result: output.result)
+            scheduleImportAutoEvaluationIfEnabled(result: output.result)
             presentCompletedImportResultIfNeeded(result: output.result, outputSetIDs: outputSetIDs)
             return output.result
         } catch {
@@ -7918,6 +7954,7 @@ public final class AppModel {
             try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
             let outputSetIDs = recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
+            scheduleImportAutoEvaluationIfEnabled(result: output.result)
             presentCompletedImportResultIfNeeded(result: output.result, outputSetIDs: outputSetIDs)
             return output.result
         } catch {
@@ -7982,6 +8019,7 @@ public final class AppModel {
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
                 let outputSetIDs = self.recordCompletedImportActivity(folderURL: folderURL, result: output.result)
+                self.scheduleImportAutoEvaluationIfEnabled(result: output.result)
                 self.presentCompletedImportResultIfNeeded(result: output.result, outputSetIDs: outputSetIDs)
                 self.activeImportTask = nil
             } catch is CancellationError {
@@ -8072,6 +8110,7 @@ public final class AppModel {
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
                 let outputSetIDs = self.recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
+                self.scheduleImportAutoEvaluationIfEnabled(result: output.result)
                 self.presentCompletedImportResultIfNeeded(result: output.result, outputSetIDs: outputSetIDs)
                 self.activeImportTask = nil
             } catch is CancellationError {
