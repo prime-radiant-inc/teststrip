@@ -8259,12 +8259,18 @@ public final class AppModel {
                 SidebarRow(
                     id: "source-root-\(sourceRoot.path)",
                     title: sourceRoot.name,
-                    detailText: sourceRoot.path,
+                    detailText: sourceRootDetailText(sourceRoot),
                     countText: sidebarCountText(sourceRoot.assetCount),
                     tone: sourceRoot.unavailableAssetCount > 0 ? .warning : .neutral,
                     target: .folder(sourceRootFolderPrefix(sourceRoot.path))
                 )
             }
+    }
+
+    private static func sourceRootDetailText(_ sourceRoot: CatalogSourceRoot) -> String {
+        guard sourceRoot.unavailableAssetCount > 0 else { return sourceRoot.path }
+        let noun = sourceRoot.unavailableAssetCount == 1 ? "unavailable original" : "unavailable originals"
+        return "\(sourceRoot.path) · \(sourceRoot.unavailableAssetCount) \(noun)"
     }
 
     private static func sourceRootFolderPrefix(_ path: String) -> String {

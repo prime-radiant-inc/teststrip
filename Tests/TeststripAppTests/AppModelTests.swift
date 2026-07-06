@@ -4674,6 +4674,27 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 2)
     }
 
+    func testSourceRootSidebarRowNamesUnavailableOriginals() throws {
+        let archiveRoot = URL(fileURLWithPath: "/Volumes/Archive")
+        let online = makeAsset(id: "archive-online", path: "/Volumes/Archive/Job/online.cr2", rating: 4)
+        let offline = makeAsset(id: "archive-offline", path: "/Volumes/Archive/Job/offline.cr2", rating: 4, availability: .offline)
+        let missing = makeAsset(id: "archive-missing", path: "/Volumes/Archive/Job/missing.cr2", rating: 4, availability: .missing)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-source-root-unavailable-sidebar",
+            assets: [online, offline, missing],
+            configureRepository: { repository in
+                try repository.recordSourceRoot(archiveRoot)
+            }
+        )
+
+        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
+        let sourceRootRow = try XCTUnwrap(sourceSection.rows.first { $0.title == "Archive" })
+
+        XCTAssertEqual(sourceRootRow.detailText, "/Volumes/Archive · 2 unavailable originals")
+        XCTAssertEqual(sourceRootRow.countText, "3")
+        XCTAssertEqual(sourceRootRow.tone, .warning)
+    }
+
     func testLoadExposesSourceBookmarkRepairRowsInSidebar() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-source-bookmark-repair-sidebar")
         let sourceRoot = directory.appendingPathComponent("photos", isDirectory: true)
