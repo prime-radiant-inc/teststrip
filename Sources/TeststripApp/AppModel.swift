@@ -445,12 +445,20 @@ public struct AppDiagnosticsSourceRoot: Equatable, Sendable {
     public var name: String
     public var assetCount: Int
     public var unavailableAssetCount: Int
+    public var hasSecurityScopedBookmark: Bool
 
-    public init(path: String, name: String, assetCount: Int, unavailableAssetCount: Int) {
+    public init(
+        path: String,
+        name: String,
+        assetCount: Int,
+        unavailableAssetCount: Int,
+        hasSecurityScopedBookmark: Bool = false
+    ) {
         self.path = path
         self.name = name
         self.assetCount = assetCount
         self.unavailableAssetCount = unavailableAssetCount
+        self.hasSecurityScopedBookmark = hasSecurityScopedBookmark
     }
 }
 
@@ -589,7 +597,8 @@ public enum AppDiagnosticsReport {
         let sourceCounts = snapshot.sourceAvailabilityCounts
             .map { "  \($0.availability.rawValue): \($0.count)" }
         let sourceRoots = snapshot.sourceRoots.map { root in
-            "  \(root.name): \(root.path) (\(root.unavailableAssetCount) unavailable of \(root.assetCount))"
+            let bookmarkText = root.hasSecurityScopedBookmark ? ", bookmark yes" : ", bookmark no"
+            return "  \(root.name): \(root.path) (\(root.unavailableAssetCount) unavailable of \(root.assetCount)\(bookmarkText))"
         }
         let failures = snapshot.recentFailures.map { failure in
             "  \(failure.kind.rawValue) \(failure.id): \(failure.detail)"
@@ -794,27 +803,36 @@ public struct SecurityScopedResourceAccess: Sendable {
     public var requiresSuccessfulAccess: Bool
     public var startAccessing: @Sendable (URL) -> Bool
     public var stopAccessing: @Sendable (URL) -> Void
+    public var securityScopedBookmarkData: @Sendable (URL) throws -> Data?
 
     public init(
         requiresSuccessfulAccess: Bool,
         startAccessing: @escaping @Sendable (URL) -> Bool,
-        stopAccessing: @escaping @Sendable (URL) -> Void
+        stopAccessing: @escaping @Sendable (URL) -> Void,
+        securityScopedBookmarkData: @escaping @Sendable (URL) throws -> Data? = { _ in nil }
     ) {
         self.requiresSuccessfulAccess = requiresSuccessfulAccess
         self.startAccessing = startAccessing
         self.stopAccessing = stopAccessing
+        self.securityScopedBookmarkData = securityScopedBookmarkData
     }
 
     public static let permissive = SecurityScopedResourceAccess(
         requiresSuccessfulAccess: false,
         startAccessing: { $0.startAccessingSecurityScopedResource() },
-        stopAccessing: { $0.stopAccessingSecurityScopedResource() }
+        stopAccessing: { $0.stopAccessingSecurityScopedResource() },
+        securityScopedBookmarkData: { url in
+            try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+        }
     )
 
     public static let required = SecurityScopedResourceAccess(
         requiresSuccessfulAccess: true,
         startAccessing: { $0.startAccessingSecurityScopedResource() },
-        stopAccessing: { $0.stopAccessingSecurityScopedResource() }
+        stopAccessing: { $0.stopAccessingSecurityScopedResource() },
+        securityScopedBookmarkData: { url in
+            try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+        }
     )
 }
 
@@ -1244,7 +1262,8 @@ public final class AppModel {
                     path: $0.path,
                     name: $0.name,
                     assetCount: $0.assetCount,
-                    unavailableAssetCount: $0.unavailableAssetCount
+                    unavailableAssetCount: $0.unavailableAssetCount,
+                    hasSecurityScopedBookmark: $0.securityScopedBookmarkData != nil
                 )
             },
             recentFailures: diagnosticsRecentFailures()
@@ -6766,9 +6785,29 @@ public final class AppModel {
             failureCount: result.previewFailures.count
         )
         let outputSetIDs = saveImportOutputSet(for: activity, result: result)
+        persistSecurityScopedBookmarkForImportedSource(
+            folderURL: folderURL,
+            destinationRoot: destinationRoot,
+            result: result
+        )
         refreshCatalogFolders()
         activeWork = nil
         recordRecentActivity(activity, outputSetIDs: outputSetIDs)
+    }
+
+    private func persistSecurityScopedBookmarkForImportedSource(
+        folderURL: URL,
+        destinationRoot: URL?,
+        result: LibraryImportResult
+    ) {
+        guard !result.importedAssets.isEmpty, let catalog else { return }
+        let sourceRoot = destinationRoot ?? folderURL
+        guard let bookmarkData = try? resourceAccess.securityScopedBookmarkData(sourceRoot) else { return }
+        do {
+            try catalog.repository.recordSourceRoot(sourceRoot, securityScopedBookmarkData: bookmarkData)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private static func importCompletionDetail(result: LibraryImportResult, sourceDescription: String) -> String {

@@ -1,5 +1,5 @@
 enum CatalogMigrations {
-    static let version = 12
+    static let version = 13
 
     static let statements = [
         """
@@ -112,6 +112,7 @@ enum CatalogMigrations {
         CREATE TABLE IF NOT EXISTS source_roots (
             path TEXT PRIMARY KEY NOT NULL,
             name TEXT NOT NULL,
+            security_scoped_bookmark_base64 TEXT,
             created_at REAL NOT NULL,
             updated_at REAL NOT NULL
         )

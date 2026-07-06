@@ -203,6 +203,23 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try reopenedRepository.pendingPreviewGenerationItems(), [item])
     }
 
+    func testSourceRootsPersistSecurityScopedBookmarkData() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-source-root-bookmark")
+        let catalogURL = directory.appendingPathComponent("catalog.sqlite")
+        let database = try CatalogDatabase.open(at: catalogURL)
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let sourceRoot = URL(fileURLWithPath: "/Volumes/NAS/Job", isDirectory: true)
+        let bookmarkData = Data("bookmark-data".utf8)
+
+        try repository.recordSourceRoot(sourceRoot, securityScopedBookmarkData: bookmarkData)
+        let reopenedDatabase = try CatalogDatabase.open(at: catalogURL)
+        try reopenedDatabase.migrate()
+        let reopenedRepository = CatalogRepository(database: reopenedDatabase)
+
+        XCTAssertEqual(try reopenedRepository.sourceRoots().first?.securityScopedBookmarkData, bookmarkData)
+    }
+
     func testPersistsPendingPreviewGenerationItemsInBatch() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-batch")
         let catalogURL = directory.appendingPathComponent("catalog.sqlite")

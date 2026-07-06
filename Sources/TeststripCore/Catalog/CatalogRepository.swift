@@ -290,20 +290,26 @@ public final class CatalogRepository {
         }
     }
 
-    public func recordSourceRoot(_ root: URL) throws {
+    public func recordSourceRoot(_ root: URL, securityScopedBookmarkData: Data? = nil) throws {
         let path = Self.normalizedDirectoryPath(root)
         let now = "\(Date().timeIntervalSince1970)"
+        let bookmarkBase64 = securityScopedBookmarkData?.base64EncodedString() ?? ""
         try database.execute(
             """
-            INSERT INTO source_roots (path, name, created_at, updated_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO source_roots (path, name, security_scoped_bookmark_base64, created_at, updated_at)
+            VALUES (?, ?, NULLIF(?, ''), ?, ?)
             ON CONFLICT(path) DO UPDATE SET
                 name = excluded.name,
+                security_scoped_bookmark_base64 = COALESCE(
+                    excluded.security_scoped_bookmark_base64,
+                    source_roots.security_scoped_bookmark_base64
+                ),
                 updated_at = excluded.updated_at
             """,
             bindings: [
                 path,
                 Self.folderName(forFolderPath: path),
+                bookmarkBase64,
                 now,
                 now
             ]
@@ -313,7 +319,7 @@ public final class CatalogRepository {
     public func sourceRoots() throws -> [CatalogSourceRoot] {
         let rows = try database.rows(
             """
-            SELECT path, name
+            SELECT path, name, security_scoped_bookmark_base64
             FROM source_roots
             ORDER BY updated_at DESC, path COLLATE NOCASE ASC
             """
@@ -323,11 +329,13 @@ public final class CatalogRepository {
                 throw CatalogError.sqlite("source root row is missing required columns")
             }
             let counts = try assetCounts(underSourceRootPath: path)
+            let bookmarkData = row["security_scoped_bookmark_base64"].flatMap { Data(base64Encoded: $0) }
             return CatalogSourceRoot(
                 path: path,
                 name: name,
                 assetCount: counts.assetCount,
-                unavailableAssetCount: counts.unavailableAssetCount
+                unavailableAssetCount: counts.unavailableAssetCount,
+                securityScopedBookmarkData: bookmarkData
             )
         }
     }

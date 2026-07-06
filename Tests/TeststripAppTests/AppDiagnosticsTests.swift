@@ -79,7 +79,13 @@ final class AppDiagnosticsTests: XCTestCase {
             metadataSyncConflictItems: [conflict],
             backgroundWorkQueue: BackgroundWorkQueue(maxRunningCount: 1),
             sourceRoots: [
-                CatalogSourceRoot(path: "/Volumes/Archive", name: "Archive", assetCount: 20, unavailableAssetCount: 7)
+                CatalogSourceRoot(
+                    path: "/Volumes/Archive",
+                    name: "Archive",
+                    assetCount: 20,
+                    unavailableAssetCount: 7,
+                    securityScopedBookmarkData: Data("bookmark".utf8)
+                )
             ],
             sourceAvailabilitySummaries: [
                 CatalogSourceAvailabilitySummary(availability: .online, assetCount: 35),
@@ -118,7 +124,13 @@ final class AppDiagnosticsTests: XCTestCase {
             AppDiagnosticsSourceAvailabilityCount(availability: .online, count: 35)
         ])
         XCTAssertEqual(diagnostics.sourceRoots, [
-            AppDiagnosticsSourceRoot(path: "/Volumes/Archive", name: "Archive", assetCount: 20, unavailableAssetCount: 7)
+            AppDiagnosticsSourceRoot(
+                path: "/Volumes/Archive",
+                name: "Archive",
+                assetCount: 20,
+                unavailableAssetCount: 7,
+                hasSecurityScopedBookmark: true
+            )
         ])
         XCTAssertEqual(diagnostics.recentFailures, [
             AppDiagnosticsFailure(
