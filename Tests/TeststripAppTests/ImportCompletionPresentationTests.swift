@@ -93,6 +93,19 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertNil(openAction.placeholder)
     }
 
+    func testEvaluateImportActionIsEnabledWhenLatestImportCanBeEvaluated() throws {
+        let presentation = ImportCompletionPresentation.presentation(
+            for: summary(),
+            canEvaluateImport: true
+        )
+
+        let action = try XCTUnwrap(presentation.actionRows.first { $0.kind == .evaluateImport })
+        XCTAssertTrue(action.isEnabled)
+        XCTAssertEqual(action.title, "Evaluate import")
+        XCTAssertEqual(action.detail, "Run local reads on this import")
+        XCTAssertNil(action.placeholder)
+    }
+
     func testEnablesKeywordReviewActionWhenBatchSuggestionsExist() throws {
         let presentation = ImportCompletionPresentation.presentation(
             for: summary(),

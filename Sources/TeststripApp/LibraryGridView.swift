@@ -944,7 +944,8 @@ struct LibraryGridView: View {
         let presentation = ImportCompletionPresentation.presentation(
             for: summary,
             batchKeywordSuggestions: model.latestImportBatchKeywordSuggestions,
-            faceReviewAssetCount: model.reviewQueueCounts[.facesFound] ?? 0
+            faceReviewAssetCount: model.latestImportFaceReviewAssetCount,
+            canEvaluateImport: model.canRequestLatestImportAssetEvaluations
         )
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
@@ -1074,6 +1075,8 @@ struct LibraryGridView: View {
             reviewLatestImportInCompare()
         case .openInLibrary:
             openLatestImportCompletion()
+        case .evaluateImport:
+            requestLatestImportEvaluations()
         case .keywordSuggestions:
             reviewLatestImportKeywordSuggestions()
         case .stackGrouping:
@@ -2246,6 +2249,15 @@ struct LibraryGridView: View {
             batchMetadataDraft = BatchMetadataDraft()
             isAllCatalogBatchMetadataConfirmed = false
             isReviewingBatchMetadata = true
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func requestLatestImportEvaluations() {
+        do {
+            try model.requestLatestImportAssetEvaluations()
+            model.statusMessage = "Evaluating latest import"
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -5754,7 +5766,8 @@ struct ImportCompletionPresentation: Equatable {
     static func presentation(
         for summary: ImportCompletionSummary,
         batchKeywordSuggestions: [BatchKeywordSuggestion] = [],
-        faceReviewAssetCount: Int = 0
+        faceReviewAssetCount: Int = 0,
+        canEvaluateImport: Bool = false
     ) -> ImportCompletionPresentation {
         ImportCompletionPresentation(
             title: title(for: summary),
@@ -5789,6 +5802,15 @@ struct ImportCompletionPresentation: Equatable {
                     detail: "Browse this import",
                     systemImage: "rectangle.stack",
                     isEnabled: true,
+                    isPrimary: false,
+                    placeholder: nil
+                ),
+                ImportCompletionActionPresentation(
+                    kind: .evaluateImport,
+                    title: "Evaluate import",
+                    detail: canEvaluateImport ? "Run local reads on this import" : "Waiting for cached previews",
+                    systemImage: "sparkles",
+                    isEnabled: canEvaluateImport,
                     isPrimary: false,
                     placeholder: nil
                 ),
@@ -5998,6 +6020,7 @@ struct ImportCompletionActionPresentation: Equatable, Identifiable {
         case startCulling
         case reviewImportedFrames
         case openInLibrary
+        case evaluateImport
         case stackGrouping
         case faceNaming
         case keywordSuggestions

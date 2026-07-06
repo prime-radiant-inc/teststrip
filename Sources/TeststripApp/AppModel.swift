@@ -1340,6 +1340,16 @@ public final class AppModel {
         workerSupervisor != nil && !assets.isEmpty
     }
 
+    public var canRequestLatestImportAssetEvaluations: Bool {
+        guard workerSupervisor != nil,
+              let catalog,
+              latestImportCompletionSummary != nil,
+              let assetIDs = try? latestImportOutputAssetIDs(repository: catalog.repository) else {
+            return false
+        }
+        return assetIDs.contains { hasCachedPreview(for: $0) }
+    }
+
     public var canRequestCurrentScopeAssetEvaluations: Bool {
         workerSupervisor != nil && catalog != nil && totalAssetCount > 0
     }
@@ -1399,6 +1409,19 @@ public final class AppModel {
             return []
         }
         return batchKeywordSuggestions(for: importedAssets)
+    }
+
+    public var latestImportFaceReviewAssetCount: Int {
+        guard let catalog,
+              let assetIDs = try? latestImportOutputAssetIDs(repository: catalog.repository),
+              !assetIDs.isEmpty,
+              let faceAssetIDs = try? catalog.repository.assetIDs(
+                ids: assetIDs,
+                matching: Self.reviewQueueQuery(.facesFound)
+              ) else {
+            return 0
+        }
+        return faceAssetIDs.count
     }
 
     public var currentScopeBatchKeywordSuggestions: [BatchKeywordSuggestion] {
@@ -4829,6 +4852,25 @@ public final class AppModel {
         let evaluableAssetIDs = assetIDs.filter { hasCachedPreview(for: $0) }
         guard !evaluableAssetIDs.isEmpty else {
             throw TeststripError.invalidState("no current scope assets with cached previews")
+        }
+        for assetID in evaluableAssetIDs {
+            for provider in providers {
+                try requestEvaluation(assetID: assetID, provider: provider)
+            }
+        }
+    }
+
+    public func requestLatestImportAssetEvaluations(providers: [String] = AppModel.defaultEvaluationProviderNames) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let assetIDs = try latestImportOutputAssetIDs(repository: catalog.repository)
+        guard !assetIDs.isEmpty else {
+            throw TeststripError.invalidState("no latest import assets")
+        }
+        let evaluableAssetIDs = assetIDs.filter { hasCachedPreview(for: $0) }
+        guard !evaluableAssetIDs.isEmpty else {
+            throw TeststripError.invalidState("no latest import assets with cached previews")
         }
         for assetID in evaluableAssetIDs {
             for provider in providers {

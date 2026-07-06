@@ -7119,6 +7119,92 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testRequestLatestImportAssetEvaluationsDispatchesOnlyCachedImportedAssets() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: transport
+        )
+        let importedCached = makeAsset(id: "latest-import-cached", size: 1)
+        let importedUncached = makeAsset(id: "latest-import-uncached", size: 2)
+        let outsideCached = makeAsset(id: "outside-latest-import", size: 3)
+        let (model, _, previewCache) = try makeModelWithCompletedImportSession(
+            named: "latest-import-evaluation",
+            assets: [importedCached, importedUncached, outsideCached],
+            outputAssetIDs: [importedCached.id, importedUncached.id],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: importedCached.id, level: .grid)))
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: outsideCached.id, level: .grid)))
+
+        XCTAssertTrue(model.canRequestLatestImportAssetEvaluations)
+
+        try model.requestLatestImportAssetEvaluations(providers: ["local-image-metrics"])
+
+        XCTAssertEqual(model.backgroundWorkQueue.items.map(\.id), [
+            WorkSessionID(rawValue: "evaluation-\(importedCached.id.rawValue)-local-image-metrics")
+        ])
+        XCTAssertEqual(try transport.commands(), [
+            .runEvaluation(assetID: importedCached.id, provider: "local-image-metrics")
+        ])
+    }
+
+    func testCanRequestLatestImportAssetEvaluationsRequiresWorkerAndCachedImportedPreview() throws {
+        let imported = makeAsset(id: "latest-import-gate-imported", size: 1)
+        let outsideCached = makeAsset(id: "latest-import-gate-outside", size: 2)
+        let (noWorkerModel, _, noWorkerPreviewCache) = try makeModelWithCompletedImportSession(
+            named: "latest-import-evaluation-no-worker",
+            assets: [imported],
+            outputAssetIDs: [imported.id]
+        )
+        try writePreviewPlaceholder(to: noWorkerPreviewCache.url(for: PreviewCacheKey(assetID: imported.id, level: .grid)))
+        XCTAssertFalse(noWorkerModel.canRequestLatestImportAssetEvaluations)
+
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: transport
+        )
+        let (model, _, previewCache) = try makeModelWithCompletedImportSession(
+            named: "latest-import-evaluation-only-outside-preview",
+            assets: [imported, outsideCached],
+            outputAssetIDs: [imported.id],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: outsideCached.id, level: .grid)))
+
+        XCTAssertFalse(model.canRequestLatestImportAssetEvaluations)
+    }
+
+    func testLatestImportFaceReviewCountIgnoresFacesOutsideLatestImport() throws {
+        let importedFace = makeAsset(id: "latest-import-face", size: 1)
+        let importedNoFace = makeAsset(id: "latest-import-no-face", size: 2)
+        let olderFace = makeAsset(id: "older-face-signal", size: 2)
+        let (model, repository, _) = try makeModelWithCompletedImportSession(
+            named: "latest-import-face-count",
+            assets: [importedFace, importedNoFace, olderFace],
+            outputAssetIDs: [importedFace.id, importedNoFace.id]
+        )
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(
+                assetID: importedFace.id,
+                kind: .faceCount,
+                value: .count(1),
+                confidence: 0.9,
+                provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+            ),
+            EvaluationSignal(
+                assetID: olderFace.id,
+                kind: .faceCount,
+                value: .count(1),
+                confidence: 0.9,
+                provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+            )
+        ])
+
+        XCTAssertEqual(model.latestImportFaceReviewAssetCount, 1)
+    }
+
     func testRequestCompareAssetEvaluationsDispatchesOnlyCachedCompareAssets() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -10002,7 +10088,7 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(10))
         )
-        let (model, _) = try makeModelWithCompletedImportSession(
+        let (model, _, _) = try makeModelWithCompletedImportSession(
             named: "import-summary-stack-counts",
             assets: [first, second, singleton],
             outputAssetIDs: [first.id, second.id, singleton.id]
@@ -10059,7 +10145,7 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(11))
         )
-        let (model, repository) = try makeModelWithCompletedImportSession(
+        let (model, repository, _) = try makeModelWithCompletedImportSession(
             named: "stack-culling-from-import",
             assets: [singleton, stackFirst, stackSecond],
             outputAssetIDs: [singleton.id, stackFirst.id, stackSecond.id]
@@ -10101,7 +10187,7 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(120))
         )
-        let (model, repository) = try makeModelWithCompletedImportSession(
+        let (model, repository, _) = try makeModelWithCompletedImportSession(
             named: "visual-stack-culling-from-import",
             assets: [first, similar, different],
             outputAssetIDs: [first.id, similar.id, different.id]
@@ -10158,7 +10244,7 @@ final class AppModelTests: XCTestCase {
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(21))
         )
         let assets = [firstStackLead, firstStackAlternate, singleton, secondStackLead, secondStackAlternate]
-        let (model, repository) = try makeModelWithCompletedImportSession(
+        let (model, repository, _) = try makeModelWithCompletedImportSession(
             named: "persist-stack-culling-from-import",
             assets: assets,
             outputAssetIDs: assets.map(\.id)
@@ -10208,7 +10294,7 @@ final class AppModelTests: XCTestCase {
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(2_001))
         )
         let assets = singletons + [stackFirst, stackSecond]
-        let (model, _) = try makeModelWithCompletedImportSession(
+        let (model, _, _) = try makeModelWithCompletedImportSession(
             named: "stack-culling-from-import-late-stack",
             assets: assets,
             outputAssetIDs: assets.map(\.id)
@@ -11027,8 +11113,9 @@ final class AppModelTests: XCTestCase {
     private func makeModelWithCompletedImportSession(
         named name: String,
         assets: [Asset],
-        outputAssetIDs: [AssetID]
-    ) throws -> (AppModel, CatalogRepository) {
+        outputAssetIDs: [AssetID],
+        workerSupervisor: WorkerSupervisor? = nil
+    ) throws -> (AppModel, CatalogRepository, PreviewCache) {
         let directory = try makeTemporaryDirectory(named: name)
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
@@ -11065,7 +11152,7 @@ final class AppModelTests: XCTestCase {
                 previewCache: previewCache
             )
         )
-        return (try AppModel.load(catalog: catalog), repository)
+        return (try AppModel.load(catalog: catalog, workerSupervisor: workerSupervisor), repository, previewCache)
     }
 
     private func makeComparePreviewModel(
