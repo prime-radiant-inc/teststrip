@@ -3745,6 +3745,7 @@ struct CompareSurveyPresentation: Equatable {
     var isContendersModeAvailable: Bool
     var isContendersOnly: Bool
     var contenderAssets: [Asset]
+    var comparativeVerdictText: String?
     private var recommendedFrameLabel: String?
     private var signalBadgesByAssetID: [AssetID: [CompareDecisionBadge]]
 
@@ -3766,6 +3767,7 @@ struct CompareSurveyPresentation: Equatable {
             self.isContendersModeAvailable = false
             self.isContendersOnly = false
             self.contenderAssets = []
+            self.comparativeVerdictText = nil
             self.recommendedFrameLabel = nil
             self.signalBadgesByAssetID = [:]
             return
@@ -3795,9 +3797,22 @@ struct CompareSurveyPresentation: Equatable {
         self.isContendersModeAvailable = !rankedCandidates.isEmpty
         self.isContendersOnly = contendersOnly && isContendersModeAvailable
         let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
-        self.contenderAssets = rankedCandidates
-            .prefix(Self.contenderCount)
-            .compactMap { assetsByID[$0.assetID] }
+        let topContenders = Array(rankedCandidates.prefix(Self.contenderCount))
+        self.contenderAssets = topContenders.compactMap { assetsByID[$0.assetID] }
+        if self.isContendersOnly, topContenders.count >= 2 {
+            let leader = topContenders[0]
+            let runnerUp = topContenders[1]
+            let qualifiers = CullingStackRecommendation.comparativeQualifiers(
+                leader: leader.assetID,
+                runnerUp: runnerUp.assetID,
+                evaluationSignalsByAssetID: evaluationSignalsByAssetID
+            )
+            self.comparativeVerdictText = qualifiers.isEmpty
+                ? "Frame \(leader.frameLabel) edges it"
+                : "Frame \(leader.frameLabel) edges it — \(qualifiers.joined(separator: ", "))"
+        } else {
+            self.comparativeVerdictText = nil
+        }
         let recommendation = rankedCandidates.first
         self.recommendedAssetID = recommendation?.assetID
         self.recommendedFrameLabel = recommendation?.frameLabel
@@ -4645,6 +4660,43 @@ struct CullingStackRecommendation: Equatable {
             }
             .max()
     }
+
+    /// A focus-score percentage delta is only honest when the runner-up's
+    /// score is comfortably above zero: the metric is an average
+    /// neighbor-luminance delta, a true ratio scale starting at zero, but a
+    /// near-zero denominator turns a small absolute gap into an inflated,
+    /// noise-driven percentage.
+    private static let minimumRunnerUpFocusForPercentageDelta = 0.1
+
+    /// Honest, comparative one-line qualifiers between the leader and
+    /// runner-up of a tie-break, in display order. A sharpness claim only
+    /// appears when the leader's own raw focus score actually exceeds the
+    /// runner-up's — the composite ranking score can favor a leader who
+    /// wins on a different signal instead, and this must not overclaim that.
+    static func comparativeQualifiers(
+        leader: AssetID,
+        runnerUp: AssetID,
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
+    ) -> [String] {
+        var qualifiers: [String] = []
+        let leaderSignals = evaluationSignalsByAssetID[leader] ?? []
+        let runnerUpSignals = evaluationSignalsByAssetID[runnerUp] ?? []
+
+        if let leaderFocus = bestScore(kind: .focus, in: leaderSignals),
+           let runnerUpFocus = bestScore(kind: .focus, in: runnerUpSignals),
+           leaderFocus > runnerUpFocus {
+            if runnerUpFocus >= minimumRunnerUpFocusForPercentageDelta {
+                let percentage = Int(((leaderFocus - runnerUpFocus) / runnerUpFocus * 100).rounded())
+                qualifiers.append("\(percentage)% sharper")
+            } else {
+                qualifiers.append("sharper")
+            }
+        }
+        if let leaderEyesOpen = bestScore(kind: .eyesOpen, in: leaderSignals), leaderEyesOpen >= 1.0 {
+            qualifiers.append("eyes open")
+        }
+        return qualifiers
+    }
 }
 
 private struct CompareView: View {
@@ -4680,6 +4732,9 @@ private struct CompareView: View {
                 }
                 if let primaryAsset = presentation.primaryAsset {
                     surveyLayout(presentation)
+                    if let comparativeVerdictText = presentation.comparativeVerdictText {
+                        comparativeVerdictStrip(comparativeVerdictText)
+                    }
                     compareActionStrip(primaryAsset: primaryAsset, presentation: presentation)
                 } else {
                     emptyCompareSet
@@ -4907,6 +4962,20 @@ private struct CompareView: View {
         case .waiting:
             return .orange
         }
+    }
+
+    private func comparativeVerdictStrip(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(.orange)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .liveMockupPlaceholder(.focusCompare)
     }
 
     private func compareActionStrip(
