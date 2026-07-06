@@ -2717,6 +2717,8 @@ private struct CullingCompletionBannerView: View {
 private struct LoupeView: View {
     var model: AppModel
 
+    @State private var closeUpCrops: [(id: Int, image: CGImage)] = []
+
     var body: some View {
         let stackPresentation = cullingStackPresentation
         VStack(spacing: 0) {
@@ -2725,14 +2727,18 @@ private struct LoupeView: View {
                 cullingStackListRail
                 VStack(spacing: 0) {
                     if let asset = model.selectedAsset {
-                        loupeStage(for: asset)
-                            .task(id: asset.id.rawValue) {
-                                do {
-                                    try model.requestVisibleLoupePreview(assetID: asset.id)
-                                } catch {
-                                    model.errorMessage = error.localizedDescription
-                                }
+                        HStack(spacing: 0) {
+                            loupeStage(for: asset)
+                            closeUpsPanel
+                        }
+                        .task(id: asset.id.rawValue) {
+                            do {
+                                try model.requestVisibleLoupePreview(assetID: asset.id)
+                            } catch {
+                                model.errorMessage = error.localizedDescription
                             }
+                            await refreshCloseUps(for: asset.id)
+                        }
                     } else {
                         unavailableView(title: "No photo selected", systemImage: "photo")
                     }
@@ -2842,6 +2848,61 @@ private struct LoupeView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(entry.title)
         .accessibilityValue(entry.isDecided ? "Decided" : "Undecided")
+    }
+
+    @ViewBuilder
+    private var closeUpsPanel: some View {
+        if !closeUpCrops.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("CLOSE-UPS")
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(closeUpCrops, id: \.id) { crop in
+                            Image(decorative: crop.image, scale: 1)
+                                .resizable()
+                                .aspectRatio(1, contentMode: .fit)
+                                .frame(width: 112, height: 112)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .strokeBorder(Color.white.opacity(0.14))
+                                }
+                        }
+                    }
+                }
+            }
+            .padding(10)
+            .frame(width: 136)
+            .background(Color.black.opacity(0.26))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Face close-ups")
+        }
+    }
+
+    // Detection is display-only and per-selection: the cached preview is read
+    // off the main actor, cropped in memory, and nothing is persisted.
+    private func refreshCloseUps(for assetID: AssetID) async {
+        closeUpCrops = []
+        guard let previewURL = model.loupePreviewURL(for: assetID) else { return }
+        let crops = await Task.detached(priority: .utility) { () -> [(id: Int, image: CGImage)] in
+            guard let faces = try? CoreImageFaceExpressionAnalyzer().detectFaces(previewURL: previewURL),
+                  !faces.isEmpty,
+                  let source = CGImageSourceCreateWithURL(previewURL as CFURL, nil),
+                  let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                return []
+            }
+            let presentation = CloseUpFacesPresentation(
+                faces: faces,
+                imagePixelSize: CGSize(width: image.width, height: image.height)
+            )
+            return presentation.crops.compactMap { crop in
+                image.cropping(to: crop.pixelRect).map { (id: crop.id, image: $0) }
+            }
+        }.value
+        guard model.selectedAssetID == assetID else { return }
+        closeUpCrops = crops
     }
 
     @ViewBuilder
