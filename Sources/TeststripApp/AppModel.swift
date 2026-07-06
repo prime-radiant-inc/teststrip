@@ -8394,7 +8394,12 @@ public final class AppModel {
             enqueueWorkerImport(
                 source: source,
                 destinationRoot: destinationRoot,
-                command: .importCard(source: source, destinationRoot: destinationRoot)
+                command: .importCard(
+                    source: source,
+                    destinationRoot: destinationRoot,
+                    destinationPolicy: .flat,
+                    secondCopyDestination: nil
+                )
             )
             return
         }

@@ -437,7 +437,12 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
 
-        let result = try executor.execute(.importCard(source: sourceRoot, destinationRoot: destinationRoot))
+        let result = try executor.execute(.importCard(
+            source: sourceRoot,
+            destinationRoot: destinationRoot,
+            destinationPolicy: .flat,
+            secondCopyDestination: nil
+        ))
 
         let destination = destinationRoot.appendingPathComponent("source.jpg")
         let imported = try repository.allAssets(limit: 10)
@@ -458,6 +463,56 @@ final class WorkerCommandExecutorTests: XCTestCase {
             PreviewGenerationItem(assetID: asset.id, level: .grid)
         ])
         XCTAssertFalse(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)).path))
+    }
+
+    func testImportCardCommandHonorsDatedFoldersAndReportsSecondCopyFailures() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-import-card-dated")
+        let sourceRoot = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destinationRoot = root.appendingPathComponent("Library", isDirectory: true)
+        let secondCopyRoot = root.appendingPathComponent("Backup", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
+        let backupDatedFolder = secondCopyRoot
+            .appendingPathComponent("2025", isDirectory: true)
+            .appendingPathComponent("2025-01-03", isDirectory: true)
+        try FileManager.default.createDirectory(at: backupDatedFolder, withIntermediateDirectories: true)
+        let conflictingBackup = backupDatedFolder.appendingPathComponent("source.jpg")
+        try Data("existing".utf8).write(to: conflictingBackup)
+        let source = sourceRoot.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1600, height: 1000)
+        try FileManager.default.setAttributes(
+            [.modificationDate: FolderImportTests.utcDate(2025, 1, 3, 10, 30, 0)],
+            ofItemAtPath: source.path
+        )
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
+
+        let result = try executor.execute(.importCard(
+            source: sourceRoot,
+            destinationRoot: destinationRoot,
+            destinationPolicy: .capturedDate,
+            secondCopyDestination: secondCopyRoot
+        ))
+
+        let destination = destinationRoot
+            .appendingPathComponent("2025", isDirectory: true)
+            .appendingPathComponent("2025-01-03", isDirectory: true)
+            .appendingPathComponent("source.jpg")
+        XCTAssertEqual(try repository.allAssets(limit: 10).map(\.originalURL), [destination])
+        guard case .completedImport(_, _, _, _, let skippedSourceFileCount, let skippedSourceFiles) = result else {
+            return XCTFail("expected completedImport result, got \(result)")
+        }
+        XCTAssertEqual(skippedSourceFileCount, 1)
+        XCTAssertEqual(skippedSourceFiles.map(\.sourceURL), [source])
+        let message = try XCTUnwrap(skippedSourceFiles.first?.message)
+        XCTAssertTrue(
+            message.hasPrefix("backup copy failed: "),
+            "expected honest backup failure message, got \(message)"
+        )
+        XCTAssertEqual(try String(contentsOf: conflictingBackup, encoding: .utf8), "existing")
     }
 
     func testSyncMetadataCommandWritesMissingSidecarFromCatalogMetadata() throws {

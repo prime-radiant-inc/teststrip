@@ -67,7 +67,7 @@ public enum WorkerProtocolEncoder {
                 destinationRootURL: nil,
                 itemID: itemID?.rawValue
             )
-        case .importCard(let source, let destinationRoot):
+        case .importCard(let source, let destinationRoot, let destinationPolicy, let secondCopyDestination):
             envelope = WorkerCommandEnvelope(
                 command: "importCard",
                 assetID: nil,
@@ -76,7 +76,9 @@ public enum WorkerProtocolEncoder {
                 rootURL: nil,
                 sourceURL: source.path,
                 destinationRootURL: destinationRoot.path,
-                itemID: itemID?.rawValue
+                itemID: itemID?.rawValue,
+                destinationPolicy: destinationPolicy.rawValue,
+                secondCopyDestinationRootURL: secondCopyDestination?.path
             )
         case .generatePreview(let assetID, let level):
             envelope = WorkerCommandEnvelope(
@@ -232,7 +234,9 @@ public enum WorkerProtocolEncoder {
         case "importCard":
             command = .importCard(
                 source: try envelope.requiredSourceURL(),
-                destinationRoot: try envelope.requiredDestinationRootURL()
+                destinationRoot: try envelope.requiredDestinationRootURL(),
+                destinationPolicy: try envelope.importDestinationPolicy(),
+                secondCopyDestination: envelope.secondCopyDestinationURL()
             )
         case "generatePreview":
             let assetID = try envelope.requiredAssetID()
@@ -315,6 +319,8 @@ public enum WorkerProtocolEncoder {
         var sourceURL: String?
         var destinationRootURL: String?
         var itemID: String?
+        var destinationPolicy: String? = nil
+        var secondCopyDestinationRootURL: String? = nil
         var assetIDs: [String]? = nil
 
         func requiredAssetID() throws -> AssetID {
@@ -352,6 +358,25 @@ public enum WorkerProtocolEncoder {
 
         func requiredDestinationRootURL() throws -> URL {
             URL(fileURLWithPath: try requiredField(destinationRootURL, key: .destinationRootURL), isDirectory: true)
+        }
+
+        func importDestinationPolicy() throws -> ImportDestinationPolicy {
+            guard let destinationPolicy else {
+                return .flat
+            }
+            guard let policy = ImportDestinationPolicy(rawValue: destinationPolicy) else {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.destinationPolicy],
+                        debugDescription: "Unknown destination policy: \(destinationPolicy)"
+                    )
+                )
+            }
+            return policy
+        }
+
+        func secondCopyDestinationURL() -> URL? {
+            secondCopyDestinationRootURL.map { URL(fileURLWithPath: $0, isDirectory: true) }
         }
 
         private func requiredField(_ value: String?, key: CodingKeys) throws -> String {

@@ -12487,7 +12487,12 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.isImporting)
         XCTAssertEqual(importItem.kind, .ingest)
         XCTAssertEqual(importItem.detail, "Importing from DCIM to Library")
-        XCTAssertEqual(try transport.commands(), [.importCard(source: source, destinationRoot: destinationRoot)])
+        XCTAssertEqual(try transport.commands(), [.importCard(
+            source: source,
+            destinationRoot: destinationRoot,
+            destinationPolicy: .flat,
+            secondCopyDestination: nil
+        )])
 
         let destinationImage = destinationRoot.appendingPathComponent("one.png")
         let importedAsset = Asset(
