@@ -3492,6 +3492,7 @@ struct CompareSurveyPresentation: Equatable {
     var recommendationText: String
     var recommendedAssetID: AssetID?
     private var recommendedFrameLabel: String?
+    private var signalBadgesByAssetID: [AssetID: [CompareDecisionBadge]]
 
     init(
         assets: [Asset],
@@ -3508,6 +3509,7 @@ struct CompareSurveyPresentation: Equatable {
             self.recommendationText = "No comparison set"
             self.recommendedAssetID = nil
             self.recommendedFrameLabel = nil
+            self.signalBadgesByAssetID = [:]
             return
         }
 
@@ -3535,8 +3537,21 @@ struct CompareSurveyPresentation: Equatable {
         let recommendation = rankedCandidates.first
         self.recommendedAssetID = recommendation?.assetID
         self.recommendedFrameLabel = recommendation?.frameLabel
+        self.signalBadgesByAssetID = Self.signalBadges(
+            assetIDs: assets.map(\.id),
+            bestAssetID: rankedCandidates.count >= 2 ? rankedCandidates.first?.assetID : nil,
+            evaluationSignalsByAssetID: evaluationSignalsByAssetID
+        )
+        let recommendationPhrases = recommendation.map { winner in
+            CullingStackRecommendation.rationalePhrases(
+                forWinner: winner.assetID,
+                stackAssetIDs: assets.map(\.id),
+                evaluationSignalsByAssetID: evaluationSignalsByAssetID
+            )
+        } ?? []
         self.recommendationText = Self.recommendationText(
             rankedCandidates: rankedCandidates,
+            recommendationPhrases: recommendationPhrases,
             primaryAsset: self.primaryAsset,
             rejectCount: max(assets.count - 1, 0)
         )
@@ -3549,6 +3564,7 @@ struct CompareSurveyPresentation: Equatable {
 
     private static func recommendationText(
         rankedCandidates: [CullingStackRecommendation],
+        recommendationPhrases: [String],
         primaryAsset: Asset?,
         rejectCount: Int
     ) -> String {
@@ -3556,6 +3572,9 @@ struct CompareSurveyPresentation: Equatable {
             return "No ranking yet"
         }
         guard recommendation.assetID == primaryAsset?.id else {
+            guard recommendationPhrases.isEmpty else {
+                return "Top signal: frame \(recommendation.frameLabel) — \(recommendationPhrases.joined(separator: ", "))"
+            }
             return "Top signal: frame \(recommendation.frameLabel)"
         }
         guard rejectCount > 0 else {
@@ -3654,6 +3673,49 @@ struct CompareSurveyPresentation: Equatable {
         return badges
     }
 
+    /// Signal-derived read badges (BEST / EYES CLOSED / SOFT). Separate from
+    /// decisionBadges so metadata badges never claim machine reads.
+    func signalBadges(for asset: Asset) -> [CompareDecisionBadge] {
+        signalBadgesByAssetID[asset.id] ?? []
+    }
+
+    private static let softFocusBadgeThreshold = 0.5
+
+    private static func signalBadges(
+        assetIDs: [AssetID],
+        bestAssetID: AssetID?,
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
+    ) -> [AssetID: [CompareDecisionBadge]] {
+        var badgesByAssetID: [AssetID: [CompareDecisionBadge]] = [:]
+        for assetID in assetIDs {
+            if assetID == bestAssetID {
+                badgesByAssetID[assetID] = [CompareDecisionBadge(text: "✦ BEST", tone: .best)]
+                continue
+            }
+            var badges: [CompareDecisionBadge] = []
+            let signals = evaluationSignalsByAssetID[assetID] ?? []
+            if let eyesOpen = highestConfidenceScore(kind: .eyesOpen, in: signals), eyesOpen < 1.0 {
+                badges.append(CompareDecisionBadge(text: "EYES CLOSED", tone: .destructive))
+            }
+            if let focus = highestConfidenceScore(kind: .focus, in: signals), focus < softFocusBadgeThreshold {
+                badges.append(CompareDecisionBadge(text: "SOFT", tone: .destructive))
+            }
+            badgesByAssetID[assetID] = badges
+        }
+        return badgesByAssetID
+    }
+
+    private static func highestConfidenceScore(kind: EvaluationKind, in signals: [EvaluationSignal]) -> Double? {
+        signals
+            .filter { $0.kind == kind }
+            .sorted { $0.confidence > $1.confidence }
+            .compactMap { signal -> Double? in
+                guard case .score(let score) = signal.value else { return nil }
+                return score
+            }
+            .first
+    }
+
     static func decisionSummary(for asset: Asset) -> String {
         if let flag = asset.metadata.flag {
             switch flag {
@@ -3708,6 +3770,7 @@ struct CompareDecisionBadge: Equatable, Identifiable {
         case destructive
         case rating
         case label
+        case best
     }
 
     var text: String
@@ -4359,7 +4422,7 @@ private struct CompareView: View {
             .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
                 model.select(assetID)
             }
-            compareDecisionBadges(presentation.decisionBadges(for: asset))
+            compareDecisionBadges(presentation.decisionBadges(for: asset) + presentation.signalBadges(for: asset))
                 .padding(8)
         }
     }
@@ -4383,7 +4446,7 @@ private struct CompareView: View {
 
     private func compareBadgeForeground(for tone: CompareDecisionBadge.Tone) -> Color {
         switch tone {
-        case .primary, .rating:
+        case .primary, .rating, .best:
             return .black
         case .positive, .destructive, .label:
             return .white
@@ -4402,6 +4465,8 @@ private struct CompareView: View {
             return .yellow
         case .label:
             return .blue.opacity(0.9)
+        case .best:
+            return .orange
         }
     }
 
