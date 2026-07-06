@@ -6226,6 +6226,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(localOnlyModel.canRefreshVisibleAssetAvailability)
     }
 
+    func testCanReconnectSourceRootUsesCatalogSourceRootsBeyondLoadedAssets() throws {
+        let (model, _, _) = try makeModelWithPreviewCache(named: "source-reconnect-enabled")
+        model.assets = []
+        model.sourceRoots = [
+            CatalogSourceRoot(
+                path: "/Volumes/Archive/Job",
+                name: "Job",
+                assetCount: 120,
+                unavailableAssetCount: 37
+            )
+        ]
+
+        XCTAssertFalse(model.canRefreshVisibleAssetAvailability)
+        XCTAssertTrue(model.canReconnectSourceRoot)
+
+        model.sourceRoots = []
+        XCTAssertFalse(model.canReconnectSourceRoot)
+
+        model.assets = [
+            makeAsset(id: "missing-visible", path: "/Volumes/Archive/Job/frame.jpg", rating: 0, availability: .missing)
+        ]
+        XCTAssertTrue(model.canReconnectSourceRoot)
+    }
+
     func testRequestMissingPreviewDispatchesWorkerPreviewCommand() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

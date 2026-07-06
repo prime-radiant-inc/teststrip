@@ -126,7 +126,7 @@ struct LibraryGridView: View {
             } label: {
                 Label("Reconnect Sources", systemImage: "externaldrive")
             }
-            .disabled(isImporting || !model.canRefreshVisibleAssetAvailability)
+            .disabled(isImporting || !model.canReconnectSourceRoot)
             .help("Reconnect moved or mounted source roots")
 
             Button {

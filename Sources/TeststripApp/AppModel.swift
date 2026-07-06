@@ -1282,6 +1282,10 @@ public final class AppModel {
         catalog != nil && !assets.isEmpty
     }
 
+    public var canReconnectSourceRoot: Bool {
+        catalog != nil && !suggestedReconnectOldRootPath.isEmpty
+    }
+
     public var selectedEvaluationSignals: [EvaluationSignal] {
         guard let selectedAssetID else { return [] }
         return evaluationSignals(for: selectedAssetID)
