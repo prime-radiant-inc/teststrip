@@ -26,6 +26,8 @@ struct LibraryGridView: View {
     @State private var isShowingImportPathSheet = false
     @State private var dismissedImportCompletionSummaryID: String?
     @State private var importPathDraft = ImportFolderPathDraft()
+    @State private var isReviewingImportPath = false
+    @State private var importPathReviewID: UUID?
     @State private var importConfirmationDraft: ImportConfirmationDraft?
     @State private var sourceReconnectDraft = SourceReconnectPathDraft()
     @State private var cullingFocusRequest = 0
@@ -1210,13 +1212,28 @@ struct LibraryGridView: View {
     }
 
     private var importPathSheet: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let reviewPresentation = ImportFolderPathReviewPresentation(
+            draft: importPathDraft,
+            isReviewing: isReviewingImportPath,
+            isImporting: isImporting
+        )
+        return VStack(alignment: .leading, spacing: 12) {
             Text("Import Folder Path")
                 .font(.headline)
             TextField("Folder path", text: $importPathDraft.path)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 420)
+                .disabled(isReviewingImportPath)
             importPlanView(steps: importPathDraft.planSteps, width: 420)
+            if reviewPresentation.showsProgress {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(reviewPresentation.statusText ?? "")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
             if let errorMessage = importPathDraft.errorMessage {
                 Text(errorMessage)
                     .font(.caption)
@@ -1225,16 +1242,22 @@ struct LibraryGridView: View {
             HStack {
                 Spacer()
                 Button("Cancel") {
+                    importPathReviewID = nil
+                    isReviewingImportPath = false
                     isShowingImportPathSheet = false
                 }
-                Button(importPathDraft.primaryActionTitle) {
+                Button(reviewPresentation.primaryActionTitle) {
                     importFolderPath()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(importPathDraft.path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isImporting)
+                .disabled(!reviewPresentation.isPrimaryActionEnabled)
             }
         }
         .padding(18)
+        .onDisappear {
+            importPathReviewID = nil
+            isReviewingImportPath = false
+        }
     }
 
     private func importConfirmationSheet(_ draft: ImportConfirmationDraft) -> some View {
@@ -1859,6 +1882,8 @@ struct LibraryGridView: View {
 
     private func showImportPathSheet() {
         importPathDraft.reset()
+        importPathReviewID = nil
+        isReviewingImportPath = false
         isShowingImportPathSheet = true
     }
 
@@ -1875,10 +1900,25 @@ struct LibraryGridView: View {
 
     private func importFolderPath() {
         do {
-            let confirmationDraft = try importPathDraft.makeFolderConfirmationDraft()
-            isShowingImportPathSheet = false
-            importConfirmationDraft = confirmationDraft
+            let folderURL = try importPathDraft.resolveFolderURL()
+            let reviewID = UUID()
+            importPathReviewID = reviewID
+            isReviewingImportPath = true
+            Task {
+                let confirmationDraft = await Task.detached(priority: .userInitiated) {
+                    ImportConfirmationDraft.folder(folderURL)
+                }.value
+                await MainActor.run {
+                    guard importPathReviewID == reviewID else { return }
+                    importPathReviewID = nil
+                    isReviewingImportPath = false
+                    isShowingImportPathSheet = false
+                    importConfirmationDraft = confirmationDraft
+                }
+            }
         } catch {
+            importPathReviewID = nil
+            isReviewingImportPath = false
             return
         }
     }

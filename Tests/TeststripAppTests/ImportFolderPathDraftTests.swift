@@ -65,6 +65,50 @@ final class ImportFolderPathDraftTests: XCTestCase {
         XCTAssertEqual(ImportFolderPathDraft().primaryActionTitle, "Review Import")
     }
 
+    func testPathReviewPresentationEnablesReviewForEnteredPath() {
+        let presentation = ImportFolderPathReviewPresentation(
+            draft: ImportFolderPathDraft(path: "/Photos/Job"),
+            isReviewing: false,
+            isImporting: false
+        )
+
+        XCTAssertEqual(presentation.primaryActionTitle, "Review Import")
+        XCTAssertTrue(presentation.isPrimaryActionEnabled)
+        XCTAssertFalse(presentation.showsProgress)
+        XCTAssertNil(presentation.statusText)
+    }
+
+    func testPathReviewPresentationShowsReviewingState() {
+        let presentation = ImportFolderPathReviewPresentation(
+            draft: ImportFolderPathDraft(path: "/Photos/Job"),
+            isReviewing: true,
+            isImporting: false
+        )
+
+        XCTAssertEqual(presentation.primaryActionTitle, "Reviewing...")
+        XCTAssertFalse(presentation.isPrimaryActionEnabled)
+        XCTAssertTrue(presentation.showsProgress)
+        XCTAssertEqual(presentation.statusText, "Reviewing folder before import...")
+    }
+
+    func testPathReviewPresentationDisablesEmptyImportingOrReviewingStates() {
+        XCTAssertFalse(ImportFolderPathReviewPresentation(
+            draft: ImportFolderPathDraft(path: "  "),
+            isReviewing: false,
+            isImporting: false
+        ).isPrimaryActionEnabled)
+        XCTAssertFalse(ImportFolderPathReviewPresentation(
+            draft: ImportFolderPathDraft(path: "/Photos/Job"),
+            isReviewing: false,
+            isImporting: true
+        ).isPrimaryActionEnabled)
+        XCTAssertFalse(ImportFolderPathReviewPresentation(
+            draft: ImportFolderPathDraft(path: "/Photos/Job"),
+            isReviewing: true,
+            isImporting: true
+        ).isPrimaryActionEnabled)
+    }
+
     @MainActor
     func testInvalidPathKeepsDraftErrorForSheet() throws {
         var draft = ImportFolderPathDraft(path: "/definitely/not/a/teststrip/import/folder")

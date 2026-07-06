@@ -122,3 +122,18 @@ struct ImportFolderPathDraft: Equatable {
         }
     }
 }
+
+struct ImportFolderPathReviewPresentation: Equatable {
+    var primaryActionTitle: String
+    var isPrimaryActionEnabled: Bool
+    var showsProgress: Bool
+    var statusText: String?
+
+    init(draft: ImportFolderPathDraft, isReviewing: Bool, isImporting: Bool) {
+        let hasPath = !draft.path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        primaryActionTitle = isReviewing ? "Reviewing..." : draft.primaryActionTitle
+        isPrimaryActionEnabled = hasPath && !isReviewing && !isImporting
+        showsProgress = isReviewing
+        statusText = isReviewing ? "Reviewing folder before import..." : nil
+    }
+}
