@@ -4242,7 +4242,7 @@ struct CullingStackActionPresentation: Equatable, Identifiable {
     }
 }
 
-private struct CullingStackRecommendation: Equatable {
+struct CullingStackRecommendation: Equatable {
     var assetID: AssetID
     var frameLabel: String
     var score: Double

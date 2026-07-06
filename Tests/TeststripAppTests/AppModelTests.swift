@@ -3355,7 +3355,72 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.selectedAssetSetID, firstSet.id)
         XCTAssertEqual(model.assets.map(\.id), [firstLead.id, firstAlternate.id])
-        XCTAssertEqual(model.selectedAssetID, firstLead.id)
+        // Re-entry lands on the ranked frame: firstAlternate carries the only focus signal.
+        XCTAssertEqual(model.selectedAssetID, firstAlternate.id)
+    }
+
+    func testNextStackNavigationSelectsRecommendedFrameWhenRanked() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "stack-entry-recommended",
+            sessionID: "stack-entry-recommended-session"
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try fixture.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: fixture.secondLead.id, kind: .focus, value: .score(0.4), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: fixture.secondAlternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ])
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+
+        try fixture.model.applyCullingShortcut(.nextStack)
+
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondAlternate.id)
+        XCTAssertEqual(fixture.model.selectedView, .loupe)
+    }
+
+    func testNextStackNavigationFallsBackToFirstFrameWithoutSignals() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "stack-entry-fallback",
+            sessionID: "stack-entry-fallback-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+
+        try fixture.model.applyCullingShortcut(.nextStack)
+
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
+    }
+
+    func testBeginningStackCullingSelectsRecommendedFrameOfFirstStack() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let stackFirst = makeAsset(
+            id: "recommended-entry-first",
+            path: "/Photos/Import/recommended-entry-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let stackSecond = makeAsset(
+            id: "recommended-entry-second",
+            path: "/Photos/Import/recommended-entry-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, repository, _) = try makeModelWithCompletedImportSession(
+            named: "recommended-entry-stack-culling",
+            assets: [stackFirst, stackSecond],
+            outputAssetIDs: [stackFirst.id, stackSecond.id]
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: stackSecond.id, kind: .focus, value: .score(0.92), confidence: 0.9, provenance: provenance)
+        ])
+
+        _ = try model.beginStackCullingFromLatestImportCompletion()
+
+        XCTAssertEqual(model.selectedAssetID, stackSecond.id)
+        XCTAssertEqual(model.selectedView, .loupe)
     }
 
     func testCullingShortcutMovesBetweenLoadedStacks() throws {

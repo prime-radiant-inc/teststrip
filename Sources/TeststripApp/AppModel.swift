@@ -2984,8 +2984,8 @@ public final class AppModel {
             throw TeststripError.invalidState("no stack sets were created")
         }
         try applyAssetSet(id: firstStackSetID)
-        if let firstAssetID = stacks.first?.assetIDs.first {
-            selectAssetID(firstAssetID)
+        if let firstStackAssetIDs = stacks.first?.assetIDs {
+            selectAssetID(recommendedCullingStackAssetID(in: firstStackAssetIDs) ?? firstStackAssetIDs.first)
         }
         selectedView = .loupe
 
@@ -3959,6 +3959,18 @@ public final class AppModel {
         })
     }
 
+    // The ranked best-of-stack frame, or nil when no frame carries quality signals.
+    private func recommendedCullingStackAssetID(in assetIDs: [AssetID]) -> AssetID? {
+        guard assetIDs.count > 1 else { return nil }
+        let signalsByAssetID = Dictionary(uniqueKeysWithValues: assetIDs.map { assetID in
+            (assetID, evaluationSignals(for: assetID))
+        })
+        return CullingStackRecommendation.rankedCandidates(
+            stackAssetIDs: assetIDs,
+            evaluationSignalsByAssetID: signalsByAssetID
+        ).first?.assetID
+    }
+
     public var selectedCullingStackScope: CullingStackScope? {
         guard let selectedWorkStackAssetIDs else {
             return nil
@@ -4089,7 +4101,8 @@ public final class AppModel {
             return false
         }
         try applyAssetSet(id: targetSetID)
-        selectAssetID(selectedExplicitAssetIDs?.first)
+        let stackAssetIDs = selectedExplicitAssetIDs ?? []
+        selectAssetID(recommendedCullingStackAssetID(in: stackAssetIDs) ?? stackAssetIDs.first)
         selectedView = .loupe
         return true
     }
