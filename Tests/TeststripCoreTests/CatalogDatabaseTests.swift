@@ -1082,6 +1082,41 @@ final class CatalogDatabaseTests: XCTestCase {
         )
     }
 
+    func testLikelyPickUsesPerKindStrongReadThresholds() throws {
+        // Per-kind anchors from the 2026-07-06 calibration study: the three
+        // strong-read kinds live on incompatible scales, so a shared 0.65
+        // cannot work. Calibrated focus >= 0.8 (raw p75 0.12 / 0.15),
+        // aesthetics >= 0.65 (calibrated p90), faceQuality >= 0.45 (p75).
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-likely-pick-per-kind")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let sharpFocus = Asset.testAsset(id: AssetID(rawValue: "sharp-focus"), path: "/Volumes/NAS/Job/sharp-focus.jpg", rating: 0)
+        let midFocus = Asset.testAsset(id: AssetID(rawValue: "mid-focus"), path: "/Volumes/NAS/Job/mid-focus.jpg", rating: 0)
+        let strongFace = Asset.testAsset(id: AssetID(rawValue: "strong-face"), path: "/Volumes/NAS/Job/strong-face.jpg", rating: 0)
+        let weakFace = Asset.testAsset(id: AssetID(rawValue: "weak-face"), path: "/Volumes/NAS/Job/weak-face.jpg", rating: 0)
+        let strongAesthetics = Asset.testAsset(id: AssetID(rawValue: "strong-aesthetics"), path: "/Volumes/NAS/Job/strong-aesthetics.jpg", rating: 0)
+        let midAesthetics = Asset.testAsset(id: AssetID(rawValue: "mid-aesthetics"), path: "/Volumes/NAS/Job/mid-aesthetics.jpg", rating: 0)
+        let metricsProvenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "2", settingsHash: "default")
+        let visionProvenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.upsert([sharpFocus, midFocus, strongFace, weakFace, strongAesthetics, midAesthetics])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: sharpFocus.id, kind: .focus, value: .score(0.85), confidence: 0.9, provenance: metricsProvenance),
+            EvaluationSignal(assetID: midFocus.id, kind: .focus, value: .score(0.7), confidence: 0.9, provenance: metricsProvenance),
+            EvaluationSignal(assetID: strongFace.id, kind: .faceQuality, value: .score(0.5), confidence: 0.5, provenance: visionProvenance),
+            EvaluationSignal(assetID: weakFace.id, kind: .faceQuality, value: .score(0.4), confidence: 0.4, provenance: visionProvenance),
+            EvaluationSignal(assetID: strongAesthetics.id, kind: .aesthetics, value: .score(0.66), confidence: 0.55, provenance: metricsProvenance),
+            EvaluationSignal(assetID: midAesthetics.id, kind: .aesthetics, value: .score(0.6), confidence: 0.55, provenance: metricsProvenance)
+        ])
+
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.likelyPick]), limit: 10)
+                .map(\.id.rawValue)
+                .sorted(),
+            ["sharp-focus", "strong-aesthetics", "strong-face"]
+        )
+    }
+
     func testSearchesAssetsWithTechnicalMetadataPredicates() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-search")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
