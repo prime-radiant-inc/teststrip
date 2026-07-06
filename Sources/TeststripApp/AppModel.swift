@@ -1121,15 +1121,11 @@ public final class AppModel {
             return false
         }
 
-        for asset in assets.prefix(Self.metadataSyncStateDisplayLimit) {
-            guard let pendingItem = try? catalog.repository.pendingMetadataSyncItem(assetID: asset.id),
-                  canAutomaticallyRetryMetadataSync(for: asset, sidecarURL: pendingItem.sidecarURL),
-                  !hasActiveMetadataSyncWork(assetID: asset.id, generation: pendingItem.catalogGeneration) else {
-                continue
-            }
-            return true
-        }
-        return false
+        let candidates = try? metadataSyncRetryCandidatesInCurrentScope(
+            repository: catalog.repository,
+            limit: Self.metadataSyncStateDisplayLimit
+        )
+        return candidates?.isEmpty == false
     }
 
     public var selectedAssetPosition: Int? {
@@ -3977,20 +3973,11 @@ public final class AppModel {
 
         let resolvedLimit = limit ?? Self.metadataSyncStateDisplayLimit
         var queuedCount = 0
-        for asset in assets.prefix(max(0, resolvedLimit)) {
-            guard let pendingItem = try catalog.repository.pendingMetadataSyncItem(assetID: asset.id) else {
-                continue
-            }
-            guard canAutomaticallyRetryMetadataSync(for: asset, sidecarURL: pendingItem.sidecarURL) else {
-                continue
-            }
-            guard !hasActiveMetadataSyncWork(
-                assetID: asset.id,
-                generation: pendingItem.catalogGeneration
-            ) else {
-                continue
-            }
-
+        let candidates = try metadataSyncRetryCandidatesInCurrentScope(
+            repository: catalog.repository,
+            limit: max(0, resolvedLimit)
+        )
+        for (_, pendingItem) in candidates {
             try enqueueMetadataSyncWork(pendingItem: pendingItem)
             queuedCount += 1
         }
@@ -4826,6 +4813,37 @@ public final class AppModel {
             try enqueueMetadataSyncWork(pendingItem: pendingItem)
             enqueuedCount += 1
         }
+    }
+
+    private func metadataSyncRetryCandidatesInCurrentScope(
+        repository: CatalogRepository,
+        limit: Int
+    ) throws -> [(asset: Asset, pendingItem: MetadataSyncItem)] {
+        guard limit > 0 else { return [] }
+        let scopeAssets = try metadataSyncRetryScopeAssets(repository: repository, limit: limit)
+        var candidates: [(asset: Asset, pendingItem: MetadataSyncItem)] = []
+        for asset in scopeAssets {
+            guard let pendingItem = try repository.pendingMetadataSyncItem(assetID: asset.id),
+                  canAutomaticallyRetryMetadataSync(for: asset, sidecarURL: pendingItem.sidecarURL),
+                  !hasActiveMetadataSyncWork(assetID: asset.id, generation: pendingItem.catalogGeneration) else {
+                continue
+            }
+            candidates.append((asset, pendingItem))
+        }
+        return candidates
+    }
+
+    private func metadataSyncRetryScopeAssets(
+        repository: CatalogRepository,
+        limit: Int
+    ) throws -> [Asset] {
+        if let explicitAssetIDs = selectedExplicitAssetIDs {
+            return try repository.assets(ids: explicitAssetIDs, limit: limit)
+        }
+        if let query = currentLibraryQuery() {
+            return try repository.allAssets(matching: query, limit: limit)
+        }
+        return try repository.allAssets(limit: limit)
     }
 
     private func canAutomaticallyRetryMetadataSync(for asset: Asset, sidecarURL: URL) -> Bool {

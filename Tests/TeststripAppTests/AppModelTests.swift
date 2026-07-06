@@ -2183,7 +2183,35 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(fixture.model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }, [])
     }
 
-    func testCanRetryPendingMetadataSyncInCurrentScopeRequiresPendingFilterAndRetryableVisibleItem() throws {
+    func testRetryPendingMetadataSyncInCurrentScopeQueuesRetryableItemBeyondLoadedWindow() throws {
+        let fixture = try makePendingMetadataSyncScopeModelWithRetryableItemBeyondLoadedWindow(
+            named: "retry-pending-xmp-beyond-loaded"
+        )
+        fixture.model.metadataSyncPendingFilter = true
+        try fixture.model.reload()
+
+        XCTAssertFalse(fixture.model.assets.contains { $0.id == fixture.retryableAssetID })
+
+        let queuedCount = try fixture.model.retryPendingMetadataSyncInCurrentScope()
+
+        XCTAssertEqual(queuedCount, 1)
+        XCTAssertEqual(try fixture.transport.commands(), [
+            .syncMetadata(assetID: fixture.retryableAssetID)
+        ])
+    }
+
+    func testCanRetryPendingMetadataSyncInCurrentScopeLooksBeyondLoadedWindow() throws {
+        let fixture = try makePendingMetadataSyncScopeModelWithRetryableItemBeyondLoadedWindow(
+            named: "can-retry-pending-xmp-beyond-loaded"
+        )
+        fixture.model.metadataSyncPendingFilter = true
+        try fixture.model.reload()
+
+        XCTAssertFalse(fixture.model.assets.contains { $0.id == fixture.retryableAssetID })
+        XCTAssertTrue(fixture.model.canRetryPendingMetadataSyncInCurrentScope)
+    }
+
+    func testCanRetryPendingMetadataSyncInCurrentScopeRequiresPendingFilterAndRetryableCurrentScopeItem() throws {
         let fixture = try makePendingMetadataSyncScopeModel(named: "can-retry-pending-xmp-scope")
 
         XCTAssertFalse(fixture.model.canRetryPendingMetadataSyncInCurrentScope)
@@ -11502,6 +11530,75 @@ final class AppModelTests: XCTestCase {
             catalog: catalog,
             pendingMetadataSyncItems: pendingItems,
             pendingMetadataSyncCount: pendingItems.count,
+            workerSupervisor: supervisor
+        )
+        return (model, transport, retryable.id)
+    }
+
+    private func makePendingMetadataSyncScopeModelWithRetryableItemBeyondLoadedWindow(
+        named name: String
+    ) throws -> (model: AppModel, transport: RecordingWorkerTransport, retryableAssetID: AssetID) {
+        let directory = try makeTemporaryDirectory(named: name)
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        var assets: [Asset] = []
+        for index in 0..<120 {
+            let originalURL = photosDirectory.appendingPathComponent("offline-\(index).cr2")
+            try Data("offline raw bytes \(index)".utf8).write(to: originalURL)
+            assets.append(Asset(
+                id: AssetID(rawValue: "offline-\(index)"),
+                originalURL: originalURL,
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: 10 + Int64(index), modificationDate: Date(timeIntervalSince1970: TimeInterval(10 + index))),
+                availability: .offline,
+                metadata: AssetMetadata()
+            ))
+        }
+        let retryableURL = photosDirectory.appendingPathComponent("retryable-beyond-loaded.cr2")
+        try Data("retryable raw bytes".utf8).write(to: retryableURL)
+        let retryable = Asset(
+            id: AssetID(rawValue: "retryable-beyond-loaded"),
+            originalURL: retryableURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 1_000, modificationDate: Date(timeIntervalSince1970: 1_000)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        assets.append(retryable)
+        try repository.upsert(assets)
+
+        for asset in assets {
+            try repository.recordMetadataSyncPending(MetadataSyncItem(
+                assetID: asset.id,
+                sidecarURL: asset.originalURL.appendingPathExtension("xmp"),
+                catalogGeneration: try repository.catalogGeneration(assetID: asset.id),
+                lastSyncedFingerprint: nil
+            ))
+        }
+
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 1), transport: transport)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: Array(assets.prefix(120)),
+            totalAssetCount: assets.count,
+            catalog: catalog,
+            pendingMetadataSyncItems: try repository.pendingMetadataSyncItems(),
+            pendingMetadataSyncCount: assets.count,
             workerSupervisor: supervisor
         )
         return (model, transport, retryable.id)
