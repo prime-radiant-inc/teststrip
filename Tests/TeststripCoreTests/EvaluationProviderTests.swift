@@ -255,6 +255,29 @@ final class EvaluationProviderTests: XCTestCase {
         XCTAssertGreaterThan(detailedFocus, flatFocus + 0.2)
     }
 
+    func testPreviewPixelMetricsFocusScoreReflectsEdgeDetailInSampledPixels() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "preview-pixel-metrics")
+        let flatURL = directory.appendingPathComponent("flat.png")
+        let detailedURL = directory.appendingPathComponent("detailed.png")
+        try writeSolidPNG(to: flatURL, width: 64, height: 64, red: 0.5, green: 0.5, blue: 0.5)
+        try writeCheckerboardPNG(to: detailedURL, width: 64, height: 64, cellSize: 4)
+
+        let flatFocus = try sampledFocusScore(at: flatURL)
+        let detailedFocus = try sampledFocusScore(at: detailedURL)
+
+        XCTAssertLessThan(flatFocus, 0.01)
+        XCTAssertGreaterThan(detailedFocus, flatFocus + 0.2)
+    }
+
+    private func sampledFocusScore(at url: URL) throws -> Double {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            throw TeststripError.unsupportedFormat("could not read \(url.lastPathComponent)")
+        }
+        let pixels = try PreviewPixelMetrics.rgbaSamples(of: image, width: 16, height: 16)
+        return PreviewPixelMetrics.focusScore(in: pixels, width: 16, height: 16)
+    }
+
     func testLocalImageMetricsMotionBlurScoreFallsAsEdgeDetailRises() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "local-image-motion-blur")
         let flatURL = directory.appendingPathComponent("flat.png")
