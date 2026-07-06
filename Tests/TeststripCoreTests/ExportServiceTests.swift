@@ -1,4 +1,6 @@
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 import XCTest
 import TeststripCore
 
@@ -196,6 +198,84 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: source), originalBytes)
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: sourceFolder.path), ["source.jpg"])
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: destination.path), ["source.jpg"])
+    }
+
+    func testExportCarriesSourceMetadataWithUprightOrientationByDefault() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-carry-metadata")
+        let source = directory.appendingPathComponent("source.jpg")
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try writeMetadataFixtureJPEG(to: source, width: 400, height: 300)
+
+        XCTAssertTrue(ExportSettings(jpegQuality: 0.9).includeSourceMetadata)
+        _ = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.8, longEdgeMaximumPixels: 200),
+            destinationDirectory: destination
+        )
+
+        let properties = try imageProperties(of: destination.appendingPathComponent("source.jpg"))
+        let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any]
+        XCTAssertEqual(exif?[kCGImagePropertyExifDateTimeOriginal] as? String, "2020:01:02 03:04:05")
+        let gps = properties[kCGImagePropertyGPSDictionary] as? [CFString: Any]
+        let latitude = try XCTUnwrap(gps?[kCGImagePropertyGPSLatitude] as? Double)
+        XCTAssertEqual(latitude, 37.7749, accuracy: 0.0001)
+        XCTAssertEqual(gps?[kCGImagePropertyGPSLatitudeRef] as? String, "N")
+        XCTAssertEqual(properties[kCGImagePropertyOrientation] as? Int ?? 1, 1)
+        // Orientation 6 is baked into the pixels: the 400x300 source renders as
+        // 300x400 upright, then the 200px long-edge cap applies.
+        XCTAssertEqual(properties[kCGImagePropertyPixelWidth] as? Int, 150)
+        XCTAssertEqual(properties[kCGImagePropertyPixelHeight] as? Int, 200)
+    }
+
+    func testExportWithoutSourceMetadataDropsExifAndGps() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-strip-metadata")
+        let source = directory.appendingPathComponent("source.jpg")
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try writeMetadataFixtureJPEG(to: source, width: 400, height: 300)
+
+        _ = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.8, longEdgeMaximumPixels: 200, includeSourceMetadata: false),
+            destinationDirectory: destination
+        )
+
+        let properties = try imageProperties(of: destination.appendingPathComponent("source.jpg"))
+        let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any]
+        XCTAssertNil(exif?[kCGImagePropertyExifDateTimeOriginal])
+        XCTAssertNil(properties[kCGImagePropertyGPSDictionary])
+    }
+
+    private func writeMetadataFixtureJPEG(to url: URL, width: Int, height: Int) throws {
+        try TestDirectories.writeTestJPEG(to: url, width: width, height: height)
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+              let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
+            throw TeststripError.io("could not rewrite metadata fixture \(url.lastPathComponent)")
+        }
+        let properties: [CFString: Any] = [
+            kCGImagePropertyOrientation: 6,
+            kCGImagePropertyExifDictionary: [
+                kCGImagePropertyExifDateTimeOriginal: "2020:01:02 03:04:05"
+            ],
+            kCGImagePropertyGPSDictionary: [
+                kCGImagePropertyGPSLatitude: 37.7749,
+                kCGImagePropertyGPSLatitudeRef: "N",
+                kCGImagePropertyGPSLongitude: 122.4194,
+                kCGImagePropertyGPSLongitudeRef: "W"
+            ]
+        ]
+        CGImageDestinationAddImage(destination, image, properties as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else {
+            throw TeststripError.io("could not write metadata fixture \(url.lastPathComponent)")
+        }
+    }
+
+    private func imageProperties(of url: URL) throws -> [CFString: Any] {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
+            throw TeststripError.io("could not read image properties of \(url.lastPathComponent)")
+        }
+        return properties
     }
 }
 

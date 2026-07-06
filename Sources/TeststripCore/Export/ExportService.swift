@@ -5,10 +5,12 @@ import UniformTypeIdentifiers
 public struct ExportSettings: Hashable, Sendable {
     public var jpegQuality: Double
     public var longEdgeMaximumPixels: Int?
+    public var includeSourceMetadata: Bool
 
-    public init(jpegQuality: Double, longEdgeMaximumPixels: Int? = nil) {
+    public init(jpegQuality: Double, longEdgeMaximumPixels: Int? = nil, includeSourceMetadata: Bool = true) {
         self.jpegQuality = min(max(jpegQuality, 0), 1)
         self.longEdgeMaximumPixels = longEdgeMaximumPixels
+        self.includeSourceMetadata = includeSourceMetadata
     }
 }
 
@@ -113,14 +115,38 @@ public struct ExportService: Sendable {
         guard let destination = CGImageDestinationCreateWithURL(destinationURL as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
             return .failed(message: "could not create \(destinationURL.lastPathComponent)")
         }
-        let destinationProperties: [CFString: Any] = [
-            kCGImageDestinationLossyCompressionQuality: settings.jpegQuality
-        ]
+        var destinationProperties: [CFString: Any] = settings.includeSourceMetadata
+            ? carriedSourceProperties(from: source)
+            : [:]
+        destinationProperties[kCGImageDestinationLossyCompressionQuality] = settings.jpegQuality
         CGImageDestinationAddImage(destination, image, destinationProperties as CFDictionary)
         guard CGImageDestinationFinalize(destination) else {
             return .failed(message: "could not write \(destinationURL.lastPathComponent)")
         }
         return .exported(destinationURL: destinationURL)
+    }
+
+    private func carriedSourceProperties(from source: CGImageSource) -> [CFString: Any] {
+        guard var properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
+            return [:]
+        }
+        // The thumbnail render bakes the source orientation into the pixels,
+        // so carried metadata must say "up" or consumers would rotate twice.
+        properties[kCGImagePropertyOrientation] = 1
+        if var tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
+            tiff[kCGImagePropertyTIFFOrientation] = 1
+            properties[kCGImagePropertyTIFFDictionary] = tiff
+        }
+        // Resizing changes pixel dimensions; the destination derives them from
+        // the written image instead of stale source values.
+        properties.removeValue(forKey: kCGImagePropertyPixelWidth)
+        properties.removeValue(forKey: kCGImagePropertyPixelHeight)
+        if var exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any] {
+            exif.removeValue(forKey: kCGImagePropertyExifPixelXDimension)
+            exif.removeValue(forKey: kCGImagePropertyExifPixelYDimension)
+            properties[kCGImagePropertyExifDictionary] = exif
+        }
+        return properties
     }
 
     private func availableDestinationURL(

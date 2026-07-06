@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Resized-JPEG export of the current selection/visible page/current scope: JPEG quality + optional long-edge pixel cap, destination folder chosen via the existing folder panel, presets "Full-res JPEG" (quality 0.9, no resize) and "Web 2048px" (quality 0.8, 2048px long edge). Writes only into the chosen destination; originals and catalog are never touched. No watermarking, no print presets, no color-space controls, no export history.
+**Goal:** Resized-JPEG export of the current selection/visible page/current scope: JPEG quality + optional long-edge pixel cap, destination folder chosen via the existing folder panel, presets "Full-res JPEG" (quality 0.9, no resize) and "Web 2048px" (quality 0.8, 2048px long edge), plus an "Include EXIF/IPTC metadata" checkbox (default checked, independent of preset). Writes only into the chosen destination; originals and catalog are never touched. No watermarking, no print presets, no color-space controls, no export history.
 
 **Architecture:** A new pure core service `ExportService` in `Sources/TeststripCore/Export/ExportService.swift` takes original file URLs + `ExportSettings`, writes JPEGs into a destination directory using the same CGImageSource/CGImageDestination pattern as `PreviewRenderer`, and returns per-file results (exported / skipped-unavailable / failed-with-message) with deterministic `-2`, `-3` collision suffixes. The app layer adds three `AppModel` async methods mirroring the `applyVisibleBatchMetadata` / `applySelectedBatchMetadata` / `applyCurrentScopeBatchMetadata` trio, running the service on a detached task (the `beginImportFolder` pattern) with a main-actor progress sink (the `AppImportProgressSink` pattern). The UI is an Export toolbar popover in `LibraryGridView` that clones the Batch Metadata popover wiring (scope segmented picker, count text, all-catalog confirmation toggle) plus a preset picker, and gets the destination from a new `FolderSelectionPanel.chooseExportDestinationFolder` that clones the card-destination panel.
 
@@ -17,6 +17,7 @@
 - TDD is mandatory: every behavior lands as failing test → minimal implementation → green → commit.
 - Presets are exactly: "Full-res JPEG" = quality 0.9, no long-edge cap; "Web 2048px" = quality 0.8, cap 2048.
 - JPEG quality is clamped to 0...1 in `ExportSettings.init`.
+- `ExportSettings.includeSourceMetadata` (default `true`) carries the source's EXIF/IPTC image properties into the export. Because the thumbnail render bakes orientation into the pixels, carried metadata forces orientation to 1 (up), and pixel-dimension properties are dropped so the destination derives them from the written image.
 - Export never upscales (ImageIO thumbnail API never enlarges past source pixels).
 - Output filenames come only from `sourceURL.deletingPathExtension().lastPathComponent` + `.jpg`; collisions get deterministic `-2`, `-3`, ... suffixes; nothing is ever written outside the destination directory.
 - Missing/unreadable originals are reported as `skippedUnavailable` (filesystem check at export time); undecodable files as `failed(message:)`. No silent drops.
