@@ -187,6 +187,50 @@ final class CullingAssistPresentationTests: XCTestCase {
         XCTAssertEqual(allSmiling.detail, "Focus - local-http - 82% confidence · Smiling")
     }
 
+    func testVerdictSynthesizesKeepReadFromStrongQualityKinds() {
+        let presentation = CullingAssistPresentation.presentation(for: [
+            signal(kind: .focus, value: .score(0.96), confidence: 1.0),
+            signal(kind: .aesthetics, value: .score(0.9), confidence: 1.0)
+        ])
+
+        // (0.96 * 100 + 0.9 * 50) / 150 = 0.94
+        XCTAssertEqual(presentation.verdictText, "Keep read 94%")
+        XCTAssertEqual(presentation.verdictTone, .positive)
+    }
+
+    func testVerdictSynthesizesTossReadFromDefects() {
+        let presentation = CullingAssistPresentation.presentation(for: [
+            signal(kind: .focus, value: .score(0.2), confidence: 1.0),
+            signal(kind: .motionBlur, value: .score(0.9), confidence: 1.0)
+        ])
+
+        // (0.2 * 100 + (1 - 0.9) * 60) / 160 = 0.16
+        XCTAssertEqual(presentation.verdictText, "Toss read 16%")
+        XCTAssertEqual(presentation.verdictTone, .caution)
+    }
+
+    func testVerdictReportsMixedReadBetweenThresholds() {
+        let presentation = CullingAssistPresentation.presentation(for: [
+            signal(kind: .focus, value: .score(0.6), confidence: 1.0),
+            signal(kind: .aesthetics, value: .score(0.6), confidence: 1.0)
+        ])
+
+        XCTAssertEqual(presentation.verdictText, "Mixed read 60%")
+        XCTAssertEqual(presentation.verdictTone, .neutral)
+    }
+
+    func testVerdictRequiresAtLeastTwoScoredQualityKinds() {
+        let single = CullingAssistPresentation.presentation(for: [
+            signal(kind: .focus, value: .score(0.96), confidence: 1.0)
+        ])
+        let none = CullingAssistPresentation.presentation(for: [])
+
+        XCTAssertNil(single.verdictText)
+        XCTAssertEqual(single.verdictTone, .waiting)
+        XCTAssertNil(none.verdictText)
+        XCTAssertEqual(none.verdictTone, .waiting)
+    }
+
     private func signal(kind: EvaluationKind, value: EvaluationValue, confidence: Double) -> EvaluationSignal {
         EvaluationSignal(
             assetID: AssetID(rawValue: "asset"),

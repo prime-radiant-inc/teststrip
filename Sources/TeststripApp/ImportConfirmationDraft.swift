@@ -179,6 +179,7 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     var destinationRootURL: URL?
     var destinationUnavailableReason: String?
     var sourceSummary: ImportSourceSummary
+    var evaluateAfterImport = true
 
     var id: String {
         [
@@ -250,11 +251,14 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     }
 
     var planSteps: [ImportPlanStep] {
+        let baseSteps: [ImportPlanStep]
         switch mode {
         case .folder:
-            return ImportPlanSteps.folderInPlace
+            baseSteps = ImportPlanSteps.folderInPlace
         case .card:
-            return ImportPlanSteps.cardCopy(destinationName: destinationName ?? "the destination")
+            baseSteps = ImportPlanSteps.cardCopy(destinationName: destinationName ?? "the destination")
         }
+        guard evaluateAfterImport else { return baseSteps }
+        return baseSteps + [ImportPlanSteps.autoEvaluation]
     }
 }

@@ -617,6 +617,99 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.assets[8].metadata.flag)
     }
 
+    func testCompareGroupDecisionAdvancesToNextPersistedStackInCompare() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "compare-advance-persisted",
+            sessionID: "compare-advance-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        fixture.model.selectedView = .compare
+        XCTAssertEqual(fixture.model.compareAssets().map(\.id), [fixture.firstLead.id, fixture.firstAlternate.id])
+
+        try fixture.model.keepComparePrimaryAndRejectAlternates()
+
+        XCTAssertEqual(try fixture.repository.asset(id: fixture.firstLead.id).metadata.flag, .pick)
+        XCTAssertEqual(try fixture.repository.asset(id: fixture.firstAlternate.id).metadata.flag, .reject)
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedView, .compare)
+        XCTAssertEqual(fixture.model.compareAssets().map(\.id), [fixture.secondLead.id, fixture.secondAlternate.id])
+    }
+
+    func testCompareGroupDecisionAdvancesToNextCandidateStackWindow() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let firstBurstLead = makeAsset(
+            id: "compare-advance-a1",
+            path: "/Photos/Job/compare-advance-a1.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let firstBurstAlternate = makeAsset(
+            id: "compare-advance-a2",
+            path: "/Photos/Job/compare-advance-a2.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let secondBurstLead = makeAsset(
+            id: "compare-advance-b1",
+            path: "/Photos/Job/compare-advance-b1.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(60))
+        )
+        let secondBurstAlternate = makeAsset(
+            id: "compare-advance-b2",
+            path: "/Photos/Job/compare-advance-b2.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(61))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-advance-window",
+            assets: [firstBurstLead, firstBurstAlternate, secondBurstLead, secondBurstAlternate]
+        )
+        model.select(firstBurstLead.id)
+        model.selectedView = .compare
+        XCTAssertEqual(model.compareAssets().map(\.id), [firstBurstLead.id, firstBurstAlternate.id])
+
+        try model.keepComparePrimaryAndRejectAlternates()
+
+        XCTAssertEqual(try repository.asset(id: firstBurstLead.id).metadata.flag, .pick)
+        XCTAssertEqual(model.selectedAssetID, secondBurstLead.id)
+        XCTAssertEqual(model.selectedView, .compare)
+        XCTAssertEqual(model.compareAssets().map(\.id), [secondBurstLead.id, secondBurstAlternate.id])
+    }
+
+    func testCompareGroupDecisionStaysPutOnLastGroup() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "compare-advance-last",
+            sessionID: "compare-advance-last-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.secondSet.id)
+        fixture.model.select(fixture.secondLead.id)
+        fixture.model.selectedView = .compare
+
+        try fixture.model.keepComparePrimaryAndRejectAlternates()
+
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedView, .compare)
+        XCTAssertEqual(fixture.model.statusMessage, "Kept \(fixture.secondLead.originalURL.lastPathComponent); rejected 1 alternates")
+    }
+
+    func testStackNavigationStaysInCompareWhenCompareIsActive() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "compare-stack-navigation",
+            sessionID: "compare-stack-navigation-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        fixture.model.selectedView = .compare
+
+        try fixture.model.applyCullingShortcut(.nextStack)
+
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedView, .compare)
+        XCTAssertEqual(fixture.model.compareAssets().map(\.id), [fixture.secondLead.id, fixture.secondAlternate.id])
+    }
+
     func testBeginManualCullingFromCompareSetCreatesWorkStackScope() throws {
         let assets = (0..<9).map { makeAsset(id: "compare-manual-\($0)", size: Int64($0 + 1)) }
         let (model, repository) = try makeModelWithCatalogAssets(
@@ -3069,6 +3162,139 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
     }
 
+    func testFlaggingLastStackFramePublishesCullingCompletionSummary() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "completion-summary",
+            sessionID: "completion-summary-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        XCTAssertNil(fixture.model.cullingSessionCompletion)
+
+        // Auto-advance landed on the second stack; decide it too.
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+
+        let completion = try XCTUnwrap(fixture.model.cullingSessionCompletion)
+        XCTAssertEqual(completion.sessionID, WorkSessionID(rawValue: "completion-summary-session"))
+        XCTAssertEqual(completion.title, "Cull persisted stacks")
+        XCTAssertEqual(completion.pickCount, 2)
+        XCTAssertEqual(completion.rejectCount, 2)
+        XCTAssertEqual(completion.picksSetID, AssetSetID(rawValue: "work-output-completion-summary-session-picks"))
+        XCTAssertEqual(completion.detailText, "2 picks · 2 rejects — Cull persisted stacks")
+    }
+
+    func testOpeningCullingCompletionPicksAppliesTheOutputSet() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "completion-open-picks",
+            sessionID: "completion-open-picks-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        let completion = try XCTUnwrap(fixture.model.cullingSessionCompletion)
+        let picksSetID = try XCTUnwrap(completion.picksSetID)
+
+        try fixture.model.openCullingSessionPicks()
+
+        XCTAssertEqual(fixture.model.selectedAssetSetID, picksSetID)
+        XCTAssertEqual(fixture.model.selectedView, .grid)
+        XCTAssertEqual(
+            Set(fixture.model.assets.map(\.id)),
+            [fixture.firstLead.id, fixture.secondLead.id]
+        )
+        XCTAssertNil(fixture.model.cullingSessionCompletion)
+    }
+
+    func testClearingAFlagWithdrawsTheCompletionSummary() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "completion-withdrawn",
+            sessionID: "completion-withdrawn-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        XCTAssertNotNil(fixture.model.cullingSessionCompletion)
+
+        fixture.model.select(fixture.secondAlternate.id)
+        try fixture.model.setFlagForSelectedAsset(nil)
+
+        XCTAssertNil(fixture.model.cullingSessionCompletion)
+    }
+
+    func testStartingANewCullingSessionClearsTheCompletionSummary() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "completion-cleared-on-start",
+            sessionID: "completion-cleared-on-start-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        XCTAssertNotNil(fixture.model.cullingSessionCompletion)
+
+        fixture.model.selectedAssetSetID = nil
+        try fixture.model.reload()
+        _ = try fixture.model.beginCullingSession(named: "Fresh Cull")
+
+        XCTAssertNil(fixture.model.cullingSessionCompletion)
+    }
+
+    func testCullingStackListEntriesDescribeSessionStacksWithDecidedState() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "stack-list-entries",
+            sessionID: "stack-list-entries-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+
+        let initialEntries = fixture.model.cullingStackListEntries()
+        XCTAssertEqual(initialEntries.map(\.setID), [fixture.firstSet.id, fixture.secondSet.id])
+        XCTAssertEqual(initialEntries.map(\.title), ["Stack 1", "Stack 2"])
+        XCTAssertEqual(initialEntries.map(\.frameCountText), ["2 frames", "2 frames"])
+        XCTAssertEqual(initialEntries.map(\.leadAssetID), [fixture.firstLead.id, fixture.secondLead.id])
+        XCTAssertEqual(initialEntries.map(\.isDecided), [false, false])
+        XCTAssertEqual(initialEntries.map(\.isSelected), [true, false])
+
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+
+        let advancedEntries = fixture.model.cullingStackListEntries()
+        XCTAssertEqual(advancedEntries.map(\.isDecided), [true, false])
+        XCTAssertEqual(advancedEntries.map(\.isSelected), [false, true])
+    }
+
+    func testCullingStackListEntriesAreEmptyOutsidePersistedStackSessions() throws {
+        let first = makeAsset(id: "stack-list-none-first", path: "/Photos/Job/a.cr2", rating: 0)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "stack-list-entries-none",
+            assets: [first]
+        )
+        model.select(first.id)
+
+        XCTAssertEqual(model.cullingStackListEntries(), [])
+    }
+
+    func testSelectingAStackSetFromTheListJumpsToItsRecommendedFrame() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "stack-list-jump",
+            sessionID: "stack-list-jump-session"
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try fixture.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: fixture.secondAlternate.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance)
+        ])
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+
+        try fixture.model.selectCullingStackSet(id: fixture.secondSet.id)
+
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondAlternate.id)
+        XCTAssertEqual(fixture.model.selectedView, .loupe)
+    }
+
     func testKeepingAllFramesInPersistedStackMarksEveryFrameAsPickAndAdvancesProgress() throws {
         let fixture = try makePersistedStackCullingFixture(
             named: "persisted-stack-keep-all",
@@ -3355,7 +3581,72 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.selectedAssetSetID, firstSet.id)
         XCTAssertEqual(model.assets.map(\.id), [firstLead.id, firstAlternate.id])
-        XCTAssertEqual(model.selectedAssetID, firstLead.id)
+        // Re-entry lands on the ranked frame: firstAlternate carries the only focus signal.
+        XCTAssertEqual(model.selectedAssetID, firstAlternate.id)
+    }
+
+    func testNextStackNavigationSelectsRecommendedFrameWhenRanked() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "stack-entry-recommended",
+            sessionID: "stack-entry-recommended-session"
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try fixture.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: fixture.secondLead.id, kind: .focus, value: .score(0.4), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: fixture.secondAlternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ])
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+
+        try fixture.model.applyCullingShortcut(.nextStack)
+
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondAlternate.id)
+        XCTAssertEqual(fixture.model.selectedView, .loupe)
+    }
+
+    func testNextStackNavigationFallsBackToFirstFrameWithoutSignals() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "stack-entry-fallback",
+            sessionID: "stack-entry-fallback-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+
+        try fixture.model.applyCullingShortcut(.nextStack)
+
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
+    }
+
+    func testBeginningStackCullingSelectsRecommendedFrameOfFirstStack() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let stackFirst = makeAsset(
+            id: "recommended-entry-first",
+            path: "/Photos/Import/recommended-entry-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let stackSecond = makeAsset(
+            id: "recommended-entry-second",
+            path: "/Photos/Import/recommended-entry-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, repository, _) = try makeModelWithCompletedImportSession(
+            named: "recommended-entry-stack-culling",
+            assets: [stackFirst, stackSecond],
+            outputAssetIDs: [stackFirst.id, stackSecond.id]
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: stackSecond.id, kind: .focus, value: .score(0.92), confidence: 0.9, provenance: provenance)
+        ])
+
+        _ = try model.beginStackCullingFromLatestImportCompletion()
+
+        XCTAssertEqual(model.selectedAssetID, stackSecond.id)
+        XCTAssertEqual(model.selectedView, .loupe)
     }
 
     func testCullingShortcutMovesBetweenLoadedStacks() throws {
@@ -6724,6 +7015,28 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.activeLibraryFilterChips, ["Likely Issues"])
         XCTAssertEqual(model.suggestedSavedSearchName, "Likely Issues")
+    }
+
+    func testPotentialPicksReviewQueueFiltersToLikelyKeepersWithoutWritingFlags() throws {
+        let strong = makeAsset(id: "potential-strong", path: "/Photos/Job/strong.cr2", rating: 0)
+        let weak = makeAsset(id: "potential-weak", path: "/Photos/Job/weak.cr2", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "potential-picks-queue",
+            assets: [strong, weak]
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: strong.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: weak.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance)
+        ])
+
+        try model.selectSidebarTarget(.reviewQueue(.potentialPicks))
+
+        XCTAssertEqual(model.assets.map(\.id), [strong.id])
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertTrue(model.potentialPicksFilter)
+        XCTAssertNil(try repository.asset(id: strong.id).metadata.flag)
+        XCTAssertEqual(model.suggestedSavedSearchName, "Potential Picks")
     }
 
     func testApplyingSmartCollectionRulePresetNarrowsCurrentQuery() throws {
@@ -10799,6 +11112,145 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testWorkerImportCompletionQueuesEvaluationsForCachedPreviews() async throws {
+        let directory = try makeTemporaryDirectory(named: "auto-eval-cached-preview")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 8), transport: transport)
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "auto-eval-imported"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        // Preview already cached before the import completes: evaluations queue immediately.
+        try writePreviewPlaceholder(to: catalog.previewCache.url(for: PreviewCacheKey(assetID: importedAsset.id, level: .grid)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+        try await waitForSelectedAsset(importedAsset.id, in: model)
+
+        let evaluationItemIDs = model.backgroundWorkQueue.items
+            .filter { $0.kind == .recognition }
+            .map(\.id.rawValue)
+        XCTAssertEqual(evaluationItemIDs.sorted(), AppModel.defaultEvaluationProviderNames.map { provider in
+            "evaluation-\(importedAsset.id.rawValue)-\(provider)"
+        }.sorted())
+    }
+
+    @MainActor
+    func testPreviewCompletionQueuesEvaluationsForPendingImportedAsset() async throws {
+        let directory = try makeTemporaryDirectory(named: "auto-eval-preview-drain")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 8), transport: transport)
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "auto-eval-drained"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        try catalog.repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: importedAsset.id, level: .micro))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+        try await waitForSelectedAsset(importedAsset.id, in: model)
+        // No cached preview yet, so nothing queued at completion time.
+        XCTAssertFalse(model.backgroundWorkQueue.items.contains { $0.kind == .recognition })
+
+        // The micro preview finishes: the completion hook queues the evaluation passes.
+        try writePreviewPlaceholder(to: catalog.previewCache.url(for: PreviewCacheKey(assetID: importedAsset.id, level: .micro)))
+        let previewItemID = WorkSessionID(rawValue: "preview-\(importedAsset.id.rawValue)-micro")
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: previewItemID,
+            message: "generated micro preview"
+        )))
+        try await waitForRecognitionItemCount(AppModel.defaultEvaluationProviderNames.count, in: model)
+
+        let evaluationItemIDs = model.backgroundWorkQueue.items
+            .filter { $0.kind == .recognition }
+            .map(\.id.rawValue)
+        XCTAssertEqual(evaluationItemIDs.sorted(), AppModel.defaultEvaluationProviderNames.map { provider in
+            "evaluation-\(importedAsset.id.rawValue)-\(provider)"
+        }.sorted())
+    }
+
+    @MainActor
+    func testDisabledEvaluateAfterImportQueuesNoEvaluations() async throws {
+        let directory = try makeTemporaryDirectory(named: "auto-eval-disabled")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 8), transport: transport)
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder, evaluateAfterImport: false)
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "auto-eval-off"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        try writePreviewPlaceholder(to: catalog.previewCache.url(for: PreviewCacheKey(assetID: importedAsset.id, level: .grid)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+        try await waitForSelectedAsset(importedAsset.id, in: model)
+
+        XCTAssertFalse(model.backgroundWorkQueue.items.contains { $0.kind == .recognition })
+    }
+
+    @MainActor
     func testLatestImportCompletionSummarySurfacesDeferredPreviewFailuresForWorkerImport() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-preview-failure-summary")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
@@ -11358,8 +11810,18 @@ final class AppModelTests: XCTestCase {
         let previewURL = try await waitForGridPreview(assetID: assetID, in: model)
         try await waitForStatusMessage("Imported 1 photo", in: model)
         XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
-        XCTAssertEqual(model.backgroundWorkQueue.items, [])
-        XCTAssertEqual(try transport.commands(), [])
+        // Local import still auto-queues the imported-frame evaluation passes.
+        try await waitForRecognitionItemCount(AppModel.defaultEvaluationProviderNames.count, in: model)
+        XCTAssertEqual(
+            model.backgroundWorkQueue.items.filter { $0.kind == .recognition }.map(\.id.rawValue).sorted(),
+            AppModel.defaultEvaluationProviderNames.map { provider in
+                "evaluation-\(assetID.rawValue)-\(provider)"
+            }.sorted()
+        )
+        XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind != .recognition }, [])
+        XCTAssertEqual(try transport.commands(), [
+            .runEvaluation(assetID: assetID, provider: AppModel.defaultEvaluationProviderName)
+        ])
         XCTAssertEqual(access.startedURLs, [photoFolder])
         XCTAssertEqual(access.stoppedURLs, [photoFolder])
         XCTAssertEqual(model.statusMessage, "Imported 1 photo")
@@ -11401,8 +11863,18 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.originalURL), [destinationImage])
         XCTAssertTrue(FileManager.default.fileExists(atPath: destinationImage.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
-        XCTAssertEqual(model.backgroundWorkQueue.items, [])
-        XCTAssertEqual(try transport.commands(), [])
+        // Local card import still auto-queues the imported-frame evaluation passes.
+        try await waitForRecognitionItemCount(AppModel.defaultEvaluationProviderNames.count, in: model)
+        XCTAssertEqual(
+            model.backgroundWorkQueue.items.filter { $0.kind == .recognition }.map(\.id.rawValue).sorted(),
+            AppModel.defaultEvaluationProviderNames.map { provider in
+                "evaluation-\(assetID.rawValue)-\(provider)"
+            }.sorted()
+        )
+        XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind != .recognition }, [])
+        XCTAssertEqual(try transport.commands(), [
+            .runEvaluation(assetID: assetID, provider: AppModel.defaultEvaluationProviderName)
+        ])
         XCTAssertEqual(access.startedURLs, [source, destinationRoot])
         XCTAssertEqual(access.stoppedURLs, [source, destinationRoot])
         XCTAssertEqual(model.statusMessage, "Imported 1 photo")
@@ -13828,6 +14300,17 @@ final class AppModelTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTFail("timed out waiting for selected asset \(assetID.rawValue)")
+    }
+
+    @MainActor
+    private func waitForRecognitionItemCount(_ count: Int, in model: AppModel) async throws {
+        for _ in 0..<100 {
+            if model.backgroundWorkQueue.items.filter({ $0.kind == .recognition }).count >= count {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTFail("timed out waiting for \(count) recognition work items")
     }
 
     @MainActor

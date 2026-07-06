@@ -46,8 +46,32 @@ final class ImportConfirmationDraftTests: XCTestCase {
                 title: "Prepare face review",
                 detail: "Detected faces route to Faces Found review; naming waits for future clustering.",
                 stage: .followUpSetup
+            ),
+            ImportPlanStep(
+                title: "Read imported frames",
+                detail: "Focus, exposure, and face reads queue over cached previews as they finish; reads stay provisional until you act.",
+                stage: .followUpSetup
             )
         ])
+    }
+
+    func testDraftDefaultsToEvaluatingImportedFramesWithPlanStep() {
+        let draft = ImportConfirmationDraft.folder(URL(fileURLWithPath: "/Volumes/Archive/Decades", isDirectory: true))
+
+        XCTAssertTrue(draft.evaluateAfterImport)
+        XCTAssertEqual(draft.planSteps.last, ImportPlanStep(
+            title: "Read imported frames",
+            detail: "Focus, exposure, and face reads queue over cached previews as they finish; reads stay provisional until you act.",
+            stage: .followUpSetup
+        ))
+    }
+
+    func testDisablingEvaluateAfterImportRemovesThePlanStep() {
+        var draft = ImportConfirmationDraft.folder(URL(fileURLWithPath: "/Volumes/Archive/Decades", isDirectory: true))
+        draft.evaluateAfterImport = false
+
+        XCTAssertFalse(draft.planSteps.contains { $0.title == "Read imported frames" })
+        XCTAssertEqual(draft.planSteps, ImportPlanSteps.folderInPlace)
     }
 
     func testCardDraftSummarizesCopyThenCatalogImport() {
@@ -73,7 +97,8 @@ final class ImportConfirmationDraftTests: XCTestCase {
                 "Prepare imported-set culling",
                 "Detect likely stacks",
                 "Prepare keyword review",
-                "Prepare face review"
+                "Prepare face review",
+                "Read imported frames"
             ]
         )
     }

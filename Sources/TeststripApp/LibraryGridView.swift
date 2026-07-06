@@ -1487,6 +1487,16 @@ struct LibraryGridView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             importPlanView(steps: draft.planSteps, width: 440)
+            Toggle(
+                "Read imported frames automatically",
+                isOn: Binding(
+                    get: { importConfirmationDraft?.evaluateAfterImport ?? true },
+                    set: { importConfirmationDraft?.evaluateAfterImport = $0 }
+                )
+            )
+            .toggleStyle(.checkbox)
+            .font(.caption)
+            .help("Queues the standard evaluation passes over the imported set's cached previews as previews complete. Reads stay provisional; nothing is written without your action.")
             HStack {
                 Spacer()
                 Button("Cancel") {
@@ -2251,13 +2261,13 @@ struct LibraryGridView: View {
         switch draft.mode {
         case .folder:
             FolderSelectionPanel.rememberImportFolder(draft.sourceURL)
-            importFolder(draft.sourceURL)
+            importFolder(draft.sourceURL, evaluateAfterImport: draft.evaluateAfterImport)
         case .card:
             guard let destinationRootURL = draft.destinationRootURL else {
                 model.errorMessage = "Card import destination is missing"
                 return
             }
-            importCard(source: draft.sourceURL, destinationRoot: destinationRootURL)
+            importCard(source: draft.sourceURL, destinationRoot: destinationRootURL, evaluateAfterImport: draft.evaluateAfterImport)
         }
     }
 
@@ -2272,12 +2282,12 @@ struct LibraryGridView: View {
         }
     }
 
-    private func importFolder(_ folderURL: URL) {
-        model.beginImportFolder(folderURL)
+    private func importFolder(_ folderURL: URL, evaluateAfterImport: Bool = true) {
+        model.beginImportFolder(folderURL, evaluateAfterImport: evaluateAfterImport)
     }
 
-    private func importCard(source: URL, destinationRoot: URL) {
-        model.beginImportCard(source: source, destinationRoot: destinationRoot)
+    private func importCard(source: URL, destinationRoot: URL, evaluateAfterImport: Bool = true) {
+        model.beginImportCard(source: source, destinationRoot: destinationRoot, evaluateAfterImport: evaluateAfterImport)
     }
 
     private var importActivity: AppWorkActivity? {
@@ -2662,31 +2672,237 @@ struct LibraryGridView: View {
     }
 }
 
+private struct CullingCompletionBannerView: View {
+    var summary: CullingSessionCompletionSummary
+    var canViewPicks: Bool
+    var viewPicks: () -> Void
+    var dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(.green)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Culling complete")
+                    .font(.caption.weight(.semibold))
+                Text(summary.detailText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Button("View Picks") {
+                viewPicks()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .tint(.green)
+            .disabled(!canViewPicks)
+            .help(canViewPicks ? "Open this session's Picks output set" : "This session finished with no picks")
+            Button("Dismiss") {
+                dismiss()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 40)
+        .background(Color.green.opacity(0.12))
+        .overlay(alignment: .top) { Divider() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Culling session complete")
+    }
+}
+
 private struct LoupeView: View {
     var model: AppModel
+
+    @State private var closeUpCrops: [(id: Int, image: CGImage)] = []
 
     var body: some View {
         let stackPresentation = cullingStackPresentation
         VStack(spacing: 0) {
             cullingHeader(stackPresentation: stackPresentation)
-            if let asset = model.selectedAsset {
-                loupeStage(for: asset)
-                    .task(id: asset.id.rawValue) {
-                        do {
-                            try model.requestVisibleLoupePreview(assetID: asset.id)
-                        } catch {
-                            model.errorMessage = error.localizedDescription
+            HStack(spacing: 0) {
+                cullingStackListRail
+                VStack(spacing: 0) {
+                    if let asset = model.selectedAsset {
+                        HStack(spacing: 0) {
+                            loupeStage(for: asset)
+                            closeUpsPanel
                         }
+                        .task(id: asset.id.rawValue) {
+                            do {
+                                try model.requestVisibleLoupePreview(assetID: asset.id)
+                            } catch {
+                                model.errorMessage = error.localizedDescription
+                            }
+                            await refreshCloseUps(for: asset.id)
+                        }
+                    } else {
+                        unavailableView(title: "No photo selected", systemImage: "photo")
                     }
-            } else {
-                unavailableView(title: "No photo selected", systemImage: "photo")
+                }
+            }
+            if let completion = model.cullingSessionCompletion {
+                CullingCompletionBannerView(
+                    summary: completion,
+                    canViewPicks: completion.picksSetID != nil,
+                    viewPicks: { openCullingSessionPicks() },
+                    dismiss: { model.dismissCullingSessionCompletion() }
+                )
             }
             cullingStackRail(presentation: stackPresentation)
-            cullingFilmstrip
+            cullingFilmstrip(recommendedAssetID: stackPresentation.recommendedAssetID)
             cullingCommandRail
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.34))
+    }
+
+    private func openCullingSessionPicks() {
+        do {
+            try model.openCullingSessionPicks()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    @ViewBuilder
+    private var cullingStackListRail: some View {
+        let entries = model.cullingStackListEntries()
+        if !entries.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("STACKS · AUTO-GROUPED")
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 10)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(entries) { entry in
+                            stackListRow(entry)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                }
+            }
+            .frame(width: 168)
+            .background(Color.black.opacity(0.26))
+            .overlay(alignment: .trailing) { Divider() }
+        }
+    }
+
+    private func stackListRow(_ entry: CullingStackListEntry) -> some View {
+        Button {
+            do {
+                try model.selectCullingStackSet(id: entry.setID)
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
+        } label: {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.black.opacity(0.55))
+                    if let previewURL = model.gridPreviewURL(for: entry.leadAssetID) {
+                        CachedPreviewImage(
+                            previewURL: previewURL,
+                            scaling: .fit,
+                            cacheGeneration: model.previewCacheGeneration(for: entry.leadAssetID)
+                        )
+                    } else {
+                        Image(systemName: "photo")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 36, height: 26)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                    Text(entry.frameCountText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if entry.isDecided {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+            }
+            .padding(6)
+            .background(
+                entry.isSelected ? Color.orange.opacity(0.18) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 6)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(entry.isSelected ? Color.orange.opacity(0.4) : Color.clear)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(entry.title)
+        .accessibilityValue(entry.isDecided ? "Decided" : "Undecided")
+    }
+
+    @ViewBuilder
+    private var closeUpsPanel: some View {
+        if !closeUpCrops.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("CLOSE-UPS")
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(closeUpCrops, id: \.id) { crop in
+                            Image(decorative: crop.image, scale: 1)
+                                .resizable()
+                                .aspectRatio(1, contentMode: .fit)
+                                .frame(width: 112, height: 112)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .strokeBorder(Color.white.opacity(0.14))
+                                }
+                        }
+                    }
+                }
+            }
+            .padding(10)
+            .frame(width: 136)
+            .background(Color.black.opacity(0.26))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Face close-ups")
+        }
+    }
+
+    // Detection is display-only and per-selection: the cached preview is read
+    // off the main actor, cropped in memory, and nothing is persisted.
+    private func refreshCloseUps(for assetID: AssetID) async {
+        closeUpCrops = []
+        guard let previewURL = model.loupePreviewURL(for: assetID) else { return }
+        let crops = await Task.detached(priority: .utility) { () -> [(id: Int, image: CGImage)] in
+            guard let faces = try? CoreImageFaceExpressionAnalyzer().detectFaces(previewURL: previewURL),
+                  !faces.isEmpty,
+                  let source = CGImageSourceCreateWithURL(previewURL as CFURL, nil),
+                  let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                return []
+            }
+            let presentation = CloseUpFacesPresentation(
+                faces: faces,
+                imagePixelSize: CGSize(width: image.width, height: image.height)
+            )
+            return presentation.crops.compactMap { crop in
+                image.cropping(to: crop.pixelRect).map { (id: crop.id, image: $0) }
+            }
+        }.value
+        guard model.selectedAssetID == assetID else { return }
+        closeUpCrops = crops
     }
 
     @ViewBuilder
@@ -2759,19 +2975,32 @@ private struct LoupeView: View {
             Image(systemName: "sparkles")
                 .foregroundStyle(color)
             VStack(alignment: .leading, spacing: 1) {
-                Text("TESTSTRIP READS")
-                    .font(.caption2.monospaced().weight(.semibold))
-                    .foregroundStyle(color)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text("TESTSTRIP READS")
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .foregroundStyle(color)
+                        .lineLimit(1)
+                    if let verdictText = presentation.verdictText {
+                        Text(verdictText)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(cullingAssistColor(for: presentation.verdictTone))
+                            .lineLimit(1)
+                    }
+                }
                 Text(presentation.title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
+                Text(presentation.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
         }
         .help(presentation.detail)
         .padding(.horizontal, 10)
-        .frame(width: 148, height: 34, alignment: .leading)
+        .frame(minWidth: 148, maxWidth: 460, alignment: .leading)
         .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
@@ -2821,7 +3050,7 @@ private struct LoupeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var cullingFilmstrip: some View {
+    private func cullingFilmstrip(recommendedAssetID: AssetID?) -> some View {
         let presentation = CullingFilmstripPresentation(
             assets: model.assets,
             selectedAssetID: model.selectedAssetID
@@ -2838,7 +3067,11 @@ private struct LoupeView: View {
             }
             HStack(spacing: 7) {
                 ForEach(presentation.visibleAssets, id: \.id.rawValue) { asset in
-                    filmstripTile(for: asset, isSelected: asset.id == model.selectedAssetID)
+                    filmstripTile(
+                        for: asset,
+                        isSelected: asset.id == model.selectedAssetID,
+                        isRecommended: asset.id == recommendedAssetID
+                    )
                 }
                 Spacer(minLength: 0)
             }
@@ -2901,19 +3134,25 @@ private struct LoupeView: View {
                         Button {
                             model.select(item.assetID)
                         } label: {
-                            Text(item.label)
-                                .font(.caption2.monospacedDigit().weight(.semibold))
-                                .frame(width: 24, height: 22)
-                                .foregroundStyle(item.isSelected ? Color.black : Color.orange)
-                                .background(item.isSelected ? Color.orange : Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .strokeBorder(Color.orange.opacity(item.isSelected ? 0.4 : 0.26))
+                            HStack(spacing: 2) {
+                                if item.isRecommended {
+                                    Text("✦")
+                                        .font(.system(size: 9, weight: .bold))
                                 }
+                                Text(item.label)
+                                    .font(.caption2.monospacedDigit().weight(.semibold))
+                            }
+                            .frame(width: item.isRecommended ? 32 : 24, height: 22)
+                            .foregroundStyle(item.isSelected ? Color.black : Color.orange)
+                            .background(item.isSelected ? Color.orange : Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .strokeBorder(Color.orange.opacity(item.isSelected ? 0.4 : 0.26))
+                            }
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Stack frame \(item.label)")
-                        .accessibilityValue(item.isSelected ? "Selected" : "Not selected")
+                        .accessibilityValue(item.isSelected ? "Selected" : (item.isRecommended ? "Recommended" : "Not selected"))
                     }
                 }
             }
@@ -2945,7 +3184,7 @@ private struct LoupeView: View {
         }
     }
 
-    private func filmstripTile(for asset: Asset, isSelected: Bool) -> some View {
+    private func filmstripTile(for asset: Asset, isSelected: Bool, isRecommended: Bool) -> some View {
         Button {
             model.select(asset.id)
         } label: {
@@ -2966,6 +3205,15 @@ private struct LoupeView: View {
                 }
                 filmstripDecisionOverlay(for: asset)
                     .padding(4)
+                if isRecommended {
+                    Text("✦")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.orange)
+                        .padding(3)
+                        .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .padding(3)
+                }
             }
             .frame(width: 64, height: 44)
             .clipShape(RoundedRectangle(cornerRadius: 5))
@@ -2976,7 +3224,7 @@ private struct LoupeView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(asset.originalURL.lastPathComponent)
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityValue(isSelected ? "Selected" : (isRecommended ? "Recommended" : "Not selected"))
     }
 
     @ViewBuilder
@@ -4134,6 +4382,10 @@ struct CullingStackRailPresentation: Equatable {
         !items.isEmpty
     }
 
+    var recommendedAssetID: AssetID? {
+        items.first { $0.isRecommended }?.assetID
+    }
+
     private static func visualSimilarityVectorsByAssetID(
         from evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
     ) -> [AssetID: [Double]] {
@@ -4232,7 +4484,7 @@ struct CullingStackActionPresentation: Equatable, Identifiable {
     }
 }
 
-private struct CullingStackRecommendation: Equatable {
+struct CullingStackRecommendation: Equatable {
     var assetID: AssetID
     var frameLabel: String
     var score: Double
@@ -4265,28 +4517,53 @@ private struct CullingStackRecommendation: Equatable {
         return scoreByKind.values.reduce(0, +)
     }
 
-    private static func weightedQualityScore(for signal: EvaluationSignal) -> Double? {
-        guard case .score(let score) = signal.value else { return nil }
-        let clampedScore = min(max(score, 0), 1)
+    // Defect-inverted score plus confidence-scaled weight for one signal.
+    // weightedQualityScore and normalizedQualityRead both derive from this,
+    // so the pill's read and the stack ranking can never disagree.
+    static func qualityComponent(for signal: EvaluationSignal) -> (score: Double, weight: Double)? {
+        guard case .score(let rawScore) = signal.value else { return nil }
+        let clampedScore = min(max(rawScore, 0), 1)
         let confidence = min(max(signal.confidence, 0), 1)
         switch signal.kind {
         case .focus:
-            return clampedScore * confidence * 100
-        case .faceQuality:
-            return clampedScore * confidence * 80
-        case .aesthetics:
-            return clampedScore * confidence * 50
-        case .framing:
-            return clampedScore * confidence * 45
-        case .motionBlur:
-            return (1 - clampedScore) * confidence * 60
+            return (clampedScore, confidence * 100)
         case .eyesOpen:
-            return clampedScore * confidence * 90
+            return (clampedScore, confidence * 90)
+        case .faceQuality:
+            return (clampedScore, confidence * 80)
         case .eyeSharpness:
-            return clampedScore * confidence * 70
+            return (clampedScore, confidence * 70)
+        case .motionBlur:
+            return (1 - clampedScore, confidence * 60)
+        case .aesthetics:
+            return (clampedScore, confidence * 50)
+        case .framing:
+            return (clampedScore, confidence * 45)
         default:
             return nil
         }
+    }
+
+    private static func weightedQualityScore(for signal: EvaluationSignal) -> Double? {
+        guard let component = qualityComponent(for: signal) else { return nil }
+        return component.score * component.weight
+    }
+
+    // Confidence-weighted mean of the best component per kind, 0...1.
+    static func normalizedQualityRead(for signals: [EvaluationSignal]) -> (score: Double, kindCount: Int)? {
+        var bestComponentByKind: [EvaluationKind: (score: Double, weight: Double)] = [:]
+        for signal in signals {
+            guard let component = qualityComponent(for: signal) else { continue }
+            if let existing = bestComponentByKind[signal.kind],
+               existing.score * existing.weight >= component.score * component.weight {
+                continue
+            }
+            bestComponentByKind[signal.kind] = component
+        }
+        let totalWeight = bestComponentByKind.values.reduce(0) { $0 + $1.weight }
+        guard totalWeight > 0 else { return nil }
+        let weightedScore = bestComponentByKind.values.reduce(0) { $0 + $1.score * $1.weight } / totalWeight
+        return (weightedScore, bestComponentByKind.count)
     }
 
     /// Short honest reasons why the winner leads the stack, in display order.
@@ -4342,6 +4619,14 @@ private struct CompareView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 compareHeader(presentation)
+                if let completion = model.cullingSessionCompletion {
+                    CullingCompletionBannerView(
+                        summary: completion,
+                        canViewPicks: completion.picksSetID != nil,
+                        viewPicks: { openCullingSessionPicks() },
+                        dismiss: { model.dismissCullingSessionCompletion() }
+                    )
+                }
                 if let primaryAsset = presentation.primaryAsset {
                     surveyLayout(presentation)
                     compareActionStrip(primaryAsset: primaryAsset, presentation: presentation)
@@ -4356,6 +4641,14 @@ private struct CompareView: View {
             requestComparePreviews()
         }
         .liveMockupPlaceholder(.compareSurvey)
+    }
+
+    private func openCullingSessionPicks() {
+        do {
+            try model.openCullingSessionPicks()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     private var emptyCompareSet: some View {
@@ -6539,32 +6832,62 @@ struct CullingAssistPresentation: Equatable {
     var title: String
     var detail: String
     var tone: Tone
+    var verdictText: String?
+    var verdictTone: Tone
+
+    private static let keepReadThreshold = 0.7
+    private static let tossReadThreshold = 0.45
 
     static func presentation(
         for signals: [EvaluationSignal],
         stackGuidance: CullingStackActionPresentation? = nil
     ) -> CullingAssistPresentation {
+        let verdict = verdict(for: signals)
         if let stackGuidance,
            stackGuidance.isEnabled,
            let stackTitle = stackGuidanceTitle(for: stackGuidance) {
             return CullingAssistPresentation(
                 title: stackTitle,
                 detail: stackGuidanceDetail(for: stackGuidance, selectedSignals: signals),
-                tone: .positive
+                tone: .positive,
+                verdictText: verdict?.text,
+                verdictTone: verdict?.tone ?? .waiting
             )
         }
         guard let signal = signals.sorted(by: signalSort).first else {
             return CullingAssistPresentation(
                 title: "No read yet",
                 detail: "Evaluate frame to show culling signals",
-                tone: .waiting
+                tone: .waiting,
+                verdictText: verdict?.text,
+                verdictTone: verdict?.tone ?? .waiting
             )
         }
         return CullingAssistPresentation(
             title: title(for: signal),
             detail: detail(primarySignal: signal, signals: signals),
-            tone: tone(for: signal)
+            tone: tone(for: signal),
+            verdictText: verdict?.text,
+            verdictTone: verdict?.tone ?? .waiting
         )
+    }
+
+    // Synthesized display-only read over the same components the stack
+    // ranking uses; at least two scored quality kinds are required because
+    // one signal is not a verdict.
+    private static func verdict(for signals: [EvaluationSignal]) -> (text: String, tone: Tone)? {
+        guard let read = CullingStackRecommendation.normalizedQualityRead(for: signals),
+              read.kindCount >= 2 else {
+            return nil
+        }
+        let percentText = EvaluationSignalPresentation.percentage(read.score)
+        if read.score >= keepReadThreshold {
+            return ("Keep read \(percentText)", .positive)
+        }
+        if read.score <= tossReadThreshold {
+            return ("Toss read \(percentText)", .caution)
+        }
+        return ("Mixed read \(percentText)", .neutral)
     }
 
     private static func stackGuidanceTitle(for action: CullingStackActionPresentation) -> String? {

@@ -46,6 +46,22 @@ public struct CullingProgressSummary: Equatable, Sendable {
     }
 }
 
+public struct CullingSessionCompletionSummary: Equatable, Identifiable, Sendable {
+    public var sessionID: WorkSessionID
+    public var title: String
+    public var pickCount: Int
+    public var rejectCount: Int
+    public var picksSetID: AssetSetID?
+
+    public var id: String { sessionID.rawValue }
+
+    public var detailText: String {
+        let picksText = "\(pickCount) \(pickCount == 1 ? "pick" : "picks")"
+        let rejectsText = "\(rejectCount) \(rejectCount == 1 ? "reject" : "rejects")"
+        return "\(picksText) · \(rejectsText) — \(title)"
+    }
+}
+
 public struct CullingStackScope: Equatable, Sendable {
     public var assetIDs: [AssetID]
     public var stackIndex: Int?
@@ -63,6 +79,17 @@ public struct CullingStackScope: Equatable, Sendable {
         self.stackCount = stackCount
         self.rationaleText = rationaleText
     }
+}
+
+public struct CullingStackListEntry: Equatable, Identifiable, Sendable {
+    public var setID: AssetSetID
+    public var title: String
+    public var frameCountText: String
+    public var leadAssetID: AssetID
+    public var isDecided: Bool
+    public var isSelected: Bool
+
+    public var id: String { setID.rawValue }
 }
 
 public enum CullingShortcut: Equatable, Sendable {
@@ -198,6 +225,7 @@ private struct IndexedCullingStack {
 
 public enum ReviewQueue: String, Equatable, Hashable, Sendable {
     case picks
+    case potentialPicks
     case rejects
     case fiveStars
     case needsKeywords
@@ -223,6 +251,8 @@ public extension ReviewQueue {
         switch self {
         case .picks:
             return ReviewQueuePresentation(title: "Picks", systemImage: "flag.fill")
+        case .potentialPicks:
+            return ReviewQueuePresentation(title: "Potential Picks", systemImage: "sparkles")
         case .rejects:
             return ReviewQueuePresentation(title: "Rejects", systemImage: "xmark.circle")
         case .fiveStars:
@@ -1177,6 +1207,7 @@ public final class AppModel {
     public var starredWork: [AppWorkActivity]
     public var workHistorySearchResults: [AppWorkActivity]
     public var lastCullingMetadataDecision: CullingMetadataDecisionFeedback?
+    public private(set) var cullingSessionCompletion: CullingSessionCompletionSummary?
     public var pendingMetadataSyncItems: [MetadataSyncItem]
     public var metadataSyncConflictItems: [MetadataSyncItem]
     public var pendingMetadataSyncCount: Int
@@ -1200,6 +1231,7 @@ public final class AppModel {
     public var needsKeywordsFilter: Bool
     public var needsEvaluationFilter: Bool
     public var likelyIssuesFilter: Bool
+    public var potentialPicksFilter: Bool
     public var providerFailuresFilter: Bool
     public var metadataSyncPendingFilter: Bool
     public var metadataSyncConflictFilter: Bool
@@ -1287,6 +1319,13 @@ public final class AppModel {
 
     @ObservationIgnored
     private var workerImportContextsByItemID: [WorkSessionID: WorkerImportContext]
+
+    // Captured per import at begin time; only one import runs at a time (isImporting guard).
+    @ObservationIgnored
+    private var importAutoEvaluationEnabled = true
+
+    @ObservationIgnored
+    private var pendingImportEvaluationAssetIDs: Set<AssetID> = []
 
     @ObservationIgnored
     private var activeSecurityScopedSourceRootURLs: [URL]
@@ -1888,6 +1927,9 @@ public final class AppModel {
         if likelyIssuesFilter {
             Self.append(ActiveLibraryFilterRow(title: "Likely Issues", target: .reviewQueue(.likelyIssues)), to: &rows)
         }
+        if potentialPicksFilter {
+            Self.append(ActiveLibraryFilterRow(title: "Potential Picks", target: .reviewQueue(.potentialPicks)), to: &rows)
+        }
         if providerFailuresFilter {
             Self.append(ActiveLibraryFilterRow(title: "Provider Failures", target: .reviewQueue(.providerFailures)), to: &rows)
         }
@@ -2164,6 +2206,9 @@ public final class AppModel {
         }
         if likelyIssuesFilter {
             Self.append("Likely Issues", to: &parts)
+        }
+        if potentialPicksFilter {
+            Self.append("Potential Picks", to: &parts)
         }
         if providerFailuresFilter {
             Self.append("Provider Failures", to: &parts)
@@ -2512,6 +2557,7 @@ public final class AppModel {
         self.needsKeywordsFilter = false
         self.needsEvaluationFilter = false
         self.likelyIssuesFilter = false
+        self.potentialPicksFilter = false
         self.providerFailuresFilter = false
         self.metadataSyncPendingFilter = false
         self.metadataSyncConflictFilter = false
@@ -3095,6 +3141,7 @@ public final class AppModel {
 
     @discardableResult
     public func beginStackCullingFromLatestImportCompletion() throws -> WorkSession {
+        cullingSessionCompletion = nil
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -3122,8 +3169,8 @@ public final class AppModel {
             throw TeststripError.invalidState("no stack sets were created")
         }
         try applyAssetSet(id: firstStackSetID)
-        if let firstAssetID = stacks.first?.assetIDs.first {
-            selectAssetID(firstAssetID)
+        if let firstStackAssetIDs = stacks.first?.assetIDs {
+            selectAssetID(recommendedCullingStackAssetID(in: firstStackAssetIDs) ?? firstStackAssetIDs.first)
         }
         selectedView = .loupe
 
@@ -3166,6 +3213,7 @@ public final class AppModel {
 
     @discardableResult
     public func beginManualCullingFromCompareSet() throws -> WorkSession {
+        cullingSessionCompletion = nil
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -3612,8 +3660,25 @@ public final class AppModel {
         return assetSet
     }
 
+    public func openCullingSessionPicks() throws {
+        guard let completion = cullingSessionCompletion else {
+            throw TeststripError.invalidState("no completed culling session")
+        }
+        guard let picksSetID = completion.picksSetID else {
+            throw TeststripError.invalidState("the completed session has no picks")
+        }
+        try applyAssetSet(id: picksSetID)
+        cullingSessionCompletion = nil
+        statusMessage = "Viewing \(completion.title) Picks"
+    }
+
+    public func dismissCullingSessionCompletion() {
+        cullingSessionCompletion = nil
+    }
+
     @discardableResult
     public func beginCullingSession(named name: String, intent: String = "") throws -> WorkSession {
+        cullingSessionCompletion = nil
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -3724,6 +3789,7 @@ public final class AppModel {
             },
             to: compareGroup
         )
+        try advanceCompareGroupAfterDecision(previousGroup: compareGroup)
 
         statusMessage = summary.rejectedCount == 0
             ? "Kept \(keptAsset.originalURL.lastPathComponent)"
@@ -3745,6 +3811,7 @@ public final class AppModel {
             },
             to: compareGroup
         )
+        try advanceCompareGroupAfterDecision(previousGroup: compareGroup)
 
         statusMessage = "Kept all \(summary.pickedCount) compare frames"
     }
@@ -3870,6 +3937,24 @@ public final class AppModel {
             return
         }
         compareAssetIDs = compareWindowAssetIDs(limit: Self.defaultCompareAssetLimit, anchor: assetID)
+    }
+
+    // After a compare group decision, move the survey to the next group:
+    // the next persisted stack for stack sessions, otherwise the frame after
+    // the decided group (selection change re-anchors compareAssetIDs).
+    private func advanceCompareGroupAfterDecision(previousGroup: [Asset]) throws {
+        guard selectedView == .compare else { return }
+        if try selectPersistedCullingStack(.next) {
+            return
+        }
+        let groupAssetIDs = Set(previousGroup.map(\.id))
+        guard let lastGroupIndex = assets.lastIndex(where: { groupAssetIDs.contains($0.id) }) else { return }
+        if lastGroupIndex == assets.count - 1, hasMoreAssets {
+            try loadMoreAssets()
+        }
+        let nextIndex = lastGroupIndex + 1
+        guard assets.indices.contains(nextIndex) else { return }
+        selectAssetID(assets[nextIndex].id)
     }
 
     public func selectNextAsset() {
@@ -4097,6 +4182,59 @@ public final class AppModel {
         })
     }
 
+    // One row per persisted stack in the active stack-cull session; empty
+    // outside persisted stack sessions. A stack is decided only when every
+    // frame carries a flag — matching session progress accounting.
+    public func cullingStackListEntries() -> [CullingStackListEntry] {
+        guard let catalog,
+              let session = try? activePersistedStackCullingSession(repository: catalog.repository) else {
+            return []
+        }
+        let stackSetIDs = session.inputSetIDs.filter(Self.isWorkStackSetID)
+        return stackSetIDs.enumerated().compactMap { index, setID in
+            guard let stackAssetIDs = try? assetIDs(in: setID, repository: catalog.repository),
+                  let leadAssetID = stackAssetIDs.first else {
+                return nil
+            }
+            let isDecided = (try? stackAssetIDs.allSatisfy { assetID in
+                try catalog.repository.asset(id: assetID).metadata.flag != nil
+            }) ?? false
+            return CullingStackListEntry(
+                setID: setID,
+                title: "Stack \(index + 1)",
+                frameCountText: "\(stackAssetIDs.count) \(stackAssetIDs.count == 1 ? "frame" : "frames")",
+                leadAssetID: leadAssetID,
+                isDecided: isDecided,
+                isSelected: setID == selectedAssetSetID
+            )
+        }
+    }
+
+    public func selectCullingStackSet(id: AssetSetID) throws {
+        guard let catalog,
+              let session = try activePersistedStackCullingSession(repository: catalog.repository),
+              session.inputSetIDs.contains(id) else {
+            throw TeststripError.invalidState("stack set is not part of the active culling session")
+        }
+        let keepSurveyCompare = selectedView == .compare
+        try applyAssetSet(id: id)
+        let stackAssetIDs = selectedExplicitAssetIDs ?? []
+        selectAssetID(recommendedCullingStackAssetID(in: stackAssetIDs) ?? stackAssetIDs.first)
+        selectedView = keepSurveyCompare ? .compare : .loupe
+    }
+
+    // The ranked best-of-stack frame, or nil when no frame carries quality signals.
+    private func recommendedCullingStackAssetID(in assetIDs: [AssetID]) -> AssetID? {
+        guard assetIDs.count > 1 else { return nil }
+        let signalsByAssetID = Dictionary(uniqueKeysWithValues: assetIDs.map { assetID in
+            (assetID, evaluationSignals(for: assetID))
+        })
+        return CullingStackRecommendation.rankedCandidates(
+            stackAssetIDs: assetIDs,
+            evaluationSignalsByAssetID: signalsByAssetID
+        ).first?.assetID
+    }
+
     public var selectedCullingStackScope: CullingStackScope? {
         guard let selectedWorkStackAssetIDs else {
             return nil
@@ -4226,9 +4364,11 @@ public final class AppModel {
         guard let targetSetID = try persistedCullingStackSetID(direction) else {
             return false
         }
+        let keepSurveyCompare = selectedView == .compare
         try applyAssetSet(id: targetSetID)
-        selectAssetID(selectedExplicitAssetIDs?.first)
-        selectedView = .loupe
+        let stackAssetIDs = selectedExplicitAssetIDs ?? []
+        selectAssetID(recommendedCullingStackAssetID(in: stackAssetIDs) ?? stackAssetIDs.first)
+        selectedView = keepSurveyCompare ? .compare : .loupe
         return true
     }
 
@@ -5824,6 +5964,32 @@ public final class AppModel {
         }
     }
 
+    // Seeds the provisional read pass for a finished import. Bounded by the
+    // import's asset list; each queued pass is a normal cancellable
+    // .recognition work item, so Activity shows and controls all of it.
+    private func scheduleImportAutoEvaluationIfEnabled(result: LibraryImportResult) {
+        guard importAutoEvaluationEnabled, workerSupervisor != nil else { return }
+        let importedAssetIDs = result.importedAssets.map(\.id)
+        guard !importedAssetIDs.isEmpty else { return }
+        pendingImportEvaluationAssetIDs = Set(importedAssetIDs)
+        enqueueImportEvaluationsForCachedPreviews(assetIDs: importedAssetIDs)
+    }
+
+    private func enqueueImportEvaluationsForCachedPreviews(assetIDs: [AssetID]) {
+        guard workerSupervisor != nil else { return }
+        for assetID in assetIDs where pendingImportEvaluationAssetIDs.contains(assetID) {
+            guard hasCachedPreview(for: assetID) else { continue }
+            pendingImportEvaluationAssetIDs.remove(assetID)
+            for provider in AppModel.defaultEvaluationProviderNames {
+                do {
+                    try requestEvaluation(assetID: assetID, provider: provider)
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
     public func requestCompareAssetEvaluations(providers: [String] = AppModel.defaultEvaluationProviderNames) throws {
         let compareAssets = compareAssets()
         guard !compareAssets.isEmpty else {
@@ -6003,6 +6169,11 @@ public final class AppModel {
                 } catch {
                     errorMessage = error.localizedDescription
                 }
+            }
+            if completedPreview,
+               let itemID,
+               let previewAssetID = Self.previewAssetID(from: itemID) {
+                enqueueImportEvaluationsForCachedPreviews(assetIDs: [previewAssetID])
             }
         case .completedImport(
             let itemID,
@@ -6289,6 +6460,7 @@ public final class AppModel {
                 destinationRoot: context.destinationRoot,
                 result: result
             )
+            scheduleImportAutoEvaluationIfEnabled(result: result)
             presentCompletedImportResultIfNeeded(result: result, outputSetIDs: outputSetIDs)
         } catch {
             statusMessage = nil
@@ -6624,6 +6796,8 @@ public final class AppModel {
         switch queue {
         case .picks:
             flagFilter = .pick
+        case .potentialPicks:
+            potentialPicksFilter = true
         case .rejects:
             flagFilter = .reject
         case .fiveStars:
@@ -6968,6 +7142,8 @@ public final class AppModel {
             ActiveLibraryFilterRow(title: "Needs Evaluation", target: sidebarTarget(for: predicate))
         case .likelyIssue:
             ActiveLibraryFilterRow(title: "Likely Issues", target: sidebarTarget(for: predicate))
+        case .likelyPick:
+            ActiveLibraryFilterRow(title: "Potential Picks", target: sidebarTarget(for: predicate))
         case .evaluationFailure:
             ActiveLibraryFilterRow(title: "Provider Failures", target: sidebarTarget(for: predicate))
         case .metadataSyncPending:
@@ -7025,6 +7201,8 @@ public final class AppModel {
             .reviewQueue(.needsEvaluation)
         case .likelyIssue:
             .reviewQueue(.likelyIssues)
+        case .likelyPick:
+            .reviewQueue(.potentialPicks)
         case .evaluationFailure:
             .reviewQueue(.providerFailures)
         case .metadataSyncPending:
@@ -7125,6 +7303,11 @@ public final class AppModel {
         case .reviewQueue(.likelyIssues):
             if likelyIssuesFilter {
                 likelyIssuesFilter = false
+                removed = true
+            }
+        case .reviewQueue(.potentialPicks):
+            if potentialPicksFilter {
+                potentialPicksFilter = false
                 removed = true
             }
         case .reviewQueue(.providerFailures):
@@ -7310,6 +7493,9 @@ public final class AppModel {
         if likelyIssuesFilter {
             Self.append(.likelyIssue, to: &predicates)
         }
+        if potentialPicksFilter {
+            Self.append(.likelyPick, to: &predicates)
+        }
         if providerFailuresFilter {
             Self.append(.evaluationFailure, to: &predicates)
         }
@@ -7339,6 +7525,7 @@ public final class AppModel {
         needsKeywordsFilter = false
         needsEvaluationFilter = false
         likelyIssuesFilter = false
+        potentialPicksFilter = false
         providerFailuresFilter = false
         metadataSyncPendingFilter = false
         metadataSyncConflictFilter = false
@@ -7383,6 +7570,8 @@ public final class AppModel {
         case .unevaluated:
             "needs evaluation"
         case .likelyIssue:
+            nil
+        case .likelyPick:
             nil
         case .evaluationFailure:
             nil
@@ -7566,6 +7755,7 @@ public final class AppModel {
               var session = try activeCullingSession(repository: catalog.repository) else {
             return
         }
+        let previousStatus = session.status
         switch session.status {
         case .failed, .cancelled:
             return
@@ -7595,6 +7785,11 @@ public final class AppModel {
             rejectCount: decisionCounts.reject
         )
         try refreshCullingSessionOutputSet(session: &session, repository: catalog.repository)
+        updateCullingSessionCompletion(
+            session: session,
+            previousStatus: previousStatus,
+            decisionCounts: decisionCounts
+        )
         session.updatedAt = Date()
         try catalog.repository.save(session)
         try refreshWorkSessions()
@@ -7608,6 +7803,7 @@ public final class AppModel {
               ) else {
             return
         }
+        let previousStatus = session.status
         switch session.status {
         case .failed, .cancelled:
             return
@@ -7639,9 +7835,37 @@ public final class AppModel {
             rejectCount: decisionCounts.reject
         )
         try refreshCullingSessionOutputSet(session: &session, repository: catalog.repository)
+        updateCullingSessionCompletion(
+            session: session,
+            previousStatus: previousStatus,
+            decisionCounts: decisionCounts
+        )
         session.updatedAt = Date()
         try catalog.repository.save(session)
         try refreshWorkSessions()
+    }
+
+    // Publishes the payoff banner exactly when a session transitions into
+    // .completed, and withdraws it if a later change reopens the session.
+    private func updateCullingSessionCompletion(
+        session: WorkSession,
+        previousStatus: WorkSessionStatus,
+        decisionCounts: (pick: Int, reject: Int)
+    ) {
+        if session.status == .completed, previousStatus != .completed {
+            let picksSetID = Self.cullingOutputSetID(sessionID: session.id)
+            cullingSessionCompletion = CullingSessionCompletionSummary(
+                sessionID: session.id,
+                title: session.title,
+                pickCount: decisionCounts.pick,
+                rejectCount: decisionCounts.reject,
+                picksSetID: session.outputSetIDs.contains(picksSetID) ? picksSetID : nil
+            )
+            return
+        }
+        if session.status != .completed, cullingSessionCompletion?.sessionID == session.id {
+            cullingSessionCompletion = nil
+        }
     }
 
     private func refreshCullingSessionOutputSet(
@@ -7998,6 +8222,7 @@ public final class AppModel {
     @discardableResult
     @MainActor
     public func importFolderInBackground(_ folderURL: URL) async throws -> LibraryImportResult {
+        importAutoEvaluationEnabled = true
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -8023,6 +8248,7 @@ public final class AppModel {
             try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
             let outputSetIDs = recordCompletedImportActivity(folderURL: folderURL, result: output.result)
+            scheduleImportAutoEvaluationIfEnabled(result: output.result)
             presentCompletedImportResultIfNeeded(result: output.result, outputSetIDs: outputSetIDs)
             return output.result
         } catch {
@@ -8034,6 +8260,7 @@ public final class AppModel {
     @discardableResult
     @MainActor
     public func importCardInBackground(source: URL, destinationRoot: URL) async throws -> LibraryImportResult {
+        importAutoEvaluationEnabled = true
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -8060,6 +8287,7 @@ public final class AppModel {
             try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
             let outputSetIDs = recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
+            scheduleImportAutoEvaluationIfEnabled(result: output.result)
             presentCompletedImportResultIfNeeded(result: output.result, outputSetIDs: outputSetIDs)
             return output.result
         } catch {
@@ -8069,7 +8297,8 @@ public final class AppModel {
     }
 
     @MainActor
-    public func beginImportFolder(_ folderURL: URL) {
+    public func beginImportFolder(_ folderURL: URL, evaluateAfterImport: Bool = true) {
+        importAutoEvaluationEnabled = evaluateAfterImport
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
             return
@@ -8123,6 +8352,7 @@ public final class AppModel {
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
                 let outputSetIDs = self.recordCompletedImportActivity(folderURL: folderURL, result: output.result)
+                self.scheduleImportAutoEvaluationIfEnabled(result: output.result)
                 self.presentCompletedImportResultIfNeeded(result: output.result, outputSetIDs: outputSetIDs)
                 self.activeImportTask = nil
             } catch is CancellationError {
@@ -8140,7 +8370,8 @@ public final class AppModel {
     }
 
     @MainActor
-    public func beginImportCard(source: URL, destinationRoot: URL) {
+    public func beginImportCard(source: URL, destinationRoot: URL, evaluateAfterImport: Bool = true) {
+        importAutoEvaluationEnabled = evaluateAfterImport
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
             return
@@ -8212,6 +8443,7 @@ public final class AppModel {
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
                 let outputSetIDs = self.recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
+                self.scheduleImportAutoEvaluationIfEnabled(result: output.result)
                 self.presentCompletedImportResultIfNeeded(result: output.result, outputSetIDs: outputSetIDs)
                 self.activeImportTask = nil
             } catch is CancellationError {
@@ -8887,6 +9119,7 @@ public final class AppModel {
 
     private static let reviewQueueSidebarOrder: [ReviewQueue] = [
         .picks,
+        .potentialPicks,
         .rejects,
         .fiveStars,
         .needsKeywords,
@@ -8909,6 +9142,8 @@ public final class AppModel {
         switch queue {
         case .picks:
             return SetQuery(predicates: [.flag(.pick)])
+        case .potentialPicks:
+            return SetQuery(predicates: [.likelyPick])
         case .rejects:
             return SetQuery(predicates: [.flag(.reject)])
         case .fiveStars:

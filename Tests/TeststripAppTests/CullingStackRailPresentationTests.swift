@@ -271,6 +271,33 @@ final class CullingStackRailPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.actions[1].help, "Keep frame 2 — eyes open.")
     }
 
+    func testRecommendedAssetIDSurfacesTheRankedWinner() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let assets = [
+            makeAsset(id: "lead", path: "/Photos/Job/lead.cr2", capturedAt: capturedAt),
+            makeAsset(id: "selected", path: "/Photos/Job/selected.cr2", capturedAt: capturedAt.addingTimeInterval(1)),
+            makeAsset(id: "alternate", path: "/Photos/Job/alternate.cr2", capturedAt: capturedAt.addingTimeInterval(1.8))
+        ]
+        let alternateID = AssetID(rawValue: "alternate")
+
+        let ranked = CullingStackRailPresentation(
+            assets: assets,
+            selectedAssetID: AssetID(rawValue: "selected"),
+            evaluationSignalsByAssetID: [
+                alternateID: [signal(assetID: alternateID, kind: .focus, score: 0.94)]
+            ],
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 2)
+        )
+        let unranked = CullingStackRailPresentation(
+            assets: assets,
+            selectedAssetID: AssetID(rawValue: "selected"),
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 2)
+        )
+
+        XCTAssertEqual(ranked.recommendedAssetID, alternateID)
+        XCTAssertNil(unranked.recommendedAssetID)
+    }
+
     private func makeAsset(id: String, path: String, capturedAt: Date?) -> Asset {
         let technicalMetadata = capturedAt.map { date in
             AssetTechnicalMetadata(
