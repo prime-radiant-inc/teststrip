@@ -161,6 +161,14 @@ final class FaceExpressionEvaluationProviderTests: XCTestCase {
 
         XCTAssertEqual(signals.map(\.kind), [.eyesOpen, .smile])
     }
+
+    func testCoreImageAnalyzerFindsNoFacesInFacelessImage() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "core-image-face-analyzer")
+        let previewURL = directory.appendingPathComponent("preview.jpg")
+        try TestDirectories.writeTestJPEG(to: previewURL, width: 512, height: 340)
+
+        XCTAssertEqual(try CoreImageFaceExpressionAnalyzer().detectFaces(previewURL: previewURL), [])
+    }
 }
 
 struct FakeFaceExpressionAnalyzer: FaceExpressionAnalyzing {

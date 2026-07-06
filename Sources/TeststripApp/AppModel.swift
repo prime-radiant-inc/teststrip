@@ -1298,7 +1298,7 @@ public final class AppModel {
     private var compareAssetIDs: [AssetID]?
 
     public static let defaultEvaluationProviderName = "local-image-metrics"
-    public static let defaultEvaluationProviderNames = [defaultEvaluationProviderName, "apple-vision"]
+    public static let defaultEvaluationProviderNames = [defaultEvaluationProviderName, "apple-vision", "core-image-faces"]
     private static let assetPageSize = 120
     private static let loadedAssetWindowSize = assetPageSize * 2
     private static let pendingPreviewRecoveryBatchSize = 40

@@ -15,6 +15,13 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAsset?.id, model.assets.first?.id)
     }
 
+    func testDefaultEvaluationProvidersIncludeFaceExpressionPass() {
+        XCTAssertEqual(
+            AppModel.defaultEvaluationProviderNames,
+            ["local-image-metrics", "apple-vision", "core-image-faces"]
+        )
+    }
+
     func testEmptyCatalogDoesNotShowDeadWorkSidebarPlaceholders() {
         let model = AppModel.demo()
 

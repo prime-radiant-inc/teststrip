@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreImage
 import Foundation
 import ImageIO
 
@@ -45,7 +46,7 @@ public struct FaceExpressionEvaluationProvider: EvaluationProvider {
 
     private let analyzer: any FaceExpressionAnalyzing
 
-    public init(analyzer: any FaceExpressionAnalyzing) {
+    public init(analyzer: any FaceExpressionAnalyzing = CoreImageFaceExpressionAnalyzer()) {
         self.analyzer = analyzer
     }
 
@@ -130,5 +131,65 @@ public struct FaceExpressionEvaluationProvider: EvaluationProvider {
             return nil
         }
         return image.cropping(to: cropRect)
+    }
+}
+
+/// Stock face expression detection via CoreImage's CIDetector with the
+/// smile and eye-blink options. Chosen over Vision landmarks because it is
+/// the only stock per-face smile source and supplies blink booleans and eye
+/// positions from the same face set in one pass.
+public struct CoreImageFaceExpressionAnalyzer: FaceExpressionAnalyzing {
+    public init() {}
+
+    public func detectFaces(previewURL: URL) throws -> [DetectedFaceExpression] {
+        guard let image = CIImage(contentsOf: previewURL) else {
+            throw TeststripError.unsupportedFormat("CoreImage could not read \(previewURL.lastPathComponent)")
+        }
+        let extent = image.extent
+        guard extent.width > 0, extent.height > 0 else {
+            throw TeststripError.unsupportedFormat("empty image extent for \(previewURL.lastPathComponent)")
+        }
+        guard let detector = CIDetector(
+            ofType: CIDetectorTypeFace,
+            context: nil,
+            options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]
+        ) else {
+            throw TeststripError.invalidState("could not create CoreImage face detector")
+        }
+        return detector
+            .features(in: image, options: [CIDetectorSmile: true, CIDetectorEyeBlink: true])
+            .compactMap { $0 as? CIFaceFeature }
+            .map { face in
+                DetectedFaceExpression(
+                    normalizedBounds: Self.normalizedTopLeftRect(face.bounds, in: extent),
+                    hasSmile: face.hasSmile,
+                    leftEyeClosed: face.leftEyeClosed,
+                    rightEyeClosed: face.rightEyeClosed,
+                    leftEyeCenter: face.hasLeftEyePosition
+                        ? Self.normalizedTopLeftPoint(face.leftEyePosition, in: extent)
+                        : nil,
+                    rightEyeCenter: face.hasRightEyePosition
+                        ? Self.normalizedTopLeftPoint(face.rightEyePosition, in: extent)
+                        : nil
+                )
+            }
+    }
+
+    /// CoreImage geometry is bottom-left origin in pixels; signals consume
+    /// normalized top-left coordinates, so normalize and flip Y.
+    private static func normalizedTopLeftRect(_ rect: CGRect, in extent: CGRect) -> CGRect {
+        CGRect(
+            x: (rect.minX - extent.minX) / extent.width,
+            y: 1.0 - (rect.maxY - extent.minY) / extent.height,
+            width: rect.width / extent.width,
+            height: rect.height / extent.height
+        )
+    }
+
+    private static func normalizedTopLeftPoint(_ point: CGPoint, in extent: CGRect) -> CGPoint {
+        CGPoint(
+            x: (point.x - extent.minX) / extent.width,
+            y: 1.0 - (point.y - extent.minY) / extent.height
+        )
     }
 }
