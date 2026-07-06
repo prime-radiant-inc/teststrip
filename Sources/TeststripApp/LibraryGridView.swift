@@ -3806,7 +3806,10 @@ enum CompareFocusMetricPresentation {
         .exposure,
         .framing,
         .aesthetics,
-        .faceQuality
+        .faceQuality,
+        .eyeSharpness,
+        .eyesOpen,
+        .smile
     ]
 
     static func metrics(for signals: [EvaluationSignal]) -> [CompareFocusMetric] {
@@ -3841,6 +3844,9 @@ enum CompareFocusMetricPresentation {
     }
 
     private static func valueText(for signal: EvaluationSignal) -> String {
+        if let expressionValue = expressionValueText(for: signal) {
+            return expressionValue
+        }
         switch signal.value {
         case .score(let score):
             return EvaluationSignalPresentation.percentage(score)
@@ -3857,6 +3863,22 @@ enum CompareFocusMetricPresentation {
         }
     }
 
+    private static func expressionValueText(for signal: EvaluationSignal) -> String? {
+        guard case .score(let score) = signal.value else { return nil }
+        switch signal.kind {
+        case .eyesOpen:
+            if score >= 1.0 { return "Open" }
+            if score <= 0.0 { return "Shut" }
+            return "Some shut"
+        case .smile:
+            if score >= 1.0 { return "Smiling" }
+            if score > 0.0 { return "Some smiling" }
+            return "No smile"
+        default:
+            return nil
+        }
+    }
+
     private static func tone(for signal: EvaluationSignal) -> CompareFocusMetric.Tone {
         switch (signal.kind, signal.value) {
         case (.motionBlur, .score(let score)):
@@ -3867,6 +3889,12 @@ enum CompareFocusMetricPresentation {
              (.faceQuality, .score(let score)):
             return score >= 0.7 ? .positive : .caution
         case (.exposure, _):
+            return .neutral
+        case (.eyeSharpness, .score(let score)):
+            return score >= 0.7 ? .positive : .caution
+        case (.eyesOpen, .score(let score)):
+            return score >= 1.0 ? .positive : .caution
+        case (.smile, _):
             return .neutral
         default:
             return .neutral

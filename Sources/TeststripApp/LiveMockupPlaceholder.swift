@@ -166,7 +166,7 @@ public enum LiveMockupPlaceholders {
         id: "compare.focus",
         title: "Focus compare",
         intendedBehavior: "Line up close contenders and use sharpness, eye state, exposure, and frame signals to break ties.",
-        currentFallback: "Survey Compare shows persisted focus, motion blur, exposure, framing, aesthetics, and face-quality signals for visible contenders; eye-state and richer frame rationale depend on future providers."
+        currentFallback: "Survey Compare shows persisted focus, motion blur, exposure, framing, aesthetics, face-quality, eye-sharpness, eye-state, and smile signals for visible contenders."
     )
 
     public static let compareSurvey = LiveMockupPlaceholder(

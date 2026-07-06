@@ -303,6 +303,47 @@ final class CompareSurveyPresentationTests: XCTestCase {
         )
     }
 
+    func testFocusMetricsIncludeEyeStateAndEyeSharpnessLanes() {
+        let assetID = AssetID(rawValue: "expression-frame")
+        let provenance = ProviderProvenance(
+            provider: "core-image-faces",
+            model: "CIDetectorFace",
+            version: "1",
+            settingsHash: "default"
+        )
+
+        let metrics = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .focus, value: .score(0.88), confidence: 0.81, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .eyeSharpness, value: .score(0.74), confidence: 0.6, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .eyesOpen, value: .score(1.0), confidence: 0.7, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .smile, value: .score(1.0), confidence: 0.7, provenance: provenance)
+        ])
+
+        XCTAssertEqual(metrics.map(\.title), ["Focus", "Eye sharpness", "Eyes open", "Smile"])
+        XCTAssertEqual(metrics.map(\.value), ["88%", "74%", "Open", "Smiling"])
+        XCTAssertEqual(metrics.map(\.tone), [.positive, .positive, .positive, .neutral])
+    }
+
+    func testShutEyesAndSoftEyeLanesUseCautionTones() {
+        let assetID = AssetID(rawValue: "blink-frame")
+        let provenance = ProviderProvenance(
+            provider: "core-image-faces",
+            model: "CIDetectorFace",
+            version: "1",
+            settingsHash: "default"
+        )
+
+        let metrics = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .eyeSharpness, value: .score(0.4), confidence: 0.6, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .eyesOpen, value: .score(0.0), confidence: 0.7, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .smile, value: .score(0.0), confidence: 0.7, provenance: provenance)
+        ])
+
+        XCTAssertEqual(metrics.map(\.title), ["Eye sharpness", "Eyes open", "Smile"])
+        XCTAssertEqual(metrics.map(\.value), ["40%", "Shut", "No smile"])
+        XCTAssertEqual(metrics.map(\.tone), [.caution, .caution, .neutral])
+    }
+
     func testSignalBadgesFlagBestEyesClosedAndSoftFrames() {
         let best = makeAsset(id: "best")
         let blink = makeAsset(id: "blink")
