@@ -27,6 +27,10 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "import-preview-drain", "250"]), .importPreviewDrain(count: 250))
     }
 
+    func testCardImportSmokeCommandParsesCount() throws {
+        XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "card-import-smoke", "12"]), .cardImportSmoke(count: 12))
+    }
+
     func testMetadataWriteCommandParsesCount() throws {
         XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "metadata-write", "250"]), .metadataWrite(count: 250))
     }
@@ -126,6 +130,20 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(result.previewFailureCount, 0)
         XCTAssertEqual(result.pendingPreviewCountAfterDrain, 0)
         XCTAssertEqual(result.cachedPreviewCount, 6)
+    }
+
+    func testCardImportSmokeCopiesToDestinationGeneratesPreviewsAndPreservesSource() throws {
+        let root = try makeTemporaryDirectory(named: "card-import-smoke")
+
+        let result = try CardImportSmoke(count: 3, root: root).run()
+
+        XCTAssertEqual(result.importedAssetCount, 3)
+        XCTAssertEqual(result.catalogAssetCount, 3)
+        XCTAssertEqual(result.destinationOriginalCount, 3)
+        XCTAssertEqual(result.cachedPreviewCount, 6)
+        XCTAssertEqual(result.sourceOriginalUnchangedCount, 3)
+        XCTAssertEqual(result.sourceRootCount, 1)
+        XCTAssertEqual(result.destinationCatalogAssetCount, 3)
     }
 
     func testCatalogScaleBenchmarkMeasuresRepresentativeIndexedFilters() throws {

@@ -12,6 +12,8 @@ defer {
 switch command {
 case .catalogScale(let count):
     try runCatalogScaleBenchmark(count: count, root: root)
+case .cardImportSmoke(let count):
+    try runCardImportSmoke(count: count, root: root)
 case .importDeferred(let count):
     try runDeferredImportBenchmark(count: count, root: root)
 case .importPreviewDrain(let count):
@@ -60,6 +62,31 @@ private func runCatalogScaleBenchmark(count: Int, root: URL) throws {
     print("50mm lens count: \(result.lens50mmCount)")
     print("ISO 500+ count: \(result.isoAtLeast500Count)")
     print("recent capture count: \(result.recentCaptureCount)")
+    try printMachineReadableSummary(recorder.summary)
+}
+
+private func runCardImportSmoke(count: Int, root: URL) throws {
+    var recorder = BenchmarkSummaryRecorder(benchmark: "card_import_smoke", count: count)
+
+    print("TeststripBench card import smoke")
+    print("count: \(count)")
+    let result = try measure("card import smoke", recorder: &recorder, key: "card_import_smoke") {
+        try CardImportSmoke(count: count, root: root).run()
+    }
+    recorder.recordMetric("imported_assets", result.importedAssetCount)
+    recorder.recordMetric("catalog_assets", result.catalogAssetCount)
+    recorder.recordMetric("destination_originals", result.destinationOriginalCount)
+    recorder.recordMetric("cached_previews", result.cachedPreviewCount)
+    recorder.recordMetric("source_originals_unchanged", result.sourceOriginalUnchangedCount)
+    recorder.recordMetric("source_roots", result.sourceRootCount)
+    recorder.recordMetric("destination_catalog_assets", result.destinationCatalogAssetCount)
+    print("imported assets: \(result.importedAssetCount)")
+    print("catalog assets: \(result.catalogAssetCount)")
+    print("destination originals: \(result.destinationOriginalCount)")
+    print("cached previews: \(result.cachedPreviewCount)")
+    print("source originals unchanged: \(result.sourceOriginalUnchangedCount)")
+    print("source roots: \(result.sourceRootCount)")
+    print("destination catalog assets: \(result.destinationCatalogAssetCount)")
     try printMachineReadableSummary(recorder.summary)
 }
 

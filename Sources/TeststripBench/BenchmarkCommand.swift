@@ -5,6 +5,7 @@ public enum BenchmarkCommand: Equatable {
     public static let catalogStressCount = 1_000_000
 
     case catalogScale(count: Int)
+    case cardImportSmoke(count: Int)
     case importDeferred(count: Int)
     case importPreviewDrain(count: Int)
     case localHTTPSmoke(endpoint: URL, model: String, imagePath: String?, timeout: TimeInterval)
@@ -28,6 +29,9 @@ public enum BenchmarkCommand: Equatable {
         }
         if firstArgument == "catalog-stress" {
             return .catalogScale(count: catalogStressCount)
+        }
+        if firstArgument == "card-import-smoke" {
+            return .cardImportSmoke(count: Int(userArguments.dropFirst().first ?? "12") ?? 12)
         }
         if firstArgument == "import-deferred" {
             return .importDeferred(count: Int(userArguments.dropFirst().first ?? "1000") ?? 1_000)
