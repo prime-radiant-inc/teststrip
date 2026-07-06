@@ -129,6 +129,14 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("burst-level agentic rationale remains pending"))
     }
 
+    func testCullingFilmstripLedgerTracksImplementedFilmstrip() throws {
+        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "culling.filmstrip" })
+
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("fixed-size thumbnails"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("current-frame context"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("rating/flag state"))
+    }
+
     func testPeopleSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
         let model = AppModel.demo()
         let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
