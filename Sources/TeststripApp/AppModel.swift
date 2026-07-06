@@ -455,12 +455,16 @@ public struct SidebarRow: Identifiable, Equatable, Sendable {
 public struct ActiveLibraryFilterRow: Identifiable, Equatable, Sendable {
     public var title: String
     public var target: SidebarRowTarget?
+    /// True when this row is the unparsed leftover of the top-bar search text (LibrarySearchIntent's
+    /// residual text), which is matched as plain filename/text search rather than a structured filter.
+    public var isPlainSearchFallback: Bool
 
     public var id: String { title }
 
-    public init(title: String, target: SidebarRowTarget? = nil) {
+    public init(title: String, target: SidebarRowTarget? = nil, isPlainSearchFallback: Bool = false) {
         self.title = title
         self.target = target
+        self.isPlainSearchFallback = isPlainSearchFallback
     }
 }
 
@@ -1676,7 +1680,10 @@ public final class AppModel {
         }
         let searchIntent = LibrarySearchIntent.parse(librarySearchText)
         if let residualSearch = searchIntent.residualText {
-            Self.append(ActiveLibraryFilterRow(title: "Search: \(residualSearch)"), to: &rows)
+            Self.append(
+                ActiveLibraryFilterRow(title: "Search: \(residualSearch)", isPlainSearchFallback: true),
+                to: &rows
+            )
         }
         for (index, chip) in searchIntent.chips.enumerated() {
             let target = searchIntent.predicates.indices.contains(index)
