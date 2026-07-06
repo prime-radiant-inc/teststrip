@@ -3753,7 +3753,12 @@ struct CullingStackRailPresentation: Equatable {
            explicitStackScope.assetIDs.contains(selectedAssetID) {
             stackScope = explicitStackScope
         } else {
-            let stacks = stackBuilder.stacks(from: assets)
+            let stacks = stackBuilder.stacks(
+                from: assets,
+                visualSimilarityVectorsByAssetID: Self.visualSimilarityVectorsByAssetID(
+                    from: evaluationSignalsByAssetID
+                )
+            )
             guard let stackIndex = stacks.firstIndex(where: { $0.assetIDs.contains(selectedAssetID) }) else {
                 items = []
                 titleText = ""
@@ -3829,6 +3834,21 @@ struct CullingStackRailPresentation: Equatable {
 
     var isVisible: Bool {
         !items.isEmpty
+    }
+
+    private static func visualSimilarityVectorsByAssetID(
+        from evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
+    ) -> [AssetID: [Double]] {
+        evaluationSignalsByAssetID.compactMapValues { signals in
+            signals
+                .filter { $0.kind == .visualSimilarity }
+                .compactMap { signal -> (vector: [Double], confidence: Double)? in
+                    guard case .vector(let vector) = signal.value else { return nil }
+                    return (vector, signal.confidence)
+                }
+                .max { lhs, rhs in lhs.confidence < rhs.confidence }?
+                .vector
+        }
     }
 
     private static func rankedAction(

@@ -139,6 +139,32 @@ final class CullingStackRailPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.actions[1].action, .keepRecommended(alternate.id))
     }
 
+    func testFallbackStackUsesPersistedVisualSimilaritySignals() {
+        let selected = makeAsset(id: "selected", path: "/Photos/Job/selected.cr2", capturedAt: Date(timeIntervalSince1970: 100))
+        let visuallySimilar = makeAsset(id: "visually-similar", path: "/Photos/Other/visually-similar.cr2", capturedAt: Date(timeIntervalSince1970: 600))
+        let unrelated = makeAsset(id: "unrelated", path: "/Photos/Other/unrelated.cr2", capturedAt: Date(timeIntervalSince1970: 900))
+
+        let presentation = CullingStackRailPresentation(
+            assets: [selected, visuallySimilar, unrelated],
+            selectedAssetID: selected.id,
+            evaluationSignalsByAssetID: [
+                selected.id: [
+                    vectorSignal(assetID: selected.id, vector: [0.10, 0.20, 0.30])
+                ],
+                visuallySimilar.id: [
+                    vectorSignal(assetID: visuallySimilar.id, vector: [0.11, 0.20, 0.30])
+                ],
+                unrelated.id: [
+                    vectorSignal(assetID: unrelated.id, vector: [0.90, 0.90, 0.90])
+                ]
+            ]
+        )
+
+        XCTAssertTrue(presentation.isVisible)
+        XCTAssertEqual(presentation.items.map(\.assetID), [selected.id, visuallySimilar.id])
+        XCTAssertTrue(presentation.rationaleText?.contains("Visual similarity distance") == true)
+    }
+
     func testExplicitPersistedStackScopeDoesNotRequireLoadedTimeAdjacency() {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let lead = makeAsset(id: "lead", path: "/Photos/Job/lead.cr2", capturedAt: capturedAt)
@@ -218,6 +244,16 @@ final class CullingStackRailPresentationTests: XCTestCase {
             kind: kind,
             value: .score(score),
             confidence: 0.9,
+            provenance: ProviderProvenance(provider: "test", model: "test", version: "1", settingsHash: "test")
+        )
+    }
+
+    private func vectorSignal(assetID: AssetID, vector: [Double], confidence: Double = 0.9) -> EvaluationSignal {
+        EvaluationSignal(
+            assetID: assetID,
+            kind: .visualSimilarity,
+            value: .vector(vector),
+            confidence: confidence,
             provenance: ProviderProvenance(provider: "test", model: "test", version: "1", settingsHash: "test")
         )
     }
