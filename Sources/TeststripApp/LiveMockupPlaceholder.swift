@@ -110,7 +110,7 @@ public enum LiveMockupPlaceholders {
         id: "smart-collections.builder",
         title: "Smart collections builder",
         intendedBehavior: "Build saved dynamic sets with structured rules, natural-language criteria, and previews of matching assets.",
-        currentFallback: "Builder saves the current library query as a dynamic saved set, previews loaded matches, offers Add Rule presets for concrete catalog filters, typed rule editing through the existing search parser, suggestion rows are actionable and derived from review queue counts, and saved sets have delete set confirmation; provider-generated suggestions are not built."
+        currentFallback: "Builder saves the current library query as a dynamic saved set, previews loaded matches, offers Add Rule presets for concrete catalog filters, typed rule editing through the existing search parser, suggestion rows are actionable and derived from review queue counts plus provider signal suggestions for object, OCR, and people signals, and saved sets have delete set confirmation."
     )
 
     public static let keywordingBatch = LiveMockupPlaceholder(
@@ -318,7 +318,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Smart collections",
             status: .partial,
             placeholder: .smartCollectionsBuilder,
-            currentImplementation: "Builder saves the current dynamic query with parsed rule presentation, loaded-result preview, Add Rule presets for concrete filters, typed rule editing through the existing search parser, suggestion rows are actionable and derived from review queue counts, and saved-set delete set confirmation; provider-generated suggestions are not built."
+            currentImplementation: "Builder saves the current dynamic query with parsed rule presentation, loaded-result preview, Add Rule presets for concrete filters, typed rule editing through the existing search parser, suggestion rows are actionable and derived from review queue counts plus provider signal suggestions for object, OCR, and people signals, and saved-set delete set confirmation."
         ),
         LiveMockupDesignSurface(
             designID: "5e",

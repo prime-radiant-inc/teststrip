@@ -1119,7 +1119,8 @@ struct LibraryGridView: View {
                 ruleChips: model.activeLibraryFilterChips,
                 matchCount: model.totalAssetCount,
                 typedRuleText: savedSearchRuleText,
-                reviewQueueCounts: model.reviewQueueCounts
+                reviewQueueCounts: model.reviewQueueCounts,
+                evaluationKindSummaries: model.catalogEvaluationKindSummaries
             ),
             previewAssets: Array(model.assets.prefix(18)),
             previewURL: { model.gridPreviewURL(for: $0) },
@@ -5086,9 +5087,14 @@ struct SmartCollectionBuilderPresentation: Equatable {
     var matchCount: Int
     var typedRuleText: String = ""
     var reviewQueueCounts: [ReviewQueue: Int] = [:]
+    var evaluationKindSummaries: [CatalogEvaluationKindSummary] = []
 
     var suggestedTemplateRows: [SmartCollectionSuggestedTemplateRow] {
-        Self.suggestedTemplateRows(reviewQueueCounts: reviewQueueCounts, activeRuleChips: ruleChips)
+        Self.suggestedTemplateRows(
+            reviewQueueCounts: reviewQueueCounts,
+            evaluationKindSummaries: evaluationKindSummaries,
+            activeRuleChips: ruleChips
+        )
     }
 
     var ruleCountText: String {
@@ -5123,9 +5129,11 @@ struct SmartCollectionBuilderPresentation: Equatable {
 
     private static func suggestedTemplateRows(
         reviewQueueCounts: [ReviewQueue: Int],
+        evaluationKindSummaries: [CatalogEvaluationKindSummary],
         activeRuleChips: [String]
     ) -> [SmartCollectionSuggestedTemplateRow] {
         var rows: [SmartCollectionSuggestedTemplateRow] = []
+        let rowLimit = evaluationKindSummaries.isEmpty ? 3 : 4
         let ratedCount = reviewQueueCounts[.fiveStars] ?? 0
         let pickedCount = reviewQueueCounts[.picks] ?? 0
         if ratedCount > 0,
@@ -5140,6 +5148,14 @@ struct SmartCollectionBuilderPresentation: Equatable {
             ))
         }
 
+        for row in providerSignalTemplateRows(
+            evaluationKindSummaries: evaluationKindSummaries,
+            activeRuleChips: activeRuleChips
+        ) {
+            guard rows.count < rowLimit else { break }
+            rows.append(row)
+        }
+
         let candidates: [(queue: ReviewQueue, preset: SmartCollectionRulePreset, title: String, systemImage: String)] = [
             (.facesFound, .facesFound, "Face review", "person.2.circle"),
             (.needsKeywords, .needsKeywords, "Needs keywords", "tag.circle"),
@@ -5148,9 +5164,10 @@ struct SmartCollectionBuilderPresentation: Equatable {
             (.providerFailures, .providerFailures, "Provider failures", "bolt.horizontal.circle")
         ]
         for candidate in candidates {
-            guard rows.count < 3 else { break }
+            guard rows.count < rowLimit else { break }
             guard let count = reviewQueueCounts[candidate.queue], count > 0 else { continue }
             guard !isPresetActive(candidate.preset, activeRuleChips: activeRuleChips) else { continue }
+            guard !rows.containsPreset(candidate.preset) else { continue }
             rows.append(SmartCollectionSuggestedTemplateRow(
                 title: candidate.title,
                 detail: suggestionDetail(for: candidate.queue, count: count),
@@ -5159,6 +5176,41 @@ struct SmartCollectionBuilderPresentation: Equatable {
             ))
         }
         return rows
+    }
+
+    private static func providerSignalTemplateRows(
+        evaluationKindSummaries: [CatalogEvaluationKindSummary],
+        activeRuleChips: [String]
+    ) -> [SmartCollectionSuggestedTemplateRow] {
+        let summariesByKind = Dictionary(uniqueKeysWithValues: evaluationKindSummaries.map { ($0.kind, $0) })
+        let candidates: [(kind: EvaluationKind, preset: SmartCollectionRulePreset, title: String, systemImage: String)] = [
+            (.object, .objectSignals, "Object labels", "shippingbox.circle"),
+            (.ocrText, .ocrFound, "Text found", "text.viewfinder"),
+            (.faceCount, .facesFound, "People found", "person.2.circle")
+        ]
+        return candidates.compactMap { candidate in
+            guard let summary = summariesByKind[candidate.kind], summary.assetCount > 0 else { return nil }
+            guard !isPresetActive(candidate.preset, activeRuleChips: activeRuleChips) else { return nil }
+            return SmartCollectionSuggestedTemplateRow(
+                title: candidate.title,
+                detail: providerSignalSuggestionDetail(kind: candidate.kind, count: summary.assetCount),
+                systemImage: candidate.systemImage,
+                presets: [candidate.preset]
+            )
+        }
+    }
+
+    private static func providerSignalSuggestionDetail(kind: EvaluationKind, count: Int) -> String {
+        switch kind {
+        case .object:
+            return count == 1 ? "1 photo has object labels" : "\(count) photos have object labels"
+        case .ocrText:
+            return count == 1 ? "1 photo has OCR text" : "\(count) photos have OCR text"
+        case .faceCount:
+            return count == 1 ? "1 photo has people signals" : "\(count) photos have people signals"
+        default:
+            return count == 1 ? "1 photo has provider signals" : "\(count) photos have provider signals"
+        }
     }
 
     private static func suggestionDetail(for queue: ReviewQueue, count: Int) -> String {
@@ -5224,6 +5276,12 @@ struct SmartCollectionSuggestedTemplateRow: Equatable, Identifiable {
     var presets: [SmartCollectionRulePreset]
 
     var id: String { title }
+}
+
+private extension Array where Element == SmartCollectionSuggestedTemplateRow {
+    func containsPreset(_ preset: SmartCollectionRulePreset) -> Bool {
+        contains { $0.presets.contains(preset) }
+    }
 }
 
 struct SmartCollectionAddRuleRow: Equatable, Identifiable {

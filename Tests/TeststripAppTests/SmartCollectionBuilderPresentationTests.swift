@@ -1,3 +1,4 @@
+import TeststripCore
 import XCTest
 @testable import TeststripApp
 
@@ -165,6 +166,69 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
                 detail: "3 photos need evaluation",
                 systemImage: "wand.and.stars.inverse",
                 presets: [.needsEvaluation]
+            )
+        ])
+    }
+
+    func testSuggestedTemplateRowsIncludeProviderSignalSuggestions() {
+        let presentation = SmartCollectionBuilderPresentation(
+            proposedName: "Provider Signals",
+            ruleChips: ["Search: ceremony"],
+            matchCount: 24,
+            reviewQueueCounts: [.needsKeywords: 6],
+            evaluationKindSummaries: [
+                CatalogEvaluationKindSummary(kind: .object, assetCount: 9),
+                CatalogEvaluationKindSummary(kind: .ocrText, assetCount: 3),
+                CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 2)
+            ]
+        )
+
+        XCTAssertEqual(presentation.suggestedTemplateRows, [
+            SmartCollectionSuggestedTemplateRow(
+                title: "Object labels",
+                detail: "9 photos have object labels",
+                systemImage: "shippingbox.circle",
+                presets: [.objectSignals]
+            ),
+            SmartCollectionSuggestedTemplateRow(
+                title: "Text found",
+                detail: "3 photos have OCR text",
+                systemImage: "text.viewfinder",
+                presets: [.ocrFound]
+            ),
+            SmartCollectionSuggestedTemplateRow(
+                title: "People found",
+                detail: "2 photos have people signals",
+                systemImage: "person.2.circle",
+                presets: [.facesFound]
+            ),
+            SmartCollectionSuggestedTemplateRow(
+                title: "Needs keywords",
+                detail: "6 photos need keywords",
+                systemImage: "tag.circle",
+                presets: [.needsKeywords]
+            )
+        ])
+    }
+
+    func testSuggestedTemplateRowsSkipActiveProviderSignalRules() {
+        let presentation = SmartCollectionBuilderPresentation(
+            proposedName: "Provider Signals",
+            ruleChips: ["Signal: Object", "OCR Found"],
+            matchCount: 24,
+            evaluationKindSummaries: [
+                CatalogEvaluationKindSummary(kind: .object, assetCount: 9),
+                CatalogEvaluationKindSummary(kind: .ocrText, assetCount: 3),
+                CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 2)
+            ]
+        )
+
+        XCTAssertEqual(presentation.suggestedTemplateRows, [
+            SmartCollectionSuggestedTemplateRow(
+                title: "People found",
+                detail: "2 photos have people signals",
+                systemImage: "person.2.circle",
+                presets: [.facesFound]
             )
         ])
     }
