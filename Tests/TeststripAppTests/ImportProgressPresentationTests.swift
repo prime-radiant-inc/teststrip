@@ -33,7 +33,7 @@ final class ImportProgressPresentationTests: XCTestCase {
         ))
 
         XCTAssertEqual(presentation.phaseText, "Waiting")
-        XCTAssertEqual(presentation.detail, "Importing from photos")
+        XCTAssertEqual(presentation.detail, "Importing from photos - queued for the background worker")
         XCTAssertNil(presentation.countText)
     }
 

@@ -6268,10 +6268,16 @@ struct ImportProgressPresentation: Equatable {
         return ImportProgressPresentation(
             title: activity.title,
             phaseText: phaseText(for: activity),
-            detail: activity.detail.isEmpty ? "Preparing import" : activity.detail,
+            detail: detail(for: activity),
             countText: countText(for: activity),
             cancelHelp: cancelHelp(for: activity)
         )
+    }
+
+    private static func detail(for activity: AppWorkActivity) -> String {
+        let detail = activity.detail.isEmpty ? "Preparing import" : activity.detail
+        guard activity.status == .queued else { return detail }
+        return "\(detail) - queued for the background worker"
     }
 
     private static func cancelHelp(for activity: AppWorkActivity) -> String {
