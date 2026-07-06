@@ -8414,6 +8414,52 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testRequestPeopleFaceScanQueuesAppleVisionForCurrentScope() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: transport
+        )
+        let matchingAssets = (0..<121).map { index in
+            makeAsset(
+                id: "people-current-scope-\(index)",
+                path: "/Photos/People/people-current-scope-\(index).jpg",
+                rating: 0,
+                colorLabel: .green
+            )
+        }
+        let outsideAsset = makeAsset(
+            id: "people-current-scope-outside",
+            path: "/Photos/People/outside.jpg",
+            rating: 0,
+            colorLabel: .red
+        )
+        let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "people-current-scope-scan",
+            assets: matchingAssets + [outsideAsset],
+            workerSupervisor: supervisor
+        )
+        model.colorLabelFilter = .green
+        try model.applyLibraryFilters()
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: matchingAssets[0].id, level: .grid)))
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: matchingAssets[120].id, level: .grid)))
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: outsideAsset.id, level: .grid)))
+
+        XCTAssertLessThan(model.assets.count, matchingAssets.count)
+        XCTAssertFalse(model.assets.contains { $0.id == matchingAssets[120].id })
+        XCTAssertTrue(model.canRequestPeopleFaceScan)
+
+        try model.requestPeopleFaceScan()
+
+        XCTAssertEqual(model.backgroundWorkQueue.items.map(\.id), [
+            WorkSessionID(rawValue: "evaluation-\(matchingAssets[0].id.rawValue)-apple-vision"),
+            WorkSessionID(rawValue: "evaluation-\(matchingAssets[120].id.rawValue)-apple-vision")
+        ])
+        XCTAssertEqual(try transport.commands(), [
+            .runEvaluation(assetID: matchingAssets[0].id, provider: "apple-vision")
+        ])
+    }
+
     func testRequestCurrentScopeAssetEvaluationsQueuesOnlyBoundedCachedBatch() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

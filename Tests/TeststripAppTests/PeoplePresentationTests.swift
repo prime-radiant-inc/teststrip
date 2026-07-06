@@ -73,15 +73,15 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertNil(presentation.scanAction)
     }
 
-    func testVisibleFaceScanActionUsesLocalAppleVisionWhenAvailable() {
+    func testCurrentScopeFaceScanActionUsesLocalAppleVisionWhenAvailable() {
         let presentation = PeoplePresentation(
             totalAssetCount: 42,
             evaluationSummaries: [],
-            canRequestVisibleFaceScan: true
+            canRequestCurrentScopeFaceScan: true
         )
 
-        XCTAssertEqual(presentation.scanAction?.title, "Scan visible photos")
-        XCTAssertEqual(presentation.scanAction?.detail, "Runs local Apple Vision on cached previews for the current visible result set.")
+        XCTAssertEqual(presentation.scanAction?.title, "Scan current scope")
+        XCTAssertEqual(presentation.scanAction?.detail, "Runs local Apple Vision on cached previews for the current catalog or search scope.")
         XCTAssertEqual(presentation.scanAction?.systemImage, "viewfinder")
         XCTAssertEqual(presentation.reviewStripStatusText, "Scan ready")
     }

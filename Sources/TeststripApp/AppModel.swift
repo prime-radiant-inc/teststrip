@@ -1498,6 +1498,10 @@ public final class AppModel {
         return !cachedAssetIDs.isEmpty
     }
 
+    public var canRequestPeopleFaceScan: Bool {
+        canRequestCurrentScopeAssetEvaluations
+    }
+
     public var canRequestCompareAssetEvaluations: Bool {
         workerSupervisor != nil && compareAssets().contains { hasCachedPreview(for: $0.id) }
     }
@@ -5277,6 +5281,10 @@ public final class AppModel {
             let remainingLabel = remainingAssetCount == 1 ? "cached photo remains" : "cached photos remain"
             statusMessage = "Queued local reads for \(Self.photoCountDescription(batchAssetIDs.count)); \(remainingAssetCount) \(remainingLabel)"
         }
+    }
+
+    public func requestPeopleFaceScan() throws {
+        try requestCurrentScopeAssetEvaluations(providers: ["apple-vision"])
     }
 
     public func requestLatestImportAssetEvaluations(providers: [String] = AppModel.defaultEvaluationProviderNames) throws {

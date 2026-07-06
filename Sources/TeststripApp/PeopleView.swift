@@ -12,7 +12,7 @@ struct PeopleView: View {
             totalAssetCount: model.totalAssetCount,
             namedPeople: model.catalogPeople,
             evaluationSummaries: model.catalogEvaluationKindSummaries,
-            canRequestVisibleFaceScan: model.canRequestVisibleAssetEvaluations
+            canRequestCurrentScopeFaceScan: model.canRequestPeopleFaceScan
         )
     }
 
@@ -64,7 +64,7 @@ struct PeopleView: View {
 
             if let scanAction = presentation.scanAction {
                 Button {
-                    requestVisibleFaceScan()
+                    requestPeopleFaceScan()
                 } label: {
                     Label(scanAction.title, systemImage: scanAction.systemImage)
                 }
@@ -291,9 +291,9 @@ struct PeopleView: View {
         }
     }
 
-    private func requestVisibleFaceScan() {
+    private func requestPeopleFaceScan() {
         do {
-            try model.requestVisibleAssetEvaluations(providers: ["apple-vision"])
+            try model.requestPeopleFaceScan()
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -337,7 +337,7 @@ struct PeoplePresentation: Equatable {
         totalAssetCount: Int,
         namedPeople: [CatalogPerson] = [],
         evaluationSummaries: [CatalogEvaluationKindSummary],
-        canRequestVisibleFaceScan: Bool = false
+        canRequestCurrentScopeFaceScan: Bool = false
     ) {
         self.totalAssetCount = totalAssetCount
         self.namedPeople = namedPeople.map { NamedPersonPresentation(person: $0) }
@@ -347,9 +347,9 @@ struct PeoplePresentation: Equatable {
         self.photosWithDetectedFaces = faceCountSignals > 0 ? faceCountSignals : faceQualitySignals
         self.photosWithFaceQualitySignals = faceQualitySignals
         self.faceSignalKind = faceCountSignals > 0 ? .faceCount : (faceQualitySignals > 0 ? .faceQuality : nil)
-        self.scanAction = canRequestVisibleFaceScan ? PeopleScanAction(
-            title: "Scan visible photos",
-            detail: "Runs local Apple Vision on cached previews for the current visible result set.",
+        self.scanAction = canRequestCurrentScopeFaceScan ? PeopleScanAction(
+            title: "Scan current scope",
+            detail: "Runs local Apple Vision on cached previews for the current catalog or search scope.",
             systemImage: "viewfinder"
         ) : nil
     }

@@ -166,6 +166,7 @@ final class LiveMockupPlaceholderTests: XCTestCase {
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("unnamed face review"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Apple Vision scan action"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("current scope"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("face-review strip"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Name selection"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("face-review dismissal"))
@@ -175,6 +176,7 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("face-box-level naming remain disabled"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("unnamed face review"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("Apple Vision scan action"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("current scope"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("face-review strip"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("Name selection"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("face-review dismissal"))
