@@ -38,7 +38,7 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.reviewCards.map(\.suggestedActionTitle), ["Review faces", "Review quality"])
         XCTAssertEqual(presentation.reviewCards.map(\.filterKind), [.faceCount, .faceQuality])
         XCTAssertEqual(presentation.reviewCards.map(\.target), [.reviewQueue(.facesFound), .evaluationKind(.faceQuality)])
-        XCTAssertTrue(presentation.reviewCards.allSatisfy { !$0.isNamingEnabled })
+        XCTAssertTrue(presentation.reviewCards.allSatisfy(\.isNamingEnabled))
         XCTAssertEqual(presentation.namedPeopleTitle, "ALL PEOPLE")
         XCTAssertEqual(presentation.namedPeopleEmptyText, "No confirmed people yet. Review face queues, select photos, then name the selection.")
     }
@@ -115,6 +115,29 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.headerSummary, "0 people · 5 photos with face signals")
         XCTAssertEqual(presentation.signalRows.map(\.countText), ["2", "5"])
         XCTAssertEqual(presentation.signalRows.map(\.filterKind), [.faceCount, .faceQuality])
+    }
+
+    func testReviewCardsDoNotMarkManualPeopleReviewAsUnbuiltFaceActions() {
+        let presentation = PeoplePresentation(
+            totalAssetCount: 42,
+            evaluationSummaries: [
+                CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 2),
+                CatalogEvaluationKindSummary(kind: .faceQuality, assetCount: 5)
+            ]
+        )
+
+        XCTAssertEqual(presentation.reviewCards.map(\.suggestedActionTitle), ["Review faces", "Review quality"])
+        XCTAssertTrue(presentation.reviewCards.allSatisfy(\.isActionEnabled))
+        XCTAssertTrue(presentation.reviewCards.allSatisfy(\.isNamingEnabled))
+        XCTAssertEqual(presentation.faceActionRows.map(\.title), ["Auto cluster", "Split person", "Face-box naming"])
+        XCTAssertEqual(
+            presentation.faceActionRows.map(\.placeholder.id),
+            [
+                LiveMockupPlaceholders.peopleFaceActions.id,
+                LiveMockupPlaceholders.peopleFaceActions.id,
+                LiveMockupPlaceholders.peopleFaceActions.id
+            ]
+        )
     }
 
     func testPresentationKeepsNamingActionsDisabledWithoutClusters() {

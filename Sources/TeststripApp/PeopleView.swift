@@ -522,7 +522,7 @@ struct PeopleReviewCard: Equatable, Identifiable {
     var suggestedActionTitle: String
     var filterKind: EvaluationKind?
     var target: SidebarRowTarget?
-    var isNamingEnabled = false
+    var isNamingEnabled = true
     var gradientColors: [Color]
 
     var isActionEnabled: Bool {

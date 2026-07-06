@@ -75,7 +75,7 @@ public enum LiveMockupPlaceholders {
         id: "people.face-actions",
         title: "People face actions",
         intendedBehavior: "Confirm, name, merge, or dismiss face clusters created by local recognition.",
-        currentFallback: "Disabled controls inside the placeholder People view."
+        currentFallback: "Auto cluster, Split person, and Face-box naming remain disabled future actions; manual review handoff, Name selection, dismissal, persisted named people, and merge are live elsewhere in the People route."
     )
 
     public static let foldersEmpty = LiveMockupPlaceholder(

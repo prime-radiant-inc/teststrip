@@ -172,6 +172,15 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("face-box-level naming remain disabled"))
     }
 
+    func testPeopleFaceActionsLedgerOnlyMarksFutureAutomatedActionsAsDisabled() throws {
+        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "people.face-actions" })
+
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Auto cluster"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Split person"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Face-box naming"))
+        XCTAssertFalse(placeholder.currentFallback.localizedCaseInsensitiveContains("placeholder People view"))
+    }
+
     func testCopilotLedgerTracksLiveRouteWithoutAutonomousActions() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "library.copilot" })
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "1b" })
