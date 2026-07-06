@@ -109,6 +109,7 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(compareSurface.currentImplementation.localizedCaseInsensitiveContains("up to eight"))
         XCTAssertTrue(compareSurface.currentImplementation.localizedCaseInsensitiveContains("four-column"))
         XCTAssertTrue(compareSurface.currentImplementation.localizedCaseInsensitiveContains("neutral ranking copy"))
+        XCTAssertTrue(compareSurface.currentImplementation.localizedCaseInsensitiveContains("top signal frame"))
         XCTAssertTrue(compareSurface.currentImplementation.localizedCaseInsensitiveContains("manual culling handoff"))
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("persisted import stack sets"))
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("keep-selected/reject-alternates and keep-all"))

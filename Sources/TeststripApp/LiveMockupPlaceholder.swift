@@ -262,7 +262,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Survey and compare",
             status: .partial,
             placeholder: .compareSurvey,
-            currentImplementation: "Compare shows up to eight frames in a four-column survey grid with selected primary first, persisted culling stack membership when active, loaded-scope candidate stacks when adjacent same-folder capture times are available, alternates, metadata-backed badges, a focus metric lane, signal-backed recommendation or neutral ranking copy, current-compare-set actions to keep the primary and reject visible alternates or keep all frames, and manual culling handoff; richer stack mutations are not built."
+            currentImplementation: "Compare shows up to eight frames in a four-column survey grid with selected primary first, persisted culling stack membership when active, loaded-scope candidate stacks when adjacent same-folder capture times are available, alternates, metadata-backed badges, a focus metric lane, signal-backed recommendation or neutral ranking copy, current-compare-set actions to keep the primary or top signal frame and reject visible alternates or keep all frames, and manual culling handoff; richer stack mutations are not built."
         ),
         LiveMockupDesignSurface(
             designID: "3a",

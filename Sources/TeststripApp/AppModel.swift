@@ -2840,17 +2840,31 @@ public final class AppModel {
         guard let primaryAsset = comparePrimaryAsset(in: compareGroup) else {
             throw TeststripError.invalidState("no compare set")
         }
+        try keepCompareAssetAndRejectAlternates(assetID: primaryAsset.id, compareGroup: compareGroup)
+    }
 
+    public func keepCompareAssetAndRejectAlternates(assetID: AssetID) throws {
+        guard catalog != nil else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let compareGroup = compareAssets()
+        try keepCompareAssetAndRejectAlternates(assetID: assetID, compareGroup: compareGroup)
+    }
+
+    private func keepCompareAssetAndRejectAlternates(assetID: AssetID, compareGroup: [Asset]) throws {
+        guard let keptAsset = compareGroup.first(where: { $0.id == assetID }) else {
+            throw TeststripError.invalidState("recommended asset is not in the current compare set")
+        }
         let summary = try applyCompareFlags(
             compareGroup.reduce(into: [AssetID: PickFlag]()) { flags, compareAsset in
-                flags[compareAsset.id] = compareAsset.id == primaryAsset.id ? .pick : .reject
+                flags[compareAsset.id] = compareAsset.id == assetID ? .pick : .reject
             },
             to: compareGroup
         )
 
         statusMessage = summary.rejectedCount == 0
-            ? "Kept \(primaryAsset.originalURL.lastPathComponent)"
-            : "Kept \(primaryAsset.originalURL.lastPathComponent); rejected \(summary.rejectedCount) alternates"
+            ? "Kept \(keptAsset.originalURL.lastPathComponent)"
+            : "Kept \(keptAsset.originalURL.lastPathComponent); rejected \(summary.rejectedCount) alternates"
     }
 
     public func keepAllCompareAssets() throws {

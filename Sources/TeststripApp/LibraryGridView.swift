@@ -2910,6 +2910,8 @@ struct CompareSurveyPresentation: Equatable {
     var groupCountText: String
     var groupKindText: String
     var recommendationText: String
+    var recommendedAssetID: AssetID?
+    private var recommendedFrameLabel: String?
 
     init(
         assets: [Asset],
@@ -2924,6 +2926,8 @@ struct CompareSurveyPresentation: Equatable {
             self.groupCountText = "No frames"
             self.groupKindText = "Compare set"
             self.recommendationText = "No comparison set"
+            self.recommendedAssetID = nil
+            self.recommendedFrameLabel = nil
             return
         }
 
@@ -2944,11 +2948,15 @@ struct CompareSurveyPresentation: Equatable {
             "Compare set"
         }
 
+        let rankedCandidates = CullingStackRecommendation.rankedCandidates(
+            stackAssetIDs: assets.map(\.id),
+            evaluationSignalsByAssetID: evaluationSignalsByAssetID
+        )
+        let recommendation = rankedCandidates.first
+        self.recommendedAssetID = recommendation?.assetID
+        self.recommendedFrameLabel = recommendation?.frameLabel
         self.recommendationText = Self.recommendationText(
-            rankedCandidates: CullingStackRecommendation.rankedCandidates(
-                stackAssetIDs: assets.map(\.id),
-                evaluationSignalsByAssetID: evaluationSignalsByAssetID
-            ),
+            rankedCandidates: rankedCandidates,
             primaryAsset: self.primaryAsset,
             rejectCount: max(assets.count - 1, 0)
         )
@@ -2993,18 +3001,34 @@ struct CompareSurveyPresentation: Equatable {
     var groupActionText: String {
         guard primaryAsset != nil else { return "No group action" }
         let rejectCount = alternateAssets.count
+        if let recommendedFrameLabel,
+           let recommendedAssetID,
+           recommendedAssetID != primaryAsset?.id,
+           rejectCount > 0 {
+            return "Keep top signal \(recommendedFrameLabel) · reject \(rejectCount)"
+        }
         guard rejectCount > 0 else { return "Keep primary" }
         return "Keep primary · reject \(rejectCount)"
     }
 
     var groupActionHelp: String {
-        "Marks the current compare primary as Pick and the visible alternates as Reject"
+        if let recommendedAssetID,
+           recommendedAssetID != primaryAsset?.id {
+            return "Marks the top signal frame as Pick and the visible alternates as Reject"
+        }
+        return "Marks the current compare primary as Pick and the visible alternates as Reject"
     }
 
     func groupActions(canApplyPrimaryChoice: Bool) -> [CompareSurveyActionPresentation] {
-        [
+        let primaryAction: CompareSurveyActionPresentation.Action = if let recommendedAssetID,
+                                                                       recommendedAssetID != primaryAsset?.id {
+            .keepRecommendedAndRejectAlternates(recommendedAssetID)
+        } else {
+            .keepPrimaryAndRejectAlternates
+        }
+        return [
             CompareSurveyActionPresentation(
-                action: .keepPrimaryAndRejectAlternates,
+                action: primaryAction,
                 title: groupActionText,
                 isEnabled: canApplyPrimaryChoice && primaryAsset != nil,
                 help: groupActionHelp,
@@ -3070,8 +3094,9 @@ struct CompareSurveyPresentation: Equatable {
 }
 
 struct CompareSurveyActionPresentation: Equatable, Identifiable {
-    enum Action: String, Equatable {
+    enum Action: Equatable {
         case keepPrimaryAndRejectAlternates
+        case keepRecommendedAndRejectAlternates(AssetID)
         case keepAll
         case chooseManually
     }
@@ -3082,8 +3107,17 @@ struct CompareSurveyActionPresentation: Equatable, Identifiable {
     var help: String
     var liveMockupPlaceholder: LiveMockupPlaceholder?
 
-    var id: Action {
-        action
+    var id: String {
+        switch action {
+        case .keepPrimaryAndRejectAlternates:
+            return "keep-primary-and-reject-alternates"
+        case .keepRecommendedAndRejectAlternates(let assetID):
+            return "keep-recommended-and-reject-alternates-\(assetID.rawValue)"
+        case .keepAll:
+            return "keep-all"
+        case .chooseManually:
+            return "choose-manually"
+        }
     }
 }
 
@@ -3782,7 +3816,7 @@ private struct CompareView: View {
             Divider()
                 .frame(height: 22)
             Button(primaryGroupAction.title) {
-                applyCompareGroupChoice()
+                applyCompareGroupAction(primaryGroupAction.action)
             }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
@@ -3836,6 +3870,28 @@ private struct CompareView: View {
         do {
             focusCullingSurface()
             try model.keepComparePrimaryAndRejectAlternates()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyCompareGroupAction(_ action: CompareSurveyActionPresentation.Action) {
+        switch action {
+        case .keepPrimaryAndRejectAlternates:
+            applyCompareGroupChoice()
+        case .keepRecommendedAndRejectAlternates(let assetID):
+            applyCompareRecommendedChoice(assetID)
+        case .keepAll:
+            applyCompareKeepAll()
+        case .chooseManually:
+            beginManualCompareCulling()
+        }
+    }
+
+    private func applyCompareRecommendedChoice(_ assetID: AssetID) {
+        do {
+            focusCullingSurface()
+            try model.keepCompareAssetAndRejectAlternates(assetID: assetID)
         } catch {
             model.errorMessage = error.localizedDescription
         }

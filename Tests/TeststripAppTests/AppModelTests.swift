@@ -443,6 +443,29 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.assets[8].metadata.flag)
     }
 
+    func testKeepRecommendedCompareAssetRejectsCurrentCompareAlternatesOnly() throws {
+        let assets = (0..<9).map { makeAsset(id: "compare-recommended-action-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-recommended-group-action",
+            assets: assets
+        )
+        model.selectedView = .compare
+        model.select(assets[1].id)
+
+        try model.keepCompareAssetAndRejectAlternates(assetID: assets[3].id)
+
+        XCTAssertEqual(try repository.asset(id: assets[0].id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: assets[1].id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: assets[2].id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: assets[3].id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: assets[4].id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: assets[5].id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: assets[6].id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: assets[7].id).metadata.flag, .reject)
+        XCTAssertNil(try repository.asset(id: assets[8].id).metadata.flag)
+        XCTAssertEqual(model.statusMessage, "Kept compare-recommended-action-3.jpg; rejected 7 alternates")
+    }
+
     func testKeepAllCompareAssetsMarksCurrentCompareSetAsPicksOnly() throws {
         let assets = (0..<9).map { makeAsset(id: "compare-keep-all-\($0)", size: Int64($0 + 1)) }
         let (model, repository) = try makeModelWithCatalogAssets(

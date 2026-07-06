@@ -63,6 +63,29 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertFalse(presentation.recommendationText.localizedCaseInsensitiveContains("suggests"))
     }
 
+    func testGroupActionKeepsTopSignalWhenItIsNotTheSelectedPrimary() {
+        let assets = [
+            makeAsset(id: "primary"),
+            makeAsset(id: "second"),
+            makeAsset(id: "third")
+        ]
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: [
+                assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.72)],
+                assets[2].id: [signal(assetID: assets[2].id, kind: .focus, score: 0.95)]
+            ]
+        )
+
+        let actions = presentation.groupActions(canApplyPrimaryChoice: true)
+
+        XCTAssertEqual(actions[0].title, "Keep top signal 3 · reject 2")
+        XCTAssertEqual(actions[0].action, .keepRecommendedAndRejectAlternates(assets[2].id))
+        XCTAssertTrue(actions[0].help.localizedCaseInsensitiveContains("top signal"))
+    }
+
     func testEightFrameSurveyUsesFourByTwoLayout() {
         let assets = (0..<8).map { makeAsset(id: "survey-\($0)") }
 
