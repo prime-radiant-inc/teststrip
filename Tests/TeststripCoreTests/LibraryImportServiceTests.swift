@@ -447,6 +447,83 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertEqual(copyUpdates.last?.catalogedAssetIDs, result.importedAssets.map(\.id))
     }
 
+    func testCopyFromCardOrganizesIntoDatedFoldersWhenPolicyIsCapturedDate() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-copy-dated")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let sourceFile = source.appendingPathComponent("IMG_0001.jpg")
+        try TestDirectories.writeTestJPEG(to: sourceFile, width: 1200, height: 800)
+        try FileManager.default.setAttributes(
+            [.modificationDate: FolderImportTests.utcDate(2025, 1, 3, 10, 30, 0)],
+            ofItemAtPath: sourceFile.path
+        )
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+
+        let result = try service.copyFromCard(
+            source: source,
+            destinationRoot: destination,
+            destinationPolicy: .capturedDate,
+            repository: repository,
+            previewPolicy: .deferGeneration
+        )
+
+        let destinationFile = destination
+            .appendingPathComponent("2025", isDirectory: true)
+            .appendingPathComponent("2025-01-03", isDirectory: true)
+            .appendingPathComponent("IMG_0001.jpg")
+        XCTAssertEqual(result.importedAssets.map(\.originalURL), [destinationFile])
+        XCTAssertEqual(try Data(contentsOf: sourceFile), try Data(contentsOf: destinationFile))
+    }
+
+    func testCopyFromCardWritesSecondCopyAndReportsBackupFailuresWithoutFailingImport() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-copy-second")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Library", isDirectory: true)
+        let secondCopy = root.appendingPathComponent("Backup", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondCopy, withIntermediateDirectories: true)
+        try TestDirectories.writeTestJPEG(to: source.appendingPathComponent("IMG_0001.jpg"), width: 1200, height: 800)
+        try TestDirectories.writeTestJPEG(to: source.appendingPathComponent("IMG_0002.jpg"), width: 800, height: 1200)
+        let conflictingBackup = secondCopy.appendingPathComponent("IMG_0002.jpg")
+        try Data("existing".utf8).write(to: conflictingBackup)
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+
+        let result = try service.copyFromCard(
+            source: source,
+            destinationRoot: destination,
+            secondCopyDestination: secondCopy,
+            repository: repository,
+            previewPolicy: .deferGeneration
+        )
+
+        XCTAssertEqual(
+            result.importedAssets.map(\.originalURL),
+            [
+                destination.appendingPathComponent("IMG_0001.jpg"),
+                destination.appendingPathComponent("IMG_0002.jpg")
+            ]
+        )
+        XCTAssertEqual(
+            try Data(contentsOf: source.appendingPathComponent("IMG_0001.jpg")),
+            try Data(contentsOf: secondCopy.appendingPathComponent("IMG_0001.jpg"))
+        )
+        XCTAssertEqual(try String(contentsOf: conflictingBackup, encoding: .utf8), "existing")
+        XCTAssertEqual(result.skippedSourceFiles.map(\.sourceURL), [source.appendingPathComponent("IMG_0002.jpg")])
+        XCTAssertEqual(result.skippedSourceFileCount, 1)
+        let message = try XCTUnwrap(result.skippedSourceFiles.first?.message)
+        XCTAssertTrue(
+            message.hasPrefix("backup copy failed: "),
+            "expected honest backup failure message, got \(message)"
+        )
+    }
+
     func testReimportPreservesAssetIdentityMetadataAndRefreshesPreview() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-reimport")
         let image = root.appendingPathComponent("one.jpg")
