@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppIcon.svg
+
+  Canonical vector source for the Teststrip app icon: a darkroom test strip
+  of five exposures stepping from near-black to the "safelight amber" accent
+  (#e8a23c), on a near-black macOS squircle. The bottom, fully-exposed frame
+  is drawn a touch wider than the rest to read as "the keeper", echoing the
+  app's culling/selection purpose.
+
+  This file is the design reference, kept in sync by hand with
+  script/render_app_icon.swift. It is not consumed directly by the build: the
+  machines that build Teststrip only have stock macOS tools available (no
+  rsvg-convert, no Inkscape, no pyobjc for Python's CoreGraphics bindings), so
+  script/generate_app_icon.sh rasterizes the equivalent CoreGraphics drawing
+  in render_app_icon.swift instead of rendering this SVG.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#17161a"/>
+      <stop offset="1" stop-color="#0b0b0d"/>
+    </linearGradient>
+    <radialGradient id="glowGrad" gradientUnits="userSpaceOnUse" cx="512" cy="450.56" r="511.08">
+      <stop offset="0" stop-color="#e8a23c" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#e8a23c" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="squircleClip">
+      <rect x="99.84" y="99.84" width="824.32" height="824.32" rx="185.47" ry="185.47"/>
+    </clipPath>
+    <filter id="stripShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+    <filter id="pickGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feDropShadow dx="0" dy="0" stdDeviation="14" flood-color="#e8a23c" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <!-- Squircle background: the macOS Big Sur+ icon grid, ~80.5% of the canvas -->
+  <g clip-path="url(#squircleClip)">
+    <rect x="99.84" y="99.84" width="824.32" height="824.32" fill="url(#bgGrad)"/>
+    <rect x="99.84" y="99.84" width="824.32" height="824.32" fill="url(#glowGrad)"/>
+  </g>
+  <rect x="99.84" y="99.84" width="824.32" height="824.32" rx="185.47" ry="185.47"
+        fill="none" stroke="#ffffff" stroke-opacity="0.07" stroke-width="1.54"/>
+
+  <!-- Test strip: five stepped exposures, darkest to the safelight amber -->
+  <g filter="url(#stripShadow)">
+    <rect x="347.14" y="204.94" width="329.73" height="100.72" rx="16.11" fill="#36312d"/>
+  </g>
+
+  <rect x="347.14" y="204.94" width="329.73" height="100.72" rx="16.11"
+        fill="#36312d" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1.23"/>
+  <rect x="347.14" y="333.29" width="329.73" height="100.72" rx="16.11"
+        fill="#604428" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1.23"/>
+  <rect x="347.14" y="461.64" width="329.73" height="100.72" rx="16.11"
+        fill="#94622a" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1.23"/>
+  <rect x="347.14" y="589.99" width="329.73" height="100.72" rx="16.11"
+        fill="#c08030" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1.23"/>
+
+  <!-- The brightest, correctly-exposed frame reads as the "pick": wider than
+       the rest, with a quiet amber glow, echoing the app's culling concept -->
+  <g filter="url(#pickGlow)">
+    <rect x="317.46" y="718.34" width="389.08" height="100.72" rx="16.11" fill="#e8a23c"/>
+  </g>
+  <rect x="317.46" y="718.34" width="389.08" height="100.72" rx="16.11"
+        fill="#e8a23c" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1.23"/>
+</svg>
