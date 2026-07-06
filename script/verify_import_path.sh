@@ -306,7 +306,9 @@ fi
 worker_pid="$(/usr/bin/awk 'NF { print $1 }' <<< "$worker_listing")"
 
 emit_import_metric "app_cpu_percent" "$(process_cpu_percent "$app_pid")"
+emit_import_metric "app_rss_kb" "$(process_rss_kb "$app_pid")"
 emit_import_metric "worker_cpu_percent" "$(process_cpu_percent "$worker_pid")"
+emit_import_metric "worker_rss_kb" "$(process_rss_kb "$worker_pid")"
 
 if [[ -n "$catalog_path" && -f "$catalog_path" ]]; then
   import_completion_started_ms="$(metric_now_ms)"

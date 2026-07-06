@@ -38,11 +38,19 @@ The Import Path probe is:
 
 It creates a temporary PNG folder, opens the Import Path sheet, fills the focused sheet field, presses Import, waits for visible import feedback, and then waits until the imported thumbnail is visible. Use it after `./script/build_and_run.sh --verify-smoke` when checking the first-run import flow.
 
-The probe also emits `teststrip_import_metric` lines for feedback visibility duration, import visibility duration, import count, app/worker CPU snapshots, pending preview count after a fixed sample window, and final preview-drain status. Use a larger count when checking import and preview throughput:
+The probe also emits `teststrip_import_metric` lines for feedback visibility duration, import visibility duration, import count, app/worker CPU and RSS snapshots, pending preview count after a fixed sample window, and final preview-drain status. Use a larger count when checking import and preview throughput:
 
 ```bash
 TESTSTRIP_AX_IMPORT_COUNT=600 TESTSTRIP_AX_TIMEOUT_SECONDS=75 ./script/verify_import_path.sh Teststrip
 ```
+
+The full app workflow wrapper chains the focused UI probes and emits `teststrip_app_workflow_resource` snapshots after each step:
+
+```bash
+./script/verify_app_workflows.sh Teststrip
+```
+
+Each snapshot records the app and worker PID, CPU percent, and RSS in KB. These numbers are diagnostic evidence, not pass/fail thresholds; use them to catch obviously hot or growing processes while keeping the individual probes responsible for behavioral assertions.
 
 The submit-only Import Path helper is:
 

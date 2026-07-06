@@ -35,6 +35,8 @@ The preview-render verifier wraps the generated-image `preview-render` benchmark
 
 The source-availability verifier wraps the `source-availability` benchmark and enforces catalog asset count, refreshed asset count, deterministic online/missing/stale source counts, and the current 5s default source refresh threshold. Override the timing gate with `TESTSTRIP_SOURCE_AVAILABILITY_MAX_SECONDS` when intentionally measuring slower hardware, remote volumes, or larger source batches.
 
+Foreground app workflow probes are intentionally separate from the headless benchmark gates because they depend on macOS Accessibility focus. When they are run, `script/verify_app_workflows.sh Teststrip` now emits `teststrip_app_workflow_resource` snapshots after each step, and `script/verify_import_path.sh Teststrip` emits app/worker CPU plus RSS metrics beside the import and preview counters. Treat these as diagnostic snapshots until enough local runs exist to set honest red/yellow/green thresholds.
+
 Additional focused commands cover the other hot paths that currently matter for alpha:
 
 ```bash

@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/process_resource_metrics.sh"
+
 metric_now_ms() {
   /usr/bin/python3 -c 'import time; print(int(time.time() * 1000))'
 }
@@ -121,13 +124,4 @@ wait_until_import_finished() {
     sleep "$poll_seconds"
   done
   return 1
-}
-
-process_cpu_percent() {
-  local pid="$1"
-  if [[ -z "$pid" ]]; then
-    echo "unknown"
-    return 1
-  fi
-  /bin/ps -p "$pid" -o %cpu= 2>/dev/null | /usr/bin/awk 'NF { print $1; found = 1 } END { if (!found) print "unknown" }'
 }
