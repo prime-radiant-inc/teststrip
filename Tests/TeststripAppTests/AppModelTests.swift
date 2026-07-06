@@ -617,6 +617,99 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.assets[8].metadata.flag)
     }
 
+    func testCompareGroupDecisionAdvancesToNextPersistedStackInCompare() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "compare-advance-persisted",
+            sessionID: "compare-advance-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        fixture.model.selectedView = .compare
+        XCTAssertEqual(fixture.model.compareAssets().map(\.id), [fixture.firstLead.id, fixture.firstAlternate.id])
+
+        try fixture.model.keepComparePrimaryAndRejectAlternates()
+
+        XCTAssertEqual(try fixture.repository.asset(id: fixture.firstLead.id).metadata.flag, .pick)
+        XCTAssertEqual(try fixture.repository.asset(id: fixture.firstAlternate.id).metadata.flag, .reject)
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedView, .compare)
+        XCTAssertEqual(fixture.model.compareAssets().map(\.id), [fixture.secondLead.id, fixture.secondAlternate.id])
+    }
+
+    func testCompareGroupDecisionAdvancesToNextCandidateStackWindow() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let firstBurstLead = makeAsset(
+            id: "compare-advance-a1",
+            path: "/Photos/Job/compare-advance-a1.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let firstBurstAlternate = makeAsset(
+            id: "compare-advance-a2",
+            path: "/Photos/Job/compare-advance-a2.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let secondBurstLead = makeAsset(
+            id: "compare-advance-b1",
+            path: "/Photos/Job/compare-advance-b1.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(60))
+        )
+        let secondBurstAlternate = makeAsset(
+            id: "compare-advance-b2",
+            path: "/Photos/Job/compare-advance-b2.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(61))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-advance-window",
+            assets: [firstBurstLead, firstBurstAlternate, secondBurstLead, secondBurstAlternate]
+        )
+        model.select(firstBurstLead.id)
+        model.selectedView = .compare
+        XCTAssertEqual(model.compareAssets().map(\.id), [firstBurstLead.id, firstBurstAlternate.id])
+
+        try model.keepComparePrimaryAndRejectAlternates()
+
+        XCTAssertEqual(try repository.asset(id: firstBurstLead.id).metadata.flag, .pick)
+        XCTAssertEqual(model.selectedAssetID, secondBurstLead.id)
+        XCTAssertEqual(model.selectedView, .compare)
+        XCTAssertEqual(model.compareAssets().map(\.id), [secondBurstLead.id, secondBurstAlternate.id])
+    }
+
+    func testCompareGroupDecisionStaysPutOnLastGroup() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "compare-advance-last",
+            sessionID: "compare-advance-last-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.secondSet.id)
+        fixture.model.select(fixture.secondLead.id)
+        fixture.model.selectedView = .compare
+
+        try fixture.model.keepComparePrimaryAndRejectAlternates()
+
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedView, .compare)
+        XCTAssertEqual(fixture.model.statusMessage, "Kept \(fixture.secondLead.originalURL.lastPathComponent); rejected 1 alternates")
+    }
+
+    func testStackNavigationStaysInCompareWhenCompareIsActive() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "compare-stack-navigation",
+            sessionID: "compare-stack-navigation-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        fixture.model.selectedView = .compare
+
+        try fixture.model.applyCullingShortcut(.nextStack)
+
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedView, .compare)
+        XCTAssertEqual(fixture.model.compareAssets().map(\.id), [fixture.secondLead.id, fixture.secondAlternate.id])
+    }
+
     func testBeginManualCullingFromCompareSetCreatesWorkStackScope() throws {
         let assets = (0..<9).map { makeAsset(id: "compare-manual-\($0)", size: Int64($0 + 1)) }
         let (model, repository) = try makeModelWithCatalogAssets(

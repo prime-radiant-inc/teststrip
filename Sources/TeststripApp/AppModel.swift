@@ -3586,6 +3586,7 @@ public final class AppModel {
             },
             to: compareGroup
         )
+        try advanceCompareGroupAfterDecision(previousGroup: compareGroup)
 
         statusMessage = summary.rejectedCount == 0
             ? "Kept \(keptAsset.originalURL.lastPathComponent)"
@@ -3607,6 +3608,7 @@ public final class AppModel {
             },
             to: compareGroup
         )
+        try advanceCompareGroupAfterDecision(previousGroup: compareGroup)
 
         statusMessage = "Kept all \(summary.pickedCount) compare frames"
     }
@@ -3732,6 +3734,24 @@ public final class AppModel {
             return
         }
         compareAssetIDs = compareWindowAssetIDs(limit: Self.defaultCompareAssetLimit, anchor: assetID)
+    }
+
+    // After a compare group decision, move the survey to the next group:
+    // the next persisted stack for stack sessions, otherwise the frame after
+    // the decided group (selection change re-anchors compareAssetIDs).
+    private func advanceCompareGroupAfterDecision(previousGroup: [Asset]) throws {
+        guard selectedView == .compare else { return }
+        if try selectPersistedCullingStack(.next) {
+            return
+        }
+        let groupAssetIDs = Set(previousGroup.map(\.id))
+        guard let lastGroupIndex = assets.lastIndex(where: { groupAssetIDs.contains($0.id) }) else { return }
+        if lastGroupIndex == assets.count - 1, hasMoreAssets {
+            try loadMoreAssets()
+        }
+        let nextIndex = lastGroupIndex + 1
+        guard assets.indices.contains(nextIndex) else { return }
+        selectAssetID(assets[nextIndex].id)
     }
 
     public func selectNextAsset() {
@@ -4100,10 +4120,11 @@ public final class AppModel {
         guard let targetSetID = try persistedCullingStackSetID(direction) else {
             return false
         }
+        let keepSurveyCompare = selectedView == .compare
         try applyAssetSet(id: targetSetID)
         let stackAssetIDs = selectedExplicitAssetIDs ?? []
         selectAssetID(recommendedCullingStackAssetID(in: stackAssetIDs) ?? stackAssetIDs.first)
-        selectedView = .loupe
+        selectedView = keepSurveyCompare ? .compare : .loupe
         return true
     }
 
