@@ -154,6 +154,13 @@ final class LibraryGridLayoutTests: XCTestCase {
         )
     }
 
+    func testGridSingleClickSelectionDoesNotStealCullingFocus() {
+        XCTAssertFalse(AssetActivationFocusPolicy.shouldFocusCullingSurface(for: .singleClickSelection))
+        XCTAssertFalse(AssetActivationFocusPolicy.shouldFocusCullingSurface(for: .batchSelection))
+        XCTAssertTrue(AssetActivationFocusPolicy.shouldFocusCullingSurface(for: .openInLoupe))
+        XCTAssertTrue(AssetActivationFocusPolicy.shouldFocusCullingSurface(for: .accessibilitySelection))
+    }
+
     func testGridCellAspectRatioUsesCatalogedImageDimensions() {
         let portrait = Asset.gridLayoutTestAsset(width: 4000, height: 6000)
         let panoramic = Asset.gridLayoutTestAsset(width: 6000, height: 2000)

@@ -4416,6 +4416,24 @@ enum ComparePreviewRequestID {
     }
 }
 
+enum AssetActivationFocusPolicy {
+    enum Activation {
+        case singleClickSelection
+        case batchSelection
+        case openInLoupe
+        case accessibilitySelection
+    }
+
+    static func shouldFocusCullingSurface(for activation: Activation) -> Bool {
+        switch activation {
+        case .singleClickSelection, .batchSelection:
+            return false
+        case .openInLoupe, .accessibilitySelection:
+            return true
+        }
+    }
+}
+
 private extension View {
     func assetActivation(
         for asset: Asset,
@@ -4424,16 +4442,26 @@ private extension View {
         selectAsset: @escaping (AssetID) -> Void
     ) -> some View {
         let doubleClick = TapGesture(count: 2).onEnded {
-            focusCullingSurface()
+            if AssetActivationFocusPolicy.shouldFocusCullingSurface(for: .openInLoupe) {
+                focusCullingSurface()
+            }
             model.openAssetInLoupe(asset.id)
         }
         return Button {
-            focusCullingSurface()
             if NSEvent.modifierFlags.contains(.shift) {
+                if AssetActivationFocusPolicy.shouldFocusCullingSurface(for: .batchSelection) {
+                    focusCullingSurface()
+                }
                 model.selectBatchRange(to: asset.id)
             } else if NSEvent.modifierFlags.contains(.command) {
+                if AssetActivationFocusPolicy.shouldFocusCullingSurface(for: .batchSelection) {
+                    focusCullingSurface()
+                }
                 model.toggleBatchSelection(asset.id)
             } else {
+                if AssetActivationFocusPolicy.shouldFocusCullingSurface(for: .singleClickSelection) {
+                    focusCullingSurface()
+                }
                 selectAsset(asset.id)
             }
         } label: {
@@ -4446,7 +4474,9 @@ private extension View {
             .accessibilityLabel(asset.originalURL.lastPathComponent)
             .accessibilityValue(assetSelectionAccessibilityValue(for: asset, model: model))
             .accessibilityAction {
-                focusCullingSurface()
+                if AssetActivationFocusPolicy.shouldFocusCullingSurface(for: .accessibilitySelection) {
+                    focusCullingSurface()
+                }
                 selectAsset(asset.id)
             }
     }
