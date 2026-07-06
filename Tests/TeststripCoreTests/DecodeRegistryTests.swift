@@ -88,6 +88,13 @@ final class DecodeRegistryTests: XCTestCase {
         XCTAssertTrue(ImageIODecodeProvider.knownUnsupportedRawExtensions.contains("x3f"))
     }
 
+    func testImageIORecognizesHEIFAlongsideHEIC() {
+        XCTAssertTrue(ImageIODecodeProvider.workingStillExtensions.contains("heif"))
+        XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("heif"))
+        XCTAssertTrue(ImageIODecodeProvider.catalogableExtensions.contains("heif"))
+        XCTAssertEqual(ImageIODecodeProvider().capability(forFileExtension: "HEIF")?.support, .working)
+    }
+
     func testImageIOCatalogableExtensionsIncludeRecognizedUnsupportedRawFamilies() {
         XCTAssertTrue(ImageIODecodeProvider.catalogableExtensions.contains("jpg"))
         XCTAssertTrue(ImageIODecodeProvider.catalogableExtensions.contains("dng"))

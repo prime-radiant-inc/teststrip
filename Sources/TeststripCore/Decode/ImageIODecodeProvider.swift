@@ -5,7 +5,7 @@ public struct ImageIODecodeProvider: DecodeProvider {
     public let name = "ImageIO"
 
     public static let workingStillExtensions: Set<String> = [
-        "jpg", "jpeg", "heic", "tif", "tiff", "png"
+        "jpg", "jpeg", "heic", "heif", "tif", "tiff", "png"
     ]
 
     public static let bestEffortRawExtensions: Set<String> = [
