@@ -774,7 +774,7 @@ struct LibraryGridView: View {
             selectedScope: batchMetadataScope,
             requiresAllCatalogConfirmation: batchMetadataScope == .currentScope && !model.hasActiveLibraryFilters,
             isAllCatalogConfirmed: isAllCatalogBatchMetadataConfirmed,
-            suggestions: model.visibleBatchKeywordSuggestions,
+            suggestions: batchMetadataSuggestions(),
             draft: batchMetadataDraft
         )
         return VStack(alignment: .leading, spacing: 12) {
@@ -811,9 +811,9 @@ struct LibraryGridView: View {
                         HStack(spacing: 6) {
                             ForEach(presentation.suggestionRows) { row in
                                 Button {
-                                    batchMetadataDraft.appendKeyword(row.keyword)
+                                    applyBatchMetadataKeywordSuggestion(row.keyword)
                                 } label: {
-                                    Text(row.keyword)
+                                    Text(row.title)
                                         .font(.caption.weight(.semibold))
                                         .lineLimit(1)
                                 }
@@ -2125,6 +2125,32 @@ struct LibraryGridView: View {
         }
     }
 
+    private func applyBatchMetadataKeywordSuggestion(_ keyword: String) {
+        do {
+            switch batchMetadataScope {
+            case .selected:
+                return
+            case .visible:
+                try model.acceptVisibleBatchKeywordSuggestion(keyword)
+            case .currentScope:
+                try model.acceptCurrentScopeBatchKeywordSuggestion(keyword)
+            }
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func batchMetadataSuggestions() -> [BatchKeywordSuggestion] {
+        switch batchMetadataScope {
+        case .selected:
+            return []
+        case .visible:
+            return model.visibleBatchKeywordSuggestions
+        case .currentScope:
+            return model.currentScopeBatchKeywordSuggestions
+        }
+    }
+
     private func applyVisibleBatchMetadataDraft() {
         do {
             switch batchMetadataScope {
@@ -2889,7 +2915,7 @@ struct BatchMetadataReviewPresentation: Equatable {
             confirmationText = nil
         case .currentScope:
             countText = "\(currentScopeAssetCount) \(currentScopeAssetCount == 1 ? "photo" : "photos") in current scope"
-            suggestionRows = []
+            suggestionRows = BatchKeywordSuggestionPresentation.rows(for: suggestions, limit: 6)
             confirmationText = requiresAllCatalogConfirmation
                 ? "Confirm applying metadata to all \(currentScopeAssetCount) catalog \(currentScopeAssetCount == 1 ? "photo" : "photos")."
                 : nil

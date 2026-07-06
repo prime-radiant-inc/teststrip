@@ -1315,6 +1315,16 @@ public final class AppModel {
         return batchKeywordSuggestions(for: importedAssets)
     }
 
+    public var currentScopeBatchKeywordSuggestions: [BatchKeywordSuggestion] {
+        guard let catalog,
+              let assetIDs = try? currentAssetScopeIDs(repository: catalog.repository),
+              !assetIDs.isEmpty,
+              let scopeAssets = try? catalog.repository.assets(ids: assetIDs, limit: assetIDs.count) else {
+            return []
+        }
+        return batchKeywordSuggestions(for: scopeAssets)
+    }
+
     public var starredAssetSets: [AssetSet] {
         Self.visibleSavedAssetSets(savedAssetSets).filter(\.starred)
     }
@@ -2379,6 +2389,17 @@ public final class AppModel {
         let assetIDs = try latestImportOutputAssetIDs(repository: catalog.repository)
         _ = try openLatestImportCompletion()
         return try acceptBatchKeywordSuggestion(keyword, assetIDs: assetIDs)
+    }
+
+    @discardableResult
+    public func acceptCurrentScopeBatchKeywordSuggestion(_ keyword: String) throws -> Int {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        return try acceptBatchKeywordSuggestion(
+            keyword,
+            assetIDs: currentAssetScopeIDs(repository: catalog.repository)
+        )
     }
 
     public func canToggleWorkSessionStarred(_ activity: AppWorkActivity) -> Bool {

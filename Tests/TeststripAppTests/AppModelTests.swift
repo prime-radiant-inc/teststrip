@@ -7284,6 +7284,70 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: thirdURL.appendingPathExtension("xmp").path))
     }
 
+    func testAcceptCurrentScopeBatchKeywordSuggestionUsesFullFilteredScopeBeyondLoadedPage() throws {
+        let directory = try makeTemporaryDirectory(named: "current-scope-batch-keyword-apply")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let matchingAssets = try (0..<121).map { index in
+            let url = photosDirectory.appendingPathComponent("matching-\(index).cr2")
+            try Data("matching original \(index)".utf8).write(to: url)
+            return Asset(
+                id: AssetID(rawValue: "current-scope-keyword-matching-\(index)"),
+                originalURL: url,
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: Int64(index + 10), modificationDate: Date(timeIntervalSince1970: TimeInterval(index + 10))),
+                availability: .online,
+                metadata: AssetMetadata(colorLabel: .green)
+            )
+        }
+        let outsideURL = photosDirectory.appendingPathComponent("outside.cr2")
+        try Data("outside original".utf8).write(to: outsideURL)
+        let outsideAsset = Asset(
+            id: AssetID(rawValue: "current-scope-keyword-outside"),
+            originalURL: outsideURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 200, modificationDate: Date(timeIntervalSince1970: 200)),
+            availability: .online,
+            metadata: AssetMetadata(colorLabel: .red)
+        )
+        try repository.upsert(matchingAssets + [outsideAsset])
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        model.colorLabelFilter = .green
+        try model.applyLibraryFilters()
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: matchingAssets[0].id, kind: .object, value: .label("mountain"), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: matchingAssets[120].id, kind: .object, value: .label("mountain"), confidence: 0.7, provenance: provenance),
+            EvaluationSignal(assetID: outsideAsset.id, kind: .object, value: .label("mountain"), confidence: 0.95, provenance: provenance)
+        ])
+
+        XCTAssertLessThan(model.assets.count, matchingAssets.count)
+        XCTAssertFalse(model.assets.contains { $0.id == matchingAssets[120].id })
+        XCTAssertEqual(model.currentScopeBatchKeywordSuggestions.map(\.keyword), ["mountain"])
+        XCTAssertEqual(model.currentScopeBatchKeywordSuggestions.map(\.assetCountText), ["2 photos"])
+
+        let appliedCount = try model.acceptCurrentScopeBatchKeywordSuggestion("mountain")
+
+        XCTAssertEqual(appliedCount, 2)
+        XCTAssertEqual(try repository.asset(id: matchingAssets[0].id).metadata.keywords, ["mountain"])
+        XCTAssertEqual(try repository.asset(id: matchingAssets[120].id).metadata.keywords, ["mountain"])
+        XCTAssertEqual(try repository.asset(id: outsideAsset.id).metadata.keywords, [])
+        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: matchingAssets[0].originalURL.appendingPathExtension("xmp"))).metadata.keywords, ["mountain"])
+        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: matchingAssets[120].originalURL.appendingPathExtension("xmp"))).metadata.keywords, ["mountain"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outsideAsset.originalURL.appendingPathExtension("xmp").path))
+    }
+
     func testAcceptSuggestedKeywordForSelectedAssetWritesCatalogAndXmp() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-accept-suggested-keyword")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)

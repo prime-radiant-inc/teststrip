@@ -171,7 +171,7 @@ final class LibraryGridChromeTests: XCTestCase {
         XCTAssertNil(presentation.confirmationText)
     }
 
-    func testBatchMetadataReviewPresentationSummarizesCurrentScopeAndHidesVisibleSuggestions() {
+    func testBatchMetadataReviewPresentationSummarizesCurrentScopeAndShowsScopeSuggestions() {
         var draft = BatchMetadataDraft()
         draft.keywords = "portfolio"
 
@@ -195,7 +195,7 @@ final class LibraryGridChromeTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.countText, "121 photos in current scope")
-        XCTAssertEqual(presentation.suggestionRows, [])
+        XCTAssertEqual(presentation.suggestionRows.map(\.keyword), ["mountain"])
         XCTAssertTrue(presentation.isApplyEnabled)
         XCTAssertEqual(presentation.applyTitle, "Apply to current scope")
     }
