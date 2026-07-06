@@ -38,7 +38,7 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.reviewCards.map(\.suggestedActionTitle), ["Review faces", "Review quality"])
         XCTAssertEqual(presentation.reviewCards.map(\.filterKind), [.faceCount, .faceQuality])
         XCTAssertEqual(presentation.reviewCards.map(\.target), [.reviewQueue(.facesFound), .evaluationKind(.faceQuality)])
-        XCTAssertTrue(presentation.reviewCards.allSatisfy(\.isNamingEnabled))
+        XCTAssertFalse(presentation.reviewCards.contains(where: \.showsUnbuiltFaceActionLock))
         XCTAssertEqual(presentation.namedPeopleTitle, "ALL PEOPLE")
         XCTAssertEqual(presentation.namedPeopleEmptyText, "No confirmed people yet. Review face queues, select photos, then name the selection.")
     }
@@ -128,7 +128,7 @@ final class PeoplePresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.reviewCards.map(\.suggestedActionTitle), ["Review faces", "Review quality"])
         XCTAssertTrue(presentation.reviewCards.allSatisfy(\.isActionEnabled))
-        XCTAssertTrue(presentation.reviewCards.allSatisfy(\.isNamingEnabled))
+        XCTAssertFalse(presentation.reviewCards.contains(where: \.showsUnbuiltFaceActionLock))
         XCTAssertEqual(presentation.faceActionRows.map(\.title), ["Auto cluster", "Split person", "Face-box naming"])
         XCTAssertEqual(
             presentation.faceActionRows.map(\.placeholder.id),

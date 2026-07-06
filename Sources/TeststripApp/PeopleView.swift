@@ -261,7 +261,7 @@ struct PeopleView: View {
                     Text(card.suggestedActionTitle)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(card.isActionEnabled ? .primary : .secondary)
-                    if !card.isNamingEnabled {
+                    if card.showsUnbuiltFaceActionLock {
                         Image(systemName: "lock")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
@@ -522,7 +522,7 @@ struct PeopleReviewCard: Equatable, Identifiable {
     var suggestedActionTitle: String
     var filterKind: EvaluationKind?
     var target: SidebarRowTarget?
-    var isNamingEnabled = true
+    var showsUnbuiltFaceActionLock = false
     var gradientColors: [Color]
 
     var isActionEnabled: Bool {
