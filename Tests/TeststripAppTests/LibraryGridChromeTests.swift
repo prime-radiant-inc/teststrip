@@ -1,4 +1,5 @@
 import XCTest
+import TeststripCore
 @testable import TeststripApp
 
 final class LibraryGridChromeTests: XCTestCase {
@@ -110,6 +111,20 @@ final class LibraryGridChromeTests: XCTestCase {
 
     func testBatchKeywordSuggestionPresentationHidesWhenNoSuggestionsExist() {
         XCTAssertEqual(BatchKeywordSuggestionPresentation.rows(for: []), [])
+    }
+
+    func testCullingDecisionFeedbackPresentationNamesChangedFrameAndDecision() {
+        let presentation = CullingDecisionFeedbackPresentation(
+            feedback: CullingMetadataDecisionFeedback(
+                assetID: AssetID(rawValue: "rated"),
+                filename: "frame-0.dng",
+                decisionText: "Rated 5"
+            )
+        )
+
+        XCTAssertEqual(presentation.title, "Rated 5")
+        XCTAssertEqual(presentation.detail, "frame-0.dng")
+        XCTAssertEqual(presentation.accessibilityValue, "Rated 5, frame-0.dng")
     }
 
     func testBatchMetadataReviewPresentationSummarizesVisibleBatchAndDraft() {

@@ -945,6 +945,18 @@ private struct MetadataChange: Equatable {
     var after: AssetMetadata
 }
 
+public struct CullingMetadataDecisionFeedback: Equatable, Sendable {
+    public var assetID: AssetID
+    public var filename: String
+    public var decisionText: String
+
+    public init(assetID: AssetID, filename: String, decisionText: String) {
+        self.assetID = assetID
+        self.filename = filename
+        self.decisionText = decisionText
+    }
+}
+
 private struct CompareFlagChangeSummary {
     var changedCount = 0
     var pickedCount = 0
@@ -985,6 +997,7 @@ public final class AppModel {
     public var activeWork: AppWorkActivity?
     public var recentWork: [AppWorkActivity]
     public var starredWork: [AppWorkActivity]
+    public var lastCullingMetadataDecision: CullingMetadataDecisionFeedback?
     public var pendingMetadataSyncItems: [MetadataSyncItem]
     public var metadataSyncConflictItems: [MetadataSyncItem]
     public var pendingMetadataSyncCount: Int
@@ -1960,6 +1973,7 @@ public final class AppModel {
         self.activeWork = activeWork
         self.recentWork = recentWork
         self.starredWork = starredWork
+        self.lastCullingMetadataDecision = nil
         self.pendingMetadataSyncItems = pendingMetadataSyncItems
         self.metadataSyncConflictItems = metadataSyncConflictItems
         self.pendingMetadataSyncCount = resolvedPendingMetadataSyncCount
@@ -2326,6 +2340,7 @@ public final class AppModel {
     }
 
     public func select(_ assetID: AssetID) {
+        clearCullingMetadataDecisionFeedback()
         selectAssetID(assetID)
     }
 
@@ -3378,12 +3393,16 @@ public final class AppModel {
     public func applyCullingShortcut(_ shortcut: CullingShortcut) throws {
         switch shortcut {
         case .previousPhoto:
+            clearCullingMetadataDecisionFeedback()
             try selectPreviousAssetForCulling()
         case .nextPhoto:
+            clearCullingMetadataDecisionFeedback()
             try selectNextAssetForCulling()
         case .previousStack:
+            clearCullingMetadataDecisionFeedback()
             try selectPreviousStackForCulling()
         case .nextStack:
+            clearCullingMetadataDecisionFeedback()
             try selectNextStackForCulling()
         case .rating(let rating):
             try applyCullingCommandAndAdvance(.rating(rating))
@@ -3396,15 +3415,51 @@ public final class AppModel {
         case .clearFlag:
             try applyCullingCommandAndAdvance(.clearFlag)
         case .acceptStackSelection:
+            clearCullingMetadataDecisionFeedback()
             try acceptSelectedStackSelectionForCulling()
         }
     }
 
     private func applyCullingCommandAndAdvance(_ command: CullingCommand) throws {
         let originalSelection = selectedAssetID
+        let originalAsset = selectedAsset
         try applyCullingCommand(command)
+        if let originalAsset {
+            lastCullingMetadataDecision = Self.cullingMetadataDecisionFeedback(command: command, asset: originalAsset)
+        }
         if selectedAssetID == originalSelection {
             try selectNextAssetForCulling()
+        }
+    }
+
+    private func clearCullingMetadataDecisionFeedback() {
+        lastCullingMetadataDecision = nil
+    }
+
+    private static func cullingMetadataDecisionFeedback(
+        command: CullingCommand,
+        asset: Asset
+    ) -> CullingMetadataDecisionFeedback {
+        CullingMetadataDecisionFeedback(
+            assetID: asset.id,
+            filename: asset.originalURL.lastPathComponent,
+            decisionText: cullingMetadataDecisionText(command)
+        )
+    }
+
+    private static func cullingMetadataDecisionText(_ command: CullingCommand) -> String {
+        switch command {
+        case .rating(let rating):
+            return rating > 0 ? "Rated \(rating)" : "Cleared rating"
+        case .colorLabel(let colorLabel):
+            guard let colorLabel else { return "Cleared label" }
+            return "\(colorLabel.rawValue.capitalized) label"
+        case .pick:
+            return "Picked"
+        case .reject:
+            return "Rejected"
+        case .clearFlag:
+            return "Cleared flag"
         }
     }
 

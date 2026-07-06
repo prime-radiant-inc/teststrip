@@ -2320,6 +2320,50 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, secondID)
     }
 
+    func testCullingShortcutRecordsLastMetadataDecisionBeforeAdvancing() throws {
+        let directory = try makeTemporaryDirectory(named: "culling-shortcut-feedback")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try seedCatalogAssets(count: 2, repository: repository)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        let firstID = AssetID(rawValue: "asset-0")
+
+        try model.applyCullingShortcut(.rating(5))
+
+        XCTAssertEqual(model.selectedAssetID, AssetID(rawValue: "asset-1"))
+        XCTAssertEqual(model.lastCullingMetadataDecision, CullingMetadataDecisionFeedback(
+            assetID: firstID,
+            filename: "frame-0.dng",
+            decisionText: "Rated 5"
+        ))
+    }
+
+    func testNavigationCullingShortcutsClearLastMetadataDecisionFeedback() throws {
+        let first = makeAsset(id: "first", size: 1)
+        let second = makeAsset(id: "second", size: 2)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "culling-shortcut-feedback-clear",
+            assets: [first, second]
+        )
+
+        try model.applyCullingShortcut(.pick)
+        XCTAssertNotNil(model.lastCullingMetadataDecision)
+
+        try model.applyCullingShortcut(.previousPhoto)
+
+        XCTAssertNil(model.lastCullingMetadataDecision)
+    }
+
     func testKeepingSelectedStackFrameRejectsAlternatesAndAdvancesPastStack() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let first = makeAsset(

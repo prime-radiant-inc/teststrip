@@ -2460,6 +2460,9 @@ private struct LoupeView: View {
                     .accessibilityLabel("Culling Progress")
             }
             Spacer(minLength: 0)
+            if let feedback = model.lastCullingMetadataDecision {
+                cullingDecisionFeedbackPill(CullingDecisionFeedbackPresentation(feedback: feedback))
+            }
             cullingCountPill(title: "Picks", count: summary.pickCount, color: .green, systemImage: "flag.fill")
             cullingCountPill(title: "Rejects", count: summary.rejectCount, color: .red, systemImage: "xmark.circle.fill")
             cullingAssistPill(stackGuidanceAction: cullingStackGuidanceAction(in: stackPresentation))
@@ -2468,6 +2471,32 @@ private struct LoupeView: View {
         .padding(.horizontal, 14)
         .frame(height: 48)
         .background(.bar)
+    }
+
+    private func cullingDecisionFeedbackPill(_ presentation: CullingDecisionFeedbackPresentation) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(presentation.title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Text(presentation.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 9)
+        .frame(width: 142, height: 34, alignment: .leading)
+        .background(Color.green.opacity(0.11), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color.green.opacity(0.25))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Last culling decision")
+        .accessibilityValue(presentation.accessibilityValue)
     }
 
     private func cullingAssistPill(stackGuidanceAction: CullingStackActionPresentation?) -> some View {
@@ -3534,6 +3563,18 @@ private enum EvaluationSignalPresentation {
             return fallback
         }
         return first.uppercased() + trimmed.dropFirst()
+    }
+}
+
+struct CullingDecisionFeedbackPresentation: Equatable {
+    var title: String
+    var detail: String
+    var accessibilityValue: String
+
+    init(feedback: CullingMetadataDecisionFeedback) {
+        title = feedback.decisionText
+        detail = feedback.filename
+        accessibilityValue = "\(feedback.decisionText), \(feedback.filename)"
     }
 }
 
