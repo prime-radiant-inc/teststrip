@@ -71,7 +71,7 @@ final class ImportFolderPathDraftTests: XCTestCase {
         XCTAssertEqual(draft.primaryActionTitle, "Review Card Import")
         XCTAssertEqual(draft.planSteps.first, ImportPlanStep(
             title: "Copy card files first",
-            detail: "Originals are copied into Incoming before Teststrip catalogs the copied files."
+            detail: "Originals are copied into dated folders (YYYY/YYYY-MM-DD) inside Incoming before Teststrip catalogs the copied files."
         ))
         XCTAssertTrue(draft.planSteps.contains(ImportPlanStep(
             title: "Use the managed background queue",
@@ -276,6 +276,94 @@ final class ImportFolderPathDraftTests: XCTestCase {
         XCTAssertEqual(confirmation.destinationRootURL?.standardizedFileURL, destination.standardizedFileURL)
         XCTAssertFalse(confirmation.canStartImport)
         XCTAssertEqual(confirmation.destinationUnavailableReason, "Destination cannot be inside the card source")
+        XCTAssertNil(draft.errorMessage)
+    }
+
+    func testCardPathDraftDefaultsToDatedFolderOrganizationWithoutSecondCopy() {
+        let draft = ImportCardPathDraft()
+
+        XCTAssertTrue(draft.organizeIntoDatedFolders)
+        XCTAssertEqual(draft.secondCopyPath, "")
+    }
+
+    func testCardPathDraftResetRestoresDatedFolderDefaultAndClearsSecondCopy() {
+        var draft = ImportCardPathDraft(sourcePath: "/Volumes/CARD/DCIM", destinationPath: "/Photos/Incoming")
+        draft.organizeIntoDatedFolders = false
+        draft.secondCopyPath = "/Volumes/Backup"
+
+        draft.reset()
+
+        XCTAssertTrue(draft.organizeIntoDatedFolders)
+        XCTAssertEqual(draft.secondCopyPath, "")
+    }
+
+    func testCardPathPlanNamesDatedFoldersAndSecondCopy() {
+        var draft = ImportCardPathDraft(sourcePath: "/Volumes/CARD/DCIM", destinationPath: "/Photos/Incoming")
+        draft.secondCopyPath = "/Volumes/Backup SSD"
+
+        XCTAssertEqual(draft.planSteps.first, ImportPlanStep(
+            title: "Copy card files first",
+            detail: "Originals are copied into dated folders (YYYY/YYYY-MM-DD) inside Incoming before Teststrip catalogs the copied files."
+        ))
+        XCTAssertTrue(draft.planSteps.contains(ImportPlanStep(
+            title: "Write a second copy",
+            detail: "Each copied original and its sidecar is also copied into Backup SSD; backup failures are reported per file and never stop the import."
+        )))
+
+        draft.organizeIntoDatedFolders = false
+
+        XCTAssertEqual(draft.planSteps.first, ImportPlanStep(
+            title: "Copy card files first",
+            detail: "Originals are copied into Incoming before Teststrip catalogs the copied files."
+        ))
+    }
+
+    @MainActor
+    func testCardPathDraftCarriesDatedPolicyAndSecondCopyIntoConfirmation() throws {
+        let source = try makeTemporaryDirectory(named: "card-policy-source")
+        let destination = try makeTemporaryDirectory(named: "card-policy-destination")
+        let secondCopy = try makeTemporaryDirectory(named: "card-policy-backup")
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
+        var draft = ImportCardPathDraft(sourcePath: source.path, destinationPath: destination.path)
+        draft.secondCopyPath = secondCopy.path
+
+        let confirmation = try draft.makeCardConfirmationDraft()
+
+        XCTAssertEqual(confirmation.destinationPolicy, .capturedDate)
+        XCTAssertEqual(confirmation.secondCopyRootURL?.standardizedFileURL, secondCopy.standardizedFileURL)
+        XCTAssertNil(draft.errorMessage)
+    }
+
+    @MainActor
+    func testCardPathDraftFlatToggleBuildsFlatConfirmationWithoutSecondCopy() throws {
+        let source = try makeTemporaryDirectory(named: "card-flat-source")
+        let destination = try makeTemporaryDirectory(named: "card-flat-destination")
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
+        var draft = ImportCardPathDraft(sourcePath: source.path, destinationPath: destination.path)
+        draft.organizeIntoDatedFolders = false
+
+        let confirmation = try draft.makeCardConfirmationDraft()
+
+        XCTAssertEqual(confirmation.destinationPolicy, .flat)
+        XCTAssertNil(confirmation.secondCopyRootURL)
+    }
+
+    @MainActor
+    func testCardPathDraftInvalidSecondCopyPathKeepsDraftError() throws {
+        let source = try makeTemporaryDirectory(named: "card-second-copy-invalid-source")
+        let destination = try makeTemporaryDirectory(named: "card-second-copy-invalid-destination")
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
+        var draft = ImportCardPathDraft(sourcePath: source.path, destinationPath: destination.path)
+        draft.secondCopyPath = "/definitely/not/a/teststrip/second/copy"
+
+        XCTAssertThrowsError(try draft.makeCardConfirmationDraft())
+
+        XCTAssertEqual(draft.errorMessage, "Folder path does not exist")
+
+        draft.secondCopyPath = ""
+        let confirmation = try draft.makeCardConfirmationDraft()
+
+        XCTAssertNil(confirmation.secondCopyRootURL)
         XCTAssertNil(draft.errorMessage)
     }
 

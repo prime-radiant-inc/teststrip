@@ -1065,6 +1065,8 @@ public typealias AppCardImportTaskFactory = @Sendable (
     AppCatalogPaths,
     URL,
     URL,
+    ImportDestinationPolicy,
+    URL?,
     @escaping LibraryImportProgressHandler
 ) -> Task<AppImportOutput, Error>
 
@@ -1167,8 +1169,10 @@ private struct CompareFlagChangeSummary {
 private struct WorkerImportContext {
     var source: URL
     var destinationRoot: URL?
+    var secondCopyDestination: URL?
     var didAccessSource: Bool
     var didAccessDestination: Bool
+    var didAccessSecondCopy: Bool
     var displayedCatalogedAssetID: AssetID?
 }
 
@@ -2606,11 +2610,13 @@ public final class AppModel {
                 progress: progress
             )
         }
-        self.cardImportTaskFactory = cardImportTaskFactory ?? { paths, source, destinationRoot, progress in
+        self.cardImportTaskFactory = cardImportTaskFactory ?? { paths, source, destinationRoot, destinationPolicy, secondCopyDestination, progress in
             Self.defaultCardImportTask(
                 paths: paths,
                 source: source,
                 destinationRoot: destinationRoot,
+                destinationPolicy: destinationPolicy,
+                secondCopyDestination: secondCopyDestination,
                 previewPolicy: importPreviewPolicy,
                 progress: progress
             )
@@ -6105,12 +6111,14 @@ public final class AppModel {
     private func enqueueWorkerImport(
         source: URL,
         destinationRoot: URL?,
+        secondCopyDestination: URL? = nil,
         command: WorkerCommand
     ) {
         guard let workerSupervisor else { return }
         let itemID = WorkSessionID(rawValue: "import-\(UUID().uuidString)")
         let didAccessSource: Bool
         let didAccessDestination: Bool
+        let didAccessSecondCopy: Bool
         do {
             didAccessSource = try startAccessingImportResource(source)
             do {
@@ -6123,6 +6131,15 @@ public final class AppModel {
                 stopAccessingImportResource(source, didAccess: didAccessSource)
                 throw error
             }
+            do {
+                didAccessSecondCopy = try secondCopyDestination.map(startAccessingImportResource) ?? false
+            } catch {
+                if let destinationRoot {
+                    stopAccessingImportResource(destinationRoot, didAccess: didAccessDestination)
+                }
+                stopAccessingImportResource(source, didAccess: didAccessSource)
+                throw error
+            }
         } catch {
             failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: error.localizedDescription)
             return
@@ -6130,8 +6147,10 @@ public final class AppModel {
         let context = WorkerImportContext(
             source: source,
             destinationRoot: destinationRoot,
+            secondCopyDestination: secondCopyDestination,
             didAccessSource: didAccessSource,
-            didAccessDestination: didAccessDestination
+            didAccessDestination: didAccessDestination,
+            didAccessSecondCopy: didAccessSecondCopy
         )
         let item = BackgroundWorkItem(
             id: itemID,
@@ -6564,6 +6583,9 @@ public final class AppModel {
         stopAccessingImportResource(context.source, didAccess: context.didAccessSource)
         if let destinationRoot = context.destinationRoot {
             stopAccessingImportResource(destinationRoot, didAccess: context.didAccessDestination)
+        }
+        if let secondCopyDestination = context.secondCopyDestination {
+            stopAccessingImportResource(secondCopyDestination, didAccess: context.didAccessSecondCopy)
         }
     }
 
@@ -8259,7 +8281,12 @@ public final class AppModel {
 
     @discardableResult
     @MainActor
-    public func importCardInBackground(source: URL, destinationRoot: URL) async throws -> LibraryImportResult {
+    public func importCardInBackground(
+        source: URL,
+        destinationRoot: URL,
+        destinationPolicy: ImportDestinationPolicy = .flat,
+        secondCopyDestination: URL? = nil
+    ) async throws -> LibraryImportResult {
         importAutoEvaluationEnabled = true
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
@@ -8276,6 +8303,8 @@ public final class AppModel {
                 paths,
                 source,
                 destinationRoot,
+                destinationPolicy,
+                secondCopyDestination,
                 importProgressHandler(activityID: activityID)
             ).value
             replaceAssets(
@@ -8370,7 +8399,13 @@ public final class AppModel {
     }
 
     @MainActor
-    public func beginImportCard(source: URL, destinationRoot: URL, evaluateAfterImport: Bool = true) {
+    public func beginImportCard(
+        source: URL,
+        destinationRoot: URL,
+        destinationPolicy: ImportDestinationPolicy = .flat,
+        secondCopyDestination: URL? = nil,
+        evaluateAfterImport: Bool = true
+    ) {
         importAutoEvaluationEnabled = evaluateAfterImport
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
@@ -8388,28 +8423,46 @@ public final class AppModel {
             failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: blockingReason)
             return
         }
+        if let secondCopyDestination,
+           let blockingReason = CardImportDestinationPreflight.blockingReason(
+               source: source,
+               destinationRoot: secondCopyDestination,
+               destinationLabel: "Second copy destination"
+           ) {
+            failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: blockingReason)
+            return
+        }
         errorMessage = nil
         statusMessage = "Importing \(source.lastPathComponent)..."
         if workerSupervisor != nil && workerImportsEnabled {
             enqueueWorkerImport(
                 source: source,
                 destinationRoot: destinationRoot,
+                secondCopyDestination: secondCopyDestination,
                 command: .importCard(
                     source: source,
                     destinationRoot: destinationRoot,
-                    destinationPolicy: .flat,
-                    secondCopyDestination: nil
+                    destinationPolicy: destinationPolicy,
+                    secondCopyDestination: secondCopyDestination
                 )
             )
             return
         }
         let didAccessSource: Bool
         let didAccessDestination: Bool
+        let didAccessSecondCopy: Bool
         do {
             didAccessSource = try startAccessingImportResource(source)
             do {
                 didAccessDestination = try startAccessingImportResource(destinationRoot)
             } catch {
+                stopAccessingImportResource(source, didAccess: didAccessSource)
+                throw error
+            }
+            do {
+                didAccessSecondCopy = try secondCopyDestination.map(startAccessingImportResource) ?? false
+            } catch {
+                stopAccessingImportResource(destinationRoot, didAccess: didAccessDestination)
                 stopAccessingImportResource(source, didAccess: didAccessSource)
                 throw error
             }
@@ -8421,6 +8474,9 @@ public final class AppModel {
         guard let activityID = activeWork?.id else {
             stopAccessingImportResource(source, didAccess: didAccessSource)
             stopAccessingImportResource(destinationRoot, didAccess: didAccessDestination)
+            if let secondCopyDestination {
+                stopAccessingImportResource(secondCopyDestination, didAccess: didAccessSecondCopy)
+            }
             return
         }
 
@@ -8428,6 +8484,8 @@ public final class AppModel {
             catalog.paths,
             source,
             destinationRoot,
+            destinationPolicy,
+            secondCopyDestination,
             importProgressHandler(activityID: activityID)
         )
         activeImportTask = task
@@ -8435,6 +8493,9 @@ public final class AppModel {
             defer {
                 self?.stopAccessingImportResource(source, didAccess: didAccessSource)
                 self?.stopAccessingImportResource(destinationRoot, didAccess: didAccessDestination)
+                if let secondCopyDestination {
+                    self?.stopAccessingImportResource(secondCopyDestination, didAccess: didAccessSecondCopy)
+                }
             }
             do {
                 let output = try await task.value
@@ -8822,6 +8883,8 @@ public final class AppModel {
         paths: AppCatalogPaths,
         source: URL,
         destinationRoot: URL,
+        destinationPolicy: ImportDestinationPolicy,
+        secondCopyDestination: URL?,
         previewPolicy: LibraryImportPreviewPolicy,
         progress: @escaping LibraryImportProgressHandler
     ) -> Task<AppImportOutput, Error> {
@@ -8831,6 +8894,8 @@ public final class AppModel {
             let result = try backgroundCatalog.importService.copyFromCard(
                 source: source,
                 destinationRoot: destinationRoot,
+                destinationPolicy: destinationPolicy,
+                secondCopyDestination: secondCopyDestination,
                 repository: backgroundCatalog.repository,
                 previewPolicy: previewPolicy,
                 progress: progress

@@ -6,6 +6,7 @@ enum FolderSelectionPanel {
     private static let importFolderParentKey = "FolderSelectionPanel.importFolderParent"
     private static let cardSourceParentKey = "FolderSelectionPanel.cardSourceParent"
     private static let cardDestinationParentKey = "FolderSelectionPanel.cardDestinationParent"
+    private static let cardSecondCopyParentKey = "FolderSelectionPanel.cardSecondCopyParent"
     private static let exportDestinationParentKey = "FolderSelectionPanel.exportDestinationParent"
 
     static func chooseImportFolder(defaults: UserDefaults = .standard) -> URL? {
@@ -41,6 +42,18 @@ enum FolderSelectionPanel {
         )
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         rememberCardDestinationFolder(url, defaults: defaults)
+        return url
+    }
+
+    static func chooseCardSecondCopyFolder(defaults: UserDefaults = .standard) -> URL? {
+        let panel = NSOpenPanel()
+        configureCardSecondCopyPanel(
+            panel,
+            startingDirectory: defaultStartingDirectory(),
+            rememberedDirectory: rememberedDirectory(for: cardSecondCopyParentKey, defaults: defaults)
+        )
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        rememberCardSecondCopyFolder(url, defaults: defaults)
         return url
     }
 
@@ -101,6 +114,21 @@ enum FolderSelectionPanel {
         )
     }
 
+    static func configureCardSecondCopyPanel(
+        _ panel: NSOpenPanel,
+        startingDirectory: URL? = nil,
+        rememberedDirectory: URL? = nil
+    ) {
+        configureDirectoryPanel(
+            panel,
+            startingDirectory: startingDirectory,
+            rememberedDirectory: rememberedDirectory,
+            canCreateDirectories: true,
+            prompt: "Choose Second Copy",
+            message: "Select where backup copies of the card should be written."
+        )
+    }
+
     static func configureExportDestinationPanel(
         _ panel: NSOpenPanel,
         startingDirectory: URL? = nil,
@@ -128,6 +156,10 @@ enum FolderSelectionPanel {
         rememberedDirectory(for: cardDestinationParentKey, defaults: defaults) ?? defaultStartingDirectory()
     }
 
+    static func startingCardSecondCopyDirectory(defaults: UserDefaults = .standard) -> URL? {
+        rememberedDirectory(for: cardSecondCopyParentKey, defaults: defaults) ?? defaultStartingDirectory()
+    }
+
     static func startingExportDestinationDirectory(defaults: UserDefaults = .standard) -> URL? {
         rememberedDirectory(for: exportDestinationParentKey, defaults: defaults) ?? defaultStartingDirectory()
     }
@@ -142,6 +174,10 @@ enum FolderSelectionPanel {
 
     static func rememberCardDestinationFolder(_ folderURL: URL, defaults: UserDefaults = .standard) {
         rememberDirectory(folderURL, for: cardDestinationParentKey, defaults: defaults)
+    }
+
+    static func rememberCardSecondCopyFolder(_ folderURL: URL, defaults: UserDefaults = .standard) {
+        rememberDirectory(folderURL, for: cardSecondCopyParentKey, defaults: defaults)
     }
 
     static func rememberExportDestinationFolder(_ folderURL: URL, defaults: UserDefaults = .standard) {

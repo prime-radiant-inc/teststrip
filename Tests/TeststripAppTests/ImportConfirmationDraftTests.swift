@@ -83,10 +83,13 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(draft.sourceName, "DCIM")
         XCTAssertEqual(draft.destinationName, "Incoming")
         XCTAssertEqual(draft.primaryActionTitle, "Start Card Import")
+        XCTAssertEqual(draft.destinationPolicy, .capturedDate)
+        XCTAssertNil(draft.secondCopyRootURL)
         XCTAssertEqual(draft.planSteps.first, ImportPlanStep(
             title: "Copy card files first",
-            detail: "Originals are copied into Incoming before Teststrip catalogs the copied files."
+            detail: "Originals are copied into dated folders (YYYY/YYYY-MM-DD) inside Incoming before Teststrip catalogs the copied files."
         ))
+        XCTAssertFalse(draft.planSteps.contains { $0.title == "Write a second copy" })
         XCTAssertTrue(draft.planSteps.contains(ImportPlanStep(
             title: "Use the managed background queue",
             detail: "Copy, preview, and metadata work remains visible, pausable, and cancellable."
@@ -101,6 +104,81 @@ final class ImportConfirmationDraftTests: XCTestCase {
                 "Read imported frames"
             ]
         )
+    }
+
+    func testCardDraftFlatPolicyKeepsFlatCopyWording() {
+        let draft = ImportConfirmationDraft.card(
+            source: URL(fileURLWithPath: "/Volumes/CARD/DCIM", isDirectory: true),
+            destinationRoot: URL(fileURLWithPath: "/Volumes/Archive/Incoming", isDirectory: true),
+            destinationPolicy: .flat
+        )
+
+        XCTAssertEqual(draft.planSteps.first, ImportPlanStep(
+            title: "Copy card files first",
+            detail: "Originals are copied into Incoming before Teststrip catalogs the copied files."
+        ))
+    }
+
+    func testCardDraftNamesSecondCopyPlanStepHonestly() throws {
+        let source = try makeTemporaryDirectory(named: "import-card-draft-second-copy-source")
+        let destination = try makeTemporaryDirectory(named: "import-card-draft-second-copy-destination")
+        let secondCopy = try makeTemporaryDirectory(named: "Backup SSD")
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
+
+        let draft = ImportConfirmationDraft.card(
+            source: source,
+            destinationRoot: destination,
+            secondCopyRootURL: secondCopy,
+            supportedExtensions: ["jpg"]
+        )
+
+        XCTAssertEqual(draft.secondCopyName, "Backup SSD")
+        XCTAssertNil(draft.secondCopyUnavailableReason)
+        XCTAssertTrue(draft.canStartImport)
+        XCTAssertTrue(draft.planSteps.contains(ImportPlanStep(
+            title: "Write a second copy",
+            detail: "Each copied original and its sidecar is also copied into Backup SSD; backup failures are reported per file and never stop the import."
+        )))
+    }
+
+    func testCardDraftBlocksStartWhenSecondCopyDestinationIsMissing() throws {
+        let source = try makeTemporaryDirectory(named: "import-card-draft-second-copy-missing-source")
+        let destination = try makeTemporaryDirectory(named: "import-card-draft-second-copy-missing-destination")
+        let missingSecondCopy = destination.deletingLastPathComponent()
+            .appendingPathComponent("missing-backup", isDirectory: true)
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
+
+        var draft = ImportConfirmationDraft.card(
+            source: source,
+            destinationRoot: destination,
+            secondCopyRootURL: missingSecondCopy,
+            supportedExtensions: ["jpg"]
+        )
+
+        XCTAssertFalse(draft.canStartImport)
+        XCTAssertEqual(draft.secondCopyUnavailableReason, "Second copy destination folder is missing")
+
+        draft.setSecondCopyRoot(nil)
+
+        XCTAssertTrue(draft.canStartImport)
+        XCTAssertNil(draft.secondCopyUnavailableReason)
+        XCTAssertNil(draft.secondCopyRootURL)
+    }
+
+    func testCardDraftBlocksStartWhenSecondCopyDestinationIsCardSource() throws {
+        let source = try makeTemporaryDirectory(named: "import-card-draft-second-copy-matching-source")
+        let destination = try makeTemporaryDirectory(named: "import-card-draft-second-copy-matching-destination")
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
+
+        let draft = ImportConfirmationDraft.card(
+            source: source,
+            destinationRoot: destination,
+            secondCopyRootURL: source,
+            supportedExtensions: ["jpg"]
+        )
+
+        XCTAssertFalse(draft.canStartImport)
+        XCTAssertEqual(draft.secondCopyUnavailableReason, "Second copy destination must be different from the card source")
     }
 
     func testSourceSummaryCountsRecognizedPhotoFilesAndBytes() throws {

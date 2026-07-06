@@ -11688,7 +11688,7 @@ final class AppModelTests: XCTestCase {
         let importTask = RecordingCall()
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _ in
                 importTask.call()
                 return Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -11953,7 +11953,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -12014,7 +12014,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -12035,6 +12035,117 @@ final class AppModelTests: XCTestCase {
         let activity = try XCTUnwrap(model.recentWork.first)
         XCTAssertEqual(activity.status, .failed)
         XCTAssertEqual(activity.detail, "Import failed from DCIM to missing-library: Destination folder is missing")
+    }
+
+    @MainActor
+    func testBeginImportCardPassesDatedPolicyAndSecondCopyToLocalImportTask() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-local-card-policy")
+        let source = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let destinationRoot = directory.appendingPathComponent("Library", isDirectory: true)
+        let secondCopy = directory.appendingPathComponent("Backup", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondCopy, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let recorder = CardImportRequestRecorder()
+        let model = try AppModel.load(
+            catalog: catalog,
+            cardImportTaskFactory: { _, _, _, destinationPolicy, secondCopyDestination, _ in
+                recorder.record(destinationPolicy: destinationPolicy, secondCopyDestination: secondCopyDestination)
+                return Task {
+                    AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            }
+        )
+
+        model.beginImportCard(
+            source: source,
+            destinationRoot: destinationRoot,
+            destinationPolicy: .capturedDate,
+            secondCopyDestination: secondCopy
+        )
+
+        XCTAssertEqual(recorder.destinationPolicies, [.capturedDate])
+        XCTAssertEqual(recorder.secondCopyDestinations, [secondCopy])
+    }
+
+    @MainActor
+    func testBeginImportCardWithWorkerCarriesDatedPolicyAndSecondCopyInCommand() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-card-policy")
+        let source = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let destinationRoot = directory.appendingPathComponent("Library", isDirectory: true)
+        let secondCopy = directory.appendingPathComponent("Backup", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondCopy, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportCard(
+            source: source,
+            destinationRoot: destinationRoot,
+            destinationPolicy: .capturedDate,
+            secondCopyDestination: secondCopy
+        )
+
+        XCTAssertEqual(try transport.commands(), [.importCard(
+            source: source,
+            destinationRoot: destinationRoot,
+            destinationPolicy: .capturedDate,
+            secondCopyDestination: secondCopy
+        )])
+    }
+
+    @MainActor
+    func testBeginImportCardRejectsMissingSecondCopyDestinationWithoutStartingLocalImport() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-local-card-missing-second-copy")
+        let source = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let destinationRoot = directory.appendingPathComponent("Library", isDirectory: true)
+        let missingSecondCopy = directory.appendingPathComponent("missing-backup", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let importTask = RecordingCall()
+        let model = try AppModel.load(
+            catalog: catalog,
+            cardImportTaskFactory: { _, _, _, _, _, _ in
+                importTask.call()
+                return Task {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            }
+        )
+
+        model.beginImportCard(
+            source: source,
+            destinationRoot: destinationRoot,
+            secondCopyDestination: missingSecondCopy
+        )
+
+        XCTAssertFalse(importTask.wasCalled)
+        XCTAssertFalse(model.isImporting)
+        XCTAssertNil(model.activeWork)
+        XCTAssertEqual(model.errorMessage, "Second copy destination folder is missing")
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.status, .failed)
+        XCTAssertEqual(activity.detail, "Import failed from DCIM to Library: Second copy destination folder is missing")
     }
 
     @MainActor
@@ -12073,7 +12184,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -13308,7 +13419,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -14459,6 +14570,25 @@ private final class RecordingCall: @unchecked Sendable {
 
     func call() {
         wasCalled = true
+    }
+}
+
+private final class CardImportRequestRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var records: [(destinationPolicy: ImportDestinationPolicy, secondCopyDestination: URL?)] = []
+
+    func record(destinationPolicy: ImportDestinationPolicy, secondCopyDestination: URL?) {
+        lock.withLock {
+            records.append((destinationPolicy: destinationPolicy, secondCopyDestination: secondCopyDestination))
+        }
+    }
+
+    var destinationPolicies: [ImportDestinationPolicy] {
+        lock.withLock { records.map(\.destinationPolicy) }
+    }
+
+    var secondCopyDestinations: [URL?] {
+        lock.withLock { records.map(\.secondCopyDestination) }
     }
 }
 

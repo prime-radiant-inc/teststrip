@@ -178,6 +178,9 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     var sourceURL: URL
     var destinationRootURL: URL?
     var destinationUnavailableReason: String?
+    var destinationPolicy: ImportDestinationPolicy = .flat
+    private(set) var secondCopyRootURL: URL?
+    private(set) var secondCopyUnavailableReason: String?
     var sourceSummary: ImportSourceSummary
     var evaluateAfterImport = true
 
@@ -203,9 +206,13 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
         )
     }
 
+    // New card imports organize into dated folders by default; it matches the
+    // design's destination pattern and the YYYY/YYYY-MM-DD library layout.
     static func card(
         source sourceURL: URL,
         destinationRoot destinationRootURL: URL,
+        destinationPolicy: ImportDestinationPolicy = .capturedDate,
+        secondCopyRootURL: URL? = nil,
         supportedExtensions: Set<String> = ImageIODecodeProvider.catalogableExtensions
     ) -> ImportConfirmationDraft {
         ImportConfirmationDraft(
@@ -216,7 +223,30 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
                 source: sourceURL,
                 destinationRoot: destinationRootURL
             ),
+            destinationPolicy: destinationPolicy,
+            secondCopyRootURL: secondCopyRootURL,
+            secondCopyUnavailableReason: Self.secondCopyBlockingReason(
+                source: sourceURL,
+                secondCopyRootURL: secondCopyRootURL
+            ),
             sourceSummary: ImportSourceSummary.scan(sourceURL: sourceURL, supportedExtensions: supportedExtensions)
+        )
+    }
+
+    mutating func setSecondCopyRoot(_ secondCopyRootURL: URL?) {
+        self.secondCopyRootURL = secondCopyRootURL
+        secondCopyUnavailableReason = Self.secondCopyBlockingReason(
+            source: sourceURL,
+            secondCopyRootURL: secondCopyRootURL
+        )
+    }
+
+    private static func secondCopyBlockingReason(source: URL, secondCopyRootURL: URL?) -> String? {
+        guard let secondCopyRootURL else { return nil }
+        return CardImportDestinationPreflight.blockingReason(
+            source: source,
+            destinationRoot: secondCopyRootURL,
+            destinationLabel: "Second copy destination"
         )
     }
 
@@ -237,6 +267,10 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
         destinationRootURL?.lastPathComponent
     }
 
+    var secondCopyName: String? {
+        secondCopyRootURL?.lastPathComponent
+    }
+
     var primaryActionTitle: String {
         switch mode {
         case .folder:
@@ -247,7 +281,7 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     }
 
     var canStartImport: Bool {
-        sourceSummary.canStartImport && destinationUnavailableReason == nil
+        sourceSummary.canStartImport && destinationUnavailableReason == nil && secondCopyUnavailableReason == nil
     }
 
     var planSteps: [ImportPlanStep] {
@@ -256,7 +290,11 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
         case .folder:
             baseSteps = ImportPlanSteps.folderInPlace
         case .card:
-            baseSteps = ImportPlanSteps.cardCopy(destinationName: destinationName ?? "the destination")
+            baseSteps = ImportPlanSteps.cardCopy(
+                destinationName: destinationName ?? "the destination",
+                destinationPolicy: destinationPolicy,
+                secondCopyName: secondCopyName
+            )
         }
         guard evaluateAfterImport else { return baseSteps }
         return baseSteps + [ImportPlanSteps.autoEvaluation]

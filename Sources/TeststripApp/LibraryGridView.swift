@@ -1426,6 +1426,15 @@ struct LibraryGridView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 420)
                 .disabled(isReviewingImportCardPath)
+            Toggle("Organize into dated folders (YYYY/YYYY-MM-DD)", isOn: $importCardPathDraft.organizeIntoDatedFolders)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .disabled(isReviewingImportCardPath)
+                .help("Files each copied original into year/date folders from its capture date; files without a capture date use their modification date.")
+            TextField("Second copy folder path (optional)", text: $importCardPathDraft.secondCopyPath)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 420)
+                .disabled(isReviewingImportCardPath)
             importPlanView(steps: importCardPathDraft.planSteps, width: 420)
             if reviewPresentation.showsProgress {
                 HStack(spacing: 8) {
@@ -1471,6 +1480,9 @@ struct LibraryGridView: View {
                 if let destinationName = draft.destinationName {
                     LabeledContent("Destination", value: destinationName)
                 }
+                if draft.mode == .card {
+                    LabeledContent("Second copy", value: draft.secondCopyName ?? "None")
+                }
                 LabeledContent("Photos", value: draft.sourceSummary.countText)
                 LabeledContent("Size", value: draft.sourceSummary.byteCountText)
                 Text(draft.sourceSummary.detailText)
@@ -1483,9 +1495,39 @@ struct LibraryGridView: View {
                         .foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if let secondCopyUnavailableReason = draft.secondCopyUnavailableReason {
+                    Text(secondCopyUnavailableReason)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
+            if draft.mode == .card {
+                Toggle(
+                    "Organize into dated folders (YYYY/YYYY-MM-DD)",
+                    isOn: Binding(
+                        get: { (importConfirmationDraft?.destinationPolicy ?? .capturedDate) == .capturedDate },
+                        set: { importConfirmationDraft?.destinationPolicy = $0 ? .capturedDate : .flat }
+                    )
+                )
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .help("Files each copied original into year/date folders from its capture date; files without a capture date use their modification date.")
+                HStack(spacing: 8) {
+                    Button(draft.secondCopyRootURL == nil ? "Second copy to..." : "Change second copy...") {
+                        chooseImportSecondCopyDestination()
+                    }
+                    .font(.caption)
+                    if draft.secondCopyRootURL != nil {
+                        Button("Remove second copy") {
+                            importConfirmationDraft?.setSecondCopyRoot(nil)
+                        }
+                        .font(.caption)
+                    }
+                }
+            }
             importPlanView(steps: draft.planSteps, width: 440)
             Toggle(
                 "Read imported frames automatically",
@@ -2234,12 +2276,18 @@ struct LibraryGridView: View {
     private func importCardPath() {
         do {
             let roots = try importCardPathDraft.resolveCardURLs()
+            let destinationPolicy = importCardPathDraft.destinationPolicy
             let reviewID = UUID()
             importCardPathReviewID = reviewID
             isReviewingImportCardPath = true
             Task {
                 let confirmationDraft = await Task.detached(priority: .userInitiated) {
-                    ImportConfirmationDraft.card(source: roots.source, destinationRoot: roots.destinationRoot)
+                    ImportConfirmationDraft.card(
+                        source: roots.source,
+                        destinationRoot: roots.destinationRoot,
+                        destinationPolicy: destinationPolicy,
+                        secondCopyRootURL: roots.secondCopyRoot
+                    )
                 }.value
                 await MainActor.run {
                     guard importCardPathReviewID == reviewID else { return }
@@ -2267,8 +2315,19 @@ struct LibraryGridView: View {
                 model.errorMessage = "Card import destination is missing"
                 return
             }
-            importCard(source: draft.sourceURL, destinationRoot: destinationRootURL, evaluateAfterImport: draft.evaluateAfterImport)
+            importCard(
+                source: draft.sourceURL,
+                destinationRoot: destinationRootURL,
+                destinationPolicy: draft.destinationPolicy,
+                secondCopyDestination: draft.secondCopyRootURL,
+                evaluateAfterImport: draft.evaluateAfterImport
+            )
         }
+    }
+
+    private func chooseImportSecondCopyDestination() {
+        guard let secondCopyRootURL = FolderSelectionPanel.chooseCardSecondCopyFolder() else { return }
+        importConfirmationDraft?.setSecondCopyRoot(secondCopyRootURL)
     }
 
     private func reconnectSourceRoot() {
@@ -2286,8 +2345,20 @@ struct LibraryGridView: View {
         model.beginImportFolder(folderURL, evaluateAfterImport: evaluateAfterImport)
     }
 
-    private func importCard(source: URL, destinationRoot: URL, evaluateAfterImport: Bool = true) {
-        model.beginImportCard(source: source, destinationRoot: destinationRoot, evaluateAfterImport: evaluateAfterImport)
+    private func importCard(
+        source: URL,
+        destinationRoot: URL,
+        destinationPolicy: ImportDestinationPolicy,
+        secondCopyDestination: URL?,
+        evaluateAfterImport: Bool = true
+    ) {
+        model.beginImportCard(
+            source: source,
+            destinationRoot: destinationRoot,
+            destinationPolicy: destinationPolicy,
+            secondCopyDestination: secondCopyDestination,
+            evaluateAfterImport: evaluateAfterImport
+        )
     }
 
     private var importActivity: AppWorkActivity? {

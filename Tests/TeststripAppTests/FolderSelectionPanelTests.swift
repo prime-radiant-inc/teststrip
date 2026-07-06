@@ -68,6 +68,22 @@ final class FolderSelectionPanelTests: XCTestCase {
     }
 
     @MainActor
+    func testCardSecondCopyPanelChoosesOneCreatableDirectory() throws {
+        let panel = NSOpenPanel()
+        let startingDirectory = try makeTemporaryDirectory(named: "card-second-copy-start")
+
+        FolderSelectionPanel.configureCardSecondCopyPanel(panel, startingDirectory: startingDirectory)
+
+        XCTAssertTrue(panel.canChooseDirectories)
+        XCTAssertFalse(panel.canChooseFiles)
+        XCTAssertFalse(panel.allowsMultipleSelection)
+        XCTAssertTrue(panel.canCreateDirectories)
+        XCTAssertEqual(panel.prompt, "Choose Second Copy")
+        XCTAssertEqual(panel.message, "Select where backup copies of the card should be written.")
+        XCTAssertEqual(panel.directoryURL?.standardizedFileURL, startingDirectory.standardizedFileURL)
+    }
+
+    @MainActor
     func testExportDestinationPanelChoosesOneCreatableDirectory() throws {
         let panel = NSOpenPanel()
         let startingDirectory = try makeTemporaryDirectory(named: "export-destination-start")
@@ -167,6 +183,18 @@ final class FolderSelectionPanelTests: XCTestCase {
 
         XCTAssertEqual(FolderSelectionPanel.startingCardSourceDirectory(defaults: defaults)?.standardizedFileURL, source.standardizedFileURL)
         XCTAssertEqual(FolderSelectionPanel.startingCardDestinationDirectory(defaults: defaults)?.standardizedFileURL, destination.standardizedFileURL)
+    }
+
+    @MainActor
+    func testRememberedCardSecondCopyFolderStartsNextChooserAtSelectedDirectory() throws {
+        let defaults = try makeDefaults()
+        let parent = try makeTemporaryDirectory(named: "remember-card-second-copy-parent")
+        let secondCopy = parent.appendingPathComponent("backup", isDirectory: true)
+        try FileManager.default.createDirectory(at: secondCopy, withIntermediateDirectories: true)
+
+        FolderSelectionPanel.rememberCardSecondCopyFolder(secondCopy, defaults: defaults)
+
+        XCTAssertEqual(FolderSelectionPanel.startingCardSecondCopyDirectory(defaults: defaults)?.standardizedFileURL, secondCopy.standardizedFileURL)
     }
 
     private func makeTemporaryDirectory(named name: String) throws -> URL {
