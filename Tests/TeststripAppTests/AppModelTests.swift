@@ -7152,7 +7152,6 @@ final class AppModelTests: XCTestCase {
         let directory = try makeTemporaryDirectory(named: "app-model-empty-import")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
         try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
-        try Data("notes".utf8).write(to: photoFolder.appendingPathComponent("notes.txt"))
         let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(catalog: catalog)
@@ -11893,6 +11892,35 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary.existingPhotoCount, 0)
         XCTAssertEqual(summary.previewStatusText, "No previews needed")
         XCTAssertEqual(summary.issues.map(\.sourceURL), [firstSkipped, secondSkipped])
+    }
+
+    @MainActor
+    func testBackgroundImportReportsVideoAndUnrecognizedFileSkipsInCompletionCopy() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-format-honesty")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let video = photoFolder.appendingPathComponent("clip.mov")
+        try Data("mov".utf8).write(to: video)
+        let stray = photoFolder.appendingPathComponent("notes.txt")
+        try Data("notes".utf8).write(to: stray)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(catalog: catalog)
+
+        _ = try await model.importFolderInBackground(photoFolder)
+
+        XCTAssertEqual(model.statusMessage, "Imported 1 photo (2 files skipped)")
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.detail, "Imported 1 photo from photos (2 files skipped)")
+        XCTAssertEqual(activity.issues, [
+            WorkSessionIssue(kind: .skippedSourceFile, sourceURL: video, message: "video file not supported"),
+            WorkSessionIssue(kind: .skippedSourceFile, sourceURL: stray, message: "file type not supported")
+        ])
+        let summary = try XCTUnwrap(model.latestImportCompletionSummary)
+        XCTAssertEqual(summary.issues, activity.issues)
+        XCTAssertEqual(activity.failureCount, 0)
     }
 
     @MainActor
