@@ -4002,6 +4002,33 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testActiveLibraryFilterRowsFlagResidualSearchTextAsPlainSearchFallback() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        model.librarySearchText = "ceremony picks"
+
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Search: ceremony", isPlainSearchFallback: true),
+            ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks))
+        ])
+    }
+
+    func testActiveLibraryFilterRowsOmitPlainSearchFallbackFlagWhenSearchIsFullyParsed() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        model.librarySearchText = "picks 5 stars"
+
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
+            ActiveLibraryFilterRow(title: "Rating >= 5", target: .reviewQueue(.fiveStars))
+        ])
+        XCTAssertFalse(model.activeLibraryFilterRows.contains { $0.isPlainSearchFallback })
+    }
+
+    func testActiveLibraryFilterRowsOmitPlainSearchFallbackFlagWhenSearchTextIsEmpty() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+
+        XCTAssertTrue(model.activeLibraryFilterRows.isEmpty)
+    }
+
     func testTimelineSidebarRowOpensTimelineView() throws {
         let calendar = Self.gregorianUTC
         let asset = makeAsset(
@@ -6087,6 +6114,38 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.activeLibraryFilterChips, ["Search: ceremony", "Rating >= 5"])
         XCTAssertEqual(model.assets.map(\.id), [keeper.id, rejected.id])
         XCTAssertEqual(model.totalAssetCount, 2)
+    }
+
+    func testRemovingPlainSearchFallbackRowClearsResidualTextButKeepsParsedFilters() throws {
+        let keeper = makeAsset(
+            id: "keeper",
+            path: "/Photos/Wedding/ceremony-keeper.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let travel = makeAsset(
+            id: "travel",
+            path: "/Photos/Travel/mountain.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "remove-plain-search-fallback-row",
+            assets: [keeper, travel]
+        )
+
+        model.librarySearchText = "ceremony picks"
+        try model.applyLibraryFilters()
+        let fallbackRow = try XCTUnwrap(model.activeLibraryFilterRows.first { $0.isPlainSearchFallback })
+        XCTAssertEqual(fallbackRow.title, "Search: ceremony")
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
+
+        try model.removeActiveLibraryFilter(fallbackRow)
+
+        XCTAssertEqual(model.librarySearchText, "pick")
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Pick"])
+        XCTAssertFalse(model.activeLibraryFilterRows.contains { $0.isPlainSearchFallback })
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id, travel.id])
     }
 
     func testRemovingParsedSearchFilterQuotesRemainingFieldValuesWithSpaces() throws {
