@@ -2676,6 +2676,7 @@ private struct CullingCompletionBannerView: View {
     var summary: CullingSessionCompletionSummary
     var canViewPicks: Bool
     var viewPicks: () -> Void
+    var cullRemainingSingles: () -> Void
     var dismiss: () -> Void
 
     var body: some View {
@@ -2691,6 +2692,14 @@ private struct CullingCompletionBannerView: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
+            if summary.remainingSingleCount > 0 {
+                Button("Cull remaining \(summary.remainingSingleCount) singles") {
+                    cullRemainingSingles()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Start a rapid-cull session over the frames this stack cull left unstacked and undecided")
+            }
             Button("View Picks") {
                 viewPicks()
             }
@@ -2749,6 +2758,7 @@ private struct LoupeView: View {
                     summary: completion,
                     canViewPicks: completion.picksSetID != nil,
                     viewPicks: { openCullingSessionPicks() },
+                    cullRemainingSingles: { cullRemainingSingles() },
                     dismiss: { model.dismissCullingSessionCompletion() }
                 )
             }
@@ -2763,6 +2773,14 @@ private struct LoupeView: View {
     private func openCullingSessionPicks() {
         do {
             try model.openCullingSessionPicks()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func cullRemainingSingles() {
+        do {
+            try model.cullRemainingSinglesFromCullingCompletion()
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -4796,6 +4814,7 @@ private struct CompareView: View {
                         summary: completion,
                         canViewPicks: completion.picksSetID != nil,
                         viewPicks: { openCullingSessionPicks() },
+                        cullRemainingSingles: { cullRemainingSingles() },
                         dismiss: { model.dismissCullingSessionCompletion() }
                     )
                 }
@@ -4818,6 +4837,14 @@ private struct CompareView: View {
     private func openCullingSessionPicks() {
         do {
             try model.openCullingSessionPicks()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func cullRemainingSingles() {
+        do {
+            try model.cullRemainingSinglesFromCullingCompletion()
         } catch {
             model.errorMessage = error.localizedDescription
         }

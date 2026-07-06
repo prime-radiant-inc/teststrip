@@ -52,8 +52,14 @@ public struct CullingSessionCompletionSummary: Equatable, Identifiable, Sendable
     public var pickCount: Int
     public var rejectCount: Int
     public var picksSetID: AssetSetID?
+    /// Frames from the same import that never joined a multi-frame stack, so
+    /// stack culling never asked about them. Empty for sessions that aren't a
+    /// stack cull, or that have none left undecided.
+    public var remainingSingleAssetIDs: [AssetID] = []
 
     public var id: String { sessionID.rawValue }
+
+    public var remainingSingleCount: Int { remainingSingleAssetIDs.count }
 
     public var detailText: String {
         let picksText = "\(pickCount) \(pickCount == 1 ? "pick" : "picks")"
@@ -1208,6 +1214,10 @@ public final class AppModel {
     public var workHistorySearchResults: [AppWorkActivity]
     public var lastCullingMetadataDecision: CullingMetadataDecisionFeedback?
     public private(set) var cullingSessionCompletion: CullingSessionCompletionSummary?
+    // Tracks which stack-cull sessions came from beginStackCullingFromLatestImportCompletion()
+    // and which import they scoped, so completion can offer to cull the
+    // import's unstacked singles afterward. In-memory only; not persisted.
+    private var stackCullingImportActivityIDBySessionID: [WorkSessionID: String] = [:]
     public var pendingMetadataSyncItems: [MetadataSyncItem]
     public var metadataSyncConflictItems: [MetadataSyncItem]
     public var pendingMetadataSyncCount: Int
@@ -3169,6 +3179,7 @@ public final class AppModel {
         guard let firstStackSetID = inputSetIDs.first else {
             throw TeststripError.invalidState("no stack sets were created")
         }
+        stackCullingImportActivityIDBySessionID[sessionID] = summary.activityID
         try applyAssetSet(id: firstStackSetID)
         if let firstStackAssetIDs = stacks.first?.assetIDs {
             selectAssetID(recommendedCullingStackAssetID(in: firstStackAssetIDs) ?? firstStackAssetIDs.first)
@@ -3687,6 +3698,37 @@ public final class AppModel {
 
     public func dismissCullingSessionCompletion() {
         cullingSessionCompletion = nil
+    }
+
+    // Starts a normal (non-stack) culling session over the singles a stack
+    // cull left unreviewed, reusing beginCullingSession's session-start path
+    // by first scoping the library to exactly those frames.
+    @discardableResult
+    public func cullRemainingSinglesFromCullingCompletion() throws -> WorkSession {
+        guard let completion = cullingSessionCompletion else {
+            throw TeststripError.invalidState("no completed culling session")
+        }
+        guard !completion.remainingSingleAssetIDs.isEmpty else {
+            throw TeststripError.invalidState("there are no remaining singles to cull")
+        }
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let title = "\(completion.title) Singles"
+        let singlesSetID = AssetSetID(rawValue: "work-input-singles-\(UUID().uuidString)")
+        let singlesSet = AssetSet(
+            id: singlesSetID,
+            name: title,
+            membership: .snapshot(completion.remainingSingleAssetIDs)
+        )
+        try catalog.repository.upsert(singlesSet)
+        savedAssetSets = try catalog.repository.assetSets()
+        assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
+        try applyAssetSet(id: singlesSetID)
+        return try beginCullingSession(
+            named: title,
+            intent: "Cull remaining singles from \(completion.title)"
+        )
     }
 
     @discardableResult
@@ -7801,7 +7843,8 @@ public final class AppModel {
         updateCullingSessionCompletion(
             session: session,
             previousStatus: previousStatus,
-            decisionCounts: decisionCounts
+            decisionCounts: decisionCounts,
+            remainingSingleAssetIDs: try remainingUnstackedSingleAssetIDs(sessionID: session.id, repository: catalog.repository)
         )
         session.updatedAt = Date()
         try catalog.repository.save(session)
@@ -7851,7 +7894,8 @@ public final class AppModel {
         updateCullingSessionCompletion(
             session: session,
             previousStatus: previousStatus,
-            decisionCounts: decisionCounts
+            decisionCounts: decisionCounts,
+            remainingSingleAssetIDs: try remainingUnstackedSingleAssetIDs(sessionID: session.id, repository: catalog.repository)
         )
         session.updatedAt = Date()
         try catalog.repository.save(session)
@@ -7863,7 +7907,8 @@ public final class AppModel {
     private func updateCullingSessionCompletion(
         session: WorkSession,
         previousStatus: WorkSessionStatus,
-        decisionCounts: (pick: Int, reject: Int)
+        decisionCounts: (pick: Int, reject: Int),
+        remainingSingleAssetIDs: [AssetID]
     ) {
         if session.status == .completed, previousStatus != .completed {
             let picksSetID = Self.cullingOutputSetID(sessionID: session.id)
@@ -7872,7 +7917,8 @@ public final class AppModel {
                 title: session.title,
                 pickCount: decisionCounts.pick,
                 rejectCount: decisionCounts.reject,
-                picksSetID: session.outputSetIDs.contains(picksSetID) ? picksSetID : nil
+                picksSetID: session.outputSetIDs.contains(picksSetID) ? picksSetID : nil,
+                remainingSingleAssetIDs: remainingSingleAssetIDs
             )
             return
         }
@@ -8097,15 +8143,42 @@ public final class AppModel {
         })
     }
 
-    private func latestImportStacks(activityID: String, repository: CatalogRepository) throws -> [AssetStack] {
+    private struct LatestImportStackGroups {
+        var multiFrameStacks: [AssetStack]
+        var singleAssetIDs: [AssetID]
+    }
+
+    private func latestImportStackGroups(activityID: String, repository: CatalogRepository) throws -> LatestImportStackGroups {
         let assetIDs = try latestImportOutputAssetIDs(activityID: activityID, repository: repository)
         let importAssets = try repository.assets(ids: assetIDs, limit: assetIDs.count)
-        return stackBuilder()
+        let allStacks = stackBuilder()
             .stacks(
                 from: importAssets,
                 visualSimilarityVectorsByAssetID: visualSimilarityVectorsByAssetID(for: importAssets, repository: repository)
             )
-            .filter { $0.assetIDs.count > 1 }
+        return LatestImportStackGroups(
+            multiFrameStacks: allStacks.filter { $0.assetIDs.count > 1 },
+            singleAssetIDs: allStacks.filter { $0.assetIDs.count == 1 }.flatMap(\.assetIDs)
+        )
+    }
+
+    private func latestImportStacks(activityID: String, repository: CatalogRepository) throws -> [AssetStack] {
+        try latestImportStackGroups(activityID: activityID, repository: repository).multiFrameStacks
+    }
+
+    // Frames the stack builder left as singles, filtered to those that
+    // haven't been flagged yet — the "leftover singles" a stack-cull session
+    // never asked about.
+    private func remainingUnstackedSingleAssetIDs(
+        sessionID: WorkSessionID,
+        repository: CatalogRepository
+    ) throws -> [AssetID] {
+        guard let activityID = stackCullingImportActivityIDBySessionID[sessionID] else {
+            return []
+        }
+        let singleAssetIDs = try latestImportStackGroups(activityID: activityID, repository: repository).singleAssetIDs
+        guard !singleAssetIDs.isEmpty else { return [] }
+        return try singleAssetIDs.filter { try repository.asset(id: $0).metadata.flag == nil }
     }
 
     private func saveCullingStackInputSets(
