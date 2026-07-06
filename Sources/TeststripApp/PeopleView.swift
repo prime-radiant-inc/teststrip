@@ -145,15 +145,10 @@ struct PeopleView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        HStack(spacing: 6) {
-                            ForEach(presentation.faceActionRows) { row in
-                                Button(row.title) {}
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                    .disabled(!row.isEnabled)
-                                    .liveMockupPlaceholder(row.placeholder)
-                            }
-                        }
+                        Text(presentation.deferredFaceActionStatus)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .liveMockupPlaceholder(.peopleFaceActions)
                     }
                 }
                 .padding(14)
@@ -467,12 +462,12 @@ struct PeoplePresentation: Equatable {
         ]
     }
 
-    var faceActionRows: [PeopleFaceActionRow] {
-        [
-            PeopleFaceActionRow(title: "Auto cluster"),
-            PeopleFaceActionRow(title: "Split person"),
-            PeopleFaceActionRow(title: "Face-box naming")
-        ]
+    var visibleDeferredFaceActionTitles: [String] {
+        []
+    }
+
+    var deferredFaceActionStatus: String {
+        "Automatic clustering, split, and face-box naming are deferred; manual naming and merge are available now."
     }
 
     private static func photoCountDescription(_ count: Int) -> String {
@@ -528,11 +523,4 @@ struct PeopleReviewCard: Equatable, Identifiable {
     var isActionEnabled: Bool {
         target != nil
     }
-}
-
-struct PeopleFaceActionRow: Equatable, Identifiable {
-    var id: String { title }
-    var title: String
-    var isEnabled = false
-    var placeholder = LiveMockupPlaceholders.peopleFaceActions
 }

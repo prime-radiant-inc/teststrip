@@ -129,29 +129,15 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.reviewCards.map(\.suggestedActionTitle), ["Review faces", "Review quality"])
         XCTAssertTrue(presentation.reviewCards.allSatisfy(\.isActionEnabled))
         XCTAssertFalse(presentation.reviewCards.contains(where: \.showsUnbuiltFaceActionLock))
-        XCTAssertEqual(presentation.faceActionRows.map(\.title), ["Auto cluster", "Split person", "Face-box naming"])
-        XCTAssertEqual(
-            presentation.faceActionRows.map(\.placeholder.id),
-            [
-                LiveMockupPlaceholders.peopleFaceActions.id,
-                LiveMockupPlaceholders.peopleFaceActions.id,
-                LiveMockupPlaceholders.peopleFaceActions.id
-            ]
-        )
+        XCTAssertTrue(presentation.visibleDeferredFaceActionTitles.isEmpty)
     }
 
-    func testPresentationKeepsNamingActionsDisabledWithoutClusters() {
+    func testPresentationTracksDeferredFaceActionsAsStatusCopyInsteadOfDisabledButtons() {
         let presentation = PeoplePresentation(totalAssetCount: 42, evaluationSummaries: [])
 
-        XCTAssertEqual(presentation.faceActionRows.map(\.title), ["Auto cluster", "Split person", "Face-box naming"])
-        XCTAssertEqual(presentation.faceActionRows.map(\.isEnabled), [false, false, false])
-        XCTAssertEqual(
-            presentation.faceActionRows.map(\.placeholder.id),
-            [
-                LiveMockupPlaceholders.peopleFaceActions.id,
-                LiveMockupPlaceholders.peopleFaceActions.id,
-                LiveMockupPlaceholders.peopleFaceActions.id
-            ]
-        )
+        XCTAssertTrue(presentation.visibleDeferredFaceActionTitles.isEmpty)
+        XCTAssertTrue(presentation.deferredFaceActionStatus.localizedCaseInsensitiveContains("Automatic clustering"))
+        XCTAssertTrue(presentation.deferredFaceActionStatus.localizedCaseInsensitiveContains("split"))
+        XCTAssertTrue(presentation.deferredFaceActionStatus.localizedCaseInsensitiveContains("face-box naming"))
     }
 }
