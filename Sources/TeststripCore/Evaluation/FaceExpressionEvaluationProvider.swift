@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import ImageIO
 
 /// One face found by the expression detector. All coordinates are normalized
 /// to [0, 1] with a top-left origin so preview pixel math is size-independent.
@@ -55,7 +56,7 @@ public struct FaceExpressionEvaluationProvider: EvaluationProvider {
         let faceCount = Double(faces.count)
         let eyesOpenFraction = Double(faces.filter(\.hasBothEyesOpen).count) / faceCount
         let smileFraction = Double(faces.filter(\.hasSmile).count) / faceCount
-        return [
+        var signals = [
             EvaluationSignal(
                 assetID: assetID,
                 kind: .eyesOpen,
@@ -71,5 +72,63 @@ public struct FaceExpressionEvaluationProvider: EvaluationProvider {
                 provenance: provenance
             )
         ]
+        if let eyeSharpness = try Self.eyeSharpnessScore(previewURL: previewURL, faces: faces) {
+            signals.append(EvaluationSignal(
+                assetID: assetID,
+                kind: .eyeSharpness,
+                value: .score(eyeSharpness),
+                confidence: 0.6,
+                provenance: provenance
+            ))
+        }
+        return signals
+    }
+
+    /// Eye crops are squares of `eyeCropFractionOfFaceWidth` x face width centered
+    /// on each detected eye; crops under `minimumEyeCropPixels` are skipped so
+    /// tiny previews do not produce noise scores.
+    private static let eyeCropFractionOfFaceWidth = 0.25
+    private static let minimumEyeCropPixels = 8
+    private static let sampleSize = 16
+
+    private static func eyeSharpnessScore(previewURL: URL, faces: [DetectedFaceExpression]) throws -> Double? {
+        let facesWithEyes = faces.filter { $0.leftEyeCenter != nil || $0.rightEyeCenter != nil }
+        guard !facesWithEyes.isEmpty else { return nil }
+        guard let source = CGImageSourceCreateWithURL(previewURL as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            throw TeststripError.unsupportedFormat("ImageIO could not read \(previewURL.lastPathComponent)")
+        }
+        var perFaceScores: [Double] = []
+        for face in facesWithEyes {
+            var eyeScores: [Double] = []
+            for eyeCenter in [face.leftEyeCenter, face.rightEyeCenter].compactMap({ $0 }) {
+                guard let crop = eyeCrop(of: image, face: face, eyeCenter: eyeCenter) else { continue }
+                let pixels = try PreviewPixelMetrics.rgbaSamples(of: crop, width: sampleSize, height: sampleSize)
+                eyeScores.append(PreviewPixelMetrics.focusScore(in: pixels, width: sampleSize, height: sampleSize))
+            }
+            if let sharpestEye = eyeScores.max() {
+                perFaceScores.append(sharpestEye)
+            }
+        }
+        // A photo's eyes are only as sharp as its weakest subject's best eye.
+        return perFaceScores.min()
+    }
+
+    private static func eyeCrop(of image: CGImage, face: DetectedFaceExpression, eyeCenter: CGPoint) -> CGImage? {
+        let imageWidth = Double(image.width)
+        let imageHeight = Double(image.height)
+        let side = (eyeCropFractionOfFaceWidth * face.normalizedBounds.width * imageWidth).rounded()
+        guard side >= Double(minimumEyeCropPixels) else { return nil }
+        let cropRect = CGRect(
+            x: (eyeCenter.x * imageWidth - side / 2).rounded(),
+            y: (eyeCenter.y * imageHeight - side / 2).rounded(),
+            width: side,
+            height: side
+        ).intersection(CGRect(x: 0, y: 0, width: imageWidth, height: imageHeight))
+        guard cropRect.width >= Double(minimumEyeCropPixels),
+              cropRect.height >= Double(minimumEyeCropPixels) else {
+            return nil
+        }
+        return image.cropping(to: cropRect)
     }
 }
