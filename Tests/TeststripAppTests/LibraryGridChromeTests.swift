@@ -63,6 +63,10 @@ final class LibraryGridChromeTests: XCTestCase {
         ))
     }
 
+    func testPrimaryCardImportUsesUserGrantedPanelRoute() {
+        XCTAssertEqual(LibraryGridChromePolicy.primaryCardImportRoute, .userGrantedPanel)
+    }
+
     func testMetadataSyncFilterOptionMapsPendingAndConflictFlags() {
         XCTAssertEqual(MetadataSyncFilterOption(pending: false, conflict: false), .any)
         XCTAssertEqual(MetadataSyncFilterOption(pending: true, conflict: false), .pending)

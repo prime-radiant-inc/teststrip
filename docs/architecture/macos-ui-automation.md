@@ -60,6 +60,8 @@ The submit-only Import Path helper is:
 
 It opens the Import Path sheet, submits a directory, and exits without waiting for visible feedback or walking the whole app accessibility tree. Use it with catalog polling when separating raw catalog/import latency from AX traversal overhead. A 600-image smoke import measured through this path reached the catalog about 0.12s after submit and completed import work about 0.53s after submit, while the full AX visibility probe still reported much slower target-visible timings.
 
+Primary Card Import uses `NSOpenPanel` folder selection for both the card/source folder and the destination root, because sandboxed packaged runs need user-granted security-scoped access. Typed card-path helpers are useful for automation and latency isolation, but they are not proof of sandbox import permissions; sandboxed card-import smoke should exercise the panel route when focus-stealing UI automation is acceptable.
+
 The imported-grid culling probe is:
 
 ```bash

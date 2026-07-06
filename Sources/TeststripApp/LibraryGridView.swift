@@ -125,7 +125,7 @@ struct LibraryGridView: View {
             .help("Import a folder by path")
 
             Button {
-                showImportCardPathSheet()
+                showPrimaryCardImportRoute()
             } label: {
                 Label("Import Card", systemImage: "externaldrive.badge.plus")
             }
@@ -1883,7 +1883,7 @@ struct LibraryGridView: View {
                     Label("Import Path", systemImage: "folder.badge.plus")
                 }
                 Button {
-                    showImportCardPathSheet()
+                    showPrimaryCardImportRoute()
                 } label: {
                     Label("Import Card", systemImage: "externaldrive.badge.plus")
                 }
@@ -1983,6 +1983,15 @@ struct LibraryGridView: View {
         importCardPathReviewID = nil
         isReviewingImportCardPath = false
         isShowingImportCardPathSheet = true
+    }
+
+    private func showPrimaryCardImportRoute() {
+        switch LibraryGridChromePolicy.primaryCardImportRoute {
+        case .userGrantedPanel:
+            showImportCardPanel()
+        case .typedPathSheet:
+            showImportCardPathSheet()
+        }
     }
 
     private func showSourceReconnectSheet() {
@@ -5494,7 +5503,14 @@ enum LibraryGridSelectionScrollPolicy {
     }
 }
 
+enum ImportCardEntryRoute: Equatable {
+    case userGrantedPanel
+    case typedPathSheet
+}
+
 enum LibraryGridChromePolicy {
+    static let primaryCardImportRoute: ImportCardEntryRoute = .userGrantedPanel
+
     static func shouldShowImportProgressBanner(isImporting: Bool, visibleAssetCount _: Int) -> Bool {
         isImporting
     }

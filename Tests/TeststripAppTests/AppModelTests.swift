@@ -9841,6 +9841,76 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBeginImportCardWithWorkerImportsDisabledRunsLocalCopyAndGeneratesPreview() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-local-card-import-with-worker-disabled")
+        let source = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let destinationRoot = directory.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
+        let sourceImage = source.appendingPathComponent("one.png")
+        try writeTestPNG(to: sourceImage)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let access = RecordingSecurityScopedResourceAccess(
+            requiresSuccessfulAccess: true,
+            grantedURLs: [source, destinationRoot]
+        )
+        let model = try AppModel.load(
+            catalog: catalog,
+            workerSupervisor: supervisor,
+            resourceAccess: access.value,
+            workerImportsEnabled: false
+        )
+
+        model.beginImportCard(source: source, destinationRoot: destinationRoot)
+
+        let assetID = try await waitForFirstAsset(in: model)
+        let previewURL = try await waitForGridPreview(assetID: assetID, in: model)
+        try await waitForStatusMessage("Imported 1 photo", in: model)
+        let destinationImage = destinationRoot.appendingPathComponent("one.png")
+        XCTAssertEqual(model.assets.map(\.originalURL), [destinationImage])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destinationImage.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: previewURL.path))
+        XCTAssertEqual(model.backgroundWorkQueue.items, [])
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(access.startedURLs, [source, destinationRoot])
+        XCTAssertEqual(access.stoppedURLs, [source, destinationRoot])
+        XCTAssertEqual(model.statusMessage, "Imported 1 photo")
+    }
+
+    @MainActor
+    func testCompletedCardImportPersistsSecurityScopedBookmarkForDestinationRoot() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-local-card-import-destination-bookmark")
+        let source = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let destinationRoot = directory.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
+        let sourceImage = source.appendingPathComponent("one.png")
+        try writeTestPNG(to: sourceImage)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let bookmarkData = Data("card-destination-bookmark".utf8)
+        let access = RecordingSecurityScopedResourceAccess(
+            requiresSuccessfulAccess: false,
+            grantedURLs: [source, destinationRoot],
+            bookmarkDataByURL: [destinationRoot: bookmarkData]
+        )
+        let model = try AppModel.load(catalog: catalog, resourceAccess: access.value)
+
+        model.beginImportCard(source: source, destinationRoot: destinationRoot)
+
+        try await waitForStatusMessage("Imported 1 photo", in: model)
+        let sourceRoot = try XCTUnwrap(try catalog.repository.sourceRoots().first)
+        XCTAssertEqual(sourceRoot.path, destinationRoot.path)
+        XCTAssertEqual(sourceRoot.securityScopedBookmarkData, bookmarkData)
+    }
+
+    @MainActor
     func testBeginImportCardWithWorkerRejectsMissingSourceWithoutEnqueueing() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-card-missing-source")
         let missingSource = directory.appendingPathComponent("missing-card", isDirectory: true)
