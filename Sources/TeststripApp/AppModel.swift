@@ -1013,6 +1013,12 @@ private struct MetadataSyncStateSnapshot {
     var conflictCount: Int
 }
 
+public enum MetadataSyncConflictSidecarMetadataState: Equatable {
+    case none
+    case readable(AssetMetadata)
+    case unreadable
+}
+
 @Observable
 public final class AppModel {
     public var sidebarSections: [SidebarSection]
@@ -1155,13 +1161,27 @@ public final class AppModel {
         return pendingMetadataSyncItems.first { $0.assetID == selectedAssetID }
     }
 
+    public var selectedMetadataSyncConflictSidecarMetadataState: MetadataSyncConflictSidecarMetadataState {
+        guard let selectedAssetID else {
+            return .none
+        }
+        guard let conflictItem = metadataSyncConflictItems.first(where: { $0.assetID == selectedAssetID }) else {
+            return .none
+        }
+        guard let sidecarData = try? Data(contentsOf: conflictItem.sidecarURL) else {
+            return .unreadable
+        }
+        guard let metadata = try? XMPPacket.parse(sidecarData).metadata else {
+            return .unreadable
+        }
+        return .readable(metadata)
+    }
+
     public var selectedMetadataSyncConflictSidecarMetadata: AssetMetadata? {
-        guard let selectedAssetID,
-              let conflictItem = metadataSyncConflictItems.first(where: { $0.assetID == selectedAssetID }),
-              let sidecarData = try? Data(contentsOf: conflictItem.sidecarURL) else {
+        guard case .readable(let metadata) = selectedMetadataSyncConflictSidecarMetadataState else {
             return nil
         }
-        return try? XMPPacket.parse(sidecarData).metadata
+        return metadata
     }
 
     public var canRetrySelectedMetadataSync: Bool {

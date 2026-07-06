@@ -1851,6 +1851,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedMetadataSyncConflictSidecarMetadata, sidecarMetadata)
     }
 
+    func testSelectedMetadataConflictSidecarMetadataStateReportsUnreadableSidecar() throws {
+        let (model, _, asset, _, sidecarURL) = try makeModelWithXMPConflict(
+            named: "selected-conflict-unreadable-sidecar",
+            catalogMetadata: AssetMetadata(rating: 4, colorLabel: .red, keywords: ["catalog"]),
+            sidecarMetadata: AssetMetadata(rating: 5, colorLabel: .green, keywords: ["sidecar"])
+        )
+        try Data("not xmp".utf8).write(to: sidecarURL)
+
+        model.select(asset.id)
+
+        XCTAssertEqual(model.selectedMetadataSyncConflictSidecarMetadataState, .unreadable)
+        XCTAssertNil(model.selectedMetadataSyncConflictSidecarMetadata)
+    }
+
     func testRatingSelectedAssetDispatchesWorkerMetadataSyncWhenSupervisorConfigured() throws {
         let (model, repository, asset, originalURL, transport) = try makeWorkerMetadataSyncModel(
             named: "app-model-worker-xmp",

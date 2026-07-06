@@ -218,6 +218,23 @@ struct InspectorMetadataSyncStatus: Equatable {
         case conflict
     }
 
+    enum ConflictSidecarMetadataState: Equatable {
+        case notLoaded
+        case readable(AssetMetadata)
+        case unreadable
+
+        init(_ state: MetadataSyncConflictSidecarMetadataState) {
+            switch state {
+            case .none:
+                self = .notLoaded
+            case .readable(let metadata):
+                self = .readable(metadata)
+            case .unreadable:
+                self = .unreadable
+            }
+        }
+    }
+
     struct ConflictRow: Equatable, Identifiable {
         var id: String { title }
         var title: String
@@ -232,25 +249,42 @@ struct InspectorMetadataSyncStatus: Equatable {
     var sidecarPath: String
     var catalogGenerationText: String
     var conflictRows: [ConflictRow]
+    var conflictActions: [InspectorMetadataConflictActionPresentation]
 
     init?(
         asset: Asset,
         pendingItems: [MetadataSyncItem],
         conflictItems: [MetadataSyncItem],
-        conflictSidecarMetadata: AssetMetadata? = nil
+        conflictSidecarMetadata: AssetMetadata? = nil,
+        conflictSidecarMetadataState: ConflictSidecarMetadataState? = nil
     ) {
         if let conflict = conflictItems.first(where: { $0.assetID == asset.id }) {
-            let rows = conflictSidecarMetadata.map {
+            let sidecarState = conflictSidecarMetadataState
+                ?? conflictSidecarMetadata.map { .readable($0) }
+                ?? .notLoaded
+            let sidecarMetadata: AssetMetadata?
+            let sidecarMetadataReadable: Bool
+            switch sidecarState {
+            case .notLoaded:
+                sidecarMetadata = nil
+                sidecarMetadataReadable = true
+            case .readable(let metadata):
+                sidecarMetadata = metadata
+                sidecarMetadataReadable = true
+            case .unreadable:
+                sidecarMetadata = nil
+                sidecarMetadataReadable = false
+            }
+            let rows = sidecarMetadata.map {
                 Self.conflictRows(catalog: asset.metadata, sidecar: $0)
             } ?? []
             self.init(
                 kind: .conflict,
                 item: conflict,
                 title: "XMP conflict",
-                detail: rows.isEmpty
-                    ? "Catalog and sidecar both changed since the last sync."
-                    : "Review changed fields before choosing whether Catalog or XMP wins.",
-                conflictRows: rows
+                detail: Self.conflictDetail(rows: rows, sidecarMetadataReadable: sidecarMetadataReadable),
+                conflictRows: rows,
+                conflictActions: InspectorMetadataConflictActionPresentation.actions(sidecarMetadataReadable: sidecarMetadataReadable)
             )
             return
         }
@@ -260,14 +294,22 @@ struct InspectorMetadataSyncStatus: Equatable {
                 item: pending,
                 title: "XMP sync pending",
                 detail: "Catalog metadata is saved; sidecar write is waiting to retry.",
-                conflictRows: []
+                conflictRows: [],
+                conflictActions: []
             )
             return
         }
         return nil
     }
 
-    private init(kind: Kind, item: MetadataSyncItem, title: String, detail: String, conflictRows: [ConflictRow]) {
+    private init(
+        kind: Kind,
+        item: MetadataSyncItem,
+        title: String,
+        detail: String,
+        conflictRows: [ConflictRow],
+        conflictActions: [InspectorMetadataConflictActionPresentation]
+    ) {
         self.kind = kind
         self.title = title
         self.detail = detail
@@ -275,6 +317,16 @@ struct InspectorMetadataSyncStatus: Equatable {
         self.sidecarPath = item.sidecarURL.path
         self.catalogGenerationText = "Catalog generation \(item.catalogGeneration)"
         self.conflictRows = conflictRows
+        self.conflictActions = conflictActions
+    }
+
+    private static func conflictDetail(rows: [ConflictRow], sidecarMetadataReadable: Bool) -> String {
+        guard sidecarMetadataReadable else {
+            return "XMP sidecar metadata could not be read. Use Catalog to recreate the sidecar, or restore the sidecar before importing it."
+        }
+        return rows.isEmpty
+            ? "Catalog and sidecar both changed since the last sync."
+            : "Review changed fields before choosing whether Catalog or XMP wins."
     }
 
     private static func conflictRows(catalog: AssetMetadata, sidecar: AssetMetadata) -> [ConflictRow] {
@@ -427,7 +479,9 @@ struct InspectorView: View {
             asset: asset,
             pendingItems: model.pendingMetadataSyncItems,
             conflictItems: model.metadataSyncConflictItems,
-            conflictSidecarMetadata: model.selectedMetadataSyncConflictSidecarMetadata
+            conflictSidecarMetadataState: InspectorMetadataSyncStatus.ConflictSidecarMetadataState(
+                model.selectedMetadataSyncConflictSidecarMetadataState
+            )
         ) {
             metadataSyncStatus(syncStatus)
         }
@@ -534,20 +588,21 @@ struct InspectorView: View {
                 .controlSize(.small)
                 .disabled(!model.canRetrySelectedMetadataSync)
             case .conflict:
-                metadataConflictControls()
+                metadataConflictControls(status.conflictActions)
             }
         }
     }
 
-    private func metadataConflictControls() -> some View {
+    private func metadataConflictControls(_ actions: [InspectorMetadataConflictActionPresentation]) -> some View {
         HStack(spacing: 8) {
-            ForEach(InspectorMetadataConflictActionPresentation.actions) { action in
+            ForEach(actions) { action in
                 Button {
                     applyMetadataConflictAction(action.kind)
                 } label: {
                     Label(action.title, systemImage: action.systemImage)
                 }
                 .help(action.help)
+                .disabled(!action.isEnabled)
             }
         }
         .controlSize(.small)
@@ -951,29 +1006,37 @@ struct InspectorMetadataConflictActionPresentation: Equatable, Identifiable {
     var title: String
     var systemImage: String
     var help: String
+    var isEnabled: Bool
 
     var id: Kind { kind }
 
-    static let actions = [
+    static let actions = actions(sidecarMetadataReadable: true)
+
+    static func actions(sidecarMetadataReadable: Bool) -> [InspectorMetadataConflictActionPresentation] {
+        [
         InspectorMetadataConflictActionPresentation(
             kind: .mergeMissingSidecarFields,
             title: "Merge Missing",
             systemImage: "arrow.triangle.merge",
-            help: "Fill missing catalog metadata from XMP and write the merged sidecar"
+            help: "Fill missing catalog metadata from XMP and write the merged sidecar",
+            isEnabled: sidecarMetadataReadable
         ),
         InspectorMetadataConflictActionPresentation(
             kind: .useCatalog,
             title: "Use Catalog",
             systemImage: "internaldrive",
-            help: "Keep catalog metadata and overwrite the XMP sidecar"
+            help: "Keep catalog metadata and overwrite the XMP sidecar",
+            isEnabled: true
         ),
         InspectorMetadataConflictActionPresentation(
             kind: .useSidecar,
             title: "Use XMP",
             systemImage: "doc.text",
-            help: "Import XMP sidecar metadata into the catalog"
+            help: "Import XMP sidecar metadata into the catalog",
+            isEnabled: sidecarMetadataReadable
         )
-    ]
+        ]
+    }
 }
 
 struct InspectorMetadataDraft: Equatable {

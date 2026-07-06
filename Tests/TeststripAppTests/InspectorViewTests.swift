@@ -249,6 +249,36 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(status.conflictRows.map(\.sidecarValue), ["5", "green", "reject", "sidecar"])
     }
 
+    func testMetadataSyncStatusPresentationDisablesSidecarActionsWhenConflictSidecarUnreadable() throws {
+        let asset = makeAsset(id: "conflict", metadata: AssetMetadata(rating: 4))
+        let conflict = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: URL(fileURLWithPath: "/Photos/conflict.jpg.xmp"),
+            catalogGeneration: 5,
+            lastSyncedFingerprint: "newer"
+        )
+
+        let status = try XCTUnwrap(InspectorMetadataSyncStatus(
+            asset: asset,
+            pendingItems: [],
+            conflictItems: [conflict],
+            conflictSidecarMetadataState: .unreadable
+        ))
+
+        XCTAssertEqual(status.detail, "XMP sidecar metadata could not be read. Use Catalog to recreate the sidecar, or restore the sidecar before importing it.")
+        XCTAssertEqual(status.conflictRows, [])
+        XCTAssertEqual(status.conflictActions.map(\.title), [
+            "Merge Missing",
+            "Use Catalog",
+            "Use XMP"
+        ])
+        XCTAssertEqual(status.conflictActions.map(\.isEnabled), [
+            false,
+            true,
+            false
+        ])
+    }
+
     func testMetadataConflictActionsExposeMergeBeforeDestructiveChoices() {
         XCTAssertEqual(InspectorMetadataConflictActionPresentation.actions.map(\.title), [
             "Merge Missing",
