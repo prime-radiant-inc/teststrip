@@ -4023,18 +4023,26 @@ public final class AppModel {
             let pendingItems = try changes.map { change in
                 let generation = try catalog.repository.catalogGeneration(assetID: change.updated.id)
                 let lastFingerprint = try catalog.repository.lastMetadataSyncFingerprint(assetID: change.updated.id)
-                return MetadataSyncItem(
-                    assetID: change.updated.id,
-                    sidecarURL: catalog.metadataSidecarStore.sidecarURL(forOriginalAt: change.updated.originalURL),
-                    catalogGeneration: generation,
-                    lastSyncedFingerprint: lastFingerprint
+                return (
+                    asset: change.updated,
+                    item: MetadataSyncItem(
+                        assetID: change.updated.id,
+                        sidecarURL: catalog.metadataSidecarStore.sidecarURL(forOriginalAt: change.updated.originalURL),
+                        catalogGeneration: generation,
+                        lastSyncedFingerprint: lastFingerprint
+                    )
                 )
             }
-            for pendingItem in pendingItems {
+            for pendingItem in pendingItems.map(\.item) {
                 try catalog.repository.recordMetadataSyncPending(pendingItem)
                 upsertPendingMetadataSyncItem(pendingItem)
             }
-            try enqueueMetadataSyncWork(pendingItems: pendingItems)
+            let retryablePendingItems = pendingItems.compactMap { pendingItem in
+                canAutomaticallyRetryMetadataSync(for: pendingItem.asset, sidecarURL: pendingItem.item.sidecarURL)
+                    ? pendingItem.item
+                    : nil
+            }
+            try enqueueMetadataSyncWork(pendingItems: retryablePendingItems)
         } else {
             for change in changes {
                 try syncMetadataSidecar(for: change.updated)
@@ -4426,6 +4434,10 @@ public final class AppModel {
         if workerSupervisor != nil {
             try catalog.repository.recordMetadataSyncPending(pendingItem)
             upsertPendingMetadataSyncItem(pendingItem)
+            guard canAutomaticallyRetryMetadataSync(for: asset, sidecarURL: pendingItem.sidecarURL) else {
+                statusMessage = "XMP write pending for \(asset.originalURL.lastPathComponent)"
+                return
+            }
             try enqueueMetadataSyncWork(pendingItem: pendingItem)
             return
         }

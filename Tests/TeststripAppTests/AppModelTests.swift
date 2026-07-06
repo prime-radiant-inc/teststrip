@@ -1034,6 +1034,8 @@ final class AppModelTests: XCTestCase {
 
     func testWorkerBackedBatchMetadataRefreshesXmpStateOnceForBatch() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-batch-metadata")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
         var metadataSyncStateQueryCount = 0
@@ -1043,10 +1045,37 @@ final class AppModelTests: XCTestCase {
             }
         }
         let repository = CatalogRepository(database: database)
+        let firstURL = photosDirectory.appendingPathComponent("first.cr2")
+        let secondURL = photosDirectory.appendingPathComponent("second.cr2")
+        let thirdURL = photosDirectory.appendingPathComponent("third.cr2")
+        try Data("first original raw bytes".utf8).write(to: firstURL)
+        try Data("second original raw bytes".utf8).write(to: secondURL)
+        try Data("third original raw bytes".utf8).write(to: thirdURL)
         let assets = [
-            makeAsset(id: "worker-batch-first", size: 10),
-            makeAsset(id: "worker-batch-second", size: 11),
-            makeAsset(id: "worker-batch-third", size: 12)
+            Asset(
+                id: AssetID(rawValue: "worker-batch-first"),
+                originalURL: firstURL,
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+                availability: .online,
+                metadata: AssetMetadata()
+            ),
+            Asset(
+                id: AssetID(rawValue: "worker-batch-second"),
+                originalURL: secondURL,
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: 11, modificationDate: Date(timeIntervalSince1970: 11)),
+                availability: .online,
+                metadata: AssetMetadata()
+            ),
+            Asset(
+                id: AssetID(rawValue: "worker-batch-third"),
+                originalURL: thirdURL,
+                volumeIdentifier: "Photos",
+                fingerprint: FileFingerprint(size: 12, modificationDate: Date(timeIntervalSince1970: 12)),
+                availability: .online,
+                metadata: AssetMetadata()
+            )
         ]
         try repository.upsert(assets)
         let transport = RecordingWorkerTransport()
@@ -1089,6 +1118,76 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }.count, 3)
         XCTAssertEqual(try transport.commands(), [.syncMetadata(assetID: assets[0].id)])
         XCTAssertEqual(try repository.asset(id: assets[2].id).metadata.caption, "Worker batch")
+    }
+
+    func testWorkerBackedBatchMetadataDoesNotDispatchOfflineOriginals() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-batch-offline-metadata")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let offlineURL = photosDirectory.appendingPathComponent("offline.cr2")
+        let onlineURL = photosDirectory.appendingPathComponent("online.cr2")
+        try Data("offline original raw bytes".utf8).write(to: offlineURL)
+        try Data("online original raw bytes".utf8).write(to: onlineURL)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let offline = Asset(
+            id: AssetID(rawValue: "worker-batch-offline"),
+            originalURL: offlineURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .offline,
+            metadata: AssetMetadata()
+        )
+        let online = Asset(
+            id: AssetID(rawValue: "worker-batch-online"),
+            originalURL: onlineURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 11, modificationDate: Date(timeIntervalSince1970: 11)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert([offline, online])
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: [offline, online],
+            totalAssetCount: 2,
+            catalog: catalog,
+            workerSupervisor: supervisor
+        )
+
+        let appliedCount = try model.applyVisibleBatchMetadata(
+            keywordText: "portfolio",
+            caption: "",
+            creator: "",
+            copyright: ""
+        )
+
+        XCTAssertEqual(appliedCount, 2)
+        XCTAssertEqual(Set(try repository.pendingMetadataSyncItems().map(\.assetID)), Set([offline.id, online.id]))
+        XCTAssertEqual(Set(model.pendingMetadataSyncItems.map(\.assetID)), Set([offline.id, online.id]))
+        XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }.map(\.id.rawValue), [
+            "xmp-\(online.id.rawValue)-2"
+        ])
+        XCTAssertEqual(try transport.commands(), [.syncMetadata(assetID: online.id)])
+        XCTAssertEqual(try repository.asset(id: offline.id).metadata.keywords, ["portfolio"])
+        XCTAssertEqual(try repository.asset(id: online.id).metadata.keywords, ["portfolio"])
     }
 
     func testBatchSelectionDoesNotReplacePrimarySelection() throws {
@@ -1686,6 +1785,29 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: originalURL.appendingPathExtension("xmp").path))
         XCTAssertEqual(model.visibleWorkActivity?.kind, .xmpSync)
         XCTAssertEqual(model.visibleWorkActivity?.detail, "Writing XMP sidecar")
+    }
+
+    func testRatingOfflineSelectedAssetRecordsPendingXmpWithoutDispatchingWorkerSync() throws {
+        let (model, repository, asset, originalURL, transport) = try makeWorkerMetadataSyncModel(
+            named: "app-model-worker-xmp-offline-edit",
+            assetID: "worker-xmp-offline-edit-target",
+            availability: .offline
+        )
+
+        try model.setRatingForSelectedAsset(5)
+
+        let pending = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: originalURL.appendingPathExtension("xmp"),
+            catalogGeneration: 2,
+            lastSyncedFingerprint: nil
+        )
+        XCTAssertEqual(model.selectedAsset?.metadata.rating, 5)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.rating, 5)
+        XCTAssertEqual(try repository.pendingMetadataSyncItems(), [pending])
+        XCTAssertEqual(model.pendingMetadataSyncItems, [pending])
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertFalse(model.visibleWorkActivities.contains { $0.kind == .xmpSync })
     }
 
     @MainActor
@@ -12155,7 +12277,8 @@ final class AppModelTests: XCTestCase {
 
     private func makeWorkerMetadataSyncModel(
         named name: String,
-        assetID: String
+        assetID: String,
+        availability: SourceAvailability = .online
     ) throws -> (AppModel, CatalogRepository, Asset, URL, RecordingWorkerTransport) {
         let directory = try makeTemporaryDirectory(named: name)
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
@@ -12170,7 +12293,7 @@ final class AppModelTests: XCTestCase {
             originalURL: originalURL,
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
-            availability: .online,
+            availability: availability,
             metadata: AssetMetadata()
         )
         try repository.upsert(asset)
