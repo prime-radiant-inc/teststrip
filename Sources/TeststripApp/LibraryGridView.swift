@@ -6856,7 +6856,10 @@ struct ImportProgressPresentation: Equatable {
     }
 
     private static func countText(for activity: AppWorkActivity) -> String? {
-        guard let total = activity.totalUnitCount else { return nil }
+        guard let total = activity.totalUnitCount else {
+            guard [.running, .paused].contains(activity.status) else { return nil }
+            return activity.completedUnitCount > 0 ? "\(activity.completedUnitCount) found" : "Counting photos"
+        }
         return "\(activity.completedUnitCount) of \(total)"
     }
 }

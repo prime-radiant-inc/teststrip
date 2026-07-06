@@ -22,7 +22,18 @@ final class ImportProgressPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.phaseText, "Scanning source")
         XCTAssertEqual(presentation.detail, "Importing from photos")
         XCTAssertEqual(presentation.reassuranceText, "Import is underway; thumbnails appear as previews become ready.")
-        XCTAssertNil(presentation.countText)
+        XCTAssertEqual(presentation.countText, "Counting photos")
+    }
+
+    func testUnknownTotalShowsFoundCountWhenScannerHasProgress() {
+        let presentation = ImportProgressPresentation.presentation(for: activity(
+            detail: "Scanned 14 recognized photos",
+            completed: 14,
+            total: nil
+        ))
+
+        XCTAssertEqual(presentation.phaseText, "Scanning source")
+        XCTAssertEqual(presentation.countText, "14 found")
     }
 
     func testQueuedActivityShowsWaitingState() {
