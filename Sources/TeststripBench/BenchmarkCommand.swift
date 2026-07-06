@@ -17,6 +17,7 @@ public enum BenchmarkCommand: Equatable {
     case realCorpusSmoke(photoDirectory: URL)
     case samplePreviewRender(photoDirectory: URL)
     case seedAppCatalog(applicationSupportDirectory: URL, count: Int)
+    case seedRealCorpusCatalog(applicationSupportDirectory: URL, photoDirectory: URL)
     case seedSampleCatalog(applicationSupportDirectory: URL, photoDirectory: URL)
 
     public static func parse(_ arguments: [String]) -> BenchmarkCommand {
@@ -74,6 +75,14 @@ public enum BenchmarkCommand: Equatable {
             let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
             let count = Int(userArguments.dropFirst(2).first ?? "24") ?? 24
             return .seedAppCatalog(applicationSupportDirectory: URL(fileURLWithPath: directory), count: count)
+        }
+        if firstArgument == "seed-real-corpus-catalog" {
+            let applicationSupportDirectory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
+            let photoDirectory = userArguments.dropFirst(2).first ?? FileManager.default.currentDirectoryPath
+            return .seedRealCorpusCatalog(
+                applicationSupportDirectory: URL(fileURLWithPath: applicationSupportDirectory),
+                photoDirectory: URL(fileURLWithPath: photoDirectory)
+            )
         }
         if firstArgument == "seed-sample-catalog" {
             let applicationSupportDirectory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath

@@ -36,6 +36,8 @@ case .samplePreviewRender(let photoDirectory):
     try runSamplePreviewRenderBenchmark(photoDirectory: photoDirectory, root: root)
 case .seedAppCatalog(let applicationSupportDirectory, let count):
     try runSeedAppCatalog(applicationSupportDirectory: applicationSupportDirectory, count: count)
+case .seedRealCorpusCatalog(let applicationSupportDirectory, let photoDirectory):
+    try runSeedRealCorpusCatalog(applicationSupportDirectory: applicationSupportDirectory, photoDirectory: photoDirectory)
 case .seedSampleCatalog(let applicationSupportDirectory, let photoDirectory):
     try runSeedSampleCatalog(applicationSupportDirectory: applicationSupportDirectory, photoDirectory: photoDirectory)
 }
@@ -371,6 +373,35 @@ private func runSeedSampleCatalog(applicationSupportDirectory: URL, photoDirecto
     print("source images: \(result.sourceImageCount)")
     print("catalog assets: \(result.assetCount)")
     print("cached previews: \(result.cachedPreviewCount)")
+    try printMachineReadableSummary(recorder.summary)
+}
+
+private func runSeedRealCorpusCatalog(applicationSupportDirectory: URL, photoDirectory: URL) throws {
+    var recorder = BenchmarkSummaryRecorder(benchmark: "seed_real_corpus_catalog", count: 0)
+
+    print("TeststripBench seed real corpus catalog")
+    print("application support: \(applicationSupportDirectory.path)")
+    print("photo directory: \(photoDirectory.path)")
+    let result = try measure("seed real corpus catalog", recorder: &recorder, key: "seed_real_corpus_catalog") {
+        try RealCorpusCatalogSeeder(
+            applicationSupportDirectory: applicationSupportDirectory,
+            photoDirectory: photoDirectory
+        ).run()
+    }
+    recorder.recordMetric("source_images", result.sourceImageCount)
+    recorder.recordMetric("catalog_assets", result.assetCount)
+    recorder.recordMetric("cached_previews", result.cachedPreviewCount)
+    recorder.recordMetric("working_stills", result.workingStillCount)
+    recorder.recordMetric("best_effort_raws", result.bestEffortRawCount)
+    recorder.recordMetric("unsupported", result.unsupportedCount)
+    print("catalog: \(result.catalogURL.path)")
+    print("preview cache: \(result.previewCacheRoot.path)")
+    print("source images: \(result.sourceImageCount)")
+    print("catalog assets: \(result.assetCount)")
+    print("cached previews: \(result.cachedPreviewCount)")
+    print("working stills: \(result.workingStillCount)")
+    print("best-effort raws: \(result.bestEffortRawCount)")
+    print("unsupported: \(result.unsupportedCount)")
     try printMachineReadableSummary(recorder.summary)
 }
 

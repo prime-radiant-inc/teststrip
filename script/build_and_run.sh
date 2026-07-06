@@ -19,6 +19,9 @@ SMOKE_ASSET_COUNT="${TESTSTRIP_SMOKE_ASSET_COUNT:-24}"
 SAMPLE_PHOTOS=0
 SAMPLE_PHOTOS_DIR="${TESTSTRIP_SAMPLE_PHOTOS_DIR:-}"
 SAMPLE_PHOTOS_MANIFEST="${TESTSTRIP_SAMPLE_PHOTOS_MANIFEST:-}"
+REAL_CORPUS=0
+REAL_CORPUS_DIR="${TESTSTRIP_REAL_CORPUS_DIR:-}"
+BACKGROUND_OPEN=0
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -33,7 +36,7 @@ APP_ENTITLEMENTS="$ROOT_DIR/config/macos/Teststrip.entitlements"
 WORKER_ENTITLEMENTS="$ROOT_DIR/config/macos/TeststripWorker.entitlements"
 
 usage() {
-  echo "usage: $0 [run|--build|--build-sandboxed|--sandboxed|--verify|--verify-sandboxed|--isolated|--verify-isolated|--smoke|--verify-smoke|--sample-photos|--verify-sample-photos|--debug|--logs|--telemetry]" >&2
+  echo "usage: $0 [run|--build|--build-sandboxed|--sandboxed|--verify|--verify-sandboxed|--isolated|--verify-isolated|--smoke|--verify-smoke|--sample-photos|--verify-sample-photos|--real-corpus|--verify-real-corpus|--debug|--logs|--telemetry]" >&2
 }
 
 stop_running_app() {
@@ -98,6 +101,9 @@ PLIST
 
 open_app() {
   local open_args=(-n "$APP_BUNDLE")
+  if [[ "$BACKGROUND_OPEN" == "1" ]]; then
+    open_args=(-g "${open_args[@]}")
+  fi
   if [[ "$SANDBOXED" == "1" ]]; then
     open_args=(--env "$REQUIRED_SECURITY_SCOPE_ENV_KEY=1" "${open_args[@]}")
   fi
@@ -108,6 +114,9 @@ open_app() {
     fi
     if [[ "$SAMPLE_PHOTOS" == "1" ]]; then
       seed_sample_catalog
+    fi
+    if [[ "$REAL_CORPUS" == "1" ]]; then
+      seed_real_corpus_catalog
     fi
     open_args=(--env "$APPLICATION_SUPPORT_ENV_KEY=$ISOLATED_APPLICATION_SUPPORT" "${open_args[@]}")
   fi
@@ -166,6 +175,19 @@ seed_sample_catalog() {
   swift run "$BENCH_PRODUCT_NAME" seed-sample-catalog "$ISOLATED_APPLICATION_SUPPORT" "$SAMPLE_PHOTOS_DIR"
 }
 
+seed_real_corpus_catalog() {
+  cd "$ROOT_DIR"
+  if [[ -z "$REAL_CORPUS_DIR" ]]; then
+    REAL_CORPUS_DIR="$ROOT_DIR/sample-data/photos/jesse-pictures"
+  fi
+  if [[ ! -d "$REAL_CORPUS_DIR" ]]; then
+    echo "real corpus directory does not exist: $REAL_CORPUS_DIR" >&2
+    echo "set TESTSTRIP_REAL_CORPUS_DIR to an ignored local photo corpus" >&2
+    return 1
+  fi
+  swift run "$BENCH_PRODUCT_NAME" seed-real-corpus-catalog "$ISOLATED_APPLICATION_SUPPORT" "$REAL_CORPUS_DIR"
+}
+
 case "$MODE" in
   run|--build|build|--verify|verify|--debug|debug|--logs|logs|--telemetry|telemetry)
     ;;
@@ -208,6 +230,18 @@ case "$MODE" in
     MODE="--verify"
     ISOLATED=1
     SAMPLE_PHOTOS=1
+    ;;
+  --real-corpus|real-corpus)
+    MODE="run"
+    ISOLATED=1
+    REAL_CORPUS=1
+    BACKGROUND_OPEN=1
+    ;;
+  --verify-real-corpus|verify-real-corpus)
+    MODE="--verify"
+    ISOLATED=1
+    REAL_CORPUS=1
+    BACKGROUND_OPEN=1
     ;;
   --help|help|-h)
     usage

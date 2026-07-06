@@ -107,6 +107,16 @@ final class BenchmarkCommandTests: XCTestCase {
         )
     }
 
+    func testSeedRealCorpusCatalogCommandParsesApplicationSupportDirectoryAndPhotoDirectory() throws {
+        XCTAssertEqual(
+            BenchmarkCommand.parse(["TeststripBench", "seed-real-corpus-catalog", "/tmp/teststrip-real", "/tmp/teststrip-photos"]),
+            .seedRealCorpusCatalog(
+                applicationSupportDirectory: URL(fileURLWithPath: "/tmp/teststrip-real"),
+                photoDirectory: URL(fileURLWithPath: "/tmp/teststrip-photos")
+            )
+        )
+    }
+
     func testDeferredImportBenchmarkCatalogsAssetsAndQueuesPreviewWork() throws {
         let root = try makeTemporaryDirectory(named: "deferred-import-benchmark")
 
@@ -408,6 +418,59 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(Set(assets.map { $0.originalURL.deletingLastPathComponent() }), [photoDirectory])
         XCTAssertTrue(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: assets[0].id, level: .grid)).path))
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [PreviewGenerationItem]())
+    }
+
+    func testRealCorpusCatalogSeederCreatesAppCatalogFromRepresentativePhotos() throws {
+        let applicationSupportDirectory = try makeTemporaryDirectory(named: "real-corpus-app-support")
+        let photoDirectory = try makeTemporaryDirectory(named: "real-corpus-app-photos")
+        let jpeg = photoDirectory.appendingPathComponent("one.jpg")
+        let dng = photoDirectory.appendingPathComponent("two.dng")
+        let raf = photoDirectory.appendingPathComponent("three.raf")
+        let x3f = photoDirectory.appendingPathComponent("four.x3f")
+        try writeTestPNG(to: jpeg)
+        try writeTestPNG(to: dng)
+        try writeTestPNG(to: raf)
+        try Data("unsupported raw placeholder".utf8).write(to: x3f)
+
+        let result = try RealCorpusCatalogSeeder(
+            applicationSupportDirectory: applicationSupportDirectory,
+            photoDirectory: photoDirectory
+        ).run()
+
+        let database = try CatalogDatabase.open(at: result.catalogURL)
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assets = try repository.allAssets(limit: 20)
+        let previewCache = PreviewCache(root: result.previewCacheRoot)
+
+        XCTAssertEqual(result.sourceImageCount, 4)
+        XCTAssertEqual(result.assetCount, 4)
+        XCTAssertEqual(result.workingStillCount, 1)
+        XCTAssertEqual(result.bestEffortRawCount, 2)
+        XCTAssertEqual(result.unsupportedCount, 1)
+        XCTAssertEqual(result.cachedPreviewCount, 6)
+        XCTAssertEqual(try repository.assetCount(), 4)
+        XCTAssertEqual(Set(assets.map { $0.originalURL.deletingLastPathComponent() }), [photoDirectory])
+        XCTAssertEqual(try repository.sourceRoots().map { $0.path }, [photoDirectory.standardizedFileURL.path])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: previewCache.url(for: PreviewCacheKey(assetID: assets[0].id, level: .grid)).path))
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [PreviewGenerationItem]())
+    }
+
+    func testRealCorpusCatalogSeederRefusesExistingCatalog() throws {
+        let applicationSupportDirectory = try makeTemporaryDirectory(named: "existing-real-corpus-app-support")
+        let photoDirectory = try makeTemporaryDirectory(named: "existing-real-corpus-photos")
+        let catalogURL = applicationSupportDirectory
+            .appendingPathComponent("Teststrip", isDirectory: true)
+            .appendingPathComponent("catalog.sqlite")
+        try FileManager.default.createDirectory(at: catalogURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("existing catalog".utf8).write(to: catalogURL)
+
+        XCTAssertThrowsError(try RealCorpusCatalogSeeder(
+            applicationSupportDirectory: applicationSupportDirectory,
+            photoDirectory: photoDirectory
+        ).run()) { error in
+            XCTAssertTrue(error.localizedDescription.contains("refusing to seed real corpus catalog over existing catalog"))
+        }
     }
 
     func testSampleCatalogSeederRefusesExistingCatalog() throws {
