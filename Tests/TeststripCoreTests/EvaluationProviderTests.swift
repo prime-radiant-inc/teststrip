@@ -283,6 +283,16 @@ final class EvaluationProviderTests: XCTestCase {
         ])
     }
 
+    func testAppleVisionAnalyzerProducesImageFeaturePrintVector() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "apple-vision-feature-print")
+        let previewURL = directory.appendingPathComponent("preview.jpg")
+        try TestDirectories.writeTestJPEG(to: previewURL, width: 64, height: 64)
+
+        let analysis = try AppleVisionAnalyzer().analyze(previewURL: previewURL)
+
+        XCTAssertFalse(analysis.imageFeaturePrintVector.isEmpty)
+    }
+
     func testEvaluationValuesRoundTripThroughJSON() throws {
         let values: [EvaluationValue] = [
             .score(0.92),
