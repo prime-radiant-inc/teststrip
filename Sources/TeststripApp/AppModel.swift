@@ -3871,6 +3871,45 @@ public final class AppModel {
         statusMessage = "Kept all \(summary.pickedCount) compare frames"
     }
 
+    /// Focus-compare tie-break: pick the top 2 ranked contenders and reject
+    /// the third, touching only the visible contenders subset — unlike the
+    /// other compare group decisions, frames outside that subset (including
+    /// the rest of the compare group) are left untouched, since only the
+    /// top contenders were ever "in the running" for this decision.
+    public func keepTopTwoCompareContendersAndRejectAlternates(assetIDs: [AssetID]) throws {
+        guard catalog != nil else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let compareGroup = compareAssets()
+        let signalsByAssetID = Dictionary(uniqueKeysWithValues: compareGroup.map { asset in
+            (asset.id, evaluationSignals(for: asset.id))
+        })
+        let rankedContenders = CullingStackRecommendation.rankedCandidates(
+            stackAssetIDs: compareGroup.map(\.id),
+            evaluationSignalsByAssetID: signalsByAssetID
+        )
+        guard rankedContenders.count >= CompareSurveyPresentation.contenderCount else {
+            throw TeststripError.invalidState("compare set needs at least three ranked contenders")
+        }
+        let contenders = Array(rankedContenders.prefix(CompareSurveyPresentation.contenderCount))
+        guard Set(assetIDs) == Set(contenders.prefix(2).map(\.assetID)) else {
+            throw TeststripError.invalidState("kept frames must be the top two ranked contenders")
+        }
+
+        let keepSet = Set(assetIDs)
+        let contenderGroup = contenders.compactMap { contender in
+            compareGroup.first { $0.id == contender.assetID }
+        }
+        let summary = try applyCompareFlags(
+            contenderGroup.reduce(into: [AssetID: PickFlag]()) { flags, asset in
+                flags[asset.id] = keepSet.contains(asset.id) ? .pick : .reject
+            },
+            to: contenderGroup
+        )
+
+        statusMessage = "Kept top 2 contenders; rejected \(summary.rejectedCount) contender\(summary.rejectedCount == 1 ? "" : "s")"
+    }
+
     private func applyCompareFlags(
         _ flagsByAssetID: [AssetID: PickFlag],
         to compareGroup: [Asset]

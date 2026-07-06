@@ -166,7 +166,7 @@ public enum LiveMockupPlaceholders {
         id: "compare.focus",
         title: "Focus compare",
         intendedBehavior: "Line up close contenders and use sharpness, eye state, exposure, and frame signals to break ties.",
-        currentFallback: "Survey Compare shows persisted focus, motion blur, exposure, framing, aesthetics, face-quality, eye-sharpness, eye-state, and smile signals for visible contenders."
+        currentFallback: "Survey Compare shows persisted focus, motion blur, exposure, framing, aesthetics, face-quality, eye-sharpness, eye-state, and smile signals for visible contenders, with a reversible toggle that narrows the grid to the top 3 ranked contenders, rank chips (#1/#2/#3) on their tiles, a comparative leader-vs-runner-up verdict line, and a Keep #1 & #2 action that picks the top two and rejects the third when quality signals exist."
     )
 
     public static let compareSurvey = LiveMockupPlaceholder(
@@ -276,7 +276,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Focus compare",
             status: .partial,
             placeholder: .focusCompare,
-            currentImplementation: "Compare has a persisted focus/motion/exposure/framing/aesthetics/face-quality lane and cached-preview evaluation action; eye-state and richer frame rationale depend on future providers."
+            currentImplementation: "Compare has a persisted focus/motion/exposure/framing/aesthetics/face-quality/eye-sharpness/eye-state/smile lane, cached-preview evaluation action, and a reversible Top 3 contenders toggle that narrows the grid to the top ranked frames with #1/#2/#3 rank chips, a comparative leader-vs-runner-up verdict line (percentage sharpness delta only when the runner-up's focus score supports it), and a Keep #1 & #2 action that picks the top two visible contenders and rejects the third through the same batch pick/reject path as other compare group decisions."
         ),
         LiveMockupDesignSurface(
             designID: "4a",

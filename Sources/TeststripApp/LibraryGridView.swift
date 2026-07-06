@@ -3864,6 +3864,9 @@ struct ExportReviewPresentation: Equatable {
 
 struct CompareSurveyPresentation: Equatable {
     private static let maximumSurveyColumnCount = 4
+    /// Tie-break focus-compare (mockup 3b) narrows to the top 3 ranked
+    /// contenders; unrelated to the 8-frame survey grid limit above.
+    static let contenderCount = 3
 
     var primaryAsset: Asset?
     var alternateAssets: [Asset]
@@ -3872,6 +3875,10 @@ struct CompareSurveyPresentation: Equatable {
     var groupKindText: String
     var recommendationText: String
     var recommendedAssetID: AssetID?
+    var isContendersModeAvailable: Bool
+    var isContendersOnly: Bool
+    var contenderAssets: [Asset]
+    var comparativeVerdictText: String?
     private var recommendedFrameLabel: String?
     private var signalBadgesByAssetID: [AssetID: [CompareDecisionBadge]]
 
@@ -3879,7 +3886,8 @@ struct CompareSurveyPresentation: Equatable {
         assets: [Asset],
         selectedAssetID: AssetID?,
         evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]] = [:],
-        groupKind: CompareGroupKind = .nearbyFrames
+        groupKind: CompareGroupKind = .nearbyFrames,
+        contendersOnly: Bool = false
     ) {
         guard !assets.isEmpty else {
             self.primaryAsset = nil
@@ -3889,6 +3897,10 @@ struct CompareSurveyPresentation: Equatable {
             self.groupKindText = "Compare set"
             self.recommendationText = "No comparison set"
             self.recommendedAssetID = nil
+            self.isContendersModeAvailable = false
+            self.isContendersOnly = false
+            self.contenderAssets = []
+            self.comparativeVerdictText = nil
             self.recommendedFrameLabel = nil
             self.signalBadgesByAssetID = [:]
             return
@@ -3915,6 +3927,25 @@ struct CompareSurveyPresentation: Equatable {
             stackAssetIDs: assets.map(\.id),
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
+        self.isContendersModeAvailable = !rankedCandidates.isEmpty
+        self.isContendersOnly = contendersOnly && isContendersModeAvailable
+        let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+        let topContenders = Array(rankedCandidates.prefix(Self.contenderCount))
+        self.contenderAssets = topContenders.compactMap { assetsByID[$0.assetID] }
+        if self.isContendersOnly, topContenders.count >= 2 {
+            let leader = topContenders[0]
+            let runnerUp = topContenders[1]
+            let qualifiers = CullingStackRecommendation.comparativeQualifiers(
+                leader: leader.assetID,
+                runnerUp: runnerUp.assetID,
+                evaluationSignalsByAssetID: evaluationSignalsByAssetID
+            )
+            self.comparativeVerdictText = qualifiers.isEmpty
+                ? "Frame \(leader.frameLabel) edges it"
+                : "Frame \(leader.frameLabel) edges it — \(qualifiers.joined(separator: ", "))"
+        } else {
+            self.comparativeVerdictText = nil
+        }
         let recommendation = rankedCandidates.first
         self.recommendedAssetID = recommendation?.assetID
         self.recommendedFrameLabel = recommendation?.frameLabel
@@ -3936,6 +3967,18 @@ struct CompareSurveyPresentation: Equatable {
             primaryAsset: self.primaryAsset,
             rejectCount: max(assets.count - 1, 0)
         )
+    }
+
+    /// Title for the reversible contenders-only toggle; independent of
+    /// availability so the disabled button still reads correctly.
+    var contendersToggleTitle: String {
+        isContendersOnly ? "Full set" : "Top \(Self.contenderCount) contenders"
+    }
+
+    var contendersToggleHelp: String {
+        isContendersOnly
+            ? "Shows the full compare set again"
+            : "Narrows the compare grid to the top \(Self.contenderCount) ranked contenders"
     }
 
     var primaryDecisionText: String {
@@ -3965,6 +4008,9 @@ struct CompareSurveyPresentation: Equatable {
     }
 
     var orderedAssets: [Asset] {
+        if isContendersOnly {
+            return contenderAssets
+        }
         guard let primaryAsset else { return alternateAssets }
         return [primaryAsset] + alternateAssets
     }
@@ -4031,6 +4077,23 @@ struct CompareSurveyPresentation: Equatable {
         ]
     }
 
+    /// A tie-break action for contenders-only mode: pick the top 2 ranked
+    /// contenders and reject the third. Only present with 3+ ranked
+    /// contenders, since with fewer there is nothing left to reject.
+    func contendersKeepTopTwoAction(canApplyPrimaryChoice: Bool) -> CompareSurveyActionPresentation? {
+        guard isContendersOnly, contenderAssets.count >= Self.contenderCount else {
+            return nil
+        }
+        let topTwoAssetIDs = contenderAssets.prefix(2).map(\.id)
+        return CompareSurveyActionPresentation(
+            action: .keepTopContendersAndRejectRemaining(topTwoAssetIDs),
+            title: "Keep #1 & #2",
+            isEnabled: canApplyPrimaryChoice,
+            help: "Keeps the top two ranked contenders and rejects the remaining visible contender",
+            liveMockupPlaceholder: nil
+        )
+    }
+
     func decisionBadges(for asset: Asset) -> [CompareDecisionBadge] {
         var badges: [CompareDecisionBadge] = []
         if asset.id == primaryAsset?.id {
@@ -4058,6 +4121,22 @@ struct CompareSurveyPresentation: Equatable {
     /// decisionBadges so metadata badges never claim machine reads.
     func signalBadges(for asset: Asset) -> [CompareDecisionBadge] {
         signalBadgesByAssetID[asset.id] ?? []
+    }
+
+    /// #1/#2/#3 rank chips for contenders-only mode; silent otherwise so
+    /// rank and signal badges never both claim a tile.
+    func rankBadges(for asset: Asset) -> [CompareDecisionBadge] {
+        guard isContendersOnly, let rank = contenderAssets.firstIndex(where: { $0.id == asset.id }) else {
+            return []
+        }
+        return [CompareDecisionBadge(text: "#\(rank + 1)", tone: .rank)]
+    }
+
+    /// Badges for a compare tile: metadata decision badges plus rank chips
+    /// in contenders-only mode, or signal reads (BEST / EYES CLOSED / SOFT)
+    /// otherwise.
+    func tileBadges(for asset: Asset) -> [CompareDecisionBadge] {
+        decisionBadges(for: asset) + (isContendersOnly ? rankBadges(for: asset) : signalBadges(for: asset))
     }
 
     private static let softFocusBadgeThreshold = 0.5
@@ -4129,6 +4208,7 @@ struct CompareSurveyActionPresentation: Equatable, Identifiable {
         case keepRecommendedAndRejectAlternates(AssetID)
         case keepAll
         case chooseManually
+        case keepTopContendersAndRejectRemaining([AssetID])
     }
 
     var action: Action
@@ -4147,6 +4227,8 @@ struct CompareSurveyActionPresentation: Equatable, Identifiable {
             return "keep-all"
         case .chooseManually:
             return "choose-manually"
+        case .keepTopContendersAndRejectRemaining(let assetIDs):
+            return "keep-top-contenders-and-reject-remaining-\(assetIDs.map(\.rawValue).joined(separator: "-"))"
         }
     }
 }
@@ -4159,6 +4241,7 @@ struct CompareDecisionBadge: Equatable, Identifiable {
         case rating
         case label
         case best
+        case rank
     }
 
     var text: String
@@ -4794,11 +4877,50 @@ struct CullingStackRecommendation: Equatable {
             }
             .max()
     }
+
+    /// A focus-score percentage delta is only honest when the runner-up's
+    /// score is comfortably above zero: the metric is an average
+    /// neighbor-luminance delta, a true ratio scale starting at zero, but a
+    /// near-zero denominator turns a small absolute gap into an inflated,
+    /// noise-driven percentage.
+    private static let minimumRunnerUpFocusForPercentageDelta = 0.1
+
+    /// Honest, comparative one-line qualifiers between the leader and
+    /// runner-up of a tie-break, in display order. A sharpness claim only
+    /// appears when the leader's own raw focus score actually exceeds the
+    /// runner-up's — the composite ranking score can favor a leader who
+    /// wins on a different signal instead, and this must not overclaim that.
+    static func comparativeQualifiers(
+        leader: AssetID,
+        runnerUp: AssetID,
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
+    ) -> [String] {
+        var qualifiers: [String] = []
+        let leaderSignals = evaluationSignalsByAssetID[leader] ?? []
+        let runnerUpSignals = evaluationSignalsByAssetID[runnerUp] ?? []
+
+        if let leaderFocus = bestScore(kind: .focus, in: leaderSignals),
+           let runnerUpFocus = bestScore(kind: .focus, in: runnerUpSignals),
+           leaderFocus > runnerUpFocus {
+            if runnerUpFocus >= minimumRunnerUpFocusForPercentageDelta {
+                let percentage = Int(((leaderFocus - runnerUpFocus) / runnerUpFocus * 100).rounded())
+                qualifiers.append("\(percentage)% sharper")
+            } else {
+                qualifiers.append("sharper")
+            }
+        }
+        if let leaderEyesOpen = bestScore(kind: .eyesOpen, in: leaderSignals), leaderEyesOpen >= 1.0 {
+            qualifiers.append("eyes open")
+        }
+        return qualifiers
+    }
 }
 
 private struct CompareView: View {
     var model: AppModel
     var focusCullingSurface: () -> Void
+
+    @State private var isContendersOnly = false
 
     private let focusMetricColumns = [GridItem(.adaptive(minimum: 78), spacing: 5)]
 
@@ -4810,7 +4932,8 @@ private struct CompareView: View {
             evaluationSignalsByAssetID: Dictionary(uniqueKeysWithValues: compareAssets.map { asset in
                 (asset.id, model.evaluationSignals(for: asset.id))
             }),
-            groupKind: model.compareGroupKind()
+            groupKind: model.compareGroupKind(),
+            contendersOnly: isContendersOnly
         )
 
         ScrollView {
@@ -4827,6 +4950,9 @@ private struct CompareView: View {
                 }
                 if let primaryAsset = presentation.primaryAsset {
                     surveyLayout(presentation)
+                    if let comparativeVerdictText = presentation.comparativeVerdictText {
+                        comparativeVerdictStrip(comparativeVerdictText)
+                    }
                     compareActionStrip(primaryAsset: primaryAsset, presentation: presentation)
                 } else {
                     emptyCompareSet
@@ -4884,6 +5010,16 @@ private struct CompareView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
+            Button {
+                isContendersOnly.toggle()
+            } label: {
+                Label(presentation.contendersToggleTitle, systemImage: "3.circle")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(!presentation.isContendersModeAvailable)
+            .help(presentation.contendersToggleHelp)
+            .liveMockupPlaceholder(.focusCompare)
             Button {
                 requestCompareEvaluations()
             } label: {
@@ -4949,7 +5085,7 @@ private struct CompareView: View {
             .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
                 model.select(assetID)
             }
-            compareDecisionBadges(presentation.decisionBadges(for: asset) + presentation.signalBadges(for: asset))
+            compareDecisionBadges(presentation.tileBadges(for: asset))
                 .padding(8)
         }
     }
@@ -4973,7 +5109,7 @@ private struct CompareView: View {
 
     private func compareBadgeForeground(for tone: CompareDecisionBadge.Tone) -> Color {
         switch tone {
-        case .primary, .rating, .best:
+        case .primary, .rating, .best, .rank:
             return .black
         case .positive, .destructive, .label:
             return .white
@@ -4992,7 +5128,7 @@ private struct CompareView: View {
             return .yellow
         case .label:
             return .blue.opacity(0.9)
-        case .best:
+        case .best, .rank:
             return .orange
         }
     }
@@ -5052,6 +5188,20 @@ private struct CompareView: View {
         case .waiting:
             return .orange
         }
+    }
+
+    private func comparativeVerdictStrip(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(.orange)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .liveMockupPlaceholder(.focusCompare)
     }
 
     private func compareActionStrip(
@@ -5119,6 +5269,18 @@ private struct CompareView: View {
                 .disabled(!chooseManuallyAction.isEnabled)
                 .help(chooseManuallyAction.help)
                 .liveMockupPlaceholder(chooseManuallyAction.liveMockupPlaceholder)
+            if let keepTopTwoAction = presentation.contendersKeepTopTwoAction(
+                canApplyPrimaryChoice: model.canKeepComparePrimaryAndRejectAlternates
+            ) {
+                Button(keepTopTwoAction.title) {
+                    applyCompareGroupAction(keepTopTwoAction.action)
+                }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!keepTopTwoAction.isEnabled)
+                    .help(keepTopTwoAction.help)
+                    .liveMockupPlaceholder(keepTopTwoAction.liveMockupPlaceholder)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -5165,6 +5327,17 @@ private struct CompareView: View {
             applyCompareKeepAll()
         case .chooseManually:
             beginManualCompareCulling()
+        case .keepTopContendersAndRejectRemaining(let assetIDs):
+            applyKeepTopTwoContenders(assetIDs)
+        }
+    }
+
+    private func applyKeepTopTwoContenders(_ assetIDs: [AssetID]) {
+        do {
+            focusCullingSurface()
+            try model.keepTopTwoCompareContendersAndRejectAlternates(assetIDs: assetIDs)
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 
