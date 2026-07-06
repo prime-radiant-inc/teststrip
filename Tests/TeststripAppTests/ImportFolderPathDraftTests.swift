@@ -228,25 +228,55 @@ final class ImportFolderPathDraftTests: XCTestCase {
     }
 
     @MainActor
-    func testMatchingCardSourceAndDestinationKeepsDraftErrorForSheet() throws {
+    func testMatchingCardSourceAndDestinationBuildsBlockedConfirmationDraft() throws {
         let source = try makeTemporaryDirectory(named: "matching-card-source-destination")
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
         var draft = ImportCardPathDraft(sourcePath: source.path, destinationPath: source.path)
 
-        XCTAssertThrowsError(try draft.makeCardConfirmationDraft())
+        let confirmation = try draft.makeCardConfirmationDraft()
 
-        XCTAssertEqual(draft.errorMessage, "Destination must be different from the card source")
+        XCTAssertEqual(confirmation.mode, .card)
+        XCTAssertEqual(confirmation.sourceURL.standardizedFileURL, source.standardizedFileURL)
+        XCTAssertEqual(confirmation.destinationRootURL?.standardizedFileURL, source.standardizedFileURL)
+        XCTAssertFalse(confirmation.canStartImport)
+        XCTAssertEqual(confirmation.destinationUnavailableReason, "Destination must be different from the card source")
+        XCTAssertNil(draft.errorMessage)
     }
 
     @MainActor
-    func testCardSourceInsideDestinationKeepsDraftErrorForSheet() throws {
+    func testCardSourceInsideDestinationBuildsBlockedConfirmationDraft() throws {
         let destination = try makeTemporaryDirectory(named: "card-source-inside-destination")
         let source = destination.appendingPathComponent("DCIM", isDirectory: true)
         try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
         var draft = ImportCardPathDraft(sourcePath: source.path, destinationPath: destination.path)
 
-        XCTAssertThrowsError(try draft.makeCardConfirmationDraft())
+        let confirmation = try draft.makeCardConfirmationDraft()
 
-        XCTAssertEqual(draft.errorMessage, "Card source cannot be inside the destination")
+        XCTAssertEqual(confirmation.mode, .card)
+        XCTAssertEqual(confirmation.sourceURL.standardizedFileURL, source.standardizedFileURL)
+        XCTAssertEqual(confirmation.destinationRootURL?.standardizedFileURL, destination.standardizedFileURL)
+        XCTAssertFalse(confirmation.canStartImport)
+        XCTAssertEqual(confirmation.destinationUnavailableReason, "Card source cannot be inside the destination")
+        XCTAssertNil(draft.errorMessage)
+    }
+
+    @MainActor
+    func testCardDestinationInsideSourceBuildsBlockedConfirmationDraft() throws {
+        let source = try makeTemporaryDirectory(named: "card-destination-inside-source")
+        let destination = source.appendingPathComponent("Imported", isDirectory: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
+        var draft = ImportCardPathDraft(sourcePath: source.path, destinationPath: destination.path)
+
+        let confirmation = try draft.makeCardConfirmationDraft()
+
+        XCTAssertEqual(confirmation.mode, .card)
+        XCTAssertEqual(confirmation.sourceURL.standardizedFileURL, source.standardizedFileURL)
+        XCTAssertEqual(confirmation.destinationRootURL?.standardizedFileURL, destination.standardizedFileURL)
+        XCTAssertFalse(confirmation.canStartImport)
+        XCTAssertEqual(confirmation.destinationUnavailableReason, "Destination cannot be inside the card source")
+        XCTAssertNil(draft.errorMessage)
     }
 
     private func makeTemporaryDirectory(named name: String) throws -> URL {
