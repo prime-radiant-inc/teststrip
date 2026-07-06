@@ -4092,8 +4092,8 @@ enum CompareFocusMetricPresentation {
     }
 
     private static func valueText(for signal: EvaluationSignal) -> String {
-        if let expressionValue = expressionValueText(for: signal) {
-            return expressionValue
+        if let overrideValue = overrideValueText(for: signal) {
+            return overrideValue
         }
         switch signal.value {
         case .score(let score):
@@ -4111,7 +4111,10 @@ enum CompareFocusMetricPresentation {
         }
     }
 
-    private static func expressionValueText(for signal: EvaluationSignal) -> String? {
+    // Signal kinds whose raw 0...1 score reads better as something other than
+    // a bare percentage: eyes/smile as plain-language state, exposure as an
+    // EV-style delta from neutral so over/under exposure reads at a glance.
+    private static func overrideValueText(for signal: EvaluationSignal) -> String? {
         guard case .score(let score) = signal.value else { return nil }
         switch signal.kind {
         case .eyesOpen:
@@ -4122,9 +4125,22 @@ enum CompareFocusMetricPresentation {
             if score >= 1.0 { return "Smiling" }
             if score > 0.0 { return "Some smiling" }
             return "No smile"
+        case .exposure:
+            return exposureDeltaText(score: score)
         default:
             return nil
         }
+    }
+
+    private static let exposureNeutralScore = 0.5
+    private static let exposureEVRange = 4.0
+
+    private static func exposureDeltaText(score: Double) -> String {
+        let delta = (score - exposureNeutralScore) * exposureEVRange
+        let rounded = (delta * 10).rounded() / 10
+        guard rounded != 0 else { return "0.0 EV" }
+        let sign = rounded > 0 ? "+" : ""
+        return "\(sign)\(String(format: "%.1f", rounded)) EV"
     }
 
     private static func tone(for signal: EvaluationSignal) -> CompareFocusMetric.Tone {
