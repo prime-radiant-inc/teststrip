@@ -4,6 +4,8 @@ import TeststripCore
 
 enum InspectorPreviewLayout {
     static let size = CGSize(width: 258, height: 186)
+    static let horizontalPadding: CGFloat = 14
+    static let columnWidth = size.width + horizontalPadding * 2
     static let pinsPreviewAboveMetadataScroll = true
 }
 
@@ -309,7 +311,7 @@ struct InspectorView: View {
                 .padding(.top, 10)
                 .padding(.bottom, 12)
         }
-        .frame(minWidth: 286)
+        .frame(width: InspectorPreviewLayout.columnWidth)
     }
 
     private func selectedPreview(for asset: Asset) -> some View {
