@@ -6,6 +6,7 @@ enum FolderSelectionPanel {
     private static let importFolderParentKey = "FolderSelectionPanel.importFolderParent"
     private static let cardSourceParentKey = "FolderSelectionPanel.cardSourceParent"
     private static let cardDestinationParentKey = "FolderSelectionPanel.cardDestinationParent"
+    private static let exportDestinationParentKey = "FolderSelectionPanel.exportDestinationParent"
 
     static func chooseImportFolder(defaults: UserDefaults = .standard) -> URL? {
         let panel = NSOpenPanel()
@@ -40,6 +41,18 @@ enum FolderSelectionPanel {
         )
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         rememberCardDestinationFolder(url, defaults: defaults)
+        return url
+    }
+
+    static func chooseExportDestinationFolder(defaults: UserDefaults = .standard) -> URL? {
+        let panel = NSOpenPanel()
+        configureExportDestinationPanel(
+            panel,
+            startingDirectory: defaultStartingDirectory(),
+            rememberedDirectory: rememberedDirectory(for: exportDestinationParentKey, defaults: defaults)
+        )
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        rememberExportDestinationFolder(url, defaults: defaults)
         return url
     }
 
@@ -88,6 +101,21 @@ enum FolderSelectionPanel {
         )
     }
 
+    static func configureExportDestinationPanel(
+        _ panel: NSOpenPanel,
+        startingDirectory: URL? = nil,
+        rememberedDirectory: URL? = nil
+    ) {
+        configureDirectoryPanel(
+            panel,
+            startingDirectory: startingDirectory,
+            rememberedDirectory: rememberedDirectory,
+            canCreateDirectories: true,
+            prompt: "Export Here",
+            message: "Select where exported JPEGs should be written."
+        )
+    }
+
     static func startingImportDirectory(defaults: UserDefaults = .standard) -> URL? {
         rememberedDirectory(for: importFolderParentKey, defaults: defaults) ?? defaultStartingDirectory()
     }
@@ -100,6 +128,10 @@ enum FolderSelectionPanel {
         rememberedDirectory(for: cardDestinationParentKey, defaults: defaults) ?? defaultStartingDirectory()
     }
 
+    static func startingExportDestinationDirectory(defaults: UserDefaults = .standard) -> URL? {
+        rememberedDirectory(for: exportDestinationParentKey, defaults: defaults) ?? defaultStartingDirectory()
+    }
+
     static func rememberImportFolder(_ folderURL: URL, defaults: UserDefaults = .standard) {
         rememberDirectory(folderURL, for: importFolderParentKey, defaults: defaults)
     }
@@ -110,6 +142,10 @@ enum FolderSelectionPanel {
 
     static func rememberCardDestinationFolder(_ folderURL: URL, defaults: UserDefaults = .standard) {
         rememberDirectory(folderURL, for: cardDestinationParentKey, defaults: defaults)
+    }
+
+    static func rememberExportDestinationFolder(_ folderURL: URL, defaults: UserDefaults = .standard) {
+        rememberDirectory(folderURL, for: exportDestinationParentKey, defaults: defaults)
     }
 
     static func importFolderURL(fromPath path: String) throws -> URL {

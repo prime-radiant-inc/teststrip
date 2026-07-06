@@ -68,6 +68,37 @@ final class FolderSelectionPanelTests: XCTestCase {
     }
 
     @MainActor
+    func testExportDestinationPanelChoosesOneCreatableDirectory() throws {
+        let panel = NSOpenPanel()
+        let startingDirectory = try makeTemporaryDirectory(named: "export-destination-start")
+
+        FolderSelectionPanel.configureExportDestinationPanel(panel, startingDirectory: startingDirectory)
+
+        XCTAssertTrue(panel.canChooseDirectories)
+        XCTAssertFalse(panel.canChooseFiles)
+        XCTAssertFalse(panel.allowsMultipleSelection)
+        XCTAssertTrue(panel.canCreateDirectories)
+        XCTAssertEqual(panel.prompt, "Export Here")
+        XCTAssertEqual(panel.message, "Select where exported JPEGs should be written.")
+        XCTAssertEqual(panel.directoryURL?.standardizedFileURL, startingDirectory.standardizedFileURL)
+    }
+
+    @MainActor
+    func testRememberedExportDestinationStartsNextChooserAtSelectedDirectory() throws {
+        let defaults = try makeDefaults()
+        let parent = try makeTemporaryDirectory(named: "remember-export-destination-parent")
+        let destination = parent.appendingPathComponent("exports", isDirectory: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+
+        FolderSelectionPanel.rememberExportDestinationFolder(destination, defaults: defaults)
+
+        XCTAssertEqual(
+            FolderSelectionPanel.startingExportDestinationDirectory(defaults: defaults)?.standardizedFileURL,
+            destination.standardizedFileURL
+        )
+    }
+
+    @MainActor
     func testRememberedImportFolderStartsNextChooserAtSelectedDirectory() throws {
         let defaults = try makeDefaults()
         let parent = try makeTemporaryDirectory(named: "remember-import-parent")

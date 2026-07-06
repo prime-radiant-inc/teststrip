@@ -20,8 +20,13 @@ struct LibraryGridView: View {
     @State private var cullingSessionName = ""
     @State private var cullingSessionIntent = ""
     @State private var batchMetadataDraft = BatchMetadataDraft()
-    @State private var batchMetadataScope: BatchMetadataScopeMode = .visible
+    @State private var batchMetadataScope: BatchScopeMode = .visible
     @State private var isAllCatalogBatchMetadataConfirmed = false
+    @State private var isReviewingExport = false
+    @State private var exportScope: BatchScopeMode = .visible
+    @State private var exportPreset: ExportPreset = .fullResolutionJPEG
+    @State private var isAllCatalogExportConfirmed = false
+    @State private var includeSourceMetadataInExport = true
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
     @State private var isShowingImportCardPathSheet = false
@@ -177,6 +182,19 @@ struct LibraryGridView: View {
                 batchMetadataPopover
             }
             .liveMockupPlaceholder(.keywordingBatch)
+
+            Button {
+                exportScope = model.selectedBatchAssetCount > 0 ? .selected : .visible
+                isAllCatalogExportConfirmed = false
+                isReviewingExport = true
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .disabled(isImporting || model.assets.isEmpty || model.isExporting)
+            .help("Export JPEG copies to a folder")
+            .popover(isPresented: $isReviewingExport) {
+                exportPopover
+            }
         }
         .safeAreaInset(edge: .top) {
             topInsetContent
@@ -851,7 +869,7 @@ struct LibraryGridView: View {
             }
 
             Picker("Batch scope", selection: $batchMetadataScope) {
-                ForEach(BatchMetadataScopeMode.allCases) { scope in
+                ForEach(BatchScopeMode.allCases) { scope in
                     Text(scope.title).tag(scope)
                 }
             }
@@ -937,6 +955,73 @@ struct LibraryGridView: View {
         .padding(14)
         .frame(width: 360)
         .liveMockupPlaceholder(.keywordingBatch)
+    }
+
+    private var exportPopover: some View {
+        let presentation = ExportReviewPresentation(
+            visibleAssetCount: model.assets.count,
+            selectedAssetCount: model.selectedBatchAssetCount,
+            currentScopeAssetCount: model.totalAssetCount,
+            selectedScope: exportScope,
+            requiresAllCatalogConfirmation: exportScope == .currentScope && !model.hasActiveLibraryFilters,
+            isAllCatalogConfirmed: isAllCatalogExportConfirmed,
+            isExporting: model.isExporting
+        )
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Export JPEGs")
+                        .font(.headline)
+                    Text(presentation.countText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "square.and.arrow.up")
+                    .foregroundStyle(.orange)
+            }
+
+            Picker("Export scope", selection: $exportScope) {
+                ForEach(BatchScopeMode.allCases) { scope in
+                    Text(scope.title).tag(scope)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .onChange(of: exportScope) { _, _ in
+                isAllCatalogExportConfirmed = false
+            }
+
+            Picker("Export preset", selection: $exportPreset) {
+                ForEach(ExportPreset.all, id: \.name) { preset in
+                    Text(preset.name).tag(preset)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            Toggle("Include EXIF/IPTC metadata", isOn: $includeSourceMetadataInExport)
+                .font(.caption)
+
+            if let confirmationText = presentation.confirmationText {
+                Toggle(confirmationText, isOn: $isAllCatalogExportConfirmed)
+                    .font(.caption)
+            }
+
+            HStack {
+                Button("Cancel") {
+                    isReviewingExport = false
+                }
+                Spacer()
+                Button(presentation.exportTitle) {
+                    chooseExportDestinationAndExport()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!presentation.isExportEnabled)
+            }
+        }
+        .padding(14)
+        .frame(width: 360)
     }
 
     private var importProgressBanner: some View {
@@ -2517,6 +2602,29 @@ struct LibraryGridView: View {
         }
     }
 
+    private func chooseExportDestinationAndExport() {
+        guard let destination = FolderSelectionPanel.chooseExportDestinationFolder() else { return }
+        var settings = exportPreset.settings
+        settings.includeSourceMetadata = includeSourceMetadataInExport
+        let scope = exportScope
+        isReviewingExport = false
+        isAllCatalogExportConfirmed = false
+        Task { @MainActor in
+            do {
+                switch scope {
+                case .selected:
+                    try await model.exportSelectedAssets(settings: settings, destinationFolder: destination)
+                case .visible:
+                    try await model.exportVisibleAssets(settings: settings, destinationFolder: destination)
+                case .currentScope:
+                    try await model.exportCurrentScopeAssets(settings: settings, destinationFolder: destination)
+                }
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     private func evaluateSelectedAsset() {
         do {
             try model.requestSelectedAssetEvaluations()
@@ -3265,7 +3373,7 @@ struct BatchMetadataDraft: Equatable {
     }
 }
 
-enum BatchMetadataScopeMode: String, CaseIterable, Identifiable {
+enum BatchScopeMode: String, CaseIterable, Identifiable {
     case selected
     case visible
     case currentScope
@@ -3297,7 +3405,7 @@ struct BatchMetadataReviewPresentation: Equatable {
         visibleAssetCount: Int,
         selectedAssetCount: Int,
         currentScopeAssetCount: Int,
-        selectedScope: BatchMetadataScopeMode,
+        selectedScope: BatchScopeMode,
         requiresAllCatalogConfirmation: Bool,
         isAllCatalogConfirmed: Bool,
         suggestions: [BatchKeywordSuggestion],
@@ -3330,6 +3438,45 @@ struct BatchMetadataReviewPresentation: Equatable {
                 && draft.hasContentToApply
                 && (!requiresAllCatalogConfirmation || isAllCatalogConfirmed)
             applyTitle = "Apply to current scope"
+        }
+    }
+}
+
+struct ExportReviewPresentation: Equatable {
+    var countText: String
+    var isExportEnabled: Bool
+    var exportTitle: String
+    var confirmationText: String?
+
+    init(
+        visibleAssetCount: Int,
+        selectedAssetCount: Int,
+        currentScopeAssetCount: Int,
+        selectedScope: BatchScopeMode,
+        requiresAllCatalogConfirmation: Bool,
+        isAllCatalogConfirmed: Bool,
+        isExporting: Bool
+    ) {
+        switch selectedScope {
+        case .selected:
+            countText = "\(selectedAssetCount) selected \(selectedAssetCount == 1 ? "photo" : "photos")"
+            confirmationText = nil
+            isExportEnabled = selectedAssetCount > 0 && !isExporting
+            exportTitle = "Export selected batch"
+        case .visible:
+            countText = "\(visibleAssetCount) visible \(visibleAssetCount == 1 ? "photo" : "photos")"
+            confirmationText = nil
+            isExportEnabled = visibleAssetCount > 0 && !isExporting
+            exportTitle = "Export visible batch"
+        case .currentScope:
+            countText = "\(currentScopeAssetCount) \(currentScopeAssetCount == 1 ? "photo" : "photos") in current scope"
+            confirmationText = requiresAllCatalogConfirmation
+                ? "Confirm exporting all \(currentScopeAssetCount) catalog \(currentScopeAssetCount == 1 ? "photo" : "photos")."
+                : nil
+            isExportEnabled = currentScopeAssetCount > 0
+                && !isExporting
+                && (!requiresAllCatalogConfirmation || isAllCatalogConfirmed)
+            exportTitle = "Export current scope"
         }
     }
 }

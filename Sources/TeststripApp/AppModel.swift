@@ -798,6 +798,68 @@ public struct ImportCompletionSummary: Identifiable, Equatable, Sendable {
     public var id: String { activityID }
 }
 
+public struct ExportCompletionSummary: Equatable, Sendable {
+    public var exportedCount: Int
+    public var skippedCount: Int
+    public var failedCount: Int
+    public var destinationFolder: URL
+    public var firstFailureMessage: String?
+
+    public init(
+        exportedCount: Int,
+        skippedCount: Int,
+        failedCount: Int,
+        destinationFolder: URL,
+        firstFailureMessage: String?
+    ) {
+        self.exportedCount = exportedCount
+        self.skippedCount = skippedCount
+        self.failedCount = failedCount
+        self.destinationFolder = destinationFolder
+        self.firstFailureMessage = firstFailureMessage
+    }
+
+    public init(results: [ExportFileResult], destinationFolder: URL) {
+        var exportedCount = 0
+        var skippedCount = 0
+        var failedCount = 0
+        var firstFailureMessage: String?
+        for result in results {
+            switch result.outcome {
+            case .exported:
+                exportedCount += 1
+            case .skippedUnavailable:
+                skippedCount += 1
+            case .failed(let message):
+                failedCount += 1
+                if firstFailureMessage == nil {
+                    firstFailureMessage = message
+                }
+            }
+        }
+        self.init(
+            exportedCount: exportedCount,
+            skippedCount: skippedCount,
+            failedCount: failedCount,
+            destinationFolder: destinationFolder,
+            firstFailureMessage: firstFailureMessage
+        )
+    }
+
+    public var statusText: String {
+        let exportedText = "Exported \(exportedCount) \(exportedCount == 1 ? "photo" : "photos") to \(destinationFolder.lastPathComponent)"
+        var problems: [String] = []
+        if skippedCount > 0 {
+            problems.append("\(skippedCount) skipped")
+        }
+        if failedCount > 0 {
+            problems.append("\(failedCount) failed")
+        }
+        guard !problems.isEmpty else { return exportedText }
+        return "\(exportedText) (\(problems.joined(separator: ", ")))"
+    }
+}
+
 public struct KeywordSuggestion: Identifiable, Equatable, Sendable {
     public var keyword: String
     public var sourceKind: EvaluationKind
@@ -1089,6 +1151,7 @@ public final class AppModel {
     private var selectedBatchAssetSortKeys: [AssetID: Int]
     public var statusMessage: String?
     public var errorMessage: String?
+    public private(set) var isExporting = false
     public var activeWork: AppWorkActivity?
     public var recentWork: [AppWorkActivity]
     public var starredWork: [AppWorkActivity]
@@ -4332,6 +4395,83 @@ public final class AppModel {
         metadataRedoStack.removeAll()
         statusMessage = "Applied batch metadata to \(Self.photoCountDescription(changes.count))"
         return changes.count
+    }
+
+    @discardableResult
+    @MainActor
+    public func exportVisibleAssets(settings: ExportSettings, destinationFolder: URL) async throws -> ExportCompletionSummary {
+        try await exportAssets(assetIDs: assets.map(\.id), settings: settings, destinationFolder: destinationFolder)
+    }
+
+    @discardableResult
+    @MainActor
+    public func exportSelectedAssets(settings: ExportSettings, destinationFolder: URL) async throws -> ExportCompletionSummary {
+        try await exportAssets(assetIDs: selectedBatchAssetIDsInCatalogOrder, settings: settings, destinationFolder: destinationFolder)
+    }
+
+    @discardableResult
+    @MainActor
+    public func exportCurrentScopeAssets(settings: ExportSettings, destinationFolder: URL) async throws -> ExportCompletionSummary {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        return try await exportAssets(
+            assetIDs: try currentAssetScopeIDs(repository: catalog.repository),
+            settings: settings,
+            destinationFolder: destinationFolder
+        )
+    }
+
+    @MainActor
+    private func exportAssets(
+        assetIDs: [AssetID],
+        settings: ExportSettings,
+        destinationFolder: URL
+    ) async throws -> ExportCompletionSummary {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard !isExporting else {
+            throw TeststripError.invalidState("another export is already running")
+        }
+        var seenAssetIDs: Set<AssetID> = []
+        var originalURLs: [URL] = []
+        for assetID in assetIDs {
+            guard seenAssetIDs.insert(assetID).inserted else { continue }
+            originalURLs.append(try catalog.repository.asset(id: assetID).originalURL)
+        }
+        guard !originalURLs.isEmpty else {
+            throw TeststripError.invalidState("no photos to export")
+        }
+        isExporting = true
+        defer { isExporting = false }
+        errorMessage = nil
+        statusMessage = "Exporting \(Self.photoCountDescription(originalURLs.count)) to \(destinationFolder.lastPathComponent)..."
+        let sink = AppExportProgressSink(model: self, destinationName: destinationFolder.lastPathComponent)
+        let service = ExportService()
+        let urls = originalURLs
+        let destination = destinationFolder
+        let results: [ExportFileResult]
+        do {
+            results = try await Task.detached(priority: .userInitiated) {
+                try service.export(
+                    originalURLs: urls,
+                    settings: settings,
+                    destinationDirectory: destination
+                ) { completedCount, totalCount in
+                    sink.handle(completedCount: completedCount, totalCount: totalCount)
+                }
+            }.value
+        } catch {
+            statusMessage = nil
+            throw error
+        }
+        let summary = ExportCompletionSummary(results: results, destinationFolder: destinationFolder)
+        statusMessage = summary.statusText
+        if summary.failedCount > 0 {
+            errorMessage = summary.firstFailureMessage
+        }
+        return summary
     }
 
     public func setCaptionForSelectedAsset(_ caption: String) throws {
@@ -9031,5 +9171,24 @@ private final class AppImportProgressSink: @unchecked Sendable {
     private func apply(_ progress: LibraryImportProgress) {
         guard let model, model.activeWork?.id == activityID else { return }
         model.applyImportProgress(progress)
+    }
+}
+
+private final class AppExportProgressSink: @unchecked Sendable {
+    private weak var model: AppModel?
+    private let destinationName: String
+
+    init(model: AppModel, destinationName: String) {
+        self.model = model
+        self.destinationName = destinationName
+    }
+
+    func handle(completedCount: Int, totalCount: Int) {
+        Task { @MainActor in
+            // Late-arriving progress hops are dropped once the export summary
+            // has landed, so the completion message is never overwritten.
+            guard let model = self.model, model.isExporting else { return }
+            model.statusMessage = "Exporting photo \(completedCount) of \(totalCount) to \(self.destinationName)..."
+        }
     }
 }
