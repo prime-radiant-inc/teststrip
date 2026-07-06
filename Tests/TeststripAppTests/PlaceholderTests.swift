@@ -95,7 +95,7 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertFalse(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep top remains disabled"))
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("session progress"))
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("Apple Vision/local model signals"))
-        XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("threshold calibration"))
+        XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("distance/threshold rationale"))
         XCTAssertTrue(comparePlaceholder.currentFallback.localizedCaseInsensitiveContains("persisted culling stack sets"))
         XCTAssertTrue(comparePlaceholder.currentFallback.localizedCaseInsensitiveContains("loaded-scope candidate stacks"))
         XCTAssertTrue(comparePlaceholder.currentFallback.localizedCaseInsensitiveContains("up to eight"))
@@ -116,7 +116,7 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("keep-selected/reject-alternates and keep-all"))
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("sessions refresh progress"))
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("Apple Vision/local model signals"))
-        XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("near-duplicate threshold calibration"))
+        XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("near-duplicate threshold tuning"))
     }
 
     func testRapidCullLedgerTracksCompositeSelectedFrameRationale() throws {

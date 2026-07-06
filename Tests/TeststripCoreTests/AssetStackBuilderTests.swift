@@ -68,7 +68,7 @@ final class AssetStackBuilderTests: XCTestCase {
         )
 
         XCTAssertEqual(stacks, [
-            AssetStack(assetIDs: [first.id, similar.id], rationale: "Visual similarity"),
+            AssetStack(assetIDs: [first.id, similar.id], rationale: "Visual similarity distance 0.014 <= 0.050"),
             AssetStack(assetIDs: [different.id], rationale: nil)
         ])
     }

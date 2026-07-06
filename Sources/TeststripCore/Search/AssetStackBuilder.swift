@@ -76,8 +76,12 @@ public struct AssetStackBuilder: Sendable {
         if isCaptureTimeNeighbor(first, second) {
             return Self.burstRationale(maximumCaptureGap: maximumCaptureGap)
         }
-        if isVisualSimilarityNeighbor(first, second, visualSimilarityVectorsByAssetID: visualSimilarityVectorsByAssetID) {
-            return "Visual similarity"
+        if let distance = visualSimilarityDistance(first, second, visualSimilarityVectorsByAssetID: visualSimilarityVectorsByAssetID),
+           distance <= maximumVisualSimilarityDistance {
+            return Self.visualSimilarityRationale(
+                distance: distance,
+                maximumDistance: maximumVisualSimilarityDistance
+            )
         }
         return nil
     }
@@ -94,18 +98,18 @@ public struct AssetStackBuilder: Sendable {
         return abs(firstCapture.timeIntervalSince(secondCapture)) <= maximumCaptureGap
     }
 
-    private func isVisualSimilarityNeighbor(
+    private func visualSimilarityDistance(
         _ first: Asset,
         _ second: Asset,
         visualSimilarityVectorsByAssetID: [AssetID: [Double]]
-    ) -> Bool {
+    ) -> Double? {
         guard let firstVector = visualSimilarityVectorsByAssetID[first.id],
               let secondVector = visualSimilarityVectorsByAssetID[second.id],
               firstVector.count == secondVector.count,
               !firstVector.isEmpty else {
-            return false
+            return nil
         }
-        let distance = zip(firstVector, secondVector)
+        return zip(firstVector, secondVector)
             .map { lhs, rhs in
                 let delta = lhs - rhs
                 return delta * delta
@@ -114,11 +118,14 @@ public struct AssetStackBuilder: Sendable {
                 partialResult + value
             }
             .squareRoot()
-        return distance <= maximumVisualSimilarityDistance
     }
 
     private static func burstRationale(maximumCaptureGap: TimeInterval) -> String {
         let seconds = Int(maximumCaptureGap.rounded())
         return "Same folder, captured within \(seconds)s"
+    }
+
+    private static func visualSimilarityRationale(distance: Double, maximumDistance: Double) -> String {
+        String(format: "Visual similarity distance %.3f <= %.3f", distance, maximumDistance)
     }
 }
