@@ -882,6 +882,20 @@ private struct LatestImportPresentationCore: Equatable, Sendable {
     )
 }
 
+// Hands the coalesced-publication flush to WorkerTimeoutScheduling's @Sendable
+// timer callback; the flush itself always runs on the main queue.
+private final class BackgroundWorkPublicationFlush: @unchecked Sendable {
+    private let flush: () -> Void
+
+    init(_ flush: @escaping () -> Void) {
+        self.flush = flush
+    }
+
+    func callAsFunction() {
+        flush()
+    }
+}
+
 // Live preview-drain part of the latest-import panel, rebuilt on preview queue
 // transitions; its rebuild must stay limited to indexed count queries because those
 // transitions fire for every preview of an import.
@@ -1120,6 +1134,28 @@ public final class AppModel {
     // not the full rebuild (asset loads, JSON decoding, stack detection).
     private var latestImportPresentationCore: LatestImportPresentationCore?
     private var latestImportPreviewStatus: LatestImportPreviewStatus?
+
+    // Coalesced publication of background-work state: preview drains fire queue
+    // transitions roughly twice per imported photo, and republishing tracked state
+    // per transition re-renders every visible grid cell. Model logic reads the
+    // always-current supervisor queue; views read the coalesced published copies.
+    @ObservationIgnored
+    private let backgroundWorkPublicationInterval: TimeInterval?
+
+    @ObservationIgnored
+    private let backgroundWorkPublicationScheduler: any WorkerTimeoutScheduling
+
+    @ObservationIgnored
+    private var backgroundWorkPublicationTimer: (any WorkerTimeoutCancellation)?
+
+    @ObservationIgnored
+    private var currentPreviewCacheGenerationsByAssetID: [AssetID: Int]
+
+    @ObservationIgnored
+    private var lastProcessedBackgroundWorkQueue: BackgroundWorkQueue?
+
+    @ObservationIgnored
+    private var pendingLatestImportPreviewStatusRefresh: Bool
 
     @ObservationIgnored
     private var catalog: AppCatalog?
@@ -2182,7 +2218,9 @@ public final class AppModel {
         cardImportTaskFactory: AppCardImportTaskFactory? = nil,
         workerExecutableURL: URL? = nil,
         resourceAccess: SecurityScopedResourceAccess = .permissive,
-        workerImportsEnabled: Bool? = nil
+        workerImportsEnabled: Bool? = nil,
+        backgroundWorkPublicationInterval: TimeInterval? = nil,
+        backgroundWorkPublicationScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler()
     ) {
         let resolvedWorkerImportsEnabled = workerImportsEnabled ?? (workerSupervisor != nil)
         let resolvedTotalAssetCount = totalAssetCount ?? assets.count
@@ -2265,6 +2303,12 @@ public final class AppModel {
         self.workerExecutableURL = workerExecutableURL
         self.resourceAccess = resourceAccess
         self.previewCacheGenerationsByAssetID = [:]
+        self.backgroundWorkPublicationInterval = backgroundWorkPublicationInterval
+        self.backgroundWorkPublicationScheduler = backgroundWorkPublicationScheduler
+        self.backgroundWorkPublicationTimer = nil
+        self.currentPreviewCacheGenerationsByAssetID = [:]
+        self.lastProcessedBackgroundWorkQueue = nil
+        self.pendingLatestImportPreviewStatusRefresh = false
         self.evaluationAssetIDsByItemID = [:]
         self.evaluationProvidersByItemID = [:]
         self.metadataSyncAssetIDsByItemID = [:]
@@ -2300,27 +2344,29 @@ public final class AppModel {
         restoreSecurityScopedSourceRootAccess()
         rebuildSidebarSections()
         self.workerSupervisor?.onQueueChanged = { [weak self] queue in
-            let previousQueue = self?.backgroundWorkQueue
-            let previousPreviewFailureIDs = Self.failedPreviewGenerationItemIDs(in: self?.backgroundWorkQueue)
-            self?.backgroundWorkQueue = queue
-            self?.recordPersistedActiveBackgroundWorkActivities(in: queue)
-            if Self.metadataSyncWorkChanged(from: previousQueue, to: queue) {
-                try? self?.refreshMetadataSyncState()
-            }
+            guard let self else { return }
+            let previousQueue = self.lastProcessedBackgroundWorkQueue ?? self.backgroundWorkQueue
+            let previousPreviewFailureIDs = Self.failedPreviewGenerationItemIDs(in: previousQueue)
+            self.lastProcessedBackgroundWorkQueue = queue
             if Self.previewGenerationWorkChanged(from: previousQueue, to: queue) {
-                self?.refreshLatestImportPreviewStatus()
+                self.pendingLatestImportPreviewStatusRefresh = true
+            }
+            self.publishBackgroundWorkState()
+            self.recordPersistedActiveBackgroundWorkActivities(in: queue)
+            if Self.metadataSyncWorkChanged(from: previousQueue, to: queue) {
+                try? self.refreshMetadataSyncState()
             }
             let failedPreviewItemIDs = Self.failedPreviewGenerationItemIDs(in: queue)
             let newFailedPreviewItemIDs = failedPreviewItemIDs.subtracting(previousPreviewFailureIDs)
             if !newFailedPreviewItemIDs.isEmpty {
-                try? self?.refreshPreviewGenerationQueueStates()
-                self?.refreshLoadedAssetAvailabilityForPreviewFailures(newFailedPreviewItemIDs)
-                try? self?.enqueuePendingPreviewGeneration(excluding: newFailedPreviewItemIDs)
+                try? self.refreshPreviewGenerationQueueStates()
+                self.refreshLoadedAssetAvailabilityForPreviewFailures(newFailedPreviewItemIDs)
+                try? self.enqueuePendingPreviewGeneration(excluding: newFailedPreviewItemIDs)
             }
-            self?.releaseInactiveWorkerImportContexts(in: queue)
-            self?.releaseInactiveEvaluationContexts(in: queue)
-            self?.releaseInactiveMetadataSyncContexts(in: queue)
-            self?.releaseInactiveAvailabilityContexts(in: queue)
+            self.releaseInactiveWorkerImportContexts(in: queue)
+            self.releaseInactiveEvaluationContexts(in: queue)
+            self.releaseInactiveMetadataSyncContexts(in: queue)
+            self.releaseInactiveAvailabilityContexts(in: queue)
         }
         self.workerSupervisor?.onCommandProgress = { [weak self] event in
             self?.handleWorkerCommandProgress(event)
@@ -2450,7 +2496,9 @@ public final class AppModel {
         workerSupervisor: WorkerSupervisor? = nil,
         workerExecutableURL: URL? = nil,
         resourceAccess: SecurityScopedResourceAccess = .permissive,
-        workerImportsEnabled: Bool? = nil
+        workerImportsEnabled: Bool? = nil,
+        backgroundWorkPublicationInterval: TimeInterval? = nil,
+        backgroundWorkPublicationScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler()
     ) throws -> AppModel {
         try reconcileInterruptedIngestWorkSessions(repository: catalog.repository)
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
@@ -2521,7 +2569,9 @@ public final class AppModel {
             cardImportTaskFactory: cardImportTaskFactory,
             workerExecutableURL: workerExecutableURL,
             resourceAccess: resourceAccess,
-            workerImportsEnabled: workerImportsEnabled
+            workerImportsEnabled: workerImportsEnabled,
+            backgroundWorkPublicationInterval: backgroundWorkPublicationInterval,
+            backgroundWorkPublicationScheduler: backgroundWorkPublicationScheduler
         )
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
@@ -4850,7 +4900,7 @@ public final class AppModel {
     private func cancelStaleQueuedMetadataSyncChecks(keeping assetID: AssetID, generation: Int) throws {
         guard let workerSupervisor else { return }
         let keptPrefix = metadataSyncCheckPrefix(assetID: assetID, generation: generation)
-        let staleQueuedChecks = backgroundWorkQueue.queuedItems.filter { item in
+        let staleQueuedChecks = currentBackgroundWorkQueue.queuedItems.filter { item in
             isSelectionMetadataSyncCheck(item) && !item.id.rawValue.hasPrefix(keptPrefix)
         }
         for item in staleQueuedChecks {
@@ -4864,7 +4914,7 @@ public final class AppModel {
     private func cancelStaleQueuedMetadataSyncWrites(keeping assetID: AssetID, generation: Int) throws {
         guard let workerSupervisor else { return }
         let keptID = Self.metadataSyncWorkItemID(assetID: assetID, catalogGeneration: generation).rawValue
-        let staleQueuedWrites = backgroundWorkQueue.queuedItems.filter { item in
+        let staleQueuedWrites = currentBackgroundWorkQueue.queuedItems.filter { item in
             isMetadataSyncWrite(item, assetID: assetID) && item.id.rawValue != keptID
         }
         for item in staleQueuedWrites {
@@ -4879,7 +4929,7 @@ public final class AppModel {
     private func hasActiveMetadataSyncWork(assetID: AssetID, generation: Int) -> Bool {
         let writeSyncID = Self.metadataSyncWorkItemID(assetID: assetID, catalogGeneration: generation).rawValue
         let selectionCheckPrefix = metadataSyncCheckPrefix(assetID: assetID, generation: generation)
-        return backgroundWorkQueue.items.contains { item in
+        return currentBackgroundWorkQueue.items.contains { item in
             item.kind == .xmpSync
                 && [.queued, .running, .paused].contains(item.status)
                 && (item.id.rawValue == writeSyncID || item.id.rawValue.hasPrefix(selectionCheckPrefix))
@@ -4914,7 +4964,7 @@ public final class AppModel {
                 assetID: pendingItem.assetID,
                 catalogGeneration: pendingItem.catalogGeneration
             )
-            if backgroundWorkQueue.item(id: itemID) != nil {
+            if currentBackgroundWorkQueue.item(id: itemID) != nil {
                 continue
             }
             let item = BackgroundWorkItem(
@@ -5130,7 +5180,7 @@ public final class AppModel {
             throw TeststripError.invalidState("worker supervisor is not configured")
         }
         let itemID = Self.previewWorkItemID(assetID: assetID, level: level)
-        if let existingItem = backgroundWorkQueue.item(id: itemID),
+        if let existingItem = currentBackgroundWorkQueue.item(id: itemID),
            Self.isActiveBackgroundWorkStatus(existingItem.status) {
             if placement == .front, try workerSupervisor.promoteQueuedItem(id: itemID) {
                 syncBackgroundWorkQueueFromSupervisor()
@@ -5173,10 +5223,10 @@ public final class AppModel {
 
     private func enqueuePendingPreviewGeneration(excluding excludedItemIDs: Set<WorkSessionID> = []) throws {
         guard let catalog, let workerSupervisor else { return }
-        var existingPreviewWorkItemIDs = Self.previewGenerationWorkItemIDs(in: backgroundWorkQueue)
+        var existingPreviewWorkItemIDs = Self.previewGenerationWorkItemIDs(in: currentBackgroundWorkQueue)
         let availableSlotCount = max(
             0,
-            Self.pendingPreviewRecoveryBatchSize - Self.activePreviewGenerationWorkCount(in: backgroundWorkQueue)
+            Self.pendingPreviewRecoveryBatchSize - Self.activePreviewGenerationWorkCount(in: currentBackgroundWorkQueue)
         )
         guard availableSlotCount > 0 else {
             try refreshPreviewGenerationQueueStates()
@@ -5242,7 +5292,7 @@ public final class AppModel {
                 assetID: pendingItem.assetID,
                 catalogGeneration: pendingItem.catalogGeneration
             )
-            if backgroundWorkQueue.item(id: itemID) != nil {
+            if currentBackgroundWorkQueue.item(id: itemID) != nil {
                 continue
             }
             try enqueueMetadataSyncWork(pendingItem: pendingItem)
@@ -5349,7 +5399,7 @@ public final class AppModel {
             throw TeststripError.invalidState("no cached preview for \(assetID.rawValue)")
         }
         let itemID = WorkSessionID(rawValue: "evaluation-\(assetID.rawValue)-\(provider)")
-        if let existingItem = backgroundWorkQueue.item(id: itemID),
+        if let existingItem = currentBackgroundWorkQueue.item(id: itemID),
            Self.isActiveBackgroundWorkStatus(existingItem.status) {
             return
         }
@@ -5476,8 +5526,40 @@ public final class AppModel {
     }
 
     private func syncBackgroundWorkQueueFromSupervisor() {
-        if let workerSupervisor {
-            backgroundWorkQueue = workerSupervisor.queue
+        guard workerSupervisor != nil else { return }
+        publishBackgroundWorkState()
+    }
+
+    // Always-current queue for model logic. The published backgroundWorkQueue may
+    // lag behind by up to one coalescing interval while previews drain, so dedup
+    // checks and completion bookkeeping must never read it.
+    private var currentBackgroundWorkQueue: BackgroundWorkQueue {
+        workerSupervisor?.queue ?? backgroundWorkQueue
+    }
+
+    private func publishBackgroundWorkState() {
+        guard let backgroundWorkPublicationInterval else {
+            flushBackgroundWorkPublication()
+            return
+        }
+        guard backgroundWorkPublicationTimer == nil else { return }
+        let flush = BackgroundWorkPublicationFlush { [weak self] in
+            self?.backgroundWorkPublicationTimer = nil
+            self?.flushBackgroundWorkPublication()
+        }
+        backgroundWorkPublicationTimer = backgroundWorkPublicationScheduler.schedule(
+            after: backgroundWorkPublicationInterval
+        ) {
+            flush()
+        }
+    }
+
+    private func flushBackgroundWorkPublication() {
+        backgroundWorkQueue = currentBackgroundWorkQueue
+        previewCacheGenerationsByAssetID = currentPreviewCacheGenerationsByAssetID
+        if pendingLatestImportPreviewStatusRefresh {
+            pendingLatestImportPreviewStatusRefresh = false
+            refreshLatestImportPreviewStatus()
         }
     }
 
@@ -5631,7 +5713,7 @@ public final class AppModel {
 
     private func refreshLoadedAssetAvailabilityIfNeeded(itemID: WorkSessionID?) {
         guard let itemID,
-              backgroundWorkQueue.item(id: itemID)?.kind == .sourceScan,
+              currentBackgroundWorkQueue.item(id: itemID)?.kind == .sourceScan,
               let assetIDs = availabilityAssetIDsByItemID.removeValue(forKey: itemID),
               let catalog else {
             return
@@ -5663,7 +5745,7 @@ public final class AppModel {
 
     private func refreshLoadedAssetMetadataIfNeeded(itemID: WorkSessionID?) {
         guard let itemID,
-              backgroundWorkQueue.item(id: itemID)?.kind == .xmpSync,
+              currentBackgroundWorkQueue.item(id: itemID)?.kind == .xmpSync,
               let assetID = metadataSyncAssetIDsByItemID.removeValue(forKey: itemID),
               let catalog else {
             return
@@ -5680,17 +5762,18 @@ public final class AppModel {
 
     private func invalidatePreviewCacheIfNeeded(itemID: WorkSessionID?) -> Bool {
         guard let itemID,
-              backgroundWorkQueue.item(id: itemID)?.kind == .previewGeneration,
+              currentBackgroundWorkQueue.item(id: itemID)?.kind == .previewGeneration,
               let assetID = Self.previewAssetID(from: itemID) else {
             return false
         }
-        previewCacheGenerationsByAssetID[assetID, default: 0] += 1
+        currentPreviewCacheGenerationsByAssetID[assetID, default: 0] += 1
+        publishBackgroundWorkState()
         return true
     }
 
     private func invalidateEvaluationSignalsIfNeeded(itemID: WorkSessionID?) {
         guard let itemID,
-              backgroundWorkQueue.item(id: itemID)?.kind == .recognition,
+              currentBackgroundWorkQueue.item(id: itemID)?.kind == .recognition,
               let assetID = evaluationAssetIDsByItemID.removeValue(forKey: itemID) else {
             return
         }
@@ -6020,7 +6103,14 @@ public final class AppModel {
     private func recordPersistedActiveBackgroundWorkActivities(in queue: BackgroundWorkQueue) {
         let persistedIDs = persistedWorkActivityIDs
         for item in queue.items where persistedIDs.contains(item.id.rawValue) && [.queued, .running, .paused].contains(item.status) {
-            recordRecentActivity(AppWorkActivity(workItem: item))
+            let activity = AppWorkActivity(workItem: item)
+            // Queue changes fire per preview transition; re-recording an unchanged
+            // activity would republish recentWork, rebuild the sidebar, and rewrite
+            // the work session for every transition of an active import.
+            if recentWork.first(where: { $0.id == activity.id }) == activity {
+                continue
+            }
+            recordRecentActivity(activity)
         }
     }
 

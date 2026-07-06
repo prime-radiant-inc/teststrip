@@ -130,9 +130,15 @@ public struct AppCatalog {
             workerSupervisor: workerSupervisor,
             workerExecutableURL: workerExecutableURL,
             resourceAccess: runtimePolicy.requiresSuccessfulSecurityScopedImportAccess ? .required : .permissive,
-            workerImportsEnabled: runtimePolicy.workerImportsEnabled
+            workerImportsEnabled: runtimePolicy.workerImportsEnabled,
+            backgroundWorkPublicationInterval: backgroundWorkPublicationCoalescingInterval
         )
     }
+
+    // Preview drains fire queue transitions roughly twice per imported photo;
+    // publishing each one re-renders every visible grid cell, so the app batches
+    // background-work publication to a human-visible cadence.
+    public static let backgroundWorkPublicationCoalescingInterval: TimeInterval = 0.25
 
     public static func runtimePolicy(environment: [String: String] = ProcessInfo.processInfo.environment) -> AppCatalogRuntimePolicy {
         let requiresSecurityScope = configuredEnvironmentBoolean(

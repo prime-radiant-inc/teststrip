@@ -1,3 +1,4 @@
+import Observation
 import XCTest
 @testable import TeststripCore
 @testable import TeststripApp
@@ -8670,6 +8671,72 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.latestImportFlaggedReviewAssetCount, 2)
     }
 
+    func testCoalescedBackgroundWorkPublicationDefersQueueUpdatesUntilFlush() throws {
+        let scheduler = ManualBackgroundWorkPublicationScheduler()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: RecordingWorkerTransport()
+        )
+        let first = makeAsset(id: "coalesced-publication-first", size: 1)
+        let second = makeAsset(id: "coalesced-publication-second", size: 2)
+        let (model, _, _) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "coalesced-queue-publication",
+            assets: [first, second],
+            workerSupervisor: supervisor,
+            backgroundWorkPublicationInterval: 0.25,
+            backgroundWorkPublicationScheduler: scheduler
+        )
+
+        try model.requestPreview(assetID: first.id, level: .grid)
+        try model.requestPreview(assetID: first.id, level: .grid)
+        try model.requestPreview(assetID: second.id, level: .grid)
+
+        XCTAssertTrue(model.backgroundWorkQueue.items.isEmpty)
+        XCTAssertEqual(scheduler.scheduledActions.count, 1)
+
+        scheduler.fireScheduledActions()
+
+        XCTAssertEqual(model.backgroundWorkQueue.items.map(\.id), [
+            WorkSessionID(rawValue: "preview-\(first.id.rawValue)-grid"),
+            WorkSessionID(rawValue: "preview-\(second.id.rawValue)-grid")
+        ])
+    }
+
+    @MainActor
+    func testPreviewQueueTransitionsDoNotRepublishUnchangedImportActivity() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-activity-quiescence")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let existing = makeAsset(id: "quiescence-existing", size: 1)
+        try catalog.repository.upsert(existing)
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: RecordingWorkerTransport()
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder)
+
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        XCTAssertEqual(model.recentWork.first?.id, importItem.id.rawValue)
+
+        let recentWorkRepublished = ObservationChangeFlag()
+        withObservationTracking {
+            _ = model.recentWork
+        } onChange: {
+            recentWorkRepublished.value = true
+        }
+
+        try model.requestPreview(assetID: existing.id, level: .grid)
+
+        XCTAssertFalse(recentWorkRepublished.value)
+        XCTAssertEqual(model.recentWork.first?.id, importItem.id.rawValue)
+    }
+
     func testReviewLatestImportFlaggedAppliesImportBatchLikelyIssueScope() throws {
         let importedIssue = makeAsset(id: "review-import-likely-issue", size: 1)
         let importedClean = makeAsset(id: "review-import-clean", size: 2)
@@ -13064,7 +13131,9 @@ final class AppModelTests: XCTestCase {
         named name: String,
         assets: [Asset],
         configureRepository: (CatalogRepository) throws -> Void = { _ in },
-        workerSupervisor: WorkerSupervisor? = nil
+        workerSupervisor: WorkerSupervisor? = nil,
+        backgroundWorkPublicationInterval: TimeInterval? = nil,
+        backgroundWorkPublicationScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler()
     ) throws -> (model: AppModel, repository: CatalogRepository, previewCache: PreviewCache) {
         let directory = try makeTemporaryDirectory(named: name)
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -13082,7 +13151,13 @@ final class AppModelTests: XCTestCase {
                 previewCache: previewCache
             )
         )
-        return (try AppModel.load(catalog: catalog, workerSupervisor: workerSupervisor), repository, previewCache)
+        let model = try AppModel.load(
+            catalog: catalog,
+            workerSupervisor: workerSupervisor,
+            backgroundWorkPublicationInterval: backgroundWorkPublicationInterval,
+            backgroundWorkPublicationScheduler: backgroundWorkPublicationScheduler
+        )
+        return (model, repository, previewCache)
     }
 
     private func assetIDs(in assetSet: AssetSet) -> [AssetID] {
@@ -13558,4 +13633,29 @@ private final class RecordingWorkerTransport: WorkerTransport {
     func emitErrorLine(_ line: String) {
         errorHandler?(line)
     }
+}
+
+private final class ManualBackgroundWorkPublicationScheduler: WorkerTimeoutScheduling, @unchecked Sendable {
+    private(set) var scheduledActions: [@Sendable () -> Void] = []
+
+    func schedule(after interval: TimeInterval, _ action: @escaping @Sendable () -> Void) -> any WorkerTimeoutCancellation {
+        scheduledActions.append(action)
+        return ManualBackgroundWorkPublicationCancellation()
+    }
+
+    func fireScheduledActions() {
+        let actions = scheduledActions
+        scheduledActions = []
+        for action in actions {
+            action()
+        }
+    }
+}
+
+private final class ManualBackgroundWorkPublicationCancellation: WorkerTimeoutCancellation, @unchecked Sendable {
+    func cancel() {}
+}
+
+private final class ObservationChangeFlag: @unchecked Sendable {
+    var value = false
 }
