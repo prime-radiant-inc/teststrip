@@ -109,6 +109,15 @@ struct InspectorTechnicalRows: Equatable {
         if let isoSpeed = metadata.isoSpeed {
             rows.append(InspectorMetadataRow(title: "ISO", value: "\(isoSpeed)"))
         }
+        if let aperture = metadata.aperture {
+            rows.append(InspectorMetadataRow(title: "Aperture", value: ExifSummaryFormatting.apertureText(aperture)))
+        }
+        if let shutterSpeed = metadata.shutterSpeed {
+            rows.append(InspectorMetadataRow(title: "Shutter Speed", value: ExifSummaryFormatting.shutterSpeedText(shutterSpeed)))
+        }
+        if let focalLength = metadata.focalLength {
+            rows.append(InspectorMetadataRow(title: "Focal Length", value: ExifSummaryFormatting.focalLengthText(focalLength)))
+        }
         if let capturedAt = metadata.capturedAt {
             rows.append(InspectorMetadataRow(title: "Captured", value: capturedAt.formatted(date: .abbreviated, time: .shortened)))
         }

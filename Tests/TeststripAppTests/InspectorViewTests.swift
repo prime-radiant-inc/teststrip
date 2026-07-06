@@ -75,6 +75,35 @@ final class InspectorViewTests: XCTestCase {
         )
     }
 
+    func testTechnicalRowsIncludeApertureShutterSpeedAndFocalLengthWhenPresent() {
+        let metadata = AssetTechnicalMetadata(
+            pixelWidth: 8256,
+            pixelHeight: 5504,
+            cameraMake: "Fujifilm",
+            cameraModel: "GFX 100S",
+            lensModel: "GF45-100mmF4",
+            isoSpeed: 800,
+            aperture: 2.8,
+            shutterSpeed: 1.0 / 250.0,
+            focalLength: 85,
+            capturedAt: nil,
+            provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+        )
+
+        XCTAssertEqual(
+            InspectorTechnicalRows(metadata: metadata).rows,
+            [
+                InspectorMetadataRow(title: "Dimensions", value: "8256 x 5504"),
+                InspectorMetadataRow(title: "Camera", value: "Fujifilm GFX 100S"),
+                InspectorMetadataRow(title: "Lens", value: "GF45-100mmF4"),
+                InspectorMetadataRow(title: "ISO", value: "800"),
+                InspectorMetadataRow(title: "Aperture", value: "ƒ/2.8"),
+                InspectorMetadataRow(title: "Shutter Speed", value: "1/250s"),
+                InspectorMetadataRow(title: "Focal Length", value: "85mm")
+            ]
+        )
+    }
+
     func testEvaluationSignalsGroupIntoPhotographerFacingSections() {
         let signals = [
             evaluationSignal(kind: .object, value: .label("camera")),

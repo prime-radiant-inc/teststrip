@@ -77,6 +77,52 @@ final class DecodeRegistryTests: XCTestCase {
         XCTAssertEqual(metadata.provenance, provenance)
     }
 
+    func testImageIOTechnicalMetadataReadsApertureShutterSpeedAndFocalLength() throws {
+        let provenance = ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+
+        let metadata = try ImageIODecodeProvider.metadata(from: [
+            kCGImagePropertyPixelWidth: 6000,
+            kCGImagePropertyPixelHeight: 4000,
+            kCGImagePropertyExifDictionary: [
+                kCGImagePropertyExifFNumber: 2.8,
+                kCGImagePropertyExifExposureTime: 1.0 / 250.0,
+                kCGImagePropertyExifFocalLenIn35mmFilm: 85,
+                kCGImagePropertyExifFocalLength: 56
+            ]
+        ], provenance: provenance, filename: "photo.cr3")
+
+        XCTAssertEqual(metadata.aperture, 2.8)
+        XCTAssertEqual(metadata.shutterSpeed, 1.0 / 250.0)
+        XCTAssertEqual(metadata.focalLength, 85)
+    }
+
+    func testImageIOTechnicalMetadataFallsBackToActualFocalLengthWhenNo35mmEquivalentExists() throws {
+        let provenance = ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+
+        let metadata = try ImageIODecodeProvider.metadata(from: [
+            kCGImagePropertyPixelWidth: 6000,
+            kCGImagePropertyPixelHeight: 4000,
+            kCGImagePropertyExifDictionary: [
+                kCGImagePropertyExifFocalLength: 56
+            ]
+        ], provenance: provenance, filename: "photo.cr3")
+
+        XCTAssertEqual(metadata.focalLength, 56)
+    }
+
+    func testImageIOTechnicalMetadataOmitsApertureShutterSpeedAndFocalLengthWhenAbsent() throws {
+        let provenance = ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+
+        let metadata = try ImageIODecodeProvider.metadata(from: [
+            kCGImagePropertyPixelWidth: 6000,
+            kCGImagePropertyPixelHeight: 4000
+        ], provenance: provenance, filename: "photo.cr3")
+
+        XCTAssertNil(metadata.aperture)
+        XCTAssertNil(metadata.shutterSpeed)
+        XCTAssertNil(metadata.focalLength)
+    }
+
     func testImageIOSupportedExtensionsArePublicForIngestComposition() {
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("jpg"))
         XCTAssertTrue(ImageIODecodeProvider.supportedExtensions.contains("dng"))

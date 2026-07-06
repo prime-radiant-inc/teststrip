@@ -119,6 +119,10 @@ public struct ImageIODecodeProvider: DecodeProvider {
             cameraModel: stringValue(tiff[kCGImagePropertyTIFFModel]),
             lensModel: stringValue(exif[kCGImagePropertyExifLensModel]),
             isoSpeed: isoSpeed(from: exif[kCGImagePropertyExifISOSpeedRatings]),
+            aperture: doubleValue(from: exif[kCGImagePropertyExifFNumber]),
+            shutterSpeed: doubleValue(from: exif[kCGImagePropertyExifExposureTime]),
+            focalLength: doubleValue(from: exif[kCGImagePropertyExifFocalLenIn35mmFilm])
+                ?? doubleValue(from: exif[kCGImagePropertyExifFocalLength]),
             capturedAt: capturedAt(from: exif[kCGImagePropertyExifDateTimeOriginal])
                 ?? capturedAt(from: tiff[kCGImagePropertyTIFFDateTime]),
             provenance: provenance
@@ -166,6 +170,11 @@ public struct ImageIODecodeProvider: DecodeProvider {
             return value.intValue
         }
         return nil
+    }
+
+    private static func doubleValue(from value: Any?) -> Double? {
+        guard let number = value as? NSNumber else { return nil }
+        return number.doubleValue
     }
 
     private static func capturedAt(from value: Any?) -> Date? {

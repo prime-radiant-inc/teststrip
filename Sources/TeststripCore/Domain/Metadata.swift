@@ -93,6 +93,9 @@ public struct AssetTechnicalMetadata: Codable, Equatable, Sendable {
     public var cameraModel: String?
     public var lensModel: String?
     public var isoSpeed: Int?
+    public var aperture: Double?
+    public var shutterSpeed: Double?
+    public var focalLength: Double?
     public var capturedAt: Date?
     public var provenance: ProviderProvenance
 
@@ -103,6 +106,9 @@ public struct AssetTechnicalMetadata: Codable, Equatable, Sendable {
         cameraModel: String? = nil,
         lensModel: String? = nil,
         isoSpeed: Int? = nil,
+        aperture: Double? = nil,
+        shutterSpeed: Double? = nil,
+        focalLength: Double? = nil,
         capturedAt: Date? = nil,
         provenance: ProviderProvenance
     ) {
@@ -112,6 +118,9 @@ public struct AssetTechnicalMetadata: Codable, Equatable, Sendable {
         self.cameraModel = cameraModel
         self.lensModel = lensModel
         self.isoSpeed = isoSpeed
+        self.aperture = aperture
+        self.shutterSpeed = shutterSpeed
+        self.focalLength = focalLength
         self.capturedAt = capturedAt
         self.provenance = provenance
     }

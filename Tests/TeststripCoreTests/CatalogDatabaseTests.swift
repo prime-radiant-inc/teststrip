@@ -69,6 +69,67 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(fetched.technicalMetadata, technicalMetadata)
     }
 
+    func testPersistsApertureShutterSpeedAndFocalLengthThroughExistingTechnicalMetadataStorage() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-metadata-exif")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let technicalMetadata = AssetTechnicalMetadata(
+            pixelWidth: 6000,
+            pixelHeight: 4000,
+            cameraMake: "Canon",
+            cameraModel: "EOS R5",
+            lensModel: "RF 50mm F1.2L USM",
+            isoSpeed: 800,
+            aperture: 2.8,
+            shutterSpeed: 1.0 / 250.0,
+            focalLength: 85,
+            capturedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+        )
+        let asset = Asset.testAsset(
+            path: "/Volumes/NAS/Job/frame-exif.cr2",
+            rating: 3,
+            technicalMetadata: technicalMetadata
+        )
+
+        try repository.upsert(asset)
+
+        let fetched = try repository.asset(id: asset.id)
+        XCTAssertEqual(fetched.technicalMetadata, technicalMetadata)
+    }
+
+    // Proves the audit's no-migration claim: `technical_metadata_json` is a JSON blob
+    // decoded into AssetTechnicalMetadata, and the new aperture/shutterSpeed/focalLength
+    // fields are optional, so a row written before this change (missing those keys
+    // entirely) still decodes cleanly with the new fields as nil.
+    func testDecodesLegacyTechnicalMetadataJSONMissingApertureShutterAndFocalLengthKeys() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-metadata-legacy-json")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset.testAsset(path: "/Volumes/NAS/Job/legacy-exif.cr2", rating: 1)
+        try repository.upsert(asset)
+        let legacyTechnicalMetadataJSON = """
+        {"pixelWidth":6000,"pixelHeight":4000,"cameraMake":"Canon","cameraModel":"EOS R5",\
+        "lensModel":"RF 50mm F1.2L USM","isoSpeed":800,"capturedAt":1800000000,\
+        "provenance":{"provider":"ImageIO","model":"ImageIO","version":"1","settingsHash":"default"}}
+        """
+
+        try database.execute(
+            "UPDATE assets SET technical_metadata_json = ? WHERE id = ?",
+            bindings: [legacyTechnicalMetadataJSON, asset.id.rawValue]
+        )
+
+        let fetched = try repository.asset(id: asset.id)
+
+        XCTAssertEqual(fetched.technicalMetadata?.cameraMake, "Canon")
+        XCTAssertEqual(fetched.technicalMetadata?.isoSpeed, 800)
+        XCTAssertNil(fetched.technicalMetadata?.aperture)
+        XCTAssertNil(fetched.technicalMetadata?.shutterSpeed)
+        XCTAssertNil(fetched.technicalMetadata?.focalLength)
+    }
+
     func testMigrationAddsTechnicalMetadataStorageToExistingCatalog() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-metadata-migration")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
