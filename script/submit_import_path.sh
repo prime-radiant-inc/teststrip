@@ -58,10 +58,10 @@ func children(of element: AXUIElement) -> [AXUIElement] {
     let navigationChildren = attribute(element, "AXChildrenInNavigationOrder") as? [AXUIElement] ?? []
     let visibleChildren = attribute(element, kAXVisibleChildrenAttribute) as? [AXUIElement] ?? []
     let windows = attribute(element, kAXWindowsAttribute) as? [AXUIElement] ?? []
-    var seen = Set<ObjectIdentifier>()
+    var seen = Set<AXElementKey>()
     var uniqueChildren: [AXUIElement] = []
     for child in directChildren + navigationChildren + visibleChildren + windows {
-        let key = ObjectIdentifier(child)
+        let key = AXElementKey(element: child)
         guard seen.insert(key).inserted else { continue }
         uniqueChildren.append(child)
     }
@@ -74,11 +74,25 @@ func accessibleText(_ element: AXUIElement) -> String? {
         ?? stringAttribute(element, kAXValueAttribute)
 }
 
+// AXUIElement wrappers are fresh objects on every attribute copy, and freed
+// wrapper addresses get recycled, so ObjectIdentifier both misses real
+// duplicates and falsely marks unvisited elements as seen. Identity must
+// come from CFEqual/CFHash on the underlying accessibility element.
+struct AXElementKey: Hashable {
+    let element: AXUIElement
+    static func == (lhs: AXElementKey, rhs: AXElementKey) -> Bool {
+        CFEqual(lhs.element, rhs.element)
+    }
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(CFHash(element))
+    }
+}
+
 func walk(_ element: AXUIElement, visit: (AXUIElement) -> Bool) -> AXUIElement? {
-    var visited = Set<ObjectIdentifier>()
+    var visited = Set<AXElementKey>()
     var stack = [element]
     while let current = stack.popLast() {
-        let key = ObjectIdentifier(current)
+        let key = AXElementKey(element: current)
         guard visited.insert(key).inserted else { continue }
         if visit(current) {
             return current

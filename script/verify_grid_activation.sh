@@ -67,11 +67,25 @@ func isImageFilename(_ text: String) -> Bool {
     return imageExtensions.contains(fileExtension.lowercased())
 }
 
+// AXUIElement wrappers are fresh objects on every attribute copy, and freed
+// wrapper addresses get recycled, so ObjectIdentifier both misses real
+// duplicates and falsely marks unvisited elements as seen. Identity must
+// come from CFEqual/CFHash on the underlying accessibility element.
+struct AXElementKey: Hashable {
+    let element: AXUIElement
+    static func == (lhs: AXElementKey, rhs: AXElementKey) -> Bool {
+        CFEqual(lhs.element, rhs.element)
+    }
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(CFHash(element))
+    }
+}
+
 func walk(_ element: AXUIElement, visit: (AXUIElement) -> Bool) -> AXUIElement? {
-    var visited = Set<ObjectIdentifier>()
+    var visited = Set<AXElementKey>()
     var stack = [element]
     while let current = stack.popLast() {
-        let key = ObjectIdentifier(current)
+        let key = AXElementKey(element: current)
         guard visited.insert(key).inserted else { continue }
         if visit(current) {
             return current
