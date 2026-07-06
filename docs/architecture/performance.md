@@ -23,6 +23,7 @@ script/verify_import_preview_drain.sh 100
 script/verify_preview_render.sh 100
 script/verify_metadata_write.sh 1000
 script/verify_source_availability.sh 1000
+script/verify_offline_reconnect_smoke.sh
 ```
 
 The catalog verifier parses the benchmark summary, checks the asset count, and enforces the current 0.2s default threshold for first/middle/filtered page loads and representative filter counts. Seed time is reported by `TeststripBench` but intentionally excluded from the filter/page threshold.
@@ -35,6 +36,8 @@ The preview-render verifier wraps the generated-image `preview-render` benchmark
 
 The source-availability verifier wraps the `source-availability` benchmark and enforces catalog asset count, refreshed asset count, deterministic online/missing/stale source counts, and the current 5s default source refresh threshold. Override the timing gate with `TESTSTRIP_SOURCE_AVAILABILITY_MAX_SECONDS` when intentionally measuring slower hardware, remote volumes, or larger source batches.
 
+The offline reconnect smoke verifier wraps the `offline-reconnect-smoke` benchmark and enforces cached-preview readability before and after reconnect, one restored online asset, XMP sidecar path migration, and unchanged original/sidecar bytes. Override the timing gate with `TESTSTRIP_OFFLINE_RECONNECT_SMOKE_MAX_SECONDS` when intentionally measuring slower disks or mounted storage.
+
 Foreground app workflow probes are intentionally separate from the headless benchmark gates because they depend on macOS Accessibility focus. When they are run, `script/verify_app_workflows.sh Teststrip` now emits `teststrip_app_workflow_resource` snapshots after each step, and `script/verify_import_path.sh Teststrip` emits app/worker CPU plus RSS metrics beside the import and preview counters. Treat these as diagnostic snapshots until enough local runs exist to set honest red/yellow/green thresholds.
 
 Additional focused commands cover the other hot paths that currently matter for alpha:
@@ -46,9 +49,10 @@ swift run TeststripBench preview-render 100
 swift run TeststripBench sample-preview-render sample-data/photos/wordpress-photo-directory
 swift run TeststripBench metadata-write 1000
 swift run TeststripBench source-availability 1000
+swift run TeststripBench offline-reconnect-smoke
 ```
 
-`import-deferred` creates a synthetic folder, catalogs it in place, and verifies preview work is queued instead of generated synchronously. `import-preview-drain` creates generated JPEG sources, imports with preview generation deferred, and drains the queued preview work through `LibraryImportService.resumePendingPreviews`. `preview-render` creates generated JPEG sources and renders all cache levels through `PreviewRenderer`. `sample-preview-render` imports an existing sample-photo directory and generates cached previews through the same immediate-preview import path used by the sample catalog smoke workflow. `metadata-write` updates catalog metadata, writes XMP sidecars, marks sync fingerprints, and verifies the original files were not changed. `source-availability` creates synthetic original files, catalogs their fingerprints, then refreshes catalog source states after a deterministic mix of unchanged, missing, and stale source files.
+`import-deferred` creates a synthetic folder, catalogs it in place, and verifies preview work is queued instead of generated synchronously. `import-preview-drain` creates generated JPEG sources, imports with preview generation deferred, and drains the queued preview work through `LibraryImportService.resumePendingPreviews`. `preview-render` creates generated JPEG sources and renders all cache levels through `PreviewRenderer`. `sample-preview-render` imports an existing sample-photo directory and generates cached previews through the same immediate-preview import path used by the sample catalog smoke workflow. `metadata-write` updates catalog metadata, writes XMP sidecars, marks sync fingerprints, and verifies the original files were not changed. `source-availability` creates synthetic original files, catalogs their fingerprints, then refreshes catalog source states after a deterministic mix of unchanged, missing, and stale source files. `offline-reconnect-smoke` creates a catalog entry whose old root is unavailable, keeps a cached preview readable, reconnects the source to a mounted root, moves XMP sync state to the relocated sidecar, and verifies originals/sidecars were not changed.
 
 Every `TeststripBench` command keeps its human-readable output and also prints one machine-readable summary line:
 
@@ -97,3 +101,11 @@ These runs prove the benchmark harnesses are executable and exercise real app pa
 | `script/verify_source_availability.sh 1000 5` | 0.723s | 1,000 catalog/refreshed assets, 334 online sources, 333 missing sources, 333 stale sources |
 
 The `source-availability` verifier covers the bounded catalog refresh path the app depends on when a loaded window contains originals on local, remote, removable, or intermittently available storage.
+
+On July 6, 2026, a local debug run produced:
+
+| Command | Reconnect | Primary Counts |
+| --- | ---: | --- |
+| `script/verify_offline_reconnect_smoke.sh` | 0.021s | 1 catalog asset, cached preview readable before/after reconnect, 1 reconnected online asset, sidecar path updated, original and sidecar unchanged |
+
+The `offline-reconnect-smoke` verifier covers the catalog-first offline workflow the app depends on when cached previews are available but originals live on remounted NAS, removable, or cloud-backed storage.
