@@ -150,6 +150,7 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(result.updatedAssetCount, 250)
         XCTAssertEqual(result.catalogAssetCount, 250)
         XCTAssertEqual(result.sidecarCount, 250)
+        XCTAssertEqual(result.matchingSidecarMetadataCount, 250)
         XCTAssertEqual(result.syncedFingerprintCount, 250)
         XCTAssertEqual(result.pendingSyncCount, 0)
         XCTAssertEqual(result.unchangedOriginalCount, 250)

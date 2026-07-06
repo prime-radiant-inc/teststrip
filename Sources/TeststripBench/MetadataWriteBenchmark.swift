@@ -5,6 +5,7 @@ public struct MetadataWriteBenchmarkResult: Equatable {
     public var updatedAssetCount: Int
     public var catalogAssetCount: Int
     public var sidecarCount: Int
+    public var matchingSidecarMetadataCount: Int
     public var syncedFingerprintCount: Int
     public var pendingSyncCount: Int
     public var unchangedOriginalCount: Int
@@ -13,6 +14,7 @@ public struct MetadataWriteBenchmarkResult: Equatable {
         updatedAssetCount: Int,
         catalogAssetCount: Int,
         sidecarCount: Int,
+        matchingSidecarMetadataCount: Int,
         syncedFingerprintCount: Int,
         pendingSyncCount: Int,
         unchangedOriginalCount: Int
@@ -20,6 +22,7 @@ public struct MetadataWriteBenchmarkResult: Equatable {
         self.updatedAssetCount = updatedAssetCount
         self.catalogAssetCount = catalogAssetCount
         self.sidecarCount = sidecarCount
+        self.matchingSidecarMetadataCount = matchingSidecarMetadataCount
         self.syncedFingerprintCount = syncedFingerprintCount
         self.pendingSyncCount = pendingSyncCount
         self.unchangedOriginalCount = unchangedOriginalCount
@@ -66,6 +69,7 @@ public struct MetadataWriteBenchmark {
             updatedAssetCount: updatedAssetCount,
             catalogAssetCount: try repository.assetCount(),
             sidecarCount: sidecarCount(for: assets, sidecarStore: sidecarStore),
+            matchingSidecarMetadataCount: try matchingSidecarMetadataCount(for: assets, repository: repository, sidecarStore: sidecarStore),
             syncedFingerprintCount: try syncedFingerprintCount(for: assets, repository: repository),
             pendingSyncCount: try repository.pendingMetadataSyncItems().count,
             unchangedOriginalCount: try unchangedOriginalCount(for: assets)
@@ -104,6 +108,18 @@ public struct MetadataWriteBenchmark {
     private func sidecarCount(for assets: [Asset], sidecarStore: XMPSidecarStore) -> Int {
         assets.reduce(into: 0) { count, asset in
             if FileManager.default.fileExists(atPath: sidecarStore.sidecarURL(forOriginalAt: asset.originalURL).path) {
+                count += 1
+            }
+        }
+    }
+
+    private func matchingSidecarMetadataCount(for assets: [Asset], repository: CatalogRepository, sidecarStore: XMPSidecarStore) throws -> Int {
+        try assets.reduce(into: 0) { count, asset in
+            let sidecarURL = sidecarStore.sidecarURL(forOriginalAt: asset.originalURL)
+            guard FileManager.default.fileExists(atPath: sidecarURL.path) else { return }
+            let sidecarMetadata = try XMPPacket.parse(Data(contentsOf: sidecarURL)).metadata
+            let catalogMetadata = try repository.asset(id: asset.id).metadata
+            if sidecarMetadata == catalogMetadata {
                 count += 1
             }
         }

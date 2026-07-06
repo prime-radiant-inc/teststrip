@@ -21,6 +21,7 @@ metric_keys=(
   updated_assets
   catalog_assets
   sidecars
+  matching_sidecar_metadata
   synced_fingerprints
   pending_sync_items
   unchanged_originals

@@ -24,6 +24,7 @@ checks = {
     "metrics.updated_assets": expected_count,
     "metrics.catalog_assets": expected_count,
     "metrics.sidecars": expected_count,
+    "metrics.matching_sidecar_metadata": expected_count,
     "metrics.synced_fingerprints": expected_count,
     "metrics.pending_sync_items": 0,
     "metrics.unchanged_originals": expected_count,
