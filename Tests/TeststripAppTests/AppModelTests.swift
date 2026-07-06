@@ -5668,6 +5668,9 @@ final class AppModelTests: XCTestCase {
         let outputSetID = try XCTUnwrap(pickedSession.outputSetIDs.first)
         XCTAssertEqual(assetIDs(in: try repository.assetSet(id: outputSetID)), [keeper.id])
 
+        try model.applyWorkSession(id: pickedSession.id)
+        XCTAssertEqual(model.selectedAssetSetID, outputSetID)
+
         try model.applyCullingCommand(.clearFlag)
 
         let clearedSession = try repository.session(id: startedSession.id)

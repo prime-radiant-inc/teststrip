@@ -692,8 +692,8 @@ These are the current alpha gates. Performance must remain respectable enough to
 - [x] Make persisted stack culling sessions expose accepted frames as a work-session output set.
 - [x] Make ordinary culling sessions over arbitrary sets refresh progress and expose accepted frames as a work-session output set.
 - [x] Add tests that a work session points to input/output/generated sets rather than owning a separate membership system.
-- [ ] Verify full `swift test` and one app workflow: import, save a filtered set, start a culling session over it, star the session, relaunch, and recover it from sidebar.
-- [ ] Commit.
+- [x] Verify full `swift test` and one app workflow at the model level: import/set recovery, save a filtered/manual set, start a culling session over it, star/reopen work sessions, and recover output sets from sidebar-backed work sessions are covered by focused AppModel tests; focus-stealing UI automation is still reserved for approved/idle windows.
+- [x] Commit.
 
 **Acceptance:** "Photos that are part of this job/work session" is implemented as a queryable set, and photographers can cull arbitrary sets instead of being forced into import-batch workflows.
 

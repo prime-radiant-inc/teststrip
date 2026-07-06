@@ -5933,7 +5933,7 @@ public final class AppModel {
             statuses: [.queued, .running, .paused, .completed, .failed, .cancelled]
         )
         return cullingSessions.first { session in
-            session.inputSetIDs.contains(selectedAssetSetID)
+            session.inputSetIDs.contains(selectedAssetSetID) || session.outputSetIDs.contains(selectedAssetSetID)
         }
     }
 
