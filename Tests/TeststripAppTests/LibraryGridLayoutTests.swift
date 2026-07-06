@@ -30,17 +30,19 @@ final class LibraryGridLayoutTests: XCTestCase {
 
     func testFooterDensityControlsReflectSelectedPresentation() {
         let compactControls = LibraryGridLayout(thumbnailWidth: 96).footerDensityControls
-        XCTAssertEqual(compactControls.map(\.title), ["Comfortable", "Compact"])
-        XCTAssertEqual(compactControls.map(\.thumbnailWidth), [140, 96])
-        XCTAssertEqual(compactControls.map(\.isSelected), [false, true])
+        XCTAssertEqual(compactControls.map(\.title), ["Compact", "Comfortable", "Large"])
+        XCTAssertEqual(compactControls.map(\.thumbnailWidth), [96, 140, 220])
+        XCTAssertEqual(compactControls.map(\.isSelected), [true, false, false])
 
         let comfortableControls = LibraryGridLayout(thumbnailWidth: 140).footerDensityControls
-        XCTAssertEqual(comfortableControls.map(\.title), ["Comfortable", "Compact"])
-        XCTAssertEqual(comfortableControls.map(\.thumbnailWidth), [140, 96])
-        XCTAssertEqual(comfortableControls.map(\.isSelected), [true, false])
+        XCTAssertEqual(comfortableControls.map(\.title), ["Compact", "Comfortable", "Large"])
+        XCTAssertEqual(comfortableControls.map(\.thumbnailWidth), [96, 140, 220])
+        XCTAssertEqual(comfortableControls.map(\.isSelected), [false, true, false])
 
         let largeControls = LibraryGridLayout(thumbnailWidth: 220).footerDensityControls
-        XCTAssertEqual(largeControls.map(\.isSelected), [true, false])
+        XCTAssertEqual(largeControls.map(\.title), ["Compact", "Comfortable", "Large"])
+        XCTAssertEqual(largeControls.map(\.thumbnailWidth), [96, 140, 220])
+        XCTAssertEqual(largeControls.map(\.isSelected), [false, false, true])
     }
 
     func testOverviewThumbnailScalingPreservesFullImage() {

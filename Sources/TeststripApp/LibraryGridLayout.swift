@@ -4,6 +4,7 @@ import Foundation
 struct LibraryGridLayout: Equatable {
     static let minimumThumbnailWidth: Double = 96
     static let defaultThumbnailWidth: Double = 140
+    static let largeThumbnailWidth: Double = 220
     static let maximumThumbnailWidth: Double = 260
 
     var thumbnailWidth: Double
@@ -38,14 +39,19 @@ struct LibraryGridLayout: Equatable {
     var footerDensityControls: [LibraryGridDensityControl] {
         [
             LibraryGridDensityControl(
-                title: "Comfortable",
-                thumbnailWidth: Self.defaultThumbnailWidth,
-                isSelected: densityLabel != "Compact"
-            ),
-            LibraryGridDensityControl(
                 title: "Compact",
                 thumbnailWidth: Self.minimumThumbnailWidth,
                 isSelected: densityLabel == "Compact"
+            ),
+            LibraryGridDensityControl(
+                title: "Comfortable",
+                thumbnailWidth: Self.defaultThumbnailWidth,
+                isSelected: densityLabel == "Comfortable"
+            ),
+            LibraryGridDensityControl(
+                title: "Large",
+                thumbnailWidth: Self.largeThumbnailWidth,
+                isSelected: densityLabel == "Large"
             )
         ]
     }
