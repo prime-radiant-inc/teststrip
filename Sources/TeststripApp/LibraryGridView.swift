@@ -1974,7 +1974,7 @@ struct LibraryGridView: View {
     }
 
     private var evaluationKindFilterOptions: [EvaluationKind] {
-        [.focus, .motionBlur, .exposure, .aesthetics, .framing, .object, .faceCount, .faceQuality, .ocrText, .colorPalette, .novelty, .visualSimilarity]
+        [.focus, .motionBlur, .exposure, .aesthetics, .framing, .object, .faceCount, .faceQuality, .eyesOpen, .eyeSharpness, .smile, .ocrText, .colorPalette, .novelty, .visualSimilarity]
     }
 
     private var metadataSyncFilterBinding: Binding<String> {
@@ -3838,6 +3838,12 @@ private enum EvaluationSignalPresentation {
             return "Novelty"
         case .visualSimilarity:
             return "Visual similarity"
+        case .smile:
+            return "Smile"
+        case .eyesOpen:
+            return "Eyes open"
+        case .eyeSharpness:
+            return "Eye sharpness"
         }
     }
 
@@ -6470,7 +6476,7 @@ struct CullingAssistPresentation: Equatable {
         switch signal.kind {
         case .focus, .motionBlur, .exposure, .aesthetics, .framing, .faceQuality, .faceCount, .novelty, .colorPalette, .visualSimilarity:
             return title(for: signal)
-        case .object, .ocrText:
+        case .object, .ocrText, .smile, .eyesOpen, .eyeSharpness:
             return nil
         }
     }
@@ -6496,20 +6502,26 @@ struct CullingAssistPresentation: Equatable {
             return 3
         case .faceQuality:
             return 4
-        case .faceCount:
+        case .eyesOpen:
             return 5
-        case .exposure:
+        case .eyeSharpness:
             return 6
-        case .object:
+        case .smile:
             return 7
-        case .ocrText:
+        case .faceCount:
             return 8
-        case .novelty:
+        case .exposure:
             return 9
-        case .colorPalette:
+        case .object:
             return 10
-        case .visualSimilarity:
+        case .ocrText:
             return 11
+        case .novelty:
+            return 12
+        case .colorPalette:
+            return 13
+        case .visualSimilarity:
+            return 14
         }
     }
 

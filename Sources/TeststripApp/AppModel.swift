@@ -360,6 +360,12 @@ extension EvaluationKind {
             return "Novelty"
         case .visualSimilarity:
             return "Visual Similarity"
+        case .smile:
+            return "Smile"
+        case .eyesOpen:
+            return "Eyes Open"
+        case .eyeSharpness:
+            return "Eye Sharpness"
         }
     }
 }
@@ -8918,6 +8924,9 @@ public final class AppModel {
     private static let evaluationKindSidebarOrder: [EvaluationKind] = [
         .faceCount,
         .faceQuality,
+        .eyesOpen,
+        .eyeSharpness,
+        .smile,
         .object,
         .ocrText,
         .focus,

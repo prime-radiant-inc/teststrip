@@ -13,6 +13,9 @@ public enum EvaluationKind: String, Codable, Sendable {
     case colorPalette
     case novelty
     case visualSimilarity
+    case smile
+    case eyesOpen
+    case eyeSharpness
 }
 
 public enum EvaluationValue: Codable, Equatable, Sendable {

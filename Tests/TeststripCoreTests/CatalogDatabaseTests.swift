@@ -886,6 +886,32 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.evaluationSignals(assetID: assigned.id).map(\.kind), [.faceCount, .faceQuality])
     }
 
+    func testEyesClosedSignalJoinsLikelyIssueQueue() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-eyes-closed-likely-issue")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let closed = Asset.testAsset(id: AssetID(rawValue: "closed"), path: "/Volumes/NAS/Job/closed.jpg", rating: 0)
+        let open = Asset.testAsset(id: AssetID(rawValue: "open"), path: "/Volumes/NAS/Job/open.jpg", rating: 0)
+        let provenance = ProviderProvenance(provider: "core-image-faces", model: "CIDetectorFace", version: "1", settingsHash: "default")
+        try repository.upsert([closed, open])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: closed.id, kind: .eyesOpen, value: .score(0.0), confidence: 0.7, provenance: provenance),
+            EvaluationSignal(assetID: open.id, kind: .eyesOpen, value: .score(1.0), confidence: 0.7, provenance: provenance)
+        ])
+
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.likelyIssue]), limit: 10).map(\.id),
+            [closed.id]
+        )
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.evaluationKind(.eyesOpen)]), limit: 10)
+                .map(\.id.rawValue)
+                .sorted(),
+            ["closed", "open"]
+        )
+    }
+
     func testSearchesAssetsWithTechnicalMetadataPredicates() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-search")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

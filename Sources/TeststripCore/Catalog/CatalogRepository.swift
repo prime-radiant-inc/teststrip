@@ -1445,6 +1445,10 @@ public final class CatalogRepository {
                                 )
                             )
                             OR (
+                                kind = 'eyesOpen'
+                                AND CAST(json_extract(value_json, '$.score._0') AS REAL) < 1.0
+                            )
+                            OR (
                                 kind = 'faceQuality'
                                 AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.5
                                 AND NOT EXISTS (

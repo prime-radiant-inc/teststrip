@@ -347,6 +347,12 @@ struct SidebarView: View {
             return "wand.and.stars"
         case .visualSimilarity:
             return "rectangle.3.group"
+        case .smile:
+            return "face.smiling"
+        case .eyesOpen:
+            return "eye"
+        case .eyeSharpness:
+            return "eye.circle"
         }
     }
 }

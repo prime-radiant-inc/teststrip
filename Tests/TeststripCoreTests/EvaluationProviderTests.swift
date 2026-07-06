@@ -19,6 +19,13 @@ final class EvaluationProviderTests: XCTestCase {
         XCTAssertEqual(signal.provenance.provider, "AppleVision")
     }
 
+    func testCullingExpressionKindsRoundTripThroughJSON() throws {
+        for kind in [EvaluationKind.smile, .eyesOpen, .eyeSharpness] {
+            let data = try JSONEncoder().encode(kind)
+            XCTAssertEqual(try JSONDecoder().decode(EvaluationKind.self, from: data), kind)
+        }
+    }
+
     func testDefaultPromptListsVisualSimilarityAndFramingSignalKinds() {
         XCTAssertTrue(LocalHTTPModelProvider.defaultPrompt.contains("visualSimilarity"))
         XCTAssertTrue(LocalHTTPModelProvider.defaultPrompt.contains("framing"))
