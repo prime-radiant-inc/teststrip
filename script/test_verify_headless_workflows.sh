@@ -36,6 +36,7 @@ write_fake_script verify_source_availability.sh
 write_fake_script verify_offline_reconnect_smoke.sh
 write_fake_script verify_preview_render.sh
 write_fake_script verify_local_http_model_smoke.sh
+write_fake_script verify_real_local_http_model_smoke.sh
 write_fake_script verify_raw_fixtures.sh
 write_fake_script verify_worker_recovery.sh
 write_fake_script verify_real_corpus_smoke.sh
@@ -54,6 +55,7 @@ assert_called() {
 
 assert_called '^swift test$' "swift test"
 assert_called '^build_and_run.sh --build-sandboxed$' "sandboxed build"
+assert_called '^verify_real_local_http_model_smoke.sh' "optional real local HTTP model smoke"
 assert_called '^verify_real_corpus_smoke.sh' "real corpus smoke"
 assert_called '^verify_raw_fixtures.sh' "RAW fixture smoke"
 
