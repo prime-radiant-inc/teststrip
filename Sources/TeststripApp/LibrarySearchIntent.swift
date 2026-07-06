@@ -320,6 +320,18 @@ public struct LibrarySearchIntent: Equatable, Sendable {
         case ("needs", "evaluation"), ("need", "evaluation"), ("not", "evaluated"), ("needs", "analysis"), ("need", "analysis"),
              ("needs", "ai"), ("need", "ai"):
             return (.unevaluated, "Needs Evaluation", "Needs Evaluation", 2)
+        case ("faces", "found"), ("people", "found"):
+            return (.evaluationKind(.faceCount), "Faces Found", "Faces Found", 2)
+        case ("ocr", "found"), ("text", "found"):
+            return (.evaluationKind(.ocrText), "OCR Found", "OCR Found", 2)
+        case ("likely", "issues"), ("likely", "issue"):
+            return (.likelyIssue, "Likely Issues", "Likely Issues", 2)
+        case ("provider", "failures"), ("provider", "failure"):
+            return (.evaluationFailure, "Provider Failures", "Provider Failures", 2)
+        case ("xmp", "pending"):
+            return (.metadataSyncPending, "XMP Pending", "XMP Pending", 2)
+        case ("xmp", "conflicts"), ("xmp", "conflict"):
+            return (.metadataSyncConflict, "XMP Conflicts", "XMP Conflicts", 2)
         default:
             return nil
         }

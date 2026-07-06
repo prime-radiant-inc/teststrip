@@ -6159,6 +6159,49 @@ final class AppModelTests: XCTestCase {
         ])))
     }
 
+    func testApplyingSmartCollectionRuleTextUsesReviewQueuePhrases() throws {
+        let faceIssue = makeAsset(
+            id: "typed-rule-face-issue",
+            path: "/Photos/Wedding/typed-rule-face-issue.jpg",
+            rating: 0,
+            keywords: ["tagged"]
+        )
+        let faceOnly = makeAsset(
+            id: "typed-rule-face-only",
+            path: "/Photos/Wedding/typed-rule-face-only.jpg",
+            rating: 0,
+            keywords: ["tagged"]
+        )
+        let issueOnly = makeAsset(
+            id: "typed-rule-issue-only",
+            path: "/Photos/Wedding/typed-rule-issue-only.jpg",
+            rating: 0,
+            keywords: ["tagged"]
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "smart-collection-review-queue-phrases",
+            assets: [faceIssue, faceOnly, issueOnly]
+        )
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: faceIssue.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: faceIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance),
+            EvaluationSignal(assetID: faceOnly.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: issueOnly.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance)
+        ])
+
+        try model.applySmartCollectionRuleText("faces found likely issues")
+
+        XCTAssertEqual(model.librarySearchText, "faces found likely issues")
+        XCTAssertEqual(model.assets.map(\.id), [faceIssue.id])
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Faces Found", "Likely Issues"])
+        let savedSet = try model.saveCurrentLibraryQuery(named: "Face Issues")
+        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [
+            .evaluationKind(.faceCount),
+            .likelyIssue
+        ])))
+    }
+
     func testApplyingSmartCollectionSuggestedTemplatePresetSequenceNarrowsCurrentQuery() throws {
         let fiveStarPick = makeAsset(
             id: "template-five-star-pick",
@@ -12859,7 +12902,7 @@ final class AppModelTests: XCTestCase {
         detail: String,
         in model: AppModel
     ) async throws {
-        for _ in 0..<100 {
+        for _ in 0..<1_000 {
             if model.activeWork?.completedUnitCount == completedUnitCount,
                model.activeWork?.totalUnitCount == totalUnitCount,
                model.activeWork?.detail == detail {

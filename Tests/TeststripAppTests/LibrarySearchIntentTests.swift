@@ -50,6 +50,32 @@ final class LibrarySearchIntentTests: XCTestCase {
         let noKeywords = LibrarySearchIntent.parse("no keywords")
         XCTAssertEqual(noKeywords.predicates, [.missingKeywords])
         XCTAssertEqual(noKeywords.chips, ["Needs Keywords"])
+
+        let recognitionQueues = LibrarySearchIntent.parse("faces found ocr found likely issues provider failures xmp pending xmp conflicts")
+        XCTAssertNil(recognitionQueues.residualText)
+        XCTAssertEqual(recognitionQueues.predicates, [
+            .evaluationKind(.faceCount),
+            .evaluationKind(.ocrText),
+            .likelyIssue,
+            .evaluationFailure,
+            .metadataSyncPending,
+            .metadataSyncConflict
+        ])
+        XCTAssertEqual(recognitionQueues.chips, [
+            "Faces Found",
+            "OCR Found",
+            "Likely Issues",
+            "Provider Failures",
+            "XMP Pending",
+            "XMP Conflicts"
+        ])
+
+        let aliases = LibrarySearchIntent.parse("people found text found")
+        XCTAssertEqual(aliases.predicates, [
+            .evaluationKind(.faceCount),
+            .evaluationKind(.ocrText)
+        ])
+        XCTAssertEqual(aliases.chips, ["Faces Found", "OCR Found"])
     }
 
     func testParsesRatingFieldFilter() {
