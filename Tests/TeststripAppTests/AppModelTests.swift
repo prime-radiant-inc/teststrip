@@ -736,6 +736,51 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(try repository.asset(id: assets[8].id).metadata.flag)
     }
 
+    func testBeginManualCullingFromCompareSetReusesOpenSessionForSameSet() throws {
+        let assets = (0..<9).map { makeAsset(id: "compare-manual-reuse-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-manual-cull-reuse",
+            assets: assets
+        )
+        model.selectedView = .compare
+        model.select(assets[1].id)
+
+        let firstSession = try model.beginManualCullingFromCompareSet()
+
+        model.selectedView = .compare
+        let secondSession = try model.beginManualCullingFromCompareSet()
+
+        XCTAssertEqual(secondSession.id, firstSession.id)
+        XCTAssertEqual(secondSession.inputSetIDs, firstSession.inputSetIDs)
+        XCTAssertEqual(model.selectedAssetSetID, firstSession.inputSetIDs.first)
+        XCTAssertEqual(model.selectedView, .loupe)
+        XCTAssertEqual(
+            try repository.workSessions(kind: .culling, statuses: [.queued, .running, .paused]).count,
+            1
+        )
+    }
+
+    func testBeginManualCullingFromCompareSetDoesNotReuseCompletedSession() throws {
+        let assets = (0..<3).map { makeAsset(id: "compare-manual-completed-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-manual-cull-completed",
+            assets: assets
+        )
+        model.selectedView = .compare
+        model.select(assets[0].id)
+
+        let firstSession = try model.beginManualCullingFromCompareSet()
+        try model.applyCullingShortcut(.pick)
+        try model.applyCullingShortcut(.pick)
+        try model.applyCullingShortcut(.pick)
+        XCTAssertEqual(try repository.session(id: firstSession.id).status, .completed)
+
+        model.selectedView = .compare
+        let secondSession = try model.beginManualCullingFromCompareSet()
+
+        XCTAssertNotEqual(secondSession.id, firstSession.id)
+    }
+
     func testLibraryCountTextShowsLoadedAndTotalWhenGridIsLimited() {
         let asset = Asset(
             id: AssetID(rawValue: "first"),

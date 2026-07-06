@@ -1365,6 +1365,7 @@ public final class AppModel {
     static let sourceAvailabilityBatchSize = 100
     private static let defaultCompareAssetLimit = 8
     private static let candidateStackMaximumCaptureGap: TimeInterval = 2
+    private static let manualCullSessionTitle = "Compare Manual Cull"
 
     public var selectedAsset: Asset? {
         assets.first { $0.id == selectedAssetID }
@@ -3225,7 +3226,19 @@ public final class AppModel {
         let selectedCompareAssetID = selectedAssetID.flatMap { selectedID in
             compareGroup.contains { $0.id == selectedID } ? selectedID : nil
         } ?? compareGroup[0].id
-        let title = "Compare Manual Cull"
+
+        if let existingSession = try openManualCullingSession(
+            forAssetIDs: Set(compareGroup.map(\.id)),
+            repository: catalog.repository
+        ), let existingStackSetID = existingSession.inputSetIDs.first {
+            try applyAssetSet(id: existingStackSetID)
+            selectAssetID(selectedCompareAssetID)
+            selectedView = .loupe
+            statusMessage = "Resumed manual cull for \(Self.photoCountDescription(compareGroup.count))"
+            return existingSession
+        }
+
+        let title = Self.manualCullSessionTitle
         let intent = "Manually cull current compare set"
         let sessionID = WorkSessionID.new()
         let inputSetIDs = try saveCullingStackInputSets(
@@ -8003,6 +8016,26 @@ public final class AppModel {
             return []
         }
         return try assetIDs(in: assetSet, repository: repository)
+    }
+
+    // Avoids "Compare Manual Cull" sessions piling up in Recent work when the
+    // user clicks "Choose manually" repeatedly for the same compare set.
+    private func openManualCullingSession(
+        forAssetIDs assetIDs: Set<AssetID>,
+        repository: CatalogRepository
+    ) throws -> WorkSession? {
+        let openSessions = try repository.workSessions(
+            kind: .culling,
+            statuses: [.queued, .running, .paused]
+        )
+        for session in openSessions where session.title == Self.manualCullSessionTitle {
+            guard let stackSetID = session.inputSetIDs.first else { continue }
+            let sessionAssetIDs = try explicitAssetIDs(in: stackSetID, repository: repository)
+            if Set(sessionAssetIDs) == assetIDs {
+                return session
+            }
+        }
+        return nil
     }
 
     private func latestImportOutputAssetIDs(repository: CatalogRepository) throws -> [AssetID] {
