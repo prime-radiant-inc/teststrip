@@ -642,6 +642,69 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try setup.repository.metadataSyncConflictItems().map(\.assetID), [setup.asset.id])
     }
 
+    func testSyncMetadataCommandWritesPendingCatalogEditOverOlderUncheckpointedSidecar() throws {
+        let catalogMetadata = AssetMetadata(rating: 4, flag: .pick, keywords: ["catalog"])
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-pending-writes-older-sidecar", metadata: catalogMetadata)
+        let originalData = try Data(contentsOf: setup.asset.originalURL)
+        let sidecarMetadata = AssetMetadata(rating: 1, keywords: ["old-sidecar"])
+        try XMPPacket(metadata: sidecarMetadata).xmlData().write(to: setup.sidecarURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 100)],
+            ofItemAtPath: setup.sidecarURL.path
+        )
+        try setup.repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: setup.asset.id,
+            sidecarURL: setup.sidecarURL,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id),
+            lastSyncedFingerprint: nil
+        ))
+
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("synced metadata for asset.raw"))
+        XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata, catalogMetadata)
+        let sidecarData = try Data(contentsOf: setup.sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata, catalogMetadata)
+        XCTAssertEqual(try setup.repository.pendingMetadataSyncItems(), [])
+        XCTAssertEqual(try setup.repository.metadataSyncConflictItems(), [])
+        XCTAssertEqual(
+            try setup.repository.lastMetadataSyncFingerprint(assetID: setup.asset.id),
+            XMPSidecarStore.fingerprint(for: sidecarData)
+        )
+        XCTAssertEqual(try Data(contentsOf: setup.asset.originalURL), originalData)
+    }
+
+    func testSyncMetadataCommandConflictsPendingCatalogEditWithNewerUncheckpointedSidecar() throws {
+        let catalogMetadata = AssetMetadata(rating: 4, keywords: ["catalog"])
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-pending-conflicts-newer-sidecar", metadata: catalogMetadata)
+        let originalData = try Data(contentsOf: setup.asset.originalURL)
+        let sidecarMetadata = AssetMetadata(rating: 5, colorLabel: .green, keywords: ["new-sidecar"])
+        try XMPPacket(metadata: sidecarMetadata).xmlData().write(to: setup.sidecarURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 100)],
+            ofItemAtPath: setup.sidecarURL.path
+        )
+        try setup.repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: setup.asset.id,
+            sidecarURL: setup.sidecarURL,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id),
+            lastSyncedFingerprint: nil
+        ))
+        Thread.sleep(forTimeInterval: 0.01)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date()],
+            ofItemAtPath: setup.sidecarURL.path
+        )
+
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("metadata conflict for asset.raw"))
+        XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata, catalogMetadata)
+        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: setup.sidecarURL)).metadata, sidecarMetadata)
+        XCTAssertEqual(try setup.repository.metadataSyncConflictItems().map(\.assetID), [setup.asset.id])
+        XCTAssertEqual(try Data(contentsOf: setup.asset.originalURL), originalData)
+    }
+
     func testRunEvaluationPersistsSignalsFromNamedProviderUsingCachedPreview() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-evaluation")
         let source = root.appendingPathComponent("source.jpg")

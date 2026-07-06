@@ -1103,6 +1103,18 @@ public final class CatalogRepository {
         return try rows.first.map(decodeMetadataSyncItem)
     }
 
+    public func metadataSyncStateUpdatedAt(assetID: AssetID) throws -> Date? {
+        let rows = try database.rows(
+            "SELECT updated_at FROM metadata_sync_state WHERE asset_id = ? LIMIT 1",
+            bindings: [assetID.rawValue]
+        )
+        guard let updatedAtValue = rows.first?["updated_at"],
+              let updatedAt = TimeInterval(updatedAtValue) else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: updatedAt)
+    }
+
     public func markMetadataSynced(
         assetID: AssetID,
         sidecarURL: URL,

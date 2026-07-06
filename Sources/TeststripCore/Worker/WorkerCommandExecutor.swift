@@ -320,10 +320,11 @@ public struct WorkerCommandExecutor {
             sidecarModificationDate = nil
         }
         let catalogGeneration = try repository.catalogGeneration(assetID: assetID)
-        let decision = try MetadataSyncPlanner().decision(
+        let syncItem = try repository.metadataSyncItem(assetID: assetID)
+        let decision = try metadataSyncDecision(
             catalogMetadata: asset.metadata,
             catalogGeneration: catalogGeneration,
-            lastSynced: try repository.metadataSyncItem(assetID: assetID),
+            syncItem: syncItem,
             sidecarData: sidecarData,
             sidecarModificationDate: sidecarModificationDate
         )
@@ -385,5 +386,35 @@ public struct WorkerCommandExecutor {
             ))
             return .completed("metadata conflict for \(assetName)")
         }
+    }
+
+    private func metadataSyncDecision(
+        catalogMetadata: AssetMetadata,
+        catalogGeneration: Int,
+        syncItem: MetadataSyncItem?,
+        sidecarData: Data?,
+        sidecarModificationDate: Date?
+    ) throws -> MetadataSyncDecision {
+        if let syncItem,
+           syncItem.lastSyncedFingerprint == nil,
+           let sidecarData,
+           try repository.pendingMetadataSyncItem(assetID: syncItem.assetID) != nil,
+           let pendingUpdatedAt = try repository.metadataSyncStateUpdatedAt(assetID: syncItem.assetID) {
+            if let sidecarModificationDate, sidecarModificationDate > pendingUpdatedAt {
+                return .conflict(
+                    catalogMetadata: catalogMetadata,
+                    sidecarMetadata: try XMPPacket.parse(sidecarData).metadata
+                )
+            }
+            return .writeCatalog
+        }
+
+        return try MetadataSyncPlanner().decision(
+            catalogMetadata: catalogMetadata,
+            catalogGeneration: catalogGeneration,
+            lastSynced: syncItem,
+            sidecarData: sidecarData,
+            sidecarModificationDate: sidecarModificationDate
+        )
     }
 }
