@@ -39,6 +39,30 @@ struct InspectorMetadataRow: Equatable, Identifiable {
     var id: String { title }
 }
 
+struct InspectorCaptionSuggestionPresentation: Equatable {
+    var suggestions: [CaptionSuggestion]
+
+    var isVisible: Bool {
+        !suggestions.isEmpty
+    }
+
+    var title: String {
+        "TESTSTRIP READS"
+    }
+
+    func actionLabel(for suggestion: CaptionSuggestion) -> String {
+        "Accept OCR caption"
+    }
+
+    func detailText(for suggestion: CaptionSuggestion) -> String {
+        "\(suggestion.confidenceText) - \(suggestion.provenanceText)"
+    }
+
+    func helpText(for suggestion: CaptionSuggestion) -> String {
+        "\(actionLabel(for: suggestion)): \(suggestion.caption)"
+    }
+}
+
 struct InspectorTechnicalRows: Equatable {
     var rows: [InspectorMetadataRow]
 
@@ -598,8 +622,12 @@ struct InspectorView: View {
             if !suggestions.isEmpty {
                 suggestedKeywordChips(suggestions)
             }
+            let captionPresentation = InspectorCaptionSuggestionPresentation(suggestions: model.selectedSuggestedCaptions)
             metadataTextField("Keywords", text: $metadataDraft.keywords) {
                 try model.setKeywordTextForSelectedAsset(metadataDraft.keywords)
+            }
+            if captionPresentation.isVisible {
+                suggestedCaptionButtons(captionPresentation)
             }
             metadataTextField("Caption", text: $metadataDraft.caption) {
                 try model.setCaptionForSelectedAsset(metadataDraft.caption)
@@ -679,6 +707,60 @@ struct InspectorView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Accept \(suggestion.keyword)")
+                }
+            }
+        }
+        .padding(8)
+        .background(Color.orange.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func suggestedCaptionButtons(_ presentation: InspectorCaptionSuggestionPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Image(systemName: "text.viewfinder")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
+                Text(presentation.title)
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(presentation.suggestions) { suggestion in
+                    Button {
+                        apply {
+                            try model.acceptSuggestedCaptionForSelectedAsset(suggestion.caption)
+                            metadataDraft.caption = suggestion.caption
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.orange)
+                                Text(presentation.actionLabel(for: suggestion))
+                                    .font(.caption2.weight(.semibold))
+                                Spacer(minLength: 8)
+                                Text(presentation.detailText(for: suggestion))
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(suggestion.caption)
+                                .font(.caption)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 5)
+                                .strokeBorder(Color.orange.opacity(0.18))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help(presentation.helpText(for: suggestion))
+                    .accessibilityLabel(presentation.helpText(for: suggestion))
                 }
             }
         }

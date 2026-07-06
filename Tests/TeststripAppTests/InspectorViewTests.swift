@@ -117,6 +117,24 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(row.detail, "74% - local-http-model/llava")
     }
 
+    func testCaptionSuggestionPresentationNamesExplicitAcceptAction() {
+        let suggestion = CaptionSuggestion(
+            caption: "Invoice 123 Client ABC",
+            sourceKind: .ocrText,
+            confidence: 0.923,
+            providerName: "apple-vision",
+            modelName: "Vision-OCR"
+        )
+
+        let presentation = InspectorCaptionSuggestionPresentation(suggestions: [suggestion])
+
+        XCTAssertTrue(presentation.isVisible)
+        XCTAssertEqual(presentation.title, "TESTSTRIP READS")
+        XCTAssertEqual(presentation.actionLabel(for: suggestion), "Accept OCR caption")
+        XCTAssertEqual(presentation.detailText(for: suggestion), "92% - apple-vision/Vision-OCR")
+        XCTAssertEqual(presentation.helpText(for: suggestion), "Accept OCR caption: Invoice 123 Client ABC")
+    }
+
     func testEvaluationRowsKeepDuplicateProvidersVisible() {
         let signals = [
             evaluationSignal(

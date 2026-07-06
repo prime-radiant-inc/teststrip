@@ -8272,6 +8272,49 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: asset.id).metadata.keywords, ["portfolio"])
     }
 
+    func testSelectedSuggestedCaptionsComeFromOCRTextSignals() throws {
+        let asset = Asset(
+            id: AssetID(rawValue: "suggested-caption"),
+            originalURL: URL(fileURLWithPath: "/Photos/suggested-caption.jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(named: "suggested-captions", assets: [asset])
+        let receiptProvenance = ProviderProvenance(provider: "apple-vision", model: "Vision-OCR", version: "1", settingsHash: "default")
+        let lowerProvenance = ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: asset.id, kind: .ocrText, value: .text("  Invoice 123\nClient ABC  "), confidence: 0.92, provenance: receiptProvenance),
+            EvaluationSignal(assetID: asset.id, kind: .ocrText, value: .text("Invoice 123"), confidence: 0.64, provenance: lowerProvenance),
+            EvaluationSignal(assetID: asset.id, kind: .object, value: .label("document"), confidence: 0.8, provenance: receiptProvenance)
+        ])
+
+        XCTAssertEqual(model.selectedSuggestedCaptions.map(\.caption), ["Invoice 123 Client ABC", "Invoice 123"])
+        XCTAssertEqual(model.selectedSuggestedCaptions.map(\.confidenceText), ["92%", "64%"])
+        XCTAssertEqual(model.selectedSuggestedCaptions.map(\.provenanceText), ["apple-vision/Vision-OCR", "local-http-model/llava"])
+    }
+
+    func testOCRTextRemainsProvisionalUntilAccepted() throws {
+        let asset = Asset(
+            id: AssetID(rawValue: "provisional-caption"),
+            originalURL: URL(fileURLWithPath: "/Photos/provisional-caption.jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(named: "provisional-caption", assets: [asset])
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision-OCR", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: asset.id, kind: .ocrText, value: .text("Invoice 123"), confidence: 0.92, provenance: provenance)
+        ])
+
+        XCTAssertEqual(model.selectedSuggestedCaptions.map(\.caption), ["Invoice 123"])
+        XCTAssertNil(model.selectedAsset?.metadata.caption)
+        XCTAssertNil(try repository.asset(id: asset.id).metadata.caption)
+    }
+
     func testVisibleBatchKeywordSuggestionsAggregateObjectLabels() throws {
         let first = makeAsset(id: "first-batch-keyword", path: "/Photos/first.jpg", rating: 0)
         let second = makeAsset(id: "second-batch-keyword", path: "/Photos/second.jpg", rating: 0)
@@ -8636,6 +8679,52 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata.keywords, expectedKeywords)
         XCTAssertEqual(try Data(contentsOf: originalURL), Data("original raw bytes".utf8))
         XCTAssertEqual(model.selectedSuggestedKeywords, [])
+    }
+
+    func testAcceptSuggestedCaptionForSelectedAssetWritesCatalogAndXmp() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-accept-suggested-caption")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "accept-suggested-caption"),
+            originalURL: originalURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision-OCR", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: asset.id, kind: .ocrText, value: .text("Invoice 123\nClient ABC"), confidence: 0.92, provenance: provenance)
+        ])
+
+        XCTAssertEqual(model.selectedSuggestedCaptions.map(\.caption), ["Invoice 123 Client ABC"])
+
+        try model.acceptSuggestedCaptionForSelectedAsset("Invoice 123 Client ABC")
+
+        let expectedCaption = "Invoice 123 Client ABC"
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+        let sidecarData = try Data(contentsOf: sidecarURL)
+        XCTAssertEqual(model.selectedAsset?.metadata.caption, expectedCaption)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.caption, expectedCaption)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata.caption, expectedCaption)
+        XCTAssertEqual(try Data(contentsOf: originalURL), Data("original raw bytes".utf8))
+        XCTAssertEqual(model.selectedSuggestedCaptions, [])
     }
 
     @MainActor

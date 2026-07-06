@@ -810,6 +810,27 @@ public struct KeywordSuggestion: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct CaptionSuggestion: Identifiable, Equatable, Sendable {
+    public var caption: String
+    public var sourceKind: EvaluationKind
+    public var confidence: Double
+    public var providerName: String
+    public var modelName: String
+
+    public var id: String {
+        caption.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+    }
+
+    public var confidenceText: String {
+        let clamped = min(max(confidence, 0), 1)
+        return "\(Int((clamped * 100).rounded()))%"
+    }
+
+    public var provenanceText: String {
+        "\(providerName)/\(modelName)"
+    }
+}
+
 public struct BatchKeywordSuggestion: Identifiable, Equatable, Sendable {
     public var keyword: String
     public var assetCount: Int
@@ -1481,6 +1502,14 @@ public final class AppModel {
             from: selectedEvaluationSignals,
             existingKeywords: selectedAsset.metadata.keywords
         )
+    }
+
+    public var selectedSuggestedCaptions: [CaptionSuggestion] {
+        guard let selectedAsset,
+              selectedAsset.metadata.caption == nil else {
+            return []
+        }
+        return Self.captionSuggestions(from: selectedEvaluationSignals)
     }
 
     public var visibleBatchKeywordSuggestions: [BatchKeywordSuggestion] {
@@ -3827,6 +3856,14 @@ public final class AppModel {
         }
     }
 
+    public func acceptSuggestedCaptionForSelectedAsset(_ caption: String) throws {
+        guard let portableCaption = Self.portableCaption(from: caption) else { return }
+        try updateSelectedAssetMetadata { metadata in
+            guard metadata.caption != portableCaption else { return }
+            metadata.caption = portableCaption
+        }
+    }
+
     @discardableResult
     public func acceptVisibleBatchKeywordSuggestion(_ keyword: String) throws -> Int {
         try acceptBatchKeywordSuggestion(keyword, assetIDs: assets.map(\.id))
@@ -4184,6 +4221,36 @@ public final class AppModel {
         }
     }
 
+    private static func captionSuggestions(from signals: [EvaluationSignal]) -> [CaptionSuggestion] {
+        let candidates = signals.compactMap { signal -> (caption: String, signal: EvaluationSignal)? in
+            guard signal.kind == .ocrText,
+                  case .text(let text) = signal.value,
+                  let caption = portableCaption(from: text) else {
+                return nil
+            }
+            return (caption, signal)
+        }
+        .sorted { lhs, rhs in
+            if lhs.signal.confidence != rhs.signal.confidence {
+                return lhs.signal.confidence > rhs.signal.confidence
+            }
+            return lhs.caption.localizedCaseInsensitiveCompare(rhs.caption) == .orderedAscending
+        }
+
+        var seen: Set<String> = []
+        return candidates.compactMap { candidate in
+            let key = candidate.caption.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            guard seen.insert(key).inserted else { return nil }
+            return CaptionSuggestion(
+                caption: candidate.caption,
+                sourceKind: candidate.signal.kind,
+                confidence: candidate.signal.confidence,
+                providerName: candidate.signal.provenance.provider,
+                modelName: candidate.signal.provenance.model
+            )
+        }
+    }
+
     private func batchKeywordSuggestions(for assets: [Asset]) -> [BatchKeywordSuggestion] {
         var accumulatorsByKey: [String: BatchKeywordAccumulator] = [:]
 
@@ -4310,6 +4377,13 @@ public final class AppModel {
     private static func portableText(from text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func portableCaption(from text: String) -> String? {
+        let collapsed = text
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+        return portableText(from: collapsed)
     }
 
     private func applyMetadataSnapshot(assetID: AssetID, metadata: AssetMetadata) throws {
