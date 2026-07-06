@@ -11,25 +11,40 @@ public struct AppleVisionLabel: Equatable, Sendable {
     }
 }
 
+public struct AppleVisionFaceObservation: Equatable, Sendable {
+    public var boundingBox: FaceBoundingBox
+    public var captureQuality: Double?
+    public var featurePrintVector: [Double]
+
+    public init(boundingBox: FaceBoundingBox, captureQuality: Double?, featurePrintVector: [Double]) {
+        self.boundingBox = boundingBox
+        self.captureQuality = captureQuality
+        self.featurePrintVector = featurePrintVector
+    }
+}
+
 public struct AppleVisionAnalysis: Equatable, Sendable {
     public var faceCount: Int
     public var faceQualityScores: [Double]
     public var recognizedText: [String]
     public var classificationLabels: [AppleVisionLabel]
     public var imageFeaturePrintVector: [Double]
+    public var faces: [AppleVisionFaceObservation]
 
     public init(
         faceCount: Int,
         faceQualityScores: [Double],
         recognizedText: [String],
         classificationLabels: [AppleVisionLabel],
-        imageFeaturePrintVector: [Double] = []
+        imageFeaturePrintVector: [Double] = [],
+        faces: [AppleVisionFaceObservation] = []
     ) {
         self.faceCount = faceCount
         self.faceQualityScores = faceQualityScores
         self.recognizedText = recognizedText
         self.classificationLabels = classificationLabels
         self.imageFeaturePrintVector = imageFeaturePrintVector
+        self.faces = faces
     }
 }
 
@@ -47,8 +62,11 @@ public struct AppleVisionEvaluationProvider: EvaluationProvider {
     }
 
     public func evaluate(assetID: AssetID, previewURL: URL) throws -> [EvaluationSignal] {
-        let analysis = try analyzer.analyze(previewURL: previewURL)
-        let provenance = ProviderProvenance(provider: name, model: "Vision", version: "1", settingsHash: "default")
+        try evaluateWithFaces(assetID: assetID, previewURL: previewURL).signals
+    }
+
+    private static func signals(assetID: AssetID, analysis: AppleVisionAnalysis) -> [EvaluationSignal] {
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
         var signals: [EvaluationSignal] = []
 
         if let faceCountSignal = Self.faceCountSignal(assetID: assetID, count: analysis.faceCount, scores: analysis.faceQualityScores, provenance: provenance) {
@@ -160,7 +178,51 @@ public struct AppleVisionEvaluationProvider: EvaluationProvider {
     }
 }
 
+extension AppleVisionEvaluationProvider: FaceObservationEvaluationProvider {
+    public static let faceProvenance = ProviderProvenance(
+        provider: "apple-vision",
+        model: "Vision",
+        version: "1",
+        settingsHash: "face-crop-pad-25"
+    )
+
+    public var faceProvenance: ProviderProvenance {
+        Self.faceProvenance
+    }
+
+    public func evaluateWithFaces(assetID: AssetID, previewURL: URL) throws -> FaceEvaluationOutcome {
+        let analysis = try analyzer.analyze(previewURL: previewURL)
+        return FaceEvaluationOutcome(
+            signals: Self.signals(assetID: assetID, analysis: analysis),
+            faceObservations: analysis.faces.enumerated().map { index, face in
+                CatalogFaceObservation(
+                    assetID: assetID,
+                    faceIndex: index,
+                    boundingBox: face.boundingBox,
+                    captureQuality: face.captureQuality,
+                    embedding: face.featurePrintVector,
+                    provenance: Self.faceProvenance
+                )
+            }
+        )
+    }
+}
+
 public struct AppleVisionAnalyzer: AppleVisionAnalyzing {
+    public static let faceCropPadding = 0.25
+
+    public static func paddedRegionOfInterest(_ box: FaceBoundingBox, padding: Double = faceCropPadding) -> CGRect {
+        guard box.width > 0, box.height > 0 else {
+            return CGRect(x: 0, y: 0, width: 1, height: 1)
+        }
+        let inset = padding * max(box.width, box.height)
+        let minX = max(0.0, box.x - inset)
+        let minY = max(0.0, box.y - inset)
+        let maxX = min(1.0, box.x + box.width + inset)
+        let maxY = min(1.0, box.y + box.height + inset)
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
     public init() {}
 
     public func analyze(previewURL: URL) throws -> AppleVisionAnalysis {
@@ -174,9 +236,36 @@ public struct AppleVisionAnalyzer: AppleVisionAnalyzing {
         let handler = VNImageRequestHandler(url: previewURL, options: [:])
         try handler.perform([faceQualityRequest, textRequest, classificationRequest, imageFeaturePrintRequest])
 
+        let faceResults = faceQualityRequest.results ?? []
+        let facePrintRequests = faceResults.map { observation -> VNGenerateImageFeaturePrintRequest in
+            let request = VNGenerateImageFeaturePrintRequest()
+            request.regionOfInterest = Self.paddedRegionOfInterest(FaceBoundingBox(
+                x: Double(observation.boundingBox.origin.x),
+                y: Double(observation.boundingBox.origin.y),
+                width: Double(observation.boundingBox.width),
+                height: Double(observation.boundingBox.height)
+            ))
+            return request
+        }
+        if !facePrintRequests.isEmpty {
+            try handler.perform(facePrintRequests)
+        }
+        let faces = zip(faceResults, facePrintRequests).map { observation, request in
+            AppleVisionFaceObservation(
+                boundingBox: FaceBoundingBox(
+                    x: Double(observation.boundingBox.origin.x),
+                    y: Double(observation.boundingBox.origin.y),
+                    width: Double(observation.boundingBox.width),
+                    height: Double(observation.boundingBox.height)
+                ),
+                captureQuality: observation.faceCaptureQuality.map(Double.init),
+                featurePrintVector: Self.imageFeaturePrintVector(from: request.results?.first)
+            )
+        }
+
         return AppleVisionAnalysis(
-            faceCount: (faceQualityRequest.results ?? []).count,
-            faceQualityScores: (faceQualityRequest.results ?? []).compactMap { observation in
+            faceCount: faceResults.count,
+            faceQualityScores: faceResults.compactMap { observation in
                 observation.faceCaptureQuality.map(Double.init)
             },
             recognizedText: (textRequest.results ?? []).compactMap { observation in
@@ -185,7 +274,8 @@ public struct AppleVisionAnalyzer: AppleVisionAnalyzing {
             classificationLabels: (classificationRequest.results ?? [])
                 .filter { $0.confidence > 0 }
                 .map { AppleVisionLabel(identifier: $0.identifier, confidence: Double($0.confidence)) },
-            imageFeaturePrintVector: Self.imageFeaturePrintVector(from: imageFeaturePrintRequest.results?.first)
+            imageFeaturePrintVector: Self.imageFeaturePrintVector(from: imageFeaturePrintRequest.results?.first),
+            faces: faces
         )
     }
 

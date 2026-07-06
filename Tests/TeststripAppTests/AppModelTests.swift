@@ -5152,6 +5152,103 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.assetIDs(personID: "source"), [])
     }
 
+    private func makeFaceSuggestionModel(
+        named name: String
+    ) throws -> (model: AppModel, repository: CatalogRepository, incoming: Asset, groupA: Asset, groupB: Asset) {
+        let known = makeAsset(id: "known", path: "/Volumes/NAS/Wedding/known.jpg", rating: 0)
+        let incoming = makeAsset(id: "incoming", path: "/Volumes/NAS/Wedding/incoming.jpg", rating: 0)
+        let groupA = makeAsset(id: "group-a", path: "/Volumes/NAS/Wedding/group-a.jpg", rating: 0)
+        let groupB = makeAsset(id: "group-b", path: "/Volumes/NAS/Wedding/group-b.jpg", rating: 0)
+        let provenance = AppleVisionEvaluationProvider.faceProvenance
+        func observation(_ asset: Asset, _ embedding: [Double]) -> CatalogFaceObservation {
+            CatalogFaceObservation(
+                assetID: asset.id,
+                faceIndex: 0,
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                captureQuality: 0.9,
+                embedding: embedding,
+                provenance: provenance
+            )
+        }
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: name,
+            assets: [known, incoming, groupA, groupB],
+            configureRepository: { repository in
+                try repository.replaceFaceObservations(assetID: known.id, provenance: provenance, with: [observation(known, [1, 0, 0])])
+                try repository.replaceFaceObservations(assetID: incoming.id, provenance: provenance, with: [observation(incoming, [0.99, 0.1, 0])])
+                try repository.replaceFaceObservations(assetID: groupA.id, provenance: provenance, with: [observation(groupA, [0, 1, 0])])
+                try repository.replaceFaceObservations(assetID: groupB.id, provenance: provenance, with: [observation(groupB, [0, 0.99, 0.14])])
+                try repository.upsertPerson(id: "person-maya", name: "Maya")
+                try repository.assignFaces([FaceID(assetID: known.id, faceIndex: 0)], toPersonID: "person-maya")
+            }
+        )
+        return (model, repository, incoming, groupA, groupB)
+    }
+
+    func testRefreshPeopleFaceSuggestionsBuildsMatchAndClusterSuggestions() throws {
+        let (model, _, incoming, groupA, groupB) = try makeFaceSuggestionModel(named: "app-model-face-suggestions")
+
+        model.refreshPeopleFaceSuggestions()
+
+        XCTAssertEqual(model.peopleFaceSuggestions.count, 2)
+        XCTAssertEqual(model.peopleFaceObservationAssetCount, 4)
+        let match = try XCTUnwrap(model.peopleFaceSuggestions.first { $0.id == "face-match-person-maya" })
+        XCTAssertEqual(match.kind, .matchExisting(personID: "person-maya", personName: "Maya"))
+        XCTAssertEqual(match.faceIDs, [FaceID(assetID: incoming.id, faceIndex: 0)])
+        XCTAssertEqual(match.assetIDs, [incoming.id])
+        let cluster = try XCTUnwrap(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
+        XCTAssertEqual(cluster.faceIDs, [
+            FaceID(assetID: groupA.id, faceIndex: 0),
+            FaceID(assetID: groupB.id, faceIndex: 0)
+        ])
+        XCTAssertEqual(cluster.id, "face-cluster-\(groupA.id.rawValue)-0")
+    }
+
+    func testConfirmMatchSuggestionAssignsFacesToExistingPerson() throws {
+        let (model, repository, incoming, _, _) = try makeFaceSuggestionModel(named: "app-model-face-confirm-match")
+        model.refreshPeopleFaceSuggestions()
+        let match = try XCTUnwrap(model.peopleFaceSuggestions.first { $0.id == "face-match-person-maya" })
+
+        try model.confirmPeopleFaceSuggestion(match)
+
+        XCTAssertEqual(Set(try repository.assetIDs(personID: "person-maya")).contains(incoming.id), true)
+        XCTAssertNil(model.peopleFaceSuggestions.first { $0.id == "face-match-person-maya" })
+        XCTAssertEqual(model.catalogPeople.first?.assetCount, 2)
+    }
+
+    func testConfirmClusterSuggestionCreatesNamedPersonThroughExistingPath() throws {
+        let (model, repository, _, groupA, groupB) = try makeFaceSuggestionModel(named: "app-model-face-confirm-cluster")
+        model.refreshPeopleFaceSuggestions()
+        let cluster = try XCTUnwrap(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
+
+        let person = try model.confirmPeopleFaceSuggestion(cluster, personName: " Lee ", personID: "person-lee")
+
+        XCTAssertEqual(person, CatalogPerson(id: "person-lee", name: "Lee", assetCount: 2))
+        XCTAssertEqual(try repository.assetIDs(personID: "person-lee"), [groupA.id, groupB.id])
+        XCTAssertNil(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
+    }
+
+    func testDismissSuggestionRemovesItFromFutureSuggestions() throws {
+        let (model, repository, _, _, _) = try makeFaceSuggestionModel(named: "app-model-face-dismiss")
+        model.refreshPeopleFaceSuggestions()
+        let cluster = try XCTUnwrap(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
+
+        try model.dismissPeopleFaceSuggestion(cluster)
+
+        XCTAssertNil(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
+        XCTAssertEqual(try repository.people(), model.catalogPeople)
+        XCTAssertEqual(try repository.assetIDs(personID: "person-lee"), [])
+    }
+
+    func testSelectingPeopleSidebarTargetRefreshesFaceSuggestions() throws {
+        let (model, _, _, _, _) = try makeFaceSuggestionModel(named: "app-model-face-people-entry")
+        XCTAssertEqual(model.peopleFaceSuggestions, [])
+
+        try model.selectSidebarTarget(.people)
+
+        XCTAssertEqual(model.peopleFaceSuggestions.count, 2)
+    }
+
     func testDismissSelectedFaceReviewAssetsPersistsAndRefreshesReviewQueue() throws {
         let dismissed = makeAsset(id: "dismissed-face", path: "/Volumes/NAS/Wedding/dismissed.jpg", rating: 4)
         let active = makeAsset(id: "active-face", path: "/Volumes/NAS/Wedding/active.jpg", rating: 4)

@@ -26,7 +26,8 @@ final class PeoplePresentationTests: XCTestCase {
             evaluationSummaries: [
                 CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 3),
                 CatalogEvaluationKindSummary(kind: .faceQuality, assetCount: 44)
-            ]
+            ],
+            faceObservationAssetCount: 44
         )
 
         XCTAssertEqual(presentation.headerSummary, "0 people · 44 photos with face signals")
@@ -136,8 +137,68 @@ final class PeoplePresentationTests: XCTestCase {
         let presentation = PeoplePresentation(totalAssetCount: 42, evaluationSummaries: [])
 
         XCTAssertTrue(presentation.visibleDeferredFaceActionTitles.isEmpty)
-        XCTAssertTrue(presentation.deferredFaceActionStatus.localizedCaseInsensitiveContains("Automatic clustering"))
+        XCTAssertTrue(presentation.deferredFaceActionStatus.localizedCaseInsensitiveContains("automatic grouping"))
         XCTAssertTrue(presentation.deferredFaceActionStatus.localizedCaseInsensitiveContains("split"))
         XCTAssertTrue(presentation.deferredFaceActionStatus.localizedCaseInsensitiveContains("face-box naming"))
+    }
+
+    private func matchSuggestion() -> PeopleFaceSuggestion {
+        PeopleFaceSuggestion(
+            id: "face-match-person-maya",
+            kind: .matchExisting(personID: "person-maya", personName: "Maya"),
+            faceIDs: [FaceID(assetID: AssetID(rawValue: "incoming"), faceIndex: 0)],
+            representativeFace: FaceID(assetID: AssetID(rawValue: "incoming"), faceIndex: 0),
+            representativeBoundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+            assetIDs: [AssetID(rawValue: "incoming")]
+        )
+    }
+
+    private func clusterSuggestion() -> PeopleFaceSuggestion {
+        PeopleFaceSuggestion(
+            id: "face-cluster-group-a-0",
+            kind: .newPerson,
+            faceIDs: [
+                FaceID(assetID: AssetID(rawValue: "group-a"), faceIndex: 0),
+                FaceID(assetID: AssetID(rawValue: "group-b"), faceIndex: 0)
+            ],
+            representativeFace: FaceID(assetID: AssetID(rawValue: "group-a"), faceIndex: 0),
+            representativeBoundingBox: FaceBoundingBox(x: 0.2, y: 0.3, width: 0.25, height: 0.25),
+            assetIDs: [AssetID(rawValue: "group-a"), AssetID(rawValue: "group-b")]
+        )
+    }
+
+    func testFaceSuggestionBandPresentsNeedsANameCards() {
+        let presentation = PeoplePresentation(
+            totalAssetCount: 100,
+            evaluationSummaries: [CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 3)],
+            faceSuggestions: [matchSuggestion(), clusterSuggestion()],
+            faceObservationAssetCount: 4
+        )
+
+        XCTAssertEqual(presentation.reviewStripTitle, "TESTSTRIP · 3 FACES NEED A NAME")
+        XCTAssertEqual(presentation.reviewStripStatusText, "1 group matches confirmed people")
+        XCTAssertEqual(
+            presentation.reviewStripDetail,
+            "Face groups are provisional until you confirm. Confirming writes people to the catalog; dismissing hides the group."
+        )
+        XCTAssertEqual(presentation.suggestionCards.map(\.title), ["Is this Maya?", "Who is this?"])
+        XCTAssertEqual(presentation.suggestionCards.map(\.confirmActionTitle), ["Maya", "Name…"])
+        XCTAssertEqual(presentation.suggestionCards.map(\.countText), ["1 face · 1 photo", "2 faces · 2 photos"])
+        XCTAssertEqual(presentation.suggestionCards.map(\.isOneTapConfirm), [true, false])
+    }
+
+    func testFaceBandPromptsRescanWhenSignalsPredateGrouping() {
+        let presentation = PeoplePresentation(
+            totalAssetCount: 100,
+            evaluationSummaries: [CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 3)],
+            faceSuggestions: [],
+            faceObservationAssetCount: 0
+        )
+
+        XCTAssertEqual(presentation.suggestionCards, [])
+        XCTAssertEqual(
+            presentation.reviewStripDetail,
+            "Face signals predate grouping; run Scan current scope to compute face embeddings."
+        )
     }
 }

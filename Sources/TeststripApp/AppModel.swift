@@ -370,6 +370,20 @@ extension EvaluationKind {
     }
 }
 
+public struct PeopleFaceSuggestion: Equatable, Identifiable, Sendable {
+    public enum Kind: Equatable, Sendable {
+        case matchExisting(personID: String, personName: String)
+        case newPerson
+    }
+
+    public var id: String
+    public var kind: Kind
+    public var faceIDs: [FaceID]
+    public var representativeFace: FaceID
+    public var representativeBoundingBox: FaceBoundingBox
+    public var assetIDs: [AssetID]
+}
+
 public enum SidebarRowTarget: Equatable, Sendable {
     case allPhotographs
     case search
@@ -1199,6 +1213,8 @@ public final class AppModel {
     public var sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary]
     public var catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary]
     public var catalogPeople: [CatalogPerson]
+    public private(set) var peopleFaceSuggestions: [PeopleFaceSuggestion] = []
+    public private(set) var peopleFaceObservationAssetCount = 0
     public var reviewQueueCounts: [ReviewQueue: Int]
     public var selectedAssetSetID: AssetSetID?
     // Cached latest-import panel state so SwiftUI render passes never run catalog
@@ -2272,6 +2288,134 @@ public final class AppModel {
         try loadCatalogPage(preferredSelection: nil)
     }
 
+    public static let maximumFaceSuggestionInputCount = 2000
+
+    public func refreshPeopleFaceSuggestions() {
+        guard let catalog else { return }
+        do {
+            let provenance = AppleVisionEvaluationProvider.faceProvenance
+            let unassigned = try catalog.repository.unassignedFaceObservations(
+                provenance: provenance,
+                limit: Self.maximumFaceSuggestionInputCount
+            )
+            let confirmedFacesByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
+            let suggestions = FaceSuggestionBuilder().suggestions(
+                unassignedFaces: unassigned.map { FaceEmbedding(faceID: $0.faceID, vector: $0.embedding) },
+                confirmedFacesByPerson: confirmedFacesByPerson
+            )
+            let observationsByFaceID = Dictionary(
+                uniqueKeysWithValues: unassigned.map { ($0.faceID, $0) }
+            )
+            let personNamesByID = Dictionary(
+                uniqueKeysWithValues: catalogPeople.map { ($0.id, $0.name) }
+            )
+            peopleFaceSuggestions = Self.peopleFaceSuggestions(
+                from: suggestions,
+                observationsByFaceID: observationsByFaceID,
+                personNamesByID: personNamesByID
+            )
+            peopleFaceObservationAssetCount = try catalog.repository.faceObservationAssetCount(provenance: provenance)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    public func confirmPeopleFaceSuggestion(_ suggestion: PeopleFaceSuggestion) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard case .matchExisting(let personID, _) = suggestion.kind else {
+            throw TeststripError.invalidState("face suggestion has no matched person; name it instead")
+        }
+        try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: personID)
+        catalogPeople = try catalog.repository.people()
+        refreshCatalogEvaluationKindSummaries()
+        refreshPeopleFaceSuggestions()
+        try loadCatalogPage(preferredSelection: nil)
+    }
+
+    @discardableResult
+    public func confirmPeopleFaceSuggestion(
+        _ suggestion: PeopleFaceSuggestion,
+        personName: String,
+        personID: String = "person-\(UUID().uuidString)"
+    ) throws -> CatalogPerson {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let trimmedName = personName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw TeststripError.invalidState("person name is required")
+        }
+        try catalog.repository.upsertPerson(id: personID, name: trimmedName)
+        try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: personID)
+        catalogPeople = try catalog.repository.people()
+        refreshCatalogEvaluationKindSummaries()
+        refreshPeopleFaceSuggestions()
+        try loadCatalogPage(preferredSelection: nil)
+        guard let person = catalogPeople.first(where: { $0.id == personID }) else {
+            throw CatalogError.notFound(personID)
+        }
+        return person
+    }
+
+    public func dismissPeopleFaceSuggestion(_ suggestion: PeopleFaceSuggestion) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        try catalog.repository.dismissFaces(suggestion.faceIDs)
+        refreshCatalogEvaluationKindSummaries()
+        refreshPeopleFaceSuggestions()
+    }
+
+    public func showPeopleFaceSuggestionPhotos(_ suggestion: PeopleFaceSuggestion) throws {
+        try selectSidebarTarget(.allPhotographs)
+        clearBatchSelection()
+        for assetID in suggestion.assetIDs {
+            setBatchSelection(assetID, isSelected: true)
+        }
+        selectedAssetID = suggestion.assetIDs.first
+    }
+
+    private static func peopleFaceSuggestions(
+        from suggestions: FaceSuggestions,
+        observationsByFaceID: [FaceID: CatalogFaceObservation],
+        personNamesByID: [String: String]
+    ) -> [PeopleFaceSuggestion] {
+        var result: [PeopleFaceSuggestion] = []
+        for match in suggestions.matches {
+            guard let personName = personNamesByID[match.personID],
+                  let representative = match.faceIDs.first,
+                  let observation = observationsByFaceID[representative] else { continue }
+            result.append(PeopleFaceSuggestion(
+                id: "face-match-\(match.personID)",
+                kind: .matchExisting(personID: match.personID, personName: personName),
+                faceIDs: match.faceIDs,
+                representativeFace: representative,
+                representativeBoundingBox: observation.boundingBox,
+                assetIDs: Self.uniqueAssetIDs(match.faceIDs)
+            ))
+        }
+        for cluster in suggestions.clusters {
+            guard let representative = cluster.faceIDs.first,
+                  let observation = observationsByFaceID[representative] else { continue }
+            result.append(PeopleFaceSuggestion(
+                id: "face-cluster-\(representative.assetID.rawValue)-\(representative.faceIndex)",
+                kind: .newPerson,
+                faceIDs: cluster.faceIDs,
+                representativeFace: representative,
+                representativeBoundingBox: observation.boundingBox,
+                assetIDs: Self.uniqueAssetIDs(cluster.faceIDs)
+            ))
+        }
+        return result
+    }
+
+    private static func uniqueAssetIDs(_ faceIDs: [FaceID]) -> [AssetID] {
+        var seen = Set<AssetID>()
+        return faceIDs.compactMap { seen.insert($0.assetID).inserted ? $0.assetID : nil }
+    }
+
     public init(
         sidebarSections: [SidebarSection],
         selectedView: LibraryViewMode,
@@ -2878,6 +3022,7 @@ public final class AppModel {
             selectedAssetSetID = nil
             clearLibraryQueryFilters()
             selectedView = .people
+            refreshPeopleFaceSuggestions()
         case .reviewQueue(let queue):
             try applyReviewQueue(queue)
         case .folder(let path):
@@ -7808,6 +7953,9 @@ public final class AppModel {
             catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
             reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
             refreshLatestImportPresentation()
+            if selectedView == .people {
+                refreshPeopleFaceSuggestions()
+            }
             rebuildSidebarSections()
         } catch {
             errorMessage = error.localizedDescription

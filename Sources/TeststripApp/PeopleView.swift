@@ -6,13 +6,17 @@ struct PeopleView: View {
 
     @State private var isNamingSelection = false
     @State private var personName = ""
+    @State private var namingSuggestion: PeopleFaceSuggestion?
+    @State private var suggestionPersonName = ""
 
     private var presentation: PeoplePresentation {
         PeoplePresentation(
             totalAssetCount: model.totalAssetCount,
             namedPeople: model.catalogPeople,
             evaluationSummaries: model.catalogEvaluationKindSummaries,
-            canRequestCurrentScopeFaceScan: model.canRequestPeopleFaceScan
+            canRequestCurrentScopeFaceScan: model.canRequestPeopleFaceScan,
+            faceSuggestions: model.peopleFaceSuggestions,
+            faceObservationAssetCount: model.peopleFaceObservationAssetCount
         )
     }
 
@@ -27,8 +31,14 @@ struct PeopleView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(nsColor: .textBackgroundColor).opacity(0.08))
+        .task {
+            model.refreshPeopleFaceSuggestions()
+        }
         .sheet(isPresented: $isNamingSelection) {
             nameSelectionSheet
+        }
+        .sheet(item: $namingSuggestion) { suggestion in
+            nameSuggestionSheet(suggestion)
         }
         .liveMockupPlaceholder(.peopleSidebar)
     }
@@ -70,6 +80,14 @@ struct PeopleView: View {
                 }
                 .controlSize(.small)
                 .help(scanAction.detail)
+            }
+
+            if !presentation.suggestionCards.isEmpty {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], alignment: .leading, spacing: 12) {
+                    ForEach(presentation.suggestionCards) { card in
+                        faceSuggestionCard(card)
+                    }
+                }
             }
 
             if presentation.reviewCards.isEmpty {
@@ -194,6 +212,109 @@ struct PeopleView: View {
         do {
             try model.confirmSelectedAssetsAsPerson(named: personName)
             isNamingSelection = false
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func faceSuggestionCard(_ card: PeopleFaceSuggestionCard) -> some View {
+        HStack(spacing: 12) {
+            FaceCropAvatar(
+                previewURL: model.previewURL(for: card.suggestion.representativeFace.assetID, levels: [.grid, .medium, .micro]),
+                boundingBox: card.suggestion.representativeBoundingBox
+            )
+            VStack(alignment: .leading, spacing: 6) {
+                Text(card.countText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Text(card.title)
+                    .font(.caption.weight(.semibold))
+                Button(card.confirmActionTitle) {
+                    confirmFaceSuggestion(card)
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+                .help(card.isOneTapConfirm ? "Confirm these faces as \(card.confirmActionTitle)" : "Name this face group")
+            }
+            Spacer(minLength: 0)
+            Button {
+                dismissFaceSuggestion(card)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Dismiss this face group")
+        }
+        .padding(12)
+        .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.white.opacity(0.07))
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture {
+            showFaceSuggestionPhotos(card)
+        }
+    }
+
+    private func nameSuggestionSheet(_ suggestion: PeopleFaceSuggestion) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Name Face Group")
+                .font(.headline.weight(.semibold))
+            TextField("Person name", text: $suggestionPersonName)
+                .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    namingSuggestion = nil
+                }
+                Button("Create") {
+                    confirmNamedFaceSuggestion(suggestion)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(suggestionPersonName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(18)
+        .frame(width: 320)
+    }
+
+    private func confirmFaceSuggestion(_ card: PeopleFaceSuggestionCard) {
+        if card.isOneTapConfirm {
+            do {
+                try model.confirmPeopleFaceSuggestion(card.suggestion)
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
+        } else {
+            suggestionPersonName = ""
+            namingSuggestion = card.suggestion
+        }
+    }
+
+    private func confirmNamedFaceSuggestion(_ suggestion: PeopleFaceSuggestion) {
+        do {
+            try model.confirmPeopleFaceSuggestion(suggestion, personName: suggestionPersonName)
+            namingSuggestion = nil
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func dismissFaceSuggestion(_ card: PeopleFaceSuggestionCard) {
+        do {
+            try model.dismissPeopleFaceSuggestion(card.suggestion)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func showFaceSuggestionPhotos(_ card: PeopleFaceSuggestionCard) {
+        do {
+            try model.showPeopleFaceSuggestionPhotos(card.suggestion)
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -331,13 +452,17 @@ struct PeoplePresentation: Equatable {
     var photosWithDetectedFaces: Int
     var photosWithFaceQualitySignals: Int
     var scanAction: PeopleScanAction?
+    var faceSuggestions: [PeopleFaceSuggestion]
+    var faceObservationAssetCount: Int
     private var faceSignalKind: EvaluationKind?
 
     init(
         totalAssetCount: Int,
         namedPeople: [CatalogPerson] = [],
         evaluationSummaries: [CatalogEvaluationKindSummary],
-        canRequestCurrentScopeFaceScan: Bool = false
+        canRequestCurrentScopeFaceScan: Bool = false,
+        faceSuggestions: [PeopleFaceSuggestion] = [],
+        faceObservationAssetCount: Int = 0
     ) {
         self.totalAssetCount = totalAssetCount
         self.namedPeople = namedPeople.map { NamedPersonPresentation(person: $0) }
@@ -352,6 +477,8 @@ struct PeoplePresentation: Equatable {
             detail: "Runs local Apple Vision on cached previews for the current catalog or search scope.",
             systemImage: "viewfinder"
         ) : nil
+        self.faceSuggestions = faceSuggestions
+        self.faceObservationAssetCount = faceObservationAssetCount
     }
 
     var headerSummary: String {
@@ -376,6 +503,12 @@ struct PeoplePresentation: Equatable {
     }
 
     var reviewStripTitle: String {
+        if !faceSuggestions.isEmpty {
+            let totalFaces = faceSuggestions.reduce(0) { $0 + $1.faceIDs.count }
+            return totalFaces == 1
+                ? "TESTSTRIP · 1 FACE NEEDS A NAME"
+                : "TESTSTRIP · \(totalFaces) FACES NEED A NAME"
+        }
         guard photosWithFaceSignals > 0 else {
             return "TESTSTRIP · NO FACE REVIEW SIGNALS"
         }
@@ -383,6 +516,16 @@ struct PeoplePresentation: Equatable {
     }
 
     var reviewStripStatusText: String {
+        if !faceSuggestions.isEmpty {
+            let matchCount = faceSuggestions.filter { $0.kind != .newPerson }.count
+            if matchCount > 0 {
+                return matchCount == 1
+                    ? "1 group matches confirmed people"
+                    : "\(matchCount) groups match confirmed people"
+            }
+            let clusterCount = faceSuggestions.count
+            return clusterCount == 1 ? "1 new group" : "\(clusterCount) new groups"
+        }
         let reviewQueueCount = reviewCards.count
         if reviewQueueCount > 0 {
             return reviewQueueCount == 1 ? "1 queue" : "\(reviewQueueCount) queues"
@@ -394,13 +537,47 @@ struct PeoplePresentation: Equatable {
     }
 
     var reviewStripDetail: String {
+        if !faceSuggestions.isEmpty {
+            return "Face groups are provisional until you confirm. Confirming writes people to the catalog; dismissing hides the group."
+        }
         guard photosWithFaceSignals > 0 else {
             return "Run evaluation on catalog photos to populate local face review queues."
+        }
+        if faceObservationAssetCount == 0 {
+            return "Face signals predate grouping; run Scan current scope to compute face embeddings."
         }
         if photosWithFaceQualitySignals > 0 {
             return "\(Self.photoCountDescription(photosWithFaceQualitySignals)) have face-quality signals; review queues can be named from selected photos."
         }
         return "\(Self.photoCountDescription(photosWithDetectedFaces)) have local face detections; review queues can be named from selected photos."
+    }
+
+    var suggestionCards: [PeopleFaceSuggestionCard] {
+        faceSuggestions.map { suggestion in
+            let faces = suggestion.faceIDs.count
+            let photos = suggestion.assetIDs.count
+            let countText = "\(faces) \(faces == 1 ? "face" : "faces") · \(photos) \(photos == 1 ? "photo" : "photos")"
+            switch suggestion.kind {
+            case .matchExisting(_, let personName):
+                return PeopleFaceSuggestionCard(
+                    id: suggestion.id,
+                    title: "Is this \(personName)?",
+                    countText: countText,
+                    confirmActionTitle: personName,
+                    isOneTapConfirm: true,
+                    suggestion: suggestion
+                )
+            case .newPerson:
+                return PeopleFaceSuggestionCard(
+                    id: suggestion.id,
+                    title: "Who is this?",
+                    countText: countText,
+                    confirmActionTitle: "Name…",
+                    isOneTapConfirm: false,
+                    suggestion: suggestion
+                )
+            }
+        }
     }
 
     var reviewCards: [PeopleReviewCard] {
@@ -467,7 +644,7 @@ struct PeoplePresentation: Equatable {
     }
 
     var deferredFaceActionStatus: String {
-        "Automatic clustering, split, and face-box naming are deferred; manual naming and merge are available now."
+        "Split person and face-box naming are deferred; automatic grouping suggestions, one-tap confirm, manual naming, and merge are available now."
     }
 
     private static func photoCountDescription(_ count: Int) -> String {
@@ -508,6 +685,15 @@ struct NamedPersonPresentation: Equatable, Identifiable {
     var countText: String {
         assetCount == 1 ? "1 confirmed photo" : "\(assetCount) confirmed photos"
     }
+}
+
+struct PeopleFaceSuggestionCard: Equatable, Identifiable {
+    var id: String
+    var title: String
+    var countText: String
+    var confirmActionTitle: String
+    var isOneTapConfirm: Bool
+    var suggestion: PeopleFaceSuggestion
 }
 
 struct PeopleReviewCard: Equatable, Identifiable {

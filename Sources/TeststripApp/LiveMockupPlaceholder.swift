@@ -68,14 +68,14 @@ public enum LiveMockupPlaceholders {
         id: "sidebar.people",
         title: "People navigation",
         intendedBehavior: "Browse face groups and named people once people recognition and grouping are productized.",
-        currentFallback: "Selectable People route with an unnamed face review strip, Apple Vision scan action for cached previews in the current scope, face-review strip affordances backed by real face signals, manual Name selection confirmation, selected-photo face-review dismissal, persisted named people rows, and manual merge between confirmed people; automatic clustering, split, and face-box-level naming remain disabled."
+        currentFallback: "Selectable People route with a faces-need-a-name band of automatic grouping suggestions over persisted face embeddings, one-tap confirm for matches to confirmed people, name-the-group confirmation for new clusters, per-group dismissal, Apple Vision scan action for cached previews in the current scope, manual Name selection confirmation, selected-photo face-review dismissal, persisted named people rows, and manual merge between confirmed people; suggestions stay provisional until confirmed, and split and face-box-level naming remain disabled."
     )
 
     public static let peopleFaceActions = LiveMockupPlaceholder(
         id: "people.face-actions",
         title: "People face actions",
         intendedBehavior: "Confirm, name, merge, or dismiss face clusters created by local recognition.",
-        currentFallback: "Auto cluster, Split person, and Face-box naming remain disabled future actions; manual review handoff, Name selection, dismissal, persisted named people, and merge are live elsewhere in the People route."
+        currentFallback: "Confirm, name, and dismiss are live on automatic grouping suggestion cards; nothing is written until the user confirms, and Split person and face-box-level naming remain disabled future actions."
     )
 
     public static let foldersEmpty = LiveMockupPlaceholder(
@@ -297,7 +297,7 @@ public enum LiveMockupDesignSurfaces {
             title: "People",
             status: .partial,
             placeholder: .peopleSidebar,
-            currentImplementation: "People route is selectable and shows an unnamed face review strip, Apple Vision scan action for cached previews in the current scope, face-review strip affordances, catalog-backed review entrypoints, manual Name selection confirmation, selected-photo face-review dismissal, persisted named people rows, and manual merge between confirmed people; automatic clustering, split, and face-box-level naming remain disabled."
+            currentImplementation: "People route shows automatic grouping suggestions with one-tap confirm and dismiss backed by persisted per-face embeddings, plus the manual review strip, scan action, Name selection, face-review dismissal, persisted named people rows, and merge; suggestions are provisional until confirmed, and split and face-box-level naming remain disabled."
         ),
         LiveMockupDesignSurface(
             designID: "5b",

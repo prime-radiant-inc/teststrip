@@ -792,6 +792,73 @@ final class WorkerCommandExecutorTests: XCTestCase {
         ])
     }
 
+    func testRunEvaluationPersistsAndReplacesFaceObservationsFromFaceProviders() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-face-observations")
+        let source = root.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1200, height: 800)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+        try FileManager.default.createDirectory(at: previewURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try TestDirectories.writeTestJPEG(to: previewURL, width: 512, height: 340)
+        let provenance = ProviderProvenance(provider: "stub-faces", model: "stub", version: "1", settingsHash: "default")
+        let twoFaces = [
+            CatalogFaceObservation(
+                assetID: asset.id,
+                faceIndex: 0,
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                captureQuality: 0.9,
+                embedding: [1, 0],
+                provenance: provenance
+            ),
+            CatalogFaceObservation(
+                assetID: asset.id,
+                faceIndex: 1,
+                boundingBox: FaceBoundingBox(x: 0.5, y: 0.5, width: 0.2, height: 0.2),
+                captureQuality: nil,
+                embedding: [0, 1],
+                provenance: provenance
+            )
+        ]
+
+        let firstExecutor = WorkerCommandExecutor(
+            repository: repository,
+            previewCache: previewCache,
+            evaluationProviders: [StubFaceEvaluationProvider(
+                name: "stub-faces",
+                faceProvenance: provenance,
+                outcome: FaceEvaluationOutcome(signals: [], faceObservations: twoFaces)
+            )]
+        )
+        _ = try firstExecutor.execute(.runEvaluation(assetID: asset.id, provider: "stub-faces"))
+
+        XCTAssertEqual(try repository.faceObservations(assetID: asset.id), twoFaces)
+
+        let secondExecutor = WorkerCommandExecutor(
+            repository: repository,
+            previewCache: previewCache,
+            evaluationProviders: [StubFaceEvaluationProvider(
+                name: "stub-faces",
+                faceProvenance: provenance,
+                outcome: FaceEvaluationOutcome(signals: [], faceObservations: [twoFaces[0]])
+            )]
+        )
+        _ = try secondExecutor.execute(.runEvaluation(assetID: asset.id, provider: "stub-faces"))
+
+        XCTAssertEqual(try repository.faceObservations(assetID: asset.id), [twoFaces[0]])
+    }
+
     func testRuntimeConfigurationRegistersLocalImageMetricsProvider() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-runtime-evaluation")
         let source = root.appendingPathComponent("source.jpg")
@@ -1051,6 +1118,20 @@ private struct PreviewPathEvaluationProvider: EvaluationProvider {
                 provenance: ProviderProvenance(provider: name, model: "preview-path", version: "1", settingsHash: "default")
             )
         ]
+    }
+}
+
+private struct StubFaceEvaluationProvider: FaceObservationEvaluationProvider {
+    var name: String
+    var faceProvenance: ProviderProvenance
+    var outcome: FaceEvaluationOutcome
+
+    func evaluate(assetID: AssetID, previewURL: URL) throws -> [EvaluationSignal] {
+        outcome.signals
+    }
+
+    func evaluateWithFaces(assetID: AssetID, previewURL: URL) throws -> FaceEvaluationOutcome {
+        outcome
     }
 }
 

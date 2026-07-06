@@ -396,6 +396,52 @@ final class EvaluationProviderTests: XCTestCase {
         ])
     }
 
+    func testAppleVisionProviderMapsFacesToCatalogObservations() throws {
+        let faces = [
+            AppleVisionFaceObservation(
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.2, width: 0.3, height: 0.4),
+                captureQuality: 0.8,
+                featurePrintVector: [0.1, 0.2]
+            ),
+            AppleVisionFaceObservation(
+                boundingBox: FaceBoundingBox(x: 0.6, y: 0.5, width: 0.2, height: 0.25),
+                captureQuality: nil,
+                featurePrintVector: [0.9, 0.8]
+            )
+        ]
+        let provider = AppleVisionEvaluationProvider(analyzer: FakeAppleVisionAnalyzer(analysis: AppleVisionAnalysis(
+            faceCount: 2,
+            faceQualityScores: [0.8],
+            recognizedText: [],
+            classificationLabels: [],
+            imageFeaturePrintVector: [],
+            faces: faces
+        )))
+        let assetID = AssetID(rawValue: "asset-faces")
+
+        let outcome = try provider.evaluateWithFaces(assetID: assetID, previewURL: URL(fileURLWithPath: "/tmp/preview.jpg"))
+
+        XCTAssertEqual(outcome.signals, try provider.evaluate(assetID: assetID, previewURL: URL(fileURLWithPath: "/tmp/preview.jpg")))
+        XCTAssertEqual(outcome.faceObservations, [
+            CatalogFaceObservation(
+                assetID: assetID,
+                faceIndex: 0,
+                boundingBox: faces[0].boundingBox,
+                captureQuality: 0.8,
+                embedding: [0.1, 0.2],
+                provenance: AppleVisionEvaluationProvider.faceProvenance
+            ),
+            CatalogFaceObservation(
+                assetID: assetID,
+                faceIndex: 1,
+                boundingBox: faces[1].boundingBox,
+                captureQuality: nil,
+                embedding: [0.9, 0.8],
+                provenance: AppleVisionEvaluationProvider.faceProvenance
+            )
+        ])
+    }
+
     func testAppleVisionAnalyzerProducesImageFeaturePrintVector() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "apple-vision-feature-print")
         let previewURL = directory.appendingPathComponent("preview.jpg")
@@ -404,6 +450,41 @@ final class EvaluationProviderTests: XCTestCase {
         let analysis = try AppleVisionAnalyzer().analyze(previewURL: previewURL)
 
         XCTAssertFalse(analysis.imageFeaturePrintVector.isEmpty)
+    }
+
+    func testPaddedRegionOfInterestExpandsAndClampsFaceBox() {
+        let padded = AppleVisionAnalyzer.paddedRegionOfInterest(
+            FaceBoundingBox(x: 0.4, y: 0.4, width: 0.2, height: 0.2),
+            padding: 0.25
+        )
+        XCTAssertEqual(padded.origin.x, 0.35, accuracy: 0.0001)
+        XCTAssertEqual(padded.origin.y, 0.35, accuracy: 0.0001)
+        XCTAssertEqual(padded.width, 0.3, accuracy: 0.0001)
+        XCTAssertEqual(padded.height, 0.3, accuracy: 0.0001)
+
+        let clamped = AppleVisionAnalyzer.paddedRegionOfInterest(
+            FaceBoundingBox(x: 0.0, y: 0.9, width: 0.2, height: 0.2),
+            padding: 0.25
+        )
+        XCTAssertGreaterThanOrEqual(clamped.minX, 0)
+        XCTAssertGreaterThanOrEqual(clamped.minY, 0)
+        XCTAssertLessThanOrEqual(clamped.maxX, 1)
+        XCTAssertLessThanOrEqual(clamped.maxY, 1)
+
+        XCTAssertEqual(
+            AppleVisionAnalyzer.paddedRegionOfInterest(FaceBoundingBox(x: 0.5, y: 0.5, width: 0, height: 0)),
+            CGRect(x: 0, y: 0, width: 1, height: 1)
+        )
+    }
+
+    func testAppleVisionAnalyzerFaceObservationsMatchFaceCount() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "apple-vision-face-observations")
+        let previewURL = directory.appendingPathComponent("preview.jpg")
+        try TestDirectories.writeTestJPEG(to: previewURL, width: 128, height: 128)
+
+        let analysis = try AppleVisionAnalyzer().analyze(previewURL: previewURL)
+
+        XCTAssertEqual(analysis.faces.count, analysis.faceCount)
     }
 
     func testEvaluationValuesRoundTripThroughJSON() throws {
