@@ -6920,6 +6920,28 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.suggestedSavedSearchName, "Likely Issues")
     }
 
+    func testPotentialPicksReviewQueueFiltersToLikelyKeepersWithoutWritingFlags() throws {
+        let strong = makeAsset(id: "potential-strong", path: "/Photos/Job/strong.cr2", rating: 0)
+        let weak = makeAsset(id: "potential-weak", path: "/Photos/Job/weak.cr2", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "potential-picks-queue",
+            assets: [strong, weak]
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: strong.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: weak.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance)
+        ])
+
+        try model.selectSidebarTarget(.reviewQueue(.potentialPicks))
+
+        XCTAssertEqual(model.assets.map(\.id), [strong.id])
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertTrue(model.potentialPicksFilter)
+        XCTAssertNil(try repository.asset(id: strong.id).metadata.flag)
+        XCTAssertEqual(model.suggestedSavedSearchName, "Potential Picks")
+    }
+
     func testApplyingSmartCollectionRulePresetNarrowsCurrentQuery() throws {
         let keeper = makeAsset(
             id: "keeper",

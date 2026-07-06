@@ -225,6 +225,7 @@ private struct IndexedCullingStack {
 
 public enum ReviewQueue: String, Equatable, Hashable, Sendable {
     case picks
+    case potentialPicks
     case rejects
     case fiveStars
     case needsKeywords
@@ -250,6 +251,8 @@ public extension ReviewQueue {
         switch self {
         case .picks:
             return ReviewQueuePresentation(title: "Picks", systemImage: "flag.fill")
+        case .potentialPicks:
+            return ReviewQueuePresentation(title: "Potential Picks", systemImage: "sparkles")
         case .rejects:
             return ReviewQueuePresentation(title: "Rejects", systemImage: "xmark.circle")
         case .fiveStars:
@@ -1214,6 +1217,7 @@ public final class AppModel {
     public var needsKeywordsFilter: Bool
     public var needsEvaluationFilter: Bool
     public var likelyIssuesFilter: Bool
+    public var potentialPicksFilter: Bool
     public var providerFailuresFilter: Bool
     public var metadataSyncPendingFilter: Bool
     public var metadataSyncConflictFilter: Bool
@@ -1907,6 +1911,9 @@ public final class AppModel {
         if likelyIssuesFilter {
             Self.append(ActiveLibraryFilterRow(title: "Likely Issues", target: .reviewQueue(.likelyIssues)), to: &rows)
         }
+        if potentialPicksFilter {
+            Self.append(ActiveLibraryFilterRow(title: "Potential Picks", target: .reviewQueue(.potentialPicks)), to: &rows)
+        }
         if providerFailuresFilter {
             Self.append(ActiveLibraryFilterRow(title: "Provider Failures", target: .reviewQueue(.providerFailures)), to: &rows)
         }
@@ -2184,6 +2191,9 @@ public final class AppModel {
         if likelyIssuesFilter {
             Self.append("Likely Issues", to: &parts)
         }
+        if potentialPicksFilter {
+            Self.append("Potential Picks", to: &parts)
+        }
         if providerFailuresFilter {
             Self.append("Provider Failures", to: &parts)
         }
@@ -2403,6 +2413,7 @@ public final class AppModel {
         self.needsKeywordsFilter = false
         self.needsEvaluationFilter = false
         self.likelyIssuesFilter = false
+        self.potentialPicksFilter = false
         self.providerFailuresFilter = false
         self.metadataSyncPendingFilter = false
         self.metadataSyncConflictFilter = false
@@ -6640,6 +6651,8 @@ public final class AppModel {
         switch queue {
         case .picks:
             flagFilter = .pick
+        case .potentialPicks:
+            potentialPicksFilter = true
         case .rejects:
             flagFilter = .reject
         case .fiveStars:
@@ -6984,6 +6997,8 @@ public final class AppModel {
             ActiveLibraryFilterRow(title: "Needs Evaluation", target: sidebarTarget(for: predicate))
         case .likelyIssue:
             ActiveLibraryFilterRow(title: "Likely Issues", target: sidebarTarget(for: predicate))
+        case .likelyPick:
+            ActiveLibraryFilterRow(title: "Potential Picks", target: sidebarTarget(for: predicate))
         case .evaluationFailure:
             ActiveLibraryFilterRow(title: "Provider Failures", target: sidebarTarget(for: predicate))
         case .metadataSyncPending:
@@ -7041,6 +7056,8 @@ public final class AppModel {
             .reviewQueue(.needsEvaluation)
         case .likelyIssue:
             .reviewQueue(.likelyIssues)
+        case .likelyPick:
+            .reviewQueue(.potentialPicks)
         case .evaluationFailure:
             .reviewQueue(.providerFailures)
         case .metadataSyncPending:
@@ -7141,6 +7158,11 @@ public final class AppModel {
         case .reviewQueue(.likelyIssues):
             if likelyIssuesFilter {
                 likelyIssuesFilter = false
+                removed = true
+            }
+        case .reviewQueue(.potentialPicks):
+            if potentialPicksFilter {
+                potentialPicksFilter = false
                 removed = true
             }
         case .reviewQueue(.providerFailures):
@@ -7326,6 +7348,9 @@ public final class AppModel {
         if likelyIssuesFilter {
             Self.append(.likelyIssue, to: &predicates)
         }
+        if potentialPicksFilter {
+            Self.append(.likelyPick, to: &predicates)
+        }
         if providerFailuresFilter {
             Self.append(.evaluationFailure, to: &predicates)
         }
@@ -7355,6 +7380,7 @@ public final class AppModel {
         needsKeywordsFilter = false
         needsEvaluationFilter = false
         likelyIssuesFilter = false
+        potentialPicksFilter = false
         providerFailuresFilter = false
         metadataSyncPendingFilter = false
         metadataSyncConflictFilter = false
@@ -7399,6 +7425,8 @@ public final class AppModel {
         case .unevaluated:
             "needs evaluation"
         case .likelyIssue:
+            nil
+        case .likelyPick:
             nil
         case .evaluationFailure:
             nil
@@ -8943,6 +8971,7 @@ public final class AppModel {
 
     private static let reviewQueueSidebarOrder: [ReviewQueue] = [
         .picks,
+        .potentialPicks,
         .rejects,
         .fiveStars,
         .needsKeywords,
@@ -8965,6 +8994,8 @@ public final class AppModel {
         switch queue {
         case .picks:
             return SetQuery(predicates: [.flag(.pick)])
+        case .potentialPicks:
+            return SetQuery(predicates: [.likelyPick])
         case .rejects:
             return SetQuery(predicates: [.flag(.reject)])
         case .fiveStars:

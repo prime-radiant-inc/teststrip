@@ -912,6 +912,36 @@ final class CatalogDatabaseTests: XCTestCase {
         )
     }
 
+    func testLikelyPickMatchesStrongUnflaggedFramesWithoutDefects() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-likely-pick")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let strong = Asset.testAsset(id: AssetID(rawValue: "strong"), path: "/Volumes/NAS/Job/strong.jpg", rating: 0)
+        let soft = Asset.testAsset(id: AssetID(rawValue: "soft"), path: "/Volumes/NAS/Job/soft.jpg", rating: 0)
+        let strongButBlurred = Asset.testAsset(id: AssetID(rawValue: "strong-blurred"), path: "/Volumes/NAS/Job/strong-blurred.jpg", rating: 0)
+        let alreadyPicked = Asset.testAsset(
+            id: AssetID(rawValue: "already-picked"),
+            path: "/Volumes/NAS/Job/already-picked.jpg",
+            metadata: AssetMetadata(flag: .pick)
+        )
+        let unread = Asset.testAsset(id: AssetID(rawValue: "unread"), path: "/Volumes/NAS/Job/unread.jpg", rating: 0)
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try repository.upsert([strong, soft, strongButBlurred, alreadyPicked, unread])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: strong.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: soft.id, kind: .focus, value: .score(0.55), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: strongButBlurred.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: strongButBlurred.id, kind: .motionBlur, value: .score(0.8), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: alreadyPicked.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance)
+        ])
+
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.likelyPick]), limit: 10).map(\.id),
+            [strong.id]
+        )
+    }
+
     func testSearchesAssetsWithTechnicalMetadataPredicates() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-search")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
