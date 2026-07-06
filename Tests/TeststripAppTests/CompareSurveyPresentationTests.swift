@@ -256,14 +256,14 @@ final class CompareSurveyPresentationTests: XCTestCase {
         ])
 
         XCTAssertEqual(metrics.map(\.title), ["Focus", "Motion blur", "Exposure"])
-        XCTAssertEqual(metrics.map(\.value), ["88%", "21%", "+0.5 EV"])
+        XCTAssertEqual(metrics.map(\.value), ["88%", "21%", "Bright +0.5"])
         XCTAssertEqual(metrics.map(\.tone), [.positive, .positive, .neutral])
         XCTAssertFalse(metrics.contains { metric in
             [metric.title, metric.value, metric.detail].contains { $0.localizedCaseInsensitiveContains("best") }
         })
     }
 
-    func testExposureRendersAsEVStyleDeltaWhileFocusStaysPercentage() {
+    func testExposureRendersAsBrightnessDeltaWhileFocusStaysPercentage() {
         let assetID = AssetID(rawValue: "exposure-frame")
         let provenance = ProviderProvenance(
             provider: "local-image-metrics",
@@ -282,16 +282,16 @@ final class CompareSurveyPresentationTests: XCTestCase {
             EvaluationSignal(assetID: assetID, kind: .exposure, value: .score(0.5), confidence: 1.0, provenance: provenance)
         ])
 
-        XCTAssertEqual(overexposed.map(\.value), ["+1.6 EV"])
-        XCTAssertEqual(underexposed.map(\.value), ["-1.6 EV"])
-        XCTAssertEqual(neutral.map(\.value), ["0.0 EV"])
+        XCTAssertEqual(overexposed.map(\.value), ["Bright +1.6"])
+        XCTAssertEqual(underexposed.map(\.value), ["Dark -1.6"])
+        XCTAssertEqual(neutral.map(\.value), ["Balanced"])
 
         let combined = CompareFocusMetricPresentation.metrics(for: [
             EvaluationSignal(assetID: assetID, kind: .focus, value: .score(0.72), confidence: 0.81, provenance: provenance),
             EvaluationSignal(assetID: assetID, kind: .exposure, value: .score(0.2), confidence: 1.0, provenance: provenance)
         ])
         XCTAssertEqual(combined.map(\.title), ["Focus", "Exposure"])
-        XCTAssertEqual(combined.map(\.value), ["72%", "-1.2 EV"])
+        XCTAssertEqual(combined.map(\.value), ["72%", "Dark -1.2"])
     }
 
     func testFocusMetricsIncludeLocalFramingAndAestheticScores() {
