@@ -7958,7 +7958,8 @@ public final class AppModel {
         sourceRootBookmarkRepairPaths: Set<String>
     ) -> [SidebarRow] {
         let summariesByAvailability = Dictionary(uniqueKeysWithValues: summaries.map { ($0.availability, $0) })
-        var rows: [SidebarRow] = sourceAvailabilitySidebarOrder.compactMap { availability in
+        var rows = sourceRootSidebarRows(sourceRoots)
+        rows.append(contentsOf: sourceAvailabilitySidebarOrder.compactMap { availability in
             guard let summary = summariesByAvailability[availability], summary.assetCount > 0 else { return nil }
             return SidebarRow(
                 id: "source-availability-\(availability.rawValue)",
@@ -7967,12 +7968,32 @@ public final class AppModel {
                 tone: availability == .stale ? .warning : .destructive,
                 target: .sourceAvailability(availability)
             )
-        }
+        })
         rows.append(contentsOf: sourceBookmarkRepairSidebarRows(
             sourceRoots: sourceRoots,
             sourceRootBookmarkRepairPaths: sourceRootBookmarkRepairPaths
         ))
         return rows
+    }
+
+    private static func sourceRootSidebarRows(_ sourceRoots: [CatalogSourceRoot]) -> [SidebarRow] {
+        sourceRoots
+            .filter { $0.assetCount > 0 }
+            .map { sourceRoot in
+                SidebarRow(
+                    id: "source-root-\(sourceRoot.path)",
+                    title: sourceRoot.name,
+                    detailText: sourceRoot.path,
+                    countText: sidebarCountText(sourceRoot.assetCount),
+                    tone: sourceRoot.unavailableAssetCount > 0 ? .warning : .neutral,
+                    target: .folder(sourceRootFolderPrefix(sourceRoot.path))
+                )
+            }
+    }
+
+    private static func sourceRootFolderPrefix(_ path: String) -> String {
+        guard path != "/" else { return path }
+        return path.hasSuffix("/") ? path : "\(path)/"
     }
 
     private static func sourceBookmarkRepairSidebarRows(

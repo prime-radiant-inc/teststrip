@@ -4519,6 +4519,35 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 2)
     }
 
+    func testLoadExposesSourceRootRowsInSidebarAndSelectingRootFiltersCatalog() throws {
+        let archiveRoot = URL(fileURLWithPath: "/Volumes/Archive")
+        let archiveJob = makeAsset(id: "archive-job", path: "/Volumes/Archive/Job/frame-1.cr2", rating: 4)
+        let archiveTravel = makeAsset(id: "archive-travel", path: "/Volumes/Archive/Travel/frame-2.cr2", rating: 5)
+        let local = makeAsset(id: "local", path: "/Users/jesse/Pictures/frame-3.jpg", rating: 5)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-source-root-sidebar",
+            assets: [archiveJob, archiveTravel, local],
+            configureRepository: { repository in
+                try repository.recordSourceRoot(archiveRoot)
+            }
+        )
+
+        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
+        let sourceRootRow = try XCTUnwrap(sourceSection.rows.first { $0.title == "Archive" })
+
+        XCTAssertEqual(sourceRootRow.detailText, archiveRoot.path)
+        XCTAssertEqual(sourceRootRow.countText, "2")
+        XCTAssertTrue(sourceRootRow.isSelectable)
+        XCTAssertEqual(sourceRootRow.target, .folder("/Volumes/Archive/"))
+
+        try model.selectSidebarRow(sourceRootRow)
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.folderFilterText, "/Volumes/Archive/")
+        XCTAssertEqual(model.assets.map(\.id), [archiveJob.id, archiveTravel.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
+    }
+
     func testLoadExposesSourceBookmarkRepairRowsInSidebar() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-source-bookmark-repair-sidebar")
         let sourceRoot = directory.appendingPathComponent("photos", isDirectory: true)
@@ -4590,7 +4619,11 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(result.reconnectedAssetCount, 1)
         XCTAssertEqual(model.assets.map(\.originalURL), [newOriginalURL])
         XCTAssertEqual(model.assets.map(\.availability), [.online])
-        XCTAssertNil(model.sidebarSections.first { $0.title == "Sources" })
+        let reconnectedSourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
+        let reconnectedSourceRow = try XCTUnwrap(reconnectedSourceSection.rows.first { $0.title == "MountedArchive" })
+        XCTAssertEqual(reconnectedSourceRow.detailText, newRoot.path)
+        XCTAssertEqual(reconnectedSourceRow.countText, "1")
+        XCTAssertEqual(reconnectedSourceRow.target, .folder("\(newRoot.path)/"))
         XCTAssertEqual(model.statusMessage, "Reconnected 1 source")
     }
 
