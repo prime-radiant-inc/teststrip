@@ -1453,6 +1453,21 @@ public final class AppModel {
         return hasCachedPreview(for: selectedAssetID)
     }
 
+    public func canRetrySelectedProviderFailure(provider: String) -> Bool {
+        guard workerSupervisor != nil,
+              let selectedAssetID,
+              selectedProviderFailures.contains(where: { $0.provider == provider }),
+              hasCachedPreview(for: selectedAssetID) else {
+            return false
+        }
+        let itemID = WorkSessionID(rawValue: "evaluation-\(selectedAssetID.rawValue)-\(provider)")
+        if let existingItem = backgroundWorkQueue.item(id: itemID),
+           Self.isActiveBackgroundWorkStatus(existingItem.status) {
+            return false
+        }
+        return true
+    }
+
     public var canRequestVisibleAssetEvaluations: Bool {
         workerSupervisor != nil && assets.contains { hasCachedPreview(for: $0.id) }
     }

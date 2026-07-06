@@ -8038,6 +8038,31 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testSelectedProviderFailureRetryRequiresMatchingFailureCachedPreviewAndInactiveWork() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let asset = makeAsset(id: "provider-failure-retry-state", path: "/Photos/provider-failure-retry-state.jpg", rating: 0, keywords: ["tagged"])
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "provider-failure-retry-state",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        try repository.recordEvaluationFailure(assetID: asset.id, provider: "local-http-model", message: "model timed out")
+
+        XCTAssertFalse(model.canRetrySelectedProviderFailure(provider: "local-http-model"))
+
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
+        XCTAssertTrue(model.canRetrySelectedProviderFailure(provider: "local-http-model"))
+        XCTAssertFalse(model.canRetrySelectedProviderFailure(provider: "apple-vision"))
+
+        try model.retrySelectedProviderFailure(provider: "local-http-model")
+
+        XCTAssertFalse(model.canRetrySelectedProviderFailure(provider: "local-http-model"))
+    }
+
     func testRequestVisibleAssetEvaluationsDispatchesForLoadedAssets() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

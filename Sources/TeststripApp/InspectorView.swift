@@ -477,6 +477,7 @@ struct InspectorView: View {
                     Label(presentation.actionLabel(for: failure), systemImage: "arrow.clockwise")
                 }
                 .controlSize(.small)
+                .disabled(!model.canRetrySelectedProviderFailure(provider: failure.provider))
             }
         }
     }
