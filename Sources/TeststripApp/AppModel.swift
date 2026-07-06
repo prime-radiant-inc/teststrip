@@ -1091,6 +1091,9 @@ public final class AppModel {
     private var activeImportTask: Task<AppImportOutput, Error>?
 
     @ObservationIgnored
+    private var displayedLocalImportCatalogedAssetID: AssetID?
+
+    @ObservationIgnored
     private var workerImportContextsByItemID: [WorkSessionID: WorkerImportContext]
 
     @ObservationIgnored
@@ -7569,6 +7572,7 @@ public final class AppModel {
     }
 
     private func startImportActivity(folderURL: URL, destinationRoot: URL? = nil) {
+        displayedLocalImportCatalogedAssetID = nil
         let activity = AppWorkActivity(
             kind: .ingest,
             status: .running,
@@ -7600,9 +7604,11 @@ public final class AppModel {
     }
 
     fileprivate func applyImportProgress(_ progress: LibraryImportProgress) {
-        if let firstCatalogedAssetID = progress.catalogedAssetIDs.first {
+        if displayedLocalImportCatalogedAssetID == nil,
+           let firstCatalogedAssetID = progress.catalogedAssetIDs.first {
             do {
                 try loadCatalogPage(preferredSelection: firstCatalogedAssetID)
+                displayedLocalImportCatalogedAssetID = firstCatalogedAssetID
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -7642,6 +7648,7 @@ public final class AppModel {
         )
         refreshCatalogFolders()
         activeWork = nil
+        displayedLocalImportCatalogedAssetID = nil
         recordRecentActivity(activity, outputSetIDs: outputSetIDs)
         return outputSetIDs
     }
@@ -7726,6 +7733,7 @@ public final class AppModel {
             failureCount: 1
         )
         activeWork = nil
+        displayedLocalImportCatalogedAssetID = nil
         recordRecentActivity(activity)
     }
 
@@ -7741,6 +7749,7 @@ public final class AppModel {
             failureCount: 0
         )
         activeWork = nil
+        displayedLocalImportCatalogedAssetID = nil
         statusMessage = "Cancelled import"
         recordRecentActivity(activity)
     }

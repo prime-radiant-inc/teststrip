@@ -11812,6 +11812,80 @@ final class AppModelTests: XCTestCase {
         try await waitForActivityStatus(.cancelled, in: model)
     }
 
+    @MainActor
+    func testBackgroundImportKeepsFirstCatalogedAssetVisibleDuringLaterProgress() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-stable-early-asset")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let firstImage = photoFolder.appendingPathComponent("first.png")
+        let secondImage = photoFolder.appendingPathComponent("second.png")
+        try writeTestPNG(to: firstImage)
+        try writeTestPNG(to: secondImage)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let firstAsset = Asset(
+            id: AssetID(rawValue: "local-early-import-first"),
+            originalURL: firstImage,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let secondAsset = Asset(
+            id: AssetID(rawValue: "local-early-import-second"),
+            originalURL: secondImage,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 11, modificationDate: Date(timeIntervalSince1970: 11)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let model = try AppModel.load(
+            catalog: catalog,
+            importTaskFactory: { paths, _, progress in
+                Task.detached {
+                    let backgroundCatalog = try AppCatalog.open(paths: paths)
+                    try backgroundCatalog.repository.upsert(firstAsset)
+                    progress(LibraryImportProgress(
+                        completedUnitCount: 1,
+                        totalUnitCount: 2,
+                        detail: "Cataloging 1 of 2 photos",
+                        catalogedAssetIDs: [firstAsset.id]
+                    ))
+                    try await Task.sleep(nanoseconds: 20_000_000)
+                    try backgroundCatalog.repository.upsert(secondAsset)
+                    progress(LibraryImportProgress(
+                        completedUnitCount: 2,
+                        totalUnitCount: 2,
+                        detail: "Cataloging 2 of 2 photos",
+                        catalogedAssetIDs: [secondAsset.id]
+                    ))
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [firstAsset, secondAsset], previewFailures: []),
+                        assets: try backgroundCatalog.repository.allAssets(limit: 500),
+                        totalAssetCount: try backgroundCatalog.repository.assetCount()
+                    )
+                }
+            }
+        )
+
+        model.beginImportFolder(photoFolder)
+
+        try await waitForSelectedAsset(firstAsset.id, in: model)
+        try await waitForActiveWorkProgress(
+            completedUnitCount: 2,
+            totalUnitCount: 2,
+            detail: "Cataloging 2 of 2 photos",
+            in: model
+        )
+        XCTAssertEqual(model.selectedAssetID, firstAsset.id)
+        XCTAssertEqual(model.assets.map(\.id), [firstAsset.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+
+        model.cancelActiveWork()
+        try await waitForActivityStatus(.cancelled, in: model)
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-app-tests", isDirectory: true)
