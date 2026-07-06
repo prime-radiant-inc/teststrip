@@ -10,6 +10,7 @@ The default sidecar convention is collision-safe: append `.xmp` to the full orig
 
 - Supported portable fields are ratings, color labels, pick/reject flags, keywords, captions, creator, and copyright.
 - Sidecars are RDF/XMP packets using Adobe-compatible properties where they exist: `xmp:Rating`, `xmp:Label`, `dc:subject`, `dc:description`, `dc:creator`, and `dc:rights`. Pick/reject uses Teststrip's namespace because there is no common XMP pick-flag property.
+- Reading a sidecar maps the XMP Basic rejected sentinel `xmp:Rating="-1"` to Teststrip's reject flag with no star rating, taking precedence over a stale `ts:Pick`. Teststrip does not write the sentinel back; whether to write `-1` for interop is an open decision.
 - When a sidecar already exists, writeback replaces only the Teststrip-managed portable fields and preserves unrelated XMP properties.
 - When both `frame.cr2.xmp` and `frame.xmp` exist, Teststrip prefers `frame.cr2.xmp`. When an Adobe-style `frame.xmp` shares its basename with a RAW+JPEG or similar sibling pair, Teststrip reads `photoshop:SidecarForExtension`: if it case-insensitively names this original's extension the sidecar is treated as unambiguous and read/updated in place through the normal merge path. If it names a different extension, is absent, or the sidecar cannot be parsed, Teststrip ignores it and writes the collision-safe sidecar instead.
 - Successful sidecar writes store the last written XMP fingerprint in the catalog.

@@ -137,10 +137,16 @@ public struct XMPPacket: Equatable, Sendable {
             propertyLocalName: "subject",
             containerLocalName: "Bag"
         )
+        // XMP Basic uses xmp:Rating="-1" as the "rejected" sentinel. Teststrip represents
+        // rejection as a pick flag, so the sentinel maps to flag reject with no star rating
+        // and takes precedence over a stale ts:Pick left behind by an external rejection.
+        let parsedRating = try rating(from: Self.attribute(description, localName: "Rating", uri: Self.xmpNamespace))
+        let parsedFlag = try flag(from: Self.attribute(description, localName: "Pick", uri: Self.teststripNamespace))
+        let isRejectedSentinel = parsedRating == -1
         var metadata = try AssetMetadata.validated(
-            rating: try rating(from: Self.attribute(description, localName: "Rating", uri: Self.xmpNamespace)),
+            rating: isRejectedSentinel ? 0 : parsedRating,
             colorLabel: try colorLabel(from: Self.attribute(description, localName: "Label", uri: Self.xmpNamespace)),
-            flag: try flag(from: Self.attribute(description, localName: "Pick", uri: Self.teststripNamespace)),
+            flag: isRejectedSentinel ? .reject : parsedFlag,
             keywords: keywords
         )
         metadata.caption = Self.containerValues(

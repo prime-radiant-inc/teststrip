@@ -37,6 +37,27 @@ final class MetadataSyncTests: XCTestCase {
         )
     }
 
+    func testXMPPacketParsesRejectedSentinelRatingAsRejectFlag() throws {
+        let parsed = try XMPPacket.parse(standardXMP(attributes: "xmp:Rating=\"-1\""))
+
+        XCTAssertEqual(parsed.metadata.rating, 0)
+        XCTAssertEqual(parsed.metadata.flag, .reject)
+    }
+
+    func testXMPPacketParsesRejectedSentinelRatingOverExplicitPickFlag() throws {
+        let parsed = try XMPPacket.parse(standardXMP(attributes: "xmp:Rating=\"-1\" ts:Pick=\"pick\""))
+
+        XCTAssertEqual(parsed.metadata.rating, 0)
+        XCTAssertEqual(parsed.metadata.flag, .reject)
+    }
+
+    func testXMPPacketParseThrowsForNegativeRatingBelowRejectedSentinel() {
+        assertParseInvalidState(
+            standardXMP(attributes: "xmp:Rating=\"-2\""),
+            .invalidState("rating must be between 0 and 5")
+        )
+    }
+
     func testXMPPacketRoundTripsPortableMetadata() throws {
         let metadata = AssetMetadata(
             rating: 5,
