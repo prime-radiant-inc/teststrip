@@ -10,11 +10,13 @@ The default sidecar convention is collision-safe: append `.xmp` to the full orig
 
 - Supported portable fields are ratings, color labels, pick/reject flags, keywords, captions, creator, and copyright.
 - Sidecars are RDF/XMP packets using Adobe-compatible properties where they exist: `xmp:Rating`, `xmp:Label`, `dc:subject`, `dc:description`, `dc:creator`, and `dc:rights`. Pick/reject uses Teststrip's namespace because there is no common XMP pick-flag property.
+- Reading a sidecar maps the XMP Basic rejected sentinel `xmp:Rating="-1"` to Teststrip's reject flag with no star rating, taking precedence over a stale `ts:Pick`. Teststrip does not write the sentinel back; whether to write `-1` for interop is an open decision.
 - When a sidecar already exists, writeback replaces only the Teststrip-managed portable fields and preserves unrelated XMP properties.
-- When both `frame.cr2.xmp` and `frame.xmp` exist, Teststrip prefers `frame.cr2.xmp`. When an Adobe-style `frame.xmp` would be ambiguous because of a RAW+JPEG or similar sibling pair, Teststrip ignores it and writes the collision-safe sidecar instead.
+- When both `frame.cr2.xmp` and `frame.xmp` exist, Teststrip prefers `frame.cr2.xmp`. When an Adobe-style `frame.xmp` shares its basename with a RAW+JPEG or similar sibling pair, Teststrip reads `photoshop:SidecarForExtension`: if it case-insensitively names this original's extension the sidecar is treated as unambiguous and read/updated in place through the normal merge path. If it names a different extension, is absent, or the sidecar cannot be parsed, Teststrip ignores it and writes the collision-safe sidecar instead.
 - Successful sidecar writes store the last written XMP fingerprint in the catalog.
 - Failed sidecar writes do not roll back or block the catalog metadata edit.
 - Failed sidecar writes are recorded as pending sync items with the asset ID, sidecar path, catalog generation, and last synced fingerprint if one exists.
+- When a worker sync step fails because an existing sidecar cannot be parsed as XMP, the worker records an XMP conflict instead of a pending item, so the unreadable sidecar surfaces in conflict review with the Use Catalog recovery instead of retrying forever.
 - Worker-backed metadata edits record the pending sync item before enqueueing helper work, so a quit or crash after the catalog edit does not lose the required sidecar write.
 - Pending worker-backed writes without a previous sidecar checkpoint stay catalog-first: if an existing sidecar is older than the pending catalog write, the worker writes catalog metadata to the sidecar; if the sidecar is newer than the pending row, the worker records an XMP conflict instead of importing or overwriting silently.
 - `TeststripWorker` can execute `syncMetadata` for one asset: write missing/outdated sidecars from catalog metadata, import externally changed sidecars when the catalog generation is unchanged, and record conflicts when both catalog and sidecar changed.
@@ -25,4 +27,4 @@ The default sidecar convention is collision-safe: append `.xmp` to the full orig
 
 ## Next Work
 
-- Add user-facing conflict resolution for ambiguous Adobe-style sidecars if import/export interoperability testing shows photographers need to bind `frame.xmp` to a specific original in RAW+JPEG pairs.
+- Add user-facing conflict resolution for ambiguous Adobe-style sidecars that carry no `photoshop:SidecarForExtension` binding if interoperability testing shows photographers need to bind such a `frame.xmp` to a specific original in RAW+JPEG pairs.

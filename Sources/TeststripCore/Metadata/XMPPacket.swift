@@ -8,6 +8,7 @@ public struct XMPPacket: Equatable, Sendable {
     private static let xmpNamespace = "http://ns.adobe.com/xap/1.0/"
     private static let dcNamespace = "http://purl.org/dc/elements/1.1/"
     private static let teststripNamespace = "https://teststrip.app/xmp/1.0/"
+    private static let photoshopNamespace = "http://ns.adobe.com/photoshop/1.0/"
 
     public init(metadata: AssetMetadata) {
         self.metadata = metadata
@@ -136,10 +137,16 @@ public struct XMPPacket: Equatable, Sendable {
             propertyLocalName: "subject",
             containerLocalName: "Bag"
         )
+        // XMP Basic uses xmp:Rating="-1" as the "rejected" sentinel. Teststrip represents
+        // rejection as a pick flag, so the sentinel maps to flag reject with no star rating
+        // and takes precedence over a stale ts:Pick left behind by an external rejection.
+        let parsedRating = try rating(from: Self.attribute(description, localName: "Rating", uri: Self.xmpNamespace))
+        let parsedFlag = try flag(from: Self.attribute(description, localName: "Pick", uri: Self.teststripNamespace))
+        let isRejectedSentinel = parsedRating == -1
         var metadata = try AssetMetadata.validated(
-            rating: try rating(from: Self.attribute(description, localName: "Rating", uri: Self.xmpNamespace)),
+            rating: isRejectedSentinel ? 0 : parsedRating,
             colorLabel: try colorLabel(from: Self.attribute(description, localName: "Label", uri: Self.xmpNamespace)),
-            flag: try flag(from: Self.attribute(description, localName: "Pick", uri: Self.teststripNamespace)),
+            flag: isRejectedSentinel ? .reject : parsedFlag,
             keywords: keywords
         )
         metadata.caption = Self.containerValues(
@@ -158,6 +165,21 @@ public struct XMPPacket: Equatable, Sendable {
             containerLocalName: "Alt"
         ).first
         return XMPPacket(metadata: metadata)
+    }
+
+    /// Reads `photoshop:SidecarForExtension`, the attribute Adobe tools use to bind a basename-shared
+    /// sidecar such as `frame.xmp` to one original in a RAW+JPEG pair. Returns nil when the attribute
+    /// is absent or the data is not a readable XMP packet.
+    public static func sidecarForExtension(in data: Data) -> String? {
+        guard let document = try? XMLDocument(data: data),
+              let root = document.rootElement(),
+              root.localName == "xmpmeta",
+              root.uri == Self.xmpMetaNamespace,
+              let description = Self.rdfDescription(in: root)
+        else {
+            return nil
+        }
+        return attribute(description, localName: "SidecarForExtension", uri: Self.photoshopNamespace)
     }
 
     private static func addContainer(

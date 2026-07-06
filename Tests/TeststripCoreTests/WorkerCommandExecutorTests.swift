@@ -705,6 +705,53 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: setup.asset.originalURL), originalData)
     }
 
+    func testSyncMetadataCommandRecordsConflictWhenPendingWriteHitsUnparsableSidecar() throws {
+        let catalogMetadata = AssetMetadata(rating: 4, keywords: ["catalog"])
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-pending-unparsable-sidecar", metadata: catalogMetadata)
+        let foreignSidecarData = Data("""
+        <xmpmeta xmlns="https://teststrip.app/xmp">
+          <rating>2</rating>
+        </xmpmeta>
+        """.utf8)
+        try foreignSidecarData.write(to: setup.sidecarURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 100)],
+            ofItemAtPath: setup.sidecarURL.path
+        )
+        try setup.repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: setup.asset.id,
+            sidecarURL: setup.sidecarURL,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id),
+            lastSyncedFingerprint: nil
+        ))
+
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("metadata conflict for asset.raw"))
+        XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata, catalogMetadata)
+        XCTAssertEqual(try Data(contentsOf: setup.sidecarURL), foreignSidecarData)
+        XCTAssertEqual(try setup.repository.pendingMetadataSyncItems(), [])
+        XCTAssertEqual(try setup.repository.metadataSyncConflictItems().map(\.assetID), [setup.asset.id])
+    }
+
+    func testSyncMetadataCommandRecordsConflictWhenUnparsableSidecarCannotBeImported() throws {
+        let catalogMetadata = AssetMetadata(rating: 4, keywords: ["catalog"])
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-import-unparsable-sidecar", metadata: catalogMetadata)
+        let foreignSidecarData = Data("""
+        <xmpmeta xmlns="https://teststrip.app/xmp">
+          <rating>2</rating>
+        </xmpmeta>
+        """.utf8)
+        try foreignSidecarData.write(to: setup.sidecarURL)
+
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("metadata conflict for asset.raw"))
+        XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata, catalogMetadata)
+        XCTAssertEqual(try Data(contentsOf: setup.sidecarURL), foreignSidecarData)
+        XCTAssertEqual(try setup.repository.metadataSyncConflictItems().map(\.assetID), [setup.asset.id])
+    }
+
     func testRunEvaluationPersistsSignalsFromNamedProviderUsingCachedPreview() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-evaluation")
         let source = root.appendingPathComponent("source.jpg")
