@@ -5339,6 +5339,177 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.suggestedSavedSearchName, "ceremony Pick Canon portfolio")
     }
 
+    func testRemovingActiveLibraryFilterRowClearsExplicitFilterAndReloads() throws {
+        let keeper = makeAsset(
+            id: "keeper",
+            path: "/Photos/Wedding/ceremony-keeper.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let lowerRatedPick = makeAsset(
+            id: "lower-rated-pick",
+            path: "/Photos/Wedding/ceremony-lower-rated-pick.jpg",
+            rating: 3,
+            flag: .pick
+        )
+        let rejected = makeAsset(
+            id: "rejected",
+            path: "/Photos/Wedding/ceremony-rejected.jpg",
+            rating: 5,
+            flag: .reject
+        )
+        let travel = makeAsset(
+            id: "travel",
+            path: "/Photos/Travel/mountain.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "remove-explicit-active-filter",
+            assets: [keeper, lowerRatedPick, rejected, travel]
+        )
+
+        model.librarySearchText = "ceremony"
+        model.minimumRatingFilter = 5
+        model.flagFilter = .pick
+        try model.applyLibraryFilters()
+        let ratingRow = try XCTUnwrap(model.activeLibraryFilterRows.first { $0.title == "Rating >= 5" })
+
+        try model.removeActiveLibraryFilter(ratingRow)
+
+        XCTAssertNil(model.minimumRatingFilter)
+        XCTAssertEqual(model.librarySearchText, "ceremony")
+        XCTAssertEqual(model.flagFilter, .pick)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Search: ceremony", "Pick"])
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id, lowerRatedPick.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
+    }
+
+    func testRemovingParsedSearchChipRewritesSearchTextAndReloads() throws {
+        let keeper = makeAsset(
+            id: "keeper",
+            path: "/Photos/Wedding/ceremony-keeper.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let lowerRatedPick = makeAsset(
+            id: "lower-rated-pick",
+            path: "/Photos/Wedding/ceremony-lower-rated-pick.jpg",
+            rating: 3,
+            flag: .pick
+        )
+        let rejected = makeAsset(
+            id: "rejected",
+            path: "/Photos/Wedding/ceremony-rejected.jpg",
+            rating: 5,
+            flag: .reject
+        )
+        let travel = makeAsset(
+            id: "travel",
+            path: "/Photos/Travel/mountain.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "remove-parsed-active-filter",
+            assets: [keeper, lowerRatedPick, rejected, travel]
+        )
+
+        model.librarySearchText = "ceremony picks 5 stars"
+        try model.applyLibraryFilters()
+        let pickRow = try XCTUnwrap(model.activeLibraryFilterRows.first { $0.title == "Pick" })
+
+        try model.removeActiveLibraryFilter(pickRow)
+
+        XCTAssertEqual(model.librarySearchText, "ceremony rating:5")
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Search: ceremony", "Rating >= 5"])
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id, rejected.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
+    }
+
+    func testRemovingSavedSetFilterRowClearsSelectedSetScope() throws {
+        let ceremony = makeAsset(
+            id: "ceremony",
+            path: "/Photos/Wedding/ceremony.jpg",
+            rating: 5
+        )
+        let travel = makeAsset(
+            id: "travel",
+            path: "/Photos/Travel/mountain.jpg",
+            rating: 5
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "remove-saved-set-active-filter",
+            assets: [ceremony, travel]
+        )
+        let savedSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "ceremony-set"),
+            name: "Ceremony",
+            query: SetQuery(predicates: [.text("ceremony")])
+        )
+        try repository.upsert(savedSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: savedSet.id)
+        let setRow = try XCTUnwrap(model.activeLibraryFilterRows.first { $0.title == "Ceremony" })
+
+        try model.removeActiveLibraryFilter(setRow)
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertTrue(model.activeLibraryFilterChips.isEmpty)
+        XCTAssertEqual(model.assets.map(\.id), [ceremony.id, travel.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
+    }
+
+    func testRemovingSelectedDynamicSetRuleDetachesSetAndPreservesRemainingScope() throws {
+        let ceremonyPick = makeAsset(
+            id: "ceremony-pick",
+            path: "/Photos/Wedding/ceremony-pick.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let lowerRatedCeremonyPick = makeAsset(
+            id: "lower-rated-ceremony-pick",
+            path: "/Photos/Wedding/ceremony-lower-rated-pick.jpg",
+            rating: 3,
+            flag: .pick
+        )
+        let ceremonyReject = makeAsset(
+            id: "ceremony-reject",
+            path: "/Photos/Wedding/ceremony-reject.jpg",
+            rating: 5,
+            flag: .reject
+        )
+        let travelPick = makeAsset(
+            id: "travel-pick",
+            path: "/Photos/Travel/mountain.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "remove-dynamic-set-rule-active-filter",
+            assets: [ceremonyPick, lowerRatedCeremonyPick, ceremonyReject, travelPick]
+        )
+        let dynamicSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "ceremony-keepers"),
+            name: "Ceremony Keepers",
+            query: SetQuery(predicates: [.text("ceremony"), .ratingAtLeast(4)])
+        )
+        try repository.upsert(dynamicSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: dynamicSet.id)
+        try model.applySmartCollectionRulePreset(.picked)
+        let ratingRow = try XCTUnwrap(model.activeLibraryFilterRows.first { $0.title == "Rating >= 4" })
+
+        try model.removeActiveLibraryFilter(ratingRow)
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.librarySearchText, "ceremony")
+        XCTAssertEqual(model.flagFilter, .pick)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Search: ceremony", "Pick"])
+        XCTAssertEqual(model.assets.map(\.id), [ceremonyPick.id, lowerRatedCeremonyPick.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
+    }
+
     func testLikelyIssuesFilterNamesSavedSearchScope() {
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
         model.likelyIssuesFilter = true

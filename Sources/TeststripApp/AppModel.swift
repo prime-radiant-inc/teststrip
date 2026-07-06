@@ -5555,6 +5555,22 @@ public final class AppModel {
         try reload()
     }
 
+    public func removeActiveLibraryFilter(_ row: ActiveLibraryFilterRow) throws {
+        var removed = false
+        if let selectedAssetSet,
+           row.title == selectedAssetSet.name || row.target == .assetSet(selectedAssetSet.id) {
+            self.selectedAssetSetID = nil
+            removed = true
+        } else if removeSelectedDynamicSetRuleFilter(row) {
+            removed = true
+        } else {
+            removed = removeExplicitLibraryFilter(row) || removed
+            removed = removeLibrarySearchIntentFilter(row) || removed
+        }
+        guard removed else { return }
+        try reload()
+    }
+
     private func applyReviewQueue(_ queue: ReviewQueue) throws {
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
@@ -5972,6 +5988,188 @@ public final class AppModel {
         }
     }
 
+    private func removeExplicitLibraryFilter(_ row: ActiveLibraryFilterRow) -> Bool {
+        var removed = false
+        let trimmedKeyword = keywordFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if row.title == "Keyword: \(trimmedKeyword)" && !trimmedKeyword.isEmpty {
+            keywordFilterText = ""
+            removed = true
+        }
+        let trimmedFolder = folderFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if row.title == "Folder: \(URL(fileURLWithPath: trimmedFolder).lastPathComponent)" && !trimmedFolder.isEmpty {
+            folderFilterText = ""
+            removed = true
+        }
+        if row.title == "Rating >= \(minimumRatingFilter ?? 0)" && minimumRatingFilter != nil {
+            minimumRatingFilter = nil
+            removed = true
+        }
+        if row.title == flagFilter?.rawValue.capitalized {
+            flagFilter = nil
+            removed = true
+        }
+        if row.title == colorLabelFilter.map({ "\($0.rawValue.capitalized) Label" }) {
+            colorLabelFilter = nil
+            removed = true
+        }
+        let trimmedCamera = cameraFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if row.title == "Camera: \(trimmedCamera)" && !trimmedCamera.isEmpty {
+            cameraFilterText = ""
+            removed = true
+        }
+        let trimmedLens = lensFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if row.title == "Lens: \(trimmedLens)" && !trimmedLens.isEmpty {
+            lensFilterText = ""
+            removed = true
+        }
+        if row.title == "ISO >= \(minimumISOFilter ?? 0)" && minimumISOFilter != nil {
+            minimumISOFilter = nil
+            removed = true
+        }
+        if row.title == captureDateStartFilter.map({ "From \($0.formatted(date: .abbreviated, time: .omitted))" }) {
+            captureDateStartFilter = nil
+            removed = true
+        }
+        if row.title == captureDateEndFilter.map({ "Before \($0.formatted(date: .abbreviated, time: .omitted))" }) {
+            captureDateEndFilter = nil
+            removed = true
+        }
+        switch row.target {
+        case .reviewQueue(.picks):
+            if flagFilter == .pick {
+                flagFilter = nil
+                removed = true
+            }
+        case .reviewQueue(.rejects):
+            if flagFilter == .reject {
+                flagFilter = nil
+                removed = true
+            }
+        case .reviewQueue(.fiveStars):
+            if minimumRatingFilter == 5 {
+                minimumRatingFilter = nil
+                removed = true
+            }
+        case .reviewQueue(.needsKeywords):
+            if needsKeywordsFilter {
+                needsKeywordsFilter = false
+                removed = true
+            }
+        case .reviewQueue(.needsEvaluation):
+            if needsEvaluationFilter {
+                needsEvaluationFilter = false
+                removed = true
+            }
+        case .reviewQueue(.facesFound):
+            if evaluationKindFilter == .faceCount {
+                evaluationKindFilter = nil
+                removed = true
+            }
+        case .reviewQueue(.ocrFound):
+            if evaluationKindFilter == .ocrText {
+                evaluationKindFilter = nil
+                removed = true
+            }
+        case .reviewQueue(.likelyIssues):
+            if likelyIssuesFilter {
+                likelyIssuesFilter = false
+                removed = true
+            }
+        case .reviewQueue(.providerFailures):
+            if providerFailuresFilter {
+                providerFailuresFilter = false
+                removed = true
+            }
+        case .sourceAvailability(let availability):
+            if availabilityFilter == availability {
+                availabilityFilter = nil
+                removed = true
+            }
+        case .evaluationKind(let kind):
+            if evaluationKindFilter == kind {
+                evaluationKindFilter = nil
+                removed = true
+            }
+        case .metadataSyncPending:
+            if metadataSyncPendingFilter {
+                metadataSyncPendingFilter = false
+                removed = true
+            }
+        case .metadataSyncConflicts:
+            if metadataSyncConflictFilter {
+                metadataSyncConflictFilter = false
+                removed = true
+            }
+        default:
+            break
+        }
+        return removed
+    }
+
+    private func removeSelectedDynamicSetRuleFilter(_ row: ActiveLibraryFilterRow) -> Bool {
+        guard let selectedDynamicSetQuery else { return false }
+        var removed = false
+        let remainingPredicates = selectedDynamicSetQuery.predicates.filter { predicate in
+            guard let predicateRow = Self.activeLibraryFilterRow(for: predicate),
+                  predicateRow.title == row.title else {
+                return true
+            }
+            if let rowTarget = row.target {
+                let keepPredicate = predicateRow.target != rowTarget
+                removed = removed || !keepPredicate
+                return keepPredicate
+            }
+            removed = true
+            return false
+        }
+        guard removed else { return false }
+
+        selectedAssetSetID = nil
+        mergePredicatesIntoLibraryFilters(remainingPredicates)
+        return true
+    }
+
+    private func mergePredicatesIntoLibraryFilters(_ newPredicates: [SetQuery.Predicate]) {
+        let intent = LibrarySearchIntent.parse(librarySearchText)
+        var predicates = intent.predicates
+        for predicate in newPredicates {
+            Self.append(predicate, to: &predicates)
+        }
+        librarySearchText = Self.librarySearchText(residualText: intent.residualText, predicates: predicates)
+    }
+
+    private func removeLibrarySearchIntentFilter(_ row: ActiveLibraryFilterRow) -> Bool {
+        let intent = LibrarySearchIntent.parse(librarySearchText)
+        var residualText = intent.residualText
+        var predicates = intent.predicates
+        var removed = false
+
+        if let currentResidualText = residualText,
+           row.title == "Search: \(currentResidualText)" {
+            self.librarySearchText = ""
+            residualText = nil
+            removed = true
+        }
+
+        predicates.removeAll { predicate in
+            guard let predicateRow = Self.activeLibraryFilterRow(for: predicate),
+                  predicateRow.title == row.title else {
+                return false
+            }
+            if let rowTarget = row.target {
+                return predicateRow.target == rowTarget
+            }
+            return true
+        }
+        if predicates.count != intent.predicates.count {
+            removed = true
+        }
+
+        guard removed else { return false }
+        librarySearchText = Self.librarySearchText(residualText: residualText, predicates: predicates)
+        return true
+    }
+
     private func currentLibraryQuery() -> SetQuery? {
         var predicates: [SetQuery.Predicate] = []
         if let selectedDynamicSetQuery {
@@ -6065,6 +6263,65 @@ public final class AppModel {
         providerFailuresFilter = false
         metadataSyncPendingFilter = false
         metadataSyncConflictFilter = false
+    }
+
+    private static func librarySearchText(residualText: String?, predicates: [SetQuery.Predicate]) -> String {
+        ([residualText].compactMap { $0 } + predicates.compactMap(searchTextToken(for:)))
+            .joined(separator: " ")
+    }
+
+    private static func searchTextToken(for predicate: SetQuery.Predicate) -> String? {
+        switch predicate {
+        case .text(let text):
+            text
+        case .ratingAtLeast(let rating):
+            "rating:\(rating)"
+        case .flag(let flag):
+            flag == .pick ? "pick" : "reject"
+        case .colorLabel(let label):
+            "color:\(label.rawValue)"
+        case .keyword(let keyword):
+            "keyword:\(keyword)"
+        case .missingKeywords:
+            "needs keywords"
+        case .availability(let availability):
+            "source:\(availability.rawValue)"
+        case .folderPrefix(let path):
+            "folder:\(path)"
+        case .camera(let camera):
+            "camera:\(camera)"
+        case .lens(let lens):
+            "lens:\(lens)"
+        case .isoAtLeast(let iso):
+            "iso:\(iso)"
+        case .capturedAtOrAfter(let date):
+            "from:\(searchDateString(for: date))"
+        case .capturedBefore(let date):
+            "before:\(searchDateString(for: date))"
+        case .evaluationKind(let kind):
+            "signal:\(kind.rawValue)"
+        case .unevaluated:
+            "needs evaluation"
+        case .likelyIssue:
+            nil
+        case .evaluationFailure:
+            nil
+        case .metadataSyncPending:
+            "xmp:pending"
+        case .metadataSyncConflict:
+            "xmp:conflicts"
+        case .importBatch(let id):
+            "import:\(id)"
+        case .workSession(let id):
+            "session:\(id)"
+        }
+    }
+
+    private static func searchDateString(for date: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
     }
 
     private func currentLibraryAssetCount(repository: CatalogRepository) throws -> Int {

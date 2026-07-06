@@ -726,10 +726,17 @@ struct LibraryGridView: View {
                 Text("TESTSTRIP READS")
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.orange)
-                ForEach(model.activeLibraryFilterChips, id: \.self) { chip in
-                    Text(chip)
+                ForEach(model.activeLibraryFilterRows) { row in
+                    Button {
+                        removeActiveLibraryFilter(row)
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text(row.title)
+                                .lineLimit(1)
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .bold))
+                        }
                         .font(.caption.weight(.medium))
-                        .lineLimit(1)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
@@ -737,6 +744,10 @@ struct LibraryGridView: View {
                             RoundedRectangle(cornerRadius: 6)
                                 .strokeBorder(Color.orange.opacity(0.18))
                         }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remove filter \(row.title)")
+                    .help("Remove \(row.title) filter")
                 }
             }
             .padding(.horizontal, 12)
@@ -2097,6 +2108,14 @@ struct LibraryGridView: View {
     private func clearLibraryFilters() {
         do {
             try model.clearLibraryFilters()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func removeActiveLibraryFilter(_ row: ActiveLibraryFilterRow) {
+        do {
+            try model.removeActiveLibraryFilter(row)
         } catch {
             model.errorMessage = error.localizedDescription
         }
