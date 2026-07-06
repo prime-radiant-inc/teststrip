@@ -6,13 +6,17 @@ struct PeopleView: View {
 
     @State private var isNamingSelection = false
     @State private var personName = ""
+    @State private var namingSuggestion: PeopleFaceSuggestion?
+    @State private var suggestionPersonName = ""
 
     private var presentation: PeoplePresentation {
         PeoplePresentation(
             totalAssetCount: model.totalAssetCount,
             namedPeople: model.catalogPeople,
             evaluationSummaries: model.catalogEvaluationKindSummaries,
-            canRequestCurrentScopeFaceScan: model.canRequestPeopleFaceScan
+            canRequestCurrentScopeFaceScan: model.canRequestPeopleFaceScan,
+            faceSuggestions: model.peopleFaceSuggestions,
+            faceObservationAssetCount: model.peopleFaceObservationAssetCount
         )
     }
 
@@ -27,8 +31,14 @@ struct PeopleView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(nsColor: .textBackgroundColor).opacity(0.08))
+        .task {
+            model.refreshPeopleFaceSuggestions()
+        }
         .sheet(isPresented: $isNamingSelection) {
             nameSelectionSheet
+        }
+        .sheet(item: $namingSuggestion) { suggestion in
+            nameSuggestionSheet(suggestion)
         }
         .liveMockupPlaceholder(.peopleSidebar)
     }
@@ -70,6 +80,14 @@ struct PeopleView: View {
                 }
                 .controlSize(.small)
                 .help(scanAction.detail)
+            }
+
+            if !presentation.suggestionCards.isEmpty {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], alignment: .leading, spacing: 12) {
+                    ForEach(presentation.suggestionCards) { card in
+                        faceSuggestionCard(card)
+                    }
+                }
             }
 
             if presentation.reviewCards.isEmpty {
@@ -194,6 +212,109 @@ struct PeopleView: View {
         do {
             try model.confirmSelectedAssetsAsPerson(named: personName)
             isNamingSelection = false
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func faceSuggestionCard(_ card: PeopleFaceSuggestionCard) -> some View {
+        HStack(spacing: 12) {
+            FaceCropAvatar(
+                previewURL: model.previewURL(for: card.suggestion.representativeFace.assetID, levels: [.grid, .medium, .micro]),
+                boundingBox: card.suggestion.representativeBoundingBox
+            )
+            VStack(alignment: .leading, spacing: 6) {
+                Text(card.countText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Text(card.title)
+                    .font(.caption.weight(.semibold))
+                Button(card.confirmActionTitle) {
+                    confirmFaceSuggestion(card)
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+                .help(card.isOneTapConfirm ? "Confirm these faces as \(card.confirmActionTitle)" : "Name this face group")
+            }
+            Spacer(minLength: 0)
+            Button {
+                dismissFaceSuggestion(card)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Dismiss this face group")
+        }
+        .padding(12)
+        .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.white.opacity(0.07))
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture {
+            showFaceSuggestionPhotos(card)
+        }
+    }
+
+    private func nameSuggestionSheet(_ suggestion: PeopleFaceSuggestion) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Name Face Group")
+                .font(.headline.weight(.semibold))
+            TextField("Person name", text: $suggestionPersonName)
+                .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    namingSuggestion = nil
+                }
+                Button("Create") {
+                    confirmNamedFaceSuggestion(suggestion)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(suggestionPersonName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(18)
+        .frame(width: 320)
+    }
+
+    private func confirmFaceSuggestion(_ card: PeopleFaceSuggestionCard) {
+        if card.isOneTapConfirm {
+            do {
+                try model.confirmPeopleFaceSuggestion(card.suggestion)
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
+        } else {
+            suggestionPersonName = ""
+            namingSuggestion = card.suggestion
+        }
+    }
+
+    private func confirmNamedFaceSuggestion(_ suggestion: PeopleFaceSuggestion) {
+        do {
+            try model.confirmPeopleFaceSuggestion(suggestion, personName: suggestionPersonName)
+            namingSuggestion = nil
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func dismissFaceSuggestion(_ card: PeopleFaceSuggestionCard) {
+        do {
+            try model.dismissPeopleFaceSuggestion(card.suggestion)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func showFaceSuggestionPhotos(_ card: PeopleFaceSuggestionCard) {
+        do {
+            try model.showPeopleFaceSuggestionPhotos(card.suggestion)
         } catch {
             model.errorMessage = error.localizedDescription
         }
