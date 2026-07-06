@@ -10657,6 +10657,76 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .grid)
     }
 
+    func testLatestCompletedImportAppearsAsRecentlyAddedLibraryRow() throws {
+        let first = makeAsset(id: "latest-first", path: "/Volumes/Archive/Import/first.jpg", rating: 0)
+        let second = makeAsset(id: "latest-second", path: "/Volumes/Archive/Import/second.jpg", rating: 0)
+        let (model, _, _) = try makeModelWithCompletedImportSession(
+            named: "app-model-recently-added-row",
+            assets: [first, second],
+            outputAssetIDs: [first.id, second.id]
+        )
+
+        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
+        let recentlyAddedRow = try XCTUnwrap(librarySection.rows.first { $0.title == "Recently Added" })
+
+        XCTAssertEqual(librarySection.rowTitles.prefix(2), ["All Photographs", "Recently Added"])
+        XCTAssertEqual(recentlyAddedRow.detailText, "Imported 2 photos from Import")
+        XCTAssertEqual(recentlyAddedRow.countText, "2")
+        XCTAssertEqual(recentlyAddedRow.target, .workSession(WorkSessionID(rawValue: "latest-import-session")))
+    }
+
+    func testSelectingRecentlyAddedLibraryRowOpensLatestImportOutputSet() throws {
+        let first = makeAsset(id: "latest-first", path: "/Volumes/Archive/Import/first.jpg", rating: 0)
+        let second = makeAsset(id: "latest-second", path: "/Volumes/Archive/Import/second.jpg", rating: 0)
+        let unrelated = makeAsset(id: "unrelated", path: "/Volumes/Archive/Other/unrelated.jpg", rating: 0)
+        let (model, _, _) = try makeModelWithCompletedImportSession(
+            named: "app-model-recently-added-select",
+            assets: [first, second, unrelated],
+            outputAssetIDs: [first.id, second.id]
+        )
+        model.minimumRatingFilter = 5
+        try model.reload()
+        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
+        let recentlyAddedRow = try XCTUnwrap(librarySection.rows.first { $0.title == "Recently Added" })
+
+        try model.selectSidebarRow(recentlyAddedRow)
+
+        XCTAssertEqual(model.selectedAssetSetID, AssetSetID(rawValue: "latest-import-output"))
+        XCTAssertEqual(model.assets.map(\.id), [first.id, second.id])
+        XCTAssertNil(model.minimumRatingFilter)
+        XCTAssertEqual(model.selectedView, .grid)
+    }
+
+    func testCompletedImportWithoutOutputSetDoesNotShowRecentlyAddedLibraryRow() throws {
+        let asset = makeAsset(id: "no-output", path: "/Volumes/Archive/Import/no-output.jpg", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-recently-added-no-output",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.save(WorkSession(
+                    id: WorkSessionID(rawValue: "empty-import-session"),
+                    kind: .ingest,
+                    intent: "Import photos",
+                    title: "Import photos",
+                    detail: "No photos imported from Import",
+                    status: .completed,
+                    inputSetIDs: [],
+                    outputSetIDs: [],
+                    completedUnitCount: 0,
+                    totalUnitCount: 0,
+                    failureCount: 0,
+                    createdAt: Date(timeIntervalSince1970: 10),
+                    updatedAt: Date(timeIntervalSince1970: 20)
+                ))
+            }
+        )
+
+        XCTAssertNotNil(try? repository.session(id: WorkSessionID(rawValue: "empty-import-session")))
+        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
+
+        XCTAssertFalse(librarySection.rowTitles.contains("Recently Added"))
+    }
+
     func testLatestImportCompletionSummarySeparatesExistingReimportedPhotos() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-summary-reimport")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)

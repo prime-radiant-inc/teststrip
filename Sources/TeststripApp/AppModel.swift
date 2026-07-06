@@ -703,6 +703,7 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
     public var totalUnitCount: Int?
     public var failureCount: Int
     public var starred: Bool
+    public var outputSetIDs: [AssetSetID]
 
     public init(
         id: String = UUID().uuidString,
@@ -713,7 +714,8 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
         completedUnitCount: Int,
         totalUnitCount: Int?,
         failureCount: Int,
-        starred: Bool = false
+        starred: Bool = false,
+        outputSetIDs: [AssetSetID] = []
     ) {
         self.id = id
         self.kind = kind
@@ -724,6 +726,7 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
         self.totalUnitCount = totalUnitCount
         self.failureCount = failureCount
         self.starred = starred
+        self.outputSetIDs = outputSetIDs
     }
 
     public var showsProgress: Bool {
@@ -753,7 +756,8 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
             completedUnitCount: workSession.completedUnitCount,
             totalUnitCount: workSession.totalUnitCount,
             failureCount: workSession.failureCount,
-            starred: workSession.starred
+            starred: workSession.starred,
+            outputSetIDs: workSession.outputSetIDs
         )
     }
 }
@@ -7747,6 +7751,9 @@ public final class AppModel {
                 target: .allPhotographs
             )
         ]
+        if let recentlyAddedRow = recentlyAddedSidebarRow(recentWork) {
+            libraryRows.append(recentlyAddedRow)
+        }
         libraryRows.append(
             SidebarRow(
                 id: "library-search",
@@ -8020,6 +8027,24 @@ public final class AppModel {
         .moved,
         .stale
     ]
+
+    private static func recentlyAddedSidebarRow(_ recentWork: [AppWorkActivity]) -> SidebarRow? {
+        guard let activity = recentWork.first(where: { activity in
+            isImportCompletionActivity(activity)
+                && !activity.outputSetIDs.isEmpty
+                && (activity.totalUnitCount ?? activity.completedUnitCount) > 0
+        }) else {
+            return nil
+        }
+        return SidebarRow(
+            id: "library-recently-added",
+            title: "Recently Added",
+            detailText: activity.detail.isEmpty ? "Latest import" : activity.detail,
+            countText: sidebarCountText(activity.totalUnitCount ?? activity.completedUnitCount),
+            tone: .positive,
+            target: .workSession(WorkSessionID(rawValue: activity.id))
+        )
+    }
 
     private static func sourceAvailabilitySidebarTitle(_ availability: SourceAvailability) -> String {
         switch availability {

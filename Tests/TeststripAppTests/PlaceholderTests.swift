@@ -51,6 +51,16 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(export.currentImplementation.localizedCaseInsensitiveContains("out of scope"))
     }
 
+    func testStudioLedgerTracksRecentlyAddedLibraryRoute() throws {
+        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "library.studio" })
+        let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "1a" })
+
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Recently Added"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("import output"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("Recently Added"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("import output"))
+    }
+
     func testTimelineLedgerTracksBuiltYearRibbonAndFocusedScrubberControls() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "library.timeline" })
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "1c" })

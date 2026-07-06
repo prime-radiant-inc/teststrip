@@ -40,7 +40,7 @@ public enum LiveMockupPlaceholders {
         id: "library.studio",
         title: "Studio library direction",
         intendedBehavior: "Represent the refined classic pro layout with catalog navigation, adaptive grid, inspector, and quiet agentic affordances.",
-        currentFallback: "Main Library route with real catalog/sidebar/grid/inspector behavior and ongoing mockup-parity passes."
+        currentFallback: "Main Library route with real catalog/sidebar/grid/inspector behavior, selectable Recently Added import output, and ongoing mockup-parity passes."
     )
 
     public static let copilotLibrary = LiveMockupPlaceholder(
@@ -234,7 +234,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Studio",
             status: .partial,
             placeholder: .studioLibrary,
-            currentImplementation: "Main Library route has real catalog navigation, adaptive true-aspect grid cells, top chrome, and inspector passes; remaining work is deeper visual parity and density tuning."
+            currentImplementation: "Main Library route has real catalog navigation, selectable Recently Added import output, adaptive true-aspect grid cells, top chrome, and inspector passes; remaining work is deeper visual parity and density tuning."
         ),
         LiveMockupDesignSurface(
             designID: "1b",
