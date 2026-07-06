@@ -3327,6 +3327,7 @@ public final class AppModel {
 
         if summary.changedCount > 0 {
             metadataRedoStack.removeAll()
+            try updateActiveCullingSessionProgressAfterFlagChange()
         }
         return summary
     }

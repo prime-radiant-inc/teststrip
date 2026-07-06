@@ -536,6 +536,35 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.assets[8].metadata.flag)
     }
 
+    func testComparePickRejectRefreshesActiveCullingSessionProgressAndOutputSet() throws {
+        let assets = (0..<9).map { makeAsset(id: "compare-cull-action-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-cull-group-action",
+            assets: assets
+        )
+        let inputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "compare-cull-set"),
+            name: "Compare Cull Set",
+            assetIDs: assets.map(\.id)
+        )
+        try repository.upsert(inputSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: inputSet.id)
+        let startedSession = try model.beginCullingSession(named: "Compare Cull")
+        model.selectedView = .compare
+        model.select(assets[1].id)
+
+        try model.keepComparePrimaryAndRejectAlternates()
+
+        let session = try repository.session(id: startedSession.id)
+        XCTAssertEqual(session.status, .running)
+        XCTAssertEqual(session.completedUnitCount, 8)
+        XCTAssertEqual(session.totalUnitCount, 9)
+        XCTAssertEqual(session.detail, "Reviewed 8 of 9 frames · 1 pick · 7 rejects")
+        let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
+        XCTAssertEqual(assetIDs(in: try repository.assetSet(id: outputSetID)), [assets[1].id])
+    }
+
     func testKeepRecommendedCompareAssetRejectsCurrentCompareAlternatesOnly() throws {
         let assets = (0..<9).map { makeAsset(id: "compare-recommended-action-\($0)", size: Int64($0 + 1)) }
         let (model, repository) = try makeModelWithCatalogAssets(
