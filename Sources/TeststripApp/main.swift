@@ -91,96 +91,17 @@ private struct CullingCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Culling") {
-            Button("Previous Photo") {
-                applyShortcut(.previousPhoto)
+            ForEach(Array(CullingCommandMenuPresentation.sections.enumerated()), id: \.element.id) { index, section in
+                ForEach(section.items) { item in
+                    Button(item.title) {
+                        applyShortcut(item.shortcut)
+                    }
+                    .keyboardShortcut(item.key.keyEquivalent, modifiers: [])
+                }
+                if index < CullingCommandMenuPresentation.sections.count - 1 {
+                    Divider()
+                }
             }
-            .keyboardShortcut(.leftArrow, modifiers: [])
-
-            Button("Next Photo") {
-                applyShortcut(.nextPhoto)
-            }
-            .keyboardShortcut(.rightArrow, modifiers: [])
-
-            Divider()
-
-            Button("Clear Rating") {
-                applyShortcut(.rating(0))
-            }
-            .keyboardShortcut("0", modifiers: [])
-
-            Button("1 Star") {
-                applyShortcut(.rating(1))
-            }
-            .keyboardShortcut("1", modifiers: [])
-
-            Button("2 Stars") {
-                applyShortcut(.rating(2))
-            }
-            .keyboardShortcut("2", modifiers: [])
-
-            Button("3 Stars") {
-                applyShortcut(.rating(3))
-            }
-            .keyboardShortcut("3", modifiers: [])
-
-            Button("4 Stars") {
-                applyShortcut(.rating(4))
-            }
-            .keyboardShortcut("4", modifiers: [])
-
-            Button("5 Stars") {
-                applyShortcut(.rating(5))
-            }
-            .keyboardShortcut("5", modifiers: [])
-
-            Divider()
-
-            Button("Red Label") {
-                applyShortcut(.colorLabel(.red))
-            }
-            .keyboardShortcut("6", modifiers: [])
-
-            Button("Yellow Label") {
-                applyShortcut(.colorLabel(.yellow))
-            }
-            .keyboardShortcut("7", modifiers: [])
-
-            Button("Green Label") {
-                applyShortcut(.colorLabel(.green))
-            }
-            .keyboardShortcut("8", modifiers: [])
-
-            Button("Blue Label") {
-                applyShortcut(.colorLabel(.blue))
-            }
-            .keyboardShortcut("9", modifiers: [])
-
-            Button("Purple Label") {
-                applyShortcut(.colorLabel(.purple))
-            }
-            .keyboardShortcut("v", modifiers: [])
-
-            Button("Clear Label") {
-                applyShortcut(.colorLabel(nil))
-            }
-            .keyboardShortcut("-", modifiers: [])
-
-            Divider()
-
-            Button("Pick") {
-                applyShortcut(.pick)
-            }
-            .keyboardShortcut("p", modifiers: [])
-
-            Button("Reject") {
-                applyShortcut(.reject)
-            }
-            .keyboardShortcut("x", modifiers: [])
-
-            Button("Clear Flag") {
-                applyShortcut(.clearFlag)
-            }
-            .keyboardShortcut("u", modifiers: [])
         }
     }
 
@@ -189,6 +110,25 @@ private struct CullingCommands: Commands {
             try model.applyCullingShortcut(shortcut)
         } catch {
             model.errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private extension CullingShortcutKey {
+    var keyEquivalent: KeyEquivalent {
+        switch self {
+        case .leftArrow:
+            .leftArrow
+        case .rightArrow:
+            .rightArrow
+        case .upArrow:
+            .upArrow
+        case .downArrow:
+            .downArrow
+        case .returnKey:
+            .return
+        case .character(let character):
+            KeyEquivalent(Character(character))
         }
     }
 }

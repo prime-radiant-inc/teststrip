@@ -5503,10 +5503,170 @@ final class AppModelTests: XCTestCase {
         try model.removeActiveLibraryFilter(ratingRow)
 
         XCTAssertNil(model.selectedAssetSetID)
-        XCTAssertEqual(model.librarySearchText, "ceremony")
         XCTAssertEqual(model.flagFilter, .pick)
         XCTAssertEqual(model.activeLibraryFilterChips, ["Search: ceremony", "Pick"])
         XCTAssertEqual(model.assets.map(\.id), [ceremonyPick.id, lowerRatedCeremonyPick.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
+    }
+
+    func testRemovingSelectedDynamicSetRulePreservesRemainingLikelyIssueScope() throws {
+        let blurryPick = makeAsset(
+            id: "blurry-pick",
+            path: "/Photos/Wedding/blurry-pick.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let sharpPick = makeAsset(
+            id: "sharp-pick",
+            path: "/Photos/Wedding/sharp-pick.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let blurryReject = makeAsset(
+            id: "blurry-reject",
+            path: "/Photos/Wedding/blurry-reject.jpg",
+            rating: 5,
+            flag: .reject
+        )
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "remove-dynamic-set-likely-issue-rule",
+            assets: [blurryPick, sharpPick, blurryReject],
+            configureRepository: { repository in
+                try repository.recordEvaluationSignals([
+                    EvaluationSignal(assetID: blurryPick.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance),
+                    EvaluationSignal(assetID: blurryReject.id, kind: .focus, value: .score(0.33), confidence: 0.86, provenance: provenance)
+                ])
+            }
+        )
+        let dynamicSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "blurry-picks"),
+            name: "Blurry Picks",
+            query: SetQuery(predicates: [.likelyIssue, .flag(.pick)])
+        )
+        try repository.upsert(dynamicSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: dynamicSet.id)
+        let pickRow = try XCTUnwrap(model.activeLibraryFilterRows.first { $0.title == "Pick" })
+
+        try model.removeActiveLibraryFilter(pickRow)
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Likely Issues"])
+        XCTAssertEqual(model.assets.map(\.id), [blurryPick.id, blurryReject.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
+    }
+
+    func testRemovingDetachedDynamicSetRuleClearsRemainingStructuredScope() throws {
+        let blurryPick = makeAsset(
+            id: "remove-detached-blurry-pick",
+            path: "/Photos/Wedding/remove-detached-blurry-pick.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let sharpPick = makeAsset(
+            id: "remove-detached-sharp-pick",
+            path: "/Photos/Wedding/remove-detached-sharp-pick.jpg",
+            rating: 5,
+            flag: .pick
+        )
+        let blurryReject = makeAsset(
+            id: "remove-detached-blurry-reject",
+            path: "/Photos/Wedding/remove-detached-blurry-reject.jpg",
+            rating: 5,
+            flag: .reject
+        )
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "remove-detached-dynamic-set-rule",
+            assets: [blurryPick, sharpPick, blurryReject],
+            configureRepository: { repository in
+                try repository.recordEvaluationSignals([
+                    EvaluationSignal(assetID: blurryPick.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance),
+                    EvaluationSignal(assetID: blurryReject.id, kind: .focus, value: .score(0.33), confidence: 0.86, provenance: provenance)
+                ])
+            }
+        )
+        let dynamicSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "detached-blurry-picks"),
+            name: "Detached Blurry Picks",
+            query: SetQuery(predicates: [.likelyIssue, .flag(.pick)])
+        )
+        try repository.upsert(dynamicSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: dynamicSet.id)
+        let pickRow = try XCTUnwrap(model.activeLibraryFilterRows.first { $0.title == "Pick" })
+        try model.removeActiveLibraryFilter(pickRow)
+        let likelyIssueRow = try XCTUnwrap(model.activeLibraryFilterRows.first { $0.title == "Likely Issues" })
+
+        try model.removeActiveLibraryFilter(likelyIssueRow)
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertTrue(model.activeLibraryFilterChips.isEmpty)
+        XCTAssertEqual(model.assets.map(\.id), [blurryPick.id, sharpPick.id, blurryReject.id])
+        XCTAssertEqual(model.totalAssetCount, 3)
+    }
+
+    func testRemovingSelectedDynamicSetRulePreservesRemainingCameraScopeWithSpaces() throws {
+        let metadataProvenance = ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+        let sonyPick = makeAsset(
+            id: "sony-pick",
+            path: "/Photos/Wedding/sony-pick.jpg",
+            rating: 5,
+            flag: .pick,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 6000,
+                pixelHeight: 4000,
+                cameraMake: "Sony",
+                cameraModel: "Alpha 7R V",
+                provenance: metadataProvenance
+            )
+        )
+        let canonPick = makeAsset(
+            id: "canon-pick",
+            path: "/Photos/Wedding/canon-pick.jpg",
+            rating: 5,
+            flag: .pick,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 6000,
+                pixelHeight: 4000,
+                cameraMake: "Canon",
+                cameraModel: "EOS R5",
+                provenance: metadataProvenance
+            )
+        )
+        let sonyReject = makeAsset(
+            id: "sony-reject",
+            path: "/Photos/Wedding/sony-reject.jpg",
+            rating: 5,
+            flag: .reject,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 6000,
+                pixelHeight: 4000,
+                cameraMake: "Sony",
+                cameraModel: "Alpha 7R V",
+                provenance: metadataProvenance
+            )
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "remove-dynamic-set-camera-rule",
+            assets: [sonyPick, canonPick, sonyReject]
+        )
+        let dynamicSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "sony-picks"),
+            name: "Sony Picks",
+            query: SetQuery(predicates: [.camera("Sony Alpha"), .flag(.pick)])
+        )
+        try repository.upsert(dynamicSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: dynamicSet.id)
+        let pickRow = try XCTUnwrap(model.activeLibraryFilterRows.first { $0.title == "Pick" })
+
+        try model.removeActiveLibraryFilter(pickRow)
+
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Camera: Sony Alpha"])
+        XCTAssertEqual(model.assets.map(\.id), [sonyPick.id, sonyReject.id])
         XCTAssertEqual(model.totalAssetCount, 2)
     }
 

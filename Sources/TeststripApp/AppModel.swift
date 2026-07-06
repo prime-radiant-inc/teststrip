@@ -122,6 +122,65 @@ public enum CullingShortcutKey: Equatable, Sendable {
     case character(String)
 }
 
+public struct CullingCommandMenuItem: Equatable, Identifiable, Sendable {
+    public var title: String
+    public var shortcut: CullingShortcut
+    public var key: CullingShortcutKey
+
+    public var id: String { title }
+
+    public init(title: String, shortcut: CullingShortcut, key: CullingShortcutKey) {
+        self.title = title
+        self.shortcut = shortcut
+        self.key = key
+    }
+}
+
+public struct CullingCommandMenuSection: Equatable, Identifiable, Sendable {
+    public var title: String
+    public var items: [CullingCommandMenuItem]
+
+    public var id: String { title }
+
+    public init(title: String, items: [CullingCommandMenuItem]) {
+        self.title = title
+        self.items = items
+    }
+}
+
+public enum CullingCommandMenuPresentation {
+    public static let sections: [CullingCommandMenuSection] = [
+        CullingCommandMenuSection(title: "Navigation", items: [
+            CullingCommandMenuItem(title: "Previous Photo", shortcut: .previousPhoto, key: .leftArrow),
+            CullingCommandMenuItem(title: "Next Photo", shortcut: .nextPhoto, key: .rightArrow),
+            CullingCommandMenuItem(title: "Previous Stack", shortcut: .previousStack, key: .upArrow),
+            CullingCommandMenuItem(title: "Next Stack", shortcut: .nextStack, key: .downArrow),
+            CullingCommandMenuItem(title: "Accept Stack Selection", shortcut: .acceptStackSelection, key: .returnKey)
+        ]),
+        CullingCommandMenuSection(title: "Ratings", items: [
+            CullingCommandMenuItem(title: "Clear Rating", shortcut: .rating(0), key: .character("0")),
+            CullingCommandMenuItem(title: "1 Star", shortcut: .rating(1), key: .character("1")),
+            CullingCommandMenuItem(title: "2 Stars", shortcut: .rating(2), key: .character("2")),
+            CullingCommandMenuItem(title: "3 Stars", shortcut: .rating(3), key: .character("3")),
+            CullingCommandMenuItem(title: "4 Stars", shortcut: .rating(4), key: .character("4")),
+            CullingCommandMenuItem(title: "5 Stars", shortcut: .rating(5), key: .character("5"))
+        ]),
+        CullingCommandMenuSection(title: "Color Labels", items: [
+            CullingCommandMenuItem(title: "Red Label", shortcut: .colorLabel(.red), key: .character("6")),
+            CullingCommandMenuItem(title: "Yellow Label", shortcut: .colorLabel(.yellow), key: .character("7")),
+            CullingCommandMenuItem(title: "Green Label", shortcut: .colorLabel(.green), key: .character("8")),
+            CullingCommandMenuItem(title: "Blue Label", shortcut: .colorLabel(.blue), key: .character("9")),
+            CullingCommandMenuItem(title: "Purple Label", shortcut: .colorLabel(.purple), key: .character("v")),
+            CullingCommandMenuItem(title: "Clear Label", shortcut: .colorLabel(nil), key: .character("-"))
+        ]),
+        CullingCommandMenuSection(title: "Flags", items: [
+            CullingCommandMenuItem(title: "Pick", shortcut: .pick, key: .character("p")),
+            CullingCommandMenuItem(title: "Reject", shortcut: .reject, key: .character("x")),
+            CullingCommandMenuItem(title: "Clear Flag", shortcut: .clearFlag, key: .character("u"))
+        ])
+    ]
+}
+
 private enum CullingStackNavigationDirection {
     case previous
     case next
@@ -947,6 +1006,7 @@ public final class AppModel {
     public var providerFailuresFilter: Bool
     public var metadataSyncPendingFilter: Bool
     public var metadataSyncConflictFilter: Bool
+    private var detachedLibraryFilterPredicates: [SetQuery.Predicate]
     public var savedAssetSets: [AssetSet]
     public var assetSetCounts: [AssetSetID: Int]
     public var catalogFolders: [CatalogFolder]
@@ -1461,6 +1521,10 @@ public final class AppModel {
                 Self.append(row, to: &rows)
             }
         }
+        for predicate in detachedLibraryFilterPredicates {
+            guard let row = Self.activeLibraryFilterRow(for: predicate) else { continue }
+            Self.append(row, to: &rows)
+        }
         let searchIntent = LibrarySearchIntent.parse(librarySearchText)
         if let residualSearch = searchIntent.residualText {
             Self.append(ActiveLibraryFilterRow(title: "Search: \(residualSearch)"), to: &rows)
@@ -1877,6 +1941,7 @@ public final class AppModel {
         self.providerFailuresFilter = false
         self.metadataSyncPendingFilter = false
         self.metadataSyncConflictFilter = false
+        self.detachedLibraryFilterPredicates = []
         self.savedAssetSets = savedAssetSets
         self.assetSetCounts = assetSetCounts
         self.catalogFolders = catalogFolders
@@ -5564,6 +5629,7 @@ public final class AppModel {
         } else if removeSelectedDynamicSetRuleFilter(row) {
             removed = true
         } else {
+            removed = removeDetachedLibraryFilter(row) || removed
             removed = removeExplicitLibraryFilter(row) || removed
             removed = removeLibrarySearchIntentFilter(row) || removed
         }
@@ -6125,17 +6191,41 @@ public final class AppModel {
         guard removed else { return false }
 
         selectedAssetSetID = nil
-        mergePredicatesIntoLibraryFilters(remainingPredicates)
+        mergePredicatesIntoDetachedLibraryFilters(remainingPredicates)
         return true
     }
 
-    private func mergePredicatesIntoLibraryFilters(_ newPredicates: [SetQuery.Predicate]) {
-        let intent = LibrarySearchIntent.parse(librarySearchText)
-        var predicates = intent.predicates
+    private func mergePredicatesIntoDetachedLibraryFilters(_ newPredicates: [SetQuery.Predicate]) {
         for predicate in newPredicates {
-            Self.append(predicate, to: &predicates)
+            switch predicate {
+            case .text(let text):
+                appendLibrarySearchToken(text)
+            default:
+                Self.append(predicate, to: &detachedLibraryFilterPredicates)
+            }
         }
-        librarySearchText = Self.librarySearchText(residualText: intent.residualText, predicates: predicates)
+    }
+
+    private func appendLibrarySearchToken(_ token: String) {
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else { return }
+        let trimmedSearch = librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        librarySearchText = trimmedSearch.isEmpty ? trimmedToken : "\(trimmedSearch) \(trimmedToken)"
+    }
+
+    private func removeDetachedLibraryFilter(_ row: ActiveLibraryFilterRow) -> Bool {
+        let originalCount = detachedLibraryFilterPredicates.count
+        detachedLibraryFilterPredicates.removeAll { predicate in
+            guard let predicateRow = Self.activeLibraryFilterRow(for: predicate),
+                  predicateRow.title == row.title else {
+                return false
+            }
+            if let rowTarget = row.target {
+                return predicateRow.target == rowTarget
+            }
+            return true
+        }
+        return detachedLibraryFilterPredicates.count != originalCount
     }
 
     private func removeLibrarySearchIntentFilter(_ row: ActiveLibraryFilterRow) -> Bool {
@@ -6174,6 +6264,9 @@ public final class AppModel {
         var predicates: [SetQuery.Predicate] = []
         if let selectedDynamicSetQuery {
             predicates.append(contentsOf: selectedDynamicSetQuery.predicates)
+        }
+        for predicate in detachedLibraryFilterPredicates {
+            Self.append(predicate, to: &predicates)
         }
         let searchIntent = LibrarySearchIntent.parse(librarySearchText)
         if let residualSearch = searchIntent.residualText {
@@ -6263,6 +6356,7 @@ public final class AppModel {
         providerFailuresFilter = false
         metadataSyncPendingFilter = false
         metadataSyncConflictFilter = false
+        detachedLibraryFilterPredicates = []
     }
 
     private static func librarySearchText(residualText: String?, predicates: [SetQuery.Predicate]) -> String {
