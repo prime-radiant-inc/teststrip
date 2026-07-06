@@ -258,15 +258,14 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("broader natural-language planning is not built"))
     }
 
-    func testEmptyFoldersSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
+    func testEmptyFoldersGapStaysInLedgerWithoutRenderingDeadSidebarRow() throws {
         let model = AppModel.demo()
         let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
-        let foldersRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-folders" })
+        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "sidebar.folders-empty" })
 
-        XCTAssertEqual(foldersRow.title, "Folders")
-        XCTAssertEqual(foldersRow.detailText, "No folders yet")
-        XCTAssertEqual(foldersRow.liveMockupPlaceholder?.id, "sidebar.folders-empty")
-        XCTAssertFalse(foldersRow.isSelectable)
+        XCTAssertFalse(librarySection.rows.contains { $0.id == "library-folders" })
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("folders"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("not rendered until folders exist"))
     }
 
     func testSearchSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {

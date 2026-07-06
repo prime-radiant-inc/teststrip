@@ -82,7 +82,7 @@ public enum LiveMockupPlaceholders {
         id: "sidebar.folders-empty",
         title: "Empty folders navigation",
         intendedBehavior: "Show imported/cataloged source folders in the Library sidebar once folder roots exist.",
-        currentFallback: "Disabled sidebar row shown only before any folders have been cataloged."
+        currentFallback: "Folder navigation is tracked here but not rendered until folders exist in the catalog."
     )
 
     public static let placesMap = LiveMockupPlaceholder(

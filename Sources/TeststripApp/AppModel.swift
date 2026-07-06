@@ -8073,16 +8073,6 @@ public final class AppModel {
                 liveMockupPlaceholder: .timelineLibrary
             )
         )
-        if catalogFolders.isEmpty {
-            libraryRows.append(
-                SidebarRow(
-                    id: "library-folders",
-                    title: "Folders",
-                    detailText: "No folders yet",
-                    liveMockupPlaceholder: .foldersEmpty
-                )
-            )
-        }
         libraryRows.append(
             SidebarRow(
                 id: "library-people",
