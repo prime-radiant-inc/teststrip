@@ -4272,6 +4272,7 @@ struct SearchWorkspaceRefineRow: Equatable, Identifiable {
     var target: SidebarRowTarget? = nil
 
     var id: String { "\(title)|\(value)" }
+    var isActive: Bool { value == "active" }
 }
 
 struct SearchWorkspaceRefineGroup: Equatable, Identifiable {
@@ -4845,13 +4846,28 @@ private struct SearchWorkspaceView: View {
 
     @ViewBuilder
     private func refineChip(_ row: SearchWorkspaceRefineRow) -> some View {
-        let chip = Text(row.title)
-            .font(.caption.weight(.medium))
-            .lineLimit(1)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
-        if row.target != nil {
+        let chip = HStack(spacing: 5) {
+            Text(row.title)
+                .lineLimit(1)
+            if row.isActive {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+            }
+        }
+        .font(.caption.weight(.medium))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+        if row.isActive {
+            Button {
+                removeActiveRefineRow(row)
+            } label: {
+                chip
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove filter \(row.title)")
+            .help("Remove \(row.title) filter")
+        } else if row.target != nil {
             Button {
                 selectRefineRow(row)
             } label: {
@@ -4867,8 +4883,8 @@ private struct SearchWorkspaceView: View {
     @ViewBuilder
     private func refineRailRow(_ row: SearchWorkspaceRefineRow) -> some View {
         let content = HStack(spacing: 8) {
-            Image(systemName: row.value == "active" ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(row.value == "active" ? .orange : .secondary)
+            Image(systemName: row.isActive ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(row.isActive ? .orange : .secondary)
                 .font(.caption)
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.title)
@@ -4880,7 +4896,22 @@ private struct SearchWorkspaceView: View {
                     .lineLimit(1)
             }
         }
-        if row.target != nil {
+        if row.isActive {
+            Button {
+                removeActiveRefineRow(row)
+            } label: {
+                HStack(spacing: 8) {
+                    content
+                    Spacer(minLength: 0)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove filter \(row.title)")
+            .help("Remove \(row.title) filter")
+        } else if row.target != nil {
             Button {
                 selectRefineRow(row)
             } label: {
@@ -4963,6 +4994,14 @@ private struct SearchWorkspaceView: View {
             } catch {
                 model.errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    private func removeActiveRefineRow(_ row: SearchWorkspaceRefineRow) {
+        do {
+            try model.removeActiveLibraryFilter(ActiveLibraryFilterRow(title: row.title, target: row.target))
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 

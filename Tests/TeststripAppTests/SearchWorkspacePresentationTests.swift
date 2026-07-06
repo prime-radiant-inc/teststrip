@@ -3,6 +3,11 @@ import TeststripCore
 @testable import TeststripApp
 
 final class SearchWorkspacePresentationTests: XCTestCase {
+    func testRefineRowsExposeActiveStateForRemovalControls() {
+        XCTAssertTrue(SearchWorkspaceRefineRow(title: "Pick", value: "active").isActive)
+        XCTAssertFalse(SearchWorkspaceRefineRow(title: "5 Stars", value: "2 photos").isActive)
+    }
+
     func testBuildsRefineRailFromCurrentSearchState() {
         let presentation = SearchWorkspacePresentation(
             suggestedName: "Pick 4+ Stars",
