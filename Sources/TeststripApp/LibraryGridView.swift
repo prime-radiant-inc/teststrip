@@ -6953,6 +6953,20 @@ enum AssetGridCellLayout {
     }
 }
 
+enum AssetGridSelectionChrome {
+    enum Border: Equatable {
+        case none
+        case primary
+        case batch
+    }
+
+    static func border(isSelected: Bool, isBatchSelected: Bool) -> Border {
+        if isSelected { return .primary }
+        if isBatchSelected { return .batch }
+        return .none
+    }
+}
+
 private struct AssetGridCell: View {
     var asset: Asset
     var previewURL: URL?
@@ -6982,11 +6996,7 @@ private struct AssetGridCell: View {
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipShape(RoundedRectangle(cornerRadius: 5))
             .overlay {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 5)
-                        .strokeBorder(Color.orange, lineWidth: 3)
-                        .shadow(color: Color.orange.opacity(0.45), radius: 3)
-                }
+                selectionBorder
             }
             .overlay(alignment: .topTrailing) {
                 if let status = AssetSourceStatusPresentation.presentation(for: asset.availability) {
@@ -7007,6 +7017,21 @@ private struct AssetGridCell: View {
         }
         .aspectRatio(AssetGridCellLayout.aspectRatio(for: asset), contentMode: .fit)
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var selectionBorder: some View {
+        switch AssetGridSelectionChrome.border(isSelected: isSelected, isBatchSelected: isBatchSelected) {
+        case .none:
+            EmptyView()
+        case .primary:
+            RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(Color.orange, lineWidth: 3)
+                .shadow(color: Color.orange.opacity(0.45), radius: 3)
+        case .batch:
+            RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(Color.orange.opacity(0.72), lineWidth: 2)
+        }
     }
 
     @ViewBuilder

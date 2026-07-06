@@ -127,6 +127,25 @@ final class LibraryGridLayoutTests: XCTestCase {
         XCTAssertEqual(presentation.keywordAccessibilityLabel, "2 keywords")
     }
 
+    func testGridSelectionChromeDistinguishesPrimaryAndBatchOnlySelection() {
+        XCTAssertEqual(
+            AssetGridSelectionChrome.border(isSelected: false, isBatchSelected: false),
+            .none
+        )
+        XCTAssertEqual(
+            AssetGridSelectionChrome.border(isSelected: true, isBatchSelected: false),
+            .primary
+        )
+        XCTAssertEqual(
+            AssetGridSelectionChrome.border(isSelected: false, isBatchSelected: true),
+            .batch
+        )
+        XCTAssertEqual(
+            AssetGridSelectionChrome.border(isSelected: true, isBatchSelected: true),
+            .primary
+        )
+    }
+
     func testGridSelectionFromPointerDoesNotAutoScroll() {
         XCTAssertFalse(
             LibraryGridSelectionScrollPolicy.shouldScrollSelectedAssetIntoView(
