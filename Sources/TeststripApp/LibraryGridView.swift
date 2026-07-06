@@ -2754,7 +2754,7 @@ private struct LoupeView: View {
             }
             cullingStackRail(presentation: stackPresentation)
             cullingFilmstrip(recommendedAssetID: stackPresentation.recommendedAssetID)
-            cullingCommandRail
+            cullingCommandRail(stackPresentation: stackPresentation)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.34))
@@ -3307,8 +3307,14 @@ private struct LoupeView: View {
         }
     }
 
-    private var cullingCommandRail: some View {
+    private func cullingCommandRail(stackPresentation: CullingStackRailPresentation) -> some View {
         HStack(spacing: 14) {
+            cullingNavChevron(direction: .previous)
+            cullingNavChevron(direction: .next)
+
+            Divider()
+                .frame(height: 22)
+
             cullingActionButton(key: "P", title: "Pick", color: .green, shortcut: .pick)
             cullingActionButton(key: "X", title: "Reject", color: .red, shortcut: .reject)
             cullingActionButton(key: "U", title: "Clear", color: .secondary, shortcut: .clearFlag)
@@ -3373,10 +3379,54 @@ private struct LoupeView: View {
             .frame(height: 34)
             .background(.quaternary, in: RoundedRectangle(cornerRadius: 9))
             Spacer(minLength: 0)
+            Text(CullingNavLegendPresentation(isStackActive: stackPresentation.isVisible).legendText)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
         .padding(.horizontal, 14)
         .frame(height: 58)
         .background(.bar)
+    }
+
+    private enum CullingNavDirection {
+        case previous
+        case next
+
+        var shortcut: CullingShortcut {
+            switch self {
+            case .previous: .previousPhoto
+            case .next: .nextPhoto
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .previous: "chevron.left"
+            case .next: "chevron.right"
+            }
+        }
+
+        var accessibilityLabel: String {
+            switch self {
+            case .previous: "Previous photo"
+            case .next: "Next photo"
+            }
+        }
+    }
+
+    private func cullingNavChevron(direction: CullingNavDirection) -> some View {
+        Button {
+            applyCullingShortcut(direction.shortcut)
+        } label: {
+            Image(systemName: direction.systemImage)
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .buttonStyle(.plain)
+        .frame(width: 28, height: 34)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        .help(direction.accessibilityLabel)
+        .accessibilityLabel(direction.accessibilityLabel)
     }
 
     private func cullingActionButton(key: String, title: String, color: Color, shortcut: CullingShortcut) -> some View {
@@ -4291,6 +4341,22 @@ struct CullingDecisionFeedbackPresentation: Equatable {
         title = feedback.decisionText
         detail = feedback.filename
         accessibilityValue = "\(feedback.decisionText), \(feedback.filename)"
+    }
+}
+
+/// A compact one-line reminder of the culling keyboard shortcuts, shown next
+/// to the on-screen prev/next chevrons. Keyboard already does everything
+/// this legend describes; it exists purely for discoverability.
+struct CullingNavLegendPresentation: Equatable {
+    var legendText: String
+
+    init(isStackActive: Bool) {
+        var segments = ["← → navigate", "Space advances"]
+        if isStackActive {
+            segments.append("↑↓ stacks")
+            segments.append("↵ accept best")
+        }
+        legendText = segments.joined(separator: " · ")
     }
 }
 
