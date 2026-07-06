@@ -8763,6 +8763,26 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testLoadRestoresSecurityScopedAccessForBookmarkedSourceRoots() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-load-source-root-bookmark")
+        let sourceRoot = directory.appendingPathComponent("photos", isDirectory: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let bookmarkData = Data("source-root-bookmark".utf8)
+        try catalog.repository.recordSourceRoot(sourceRoot, securityScopedBookmarkData: bookmarkData)
+        let access = RecordingSecurityScopedResourceAccess(
+            requiresSuccessfulAccess: false,
+            grantedURLs: [sourceRoot],
+            resolvedURLByBookmarkData: [bookmarkData: sourceRoot]
+        )
+
+        _ = try AppModel.load(catalog: catalog, resourceAccess: access.value)
+
+        XCTAssertEqual(access.resolvedBookmarkData, [bookmarkData])
+        XCTAssertEqual(access.startedURLs, [sourceRoot])
+    }
+
+    @MainActor
     func testBeginImportFolderRejectsSecurityScopeDenialWhenRequired() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-local-import-required-security-scope")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
@@ -11161,13 +11181,21 @@ private final class RecordingSecurityScopedResourceAccess: @unchecked Sendable {
     let requiresSuccessfulAccess: Bool
     private let grantedPaths: Set<String>
     private let bookmarkDataByPath: [String: Data]
+    private let resolvedURLByBookmarkData: [Data: URL]
     private(set) var startedURLs: [URL] = []
     private(set) var stoppedURLs: [URL] = []
+    private(set) var resolvedBookmarkData: [Data] = []
 
-    init(requiresSuccessfulAccess: Bool, grantedURLs: [URL] = [], bookmarkDataByURL: [URL: Data] = [:]) {
+    init(
+        requiresSuccessfulAccess: Bool,
+        grantedURLs: [URL] = [],
+        bookmarkDataByURL: [URL: Data] = [:],
+        resolvedURLByBookmarkData: [Data: URL] = [:]
+    ) {
         self.requiresSuccessfulAccess = requiresSuccessfulAccess
         self.grantedPaths = Set(grantedURLs.map(\.path))
         self.bookmarkDataByPath = Dictionary(uniqueKeysWithValues: bookmarkDataByURL.map { ($0.key.path, $0.value) })
+        self.resolvedURLByBookmarkData = resolvedURLByBookmarkData
     }
 
     var value: SecurityScopedResourceAccess {
@@ -11182,6 +11210,13 @@ private final class RecordingSecurityScopedResourceAccess: @unchecked Sendable {
             },
             securityScopedBookmarkData: { url in
                 self.bookmarkDataByPath[url.path]
+            },
+            resolveSecurityScopedBookmarkData: { data in
+                self.resolvedBookmarkData.append(data)
+                guard let url = self.resolvedURLByBookmarkData[data] else {
+                    throw TeststripError.invalidState("missing bookmark")
+                }
+                return url
             }
         )
     }

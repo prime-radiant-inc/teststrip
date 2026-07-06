@@ -804,17 +804,22 @@ public struct SecurityScopedResourceAccess: Sendable {
     public var startAccessing: @Sendable (URL) -> Bool
     public var stopAccessing: @Sendable (URL) -> Void
     public var securityScopedBookmarkData: @Sendable (URL) throws -> Data?
+    public var resolveSecurityScopedBookmarkData: @Sendable (Data) throws -> URL
 
     public init(
         requiresSuccessfulAccess: Bool,
         startAccessing: @escaping @Sendable (URL) -> Bool,
         stopAccessing: @escaping @Sendable (URL) -> Void,
-        securityScopedBookmarkData: @escaping @Sendable (URL) throws -> Data? = { _ in nil }
+        securityScopedBookmarkData: @escaping @Sendable (URL) throws -> Data? = { _ in nil },
+        resolveSecurityScopedBookmarkData: @escaping @Sendable (Data) throws -> URL = { _ in
+            throw TeststripError.invalidState("security-scoped bookmark resolution is unavailable")
+        }
     ) {
         self.requiresSuccessfulAccess = requiresSuccessfulAccess
         self.startAccessing = startAccessing
         self.stopAccessing = stopAccessing
         self.securityScopedBookmarkData = securityScopedBookmarkData
+        self.resolveSecurityScopedBookmarkData = resolveSecurityScopedBookmarkData
     }
 
     public static let permissive = SecurityScopedResourceAccess(
@@ -823,6 +828,15 @@ public struct SecurityScopedResourceAccess: Sendable {
         stopAccessing: { $0.stopAccessingSecurityScopedResource() },
         securityScopedBookmarkData: { url in
             try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+        },
+        resolveSecurityScopedBookmarkData: { data in
+            var isStale = false
+            return try URL(
+                resolvingBookmarkData: data,
+                options: [.withSecurityScope],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
         }
     )
 
@@ -832,6 +846,15 @@ public struct SecurityScopedResourceAccess: Sendable {
         stopAccessing: { $0.stopAccessingSecurityScopedResource() },
         securityScopedBookmarkData: { url in
             try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+        },
+        resolveSecurityScopedBookmarkData: { data in
+            var isStale = false
+            return try URL(
+                resolvingBookmarkData: data,
+                options: [.withSecurityScope],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
         }
     )
 }
@@ -944,6 +967,9 @@ public final class AppModel {
 
     @ObservationIgnored
     private var workerImportContextsByItemID: [WorkSessionID: WorkerImportContext]
+
+    @ObservationIgnored
+    private var activeSecurityScopedSourceRootURLs: [URL]
 
     @ObservationIgnored
     private var evaluationAssetIDsByItemID: [WorkSessionID: AssetID]
@@ -1852,6 +1878,8 @@ public final class AppModel {
         self.assetPageOffset = 0
         self.compareAssetIDs = nil
         self.workerImportContextsByItemID = [:]
+        self.activeSecurityScopedSourceRootURLs = []
+        restoreSecurityScopedSourceRootAccess()
         self.workerSupervisor?.onQueueChanged = { [weak self] queue in
             let previousQueue = self?.backgroundWorkQueue
             let previousPreviewFailureIDs = Self.failedPreviewGenerationItemIDs(in: self?.backgroundWorkQueue)
@@ -1880,6 +1908,23 @@ public final class AppModel {
         }
         if selectedView == .compare {
             compareAssetIDs = compareWindowAssetIDs(limit: Self.defaultCompareAssetLimit, anchor: selectedAssetID)
+        }
+    }
+
+    deinit {
+        for url in activeSecurityScopedSourceRootURLs {
+            resourceAccess.stopAccessing(url)
+        }
+    }
+
+    private func restoreSecurityScopedSourceRootAccess() {
+        for sourceRoot in sourceRoots {
+            guard let bookmarkData = sourceRoot.securityScopedBookmarkData,
+                  let url = try? resourceAccess.resolveSecurityScopedBookmarkData(bookmarkData),
+                  resourceAccess.startAccessing(url) else {
+                continue
+            }
+            activeSecurityScopedSourceRootURLs.append(url)
         }
     }
 
