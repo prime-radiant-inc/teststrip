@@ -55,6 +55,92 @@ final class CullingAssistPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.tone, .caution)
     }
 
+    func testStackGuidanceOverridesSelectedFrameReadWhenRecommendedActionExists() {
+        let presentation = CullingAssistPresentation.presentation(
+            for: [
+                signal(kind: .focus, value: .score(0.42), confidence: 0.8)
+            ],
+            stackGuidance: CullingStackActionPresentation(
+                action: .keepRecommended(AssetID(rawValue: "alternate")),
+                title: "Keep recommended 3",
+                isEnabled: true,
+                help: "Keep frame 3 based on focus and quality signals.",
+                liveMockupPlaceholder: nil,
+                assistTitle: "Recommended frame 3"
+            )
+        )
+
+        XCTAssertEqual(presentation.title, "Recommended frame 3")
+        XCTAssertEqual(presentation.detail, "Stack recommendation - Keep frame 3 based on focus and quality signals. · Selected: Focus - local-http - 80% confidence")
+        XCTAssertEqual(presentation.tone, .positive)
+    }
+
+    func testTopRankedStackGuidanceUsesStructuredReadTitle() {
+        let presentation = CullingAssistPresentation.presentation(
+            for: [
+                signal(kind: .focus, value: .score(0.88), confidence: 0.82)
+            ],
+            stackGuidance: CullingStackActionPresentation(
+                action: .keepTopRanked([
+                    AssetID(rawValue: "alternate"),
+                    AssetID(rawValue: "selected")
+                ]),
+                title: "Keep top 2",
+                isEnabled: true,
+                help: "Keep the two top-ranked frames based on focus and quality signals.",
+                liveMockupPlaceholder: nil,
+                assistTitle: "Top 2 frames"
+            )
+        )
+
+        XCTAssertEqual(presentation.title, "Top 2 frames")
+        XCTAssertEqual(presentation.detail, "Stack recommendation - Keep the two top-ranked frames based on focus and quality signals. · Selected: Focus - local-http - 82% confidence")
+        XCTAssertEqual(presentation.tone, .positive)
+    }
+
+    func testIgnoredStackGuidancePreservesSelectedFrameRead() {
+        let selectedSignals = [
+            signal(kind: .focus, value: .score(0.91), confidence: 0.82)
+        ]
+        let ignoredActions = [
+            CullingStackActionPresentation(
+                action: .keepRecommended(AssetID(rawValue: "alternate")),
+                title: "Keep recommended 3",
+                isEnabled: false,
+                help: "Keep frame 3 based on focus and quality signals.",
+                liveMockupPlaceholder: nil,
+                assistTitle: "Recommended frame 3"
+            ),
+            CullingStackActionPresentation(
+                action: .keepTopRankedPlaceholder,
+                title: "Keep top 2",
+                isEnabled: false,
+                help: "Keeps the top-ranked frames once stack ranking is available.",
+                liveMockupPlaceholder: .cullingStackCull,
+                assistTitle: "Top 2 frames"
+            ),
+            CullingStackActionPresentation(
+                action: .keepAll,
+                title: "Keep all 3",
+                isEnabled: true,
+                help: "Keep every frame in this stack.",
+                liveMockupPlaceholder: nil,
+                assistTitle: "Keep all frames"
+            )
+        ]
+
+        for action in ignoredActions {
+            let presentation = CullingAssistPresentation.presentation(
+                for: selectedSignals,
+                stackGuidance: action
+            )
+
+            XCTAssertEqual(presentation.title, "Focus 91%")
+            XCTAssertEqual(presentation.detail, "Focus - local-http - 82% confidence")
+            XCTAssertEqual(presentation.tone, .positive)
+        }
+    }
+
     private func signal(kind: EvaluationKind, value: EvaluationValue, confidence: Double) -> EvaluationSignal {
         EvaluationSignal(
             assetID: AssetID(rawValue: "asset"),

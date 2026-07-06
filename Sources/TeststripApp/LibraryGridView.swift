@@ -2379,8 +2379,9 @@ private struct LoupeView: View {
     var model: AppModel
 
     var body: some View {
+        let stackPresentation = cullingStackPresentation
         VStack(spacing: 0) {
-            cullingHeader
+            cullingHeader(stackPresentation: stackPresentation)
             if let asset = model.selectedAsset {
                 loupeStage(for: asset)
                     .task(id: asset.id.rawValue) {
@@ -2393,7 +2394,7 @@ private struct LoupeView: View {
             } else {
                 unavailableView(title: "No photo selected", systemImage: "photo")
             }
-            cullingStackRail
+            cullingStackRail(presentation: stackPresentation)
             cullingFilmstrip
             cullingCommandRail
         }
@@ -2402,7 +2403,7 @@ private struct LoupeView: View {
     }
 
     @ViewBuilder
-    private var cullingHeader: some View {
+    private func cullingHeader(stackPresentation: CullingStackRailPresentation) -> some View {
         let summary = model.cullingProgressSummary
         HStack(spacing: 10) {
             Label("Culling", systemImage: "checkmark.seal")
@@ -2424,7 +2425,7 @@ private struct LoupeView: View {
             Spacer(minLength: 0)
             cullingCountPill(title: "Picks", count: summary.pickCount, color: .green, systemImage: "flag.fill")
             cullingCountPill(title: "Rejects", count: summary.rejectCount, color: .red, systemImage: "xmark.circle.fill")
-            cullingAssistPill
+            cullingAssistPill(stackGuidanceAction: cullingStackGuidanceAction(in: stackPresentation))
                 .layoutPriority(1)
         }
         .padding(.horizontal, 14)
@@ -2432,8 +2433,11 @@ private struct LoupeView: View {
         .background(.bar)
     }
 
-    private var cullingAssistPill: some View {
-        let presentation = CullingAssistPresentation.presentation(for: model.selectedEvaluationSignals)
+    private func cullingAssistPill(stackGuidanceAction: CullingStackActionPresentation?) -> some View {
+        let presentation = CullingAssistPresentation.presentation(
+            for: model.selectedEvaluationSignals,
+            stackGuidance: stackGuidanceAction
+        )
         let color = cullingAssistColor(for: presentation.tone)
         return HStack(spacing: 7) {
             Image(systemName: "sparkles")
@@ -2534,13 +2538,7 @@ private struct LoupeView: View {
     }
 
     @ViewBuilder
-    private var cullingStackRail: some View {
-        let presentation = CullingStackRailPresentation(
-            assets: model.assets,
-            selectedAssetID: model.selectedAssetID,
-            evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals(),
-            explicitStackScope: model.selectedCullingStackScope
-        )
+    private func cullingStackRail(presentation: CullingStackRailPresentation) -> some View {
         if presentation.isVisible {
             HStack(spacing: 10) {
                 Label(presentation.titleText, systemImage: "rectangle.stack")
@@ -2607,6 +2605,27 @@ private struct LoupeView: View {
             .frame(height: 38)
             .background(Color.black.opacity(0.23))
             .liveMockupPlaceholder(.cullingStackCull)
+        }
+    }
+
+    private var cullingStackPresentation: CullingStackRailPresentation {
+        CullingStackRailPresentation(
+            assets: model.assets,
+            selectedAssetID: model.selectedAssetID,
+            evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals(),
+            explicitStackScope: model.selectedCullingStackScope
+        )
+    }
+
+    private func cullingStackGuidanceAction(in presentation: CullingStackRailPresentation) -> CullingStackActionPresentation? {
+        presentation.actions.dropFirst().first { action in
+            guard action.isEnabled else { return false }
+            switch action.action {
+            case .keepRecommended, .keepTopRanked:
+                return true
+            case .keepSelectedAndRejectAlternates, .keepTopRankedPlaceholder, .keepAll:
+                return false
+            }
         }
     }
 
@@ -3653,7 +3672,8 @@ struct CullingStackRailPresentation: Equatable {
                 title: "Keep top 2",
                 isEnabled: true,
                 help: "Keep the two top-ranked frames based on focus and quality signals.",
-                liveMockupPlaceholder: nil
+                liveMockupPlaceholder: nil,
+                assistTitle: "Top 2 frames"
             )
         }
 
@@ -3672,7 +3692,8 @@ struct CullingStackRailPresentation: Equatable {
             title: "Keep recommended \(recommendation.frameLabel)",
             isEnabled: true,
             help: "Keep frame \(recommendation.frameLabel) based on focus and quality signals.",
-            liveMockupPlaceholder: nil
+            liveMockupPlaceholder: nil,
+            assistTitle: "Recommended frame \(recommendation.frameLabel)"
         )
     }
 }
@@ -3691,6 +3712,23 @@ struct CullingStackActionPresentation: Equatable, Identifiable {
     var isEnabled: Bool
     var help: String
     var liveMockupPlaceholder: LiveMockupPlaceholder?
+    var assistTitle: String?
+
+    init(
+        action: CullingStackAction,
+        title: String,
+        isEnabled: Bool,
+        help: String,
+        liveMockupPlaceholder: LiveMockupPlaceholder?,
+        assistTitle: String? = nil
+    ) {
+        self.action = action
+        self.title = title
+        self.isEnabled = isEnabled
+        self.help = help
+        self.liveMockupPlaceholder = liveMockupPlaceholder
+        self.assistTitle = assistTitle
+    }
 
     var id: String {
         switch action {
@@ -5619,7 +5657,19 @@ struct CullingAssistPresentation: Equatable {
     var detail: String
     var tone: Tone
 
-    static func presentation(for signals: [EvaluationSignal]) -> CullingAssistPresentation {
+    static func presentation(
+        for signals: [EvaluationSignal],
+        stackGuidance: CullingStackActionPresentation? = nil
+    ) -> CullingAssistPresentation {
+        if let stackGuidance,
+           stackGuidance.isEnabled,
+           let stackTitle = stackGuidanceTitle(for: stackGuidance) {
+            return CullingAssistPresentation(
+                title: stackTitle,
+                detail: stackGuidanceDetail(for: stackGuidance, selectedSignals: signals),
+                tone: .positive
+            )
+        }
         guard let signal = signals.sorted(by: signalSort).first else {
             return CullingAssistPresentation(
                 title: "No read yet",
@@ -5632,6 +5682,26 @@ struct CullingAssistPresentation: Equatable {
             detail: detail(primarySignal: signal, signals: signals),
             tone: tone(for: signal)
         )
+    }
+
+    private static func stackGuidanceTitle(for action: CullingStackActionPresentation) -> String? {
+        switch action.action {
+        case .keepRecommended, .keepTopRanked:
+            return action.assistTitle ?? action.title
+        case .keepSelectedAndRejectAlternates, .keepTopRankedPlaceholder, .keepAll:
+            return nil
+        }
+    }
+
+    private static func stackGuidanceDetail(
+        for action: CullingStackActionPresentation,
+        selectedSignals: [EvaluationSignal]
+    ) -> String {
+        var parts = ["Stack recommendation - \(action.help)"]
+        if let selectedSignal = selectedSignals.sorted(by: signalSort).first {
+            parts.append("Selected: \(detail(primarySignal: selectedSignal, signals: selectedSignals))")
+        }
+        return parts.joined(separator: " · ")
     }
 
     private static func detail(primarySignal: EvaluationSignal, signals: [EvaluationSignal]) -> String {

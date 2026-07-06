@@ -124,9 +124,11 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "2a" })
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("supporting quality rationale"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("burst-level guidance is still pending"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("stack-level keep recommendations"))
+        XCTAssertFalse(placeholder.currentFallback.localizedCaseInsensitiveContains("burst-level guidance is still pending"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("supporting quality rationale"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("burst-level agentic rationale remains pending"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("stack-level keep recommendations"))
+        XCTAssertFalse(surface.currentImplementation.localizedCaseInsensitiveContains("burst-level agentic rationale remains pending"))
     }
 
     func testCullingFilmstripLedgerTracksImplementedFilmstrip() throws {
