@@ -108,6 +108,25 @@ final class LibraryGridLayoutTests: XCTestCase {
         XCTAssertEqual(status?.systemImage, "exclamationmark.triangle.fill")
     }
 
+    func testGridMetadataBadgesIncludeKeywordAcknowledgement() {
+        let asset = Asset.gridLayoutTestAsset(
+            metadata: AssetMetadata(
+                rating: 4,
+                colorLabel: .green,
+                flag: .pick,
+                keywords: ["portfolio", "client"]
+            )
+        )
+
+        let presentation = AssetGridMetadataBadgePresentation.presentation(for: asset)
+
+        XCTAssertEqual(presentation.flagSystemName, "flag.fill")
+        XCTAssertEqual(presentation.ratingText, "★★★★")
+        XCTAssertEqual(presentation.colorLabel, .green)
+        XCTAssertEqual(presentation.keywordCountText, "2")
+        XCTAssertEqual(presentation.keywordAccessibilityLabel, "2 keywords")
+    }
+
     func testGridSelectionFromPointerDoesNotAutoScroll() {
         XCTAssertFalse(
             LibraryGridSelectionScrollPolicy.shouldScrollSelectedAssetIntoView(
@@ -157,6 +176,17 @@ final class LibraryGridLayoutTests: XCTestCase {
 }
 
 private extension Asset {
+    static func gridLayoutTestAsset(metadata: AssetMetadata) -> Asset {
+        Asset(
+            id: AssetID(rawValue: "layout-metadata"),
+            originalURL: URL(fileURLWithPath: "/Photos/layout.jpg"),
+            volumeIdentifier: nil,
+            fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 0)),
+            availability: .online,
+            metadata: metadata
+        )
+    }
+
     static func gridLayoutTestAsset(width: Int?, height: Int?) -> Asset {
         Asset(
             id: AssetID(rawValue: "layout-\(width ?? 0)-\(height ?? 0)"),

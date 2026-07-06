@@ -5589,6 +5589,49 @@ struct AssetGridPreviewStatusPresentation: Equatable {
     }
 }
 
+struct AssetGridMetadataBadgePresentation: Equatable {
+    enum FlagTone: Equatable {
+        case pick
+        case reject
+
+        var systemName: String {
+            switch self {
+            case .pick: "flag.fill"
+            case .reject: "xmark"
+            }
+        }
+    }
+
+    var flagTone: FlagTone?
+    var ratingText: String?
+    var colorLabel: ColorLabel?
+    var keywordCountText: String?
+    var keywordAccessibilityLabel: String?
+
+    var flagSystemName: String? {
+        flagTone?.systemName
+    }
+
+    static func presentation(for asset: Asset) -> AssetGridMetadataBadgePresentation {
+        let keywordCount = asset.metadata.keywords.count
+        return AssetGridMetadataBadgePresentation(
+            flagTone: flagTone(for: asset.metadata.flag),
+            ratingText: asset.metadata.rating > 0 ? String(repeating: "★", count: asset.metadata.rating) : nil,
+            colorLabel: asset.metadata.colorLabel,
+            keywordCountText: keywordCount > 0 ? "\(keywordCount)" : nil,
+            keywordAccessibilityLabel: keywordCount > 0 ? "\(keywordCount) \(keywordCount == 1 ? "keyword" : "keywords")" : nil
+        )
+    }
+
+    private static func flagTone(for flag: PickFlag?) -> FlagTone? {
+        switch flag {
+        case .pick: .pick
+        case .reject: .reject
+        case nil: nil
+        }
+    }
+}
+
 enum LibraryGridSelectionScrollPolicy {
     static func shouldScrollSelectedAssetIntoView(
         selectedAssetID: String?,
@@ -6726,24 +6769,42 @@ private struct AssetGridCell: View {
     }
 
     private var metadataOverlay: some View {
-        HStack(spacing: 5) {
-            if asset.metadata.flag == .pick {
-                flagBadge(systemName: "flag.fill", color: .green)
-            } else if asset.metadata.flag == .reject {
-                flagBadge(systemName: "xmark", color: .red)
+        let presentation = AssetGridMetadataBadgePresentation.presentation(for: asset)
+        return HStack(spacing: 5) {
+            if let flagTone = presentation.flagTone {
+                flagBadge(systemName: flagTone.systemName, color: color(for: flagTone))
             }
-            if asset.metadata.rating > 0 {
-                Text(String(repeating: "★", count: asset.metadata.rating))
+            if let ratingText = presentation.ratingText {
+                Text(ratingText)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.yellow)
             }
-            if let colorLabel = asset.metadata.colorLabel {
+            if let colorLabel = presentation.colorLabel {
                 Circle()
                     .fill(color(for: colorLabel))
                     .frame(width: 8, height: 8)
             }
+            if let keywordCountText = presentation.keywordCountText,
+               let keywordAccessibilityLabel = presentation.keywordAccessibilityLabel {
+                keywordBadge(countText: keywordCountText, accessibilityLabel: keywordAccessibilityLabel)
+            }
             Spacer(minLength: 0)
         }
+    }
+
+    private func keywordBadge(countText: String, accessibilityLabel: String) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "tag.fill")
+                .font(.system(size: 8, weight: .bold))
+            Text(countText)
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .minimumScaleFactor(0.75)
+        }
+        .foregroundStyle(.black.opacity(0.75))
+        .padding(.horizontal, 4)
+        .frame(height: 15)
+        .background(Color.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 3))
+        .accessibilityLabel(accessibilityLabel)
     }
 
     private func sourceStatusBadge(_ status: AssetSourceStatusPresentation) -> some View {
@@ -6769,6 +6830,13 @@ private struct AssetGridCell: View {
             .frame(width: 15, height: 15)
             .background(color)
             .clipShape(RoundedRectangle(cornerRadius: 3))
+    }
+
+    private func color(for tone: AssetGridMetadataBadgePresentation.FlagTone) -> Color {
+        switch tone {
+        case .pick: .green
+        case .reject: .red
+        }
     }
 
     private func color(for label: ColorLabel) -> Color {
