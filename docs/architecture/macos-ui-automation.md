@@ -95,6 +95,14 @@ Use a fresh temporary app-support directory when a screenshot needs real grid co
 
 `--verify-smoke` creates a fresh isolated app-support directory, runs `TeststripBench seed-app-catalog`, launches the app with `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY`, and verifies the process is running. The seeder writes generated JPEG originals, catalog rows, a starred `Smoke Picks` set, and cached micro/grid/medium/large previews under the same `Teststrip/` app-support layout the app uses. It refuses to write over an existing `catalog.sqlite`, so do not point the raw seeder command at a real catalog.
 
+To clean up old isolated smoke catalogs without touching the real catalog, first run:
+
+```bash
+./script/reset_isolated_test_data.sh
+```
+
+The default mode is a dry run. It only reports direct `teststrip-app-support.*` directories under `${TMPDIR:-/tmp}` or `TESTSTRIP_ISOLATED_TEST_DATA_ROOT`, only when they contain Teststrip catalog/preview/smoke markers, and skips app-support roots that belong to a currently running Teststrip process. Add `--delete` after reviewing the dry-run output.
+
 ## Failed Fixes
 
 Do not repeat these without a new hypothesis:
