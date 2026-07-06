@@ -227,6 +227,28 @@ final class ImportFolderPathDraftTests: XCTestCase {
         XCTAssertEqual(draft.errorMessage, "Folder path does not exist")
     }
 
+    @MainActor
+    func testMatchingCardSourceAndDestinationKeepsDraftErrorForSheet() throws {
+        let source = try makeTemporaryDirectory(named: "matching-card-source-destination")
+        var draft = ImportCardPathDraft(sourcePath: source.path, destinationPath: source.path)
+
+        XCTAssertThrowsError(try draft.makeCardConfirmationDraft())
+
+        XCTAssertEqual(draft.errorMessage, "Destination must be different from the card source")
+    }
+
+    @MainActor
+    func testCardSourceInsideDestinationKeepsDraftErrorForSheet() throws {
+        let destination = try makeTemporaryDirectory(named: "card-source-inside-destination")
+        let source = destination.appendingPathComponent("DCIM", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        var draft = ImportCardPathDraft(sourcePath: source.path, destinationPath: destination.path)
+
+        XCTAssertThrowsError(try draft.makeCardConfirmationDraft())
+
+        XCTAssertEqual(draft.errorMessage, "Card source cannot be inside the destination")
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-import-path-draft-\(name)-\(UUID().uuidString)", isDirectory: true)

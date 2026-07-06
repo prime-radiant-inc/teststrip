@@ -1,4 +1,5 @@
 import Foundation
+import TeststripCore
 
 enum ImportPlanStepStage: String, Equatable {
     case importWork
@@ -171,6 +172,13 @@ struct ImportCardPathDraft: Equatable {
         do {
             let sourceURL = try FolderSelectionPanel.importFolderURL(fromPath: sourcePath)
             let destinationURL = try FolderSelectionPanel.importFolderURL(fromPath: destinationPath)
+            if let blockingReason = CardImportDestinationPreflight.blockingReason(
+                source: sourceURL,
+                destinationRoot: destinationURL
+            ) {
+                errorMessage = blockingReason
+                throw TeststripError.invalidState(blockingReason)
+            }
             errorMessage = nil
             return (source: sourceURL, destinationRoot: destinationURL)
         } catch {
