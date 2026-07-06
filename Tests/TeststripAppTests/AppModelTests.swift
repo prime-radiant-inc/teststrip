@@ -1133,6 +1133,25 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, first.id)
     }
 
+    func testPlainSelectionClearsExistingBatchSelection() throws {
+        let first = makeAsset(id: "plain-select-first", path: "/Photos/plain-select-first.jpg", rating: 1)
+        let second = makeAsset(id: "plain-select-second", path: "/Photos/plain-select-second.jpg", rating: 2)
+        let third = makeAsset(id: "plain-select-third", path: "/Photos/plain-select-third.jpg", rating: 3)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "plain-selection-clears-batch",
+            assets: [first, second, third]
+        )
+        model.setBatchSelection(first.id, isSelected: true)
+        model.setBatchSelection(third.id, isSelected: true)
+
+        model.select(second.id)
+
+        XCTAssertEqual(model.selectedAssetID, second.id)
+        XCTAssertEqual(model.selectedBatchAssetCount, 0)
+        XCTAssertFalse(model.isBatchSelected(first.id))
+        XCTAssertFalse(model.isBatchSelected(third.id))
+    }
+
     func testRangeBatchSelectionUsesPrimarySelectionAsAnchor() throws {
         let first = makeAsset(id: "range-first", path: "/Photos/range-first.jpg", rating: 1)
         let second = makeAsset(id: "range-second", path: "/Photos/range-second.jpg", rating: 2)

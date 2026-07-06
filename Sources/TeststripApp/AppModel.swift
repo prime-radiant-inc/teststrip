@@ -2364,6 +2364,7 @@ public final class AppModel {
 
     public func select(_ assetID: AssetID) {
         clearCullingMetadataDecisionFeedback()
+        clearBatchSelection()
         selectAssetID(assetID)
     }
 
