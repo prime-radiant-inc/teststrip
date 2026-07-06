@@ -294,7 +294,17 @@ public struct WorkerCommandExecutor {
         guard let previewURL = cachedPreviewURL(for: assetID) else {
             throw TeststripError.invalidState("no cached preview for \(assetID.rawValue)")
         }
-        try repository.recordEvaluationSignals(try provider.evaluate(assetID: assetID, previewURL: previewURL))
+        if let faceProvider = provider as? any FaceObservationEvaluationProvider {
+            let outcome = try faceProvider.evaluateWithFaces(assetID: assetID, previewURL: previewURL)
+            try repository.recordEvaluationSignals(outcome.signals)
+            try repository.replaceFaceObservations(
+                assetID: assetID,
+                provenance: faceProvider.faceProvenance,
+                with: outcome.faceObservations
+            )
+        } else {
+            try repository.recordEvaluationSignals(try provider.evaluate(assetID: assetID, previewURL: previewURL))
+        }
         return .completed("evaluated \(Self.displayName(for: asset)) with \(providerName)")
     }
 
