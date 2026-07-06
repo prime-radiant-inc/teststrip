@@ -4464,6 +4464,34 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 2)
     }
 
+    func testLoadExposesSourceBookmarkRepairRowsInSidebar() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-source-bookmark-repair-sidebar")
+        let sourceRoot = directory.appendingPathComponent("photos", isDirectory: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let bookmarkData = Data("source-root-bookmark".utf8)
+        try catalog.repository.recordSourceRoot(sourceRoot, securityScopedBookmarkData: bookmarkData)
+        let asset = Asset(
+            id: AssetID(rawValue: "repair-needed"),
+            originalURL: sourceRoot.appendingPathComponent("repair-needed.jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
+            availability: .online,
+            metadata: AssetMetadata(rating: 4)
+        )
+        try catalog.repository.upsert(asset)
+        let model = try AppModel.load(catalog: catalog, resourceAccess: RecordingSecurityScopedResourceAccess(requiresSuccessfulAccess: false).value)
+
+        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
+        let repairRow = try XCTUnwrap(sourceSection.rows.first { $0.id == "source-bookmark-repair-\(sourceRoot.path)" })
+
+        XCTAssertEqual(repairRow.title, "Reconnect photos")
+        XCTAssertEqual(repairRow.detailText, "Permission needs refresh")
+        XCTAssertEqual(repairRow.countText, "1")
+        XCTAssertEqual(repairRow.tone, .warning)
+        XCTAssertEqual(repairRow.target, .placeholder)
+    }
+
     func testReconnectSourceRootRefreshesLoadedAssetsAndSourceSidebar() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-source-reconnect")
         let oldRoot = directory.appendingPathComponent("OfflineArchive", isDirectory: true)

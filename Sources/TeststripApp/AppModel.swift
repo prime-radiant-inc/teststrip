@@ -1901,6 +1901,7 @@ public final class AppModel {
         self.activeSecurityScopedSourceRootURLs = []
         self.sourceRootBookmarkRepairPaths = []
         restoreSecurityScopedSourceRootAccess()
+        rebuildSidebarSections()
         self.workerSupervisor?.onQueueChanged = { [weak self] queue in
             let previousQueue = self?.backgroundWorkQueue
             let previousPreviewFailureIDs = Self.failedPreviewGenerationItemIDs(in: self?.backgroundWorkQueue)
@@ -6463,7 +6464,9 @@ public final class AppModel {
             pendingMetadataSyncCount: pendingMetadataSyncCount,
             metadataSyncConflictCount: metadataSyncConflictCount,
             recentWork: recentWork,
-            starredWork: starredWork
+            starredWork: starredWork,
+            sourceRoots: sourceRoots,
+            sourceRootBookmarkRepairPaths: sourceRootBookmarkRepairPaths
         )
     }
 
@@ -7179,7 +7182,9 @@ public final class AppModel {
         pendingMetadataSyncCount: Int? = nil,
         metadataSyncConflictCount: Int? = nil,
         recentWork: [AppWorkActivity] = [],
-        starredWork: [AppWorkActivity] = []
+        starredWork: [AppWorkActivity] = [],
+        sourceRoots: [CatalogSourceRoot] = [],
+        sourceRootBookmarkRepairPaths: Set<String> = []
     ) -> [SidebarSection] {
         var libraryRows = [
             SidebarRow(
@@ -7252,7 +7257,11 @@ public final class AppModel {
                 )
             }))
         }
-        let sourceRows = sourceAvailabilitySidebarRows(sourceAvailabilitySummaries)
+        let sourceRows = sourceAvailabilitySidebarRows(
+            sourceAvailabilitySummaries,
+            sourceRoots: sourceRoots,
+            sourceRootBookmarkRepairPaths: sourceRootBookmarkRepairPaths
+        )
         if !sourceRows.isEmpty {
             sections.append(SidebarSection(title: "Sources", rows: sourceRows))
         }
@@ -7390,9 +7399,13 @@ public final class AppModel {
         }
     }
 
-    private static func sourceAvailabilitySidebarRows(_ summaries: [CatalogSourceAvailabilitySummary]) -> [SidebarRow] {
+    private static func sourceAvailabilitySidebarRows(
+        _ summaries: [CatalogSourceAvailabilitySummary],
+        sourceRoots: [CatalogSourceRoot],
+        sourceRootBookmarkRepairPaths: Set<String>
+    ) -> [SidebarRow] {
         let summariesByAvailability = Dictionary(uniqueKeysWithValues: summaries.map { ($0.availability, $0) })
-        return sourceAvailabilitySidebarOrder.compactMap { availability in
+        var rows: [SidebarRow] = sourceAvailabilitySidebarOrder.compactMap { availability in
             guard let summary = summariesByAvailability[availability], summary.assetCount > 0 else { return nil }
             return SidebarRow(
                 id: "source-availability-\(availability.rawValue)",
@@ -7402,6 +7415,28 @@ public final class AppModel {
                 target: .sourceAvailability(availability)
             )
         }
+        rows.append(contentsOf: sourceBookmarkRepairSidebarRows(
+            sourceRoots: sourceRoots,
+            sourceRootBookmarkRepairPaths: sourceRootBookmarkRepairPaths
+        ))
+        return rows
+    }
+
+    private static func sourceBookmarkRepairSidebarRows(
+        sourceRoots: [CatalogSourceRoot],
+        sourceRootBookmarkRepairPaths: Set<String>
+    ) -> [SidebarRow] {
+        sourceRoots
+            .filter { sourceRootBookmarkRepairPaths.contains($0.path) }
+            .map { sourceRoot in
+                SidebarRow(
+                    id: "source-bookmark-repair-\(sourceRoot.path)",
+                    title: "Reconnect \(sourceRoot.name)",
+                    detailText: "Permission needs refresh",
+                    countText: sidebarCountText(sourceRoot.assetCount),
+                    tone: .warning
+                )
+            }
     }
 
     private static let sourceAvailabilitySidebarOrder: [SourceAvailability] = [
