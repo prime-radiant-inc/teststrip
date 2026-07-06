@@ -1218,8 +1218,16 @@ public final class AppModel {
     }
 
     private var activePreviewGenerationStatusText: String? {
+        activePreviewGenerationStatusText(assetIDs: nil)
+    }
+
+    private func activePreviewGenerationStatusText(assetIDs: Set<AssetID>?) -> String? {
         let previewItems = backgroundWorkQueue.items.filter { item in
-            item.kind == .previewGeneration && [.queued, .running, .paused].contains(item.status)
+            guard item.kind == .previewGeneration,
+                  [.queued, .running, .paused].contains(item.status) else { return false }
+            guard let assetIDs else { return true }
+            guard let previewAssetID = Self.previewAssetID(from: item.id) else { return false }
+            return assetIDs.contains(previewAssetID)
         }
         guard !previewItems.isEmpty else { return nil }
         if backgroundWorkQueue.isPaused || previewItems.contains(where: { $0.status == .paused }) {
@@ -1646,11 +1654,41 @@ public final class AppModel {
             existingPhotoCount: existingPhotoCount,
             previewFailureCount: previewFailureCount,
             failureText: failureText,
-            previewStatusText: failureText ?? activePreviewGenerationStatusText ?? (hasImportedPhotos ? "Previews ready" : "No previews needed"),
+            previewStatusText: latestImportPreviewStatusText(
+                activity: activity,
+                hasImportedPhotos: hasImportedPhotos,
+                failureText: failureText
+            ),
             stackCount: stackSummary.stackCount,
             stackedPhotoCount: stackSummary.stackedPhotoCount,
             cullingSessionName: "\(activity.detail) Cull"
         )
+    }
+
+    private func latestImportPreviewStatusText(
+        activity: AppWorkActivity,
+        hasImportedPhotos: Bool,
+        failureText: String?
+    ) -> String {
+        if let failureText {
+            return failureText
+        }
+        guard hasImportedPhotos else {
+            return "No previews needed"
+        }
+        guard let catalog else {
+            return activePreviewGenerationStatusText ?? "Previews ready"
+        }
+        do {
+            let assetIDs = try latestImportOutputAssetIDs(activityID: activity.id, repository: catalog.repository)
+            let pendingPreviewCount = try catalog.repository.previewGenerationPendingAssetCount(assetIDs: assetIDs)
+            guard pendingPreviewCount > 0 else {
+                return "Previews ready"
+            }
+            return activePreviewGenerationStatusText(assetIDs: Set(assetIDs)) ?? "previews queued"
+        } catch {
+            return activePreviewGenerationStatusText ?? "Previews ready"
+        }
     }
 
     private func latestImportPreviewFailureCount(activity: AppWorkActivity) -> Int {

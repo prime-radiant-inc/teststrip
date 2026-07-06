@@ -10570,6 +10570,35 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary.stackedPhotoCount, 2)
     }
 
+    func testLatestImportCompletionSummaryIgnoresUnrelatedPreviewWork() throws {
+        let imported = makeAsset(
+            id: "import-summary-ready",
+            path: "/Photos/Import/import-summary-ready.cr2",
+            rating: 0
+        )
+        let unrelated = makeAsset(
+            id: "unrelated-preview-work",
+            path: "/Photos/Other/unrelated-preview-work.cr2",
+            rating: 0
+        )
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: RecordingWorkerTransport()
+        )
+        let (model, _, _) = try makeModelWithCompletedImportSession(
+            named: "import-summary-unrelated-preview-work",
+            assets: [imported, unrelated],
+            outputAssetIDs: [imported.id],
+            workerSupervisor: supervisor
+        )
+
+        try model.requestPreview(assetID: unrelated.id, level: .grid)
+
+        let summary = try XCTUnwrap(model.latestImportCompletionSummary)
+
+        XCTAssertEqual(summary.previewStatusText, "Previews ready")
+    }
+
     @MainActor
     func testBeginningCullingFromLatestImportUsesImportOutputSet() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-summary-cull")
