@@ -7348,6 +7348,67 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: outsideAsset.originalURL.appendingPathExtension("xmp").path))
     }
 
+    func testAcceptSelectedBatchKeywordSuggestionUsesSelectedAssetsOnly() throws {
+        let directory = try makeTemporaryDirectory(named: "selected-batch-keyword-apply")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let firstURL = photosDirectory.appendingPathComponent("first.cr2")
+        let secondURL = photosDirectory.appendingPathComponent("second.cr2")
+        let unselectedURL = photosDirectory.appendingPathComponent("unselected.cr2")
+        try Data("first raw bytes".utf8).write(to: firstURL)
+        try Data("second raw bytes".utf8).write(to: secondURL)
+        try Data("unselected raw bytes".utf8).write(to: unselectedURL)
+        let first = Asset(
+            id: AssetID(rawValue: "selected-keyword-first"),
+            originalURL: firstURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let second = Asset(
+            id: AssetID(rawValue: "selected-keyword-second"),
+            originalURL: secondURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 11, modificationDate: Date(timeIntervalSince1970: 11)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let unselected = Asset(
+            id: AssetID(rawValue: "selected-keyword-unselected"),
+            originalURL: unselectedURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 12, modificationDate: Date(timeIntervalSince1970: 12)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "selected-batch-keyword-suggestions",
+            assets: [first, second, unselected]
+        )
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: first.id, kind: .object, value: .label("mountain"), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: second.id, kind: .object, value: .label("lake"), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: unselected.id, kind: .object, value: .label("mountain"), confidence: 0.95, provenance: provenance)
+        ])
+        model.setBatchSelection(first.id, isSelected: true)
+        model.setBatchSelection(second.id, isSelected: true)
+
+        XCTAssertEqual(model.selectedBatchKeywordSuggestions.map(\.keyword), ["lake", "mountain"])
+        XCTAssertEqual(model.selectedBatchKeywordSuggestions.map(\.assetCountText), ["1 photo", "1 photo"])
+
+        let appliedCount = try model.acceptSelectedBatchKeywordSuggestion("mountain")
+
+        XCTAssertEqual(appliedCount, 1)
+        XCTAssertEqual(try repository.asset(id: first.id).metadata.keywords, ["mountain"])
+        XCTAssertEqual(try repository.asset(id: second.id).metadata.keywords, [])
+        XCTAssertEqual(try repository.asset(id: unselected.id).metadata.keywords, [])
+        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: firstURL.appendingPathExtension("xmp"))).metadata.keywords, ["mountain"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: secondURL.appendingPathExtension("xmp").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: unselectedURL.appendingPathExtension("xmp").path))
+    }
+
     func testAcceptSuggestedKeywordForSelectedAssetWritesCatalogAndXmp() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-accept-suggested-keyword")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)

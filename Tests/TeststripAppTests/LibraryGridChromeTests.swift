@@ -165,7 +165,7 @@ final class LibraryGridChromeTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.countText, "2 selected photos")
-        XCTAssertEqual(presentation.suggestionRows, [])
+        XCTAssertEqual(presentation.suggestionRows.map(\.keyword), ["mountain"])
         XCTAssertTrue(presentation.isApplyEnabled)
         XCTAssertEqual(presentation.applyTitle, "Apply to selected batch")
         XCTAssertNil(presentation.confirmationText)

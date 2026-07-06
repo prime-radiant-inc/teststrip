@@ -2129,7 +2129,7 @@ struct LibraryGridView: View {
         do {
             switch batchMetadataScope {
             case .selected:
-                return
+                try model.acceptSelectedBatchKeywordSuggestion(keyword)
             case .visible:
                 try model.acceptVisibleBatchKeywordSuggestion(keyword)
             case .currentScope:
@@ -2143,7 +2143,7 @@ struct LibraryGridView: View {
     private func batchMetadataSuggestions() -> [BatchKeywordSuggestion] {
         switch batchMetadataScope {
         case .selected:
-            return []
+            return model.selectedBatchKeywordSuggestions
         case .visible:
             return model.visibleBatchKeywordSuggestions
         case .currentScope:
@@ -2903,7 +2903,7 @@ struct BatchMetadataReviewPresentation: Equatable {
         switch selectedScope {
         case .selected:
             countText = "\(selectedAssetCount) selected \(selectedAssetCount == 1 ? "photo" : "photos")"
-            suggestionRows = []
+            suggestionRows = BatchKeywordSuggestionPresentation.rows(for: suggestions, limit: 6)
             isApplyEnabled = selectedAssetCount > 0 && draft.hasContentToApply
             applyTitle = "Apply to selected batch"
             confirmationText = nil

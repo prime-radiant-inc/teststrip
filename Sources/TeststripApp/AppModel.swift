@@ -1305,6 +1305,18 @@ public final class AppModel {
         batchKeywordSuggestions(for: assets)
     }
 
+    public var selectedBatchKeywordSuggestions: [BatchKeywordSuggestion] {
+        guard let catalog,
+              !selectedBatchAssetIDsInCatalogOrder.isEmpty,
+              let selectedAssets = try? catalog.repository.assets(
+                ids: selectedBatchAssetIDsInCatalogOrder,
+                limit: selectedBatchAssetIDsInCatalogOrder.count
+              ) else {
+            return []
+        }
+        return batchKeywordSuggestions(for: selectedAssets)
+    }
+
     public var latestImportBatchKeywordSuggestions: [BatchKeywordSuggestion] {
         guard let catalog,
               let assetIDs = try? latestImportOutputAssetIDs(repository: catalog.repository),
@@ -3462,6 +3474,11 @@ public final class AppModel {
     @discardableResult
     public func acceptVisibleBatchKeywordSuggestion(_ keyword: String) throws -> Int {
         try acceptBatchKeywordSuggestion(keyword, assetIDs: assets.map(\.id))
+    }
+
+    @discardableResult
+    public func acceptSelectedBatchKeywordSuggestion(_ keyword: String) throws -> Int {
+        try acceptBatchKeywordSuggestion(keyword, assetIDs: selectedBatchAssetIDsInCatalogOrder)
     }
 
     @discardableResult
