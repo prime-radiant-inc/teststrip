@@ -251,7 +251,15 @@ final class BenchmarkCommandTests: XCTestCase {
             transport: transport
         ).run()
 
-        XCTAssertEqual(result, LocalHTTPModelSmokeResult(signalCount: 1, signalKinds: [.focus]))
+        XCTAssertEqual(
+            result,
+            LocalHTTPModelSmokeResult(
+                signalCount: 2,
+                signalKinds: [.focus, .visualSimilarity],
+                vectorSignalCount: 1,
+                hasVisualSimilarityVector: true
+            )
+        )
         XCTAssertEqual(transport.request?.url, endpoint)
         XCTAssertEqual(transport.request?.timeoutInterval, 12)
     }
@@ -425,7 +433,7 @@ private final class RecordingSmokeTransport: LocalHTTPModelTransport, @unchecked
 
     func response(for request: URLRequest) throws -> LocalHTTPModelHTTPResponse {
         self.request = request
-        let content = #"{"signals":[{"kind":"focus","score":0.91,"confidence":0.82}]}"#
+        let content = #"{"signals":[{"kind":"focus","score":0.91,"confidence":0.82},{"kind":"visualSimilarity","vector":[0.1,0.2,0.3],"confidence":0.78}]}"#
         let body = try JSONSerialization.data(withJSONObject: [
             "choices": [
                 ["message": ["content": content]]

@@ -4,10 +4,19 @@ import TeststripCore
 public struct LocalHTTPModelSmokeResult: Equatable {
     public var signalCount: Int
     public var signalKinds: [EvaluationKind]
+    public var vectorSignalCount: Int
+    public var hasVisualSimilarityVector: Bool
 
-    public init(signalCount: Int, signalKinds: [EvaluationKind]) {
+    public init(
+        signalCount: Int,
+        signalKinds: [EvaluationKind],
+        vectorSignalCount: Int,
+        hasVisualSimilarityVector: Bool
+    ) {
         self.signalCount = signalCount
         self.signalKinds = signalKinds
+        self.vectorSignalCount = vectorSignalCount
+        self.hasVisualSimilarityVector = hasVisualSimilarityVector
     }
 }
 
@@ -43,7 +52,16 @@ public struct LocalHTTPModelSmoke {
         let signals = try provider.evaluate(assetID: assetID, previewURL: imageURL)
         return LocalHTTPModelSmokeResult(
             signalCount: signals.count,
-            signalKinds: signals.map(\.kind)
+            signalKinds: signals.map(\.kind),
+            vectorSignalCount: signals.filter(Self.hasVectorValue).count,
+            hasVisualSimilarityVector: signals.contains { signal in
+                signal.kind == .visualSimilarity && Self.hasVectorValue(signal)
+            }
         )
+    }
+
+    private static func hasVectorValue(_ signal: EvaluationSignal) -> Bool {
+        guard case .vector = signal.value else { return false }
+        return true
     }
 }

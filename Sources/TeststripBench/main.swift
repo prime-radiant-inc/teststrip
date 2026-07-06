@@ -120,7 +120,11 @@ private func runLocalHTTPModelSmoke(endpoint: URL, model: String, imagePath: Str
         ).run()
     }
     recorder.recordMetric("signals", result.signalCount)
+    recorder.recordMetric("vector_signals", result.vectorSignalCount)
+    recorder.recordMetric("visual_similarity_vector", result.hasVisualSimilarityVector ? 1 : 0)
     print("signals: \(result.signalCount)")
+    print("vector signals: \(result.vectorSignalCount)")
+    print("visual similarity vector: \(result.hasVisualSimilarityVector ? "yes" : "no")")
     print("signal kinds: \(result.signalKinds.map(\.rawValue).joined(separator: ", "))")
     try printMachineReadableSummary(recorder.summary)
 }
