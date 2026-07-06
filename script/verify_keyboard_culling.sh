@@ -6,6 +6,8 @@ APP_NAME="${1:-Teststrip}"
 TARGET_ASSET="${2:-}"
 TIMEOUT_SECONDS="${TESTSTRIP_AX_TIMEOUT_SECONDS:-8}"
 
+"$SCRIPT_DIR/activate_app.sh" "$APP_NAME"
+
 running_app_support_directory() {
     local app_pid
     app_pid="$(pgrep -x "$APP_NAME" | tail -1)"

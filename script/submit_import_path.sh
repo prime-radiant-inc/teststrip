@@ -11,6 +11,9 @@ fi
 
 IMPORT_DIR="$(cd "$IMPORT_DIR" && pwd)"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$SCRIPT_DIR/activate_app.sh" "$APP_NAME"
+
 TESTSTRIP_AX_APP_NAME="$APP_NAME" \
 TESTSTRIP_AX_IMPORT_DIR="$IMPORT_DIR" \
 /usr/bin/swift -e '

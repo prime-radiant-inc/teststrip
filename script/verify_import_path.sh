@@ -55,6 +55,8 @@ else
   fi
 fi
 
+"$SCRIPT_DIR/activate_app.sh" "$APP_NAME"
+
 import_started_ms="$(metric_now_ms)"
 import_output="$(
 TESTSTRIP_AX_APP_NAME="$APP_NAME" \

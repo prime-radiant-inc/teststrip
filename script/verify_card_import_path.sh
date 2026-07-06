@@ -51,6 +51,8 @@ else
   DESTINATION_DIR="$(mktemp -d /tmp/teststrip-card-destination.XXXXXX)"
 fi
 
+"$SCRIPT_DIR/activate_app.sh" "$APP_NAME"
+
 card_started_ms="$(metric_now_ms)"
 card_output="$(
 TESTSTRIP_AX_APP_NAME="$APP_NAME" \
