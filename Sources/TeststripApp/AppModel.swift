@@ -7238,6 +7238,24 @@ public final class AppModel {
         previewURL(for: assetID, levels: [.grid, .micro])
     }
 
+    func gridPreviewStatus(for assetID: AssetID) -> AssetGridPreviewStatusPresentation? {
+        let previewURL = gridPreviewURL(for: assetID)
+        let thumbnailLevels: [PreviewLevel] = [.grid, .micro]
+        let queueStates = previewGenerationQueueStates.filter { state in
+            state.item.assetID == assetID && thumbnailLevels.contains(state.item.level)
+        }
+        let activePreviewLevels = thumbnailLevels.filter { level in
+            let itemID = Self.previewWorkItemID(assetID: assetID, level: level)
+            guard let item = backgroundWorkQueue.item(id: itemID) else { return false }
+            return Self.isActiveBackgroundWorkStatus(item.status)
+        }
+        return AssetGridPreviewStatusPresentation.presentation(
+            previewURL: previewURL,
+            queueStates: queueStates,
+            activePreviewLevels: activePreviewLevels
+        )
+    }
+
     public func loupePreviewURL(for assetID: AssetID) -> URL? {
         previewURL(for: assetID, levels: [.large, .medium, .grid, .micro])
     }

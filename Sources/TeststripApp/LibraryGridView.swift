@@ -1802,6 +1802,7 @@ struct LibraryGridView: View {
                     asset: asset,
                     previewURL: model.gridPreviewURL(for: asset.id),
                     previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
+                    previewStatus: model.gridPreviewStatus(for: asset.id),
                     isSelected: model.selectedAssetID == asset.id,
                     isBatchSelected: model.isBatchSelected(asset.id)
                 )
@@ -5261,6 +5262,7 @@ private struct TimelineWorkspaceView: View {
                             asset: asset,
                             previewURL: model.gridPreviewURL(for: asset.id),
                             previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
+                            previewStatus: model.gridPreviewStatus(for: asset.id),
                             isSelected: model.selectedAssetID == asset.id,
                             isBatchSelected: model.isBatchSelected(asset.id)
                         )
@@ -5331,6 +5333,45 @@ private struct TimelineWorkspaceView: View {
 
 enum AssetGridPreviewPolicy {
     static let thumbnailScaling: CachedPreviewImage.Scaling = .fit
+}
+
+struct AssetGridPreviewStatusPresentation: Equatable {
+    var title: String
+    var detail: String
+    var systemImage: String
+
+    static func presentation(
+        previewURL: URL?,
+        queueStates: [PreviewGenerationQueueState],
+        activePreviewLevels: [PreviewLevel]
+    ) -> AssetGridPreviewStatusPresentation? {
+        guard previewURL == nil else { return nil }
+        let thumbnailLevels: Set<PreviewLevel> = [.grid, .micro]
+        if activePreviewLevels.contains(where: { thumbnailLevels.contains($0) }) {
+            return AssetGridPreviewStatusPresentation(
+                title: "Building preview",
+                detail: "Cached preview is being generated",
+                systemImage: "clock.arrow.circlepath"
+            )
+        }
+
+        let thumbnailStates = queueStates.filter { thumbnailLevels.contains($0.item.level) }
+        guard !thumbnailStates.isEmpty else { return nil }
+        if thumbnailStates.contains(where: { state in
+            state.attemptCount > 0 || state.lastErrorMessage?.isEmpty == false
+        }) {
+            return AssetGridPreviewStatusPresentation(
+                title: "Preview issue",
+                detail: "Cached preview needs attention",
+                systemImage: "exclamationmark.triangle.fill"
+            )
+        }
+        return AssetGridPreviewStatusPresentation(
+            title: "Preview queued",
+            detail: "Cached preview is queued",
+            systemImage: "clock"
+        )
+    }
 }
 
 enum LibraryGridSelectionScrollPolicy {
@@ -6276,6 +6317,7 @@ private struct AssetGridCell: View {
     var asset: Asset
     var previewURL: URL?
     var previewCacheGeneration: Int
+    var previewStatus: AssetGridPreviewStatusPresentation?
     var isSelected: Bool
     var isBatchSelected = false
 
@@ -6291,6 +6333,9 @@ private struct AssetGridCell: View {
                     endPoint: .bottom
                 )
                 .allowsHitTesting(false)
+                if previewURL == nil, let previewStatus {
+                    previewStatusBadge(previewStatus)
+                }
                 metadataOverlay
                     .padding(6)
             }
@@ -6331,6 +6376,22 @@ private struct AssetGridCell: View {
             scaling: AssetGridPreviewPolicy.thumbnailScaling,
             cacheGeneration: previewCacheGeneration
         )
+    }
+
+    private func previewStatusBadge(_ status: AssetGridPreviewStatusPresentation) -> some View {
+        VStack(spacing: 5) {
+            Image(systemName: status.systemImage)
+                .font(.system(size: 14, weight: .semibold))
+            Text(status.title)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .foregroundStyle(.white.opacity(0.9))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 5))
+        .accessibilityLabel(status.detail)
     }
 
     private var batchSelectionBadge: some View {

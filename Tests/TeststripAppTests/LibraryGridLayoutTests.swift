@@ -49,6 +49,65 @@ final class LibraryGridLayoutTests: XCTestCase {
         XCTAssertEqual(AssetGridPreviewPolicy.thumbnailScaling, .fit)
     }
 
+    func testGridPreviewStatusHidesWhenCachedPreviewExists() {
+        let status = AssetGridPreviewStatusPresentation.presentation(
+            previewURL: URL(fileURLWithPath: "/Previews/asset/grid.jpg"),
+            queueStates: [
+                PreviewGenerationQueueState(
+                    item: PreviewGenerationItem(assetID: AssetID(rawValue: "asset"), level: .grid),
+                    attemptCount: 0
+                )
+            ],
+            activePreviewLevels: [.grid]
+        )
+
+        XCTAssertNil(status)
+    }
+
+    func testGridPreviewStatusShowsBuildingForActivePreviewWork() {
+        let status = AssetGridPreviewStatusPresentation.presentation(
+            previewURL: nil,
+            queueStates: [],
+            activePreviewLevels: [.grid]
+        )
+
+        XCTAssertEqual(status?.title, "Building preview")
+        XCTAssertEqual(status?.systemImage, "clock.arrow.circlepath")
+    }
+
+    func testGridPreviewStatusShowsQueuedForPendingPreviewWork() {
+        let status = AssetGridPreviewStatusPresentation.presentation(
+            previewURL: nil,
+            queueStates: [
+                PreviewGenerationQueueState(
+                    item: PreviewGenerationItem(assetID: AssetID(rawValue: "asset"), level: .grid),
+                    attemptCount: 0
+                )
+            ],
+            activePreviewLevels: []
+        )
+
+        XCTAssertEqual(status?.title, "Preview queued")
+        XCTAssertEqual(status?.systemImage, "clock")
+    }
+
+    func testGridPreviewStatusShowsIssueForFailedPreviewWork() {
+        let status = AssetGridPreviewStatusPresentation.presentation(
+            previewURL: nil,
+            queueStates: [
+                PreviewGenerationQueueState(
+                    item: PreviewGenerationItem(assetID: AssetID(rawValue: "asset"), level: .grid),
+                    attemptCount: 1,
+                    lastErrorMessage: "could not render preview"
+                )
+            ],
+            activePreviewLevels: []
+        )
+
+        XCTAssertEqual(status?.title, "Preview issue")
+        XCTAssertEqual(status?.systemImage, "exclamationmark.triangle.fill")
+    }
+
     func testGridSelectionFromPointerDoesNotAutoScroll() {
         XCTAssertFalse(
             LibraryGridSelectionScrollPolicy.shouldScrollSelectedAssetIntoView(
