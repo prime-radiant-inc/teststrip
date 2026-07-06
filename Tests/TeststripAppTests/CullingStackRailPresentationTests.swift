@@ -298,6 +298,37 @@ final class CullingStackRailPresentationTests: XCTestCase {
         XCTAssertNil(unranked.recommendedAssetID)
     }
 
+    func testItemsCarryCompactFlawBadgesFromPersistedSignals() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let sharpEyesOpen = makeAsset(id: "sharp-open", path: "/Photos/Job/sharp-open.cr2", capturedAt: capturedAt)
+        let blink = makeAsset(id: "blink", path: "/Photos/Job/blink.cr2", capturedAt: capturedAt.addingTimeInterval(1))
+        let soft = makeAsset(id: "soft", path: "/Photos/Job/soft.cr2", capturedAt: capturedAt.addingTimeInterval(1.8))
+
+        let presentation = CullingStackRailPresentation(
+            assets: [sharpEyesOpen, blink, soft],
+            selectedAssetID: sharpEyesOpen.id,
+            evaluationSignalsByAssetID: [
+                sharpEyesOpen.id: [
+                    signal(assetID: sharpEyesOpen.id, kind: .focus, score: 0.95),
+                    signal(assetID: sharpEyesOpen.id, kind: .eyesOpen, score: 1.0)
+                ],
+                blink.id: [
+                    signal(assetID: blink.id, kind: .focus, score: 0.9),
+                    signal(assetID: blink.id, kind: .eyesOpen, score: 0.0)
+                ],
+                soft.id: [
+                    signal(assetID: soft.id, kind: .focus, score: 0.3)
+                ]
+            ],
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 2)
+        )
+
+        XCTAssertEqual(presentation.items.map(\.assetID), [sharpEyesOpen.id, blink.id, soft.id])
+        XCTAssertEqual(presentation.items[0].flawBadges, [])
+        XCTAssertEqual(presentation.items[1].flawBadges, [CompareDecisionBadge(text: "EYES CLOSED", tone: .destructive)])
+        XCTAssertEqual(presentation.items[2].flawBadges, [CompareDecisionBadge(text: "SOFT", tone: .destructive)])
+    }
+
     private func makeAsset(id: String, path: String, capturedAt: Date?) -> Asset {
         let technicalMetadata = capturedAt.map { date in
             AssetTechnicalMetadata(

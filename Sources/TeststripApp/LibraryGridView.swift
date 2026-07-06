@@ -3150,10 +3150,19 @@ private struct LoupeView: View {
                                 RoundedRectangle(cornerRadius: 6)
                                     .strokeBorder(Color.orange.opacity(item.isSelected ? 0.4 : 0.26))
                             }
+                            .overlay(alignment: .bottomTrailing) {
+                                if !item.flawBadges.isEmpty {
+                                    Circle()
+                                        .fill(Color.red)
+                                        .frame(width: 6, height: 6)
+                                        .offset(x: 1, y: 1)
+                                }
+                            }
                         }
                         .buttonStyle(.plain)
+                        .help(stackChipFlawHelpText(item))
                         .accessibilityLabel("Stack frame \(item.label)")
-                        .accessibilityValue(item.isSelected ? "Selected" : (item.isRecommended ? "Recommended" : "Not selected"))
+                        .accessibilityValue(stackChipAccessibilityValue(item))
                     }
                 }
             }
@@ -3162,6 +3171,17 @@ private struct LoupeView: View {
             .background(Color.black.opacity(0.23))
             .liveMockupPlaceholder(.cullingStackCull)
         }
+    }
+
+    private func stackChipFlawHelpText(_ item: CullingStackRailPresentation.Item) -> String {
+        guard !item.flawBadges.isEmpty else { return "" }
+        return "Frame \(item.label): \(item.flawBadges.map(\.text).joined(separator: ", "))"
+    }
+
+    private func stackChipAccessibilityValue(_ item: CullingStackRailPresentation.Item) -> String {
+        var segments = [item.isSelected ? "Selected" : (item.isRecommended ? "Recommended" : "Not selected")]
+        segments.append(contentsOf: item.flawBadges.map(\.text))
+        return segments.joined(separator: ", ")
     }
 
     private var cullingStackPresentation: CullingStackRailPresentation {
@@ -3979,17 +3999,24 @@ struct CompareSurveyPresentation: Equatable {
                 badgesByAssetID[assetID] = [CompareDecisionBadge(text: "✦ BEST", tone: .best)]
                 continue
             }
-            var badges: [CompareDecisionBadge] = []
-            let signals = evaluationSignalsByAssetID[assetID] ?? []
-            if let eyesOpen = highestConfidenceScore(kind: .eyesOpen, in: signals), eyesOpen < 1.0 {
-                badges.append(CompareDecisionBadge(text: "EYES CLOSED", tone: .destructive))
-            }
-            if let focus = highestConfidenceScore(kind: .focus, in: signals), focus < softFocusBadgeThreshold {
-                badges.append(CompareDecisionBadge(text: "SOFT", tone: .destructive))
-            }
-            badgesByAssetID[assetID] = badges
+            badgesByAssetID[assetID] = flawBadges(for: evaluationSignalsByAssetID[assetID] ?? [])
         }
         return badgesByAssetID
+    }
+
+    /// Compact flaw reads (EYES CLOSED / SOFT) derived straight from
+    /// persisted signals. Shared with other frame surfaces (e.g. the stack
+    /// rail chips) so the wording and tone stay identical everywhere a flaw
+    /// badge appears.
+    static func flawBadges(for signals: [EvaluationSignal]) -> [CompareDecisionBadge] {
+        var badges: [CompareDecisionBadge] = []
+        if let eyesOpen = highestConfidenceScore(kind: .eyesOpen, in: signals), eyesOpen < 1.0 {
+            badges.append(CompareDecisionBadge(text: "EYES CLOSED", tone: .destructive))
+        }
+        if let focus = highestConfidenceScore(kind: .focus, in: signals), focus < softFocusBadgeThreshold {
+            badges.append(CompareDecisionBadge(text: "SOFT", tone: .destructive))
+        }
+        return badges
     }
 
     private static func highestConfidenceScore(kind: EvaluationKind, in signals: [EvaluationSignal]) -> Double? {
@@ -4339,6 +4366,7 @@ struct CullingStackRailPresentation: Equatable {
         var label: String
         var isSelected: Bool
         var isRecommended: Bool
+        var flawBadges: [CompareDecisionBadge]
     }
 
     var items: [Item]
@@ -4419,7 +4447,8 @@ struct CullingStackRailPresentation: Equatable {
                 assetID: assetID,
                 label: "\(index + 1)",
                 isSelected: assetID == selectedAssetID,
-                isRecommended: assetID == recommendation?.assetID
+                isRecommended: assetID == recommendation?.assetID,
+                flawBadges: CompareSurveyPresentation.flawBadges(for: evaluationSignalsByAssetID[assetID] ?? [])
             )
         }
         if let stackIndex = stackScope.stackIndex,
