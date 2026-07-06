@@ -2721,17 +2721,22 @@ private struct LoupeView: View {
         let stackPresentation = cullingStackPresentation
         VStack(spacing: 0) {
             cullingHeader(stackPresentation: stackPresentation)
-            if let asset = model.selectedAsset {
-                loupeStage(for: asset)
-                    .task(id: asset.id.rawValue) {
-                        do {
-                            try model.requestVisibleLoupePreview(assetID: asset.id)
-                        } catch {
-                            model.errorMessage = error.localizedDescription
-                        }
+            HStack(spacing: 0) {
+                cullingStackListRail
+                VStack(spacing: 0) {
+                    if let asset = model.selectedAsset {
+                        loupeStage(for: asset)
+                            .task(id: asset.id.rawValue) {
+                                do {
+                                    try model.requestVisibleLoupePreview(assetID: asset.id)
+                                } catch {
+                                    model.errorMessage = error.localizedDescription
+                                }
+                            }
+                    } else {
+                        unavailableView(title: "No photo selected", systemImage: "photo")
                     }
-            } else {
-                unavailableView(title: "No photo selected", systemImage: "photo")
+                }
             }
             if let completion = model.cullingSessionCompletion {
                 CullingCompletionBannerView(
@@ -2755,6 +2760,88 @@ private struct LoupeView: View {
         } catch {
             model.errorMessage = error.localizedDescription
         }
+    }
+
+    @ViewBuilder
+    private var cullingStackListRail: some View {
+        let entries = model.cullingStackListEntries()
+        if !entries.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("STACKS · AUTO-GROUPED")
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 10)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(entries) { entry in
+                            stackListRow(entry)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                }
+            }
+            .frame(width: 168)
+            .background(Color.black.opacity(0.26))
+            .overlay(alignment: .trailing) { Divider() }
+        }
+    }
+
+    private func stackListRow(_ entry: CullingStackListEntry) -> some View {
+        Button {
+            do {
+                try model.selectCullingStackSet(id: entry.setID)
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
+        } label: {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.black.opacity(0.55))
+                    if let previewURL = model.gridPreviewURL(for: entry.leadAssetID) {
+                        CachedPreviewImage(
+                            previewURL: previewURL,
+                            scaling: .fit,
+                            cacheGeneration: model.previewCacheGeneration(for: entry.leadAssetID)
+                        )
+                    } else {
+                        Image(systemName: "photo")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 36, height: 26)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                    Text(entry.frameCountText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if entry.isDecided {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+            }
+            .padding(6)
+            .background(
+                entry.isSelected ? Color.orange.opacity(0.18) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 6)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(entry.isSelected ? Color.orange.opacity(0.4) : Color.clear)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(entry.title)
+        .accessibilityValue(entry.isDecided ? "Decided" : "Undecided")
     }
 
     @ViewBuilder

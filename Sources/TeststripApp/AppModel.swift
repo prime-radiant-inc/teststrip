@@ -81,6 +81,17 @@ public struct CullingStackScope: Equatable, Sendable {
     }
 }
 
+public struct CullingStackListEntry: Equatable, Identifiable, Sendable {
+    public var setID: AssetSetID
+    public var title: String
+    public var frameCountText: String
+    public var leadAssetID: AssetID
+    public var isDecided: Bool
+    public var isSelected: Bool
+
+    public var id: String { setID.rawValue }
+}
+
 public enum CullingShortcut: Equatable, Sendable {
     case previousPhoto
     case nextPhoto
@@ -4013,6 +4024,47 @@ public final class AppModel {
         return Dictionary(uniqueKeysWithValues: stack.assetIDs.map { assetID in
             (assetID, evaluationSignals(for: assetID))
         })
+    }
+
+    // One row per persisted stack in the active stack-cull session; empty
+    // outside persisted stack sessions. A stack is decided only when every
+    // frame carries a flag — matching session progress accounting.
+    public func cullingStackListEntries() -> [CullingStackListEntry] {
+        guard let catalog,
+              let session = try? activePersistedStackCullingSession(repository: catalog.repository) else {
+            return []
+        }
+        let stackSetIDs = session.inputSetIDs.filter(Self.isWorkStackSetID)
+        return stackSetIDs.enumerated().compactMap { index, setID in
+            guard let stackAssetIDs = try? assetIDs(in: setID, repository: catalog.repository),
+                  let leadAssetID = stackAssetIDs.first else {
+                return nil
+            }
+            let isDecided = (try? stackAssetIDs.allSatisfy { assetID in
+                try catalog.repository.asset(id: assetID).metadata.flag != nil
+            }) ?? false
+            return CullingStackListEntry(
+                setID: setID,
+                title: "Stack \(index + 1)",
+                frameCountText: "\(stackAssetIDs.count) \(stackAssetIDs.count == 1 ? "frame" : "frames")",
+                leadAssetID: leadAssetID,
+                isDecided: isDecided,
+                isSelected: setID == selectedAssetSetID
+            )
+        }
+    }
+
+    public func selectCullingStackSet(id: AssetSetID) throws {
+        guard let catalog,
+              let session = try activePersistedStackCullingSession(repository: catalog.repository),
+              session.inputSetIDs.contains(id) else {
+            throw TeststripError.invalidState("stack set is not part of the active culling session")
+        }
+        let keepSurveyCompare = selectedView == .compare
+        try applyAssetSet(id: id)
+        let stackAssetIDs = selectedExplicitAssetIDs ?? []
+        selectAssetID(recommendedCullingStackAssetID(in: stackAssetIDs) ?? stackAssetIDs.first)
+        selectedView = keepSurveyCompare ? .compare : .loupe
     }
 
     // The ranked best-of-stack frame, or nil when no frame carries quality signals.

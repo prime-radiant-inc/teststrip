@@ -3242,6 +3242,59 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(fixture.model.cullingSessionCompletion)
     }
 
+    func testCullingStackListEntriesDescribeSessionStacksWithDecidedState() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "stack-list-entries",
+            sessionID: "stack-list-entries-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+
+        let initialEntries = fixture.model.cullingStackListEntries()
+        XCTAssertEqual(initialEntries.map(\.setID), [fixture.firstSet.id, fixture.secondSet.id])
+        XCTAssertEqual(initialEntries.map(\.title), ["Stack 1", "Stack 2"])
+        XCTAssertEqual(initialEntries.map(\.frameCountText), ["2 frames", "2 frames"])
+        XCTAssertEqual(initialEntries.map(\.leadAssetID), [fixture.firstLead.id, fixture.secondLead.id])
+        XCTAssertEqual(initialEntries.map(\.isDecided), [false, false])
+        XCTAssertEqual(initialEntries.map(\.isSelected), [true, false])
+
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+
+        let advancedEntries = fixture.model.cullingStackListEntries()
+        XCTAssertEqual(advancedEntries.map(\.isDecided), [true, false])
+        XCTAssertEqual(advancedEntries.map(\.isSelected), [false, true])
+    }
+
+    func testCullingStackListEntriesAreEmptyOutsidePersistedStackSessions() throws {
+        let first = makeAsset(id: "stack-list-none-first", path: "/Photos/Job/a.cr2", rating: 0)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "stack-list-entries-none",
+            assets: [first]
+        )
+        model.select(first.id)
+
+        XCTAssertEqual(model.cullingStackListEntries(), [])
+    }
+
+    func testSelectingAStackSetFromTheListJumpsToItsRecommendedFrame() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "stack-list-jump",
+            sessionID: "stack-list-jump-session"
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try fixture.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: fixture.secondAlternate.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance)
+        ])
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+
+        try fixture.model.selectCullingStackSet(id: fixture.secondSet.id)
+
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondAlternate.id)
+        XCTAssertEqual(fixture.model.selectedView, .loupe)
+    }
+
     func testKeepingAllFramesInPersistedStackMarksEveryFrameAsPickAndAdvancesProgress() throws {
         let fixture = try makePersistedStackCullingFixture(
             named: "persisted-stack-keep-all",
