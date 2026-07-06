@@ -2672,6 +2672,48 @@ struct LibraryGridView: View {
     }
 }
 
+private struct CullingCompletionBannerView: View {
+    var summary: CullingSessionCompletionSummary
+    var canViewPicks: Bool
+    var viewPicks: () -> Void
+    var dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(.green)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Culling complete")
+                    .font(.caption.weight(.semibold))
+                Text(summary.detailText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Button("View Picks") {
+                viewPicks()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .tint(.green)
+            .disabled(!canViewPicks)
+            .help(canViewPicks ? "Open this session's Picks output set" : "This session finished with no picks")
+            Button("Dismiss") {
+                dismiss()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 40)
+        .background(Color.green.opacity(0.12))
+        .overlay(alignment: .top) { Divider() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Culling session complete")
+    }
+}
+
 private struct LoupeView: View {
     var model: AppModel
 
@@ -2691,12 +2733,28 @@ private struct LoupeView: View {
             } else {
                 unavailableView(title: "No photo selected", systemImage: "photo")
             }
+            if let completion = model.cullingSessionCompletion {
+                CullingCompletionBannerView(
+                    summary: completion,
+                    canViewPicks: completion.picksSetID != nil,
+                    viewPicks: { openCullingSessionPicks() },
+                    dismiss: { model.dismissCullingSessionCompletion() }
+                )
+            }
             cullingStackRail(presentation: stackPresentation)
             cullingFilmstrip
             cullingCommandRail
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.34))
+    }
+
+    private func openCullingSessionPicks() {
+        do {
+            try model.openCullingSessionPicks()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     @ViewBuilder
@@ -4352,6 +4410,14 @@ private struct CompareView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 compareHeader(presentation)
+                if let completion = model.cullingSessionCompletion {
+                    CullingCompletionBannerView(
+                        summary: completion,
+                        canViewPicks: completion.picksSetID != nil,
+                        viewPicks: { openCullingSessionPicks() },
+                        dismiss: { model.dismissCullingSessionCompletion() }
+                    )
+                }
                 if let primaryAsset = presentation.primaryAsset {
                     surveyLayout(presentation)
                     compareActionStrip(primaryAsset: primaryAsset, presentation: presentation)
@@ -4366,6 +4432,14 @@ private struct CompareView: View {
             requestComparePreviews()
         }
         .liveMockupPlaceholder(.compareSurvey)
+    }
+
+    private func openCullingSessionPicks() {
+        do {
+            try model.openCullingSessionPicks()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     private var emptyCompareSet: some View {

@@ -3162,6 +3162,86 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
     }
 
+    func testFlaggingLastStackFramePublishesCullingCompletionSummary() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "completion-summary",
+            sessionID: "completion-summary-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        XCTAssertNil(fixture.model.cullingSessionCompletion)
+
+        // Auto-advance landed on the second stack; decide it too.
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+
+        let completion = try XCTUnwrap(fixture.model.cullingSessionCompletion)
+        XCTAssertEqual(completion.sessionID, WorkSessionID(rawValue: "completion-summary-session"))
+        XCTAssertEqual(completion.title, "Cull persisted stacks")
+        XCTAssertEqual(completion.pickCount, 2)
+        XCTAssertEqual(completion.rejectCount, 2)
+        XCTAssertEqual(completion.picksSetID, AssetSetID(rawValue: "work-output-completion-summary-session-picks"))
+        XCTAssertEqual(completion.detailText, "2 picks · 2 rejects — Cull persisted stacks")
+    }
+
+    func testOpeningCullingCompletionPicksAppliesTheOutputSet() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "completion-open-picks",
+            sessionID: "completion-open-picks-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        let completion = try XCTUnwrap(fixture.model.cullingSessionCompletion)
+        let picksSetID = try XCTUnwrap(completion.picksSetID)
+
+        try fixture.model.openCullingSessionPicks()
+
+        XCTAssertEqual(fixture.model.selectedAssetSetID, picksSetID)
+        XCTAssertEqual(fixture.model.selectedView, .grid)
+        XCTAssertEqual(
+            Set(fixture.model.assets.map(\.id)),
+            [fixture.firstLead.id, fixture.secondLead.id]
+        )
+        XCTAssertNil(fixture.model.cullingSessionCompletion)
+    }
+
+    func testClearingAFlagWithdrawsTheCompletionSummary() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "completion-withdrawn",
+            sessionID: "completion-withdrawn-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        XCTAssertNotNil(fixture.model.cullingSessionCompletion)
+
+        fixture.model.select(fixture.secondAlternate.id)
+        try fixture.model.setFlagForSelectedAsset(nil)
+
+        XCTAssertNil(fixture.model.cullingSessionCompletion)
+    }
+
+    func testStartingANewCullingSessionClearsTheCompletionSummary() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "completion-cleared-on-start",
+            sessionID: "completion-cleared-on-start-session"
+        )
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        XCTAssertNotNil(fixture.model.cullingSessionCompletion)
+
+        fixture.model.selectedAssetSetID = nil
+        try fixture.model.reload()
+        _ = try fixture.model.beginCullingSession(named: "Fresh Cull")
+
+        XCTAssertNil(fixture.model.cullingSessionCompletion)
+    }
+
     func testKeepingAllFramesInPersistedStackMarksEveryFrameAsPickAndAdvancesProgress() throws {
         let fixture = try makePersistedStackCullingFixture(
             named: "persisted-stack-keep-all",

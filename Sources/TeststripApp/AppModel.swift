@@ -46,6 +46,22 @@ public struct CullingProgressSummary: Equatable, Sendable {
     }
 }
 
+public struct CullingSessionCompletionSummary: Equatable, Identifiable, Sendable {
+    public var sessionID: WorkSessionID
+    public var title: String
+    public var pickCount: Int
+    public var rejectCount: Int
+    public var picksSetID: AssetSetID?
+
+    public var id: String { sessionID.rawValue }
+
+    public var detailText: String {
+        let picksText = "\(pickCount) \(pickCount == 1 ? "pick" : "picks")"
+        let rejectsText = "\(rejectCount) \(rejectCount == 1 ? "reject" : "rejects")"
+        return "\(picksText) · \(rejectsText) — \(title)"
+    }
+}
+
 public struct CullingStackScope: Equatable, Sendable {
     public var assetIDs: [AssetID]
     public var stackIndex: Int?
@@ -1163,6 +1179,7 @@ public final class AppModel {
     public var starredWork: [AppWorkActivity]
     public var workHistorySearchResults: [AppWorkActivity]
     public var lastCullingMetadataDecision: CullingMetadataDecisionFeedback?
+    public private(set) var cullingSessionCompletion: CullingSessionCompletionSummary?
     public var pendingMetadataSyncItems: [MetadataSyncItem]
     public var metadataSyncConflictItems: [MetadataSyncItem]
     public var pendingMetadataSyncCount: Int
@@ -2957,6 +2974,7 @@ public final class AppModel {
 
     @discardableResult
     public func beginStackCullingFromLatestImportCompletion() throws -> WorkSession {
+        cullingSessionCompletion = nil
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -3028,6 +3046,7 @@ public final class AppModel {
 
     @discardableResult
     public func beginManualCullingFromCompareSet() throws -> WorkSession {
+        cullingSessionCompletion = nil
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -3474,8 +3493,25 @@ public final class AppModel {
         return assetSet
     }
 
+    public func openCullingSessionPicks() throws {
+        guard let completion = cullingSessionCompletion else {
+            throw TeststripError.invalidState("no completed culling session")
+        }
+        guard let picksSetID = completion.picksSetID else {
+            throw TeststripError.invalidState("the completed session has no picks")
+        }
+        try applyAssetSet(id: picksSetID)
+        cullingSessionCompletion = nil
+        statusMessage = "Viewing \(completion.title) Picks"
+    }
+
+    public func dismissCullingSessionCompletion() {
+        cullingSessionCompletion = nil
+    }
+
     @discardableResult
     public func beginCullingSession(named name: String, intent: String = "") throws -> WorkSession {
+        cullingSessionCompletion = nil
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -7494,6 +7530,7 @@ public final class AppModel {
               var session = try activeCullingSession(repository: catalog.repository) else {
             return
         }
+        let previousStatus = session.status
         switch session.status {
         case .failed, .cancelled:
             return
@@ -7523,6 +7560,11 @@ public final class AppModel {
             rejectCount: decisionCounts.reject
         )
         try refreshCullingSessionOutputSet(session: &session, repository: catalog.repository)
+        updateCullingSessionCompletion(
+            session: session,
+            previousStatus: previousStatus,
+            decisionCounts: decisionCounts
+        )
         session.updatedAt = Date()
         try catalog.repository.save(session)
         try refreshWorkSessions()
@@ -7536,6 +7578,7 @@ public final class AppModel {
               ) else {
             return
         }
+        let previousStatus = session.status
         switch session.status {
         case .failed, .cancelled:
             return
@@ -7567,9 +7610,37 @@ public final class AppModel {
             rejectCount: decisionCounts.reject
         )
         try refreshCullingSessionOutputSet(session: &session, repository: catalog.repository)
+        updateCullingSessionCompletion(
+            session: session,
+            previousStatus: previousStatus,
+            decisionCounts: decisionCounts
+        )
         session.updatedAt = Date()
         try catalog.repository.save(session)
         try refreshWorkSessions()
+    }
+
+    // Publishes the payoff banner exactly when a session transitions into
+    // .completed, and withdraws it if a later change reopens the session.
+    private func updateCullingSessionCompletion(
+        session: WorkSession,
+        previousStatus: WorkSessionStatus,
+        decisionCounts: (pick: Int, reject: Int)
+    ) {
+        if session.status == .completed, previousStatus != .completed {
+            let picksSetID = Self.cullingOutputSetID(sessionID: session.id)
+            cullingSessionCompletion = CullingSessionCompletionSummary(
+                sessionID: session.id,
+                title: session.title,
+                pickCount: decisionCounts.pick,
+                rejectCount: decisionCounts.reject,
+                picksSetID: session.outputSetIDs.contains(picksSetID) ? picksSetID : nil
+            )
+            return
+        }
+        if session.status != .completed, cullingSessionCompletion?.sessionID == session.id {
+            cullingSessionCompletion = nil
+        }
     }
 
     private func refreshCullingSessionOutputSet(
