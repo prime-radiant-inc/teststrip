@@ -861,6 +861,22 @@ public struct BatchKeywordSuggestion: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct LatestImportPresentation: Equatable, Sendable {
+    public var summary: ImportCompletionSummary?
+    public var flaggedReviewAssetCount: Int
+    public var faceReviewAssetCount: Int
+    public var batchKeywordSuggestions: [BatchKeywordSuggestion]
+    public var canRequestAssetEvaluations: Bool
+
+    public static let empty = LatestImportPresentation(
+        summary: nil,
+        flaggedReviewAssetCount: 0,
+        faceReviewAssetCount: 0,
+        batchKeywordSuggestions: [],
+        canRequestAssetEvaluations: false
+    )
+}
+
 private struct BatchKeywordAccumulator {
     var keyword: String
     var assetCount: Int
@@ -1078,6 +1094,9 @@ public final class AppModel {
     public var catalogPeople: [CatalogPerson]
     public var reviewQueueCounts: [ReviewQueue: Int]
     public var selectedAssetSetID: AssetSetID?
+    // Cached latest-import panel state so SwiftUI render passes never run catalog
+    // queries; nil means the presentation is rebuilt on the next getter access.
+    private var latestImportPresentation: LatestImportPresentation?
 
     @ObservationIgnored
     private var catalog: AppCatalog?
@@ -1500,13 +1519,7 @@ public final class AppModel {
     }
 
     public var canRequestLatestImportAssetEvaluations: Bool {
-        guard workerSupervisor != nil,
-              let catalog,
-              latestImportCompletionSummary != nil,
-              let assetIDs = try? latestImportOutputAssetIDs(repository: catalog.repository) else {
-            return false
-        }
-        return assetIDs.contains { hasCachedPreview(for: $0) }
+        latestImportPresentationRebuildingIfNeeded().canRequestAssetEvaluations
     }
 
     public var canRequestCurrentScopeAssetEvaluations: Bool {
@@ -1586,40 +1599,15 @@ public final class AppModel {
     }
 
     public var latestImportBatchKeywordSuggestions: [BatchKeywordSuggestion] {
-        guard let catalog,
-              let assetIDs = try? latestImportOutputAssetIDs(repository: catalog.repository),
-              !assetIDs.isEmpty,
-              let importedAssets = try? catalog.repository.assets(ids: assetIDs, limit: assetIDs.count) else {
-            return []
-        }
-        return batchKeywordSuggestions(for: importedAssets)
+        latestImportPresentationRebuildingIfNeeded().batchKeywordSuggestions
     }
 
     public var latestImportFaceReviewAssetCount: Int {
-        guard let catalog,
-              let assetIDs = try? latestImportOutputAssetIDs(repository: catalog.repository),
-              !assetIDs.isEmpty,
-              let faceAssetIDs = try? catalog.repository.assetIDs(
-                ids: assetIDs,
-                matching: Self.reviewQueueQuery(.facesFound)
-              ) else {
-            return 0
-        }
-        return faceAssetIDs.count
+        latestImportPresentationRebuildingIfNeeded().faceReviewAssetCount
     }
 
     public var latestImportFlaggedReviewAssetCount: Int {
-        guard let catalog,
-              let summary = latestImportCompletionSummary,
-              let count = try? catalog.repository.assetCount(
-                matching: SetQuery(predicates: [
-                    .importBatch(summary.activityID),
-                    .likelyIssue
-                ])
-              ) else {
-            return 0
-        }
-        return count
+        latestImportPresentationRebuildingIfNeeded().flaggedReviewAssetCount
     }
 
     public var currentScopeBatchKeywordSuggestions: [BatchKeywordSuggestion] {
@@ -1762,9 +1750,87 @@ public final class AppModel {
     }
 
     public var latestImportCompletionSummary: ImportCompletionSummary? {
-        guard let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
-            return nil
+        latestImportPresentationRebuildingIfNeeded().summary
+    }
+
+    /// Marks the cached latest-import panel state stale so the next getter access
+    /// rebuilds it from the catalog. Call this from every event that can change the
+    /// panel; the getters themselves must stay cheap because SwiftUI evaluates them
+    /// on every render pass.
+    public func refreshLatestImportPresentation() {
+        latestImportPresentation = nil
+    }
+
+    private func latestImportPresentationRebuildingIfNeeded() -> LatestImportPresentation {
+        if let latestImportPresentation {
+            return latestImportPresentation
         }
+        let presentation = buildLatestImportPresentation()
+        latestImportPresentation = presentation
+        return presentation
+    }
+
+    private func buildLatestImportPresentation() -> LatestImportPresentation {
+        guard let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
+            return .empty
+        }
+        let summary = latestImportCompletionSummary(activity: activity)
+        return LatestImportPresentation(
+            summary: summary,
+            flaggedReviewAssetCount: latestImportFlaggedReviewAssetCount(summary: summary),
+            faceReviewAssetCount: latestImportFaceReviewAssetCount(activity: activity),
+            batchKeywordSuggestions: latestImportBatchKeywordSuggestions(activity: activity),
+            canRequestAssetEvaluations: canRequestLatestImportAssetEvaluations(activity: activity)
+        )
+    }
+
+    private func latestImportBatchKeywordSuggestions(activity: AppWorkActivity) -> [BatchKeywordSuggestion] {
+        guard let catalog,
+              let assetIDs = try? latestImportOutputAssetIDs(activityID: activity.id, repository: catalog.repository),
+              !assetIDs.isEmpty,
+              let importedAssets = try? catalog.repository.assets(ids: assetIDs, limit: assetIDs.count) else {
+            return []
+        }
+        return batchKeywordSuggestions(for: importedAssets)
+    }
+
+    private func latestImportFaceReviewAssetCount(activity: AppWorkActivity) -> Int {
+        guard let catalog,
+              let assetIDs = try? latestImportOutputAssetIDs(activityID: activity.id, repository: catalog.repository),
+              !assetIDs.isEmpty,
+              let faceAssetIDs = try? catalog.repository.assetIDs(
+                ids: assetIDs,
+                matching: Self.reviewQueueQuery(.facesFound)
+              ) else {
+            return 0
+        }
+        return faceAssetIDs.count
+    }
+
+    private func latestImportFlaggedReviewAssetCount(summary: ImportCompletionSummary?) -> Int {
+        guard let catalog,
+              let summary,
+              let count = try? catalog.repository.assetCount(
+                matching: SetQuery(predicates: [
+                    .importBatch(summary.activityID),
+                    .likelyIssue
+                ])
+              ) else {
+            return 0
+        }
+        return count
+    }
+
+    private func canRequestLatestImportAssetEvaluations(activity: AppWorkActivity) -> Bool {
+        guard workerSupervisor != nil,
+              let catalog,
+              let assetIDs = try? latestImportOutputAssetIDs(activityID: activity.id, repository: catalog.repository) else {
+            return false
+        }
+        return assetIDs.contains { hasCachedPreview(for: $0) }
+    }
+
+    private func latestImportCompletionSummary(activity: AppWorkActivity) -> ImportCompletionSummary {
         let previewFailureCount = latestImportPreviewFailureCount(activity: activity)
         let failureText = previewFailureCount > 0
             ? "\(previewFailureCount) preview \(previewFailureCount == 1 ? "failure" : "failures")"
@@ -2130,6 +2196,7 @@ public final class AppModel {
         self.catalogPeople = catalogPeople
         self.reviewQueueCounts = reviewQueueCounts
         self.selectedAssetSetID = selectedAssetSetID
+        self.latestImportPresentation = nil
         self.catalog = catalog
         self.workerSupervisor = workerSupervisor
         self.workerImportsEnabled = resolvedWorkerImportsEnabled
@@ -2177,6 +2244,9 @@ public final class AppModel {
             self?.recordPersistedActiveBackgroundWorkActivities(in: queue)
             if Self.metadataSyncWorkChanged(from: previousQueue, to: queue) {
                 try? self?.refreshMetadataSyncState()
+            }
+            if Self.previewGenerationWorkChanged(from: previousQueue, to: queue) {
+                self?.refreshLatestImportPresentation()
             }
             let failedPreviewItemIDs = Self.failedPreviewGenerationItemIDs(in: queue)
             let newFailedPreviewItemIDs = failedPreviewItemIDs.subtracting(previousPreviewFailureIDs)
@@ -3057,6 +3127,7 @@ public final class AppModel {
             activities: recentWork + starredWork,
             repository: catalog.repository
         )
+        refreshLatestImportPresentation()
         rebuildSidebarSections()
     }
 
@@ -5373,6 +5444,22 @@ public final class AppModel {
         )
     }
 
+    private static func previewGenerationWorkChanged(
+        from previousQueue: BackgroundWorkQueue?,
+        to queue: BackgroundWorkQueue
+    ) -> Bool {
+        previewGenerationWorkStatuses(in: previousQueue) != previewGenerationWorkStatuses(in: queue)
+    }
+
+    private static func previewGenerationWorkStatuses(in queue: BackgroundWorkQueue?) -> [WorkSessionID: WorkSessionStatus] {
+        Dictionary(
+            uniqueKeysWithValues: queue?.items.compactMap { item in
+                guard item.kind == .previewGeneration else { return nil }
+                return (item.id, item.status)
+            } ?? []
+        )
+    }
+
     private func enqueueWorkerImport(
         source: URL,
         destinationRoot: URL?,
@@ -7381,6 +7468,7 @@ public final class AppModel {
         do {
             catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
             reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
+            refreshLatestImportPresentation()
             rebuildSidebarSections()
         } catch {
             errorMessage = error.localizedDescription
@@ -7391,6 +7479,7 @@ public final class AppModel {
         guard let catalog else { return }
         reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
         assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
+        refreshLatestImportPresentation()
         rebuildSidebarSections()
     }
 
@@ -7953,6 +8042,7 @@ public final class AppModel {
         recordedActivity.outputSetIDs = outputSetIDs
         recentWork.removeAll { $0.id == recordedActivity.id }
         recentWork.insert(recordedActivity, at: 0)
+        refreshLatestImportPresentation()
         guard let catalog else {
             rebuildSidebarSections()
             return
