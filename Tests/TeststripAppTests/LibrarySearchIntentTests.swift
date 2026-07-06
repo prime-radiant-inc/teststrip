@@ -105,6 +105,29 @@ final class LibrarySearchIntentTests: XCTestCase {
         ])
     }
 
+    func testParsesQuotedFieldValuesAndImportBatch() {
+        let intent = LibrarySearchIntent.parse(
+            "folder:\"/Volumes/NAS/Wedding 2026\" keyword:\"New York\" import:import-42 \"quiet moments\""
+        )
+
+        XCTAssertEqual(intent.residualText, "quiet moments")
+        XCTAssertEqual(intent.predicates, [
+            .folderPrefix("/Volumes/NAS/Wedding 2026"),
+            .keyword("New York"),
+            .importBatch("import-42")
+        ])
+        XCTAssertEqual(intent.chips, [
+            "Folder: Wedding 2026",
+            "Keyword: New York",
+            "Import: import-42"
+        ])
+        XCTAssertEqual(intent.nameParts, [
+            "Wedding 2026",
+            "New York",
+            "Import import-42"
+        ])
+    }
+
     func testParsesDateFieldAsSingleCaptureDay() {
         let start = Self.utcDate(year: 2026, month: 2, day: 4)
         let nextDay = Self.utcDate(year: 2026, month: 2, day: 5)

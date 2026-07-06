@@ -6510,17 +6510,17 @@ public final class AppModel {
         case .colorLabel(let label):
             "color:\(label.rawValue)"
         case .keyword(let keyword):
-            "keyword:\(keyword)"
+            "keyword:\(searchFieldValue(keyword))"
         case .missingKeywords:
             "needs keywords"
         case .availability(let availability):
             "source:\(availability.rawValue)"
         case .folderPrefix(let path):
-            "folder:\(path)"
+            "folder:\(searchFieldValue(path))"
         case .camera(let camera):
-            "camera:\(camera)"
+            "camera:\(searchFieldValue(camera))"
         case .lens(let lens):
-            "lens:\(lens)"
+            "lens:\(searchFieldValue(lens))"
         case .isoAtLeast(let iso):
             "iso:\(iso)"
         case .capturedAtOrAfter(let date):
@@ -6540,10 +6540,23 @@ public final class AppModel {
         case .metadataSyncConflict:
             "xmp:conflicts"
         case .importBatch(let id):
-            "import:\(id)"
+            "import:\(searchFieldValue(id))"
         case .workSession(let id):
-            "session:\(id)"
+            "session:\(searchFieldValue(id))"
         }
+    }
+
+    private static func searchFieldValue(_ value: String) -> String {
+        guard value.rangeOfCharacter(from: .whitespacesAndNewlines) != nil else {
+            return value
+        }
+        if !value.contains("\"") {
+            return "\"\(value)\""
+        }
+        if !value.contains("'") {
+            return "'\(value)'"
+        }
+        return value
     }
 
     private static func searchDateString(for date: Date) -> String {

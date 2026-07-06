@@ -3394,6 +3394,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.librarySearchText, "")
     }
 
+    func testSavingLibrarySearchIntentPreservesQuotedFieldsAndImportBatch() throws {
+        let frame = makeAsset(
+            id: "quoted-field-frame",
+            path: "/Volumes/NAS/Wedding 2026/frame-1.jpg",
+            rating: 5,
+            keywords: ["New York"]
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-library-search-quoted-fields",
+            assets: [frame]
+        )
+
+        model.librarySearchText = "folder:\"/Volumes/NAS/Wedding 2026\" keyword:\"New York\" import:import-42"
+
+        let savedSet = try model.saveCurrentLibraryQuery(named: "Quoted Import")
+
+        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [
+            .folderPrefix("/Volumes/NAS/Wedding 2026"),
+            .keyword("New York"),
+            .importBatch("import-42")
+        ])))
+        XCTAssertEqual(model.librarySearchText, "")
+    }
+
     func testApplyingLibraryFiltersUsesTechnicalMetadata() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-technical-filters")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -5557,6 +5581,28 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.activeLibraryFilterChips, ["Search: ceremony", "Rating >= 5"])
         XCTAssertEqual(model.assets.map(\.id), [keeper.id, rejected.id])
         XCTAssertEqual(model.totalAssetCount, 2)
+    }
+
+    func testRemovingParsedSearchFilterQuotesRemainingFieldValuesWithSpaces() throws {
+        let frame = makeAsset(
+            id: "quoted-remove-frame",
+            path: "/Volumes/NAS/Wedding 2026/quiet-frame.jpg",
+            rating: 5,
+            keywords: ["New York"]
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "remove-quoted-search-filter",
+            assets: [frame]
+        )
+
+        model.librarySearchText = "quiet folder:\"/Volumes/NAS/Wedding 2026\" keyword:\"New York\""
+        try model.applyLibraryFilters()
+        let keywordRow = try XCTUnwrap(model.activeLibraryFilterRows.first { $0.title == "Keyword: New York" })
+
+        try model.removeActiveLibraryFilter(keywordRow)
+
+        XCTAssertEqual(model.librarySearchText, "quiet folder:\"/Volumes/NAS/Wedding 2026\"")
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Search: quiet", "Folder: Wedding 2026"])
     }
 
     func testRemovingSavedSetFilterRowClearsSelectedSetScope() throws {

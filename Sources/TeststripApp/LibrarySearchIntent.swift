@@ -25,7 +25,7 @@ public struct LibrarySearchIntent: Equatable, Sendable {
             return LibrarySearchIntent()
         }
 
-        let tokens = normalized.split(separator: " ").map(String.init)
+        let tokens = Self.searchTokens(from: text)
         var residualTokens: [String] = []
         var predicates: [SetQuery.Predicate] = []
         var chips: [String] = []
@@ -154,6 +154,8 @@ public struct LibrarySearchIntent: Equatable, Sendable {
             return singleFieldPredicate(xmp.predicate, chip: xmp.title, namePart: xmp.title)
         case "session", "worksession":
             return singleFieldPredicate(.workSession(value), chip: "Session: \(value)", namePart: "Session \(value)")
+        case "import", "importbatch", "batch":
+            return singleFieldPredicate(.importBatch(value), chip: "Import: \(value)", namePart: "Import \(value)")
         default:
             return nil
         }
@@ -371,6 +373,49 @@ public struct LibrarySearchIntent: Equatable, Sendable {
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
+    }
+
+    private static func searchTokens(from text: String) -> [String] {
+        var tokens: [String] = []
+        var current = ""
+        var quotedBy: Character?
+
+        for character in text {
+            if let quote = quotedBy {
+                if character == quote {
+                    quotedBy = nil
+                } else {
+                    current.append(character)
+                }
+                continue
+            }
+
+            if character == "\"" || character == "'" {
+                quotedBy = character
+                continue
+            }
+
+            if isWhitespace(character) {
+                appendCurrentToken(&current, to: &tokens)
+            } else {
+                current.append(character)
+            }
+        }
+
+        appendCurrentToken(&current, to: &tokens)
+        return tokens
+    }
+
+    private static func appendCurrentToken(_ current: inout String, to tokens: inout [String]) {
+        let token = current.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !token.isEmpty {
+            tokens.append(token)
+        }
+        current = ""
+    }
+
+    private static func isWhitespace(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { CharacterSet.whitespacesAndNewlines.contains($0) }
     }
 
     private static func normalizedToken(_ token: String) -> String {
