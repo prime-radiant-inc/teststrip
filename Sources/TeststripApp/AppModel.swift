@@ -5485,7 +5485,10 @@ public final class AppModel {
     }
 
     private var visibleActiveBackgroundWorkItems: [BackgroundWorkItem] {
-        backgroundWorkQueue.items.filter { [.running, .paused, .queued].contains($0.status) }
+        backgroundWorkQueue.items.compactMap { item in
+            guard [.running, .paused, .queued].contains(item.status) else { return nil }
+            return userFacingBackgroundWorkItem(item)
+        }
     }
 
     private var visibleInactiveBackgroundWorkItem: BackgroundWorkItem? {
@@ -5505,6 +5508,10 @@ public final class AppModel {
     }
 
     private func userFacingWorkerImportItem(_ item: BackgroundWorkItem) -> BackgroundWorkItem {
+        userFacingBackgroundWorkItem(item)
+    }
+
+    private func userFacingBackgroundWorkItem(_ item: BackgroundWorkItem) -> BackgroundWorkItem {
         guard item.status == .running,
               workerSupervisor?.isCommandDispatched(for: item.id) == false else {
             return item

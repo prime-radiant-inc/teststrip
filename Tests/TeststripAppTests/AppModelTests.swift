@@ -2903,6 +2903,33 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.visibleWorkActivity?.id, first.id.rawValue)
     }
 
+    func testVisibleWorkActivitiesDoNotClaimUndispatchedWorkerItemsAreRunning() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 2),
+            transport: transport
+        )
+        let first = makeAsset(id: "dispatched-preview", size: 1)
+        let second = makeAsset(id: "undispatched-preview", size: 2)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "undispatched-worker-activity",
+            assets: [first, second],
+            workerSupervisor: supervisor
+        )
+
+        try model.requestPreview(assetID: first.id, level: .grid)
+        try model.requestPreview(assetID: second.id, level: .grid)
+
+        XCTAssertEqual(model.backgroundWorkQueue.runningItems.map(\.id.rawValue), [
+            "preview-\(first.id.rawValue)-grid",
+            "preview-\(second.id.rawValue)-grid"
+        ])
+        XCTAssertEqual(try transport.commands(), [
+            .generatePreview(assetID: first.id, level: .grid)
+        ])
+        XCTAssertEqual(model.visibleWorkActivities.map(\.status), [.running, .queued])
+    }
+
     func testLibraryStatusTextShowsPreviewGenerationAfterImportCompletes() {
         let model = AppModel(
             sidebarSections: [],
