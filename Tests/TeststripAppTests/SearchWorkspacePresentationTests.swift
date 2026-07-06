@@ -173,6 +173,7 @@ final class SearchWorkspacePresentationTests: XCTestCase {
                 .needsKeywords: 6
             ],
             evaluationKindSummaries: [
+                CatalogEvaluationKindSummary(kind: .focus, assetCount: 5),
                 CatalogEvaluationKindSummary(kind: .object, assetCount: 8),
                 CatalogEvaluationKindSummary(kind: .ocrText, assetCount: 3),
                 CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 4)
@@ -185,6 +186,12 @@ final class SearchWorkspacePresentationTests: XCTestCase {
                 title: "Find missing keywords",
                 detail: "6 photos need keywords",
                 systemImage: "tag"
+            ),
+            SearchWorkspaceGeneratedRefinement(
+                preset: .focusSignals,
+                title: "Find focus-scored photos",
+                detail: "5 photos have focus signals",
+                systemImage: "scope"
             ),
             SearchWorkspaceGeneratedRefinement(
                 preset: .objectSignals,

@@ -194,6 +194,7 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
             matchCount: 24,
             reviewQueueCounts: [.needsKeywords: 6],
             evaluationKindSummaries: [
+                CatalogEvaluationKindSummary(kind: .focus, assetCount: 8),
                 CatalogEvaluationKindSummary(kind: .object, assetCount: 9),
                 CatalogEvaluationKindSummary(kind: .ocrText, assetCount: 3),
                 CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 2)
@@ -201,6 +202,12 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.suggestedTemplateRows, [
+            SmartCollectionSuggestedTemplateRow(
+                title: "Focus signals",
+                detail: "8 photos have focus signals",
+                systemImage: "scope",
+                presets: [.focusSignals]
+            ),
             SmartCollectionSuggestedTemplateRow(
                 title: "Object labels",
                 detail: "9 photos have object labels",
@@ -234,6 +241,7 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
             ruleChips: ["Signal: Object", "OCR Found"],
             matchCount: 24,
             evaluationKindSummaries: [
+                CatalogEvaluationKindSummary(kind: .focus, assetCount: 8),
                 CatalogEvaluationKindSummary(kind: .object, assetCount: 9),
                 CatalogEvaluationKindSummary(kind: .ocrText, assetCount: 3),
                 CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 2)
@@ -241,6 +249,12 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.suggestedTemplateRows, [
+            SmartCollectionSuggestedTemplateRow(
+                title: "Focus signals",
+                detail: "8 photos have focus signals",
+                systemImage: "scope",
+                presets: [.focusSignals]
+            ),
             SmartCollectionSuggestedTemplateRow(
                 title: "People found",
                 detail: "2 photos have people signals",
@@ -269,6 +283,7 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
                 "Offline sources",
                 "Faces found",
                 "OCR found",
+                "Focus signals",
                 "Object signals",
                 "Likely issues",
                 "Provider failures",

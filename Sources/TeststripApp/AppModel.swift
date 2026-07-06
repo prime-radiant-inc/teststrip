@@ -253,6 +253,7 @@ public enum SmartCollectionRulePreset: String, CaseIterable, Identifiable, Senda
     case offlineSources
     case facesFound
     case ocrFound
+    case focusSignals
     case objectSignals
     case likelyIssues
     case providerFailures
@@ -281,6 +282,8 @@ public enum SmartCollectionRulePreset: String, CaseIterable, Identifiable, Senda
             "Faces found"
         case .ocrFound:
             "OCR found"
+        case .focusSignals:
+            "Focus signals"
         case .objectSignals:
             "Object signals"
         case .likelyIssues:
@@ -314,6 +317,8 @@ public enum SmartCollectionRulePreset: String, CaseIterable, Identifiable, Senda
             "person.2"
         case .ocrFound:
             "text.viewfinder"
+        case .focusSignals:
+            "scope"
         case .objectSignals:
             "shippingbox"
         case .likelyIssues:
@@ -3072,6 +3077,8 @@ public final class AppModel {
             evaluationKindFilter = .faceCount
         case .ocrFound:
             evaluationKindFilter = .ocrText
+        case .focusSignals:
+            evaluationKindFilter = .focus
         case .objectSignals:
             evaluationKindFilter = .object
         case .likelyIssues:

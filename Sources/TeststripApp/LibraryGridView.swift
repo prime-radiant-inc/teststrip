@@ -4648,7 +4648,7 @@ struct SearchWorkspacePresentation: Equatable {
         evaluationKindSummaries: [CatalogEvaluationKindSummary],
         activeRows: [SearchWorkspaceRefineRow]
     ) -> [SearchWorkspaceGeneratedRefinement] {
-        let rowLimit = evaluationKindSummaries.isEmpty ? 3 : 4
+        let rowLimit = evaluationKindSummaries.isEmpty ? 3 : 5
         let candidates: [(queue: ReviewQueue, preset: SmartCollectionRulePreset)] = [
             (.fiveStars, .ratingFourPlus),
             (.picks, .picked),
@@ -4683,6 +4683,7 @@ struct SearchWorkspacePresentation: Equatable {
     ) -> [SearchWorkspaceGeneratedRefinement] {
         let summariesByKind = Dictionary(uniqueKeysWithValues: evaluationKindSummaries.map { ($0.kind, $0) })
         let candidates: [(kind: EvaluationKind, preset: SmartCollectionRulePreset)] = [
+            (.focus, .focusSignals),
             (.object, .objectSignals),
             (.ocrText, .ocrFound),
             (.faceCount, .facesFound)
@@ -4704,6 +4705,13 @@ struct SearchWorkspacePresentation: Equatable {
         count: Int
     ) -> SearchWorkspaceGeneratedRefinement {
         switch kind {
+        case .focus:
+            return SearchWorkspaceGeneratedRefinement(
+                preset: preset,
+                title: "Find focus-scored photos",
+                detail: count == 1 ? "1 photo has focus signals" : "\(count) photos have focus signals",
+                systemImage: preset.systemImage
+            )
         case .object:
             return SearchWorkspaceGeneratedRefinement(
                 preset: preset,
@@ -4829,6 +4837,8 @@ struct SearchWorkspacePresentation: Equatable {
                     || row.target == .evaluationKind(.ocrText)
                     || row.title == "OCR Found"
                     || row.title == "Signal: OCR Text"
+            case .focusSignals:
+                return row.target == .evaluationKind(.focus) || row.title == "Signal: Focus"
             case .objectSignals:
                 return row.target == .evaluationKind(.object) || row.title == "Signal: Object"
             case .likelyIssues:
@@ -5892,7 +5902,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
         activeRuleChips: [String]
     ) -> [SmartCollectionSuggestedTemplateRow] {
         var rows: [SmartCollectionSuggestedTemplateRow] = []
-        let rowLimit = evaluationKindSummaries.isEmpty ? 3 : 4
+        let rowLimit = evaluationKindSummaries.isEmpty ? 3 : 5
         let ratedCount = reviewQueueCounts[.fiveStars] ?? 0
         let pickedCount = reviewQueueCounts[.picks] ?? 0
         if ratedCount > 0,
@@ -5943,6 +5953,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
     ) -> [SmartCollectionSuggestedTemplateRow] {
         let summariesByKind = Dictionary(uniqueKeysWithValues: evaluationKindSummaries.map { ($0.kind, $0) })
         let candidates: [(kind: EvaluationKind, preset: SmartCollectionRulePreset, title: String, systemImage: String)] = [
+            (.focus, .focusSignals, "Focus signals", "scope"),
             (.object, .objectSignals, "Object labels", "shippingbox.circle"),
             (.ocrText, .ocrFound, "Text found", "text.viewfinder"),
             (.faceCount, .facesFound, "People found", "person.2.circle")
@@ -5961,6 +5972,8 @@ struct SmartCollectionBuilderPresentation: Equatable {
 
     private static func providerSignalSuggestionDetail(kind: EvaluationKind, count: Int) -> String {
         switch kind {
+        case .focus:
+            return count == 1 ? "1 photo has focus signals" : "\(count) photos have focus signals"
         case .object:
             return count == 1 ? "1 photo has object labels" : "\(count) photos have object labels"
         case .ocrText:
@@ -6013,6 +6026,8 @@ struct SmartCollectionBuilderPresentation: Equatable {
                 return chip == "Faces Found" || chip == "Signal: Face Count"
             case .ocrFound:
                 return chip == "OCR Found" || chip == "Signal: OCR Text"
+            case .focusSignals:
+                return chip == "Signal: Focus"
             case .objectSignals:
                 return chip == "Signal: Object"
             case .likelyIssues:

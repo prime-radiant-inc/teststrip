@@ -6618,6 +6618,26 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.activeLibraryFilterChips, ["Source: Offline", "Signal: Object"])
     }
 
+    func testApplyingFocusSignalRulePresetNarrowsCurrentQuery() throws {
+        let focused = makeAsset(id: "focus-signal", path: "/Photos/Job/focus-signal.jpg", rating: 0)
+        let objectOnly = makeAsset(id: "object-signal", path: "/Photos/Job/object-signal.jpg", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "smart-collection-focus-signal-preset",
+            assets: [focused, objectOnly]
+        )
+        let provenance = ProviderProvenance(provider: "local-metrics", model: "ImageMetrics", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: focused.id, kind: .focus, value: .score(0.82), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: objectOnly.id, kind: .object, value: .label("camera"), confidence: 0.8, provenance: provenance)
+        ])
+
+        try model.applySmartCollectionRulePreset(.focusSignals)
+
+        XCTAssertEqual(model.evaluationKindFilter, .focus)
+        XCTAssertEqual(model.assets.map(\.id), [focused.id])
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Signal: Focus"])
+    }
+
     func testApplyingXmpRulePresetUsesSingleMetadataSyncState() throws {
         let (model, _, _) = try makeModelWithCatalogAsset(named: "smart-collection-xmp-preset")
         model.metadataSyncConflictFilter = true
