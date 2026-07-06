@@ -98,9 +98,11 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.metricRows.first?.detail, "Nothing was added")
         XCTAssertEqual(presentation.metricRows.first { $0.id == "previews" }?.value, "Not needed")
         XCTAssertEqual(presentation.metricRows.first { $0.id == "cull-scope" }?.value, "Unavailable")
-        XCTAssertEqual(presentation.actionRows.first { $0.kind == .startCulling }?.isEnabled, false)
-        XCTAssertEqual(presentation.actionRows.first { $0.kind == .reviewImportedFrames }?.isEnabled, false)
-        XCTAssertEqual(presentation.actionRows.first { $0.kind == .openInLibrary }?.isEnabled, false)
+        XCTAssertNil(presentation.actionRows.first { $0.kind == .startCulling })
+        XCTAssertNil(presentation.actionRows.first { $0.kind == .reviewImportedFrames })
+        XCTAssertNil(presentation.actionRows.first { $0.kind == .openInLibrary })
+        XCTAssertNil(presentation.actionRows.first { $0.kind == .evaluateImport })
+        XCTAssertNil(presentation.actionRows.first { $0.kind == .stackGrouping })
         XCTAssertFalse(presentation.enabledActions.contains { action in
             action.kind == .startCulling || action.kind == .reviewImportedFrames || action.kind == .openInLibrary
         })

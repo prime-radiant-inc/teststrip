@@ -6350,39 +6350,36 @@ struct ImportCompletionPresentation: Equatable {
         if let issueMetric = issueMetric(for: summary) {
             metricRows.append(issueMetric)
         }
-        var actionRows = [
-            ImportCompletionActionPresentation(
+        var actionRows: [ImportCompletionActionPresentation] = []
+        if hasImportedSet {
+            actionRows.append(ImportCompletionActionPresentation(
                 kind: .startCulling,
                 title: "Start culling",
-                detail: hasImportedSet ? (existingOnlyImport ? "Use the matched set" : "Use the imported set") : "No imported set",
+                detail: existingOnlyImport ? "Use the matched set" : "Use the imported set",
                 systemImage: "checkmark.seal.fill",
-                isEnabled: hasImportedSet,
+                isEnabled: true,
                 isPrimary: true,
                 placeholder: nil
-            ),
-            ImportCompletionActionPresentation(
+            ))
+            actionRows.append(ImportCompletionActionPresentation(
                 kind: .reviewImportedFrames,
                 title: existingOnlyImport ? "Review matched frames" : "Review imported frames",
-                detail: hasImportedSet
-                    ? (existingOnlyImport ? "Manual Compare over already-cataloged photos" : "Manual Compare over this import")
-                    : "No imported set",
+                detail: existingOnlyImport ? "Manual Compare over already-cataloged photos" : "Manual Compare over this import",
                 systemImage: "rectangle.grid.2x2",
-                isEnabled: hasImportedSet,
+                isEnabled: true,
                 isPrimary: false,
                 placeholder: nil
-            ),
-            ImportCompletionActionPresentation(
+            ))
+            actionRows.append(ImportCompletionActionPresentation(
                 kind: .openInLibrary,
                 title: existingOnlyImport ? "Open matched set" : "Open imported set",
-                detail: hasImportedSet
-                    ? (existingOnlyImport ? "Browse already-cataloged photos" : "Browse this import")
-                    : "No imported set",
+                detail: existingOnlyImport ? "Browse already-cataloged photos" : "Browse this import",
                 systemImage: "rectangle.stack",
-                isEnabled: hasImportedSet,
+                isEnabled: true,
                 isPrimary: false,
                 placeholder: nil
-            ),
-            ImportCompletionActionPresentation(
+            ))
+            actionRows.append(ImportCompletionActionPresentation(
                 kind: .evaluateImport,
                 title: "Evaluate import",
                 detail: canEvaluateImport ? "Run local reads on this import" : "Waiting for cached previews",
@@ -6390,23 +6387,25 @@ struct ImportCompletionPresentation: Equatable {
                 isEnabled: canEvaluateImport,
                 isPrimary: false,
                 placeholder: nil
-            )
-        ]
+            ))
+        }
         if let issueAction = importIssueAction(for: summary) {
             actionRows.append(issueAction)
         }
         if let flaggedAction = flaggedReviewAction(flaggedReviewAssetCount: flaggedReviewAssetCount) {
             actionRows.append(flaggedAction)
         }
-        actionRows.append(ImportCompletionActionPresentation(
-            kind: .stackGrouping,
-            title: "Cull stacks",
-            detail: stackCullActionDetail(for: summary),
-            systemImage: "square.stack.3d.up",
-            isEnabled: summary.stackCount > 0,
-            isPrimary: false,
-            placeholder: nil
-        ))
+        if hasImportedSet {
+            actionRows.append(ImportCompletionActionPresentation(
+                kind: .stackGrouping,
+                title: "Cull stacks",
+                detail: stackCullActionDetail(for: summary),
+                systemImage: "square.stack.3d.up",
+                isEnabled: summary.stackCount > 0,
+                isPrimary: false,
+                placeholder: nil
+            ))
+        }
         if let faceAction = faceReviewAction(faceReviewAssetCount: faceReviewAssetCount) {
             actionRows.append(faceAction)
         }
