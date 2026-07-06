@@ -555,6 +555,88 @@ public final class CatalogRepository {
         }
     }
 
+    public func replaceFaceObservations(
+        assetID: AssetID,
+        provenance: ProviderProvenance,
+        with observations: [CatalogFaceObservation]
+    ) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.transaction {
+            try database.execute(
+                """
+                DELETE FROM face_observations
+                WHERE asset_id = ? AND provider = ? AND model = ? AND version = ? AND settings_hash = ?
+                """,
+                bindings: [
+                    assetID.rawValue,
+                    provenance.provider,
+                    provenance.model,
+                    provenance.version,
+                    provenance.settingsHash
+                ]
+            )
+            for observation in observations {
+                try database.execute(
+                    """
+                    INSERT INTO face_observations (
+                        asset_id, face_index, face_json, provenance_json,
+                        provider, model, version, settings_hash, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    bindings: [
+                        observation.assetID.rawValue,
+                        "\(observation.faceIndex)",
+                        try encode(FaceObservationPayload(
+                            boundingBox: observation.boundingBox,
+                            captureQuality: observation.captureQuality,
+                            embedding: observation.embedding
+                        )),
+                        try encode(observation.provenance),
+                        observation.provenance.provider,
+                        observation.provenance.model,
+                        observation.provenance.version,
+                        observation.provenance.settingsHash,
+                        now,
+                        now
+                    ]
+                )
+            }
+        }
+    }
+
+    public func faceObservations(assetID: AssetID) throws -> [CatalogFaceObservation] {
+        let rows = try database.rows(
+            """
+            SELECT asset_id, face_index, face_json, provenance_json
+            FROM face_observations
+            WHERE asset_id = ?
+            ORDER BY provider ASC, model ASC, version ASC, settings_hash ASC, face_index ASC
+            """,
+            bindings: [assetID.rawValue]
+        )
+        return try rows.map(decodeFaceObservation)
+    }
+
+    private func decodeFaceObservation(_ row: [String: String]) throws -> CatalogFaceObservation {
+        guard let assetID = row["asset_id"],
+              let faceIndexValue = row["face_index"],
+              let faceIndex = Int(faceIndexValue),
+              let faceJSON = row["face_json"],
+              let provenanceJSON = row["provenance_json"] else {
+            throw CatalogError.sqlite("face observation row is missing required columns")
+        }
+        let payload = try decode(FaceObservationPayload.self, from: faceJSON)
+        return CatalogFaceObservation(
+            assetID: AssetID(rawValue: assetID),
+            faceIndex: faceIndex,
+            boundingBox: payload.boundingBox,
+            captureQuality: payload.captureQuality,
+            embedding: payload.embedding,
+            provenance: try decode(ProviderProvenance.self, from: provenanceJSON)
+        )
+    }
+
     public func save(_ session: WorkSession) throws {
         try database.execute(
             """
@@ -1874,6 +1956,12 @@ public final class CatalogRepository {
             lastErrorMessage: row["last_error"],
             lastAttemptedAt: lastAttemptedAt
         )
+    }
+
+    private struct FaceObservationPayload: Codable {
+        var boundingBox: FaceBoundingBox
+        var captureQuality: Double?
+        var embedding: [Double]
     }
 
     private func encode<T: Encodable>(_ value: T) throws -> String {

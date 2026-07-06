@@ -886,6 +886,44 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.evaluationSignals(assetID: assigned.id).map(\.kind), [.faceCount, .faceQuality])
     }
 
+    func testFaceObservationsReplacePerAssetAndProvenance() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-face-observations")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset.testAsset(id: AssetID(rawValue: "group-frame"), path: "/Volumes/NAS/Job/group-frame.jpg", rating: 0)
+        try repository.upsert(asset)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "face-crop-pad-25")
+        let firstRun = [
+            CatalogFaceObservation(
+                assetID: asset.id,
+                faceIndex: 0,
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.2, width: 0.3, height: 0.4),
+                captureQuality: 0.8,
+                embedding: [0.1, 0.2, 0.3],
+                provenance: provenance
+            ),
+            CatalogFaceObservation(
+                assetID: asset.id,
+                faceIndex: 1,
+                boundingBox: FaceBoundingBox(x: 0.6, y: 0.5, width: 0.2, height: 0.25),
+                captureQuality: nil,
+                embedding: [0.9, 0.8, 0.7],
+                provenance: provenance
+            )
+        ]
+
+        try repository.replaceFaceObservations(assetID: asset.id, provenance: provenance, with: firstRun)
+
+        XCTAssertEqual(try repository.faceObservations(assetID: asset.id), firstRun)
+
+        let secondRun = [firstRun[0]]
+        try repository.replaceFaceObservations(assetID: asset.id, provenance: provenance, with: secondRun)
+
+        XCTAssertEqual(try repository.faceObservations(assetID: asset.id), secondRun)
+        XCTAssertEqual(try repository.faceObservations(assetID: AssetID(rawValue: "other")), [])
+    }
+
     func testEyesClosedSignalJoinsLikelyIssueQueue() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-eyes-closed-likely-issue")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
