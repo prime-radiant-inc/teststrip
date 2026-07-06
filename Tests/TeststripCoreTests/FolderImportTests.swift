@@ -64,6 +64,47 @@ final class FolderImportTests: XCTestCase {
         XCTAssertEqual(files, ["one.jpg"])
     }
 
+    func testFolderScannerReportsVideoAndUnrecognizedFilesAsSkipped() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "scan-skipped")
+        try Data("jpg".utf8).write(to: root.appendingPathComponent("one.jpg"))
+        try Data("mov".utf8).write(to: root.appendingPathComponent("clip.MOV"))
+        try Data("mp4".utf8).write(to: root.appendingPathComponent("clip.mp4"))
+        try Data("txt".utf8).write(to: root.appendingPathComponent("notes.txt"))
+        let recorder = FolderScanSkippedFileRecorder()
+
+        let scanner = FolderScanner(supportedExtensions: ["jpg"])
+        let files = try scanner.scan(root: root, skipped: { skippedFile in
+            recorder.append(skippedFile)
+        })
+
+        XCTAssertEqual(files.map(\.lastPathComponent), ["one.jpg"])
+        let skipped = recorder.values().sorted { first, second in
+            first.url.lastPathComponent < second.url.lastPathComponent
+        }
+        XCTAssertEqual(skipped.map(\.url.lastPathComponent), ["clip.MOV", "clip.mp4", "notes.txt"])
+        XCTAssertEqual(skipped.map(\.reason), [.videoFile, .videoFile, .unrecognizedFile])
+    }
+
+    func testFolderScannerDoesNotReportAncillaryFilesAsSkipped() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "scan-skipped-ancillary")
+        try Data("jpg".utf8).write(to: root.appendingPathComponent("one.jpg"))
+        try Data("xmp".utf8).write(to: root.appendingPathComponent("one.jpg.xmp"))
+        try Data("xmp".utf8).write(to: root.appendingPathComponent("one.XMP"))
+        try Data("hidden".utf8).write(to: root.appendingPathComponent(".DS_Store"))
+        let subfolder = root.appendingPathComponent("nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: subfolder, withIntermediateDirectories: true)
+        try Data("jpg".utf8).write(to: subfolder.appendingPathComponent("two.jpg"))
+        let recorder = FolderScanSkippedFileRecorder()
+
+        let scanner = FolderScanner(supportedExtensions: ["jpg"])
+        let files = try scanner.scan(root: root, skipped: { skippedFile in
+            recorder.append(skippedFile)
+        })
+
+        XCTAssertEqual(files.map(\.lastPathComponent), ["two.jpg", "one.jpg"])
+        XCTAssertEqual(recorder.values(), [])
+    }
+
     func testAddFolderPlanDoesNotMoveOriginals() throws {
         let source = URL(fileURLWithPath: "/Volumes/NAS/Job")
         let plan = IngestPlanner.addFolder(source)
@@ -550,6 +591,23 @@ final class FolderImportTests: XCTestCase {
             }
         }
         XCTAssertEqual(try String(contentsOf: destinationFile, encoding: .utf8), "existing")
+    }
+}
+
+private final class FolderScanSkippedFileRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var skippedFiles: [FolderScanSkippedFile] = []
+
+    func append(_ skippedFile: FolderScanSkippedFile) {
+        lock.withLock {
+            skippedFiles.append(skippedFile)
+        }
+    }
+
+    func values() -> [FolderScanSkippedFile] {
+        lock.withLock {
+            skippedFiles
+        }
     }
 }
 
