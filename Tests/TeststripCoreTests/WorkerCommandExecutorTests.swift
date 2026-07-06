@@ -285,7 +285,8 @@ final class WorkerCommandExecutorTests: XCTestCase {
             importedAssetIDs: [asset.id],
             newAssetCount: 1,
             existingAssetCount: 0,
-            skippedSourceFileCount: 0
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
         ))
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
             PreviewGenerationItem(assetID: asset.id, level: .micro),
@@ -316,7 +317,8 @@ final class WorkerCommandExecutorTests: XCTestCase {
             importedAssetIDs: [asset.id],
             newAssetCount: 1,
             existingAssetCount: 0,
-            skippedSourceFileCount: 0
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
         ))
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
     }
@@ -333,7 +335,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
         let firstResult = try executor.execute(.importFolder(root: sourceRoot))
-        guard case .completedImport(_, let importedAssetIDs, 1, 0, 0) = firstResult else {
+        guard case .completedImport(_, let importedAssetIDs, 1, 0, 0, []) = firstResult else {
             XCTFail("expected first import to report one new asset")
             return
         }
@@ -345,7 +347,8 @@ final class WorkerCommandExecutorTests: XCTestCase {
             importedAssetIDs: importedAssetIDs,
             newAssetCount: 0,
             existingAssetCount: 1,
-            skippedSourceFileCount: 0
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
         ))
     }
 
@@ -372,13 +375,20 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let imported = try repository.allAssets(limit: 10)
         let asset = try XCTUnwrap(imported.first)
         XCTAssertEqual(imported.map(\.originalURL), [survivor])
-        XCTAssertEqual(result, .completedImport(
+        guard case .completedImport(
             "imported 1 photo from photos",
-            importedAssetIDs: [asset.id],
-            newAssetCount: 1,
-            existingAssetCount: 0,
-            skippedSourceFileCount: 1
-        ))
+            [asset.id],
+            1,
+            0,
+            1,
+            let skippedSourceFiles
+        ) = result else {
+            XCTFail("expected completed import with skipped source details")
+            return
+        }
+        XCTAssertEqual(skippedSourceFiles.count, 1)
+        XCTAssertEqual(skippedSourceFiles[0].sourceURL, disappearing)
+        XCTAssertTrue(skippedSourceFiles[0].message.contains("could not fingerprint"))
     }
 
     func testImportFolderCommandReportsProgress() throws {
@@ -438,7 +448,8 @@ final class WorkerCommandExecutorTests: XCTestCase {
             importedAssetIDs: [asset.id],
             newAssetCount: 1,
             existingAssetCount: 0,
-            skippedSourceFileCount: 0
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
         ))
         XCTAssertEqual(try repository.asset(id: asset.id).metadata, metadata)
         XCTAssertEqual(try Data(contentsOf: XMPSidecarStore().sidecarURL(forOriginalAt: destination)), sidecarData)

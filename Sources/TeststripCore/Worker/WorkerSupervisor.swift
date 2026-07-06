@@ -263,7 +263,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         case .completed(let itemID, let message):
             guard let itemID else { return }
             completeDispatchedItem(id: itemID, detail: message, event: event)
-        case .completedImport(let itemID, let message, _, _, _, _):
+        case .completedImport(let itemID, let message, _, _, _, _, _):
             guard let itemID else { return }
             completeDispatchedItem(id: itemID, detail: message, event: event)
         case .failed(let itemID, let message):

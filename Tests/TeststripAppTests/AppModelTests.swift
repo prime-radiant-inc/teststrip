@@ -9458,7 +9458,8 @@ final class AppModelTests: XCTestCase {
             importedAssetIDs: [importedAsset.id],
             newAssetCount: 1,
             existingAssetCount: 0,
-            skippedSourceFileCount: 0
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
         )))
 
         try await waitForSelectedAsset(importedAsset.id, in: model)
@@ -9511,7 +9512,8 @@ final class AppModelTests: XCTestCase {
             importedAssetIDs: [importedAsset.id],
             newAssetCount: 1,
             existingAssetCount: 0,
-            skippedSourceFileCount: 0
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
         )))
         try await waitForSelectedAsset(importedAsset.id, in: model)
         try catalog.repository.recordPreviewGenerationFailure(
@@ -9560,13 +9562,20 @@ final class AppModelTests: XCTestCase {
             metadata: AssetMetadata()
         )
         try catalog.repository.upsert(importedAsset)
+        let skipped = photoFolder.appendingPathComponent("missing.png")
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
             itemID: importItem.id,
             message: "imported 1 photo from photos",
             importedAssetIDs: [importedAsset.id],
             newAssetCount: 1,
             existingAssetCount: 0,
-            skippedSourceFileCount: 1
+            skippedSourceFileCount: 1,
+            skippedSourceFiles: [
+                LibrarySkippedSourceFile(
+                    sourceURL: skipped,
+                    message: "could not fingerprint \(skipped.path)"
+                )
+            ]
         )))
 
         try await waitForSelectedAsset(importedAsset.id, in: model)
@@ -9574,6 +9583,11 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.statusMessage, "Imported 1 photo (1 file skipped)")
         let activity = try XCTUnwrap(model.recentWork.first)
         XCTAssertEqual(activity.detail, "Imported 1 photo from photos (1 file skipped)")
+        XCTAssertEqual(activity.issues.count, 1)
+        XCTAssertEqual(activity.issues[0].sourceURL, skipped)
+        XCTAssertTrue(activity.issues[0].message.contains("could not fingerprint"))
+        let session = try catalog.repository.session(id: importItem.id)
+        XCTAssertEqual(session.issues, activity.issues)
     }
 
     @MainActor
@@ -9973,7 +9987,8 @@ final class AppModelTests: XCTestCase {
             importedAssetIDs: [],
             newAssetCount: 0,
             existingAssetCount: 0,
-            skippedSourceFileCount: 0
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
         )))
 
         try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
@@ -10678,7 +10693,8 @@ final class AppModelTests: XCTestCase {
             importedAssetIDs: [importedAsset.id],
             newAssetCount: 1,
             existingAssetCount: 0,
-            skippedSourceFileCount: 0
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
         )))
 
         try await waitForSelectedAsset(importedAsset.id, in: model)
@@ -10784,6 +10800,15 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.statusMessage, "Imported 1 photo (1 file skipped)")
         let activity = try XCTUnwrap(model.recentWork.first)
         XCTAssertEqual(activity.detail, "Imported 1 photo from photos (1 file skipped)")
+        XCTAssertEqual(activity.issues, [
+            WorkSessionIssue(
+                kind: .skippedSourceFile,
+                sourceURL: skipped,
+                message: "could not fingerprint \(skipped.path)"
+            )
+        ])
+        let summary = try XCTUnwrap(model.latestImportCompletionSummary)
+        XCTAssertEqual(summary.issues, activity.issues)
         XCTAssertEqual(activity.failureCount, 0)
     }
 
@@ -10831,6 +10856,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary.newPhotoCount, 0)
         XCTAssertEqual(summary.existingPhotoCount, 0)
         XCTAssertEqual(summary.previewStatusText, "No previews needed")
+        XCTAssertEqual(summary.issues.map(\.sourceURL), [firstSkipped, secondSkipped])
     }
 
     @MainActor

@@ -8,7 +8,8 @@ public enum WorkerCommandResult: Equatable, Sendable {
         importedAssetIDs: [AssetID],
         newAssetCount: Int,
         existingAssetCount: Int,
-        skippedSourceFileCount: Int
+        skippedSourceFileCount: Int,
+        skippedSourceFiles: [LibrarySkippedSourceFile]
     )
 }
 
@@ -167,7 +168,8 @@ public struct WorkerCommandExecutor {
                 importedAssetIDs: result.importedAssets.map(\.id),
                 newAssetCount: result.newAssetCount,
                 existingAssetCount: result.existingAssetCount,
-                skippedSourceFileCount: result.skippedSourceFileCount
+                skippedSourceFileCount: result.skippedSourceFileCount,
+                skippedSourceFiles: result.skippedSourceFiles
             )
         case .importCard(let source, let destinationRoot):
             let result = try importService.copyFromCard(
@@ -182,7 +184,8 @@ public struct WorkerCommandExecutor {
                 importedAssetIDs: result.importedAssets.map(\.id),
                 newAssetCount: result.newAssetCount,
                 existingAssetCount: result.existingAssetCount,
-                skippedSourceFileCount: result.skippedSourceFileCount
+                skippedSourceFileCount: result.skippedSourceFileCount,
+                skippedSourceFiles: result.skippedSourceFiles
             )
         case .generatePreview(let assetID, let level):
             let asset = try repository.asset(id: assetID)

@@ -35,6 +35,7 @@ public final class CatalogDatabase: @unchecked Sendable {
         }
         try addColumnIfMissing(table: "assets", column: "technical_metadata_json", definition: "TEXT")
         try addColumnIfMissing(table: "source_roots", column: "security_scoped_bookmark_base64", definition: "TEXT")
+        try addColumnIfMissing(table: "work_sessions", column: "issues_json", definition: "TEXT NOT NULL DEFAULT '[]'")
         try addColumnIfMissing(
             table: "preview_generation_queue",
             column: "attempt_count",

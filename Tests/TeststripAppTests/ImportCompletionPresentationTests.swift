@@ -1,5 +1,6 @@
 import XCTest
 @testable import TeststripApp
+@testable import TeststripCore
 
 final class ImportCompletionPresentationTests: XCTestCase {
     func testBuildsPayoffRowsFromCompletedImportSummary() {
@@ -154,6 +155,24 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertNil(action.placeholder)
     }
 
+    func testSurfacesImportIssuesAsMetricRows() throws {
+        let presentation = ImportCompletionPresentation.presentation(for: summary(
+            issues: [
+                WorkSessionIssue(
+                    kind: .skippedSourceFile,
+                    sourceURL: URL(fileURLWithPath: "/Photos/Import/bad.cr2"),
+                    message: "could not fingerprint /Photos/Import/bad.cr2"
+                )
+            ]
+        ))
+
+        let issueMetric = try XCTUnwrap(presentation.metricRows.first { $0.id == "import-issues" })
+        XCTAssertEqual(issueMetric.value, "1 issue")
+        XCTAssertEqual(issueMetric.label, "Skipped files")
+        XCTAssertEqual(issueMetric.detail, "bad.cr2: could not fingerprint /Photos/Import/bad.cr2")
+        XCTAssertEqual(issueMetric.tone, .yellow)
+    }
+
     func testEnablesKeywordReviewActionWhenBatchSuggestionsExist() throws {
         let presentation = ImportCompletionPresentation.presentation(
             for: summary(),
@@ -228,6 +247,7 @@ final class ImportCompletionPresentationTests: XCTestCase {
         previewFailureCount: Int = 0,
         failureText: String? = nil,
         previewStatusText: String = "Previews ready",
+        issues: [WorkSessionIssue] = [],
         stackCount: Int = 0,
         stackedPhotoCount: Int = 0
     ) -> ImportCompletionSummary {
@@ -242,6 +262,7 @@ final class ImportCompletionPresentationTests: XCTestCase {
             previewFailureCount: previewFailureCount,
             failureText: failureText,
             previewStatusText: previewStatusText,
+            issues: issues,
             stackCount: stackCount,
             stackedPhotoCount: stackedPhotoCount,
             cullingSessionName: "Imported 12 photos from Card A Cull"

@@ -135,7 +135,8 @@ final class WorkerSupervisorTests: XCTestCase {
             importedAssetIDs: [AssetID(rawValue: "asset-1")],
             newAssetCount: 1,
             existingAssetCount: 0,
-            skippedSourceFileCount: 0
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
         )
         try supervisor.enqueue(item, command: command)
 

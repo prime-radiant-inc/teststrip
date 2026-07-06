@@ -1245,6 +1245,13 @@ final class CatalogDatabaseTests: XCTestCase {
             completedUnitCount: 4,
             totalUnitCount: 5,
             failureCount: 1,
+            issues: [
+                WorkSessionIssue(
+                    kind: .skippedSourceFile,
+                    sourceURL: URL(fileURLWithPath: "/Photos/Ceremony/missing.cr2"),
+                    message: "could not fingerprint /Photos/Ceremony/missing.cr2"
+                )
+            ],
             starred: true,
             createdAt: Date(timeIntervalSince1970: 10),
             updatedAt: Date(timeIntervalSince1970: 20)

@@ -95,7 +95,13 @@ final class WorkerProtocolTests: XCTestCase {
             importedAssetIDs: [AssetID(rawValue: "asset-1"), AssetID(rawValue: "asset-2")],
             newAssetCount: 1,
             existingAssetCount: 1,
-            skippedSourceFileCount: 2
+            skippedSourceFileCount: 2,
+            skippedSourceFiles: [
+                LibrarySkippedSourceFile(
+                    sourceURL: URL(fileURLWithPath: "/Photos/two.cr2"),
+                    message: "could not fingerprint /Photos/two.cr2"
+                )
+            ]
         )
 
         let line = try WorkerProtocolEncoder.encode(event)
@@ -109,6 +115,9 @@ final class WorkerProtocolTests: XCTestCase {
         XCTAssertEqual(json["newAssetCount"] as? Int, 1)
         XCTAssertEqual(json["existingAssetCount"] as? Int, 1)
         XCTAssertEqual(json["skippedSourceFileCount"] as? Int, 2)
+        let skippedSourceFiles = try XCTUnwrap(json["skippedSourceFiles"] as? [[String: String]])
+        XCTAssertEqual(skippedSourceFiles.first?["sourceURL"], "file:///Photos/two.cr2")
+        XCTAssertEqual(skippedSourceFiles.first?["message"], "could not fingerprint /Photos/two.cr2")
     }
 
     func testProgressEventRoundTripsThroughJSONLine() throws {

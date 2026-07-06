@@ -101,6 +101,7 @@ enum CatalogMigrations {
             completed_unit_count INTEGER NOT NULL,
             total_unit_count TEXT NOT NULL,
             failure_count INTEGER NOT NULL,
+            issues_json TEXT NOT NULL DEFAULT '[]',
             starred INTEGER NOT NULL,
             created_at REAL NOT NULL,
             updated_at REAL NOT NULL

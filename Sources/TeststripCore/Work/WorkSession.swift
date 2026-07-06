@@ -30,6 +30,22 @@ public enum WorkSessionStatus: String, Codable, Hashable, Sendable {
     case cancelled
 }
 
+public struct WorkSessionIssue: Codable, Equatable, Sendable {
+    public enum Kind: String, Codable, Hashable, Sendable {
+        case skippedSourceFile
+    }
+
+    public var kind: Kind
+    public var sourceURL: URL?
+    public var message: String
+
+    public init(kind: Kind, sourceURL: URL? = nil, message: String) {
+        self.kind = kind
+        self.sourceURL = sourceURL
+        self.message = message
+    }
+}
+
 public struct WorkSession: Codable, Equatable, Sendable {
     public var id: WorkSessionID
     public var kind: WorkSessionKind
@@ -42,6 +58,7 @@ public struct WorkSession: Codable, Equatable, Sendable {
     public var completedUnitCount: Int
     public var totalUnitCount: Int?
     public var failureCount: Int
+    public var issues: [WorkSessionIssue]
     public var starred: Bool
     public var createdAt: Date
     public var updatedAt: Date
@@ -58,6 +75,7 @@ public struct WorkSession: Codable, Equatable, Sendable {
         completedUnitCount: Int = 0,
         totalUnitCount: Int? = nil,
         failureCount: Int = 0,
+        issues: [WorkSessionIssue] = [],
         starred: Bool = false,
         createdAt: Date,
         updatedAt: Date
@@ -73,6 +91,7 @@ public struct WorkSession: Codable, Equatable, Sendable {
         self.completedUnitCount = completedUnitCount
         self.totalUnitCount = totalUnitCount
         self.failureCount = failureCount
+        self.issues = issues
         self.starred = starred
         self.createdAt = createdAt
         self.updatedAt = updatedAt

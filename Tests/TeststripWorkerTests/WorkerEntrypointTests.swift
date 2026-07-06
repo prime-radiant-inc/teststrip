@@ -45,7 +45,8 @@ final class WorkerEntrypointTests: XCTestCase {
             importedAssetIDs: [asset.id],
             newAssetCount: 1,
             existingAssetCount: 0,
-            skippedSourceFileCount: 0
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
         ))
         XCTAssertEqual(assets.map(\.originalURL), [source])
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [
@@ -103,7 +104,8 @@ final class WorkerEntrypointTests: XCTestCase {
             let importedAssetIDs,
             let newAssetCount,
             let existingAssetCount,
-            let skippedSourceFileCount
+            let skippedSourceFileCount,
+            let skippedSourceFiles
         ) = completion {
             XCTAssertEqual(completionItemID, itemID)
             XCTAssertEqual(message, "imported 1 photo from photos")
@@ -111,6 +113,7 @@ final class WorkerEntrypointTests: XCTestCase {
             XCTAssertEqual(newAssetCount, 1)
             XCTAssertEqual(existingAssetCount, 0)
             XCTAssertEqual(skippedSourceFileCount, 0)
+            XCTAssertEqual(skippedSourceFiles, [])
         } else {
             XCTFail("expected import completion event")
         }

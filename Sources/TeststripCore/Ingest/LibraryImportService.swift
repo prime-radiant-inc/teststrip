@@ -12,7 +12,7 @@ public struct LibraryPreviewFailure: Equatable, Sendable {
     }
 }
 
-public struct LibrarySkippedSourceFile: Equatable, Sendable {
+public struct LibrarySkippedSourceFile: Codable, Equatable, Sendable {
     public var sourceURL: URL
     public var message: String
 

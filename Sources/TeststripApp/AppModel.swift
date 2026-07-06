@@ -702,6 +702,7 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
     public var completedUnitCount: Int
     public var totalUnitCount: Int?
     public var failureCount: Int
+    public var issues: [WorkSessionIssue]
     public var starred: Bool
     public var outputSetIDs: [AssetSetID]
 
@@ -714,6 +715,7 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
         completedUnitCount: Int,
         totalUnitCount: Int?,
         failureCount: Int,
+        issues: [WorkSessionIssue] = [],
         starred: Bool = false,
         outputSetIDs: [AssetSetID] = []
     ) {
@@ -725,6 +727,7 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
         self.completedUnitCount = completedUnitCount
         self.totalUnitCount = totalUnitCount
         self.failureCount = failureCount
+        self.issues = issues
         self.starred = starred
         self.outputSetIDs = outputSetIDs
     }
@@ -756,6 +759,7 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
             completedUnitCount: workSession.completedUnitCount,
             totalUnitCount: workSession.totalUnitCount,
             failureCount: workSession.failureCount,
+            issues: workSession.issues,
             starred: workSession.starred,
             outputSetIDs: workSession.outputSetIDs
         )
@@ -773,6 +777,7 @@ public struct ImportCompletionSummary: Identifiable, Equatable, Sendable {
     public var previewFailureCount: Int
     public var failureText: String?
     public var previewStatusText: String
+    public var issues: [WorkSessionIssue]
     public var stackCount: Int = 0
     public var stackedPhotoCount: Int = 0
     public var cullingSessionName: String
@@ -1693,6 +1698,7 @@ public final class AppModel {
                 hasImportedPhotos: hasImportedPhotos,
                 failureText: failureText
             ),
+            issues: activity.issues,
             stackCount: stackSummary.stackCount,
             stackedPhotoCount: stackSummary.stackedPhotoCount,
             cullingSessionName: "\(activity.detail) Cull"
@@ -5222,14 +5228,16 @@ public final class AppModel {
             let importedAssetIDs,
             let newAssetCount,
             let existingAssetCount,
-            let skippedSourceFileCount
+            let skippedSourceFileCount,
+            let skippedSourceFiles
         ):
             handleWorkerImportCompleted(
                 itemID: itemID,
                 importedAssetIDs: importedAssetIDs,
                 newAssetCount: newAssetCount,
                 existingAssetCount: existingAssetCount,
-                skippedSourceFileCount: skippedSourceFileCount
+                skippedSourceFileCount: skippedSourceFileCount,
+                skippedSourceFiles: skippedSourceFiles
             )
         case .accepted, .progress, .failed:
             return
@@ -5465,7 +5473,8 @@ public final class AppModel {
         importedAssetIDs: [AssetID],
         newAssetCount: Int,
         existingAssetCount: Int,
-        skippedSourceFileCount: Int
+        skippedSourceFileCount: Int,
+        skippedSourceFiles: [LibrarySkippedSourceFile]
     ) {
         guard let itemID,
               let context = workerImportContextsByItemID.removeValue(forKey: itemID) else {
@@ -5485,6 +5494,7 @@ public final class AppModel {
             let result = LibraryImportResult(
                 importedAssets: importedAssets,
                 previewFailures: [],
+                skippedSourceFiles: skippedSourceFiles,
                 skippedSourceFileCount: skippedSourceFileCount,
                 newAssetCount: newAssetCount,
                 existingAssetCount: existingAssetCount
@@ -7485,7 +7495,8 @@ public final class AppModel {
             ),
             completedUnitCount: result.newAssetCount,
             totalUnitCount: result.importedAssets.count,
-            failureCount: result.previewFailures.count
+            failureCount: result.previewFailures.count,
+            issues: Self.workSessionIssues(for: result)
         )
         let outputSetIDs = saveImportOutputSet(for: activity, result: result)
         persistSecurityScopedBookmarkForImportedSource(
@@ -7555,6 +7566,16 @@ public final class AppModel {
             return "No new photos found in \(sourceDescription)\(warningSuffix)"
         }
         return "\(importCompletionStatus(result: result)) from \(sourceDescription)\(warningSuffix)"
+    }
+
+    private static func workSessionIssues(for result: LibraryImportResult) -> [WorkSessionIssue] {
+        result.skippedSourceFiles.map { skippedSourceFile in
+            WorkSessionIssue(
+                kind: .skippedSourceFile,
+                sourceURL: skippedSourceFile.sourceURL,
+                message: skippedSourceFile.message
+            )
+        }
     }
 
     private func failImportActivity(id: String? = nil, folderURL: URL, destinationRoot: URL? = nil, error: Error) {
@@ -8367,6 +8388,7 @@ private extension AppWorkActivity {
             completedUnitCount: completedUnitCount,
             totalUnitCount: totalUnitCount,
             failureCount: failureCount,
+            issues: issues,
             starred: starred,
             createdAt: now,
             updatedAt: now

@@ -6053,14 +6053,18 @@ struct ImportCompletionPresentation: Equatable {
         canEvaluateImport: Bool = false
     ) -> ImportCompletionPresentation {
         let hasImportedSet = summary.importedPhotoCount > 0
+        var metricRows = [
+            importedSetMetric(for: summary),
+            previewMetric(for: summary),
+            cullScopeMetric(for: summary)
+        ]
+        if let issueMetric = issueMetric(for: summary) {
+            metricRows.append(issueMetric)
+        }
         return ImportCompletionPresentation(
             title: title(for: summary),
             detail: summary.detail,
-            metricRows: [
-                importedSetMetric(for: summary),
-                previewMetric(for: summary),
-                cullScopeMetric(for: summary)
-            ],
+            metricRows: metricRows,
             actionRows: [
                 ImportCompletionActionPresentation(
                     kind: .startCulling,
@@ -6180,6 +6184,30 @@ struct ImportCompletionPresentation: Equatable {
             isPrimary: false,
             placeholder: nil
         )
+    }
+
+    private static func issueMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow? {
+        guard !summary.issues.isEmpty else { return nil }
+        let issueCount = summary.issues.count
+        let skippedCount = summary.issues.filter { $0.kind == .skippedSourceFile }.count
+        let detail = summary.issues.first.map(issueDetail) ?? "\(issueCount) import issues"
+        return ImportCompletionMetricRow(
+            id: "import-issues",
+            value: issueCount == 1 ? "1 issue" : "\(issueCount) issues",
+            label: skippedCount == issueCount ? "Skipped files" : "Import issues",
+            detail: detail,
+            systemImage: "exclamationmark.triangle",
+            tone: .yellow
+        )
+    }
+
+    private static func issueDetail(_ issue: WorkSessionIssue) -> String {
+        let message = issue.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let sourceURL = issue.sourceURL else { return message }
+        let fileName = sourceURL.lastPathComponent
+        guard !fileName.isEmpty else { return message }
+        guard !message.isEmpty else { return fileName }
+        return "\(fileName): \(message)"
     }
 
     private static func cullScopeMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {

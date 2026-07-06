@@ -51,7 +51,8 @@ private extension WorkerCommandResult {
             let importedAssetIDs,
             let newAssetCount,
             let existingAssetCount,
-            let skippedSourceFileCount
+            let skippedSourceFileCount,
+            let skippedSourceFiles
         ):
             return .completedImport(
                 itemID: itemID,
@@ -59,7 +60,8 @@ private extension WorkerCommandResult {
                 importedAssetIDs: importedAssetIDs,
                 newAssetCount: newAssetCount,
                 existingAssetCount: existingAssetCount,
-                skippedSourceFileCount: skippedSourceFileCount
+                skippedSourceFileCount: skippedSourceFileCount,
+                skippedSourceFiles: skippedSourceFiles
             )
         }
     }

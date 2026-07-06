@@ -20,7 +20,8 @@ public enum WorkerEvent: Equatable, Sendable {
         importedAssetIDs: [AssetID],
         newAssetCount: Int,
         existingAssetCount: Int,
-        skippedSourceFileCount: Int
+        skippedSourceFileCount: Int,
+        skippedSourceFiles: [LibrarySkippedSourceFile]
     )
     case failed(itemID: WorkSessionID?, message: String)
 
@@ -29,7 +30,7 @@ public enum WorkerEvent: Equatable, Sendable {
         case .accepted(let itemID, _),
              .progress(let itemID, _, _, _, _),
              .completed(let itemID, _),
-             .completedImport(let itemID, _, _, _, _, _),
+             .completedImport(let itemID, _, _, _, _, _, _),
              .failed(let itemID, _):
             return itemID
         }
@@ -40,7 +41,7 @@ public enum WorkerEvent: Equatable, Sendable {
         case .accepted(_, let message),
              .progress(_, _, _, let message, _),
              .completed(_, let message),
-             .completedImport(_, let message, _, _, _, _),
+             .completedImport(_, let message, _, _, _, _, _),
              .failed(_, let message):
             return message
         }
@@ -184,7 +185,8 @@ public enum WorkerProtocolEncoder {
             let importedAssetIDs,
             let newAssetCount,
             let existingAssetCount,
-            let skippedSourceFileCount
+            let skippedSourceFileCount,
+            let skippedSourceFiles
         ):
             envelope = WorkerEventEnvelope(
                 event: "completed",
@@ -196,7 +198,8 @@ public enum WorkerProtocolEncoder {
                 totalUnitCount: nil,
                 newAssetCount: newAssetCount,
                 existingAssetCount: existingAssetCount,
-                skippedSourceFileCount: skippedSourceFileCount
+                skippedSourceFileCount: skippedSourceFileCount,
+                skippedSourceFiles: skippedSourceFiles
             )
         case .failed(let itemID, let message):
             envelope = WorkerEventEnvelope(
@@ -286,7 +289,8 @@ public enum WorkerProtocolEncoder {
                     importedAssetIDs: importedAssetIDs.map(AssetID.init(rawValue:)),
                     newAssetCount: try envelope.requiredNewAssetCount(),
                     existingAssetCount: try envelope.requiredExistingAssetCount(),
-                    skippedSourceFileCount: try envelope.requiredSkippedSourceFileCount()
+                    skippedSourceFileCount: try envelope.requiredSkippedSourceFileCount(),
+                    skippedSourceFiles: envelope.skippedSourceFiles ?? []
                 )
             }
             return .completed(itemID: itemID, message: envelope.message)
@@ -382,6 +386,7 @@ public enum WorkerProtocolEncoder {
         var newAssetCount: Int? = nil
         var existingAssetCount: Int? = nil
         var skippedSourceFileCount: Int? = nil
+        var skippedSourceFiles: [LibrarySkippedSourceFile]? = nil
 
         func requiredCompletedUnitCount() throws -> Int {
             guard let completedUnitCount else {

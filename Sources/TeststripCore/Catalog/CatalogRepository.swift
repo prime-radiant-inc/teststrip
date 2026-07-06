@@ -535,11 +535,12 @@ public final class CatalogRepository {
                 completed_unit_count,
                 total_unit_count,
                 failure_count,
+                issues_json,
                 starred,
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 kind = excluded.kind,
                 intent = excluded.intent,
@@ -551,6 +552,7 @@ public final class CatalogRepository {
                 completed_unit_count = excluded.completed_unit_count,
                 total_unit_count = excluded.total_unit_count,
                 failure_count = excluded.failure_count,
+                issues_json = excluded.issues_json,
                 starred = excluded.starred,
                 updated_at = excluded.updated_at
             """,
@@ -566,6 +568,7 @@ public final class CatalogRepository {
                 "\(session.completedUnitCount)",
                 session.totalUnitCount.map(String.init) ?? "",
                 "\(session.failureCount)",
+                try encode(session.issues),
                 session.starred ? "1" : "0",
                 "\(session.createdAt.timeIntervalSince1970)",
                 "\(session.updatedAt.timeIntervalSince1970)"
@@ -1124,6 +1127,7 @@ public final class CatalogRepository {
             throw CatalogError.sqlite("work session row is missing required columns")
         }
 
+        let issuesJSON = row["issues_json"] ?? "[]"
         let totalUnitCount = totalUnitCountValue.isEmpty ? nil : Int(totalUnitCountValue)
         if !totalUnitCountValue.isEmpty, totalUnitCount == nil {
             throw CatalogError.sqlite("work session row has invalid total unit count")
@@ -1141,6 +1145,7 @@ public final class CatalogRepository {
             completedUnitCount: completedUnitCount,
             totalUnitCount: totalUnitCount,
             failureCount: failureCount,
+            issues: try decode([WorkSessionIssue].self, from: issuesJSON),
             starred: starred == "1",
             createdAt: Date(timeIntervalSince1970: createdAtInterval),
             updatedAt: Date(timeIntervalSince1970: updatedAtInterval)
