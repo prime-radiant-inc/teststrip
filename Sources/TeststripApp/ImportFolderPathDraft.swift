@@ -123,6 +123,69 @@ struct ImportFolderPathDraft: Equatable {
     }
 }
 
+struct ImportCardPathDraft: Equatable {
+    var sourcePath: String {
+        didSet {
+            if sourcePath != oldValue {
+                errorMessage = nil
+            }
+        }
+    }
+    var destinationPath: String {
+        didSet {
+            if destinationPath != oldValue {
+                errorMessage = nil
+            }
+        }
+    }
+    private(set) var errorMessage: String?
+
+    init(sourcePath: String = "", destinationPath: String = "", errorMessage: String? = nil) {
+        self.sourcePath = sourcePath
+        self.destinationPath = destinationPath
+        self.errorMessage = errorMessage
+    }
+
+    var planSteps: [ImportPlanStep] {
+        ImportPlanSteps.cardCopy(destinationName: destinationDisplayName)
+    }
+
+    var primaryActionTitle: String {
+        "Review Card Import"
+    }
+
+    mutating func reset() {
+        sourcePath = ""
+        destinationPath = ""
+        errorMessage = nil
+    }
+
+    @MainActor
+    mutating func makeCardConfirmationDraft() throws -> ImportConfirmationDraft {
+        let roots = try resolveCardURLs()
+        return .card(source: roots.source, destinationRoot: roots.destinationRoot)
+    }
+
+    @MainActor
+    mutating func resolveCardURLs() throws -> (source: URL, destinationRoot: URL) {
+        do {
+            let sourceURL = try FolderSelectionPanel.importFolderURL(fromPath: sourcePath)
+            let destinationURL = try FolderSelectionPanel.importFolderURL(fromPath: destinationPath)
+            errorMessage = nil
+            return (source: sourceURL, destinationRoot: destinationURL)
+        } catch {
+            errorMessage = error.localizedDescription
+            throw error
+        }
+    }
+
+    private var destinationDisplayName: String {
+        let trimmed = destinationPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "the destination" }
+        return URL(fileURLWithPath: trimmed, isDirectory: true).lastPathComponent
+    }
+}
+
 struct ImportFolderPathReviewPresentation: Equatable {
     var primaryActionTitle: String
     var isPrimaryActionEnabled: Bool
@@ -135,5 +198,21 @@ struct ImportFolderPathReviewPresentation: Equatable {
         isPrimaryActionEnabled = hasPath && !isReviewing && !isImporting
         showsProgress = isReviewing
         statusText = isReviewing ? "Reviewing folder before import..." : nil
+    }
+}
+
+struct ImportCardPathReviewPresentation: Equatable {
+    var primaryActionTitle: String
+    var isPrimaryActionEnabled: Bool
+    var showsProgress: Bool
+    var statusText: String?
+
+    init(draft: ImportCardPathDraft, isReviewing: Bool, isImporting: Bool) {
+        let hasSourcePath = !draft.sourcePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasDestinationPath = !draft.destinationPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        primaryActionTitle = isReviewing ? "Reviewing..." : draft.primaryActionTitle
+        isPrimaryActionEnabled = hasSourcePath && hasDestinationPath && !isReviewing && !isImporting
+        showsProgress = isReviewing
+        statusText = isReviewing ? "Reviewing card import before copy..." : nil
     }
 }

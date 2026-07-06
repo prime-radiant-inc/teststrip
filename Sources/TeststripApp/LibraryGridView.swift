@@ -24,10 +24,14 @@ struct LibraryGridView: View {
     @State private var isAllCatalogBatchMetadataConfirmed = false
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
+    @State private var isShowingImportCardPathSheet = false
     @State private var dismissedImportCompletionSummaryID: String?
     @State private var importPathDraft = ImportFolderPathDraft()
+    @State private var importCardPathDraft = ImportCardPathDraft()
     @State private var isReviewingImportPath = false
+    @State private var isReviewingImportCardPath = false
     @State private var importPathReviewID: UUID?
+    @State private var importCardPathReviewID: UUID?
     @State private var importConfirmationDraft: ImportConfirmationDraft?
     @State private var sourceReconnectDraft = SourceReconnectPathDraft()
     @State private var cullingFocusRequest = 0
@@ -117,7 +121,7 @@ struct LibraryGridView: View {
             .help("Import a folder by path")
 
             Button {
-                showImportCardPanel()
+                showImportCardPathSheet()
             } label: {
                 Label("Import Card", systemImage: "externaldrive.badge.plus")
             }
@@ -178,6 +182,9 @@ struct LibraryGridView: View {
         }
         .sheet(isPresented: $isShowingImportPathSheet) {
             importPathSheet
+        }
+        .sheet(isPresented: $isShowingImportCardPathSheet) {
+            importCardPathSheet
         }
         .sheet(item: $importConfirmationDraft) { draft in
             importConfirmationSheet(draft)
@@ -1260,6 +1267,59 @@ struct LibraryGridView: View {
         }
     }
 
+    private var importCardPathSheet: some View {
+        let reviewPresentation = ImportCardPathReviewPresentation(
+            draft: importCardPathDraft,
+            isReviewing: isReviewingImportCardPath,
+            isImporting: isImporting
+        )
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("Import Card Paths")
+                .font(.headline)
+            TextField("Card or source folder path", text: $importCardPathDraft.sourcePath)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 420)
+                .disabled(isReviewingImportCardPath)
+            TextField("Destination folder path", text: $importCardPathDraft.destinationPath)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 420)
+                .disabled(isReviewingImportCardPath)
+            importPlanView(steps: importCardPathDraft.planSteps, width: 420)
+            if reviewPresentation.showsProgress {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(reviewPresentation.statusText ?? "")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let errorMessage = importCardPathDraft.errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    importCardPathReviewID = nil
+                    isReviewingImportCardPath = false
+                    isShowingImportCardPathSheet = false
+                }
+                Button(reviewPresentation.primaryActionTitle) {
+                    importCardPath()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!reviewPresentation.isPrimaryActionEnabled)
+            }
+        }
+        .padding(18)
+        .onDisappear {
+            importCardPathReviewID = nil
+            isReviewingImportCardPath = false
+        }
+    }
+
     private func importConfirmationSheet(_ draft: ImportConfirmationDraft) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(draft.title)
@@ -1792,7 +1852,7 @@ struct LibraryGridView: View {
                     Label("Import Path", systemImage: "folder.badge.plus")
                 }
                 Button {
-                    showImportCardPanel()
+                    showImportCardPathSheet()
                 } label: {
                     Label("Import Card", systemImage: "externaldrive.badge.plus")
                 }
@@ -1887,6 +1947,13 @@ struct LibraryGridView: View {
         isShowingImportPathSheet = true
     }
 
+    private func showImportCardPathSheet() {
+        importCardPathDraft.reset()
+        importCardPathReviewID = nil
+        isReviewingImportCardPath = false
+        isShowingImportCardPathSheet = true
+    }
+
     private func showSourceReconnectSheet() {
         sourceReconnectDraft = SourceReconnectPathDraft(oldRootPath: model.suggestedReconnectOldRootPath)
         isShowingSourceReconnectSheet = true
@@ -1919,6 +1986,31 @@ struct LibraryGridView: View {
         } catch {
             importPathReviewID = nil
             isReviewingImportPath = false
+            return
+        }
+    }
+
+    private func importCardPath() {
+        do {
+            let roots = try importCardPathDraft.resolveCardURLs()
+            let reviewID = UUID()
+            importCardPathReviewID = reviewID
+            isReviewingImportCardPath = true
+            Task {
+                let confirmationDraft = await Task.detached(priority: .userInitiated) {
+                    ImportConfirmationDraft.card(source: roots.source, destinationRoot: roots.destinationRoot)
+                }.value
+                await MainActor.run {
+                    guard importCardPathReviewID == reviewID else { return }
+                    importCardPathReviewID = nil
+                    isReviewingImportCardPath = false
+                    isShowingImportCardPathSheet = false
+                    importConfirmationDraft = confirmationDraft
+                }
+            }
+        } catch {
+            importCardPathReviewID = nil
+            isReviewingImportCardPath = false
             return
         }
     }

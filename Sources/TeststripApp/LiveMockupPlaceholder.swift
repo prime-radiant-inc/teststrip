@@ -131,7 +131,7 @@ public enum LiveMockupPlaceholders {
         id: "import.plan",
         title: "Import plan",
         intendedBehavior: "Explain copy/catalog/XMP/preview/background work before import starts, including later agentic follow-up work.",
-        currentFallback: "Folder and card confirmation sheets show the non-destructive cataloging plan, managed background-work summary, and honest follow-up setup rows for culling, stacks, keyword review, and face review."
+        currentFallback: "Folder and card path sheets flow into confirmation sheets that show the non-destructive cataloging plan, managed background-work summary, and honest follow-up setup rows for culling, stacks, keyword review, and face review."
     )
 
     public static let importCompleteSummary = LiveMockupPlaceholder(
@@ -283,7 +283,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Import",
             status: .partial,
             placeholder: .importPlan,
-            currentImplementation: "Folder/card import confirmation explains non-destructive cataloging, XMP, previews, managed background work, and follow-up setup for imported-set culling, likely stacks, keyword review, and face review; geo/map follow-up and automatic naming are not run during import."
+            currentImplementation: "Folder/card path entry and import confirmation explain non-destructive cataloging, card copy, XMP, previews, managed background work, and follow-up setup for imported-set culling, likely stacks, keyword review, and face review; geo/map follow-up and automatic naming are not run during import."
         ),
         LiveMockupDesignSurface(
             designID: "4b",

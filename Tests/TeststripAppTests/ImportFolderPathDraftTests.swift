@@ -65,6 +65,20 @@ final class ImportFolderPathDraftTests: XCTestCase {
         XCTAssertEqual(ImportFolderPathDraft().primaryActionTitle, "Review Import")
     }
 
+    func testCardPathPlanExplainsCopyBeforeCataloging() {
+        let draft = ImportCardPathDraft(sourcePath: "/Volumes/CARD/DCIM", destinationPath: "/Photos/Incoming")
+
+        XCTAssertEqual(draft.primaryActionTitle, "Review Card Import")
+        XCTAssertEqual(draft.planSteps.first, ImportPlanStep(
+            title: "Copy card files first",
+            detail: "Originals are copied into Incoming before Teststrip catalogs the copied files."
+        ))
+        XCTAssertTrue(draft.planSteps.contains(ImportPlanStep(
+            title: "Use the managed background queue",
+            detail: "Copy, preview, and metadata work remains visible, pausable, and cancellable."
+        )))
+    }
+
     func testPathReviewPresentationEnablesReviewForEnteredPath() {
         let presentation = ImportFolderPathReviewPresentation(
             draft: ImportFolderPathDraft(path: "/Photos/Job"),
@@ -109,6 +123,43 @@ final class ImportFolderPathDraftTests: XCTestCase {
         ).isPrimaryActionEnabled)
     }
 
+    func testCardPathReviewPresentationRequiresSourceAndDestination() {
+        let ready = ImportCardPathReviewPresentation(
+            draft: ImportCardPathDraft(sourcePath: "/Volumes/CARD/DCIM", destinationPath: "/Photos/Incoming"),
+            isReviewing: false,
+            isImporting: false
+        )
+
+        XCTAssertEqual(ready.primaryActionTitle, "Review Card Import")
+        XCTAssertTrue(ready.isPrimaryActionEnabled)
+        XCTAssertFalse(ready.showsProgress)
+        XCTAssertNil(ready.statusText)
+
+        XCTAssertFalse(ImportCardPathReviewPresentation(
+            draft: ImportCardPathDraft(sourcePath: "/Volumes/CARD/DCIM", destinationPath: " "),
+            isReviewing: false,
+            isImporting: false
+        ).isPrimaryActionEnabled)
+        XCTAssertFalse(ImportCardPathReviewPresentation(
+            draft: ImportCardPathDraft(sourcePath: " ", destinationPath: "/Photos/Incoming"),
+            isReviewing: false,
+            isImporting: false
+        ).isPrimaryActionEnabled)
+    }
+
+    func testCardPathReviewPresentationShowsReviewingState() {
+        let presentation = ImportCardPathReviewPresentation(
+            draft: ImportCardPathDraft(sourcePath: "/Volumes/CARD/DCIM", destinationPath: "/Photos/Incoming"),
+            isReviewing: true,
+            isImporting: false
+        )
+
+        XCTAssertEqual(presentation.primaryActionTitle, "Reviewing...")
+        XCTAssertFalse(presentation.isPrimaryActionEnabled)
+        XCTAssertTrue(presentation.showsProgress)
+        XCTAssertEqual(presentation.statusText, "Reviewing card import before copy...")
+    }
+
     @MainActor
     func testInvalidPathKeepsDraftErrorForSheet() throws {
         var draft = ImportFolderPathDraft(path: "/definitely/not/a/teststrip/import/folder")
@@ -144,6 +195,36 @@ final class ImportFolderPathDraftTests: XCTestCase {
         XCTAssertEqual(confirmation.sourceURL.standardizedFileURL, directory.standardizedFileURL)
         XCTAssertEqual(confirmation.primaryActionTitle, "Start Import")
         XCTAssertNil(draft.errorMessage)
+    }
+
+    @MainActor
+    func testValidCardPathsBuildCardConfirmationDraft() throws {
+        let source = try makeTemporaryDirectory(named: "valid-card-source")
+        let destination = try makeTemporaryDirectory(named: "valid-card-destination")
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
+        var draft = ImportCardPathDraft(sourcePath: source.path, destinationPath: destination.path)
+
+        let confirmation = try draft.makeCardConfirmationDraft()
+
+        XCTAssertEqual(confirmation.mode, .card)
+        XCTAssertEqual(confirmation.sourceURL.standardizedFileURL, source.standardizedFileURL)
+        XCTAssertEqual(confirmation.destinationRootURL?.standardizedFileURL, destination.standardizedFileURL)
+        XCTAssertEqual(confirmation.primaryActionTitle, "Start Card Import")
+        XCTAssertTrue(confirmation.canStartImport)
+        XCTAssertNil(draft.errorMessage)
+    }
+
+    @MainActor
+    func testInvalidCardDestinationKeepsDraftErrorForSheet() throws {
+        let source = try makeTemporaryDirectory(named: "invalid-card-destination-source")
+        var draft = ImportCardPathDraft(
+            sourcePath: source.path,
+            destinationPath: "/definitely/not/a/teststrip/card/destination"
+        )
+
+        XCTAssertThrowsError(try draft.makeCardConfirmationDraft())
+
+        XCTAssertEqual(draft.errorMessage, "Folder path does not exist")
     }
 
     private func makeTemporaryDirectory(named name: String) throws -> URL {
