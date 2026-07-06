@@ -3265,6 +3265,8 @@ enum CompareFocusMetricPresentation {
         .focus,
         .motionBlur,
         .exposure,
+        .framing,
+        .aesthetics,
         .faceQuality
     ]
 
@@ -3318,7 +3320,10 @@ enum CompareFocusMetricPresentation {
         switch (signal.kind, signal.value) {
         case (.motionBlur, .score(let score)):
             return score >= 0.5 ? .caution : .positive
-        case (.focus, .score(let score)), (.faceQuality, .score(let score)):
+        case (.focus, .score(let score)),
+             (.framing, .score(let score)),
+             (.aesthetics, .score(let score)),
+             (.faceQuality, .score(let score)):
             return score >= 0.7 ? .positive : .caution
         case (.exposure, _):
             return .neutral

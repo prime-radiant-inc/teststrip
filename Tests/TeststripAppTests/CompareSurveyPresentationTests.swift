@@ -263,6 +263,29 @@ final class CompareSurveyPresentationTests: XCTestCase {
         })
     }
 
+    func testFocusMetricsIncludeLocalFramingAndAestheticScores() {
+        let assetID = AssetID(rawValue: "composition-frame")
+        let provenance = ProviderProvenance(
+            provider: "local-image-metrics",
+            model: "preview-color-focus-metrics",
+            version: "1",
+            settingsHash: "default"
+        )
+
+        let metrics = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .aesthetics, value: .score(0.73), confidence: 0.55, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .framing, value: .score(0.81), confidence: 0.6, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .focus, value: .score(0.88), confidence: 0.81, provenance: provenance)
+        ])
+
+        XCTAssertEqual(metrics.map(\.title), ["Focus", "Framing", "Aesthetics"])
+        XCTAssertEqual(metrics.map(\.value), ["88%", "81%", "73%"])
+        XCTAssertEqual(metrics.map(\.tone), [.positive, .positive, .positive])
+        XCTAssertFalse(metrics.contains { metric in
+            [metric.title, metric.value, metric.detail].contains { $0.localizedCaseInsensitiveContains("best") }
+        })
+    }
+
     func testFocusMetricsShowNoReadWhenNoQualitySignalsExist() {
         let assetID = AssetID(rawValue: "unread-frame")
         let provenance = ProviderProvenance(
