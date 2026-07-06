@@ -2044,6 +2044,7 @@ struct LibraryGridView: View {
             try model.reconnectSourceRoot(from: roots.oldRoot, to: roots.newRoot)
             isShowingSourceReconnectSheet = false
         } catch {
+            sourceReconnectDraft.recordError(error.localizedDescription)
             model.errorMessage = error.localizedDescription
         }
     }

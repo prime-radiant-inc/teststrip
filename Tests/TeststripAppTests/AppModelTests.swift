@@ -4539,6 +4539,138 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.statusMessage, "Reconnected 1 source")
     }
 
+    func testReconnectSourceRootThrowsHelpfulErrorWhenNoCatalogAssetsMatchOldRoot() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-source-reconnect-no-match")
+        let catalogRoot = directory.appendingPathComponent("OfflineArchive", isDirectory: true)
+        let wrongOldRoot = directory.appendingPathComponent("WrongArchive", isDirectory: true)
+        let newRoot = directory.appendingPathComponent("MountedArchive", isDirectory: true)
+        let originalURL = catalogRoot.appendingPathComponent("Job/frame.jpg")
+        let remountedURL = newRoot.appendingPathComponent("Job/frame.jpg")
+        try FileManager.default.createDirectory(
+            at: remountedURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("same original bytes".utf8).write(to: remountedURL)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "source-reconnect-no-match"),
+            originalURL: originalURL,
+            volumeIdentifier: "OfflineArchive",
+            fingerprint: try fileFingerprint(for: remountedURL),
+            availability: .missing,
+            metadata: AssetMetadata(rating: 4)
+        )
+        try repository.upsert(asset)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        XCTAssertThrowsError(try model.reconnectSourceRoot(from: wrongOldRoot, to: newRoot)) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                "No catalog photos use WrongArchive. Check the old source root."
+            )
+        }
+        XCTAssertNil(model.statusMessage)
+        XCTAssertEqual(model.assets.map(\.originalURL), [originalURL])
+    }
+
+    func testReconnectSourceRootThrowsHelpfulErrorWhenMatchingFilesAreMissingUnderNewRoot() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-source-reconnect-missing-files")
+        let oldRoot = directory.appendingPathComponent("OfflineArchive", isDirectory: true)
+        let newRoot = directory.appendingPathComponent("MountedArchive", isDirectory: true)
+        try FileManager.default.createDirectory(at: newRoot, withIntermediateDirectories: true)
+        let originalURL = oldRoot.appendingPathComponent("Job/frame.jpg")
+        let fingerprintSourceURL = directory.appendingPathComponent("fingerprint-source.jpg")
+        try Data("same original bytes".utf8).write(to: fingerprintSourceURL)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "source-reconnect-missing-files"),
+            originalURL: originalURL,
+            volumeIdentifier: "OfflineArchive",
+            fingerprint: try fileFingerprint(for: fingerprintSourceURL),
+            availability: .missing,
+            metadata: AssetMetadata(rating: 4)
+        )
+        try repository.upsert(asset)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        XCTAssertThrowsError(try model.reconnectSourceRoot(from: oldRoot, to: newRoot)) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                "No files were reconnected from MountedArchive. 1 catalog photo was found under OfflineArchive, but the matching file was missing under the new root."
+            )
+        }
+        XCTAssertNil(model.statusMessage)
+        XCTAssertEqual(model.assets.map(\.originalURL), [originalURL])
+    }
+
+    func testReconnectSourceRootThrowsHelpfulErrorWhenMatchingFilesHaveDifferentFingerprints() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-source-reconnect-fingerprint-mismatch")
+        let oldRoot = directory.appendingPathComponent("OfflineArchive", isDirectory: true)
+        let newRoot = directory.appendingPathComponent("MountedArchive", isDirectory: true)
+        let newOriginalURL = newRoot.appendingPathComponent("Job/frame.jpg")
+        try FileManager.default.createDirectory(
+            at: newOriginalURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("different original bytes".utf8).write(to: newOriginalURL)
+        let fingerprintSourceURL = directory.appendingPathComponent("fingerprint-source.jpg")
+        try Data("expected original bytes".utf8).write(to: fingerprintSourceURL)
+        let oldOriginalURL = oldRoot.appendingPathComponent("Job/frame.jpg")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "source-reconnect-fingerprint-mismatch"),
+            originalURL: oldOriginalURL,
+            volumeIdentifier: "OfflineArchive",
+            fingerprint: try fileFingerprint(for: fingerprintSourceURL),
+            availability: .missing,
+            metadata: AssetMetadata(rating: 4)
+        )
+        try repository.upsert(asset)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+
+        XCTAssertThrowsError(try model.reconnectSourceRoot(from: oldRoot, to: newRoot)) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                "No files were reconnected from MountedArchive. 1 file was found under the new root, but it did not match the catalog fingerprint."
+            )
+        }
+        XCTAssertNil(model.statusMessage)
+        XCTAssertEqual(model.assets.map(\.originalURL), [oldOriginalURL])
+    }
+
     func testReconnectSourceRootEnqueuesPendingPreviewForRestoredOriginal() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-source-reconnect-preview")
         let oldRoot = directory.appendingPathComponent("OfflineArchive", isDirectory: true)

@@ -30,6 +30,10 @@ struct SourceReconnectPathDraft: Equatable {
         errorMessage = nil
     }
 
+    mutating func recordError(_ message: String) {
+        errorMessage = message
+    }
+
     @MainActor
     mutating func resolveRootURLs() throws -> (oldRoot: URL, newRoot: URL) {
         do {

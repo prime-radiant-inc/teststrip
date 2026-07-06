@@ -272,6 +272,7 @@ struct SidebarView: View {
             try model.reconnectSourceRoot(from: roots.oldRoot, to: roots.newRoot)
             cancelSourceReconnect()
         } catch {
+            sourceReconnectDraft.recordError(error.localizedDescription)
             model.errorMessage = error.localizedDescription
         }
     }

@@ -48,6 +48,20 @@ final class SourceReconnectPathDraftTests: XCTestCase {
         XCTAssertNil(draft.errorMessage)
     }
 
+    func testRecordErrorStoresMessageUntilAPathChanges() {
+        var draft = SourceReconnectPathDraft(
+            oldRootPath: "/Volumes/OfflineArchive",
+            newRootPath: "/Volumes/MountedArchive"
+        )
+
+        draft.recordError("No files were reconnected from MountedArchive.")
+
+        XCTAssertEqual(draft.errorMessage, "No files were reconnected from MountedArchive.")
+
+        draft.newRootPath = "/Volumes/Archive"
+        XCTAssertNil(draft.errorMessage)
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-source-reconnect-draft-\(name)-\(UUID().uuidString)", isDirectory: true)

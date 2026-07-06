@@ -5611,20 +5611,51 @@ public final class AppModel {
         }
         let preferredSelection = selectedAssetID
         let result = try catalog.repository.reconnectSourceRoot(from: oldRoot, to: newRoot)
-        if result.reconnectedAssetCount > 0 {
-            persistSecurityScopedBookmarkForSourceRoot(newRoot)
+        guard result.reconnectedAssetCount > 0 else {
+            throw TeststripError.invalidState(Self.sourceReconnectFailureMessage(
+                result: result,
+                oldRoot: oldRoot,
+                newRoot: newRoot
+            ))
         }
+        persistSecurityScopedBookmarkForSourceRoot(newRoot)
         try loadCatalogPage(preferredSelection: preferredSelection)
         catalogFolders = try catalog.repository.folders()
         sourceRoots = try catalog.repository.sourceRoots()
         sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         rebuildSidebarSections()
-        if result.reconnectedAssetCount > 0 {
-            try enqueuePendingPreviewGeneration()
-        }
+        try enqueuePendingPreviewGeneration()
         let sourceLabel = result.reconnectedAssetCount == 1 ? "source" : "sources"
         statusMessage = "Reconnected \(result.reconnectedAssetCount) \(sourceLabel)"
         return result
+    }
+
+    private static func sourceReconnectFailureMessage(
+        result: SourceRootReconnectResult,
+        oldRoot: URL,
+        newRoot: URL
+    ) -> String {
+        let oldRootName = sourceRootDisplayName(oldRoot)
+        let newRootName = sourceRootDisplayName(newRoot)
+        if result.scannedAssetCount == 0 {
+            return "No catalog photos use \(oldRootName). Check the old source root."
+        }
+        if result.missingFileCount == result.scannedAssetCount {
+            let photoLabel = result.scannedAssetCount == 1 ? "photo was" : "photos were"
+            let fileLabel = result.scannedAssetCount == 1 ? "file was" : "files were"
+            return "No files were reconnected from \(newRootName). \(result.scannedAssetCount) catalog \(photoLabel) found under \(oldRootName), but the matching \(fileLabel) missing under the new root."
+        }
+        if result.fingerprintMismatchCount == result.scannedAssetCount {
+            let fileLabel = result.scannedAssetCount == 1 ? "file was" : "files were"
+            let matchLabel = result.scannedAssetCount == 1 ? "it did" : "they did"
+            return "No files were reconnected from \(newRootName). \(result.scannedAssetCount) \(fileLabel) found under the new root, but \(matchLabel) not match the catalog fingerprint."
+        }
+        return "No files were reconnected from \(newRootName). Check that the new root contains the same files from \(oldRootName)."
+    }
+
+    private static func sourceRootDisplayName(_ url: URL) -> String {
+        let name = url.lastPathComponent
+        return name.isEmpty ? url.path : name
     }
 
     private func requestAvailabilityRefresh(assetID: AssetID) throws {
