@@ -1158,6 +1158,18 @@ public final class AppModel {
     private var pendingLatestImportPreviewStatusRefresh: Bool
 
     @ObservationIgnored
+    private var pendingPreviewGenerationQueueStatesRefresh: Bool
+
+    // Per-cell preview lookups hit the filesystem and scan the work queue; the grid
+    // re-renders far more often than preview state can change, so both are memoized
+    // until the next background-work publication or queue-state refresh.
+    @ObservationIgnored
+    private var gridPreviewURLCacheByAssetID: [AssetID: URL?]
+
+    @ObservationIgnored
+    private var gridPreviewStatusCacheByAssetID: [AssetID: AssetGridPreviewStatusPresentation?]
+
+    @ObservationIgnored
     private var catalog: AppCatalog?
 
     @ObservationIgnored
@@ -2309,6 +2321,9 @@ public final class AppModel {
         self.currentPreviewCacheGenerationsByAssetID = [:]
         self.lastProcessedBackgroundWorkQueue = nil
         self.pendingLatestImportPreviewStatusRefresh = false
+        self.pendingPreviewGenerationQueueStatesRefresh = false
+        self.gridPreviewURLCacheByAssetID = [:]
+        self.gridPreviewStatusCacheByAssetID = [:]
         self.evaluationAssetIDsByItemID = [:]
         self.evaluationProvidersByItemID = [:]
         self.metadataSyncAssetIDsByItemID = [:]
@@ -5043,6 +5058,7 @@ public final class AppModel {
 
     private func refreshPreviewGenerationQueueStates() throws {
         guard let catalog else { return }
+        clearGridPreviewCaches()
         previewGenerationQueueStates = try Self.previewGenerationQueueStates(
             repository: catalog.repository,
             selectedAssetID: selectedAssetID
@@ -5051,6 +5067,7 @@ public final class AppModel {
 
     private func refreshSelectedPreviewGenerationQueueStates(for assetID: AssetID) throws {
         guard let catalog else { return }
+        clearGridPreviewCaches()
         try Self.mergePreviewGenerationQueueStates(
             for: assetID,
             repository: catalog.repository,
@@ -5229,7 +5246,7 @@ public final class AppModel {
             Self.pendingPreviewRecoveryBatchSize - Self.activePreviewGenerationWorkCount(in: currentBackgroundWorkQueue)
         )
         guard availableSlotCount > 0 else {
-            try refreshPreviewGenerationQueueStates()
+            schedulePreviewGenerationQueueStatesRefresh()
             return
         }
         var enqueuedCount = 0
@@ -5274,7 +5291,7 @@ public final class AppModel {
             }
         }
         try workerSupervisor.enqueue(requests)
-        try refreshPreviewGenerationQueueStates()
+        schedulePreviewGenerationQueueStatesRefresh()
     }
 
     private func enqueuePendingMetadataSync() throws {
@@ -5555,12 +5572,29 @@ public final class AppModel {
     }
 
     private func flushBackgroundWorkPublication() {
+        clearGridPreviewCaches()
         backgroundWorkQueue = currentBackgroundWorkQueue
         previewCacheGenerationsByAssetID = currentPreviewCacheGenerationsByAssetID
         if pendingLatestImportPreviewStatusRefresh {
             pendingLatestImportPreviewStatusRefresh = false
             refreshLatestImportPreviewStatus()
         }
+        if pendingPreviewGenerationQueueStatesRefresh {
+            pendingPreviewGenerationQueueStatesRefresh = false
+            try? refreshPreviewGenerationQueueStates()
+        }
+    }
+
+    private func clearGridPreviewCaches() {
+        gridPreviewURLCacheByAssetID.removeAll(keepingCapacity: true)
+        gridPreviewStatusCacheByAssetID.removeAll(keepingCapacity: true)
+    }
+
+    // Defers the repository-backed queue-state refresh to the coalesced publication
+    // flush; the preview drain calls this once per completed preview.
+    private func schedulePreviewGenerationQueueStatesRefresh() {
+        pendingPreviewGenerationQueueStatesRefresh = true
+        publishBackgroundWorkState()
     }
 
     private static func failedPreviewGenerationItemIDs(in queue: BackgroundWorkQueue?) -> Set<WorkSessionID> {
@@ -8322,10 +8356,18 @@ public final class AppModel {
     }
 
     public func gridPreviewURL(for assetID: AssetID) -> URL? {
-        previewURL(for: assetID, levels: [.grid, .micro])
+        if let cachedURL = gridPreviewURLCacheByAssetID[assetID] {
+            return cachedURL
+        }
+        let url = previewURL(for: assetID, levels: [.grid, .micro])
+        gridPreviewURLCacheByAssetID[assetID] = url
+        return url
     }
 
     func gridPreviewStatus(for assetID: AssetID) -> AssetGridPreviewStatusPresentation? {
+        if let cachedStatus = gridPreviewStatusCacheByAssetID[assetID] {
+            return cachedStatus
+        }
         let previewURL = gridPreviewURL(for: assetID)
         let thumbnailLevels: [PreviewLevel] = [.grid, .micro]
         let queueStates = previewGenerationQueueStates.filter { state in
@@ -8336,11 +8378,13 @@ public final class AppModel {
             guard let item = backgroundWorkQueue.item(id: itemID) else { return false }
             return Self.isActiveBackgroundWorkStatus(item.status)
         }
-        return AssetGridPreviewStatusPresentation.presentation(
+        let status = AssetGridPreviewStatusPresentation.presentation(
             previewURL: previewURL,
             queueStates: queueStates,
             activePreviewLevels: activePreviewLevels
         )
+        gridPreviewStatusCacheByAssetID[assetID] = status
+        return status
     }
 
     public func loupePreviewURL(for assetID: AssetID) -> URL? {

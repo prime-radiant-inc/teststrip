@@ -8702,6 +8702,35 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testGridPreviewURLCachesLookupsBetweenBackgroundWorkPublications() throws {
+        let scheduler = ManualBackgroundWorkPublicationScheduler()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: RecordingWorkerTransport()
+        )
+        let cached = makeAsset(id: "grid-preview-memo-cached", size: 1)
+        let requested = makeAsset(id: "grid-preview-memo-requested", size: 2)
+        let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "grid-preview-memo",
+            assets: [cached, requested],
+            workerSupervisor: supervisor,
+            backgroundWorkPublicationInterval: 0.25,
+            backgroundWorkPublicationScheduler: scheduler
+        )
+
+        XCTAssertNil(model.gridPreviewURL(for: cached.id))
+
+        let placeholderURL = previewCache.url(for: PreviewCacheKey(assetID: cached.id, level: .grid))
+        try writePreviewPlaceholder(to: placeholderURL)
+
+        XCTAssertNil(model.gridPreviewURL(for: cached.id))
+
+        try model.requestPreview(assetID: requested.id, level: .grid)
+        scheduler.fireScheduledActions()
+
+        XCTAssertEqual(model.gridPreviewURL(for: cached.id), placeholderURL)
+    }
+
     @MainActor
     func testPreviewQueueTransitionsDoNotRepublishUnchangedImportActivity() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-import-activity-quiescence")
