@@ -1415,11 +1415,12 @@ public final class AppModel {
     }
 
     public var canRequestSelectedAssetEvaluation: Bool {
-        selectedAssetID != nil && workerSupervisor != nil
+        guard workerSupervisor != nil, let selectedAssetID else { return false }
+        return hasCachedPreview(for: selectedAssetID)
     }
 
     public var canRequestVisibleAssetEvaluations: Bool {
-        workerSupervisor != nil && !assets.isEmpty
+        workerSupervisor != nil && assets.contains { hasCachedPreview(for: $0.id) }
     }
 
     public var canRequestLatestImportAssetEvaluations: Bool {
@@ -4973,7 +4974,8 @@ public final class AppModel {
             throw TeststripError.invalidState("no cached preview for \(assetID.rawValue)")
         }
         let itemID = WorkSessionID(rawValue: "evaluation-\(assetID.rawValue)-\(provider)")
-        if backgroundWorkQueue.item(id: itemID) != nil {
+        if let existingItem = backgroundWorkQueue.item(id: itemID),
+           Self.isActiveBackgroundWorkStatus(existingItem.status) {
             return
         }
 

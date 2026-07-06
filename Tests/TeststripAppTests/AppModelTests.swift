@@ -7560,6 +7560,36 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items, [])
     }
 
+    @MainActor
+    func testRequestEvaluationCanRetryFailedProviderWork() async throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let (model, previewCache, asset) = try makeModelWithPreviewCache(
+            named: "request-evaluation-retry-failed",
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
+        let itemID = WorkSessionID(rawValue: "evaluation-\(asset.id.rawValue)-local-image-metrics")
+
+        try model.requestEvaluation(assetID: asset.id, provider: "local-image-metrics")
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.failed(
+            itemID: itemID,
+            message: "provider failed"
+        )))
+        try await waitForBackgroundWorkStatus(.failed, itemID: itemID, in: model)
+
+        try model.requestEvaluation(assetID: asset.id, provider: "local-image-metrics")
+
+        XCTAssertEqual(try transport.commands(), [
+            .runEvaluation(assetID: asset.id, provider: "local-image-metrics"),
+            .runEvaluation(assetID: asset.id, provider: "local-image-metrics")
+        ])
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: itemID)?.status, .running)
+    }
+
     func testRequestSelectedAssetEvaluationUsesDefaultLocalProvider() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -7861,7 +7891,7 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
-    func testCanRequestSelectedAssetEvaluationRequiresSelectionAndWorker() throws {
+    func testCanRequestSelectedAssetEvaluationRequiresSelectionWorkerAndCachedPreview() throws {
         let (modelWithoutWorker, _, _) = try makeModelWithPreviewCache(named: "evaluation-without-worker")
         XCTAssertFalse(modelWithoutWorker.canRequestSelectedAssetEvaluation)
 
@@ -7877,10 +7907,24 @@ final class AppModelTests: XCTestCase {
             workerSupervisor: supervisor
         )
 
+        XCTAssertFalse(model.canRequestSelectedAssetEvaluation)
+    }
+
+    func testCanRequestSelectedAssetEvaluationAllowsCachedPreviewCandidate() throws {
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: RecordingWorkerTransport()
+        )
+        let (model, previewCache, asset) = try makeModelWithPreviewCache(
+            named: "evaluation-cached-preview",
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
+
         XCTAssertTrue(model.canRequestSelectedAssetEvaluation)
     }
 
-    func testCanRequestVisibleAssetEvaluationsRequiresLoadedAssetsAndWorker() throws {
+    func testCanRequestVisibleAssetEvaluationsRequiresLoadedAssetsWorkerAndCachedPreview() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
             queue: BackgroundWorkQueue(maxRunningCount: 1),
@@ -7896,6 +7940,24 @@ final class AppModelTests: XCTestCase {
             assets: [asset],
             workerSupervisor: supervisor
         )
+
+        XCTAssertFalse(model.canRequestVisibleAssetEvaluations)
+    }
+
+    func testCanRequestVisibleAssetEvaluationsAllowsCachedPreviewCandidate() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let uncached = makeAsset(id: "visible-uncached", size: 1)
+        let cached = makeAsset(id: "visible-cached", size: 2)
+        let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "visible-evaluation-cached-preview",
+            assets: [uncached, cached],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: cached.id, level: .grid)))
 
         XCTAssertTrue(model.canRequestVisibleAssetEvaluations)
     }
