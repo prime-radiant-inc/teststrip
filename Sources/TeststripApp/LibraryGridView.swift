@@ -3958,6 +3958,22 @@ struct CompareSurveyPresentation: Equatable {
         signalBadgesByAssetID[asset.id] ?? []
     }
 
+    /// #1/#2/#3 rank chips for contenders-only mode; silent otherwise so
+    /// rank and signal badges never both claim a tile.
+    func rankBadges(for asset: Asset) -> [CompareDecisionBadge] {
+        guard isContendersOnly, let rank = contenderAssets.firstIndex(where: { $0.id == asset.id }) else {
+            return []
+        }
+        return [CompareDecisionBadge(text: "#\(rank + 1)", tone: .rank)]
+    }
+
+    /// Badges for a compare tile: metadata decision badges plus rank chips
+    /// in contenders-only mode, or signal reads (BEST / EYES CLOSED / SOFT)
+    /// otherwise.
+    func tileBadges(for asset: Asset) -> [CompareDecisionBadge] {
+        decisionBadges(for: asset) + (isContendersOnly ? rankBadges(for: asset) : signalBadges(for: asset))
+    }
+
     private static let softFocusBadgeThreshold = 0.5
 
     private static func signalBadges(
@@ -4050,6 +4066,7 @@ struct CompareDecisionBadge: Equatable, Identifiable {
         case rating
         case label
         case best
+        case rank
     }
 
     var text: String
@@ -4787,7 +4804,7 @@ private struct CompareView: View {
             .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
                 model.select(assetID)
             }
-            compareDecisionBadges(presentation.decisionBadges(for: asset) + presentation.signalBadges(for: asset))
+            compareDecisionBadges(presentation.tileBadges(for: asset))
                 .padding(8)
         }
     }
@@ -4811,7 +4828,7 @@ private struct CompareView: View {
 
     private func compareBadgeForeground(for tone: CompareDecisionBadge.Tone) -> Color {
         switch tone {
-        case .primary, .rating, .best:
+        case .primary, .rating, .best, .rank:
             return .black
         case .positive, .destructive, .label:
             return .white
@@ -4830,7 +4847,7 @@ private struct CompareView: View {
             return .yellow
         case .label:
             return .blue.opacity(0.9)
-        case .best:
+        case .best, .rank:
             return .orange
         }
     }

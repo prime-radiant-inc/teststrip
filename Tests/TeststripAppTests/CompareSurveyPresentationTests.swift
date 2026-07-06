@@ -475,6 +475,81 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.signalBadges(for: unread), [])
     }
 
+    func testRankBadgesShowTopThreeRanksInContendersMode() {
+        let assets = (0..<5).map { makeAsset(id: "rank-\($0)") }
+        let signals: [AssetID: [EvaluationSignal]] = [
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.7)],
+            assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.5)],
+            assets[2].id: [signal(assetID: assets[2].id, kind: .focus, score: 0.9)],
+            assets[3].id: [signal(assetID: assets[3].id, kind: .focus, score: 0.6)],
+            assets[4].id: [signal(assetID: assets[4].id, kind: .focus, score: 0.8)]
+        ]
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: true
+        )
+
+        // Ranked by focus score descending: 2 (0.9), 4 (0.8), 0 (0.7); 1 and 3 are not contenders.
+        XCTAssertEqual(presentation.rankBadges(for: assets[2]), [CompareDecisionBadge(text: "#1", tone: .rank)])
+        XCTAssertEqual(presentation.rankBadges(for: assets[4]), [CompareDecisionBadge(text: "#2", tone: .rank)])
+        XCTAssertEqual(presentation.rankBadges(for: assets[0]), [CompareDecisionBadge(text: "#3", tone: .rank)])
+        XCTAssertEqual(presentation.rankBadges(for: assets[1]), [])
+        XCTAssertEqual(presentation.rankBadges(for: assets[3]), [])
+    }
+
+    func testRankBadgesStaySilentOutsideContendersMode() {
+        let assets = (0..<3).map { makeAsset(id: "no-rank-\($0)") }
+        let signals: [AssetID: [EvaluationSignal]] = [
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.9)]
+        ]
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: false
+        )
+
+        XCTAssertEqual(presentation.rankBadges(for: assets[0]), [])
+    }
+
+    func testTileBadgesUseRankChipsInContendersModeAndSignalBadgesOtherwise() {
+        let best = makeAsset(id: "tile-best")
+        let second = makeAsset(id: "tile-second")
+        let signals: [AssetID: [EvaluationSignal]] = [
+            best.id: [signal(assetID: best.id, kind: .focus, score: 0.9)],
+            second.id: [signal(assetID: second.id, kind: .focus, score: 0.5)]
+        ]
+
+        let contendersMode = CompareSurveyPresentation(
+            assets: [best, second],
+            selectedAssetID: best.id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: true
+        )
+        XCTAssertEqual(contendersMode.tileBadges(for: best), [
+            CompareDecisionBadge(text: "PRIMARY", tone: .primary),
+            CompareDecisionBadge(text: "#1", tone: .rank)
+        ])
+        XCTAssertEqual(contendersMode.tileBadges(for: second), [
+            CompareDecisionBadge(text: "#2", tone: .rank)
+        ])
+
+        let fullSetMode = CompareSurveyPresentation(
+            assets: [best, second],
+            selectedAssetID: best.id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: false
+        )
+        XCTAssertEqual(fullSetMode.tileBadges(for: best), [
+            CompareDecisionBadge(text: "PRIMARY", tone: .primary),
+            CompareDecisionBadge(text: "✦ BEST", tone: .best)
+        ])
+    }
+
     func testRecommendationTextExplainsWhyTopSignalFrameLeads() {
         let assets = [
             makeAsset(id: "primary"),
