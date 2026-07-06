@@ -241,12 +241,21 @@ final class DecodeRegistryTests: XCTestCase {
         guard FileManager.default.fileExists(atPath: fixtureURL.path) else {
             throw XCTSkip("Missing \(label) fixture at \(fixtureURL.path)")
         }
+        let provider = ImageIODecodeProvider()
+        let expectedSupport: DecodeSupportLevel = ImageIODecodeProvider.knownUnsupportedRawExtensions.contains(fileExtension)
+            ? .unsupported
+            : .bestEffort
 
         XCTAssertEqual(
-            ImageIODecodeProvider().capability(forFileExtension: fixtureURL.pathExtension)?.support,
-            ImageIODecodeProvider.knownUnsupportedRawExtensions.contains(fileExtension) ? .unsupported : .bestEffort,
+            provider.capability(forFileExtension: fixtureURL.pathExtension)?.support,
+            expectedSupport,
             label
         )
+        guard expectedSupport != .unsupported else { return }
+
+        let metadata = try provider.metadata(for: fixtureURL)
+        XCTAssertGreaterThan(metadata.pixelWidth, 0, label)
+        XCTAssertGreaterThan(metadata.pixelHeight, 0, label)
     }
 }
 

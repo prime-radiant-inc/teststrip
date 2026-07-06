@@ -15,7 +15,7 @@
 - Branch: `wip/teststrip-usable-foundation`
 - Snapshot commit: current branch HEAD; see the commit ledger below for completed slices.
 - Product posture: foundation/dev build moving toward usable alpha, not yet a polished photo app.
-- Current slice focused verification: `TESTSTRIP_RAW_FIXTURE_DIRECTORY=$PWD/sample-data/photos/raw-fixtures-local swift test --filter DecodeRegistryTests` passed with local ignored DNG/RAF fixtures from `~/Pictures/2026`, while missing CRW/CR2/X3F fixtures were explicit skips instead of failures.
+- Current slice focused verification: `TESTSTRIP_RAW_FIXTURE_DIRECTORY=$PWD/sample-data/photos/raw-fixtures-local swift test --filter DecodeRegistryTests` passed with local ignored DNG/RAF fixtures from `~/Pictures/2026`, including ImageIO metadata/dimension reads for those real files, while missing CRW/CR2/X3F fixtures were explicit skips instead of failures.
 - Last focused unit verification: `swift test --filter 'AppModelTests/test.*MetadataSync|AppModelTests/test.*XMP|WorkerCommandExecutorTests/testSyncMetadata|CatalogDatabaseTests/test.*MetadataSync'` passed with 33 tests after expanding current-scope XMP retry beyond the loaded window. Earlier focused verification includes removable Smart Collection builder rules, current-scope evaluation queueing, worker activity status, latest-import preview status scoping, queued import progress copy, culling command menu presentation, Search refinement removal, removable Library filter chips, preview queue thumbnail state, inspector sizing, offline reconnect smoke, empty import summaries, source reconnect errors, import cancel affordance, Copilot scope actions, culling stack guidance, latest-import evaluation handoff, People review-card lock-state, generated Search refinements, People scan action, saved-set lifecycle, RAW catalog-only import, batch metadata/XMP, culling, and import-path slices listed below.
 - Last broad unit verification: `swift test` passed after making RAW fixture coverage tolerate missing per-format samples, with 918 tests, 5 skipped, and 0 failures. Earlier `swift test` passed after expanding current-scope XMP retry beyond the loaded window, with 914 tests, 1 skipped, and 0 failures. Earlier `swift test` passed after adding removable Smart Collection builder rules, with 912 tests, 1 skipped, and 0 failures.
 - Current slice app workflow verification: No foreground app workflow run was performed for the RAW fixture coverage change because it is test/verification infrastructure and Jesse asked to minimize focus-stealing UI automation while actively using the machine; the change is covered by DecodeRegistry fixture tests and full `swift test`. Earlier this turn, `./script/verify_headless_workflows.sh` passed on 2026-07-06, rebuilding the app/helper and running non-focus-stealing metadata-write, import-preview-drain, source availability, offline reconnect, preview render, local HTTP model smoke, and worker recovery checks.
@@ -23,7 +23,7 @@
 
 ### Recent Completed Slices
 
-- Current slice: split opt-in RAW fixture coverage per format so available real DNG/RAF fixtures run while missing CRW/CR2/X3F fixtures are explicit skips, and verified local ignored DNG/RAF samples from `~/Pictures/2026`.
+- Current slice: split opt-in RAW fixture coverage per format so available real DNG/RAF fixtures run while missing CRW/CR2/X3F fixtures are explicit skips, and verified local ignored DNG/RAF samples from `~/Pictures/2026` through ImageIO metadata/dimension reads instead of extension-routing checks only.
 - `4daf164`: made current-scope XMP pending retries scan the bounded catalog query scope instead of only the loaded thumbnail window, so retryable pending sidecars outside the first page can be queued.
 - `54ce9fc`: made Smart Collection builder rule rows removable by carrying structured active-filter targets into the builder and routing removal through the existing filter-removal model path.
 - `4911231`: bounded current-scope recognition requests to 40 cached-preview photos per action, disabled the action when the current scope has no cached-preview candidate, and reports when more cached photos remain.
@@ -645,7 +645,7 @@ These are the current alpha gates. Performance must remain respectable enough to
 - [x] Add provider capability metadata for metadata read, embedded-preview usefulness, preview rendering, full render, and unsupported formats.
 - [x] Keep ImageIO as the default provider where it works.
 - [x] Add explicit fixture hooks for DNG, CRW, CR2, Fuji RAW, and Sigma/Foveon RAW. If real sample files are not committed, tests skip with explicit sample-missing messages instead of pretending coverage exists.
-- [ ] Add or collect licensed real RAW sample files for Canon CRW, Canon CR2, and Sigma/Foveon RAW. Local ignored DNG and Fuji RAF fixture links under `sample-data/photos/raw-fixtures-local` have been verified from `~/Pictures/2026`.
+- [ ] Add or collect licensed real RAW sample files for Canon CRW, Canon CR2, and Sigma/Foveon RAW. Local ignored DNG and Fuji RAF fixture links under `sample-data/photos/raw-fixtures-local` have been verified from `~/Pictures/2026` through ImageIO metadata/dimension reads.
 - [x] Add a clean provider capability seam for future LibRaw/RawSpeed-style providers without implementing the whole provider now.
 - [x] Make import still catalog unsupported/partial formats when metadata or embedded previews can be read.
 - [x] Verify focused decode tests and full `swift test`.
@@ -653,7 +653,7 @@ These are the current alpha gates. Performance must remain respectable enough to
 
 **Acceptance:** We know exactly which formats work, which are best-effort, and where a future decoder provider plugs in. The app should not silently overpromise RAW support.
 
-**Current result:** Partially accepted. The ImageIO capability matrix and future provider seam are built and documented, X3F is no longer overclaimed, opt-in RAW fixture hooks exist through `TESTSTRIP_RAW_FIXTURE_DIRECTORY`, and local ignored DNG/RAF fixtures from `~/Pictures/2026` now run as real fixture coverage. Remaining work is collecting Canon CRW, Canon CR2, Sigma/Foveon X3F, and other long-tail RAW samples, then deciding whether unsupported-but-important formats should be cataloged through a separate non-decode import path.
+**Current result:** Partially accepted. The ImageIO capability matrix and future provider seam are built and documented, X3F is no longer overclaimed, opt-in RAW fixture hooks exist through `TESTSTRIP_RAW_FIXTURE_DIRECTORY`, and local ignored DNG/RAF fixtures from `~/Pictures/2026` now run real ImageIO metadata/dimension reads. Remaining work is collecting Canon CRW, Canon CR2, Sigma/Foveon X3F, and other long-tail RAW samples, then deciding whether unsupported-but-important formats should be cataloged through a separate non-decode import path.
 
 ### Slice 5: XMP Conflict And Pending Sync UX
 
