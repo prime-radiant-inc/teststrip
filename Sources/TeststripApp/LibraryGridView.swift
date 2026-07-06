@@ -6326,6 +6326,7 @@ struct ImportCompletionPresentation: Equatable {
         canEvaluateImport: Bool = false
     ) -> ImportCompletionPresentation {
         let hasImportedSet = summary.importedPhotoCount > 0
+        let existingOnlyImport = isExistingOnlyImport(summary)
         var metricRows = [
             importedSetMetric(for: summary),
             previewMetric(for: summary),
@@ -6338,7 +6339,7 @@ struct ImportCompletionPresentation: Equatable {
             ImportCompletionActionPresentation(
                 kind: .startCulling,
                 title: "Start culling",
-                detail: hasImportedSet ? "Use the imported set" : "No imported set",
+                detail: hasImportedSet ? (existingOnlyImport ? "Use the matched set" : "Use the imported set") : "No imported set",
                 systemImage: "checkmark.seal.fill",
                 isEnabled: hasImportedSet,
                 isPrimary: true,
@@ -6346,8 +6347,10 @@ struct ImportCompletionPresentation: Equatable {
             ),
             ImportCompletionActionPresentation(
                 kind: .reviewImportedFrames,
-                title: "Review imported frames",
-                detail: hasImportedSet ? "Manual Compare over this import" : "No imported set",
+                title: existingOnlyImport ? "Review matched frames" : "Review imported frames",
+                detail: hasImportedSet
+                    ? (existingOnlyImport ? "Manual Compare over already-cataloged photos" : "Manual Compare over this import")
+                    : "No imported set",
                 systemImage: "rectangle.grid.2x2",
                 isEnabled: hasImportedSet,
                 isPrimary: false,
@@ -6355,8 +6358,10 @@ struct ImportCompletionPresentation: Equatable {
             ),
             ImportCompletionActionPresentation(
                 kind: .openInLibrary,
-                title: "Open imported set",
-                detail: hasImportedSet ? "Browse this import" : "No imported set",
+                title: existingOnlyImport ? "Open matched set" : "Open imported set",
+                detail: hasImportedSet
+                    ? (existingOnlyImport ? "Browse already-cataloged photos" : "Browse this import")
+                    : "No imported set",
                 systemImage: "rectangle.stack",
                 isEnabled: hasImportedSet,
                 isPrimary: false,
@@ -6405,10 +6410,14 @@ struct ImportCompletionPresentation: Equatable {
         if summary.importedPhotoCount == 0 {
             return "No photos imported"
         }
-        if summary.newPhotoCount == 0, summary.existingPhotoCount > 0 {
+        if isExistingOnlyImport(summary) {
             return "No new photos imported"
         }
         return "\(photoCountText(summary.newPhotoCount)) imported"
+    }
+
+    private static func isExistingOnlyImport(_ summary: ImportCompletionSummary) -> Bool {
+        summary.newPhotoCount == 0 && summary.existingPhotoCount > 0
     }
 
     private static func importedSetMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
@@ -6530,7 +6539,7 @@ struct ImportCompletionPresentation: Equatable {
                 id: "cull-scope",
                 value: "Ready",
                 label: "Cull scope",
-                detail: "Uses the imported set",
+                detail: isExistingOnlyImport(summary) ? "Uses the matched set" : "Uses the imported set",
                 systemImage: "checkmark.seal.fill",
                 tone: .orange
             )

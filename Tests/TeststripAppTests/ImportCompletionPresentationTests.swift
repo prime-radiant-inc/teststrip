@@ -58,6 +58,29 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.metricRows.first?.label, "Matched set")
     }
 
+    func testExistingOnlyImportActionsNameMatchedSet() throws {
+        let presentation = ImportCompletionPresentation.presentation(for: summary(
+            importedPhotoCount: 2,
+            photoCountText: "2 photos",
+            newPhotoCount: 0,
+            existingPhotoCount: 2,
+            previewFailureCount: 0,
+            failureText: nil,
+            previewStatusText: "No previews needed"
+        ))
+
+        let reviewAction = try XCTUnwrap(presentation.actionRows.first { $0.kind == .reviewImportedFrames })
+        XCTAssertEqual(reviewAction.title, "Review matched frames")
+        XCTAssertEqual(reviewAction.detail, "Manual Compare over already-cataloged photos")
+
+        let openAction = try XCTUnwrap(presentation.actionRows.first { $0.kind == .openInLibrary })
+        XCTAssertEqual(openAction.title, "Open matched set")
+        XCTAssertEqual(openAction.detail, "Browse already-cataloged photos")
+
+        let cullScopeMetric = try XCTUnwrap(presentation.metricRows.first { $0.id == "cull-scope" })
+        XCTAssertEqual(cullScopeMetric.detail, "Uses the matched set")
+    }
+
     func testEmptyImportShowsTerminalResultWithoutImportedSetActions() {
         let presentation = ImportCompletionPresentation.presentation(for: summary(
             importedPhotoCount: 0,
