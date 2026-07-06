@@ -146,6 +146,14 @@ struct LibraryGridView: View {
             .help("Evaluate visible photos")
 
             Button {
+                evaluateCurrentScopeAssets()
+            } label: {
+                Label("Evaluate Scope", systemImage: "sparkles.rectangle.stack")
+            }
+            .disabled(isImporting || !model.canRequestCurrentScopeAssetEvaluations)
+            .help("Evaluate cached photos in the current search, set, or filter scope")
+
+            Button {
                 batchMetadataDraft = BatchMetadataDraft()
                 batchMetadataScope = model.selectedBatchAssetCount > 0 ? .selected : .visible
                 isAllCatalogBatchMetadataConfirmed = false
@@ -2220,6 +2228,14 @@ struct LibraryGridView: View {
     private func evaluateVisibleAssets() {
         do {
             try model.requestVisibleAssetEvaluations()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func evaluateCurrentScopeAssets() {
+        do {
+            try model.requestCurrentScopeAssetEvaluations()
         } catch {
             model.errorMessage = error.localizedDescription
         }

@@ -6972,6 +6972,52 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testRequestCurrentScopeAssetEvaluationsDispatchesCachedAssetsBeyondLoadedPage() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: transport
+        )
+        let matchingAssets = (0..<121).map { index in
+            makeAsset(
+                id: "current-scope-evaluation-\(index)",
+                path: "/Photos/current-scope-evaluation-\(index).jpg",
+                rating: 0,
+                colorLabel: .green
+            )
+        }
+        let outsideAsset = makeAsset(
+            id: "current-scope-evaluation-outside",
+            path: "/Photos/current-scope-evaluation-outside.jpg",
+            rating: 0,
+            colorLabel: .red
+        )
+        let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "current-scope-evaluation",
+            assets: matchingAssets + [outsideAsset],
+            workerSupervisor: supervisor
+        )
+        model.colorLabelFilter = .green
+        try model.applyLibraryFilters()
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: matchingAssets[0].id, level: .grid)))
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: matchingAssets[120].id, level: .grid)))
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: outsideAsset.id, level: .grid)))
+
+        XCTAssertLessThan(model.assets.count, matchingAssets.count)
+        XCTAssertFalse(model.assets.contains { $0.id == matchingAssets[120].id })
+        XCTAssertTrue(model.canRequestCurrentScopeAssetEvaluations)
+
+        try model.requestCurrentScopeAssetEvaluations(providers: ["local-image-metrics"])
+
+        XCTAssertEqual(model.backgroundWorkQueue.items.map(\.id), [
+            WorkSessionID(rawValue: "evaluation-\(matchingAssets[0].id.rawValue)-local-image-metrics"),
+            WorkSessionID(rawValue: "evaluation-\(matchingAssets[120].id.rawValue)-local-image-metrics")
+        ])
+        XCTAssertEqual(try transport.commands(), [
+            .runEvaluation(assetID: matchingAssets[0].id, provider: "local-image-metrics")
+        ])
+    }
+
     func testRequestCompareAssetEvaluationsDispatchesOnlyCachedCompareAssets() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -7038,6 +7084,33 @@ final class AppModelTests: XCTestCase {
         )
 
         XCTAssertTrue(model.canRequestVisibleAssetEvaluations)
+    }
+
+    func testCanRequestCurrentScopeAssetEvaluationsRequiresCatalogAssetsAndWorker() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let asset = makeAsset(id: "current-scope", size: 1)
+
+        XCTAssertFalse(AppModel(sidebarSections: [], selectedView: .grid, assets: [asset]).canRequestCurrentScopeAssetEvaluations)
+        XCTAssertFalse(AppModel(sidebarSections: [], selectedView: .grid, assets: [], workerSupervisor: supervisor).canRequestCurrentScopeAssetEvaluations)
+
+        let (emptyModel, _, _) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "current-scope-evaluation-empty",
+            assets: [],
+            workerSupervisor: supervisor
+        )
+        XCTAssertFalse(emptyModel.canRequestCurrentScopeAssetEvaluations)
+
+        let (model, _, _) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "current-scope-evaluation-preview-required",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+
+        XCTAssertTrue(model.canRequestCurrentScopeAssetEvaluations)
     }
 
     func testSelectedEvaluationSignalsLoadFromCatalog() throws {

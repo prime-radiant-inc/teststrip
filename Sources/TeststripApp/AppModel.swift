@@ -1274,6 +1274,10 @@ public final class AppModel {
         workerSupervisor != nil && !assets.isEmpty
     }
 
+    public var canRequestCurrentScopeAssetEvaluations: Bool {
+        workerSupervisor != nil && catalog != nil && totalAssetCount > 0
+    }
+
     public var canRequestCompareAssetEvaluations: Bool {
         workerSupervisor != nil && compareAssets().contains { hasCachedPreview(for: $0.id) }
     }
@@ -4711,6 +4715,25 @@ public final class AppModel {
         for asset in evaluableAssets {
             for provider in providers {
                 try requestEvaluation(assetID: asset.id, provider: provider)
+            }
+        }
+    }
+
+    public func requestCurrentScopeAssetEvaluations(providers: [String] = AppModel.defaultEvaluationProviderNames) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let assetIDs = try currentAssetScopeIDs(repository: catalog.repository)
+        guard !assetIDs.isEmpty else {
+            throw TeststripError.invalidState("no current scope assets")
+        }
+        let evaluableAssetIDs = assetIDs.filter { hasCachedPreview(for: $0) }
+        guard !evaluableAssetIDs.isEmpty else {
+            throw TeststripError.invalidState("no current scope assets with cached previews")
+        }
+        for assetID in evaluableAssetIDs {
+            for provider in providers {
+                try requestEvaluation(assetID: assetID, provider: provider)
             }
         }
     }
