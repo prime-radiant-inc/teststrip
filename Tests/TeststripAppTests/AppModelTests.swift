@@ -7609,6 +7609,38 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testRequestCurrentScopeAssetEvaluationsQueuesOnlyBoundedCachedBatch() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: transport
+        )
+        let expectedBatchSize = 40
+        let assets = (0..<(expectedBatchSize + 2)).map { index in
+            makeAsset(
+                id: "current-scope-evaluation-batch-\(index)",
+                path: "/Photos/current-scope-evaluation-batch-\(index).jpg",
+                rating: 0
+            )
+        }
+        let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "current-scope-evaluation-batch",
+            assets: assets,
+            workerSupervisor: supervisor
+        )
+        for asset in assets {
+            try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
+        }
+
+        try model.requestCurrentScopeAssetEvaluations(providers: ["local-image-metrics"])
+
+        XCTAssertEqual(model.backgroundWorkQueue.items.count, expectedBatchSize)
+        XCTAssertEqual(model.backgroundWorkQueue.items.map(\.id), assets.prefix(expectedBatchSize).map { asset in
+            WorkSessionID(rawValue: "evaluation-\(asset.id.rawValue)-local-image-metrics")
+        })
+        XCTAssertEqual(model.statusMessage, "Queued local reads for 40 photos; 2 cached photos remain")
+    }
+
     func testRequestLatestImportAssetEvaluationsDispatchesOnlyCachedImportedAssets() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -7786,6 +7818,26 @@ final class AppModelTests: XCTestCase {
             assets: [asset],
             workerSupervisor: supervisor
         )
+
+        XCTAssertFalse(model.canRequestCurrentScopeAssetEvaluations)
+    }
+
+    func testCanRequestCurrentScopeAssetEvaluationsRequiresCachedPreviewCandidate() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let asset = makeAsset(id: "current-scope-cached-preview", size: 1)
+        let (model, _, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "current-scope-evaluation-cached-preview",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+
+        XCTAssertFalse(model.canRequestCurrentScopeAssetEvaluations)
+
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
 
         XCTAssertTrue(model.canRequestCurrentScopeAssetEvaluations)
     }

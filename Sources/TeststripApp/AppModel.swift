@@ -1078,6 +1078,7 @@ public final class AppModel {
     static let previewGenerationQueueStateDisplayLimit = pendingPreviewRecoveryBatchSize
     private static let pendingMetadataSyncRecoveryBatchSize = 200
     static let metadataSyncStateDisplayLimit = pendingMetadataSyncRecoveryBatchSize
+    private static let currentScopeEvaluationBatchSize = 40
     private static let previewGenerationMaximumAutomaticAttempts = 3
     static let sourceAvailabilityBatchSize = 100
     private static let defaultCompareAssetLimit = 8
@@ -1419,7 +1420,12 @@ public final class AppModel {
     }
 
     public var canRequestCurrentScopeAssetEvaluations: Bool {
-        workerSupervisor != nil && catalog != nil && totalAssetCount > 0
+        guard workerSupervisor != nil,
+              let catalog,
+              let cachedAssetIDs = try? currentScopeCachedPreviewAssetIDs(repository: catalog.repository, limit: 1) else {
+            return false
+        }
+        return !cachedAssetIDs.isEmpty
     }
 
     public var canRequestCompareAssetEvaluations: Bool {
@@ -4949,18 +4955,23 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        let assetIDs = try currentAssetScopeIDs(repository: catalog.repository)
-        guard !assetIDs.isEmpty else {
+        guard try currentLibraryAssetCount(repository: catalog.repository) > 0 else {
             throw TeststripError.invalidState("no current scope assets")
         }
-        let evaluableAssetIDs = assetIDs.filter { hasCachedPreview(for: $0) }
+        let evaluableAssetIDs = try currentScopeCachedPreviewAssetIDs(repository: catalog.repository)
         guard !evaluableAssetIDs.isEmpty else {
             throw TeststripError.invalidState("no current scope assets with cached previews")
         }
-        for assetID in evaluableAssetIDs {
+        let batchAssetIDs = Array(evaluableAssetIDs.prefix(Self.currentScopeEvaluationBatchSize))
+        for assetID in batchAssetIDs {
             for provider in providers {
                 try requestEvaluation(assetID: assetID, provider: provider)
             }
+        }
+        let remainingAssetCount = evaluableAssetIDs.count - batchAssetIDs.count
+        if remainingAssetCount > 0 {
+            let remainingLabel = remainingAssetCount == 1 ? "cached photo remains" : "cached photos remain"
+            statusMessage = "Queued local reads for \(Self.photoCountDescription(batchAssetIDs.count)); \(remainingAssetCount) \(remainingLabel)"
         }
     }
 
@@ -6481,6 +6492,17 @@ public final class AppModel {
             return try repository.assetIDs(matching: query)
         }
         return try repository.assetIDs()
+    }
+
+    private func currentScopeCachedPreviewAssetIDs(repository: CatalogRepository, limit: Int? = nil) throws -> [AssetID] {
+        var cachedAssetIDs: [AssetID] = []
+        for assetID in try currentAssetScopeIDs(repository: repository) where hasCachedPreview(for: assetID) {
+            cachedAssetIDs.append(assetID)
+            if let limit, cachedAssetIDs.count >= limit {
+                break
+            }
+        }
+        return cachedAssetIDs
     }
 
     private var selectedAssetSet: AssetSet? {
