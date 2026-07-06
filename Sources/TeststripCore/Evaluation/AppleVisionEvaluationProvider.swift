@@ -127,12 +127,19 @@ public struct AppleVisionEvaluationProvider: EvaluationProvider {
         labels: [AppleVisionLabel],
         provenance: ProviderProvenance
     ) -> EvaluationSignal? {
-        guard let label = labels.max(by: { $0.confidence < $1.confidence }) else { return nil }
+        let rankedLabels = labels.sorted { lhs, rhs in
+            if lhs.confidence != rhs.confidence {
+                return lhs.confidence > rhs.confidence
+            }
+            return lhs.identifier.localizedCaseInsensitiveCompare(rhs.identifier) == .orderedAscending
+        }
+        guard let topLabel = rankedLabels.first else { return nil }
+        let identifiers = rankedLabels.map(\.identifier)
         return EvaluationSignal(
             assetID: assetID,
             kind: .object,
-            value: .label(label.identifier),
-            confidence: min(max(label.confidence, 0.0), 1.0),
+            value: identifiers.count == 1 ? .label(topLabel.identifier) : .labels(identifiers),
+            confidence: min(max(topLabel.confidence, 0.0), 1.0),
             provenance: provenance
         )
     }

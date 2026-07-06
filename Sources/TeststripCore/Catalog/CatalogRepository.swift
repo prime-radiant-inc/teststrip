@@ -1233,12 +1233,17 @@ public final class CatalogRepository {
                               AND (
                                 LOWER(COALESCE(json_extract(value_json, '$.label._0'), '')) LIKE LOWER(?) ESCAPE '\\'
                                 OR LOWER(COALESCE(json_extract(value_json, '$.text._0'), '')) LIKE LOWER(?) ESCAPE '\\'
+                                OR EXISTS (
+                                    SELECT 1
+                                    FROM json_each(value_json, '$.labels._0')
+                                    WHERE LOWER(json_each.value) LIKE LOWER(?) ESCAPE '\\'
+                                )
                               )
                         )
                     )
                     """
                 )
-                bindings.append(contentsOf: [pattern, pattern, pattern])
+                bindings.append(contentsOf: [pattern, pattern, pattern, pattern])
             case .ratingAtLeast(let rating):
                 clauses.append("CAST(json_extract(metadata_json, '$.rating') AS INTEGER) >= ?")
                 bindings.append("\(rating)")

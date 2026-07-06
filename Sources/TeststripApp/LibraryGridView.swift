@@ -3586,6 +3586,8 @@ enum CompareFocusMetricPresentation {
             return EvaluationSignalPresentation.percentage(score)
         case .label(let label):
             return EvaluationSignalPresentation.capitalized(label, fallback: EvaluationSignalPresentation.displayName(for: signal.kind))
+        case .labels(let labels):
+            return EvaluationSignalPresentation.capitalized(labels.joined(separator: ", "), fallback: EvaluationSignalPresentation.displayName(for: signal.kind))
         case .text(let text):
             return EvaluationSignalPresentation.capitalized(text, fallback: EvaluationSignalPresentation.displayName(for: signal.kind))
         case .count(let count):
@@ -6059,6 +6061,8 @@ struct CullingAssistPresentation: Equatable {
             return "\(EvaluationSignalPresentation.displayName(for: signal.kind)) \(EvaluationSignalPresentation.percentage(score))"
         case .label(let label):
             return EvaluationSignalPresentation.capitalized(label, fallback: EvaluationSignalPresentation.displayName(for: signal.kind))
+        case .labels(let labels):
+            return EvaluationSignalPresentation.capitalized(labels.joined(separator: ", "), fallback: EvaluationSignalPresentation.displayName(for: signal.kind))
         case .text(let text):
             return EvaluationSignalPresentation.capitalized(text, fallback: EvaluationSignalPresentation.displayName(for: signal.kind))
         case .count(let count):

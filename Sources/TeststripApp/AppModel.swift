@@ -4191,14 +4191,12 @@ public final class AppModel {
         from signals: [EvaluationSignal],
         existingKeywords: [String]
     ) -> [KeywordSuggestion] {
-        let candidates = signals.compactMap { signal -> (keyword: String, signal: EvaluationSignal)? in
-            guard signal.kind == .object,
-                  case .label(let label) = signal.value else {
-                return nil
+        let candidates = signals.flatMap { signal -> [(keyword: String, signal: EvaluationSignal)] in
+            objectLabels(from: signal).compactMap { label in
+                let keyword = cleanedKeyword(label)
+                guard !keyword.isEmpty else { return nil }
+                return (keyword, signal)
             }
-            let keyword = cleanedKeyword(label)
-            guard !keyword.isEmpty else { return nil }
-            return (keyword, signal)
         }
         .sorted { lhs, rhs in
             if lhs.signal.confidence != rhs.signal.confidence {
@@ -4258,34 +4256,32 @@ public final class AppModel {
             let existingKeys = Set(asset.metadata.keywords.map(Self.keywordKey).filter { !$0.isEmpty })
             var assetKeys = Set<String>()
             for signal in evaluationSignals(for: asset.id) {
-                guard signal.kind == .object,
-                      case .label(let label) = signal.value else {
-                    continue
-                }
-                let keyword = Self.cleanedKeyword(label)
-                let key = Self.keywordKey(keyword)
-                guard !key.isEmpty,
-                      !existingKeys.contains(key),
-                      assetKeys.insert(key).inserted else {
-                    continue
-                }
+                for label in Self.objectLabels(from: signal) {
+                    let keyword = Self.cleanedKeyword(label)
+                    let key = Self.keywordKey(keyword)
+                    guard !key.isEmpty,
+                          !existingKeys.contains(key),
+                          assetKeys.insert(key).inserted else {
+                        continue
+                    }
 
-                var accumulator = accumulatorsByKey[key] ?? BatchKeywordAccumulator(
-                    keyword: keyword,
-                    assetCount: 0,
-                    confidenceTotal: 0,
-                    providerName: signal.provenance.provider,
-                    modelName: signal.provenance.model,
-                    bestConfidence: signal.confidence
-                )
-                accumulator.assetCount += 1
-                accumulator.confidenceTotal += signal.confidence
-                if signal.confidence > accumulator.bestConfidence {
-                    accumulator.providerName = signal.provenance.provider
-                    accumulator.modelName = signal.provenance.model
-                    accumulator.bestConfidence = signal.confidence
+                    var accumulator = accumulatorsByKey[key] ?? BatchKeywordAccumulator(
+                        keyword: keyword,
+                        assetCount: 0,
+                        confidenceTotal: 0,
+                        providerName: signal.provenance.provider,
+                        modelName: signal.provenance.model,
+                        bestConfidence: signal.confidence
+                    )
+                    accumulator.assetCount += 1
+                    accumulator.confidenceTotal += signal.confidence
+                    if signal.confidence > accumulator.bestConfidence {
+                        accumulator.providerName = signal.provenance.provider
+                        accumulator.modelName = signal.provenance.model
+                        accumulator.bestConfidence = signal.confidence
+                    }
+                    accumulatorsByKey[key] = accumulator
                 }
-                accumulatorsByKey[key] = accumulator
             }
         }
 
@@ -4323,11 +4319,21 @@ public final class AppModel {
         }
 
         return try catalog.repository.evaluationSignals(assetID: assetID).contains { signal in
-            guard signal.kind == .object,
-                  case .label(let label) = signal.value else {
-                return false
+            Self.objectLabels(from: signal).contains { label in
+                Self.keywordKey(label) == key
             }
-            return Self.keywordKey(label) == key
+        }
+    }
+
+    private static func objectLabels(from signal: EvaluationSignal) -> [String] {
+        guard signal.kind == .object else { return [] }
+        switch signal.value {
+        case .label(let label):
+            return [label]
+        case .labels(let labels):
+            return labels
+        case .score, .text, .count, .vector:
+            return []
         }
     }
 

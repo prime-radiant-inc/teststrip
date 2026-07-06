@@ -575,6 +575,7 @@ final class CatalogDatabaseTests: XCTestCase {
         try repository.upsert([portrait, document, untagged])
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: portrait.id, kind: .object, value: .label("outdoor portrait"), confidence: 0.82, provenance: provenance),
+            EvaluationSignal(assetID: portrait.id, kind: .object, value: .labels(["mountain", "alpine lake"]), confidence: 0.78, provenance: ProviderProvenance(provider: "apple-vision", model: "Vision-labels", version: "1", settingsHash: "default")),
             EvaluationSignal(assetID: document.id, kind: .ocrText, value: .text("Invoice 123\nTotal 45"), confidence: 1.0, provenance: provenance)
         ])
 
@@ -584,6 +585,10 @@ final class CatalogDatabaseTests: XCTestCase {
 
         let ocrQuery = SetQuery(predicates: [.text("invoice 123")])
         XCTAssertEqual(try repository.allAssets(matching: ocrQuery, limit: 10).map(\.id), [document.id])
+
+        let multiLabelQuery = SetQuery(predicates: [.text("alpine lake")])
+        XCTAssertEqual(try repository.allAssets(matching: multiLabelQuery, limit: 10).map(\.id), [portrait.id])
+        XCTAssertEqual(try repository.assetCount(matching: multiLabelQuery), 1)
     }
 
     func testSearchesAssetsWithEvaluationKindPredicate() throws {

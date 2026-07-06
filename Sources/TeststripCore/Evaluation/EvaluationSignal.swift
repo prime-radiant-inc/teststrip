@@ -16,6 +16,7 @@ public enum EvaluationKind: String, Codable, Sendable {
 public enum EvaluationValue: Codable, Equatable, Sendable {
     case score(Double)
     case label(String)
+    case labels([String])
     case text(String)
     case count(Int)
     case vector([Double])

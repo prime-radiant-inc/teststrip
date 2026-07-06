@@ -222,6 +222,7 @@ private struct LocalHTTPModelSignal: Decodable {
     var confidence: Double?
     var score: Double?
     var label: String?
+    var labels: [String]?
     var text: String?
     var count: Int?
     var vector: [Double]?
@@ -242,6 +243,9 @@ private struct LocalHTTPModelSignal: Decodable {
         }
         if let label {
             return .label(label)
+        }
+        if let labels {
+            return .labels(labels)
         }
         if let text {
             return .text(text)

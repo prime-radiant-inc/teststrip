@@ -8273,6 +8273,33 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedSuggestedKeywords.map(\.provenanceText), ["apple-vision/Vision-mountain", "apple-vision/Vision-lake"])
     }
 
+    func testSelectedSuggestedKeywordsComeFromMultiLabelObjectSignals() throws {
+        let asset = Asset(
+            id: AssetID(rawValue: "multi-label-suggested-keywords"),
+            originalURL: URL(fileURLWithPath: "/Photos/multi-label-suggested-keywords.jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata(keywords: ["camera"])
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(named: "multi-label-suggested-keywords", assets: [asset])
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(
+                assetID: asset.id,
+                kind: .object,
+                value: .labels(["camera", "  alpine lake  ", "forest", "forest"]),
+                confidence: 0.86,
+                provenance: provenance
+            )
+        ])
+
+        XCTAssertEqual(model.selectedSuggestedKeywords.map(\.keyword), ["alpine lake", "forest"])
+        XCTAssertEqual(model.selectedSuggestedKeywords.map(\.confidenceText), ["86%", "86%"])
+        XCTAssertEqual(model.selectedSuggestedKeywords.map(\.provenanceText), ["apple-vision/Vision", "apple-vision/Vision"])
+        XCTAssertEqual(model.selectedAsset?.metadata.keywords, ["camera"])
+    }
+
     func testObjectEvaluationLabelsRemainProvisionalUntilAccepted() throws {
         let asset = Asset(
             id: AssetID(rawValue: "provisional-keyword"),
@@ -8365,6 +8392,33 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(suggestions.map(\.assetCountText), ["2 photos", "1 photo"])
         XCTAssertEqual(suggestions.map(\.confidenceText), ["70%", "90%"])
         XCTAssertEqual(suggestions[0].provenanceText, "apple-vision/Vision")
+    }
+
+    func testVisibleBatchKeywordSuggestionsAggregateMultiLabelObjectSignals() throws {
+        let first = makeAsset(id: "first-multi-label-batch-keyword", path: "/Photos/first.jpg", rating: 0)
+        let second = makeAsset(id: "second-multi-label-batch-keyword", path: "/Photos/second.jpg", rating: 0)
+        let keyworded = makeAsset(
+            id: "keyworded-multi-label-batch-keyword",
+            path: "/Photos/keyworded.jpg",
+            rating: 0,
+            keywords: ["mountain"]
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "multi-label-batch-keyword-suggestions",
+            assets: [first, second, keyworded]
+        )
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: first.id, kind: .object, value: .labels(["mountain", "lake"]), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: second.id, kind: .object, value: .labels(["lake", "forest"]), confidence: 0.6, provenance: provenance),
+            EvaluationSignal(assetID: keyworded.id, kind: .object, value: .labels(["mountain", "lake"]), confidence: 0.95, provenance: provenance)
+        ])
+
+        let suggestions = model.visibleBatchKeywordSuggestions
+
+        XCTAssertEqual(suggestions.map(\.keyword), ["lake", "mountain", "forest"])
+        XCTAssertEqual(suggestions.map(\.assetCountText), ["3 photos", "1 photo", "1 photo"])
+        XCTAssertEqual(suggestions.map(\.confidenceText), ["78%", "80%", "60%"])
     }
 
     func testAcceptVisibleBatchKeywordSuggestionWritesMatchingVisibleAssetsOnly() throws {

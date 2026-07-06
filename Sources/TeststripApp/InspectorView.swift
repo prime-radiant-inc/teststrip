@@ -172,6 +172,8 @@ struct InspectorEvaluationSignalGroup: Equatable, Identifiable {
             String(format: "%.2f", score)
         case .label(let label):
             label
+        case .labels(let labels):
+            labels.joined(separator: ", ")
         case .text(let text):
             text
         case .count(let count):

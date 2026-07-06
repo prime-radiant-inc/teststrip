@@ -66,7 +66,7 @@ final class EvaluationProviderTests: XCTestCase {
         let transport = RecordingLocalHTTPTransport(response: .success(LocalHTTPModelHTTPResponse(
             statusCode: 200,
             data: try chatCompletionData(content: """
-            {"signals":[{"kind":"aesthetics","label":"keeper","confidence":0.74},{"kind":"framing","label":"tight crop","confidence":0.7},{"kind":"focus","score":0.91,"confidence":0.82},{"kind":"faceCount","count":2,"confidence":0.9}]}
+            {"signals":[{"kind":"aesthetics","label":"keeper","confidence":0.74},{"kind":"object","labels":["camera","mountain"],"confidence":0.81},{"kind":"framing","label":"tight crop","confidence":0.7},{"kind":"focus","score":0.91,"confidence":0.82},{"kind":"faceCount","count":2,"confidence":0.9}]}
             """)
         )))
         let provider = LocalHTTPModelProvider(
@@ -84,6 +84,13 @@ final class EvaluationProviderTests: XCTestCase {
                 kind: .aesthetics,
                 value: .label("keeper"),
                 confidence: 0.74,
+                provenance: ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+            ),
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .object,
+                value: .labels(["camera", "mountain"]),
+                confidence: 0.81,
                 provenance: ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
             ),
             EvaluationSignal(
@@ -333,6 +340,32 @@ final class EvaluationProviderTests: XCTestCase {
         ])
     }
 
+    func testAppleVisionProviderPreservesMultipleClassificationLabelsInOneObjectSignal() throws {
+        let provider = AppleVisionEvaluationProvider(analyzer: FakeAppleVisionAnalyzer(analysis: AppleVisionAnalysis(
+            faceCount: 0,
+            faceQualityScores: [],
+            recognizedText: [],
+            classificationLabels: [
+                AppleVisionLabel(identifier: "mountain", confidence: 0.84),
+                AppleVisionLabel(identifier: "alpine lake", confidence: 0.76)
+            ],
+            imageFeaturePrintVector: []
+        )))
+        let assetID = AssetID(rawValue: "asset-multi-object")
+
+        let signals = try provider.evaluate(assetID: assetID, previewURL: URL(fileURLWithPath: "/tmp/preview.jpg"))
+
+        XCTAssertEqual(signals, [
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .object,
+                value: .labels(["mountain", "alpine lake"]),
+                confidence: 0.84,
+                provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+            )
+        ])
+    }
+
     func testAppleVisionAnalyzerProducesImageFeaturePrintVector() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "apple-vision-feature-print")
         let previewURL = directory.appendingPathComponent("preview.jpg")
@@ -347,6 +380,7 @@ final class EvaluationProviderTests: XCTestCase {
         let values: [EvaluationValue] = [
             .score(0.92),
             .label("keeper"),
+            .labels(["mountain", "lake"]),
             .text("sharp foreground"),
             .count(3),
             .vector([0.1, 0.2, 0.3])
