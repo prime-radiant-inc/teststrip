@@ -124,12 +124,19 @@ public struct LibraryImportService: Sendable {
     public func copyFromCard(
         source: URL,
         destinationRoot: URL,
+        destinationPolicy: ImportDestinationPolicy = .flat,
+        secondCopyDestination: URL? = nil,
         repository: CatalogRepository,
         previewPolicy: LibraryImportPreviewPolicy,
         progress: LibraryImportProgressHandler? = nil
     ) throws -> LibraryImportResult {
         try importAssets(
-            plan: IngestPlanner.copyFromCard(source: source, destinationRoot: destinationRoot),
+            plan: IngestPlanner.copyFromCard(
+                source: source,
+                destinationRoot: destinationRoot,
+                destinationPolicy: destinationPolicy,
+                secondCopyDestination: secondCopyDestination
+            ),
             scanRootName: source.lastPathComponent,
             catalogingDetail: { "Copying \(Self.photoCountDescription($0)) to \(destinationRoot.lastPathComponent)" },
             perFileDetail: { completed, total in "Copying \(completed) of \(total) photos to \(destinationRoot.lastPathComponent)" },
@@ -212,24 +219,32 @@ public struct LibraryImportService: Sendable {
                 message: skippedSourceFile.message
             ))
         } : nil
+        let secondCopyFailureHandler: IngestSkippedSourceFileHandler? = plan.secondCopyDestination != nil ? { secondCopyFailure in
+            skippedSourceFiles.append(LibrarySkippedSourceFile(
+                sourceURL: secondCopyFailure.sourceURL,
+                message: secondCopyFailure.message
+            ))
+        } : nil
         let assets = try ingestService.ingest(
             files: sourceFiles,
             plan: plan,
             repository: repository,
-            skippedSourceFile: skippedSourceFileHandler
-        ) { ingestProgress in
-            if ingestProgressCoalescer.shouldReport(
-                completedCount: ingestProgress.completedUnitCount,
-                totalCount: ingestProgress.totalUnitCount
-            ) {
-                progress?(LibraryImportProgress(
-                    completedUnitCount: ingestProgress.completedUnitCount,
-                    totalUnitCount: ingestProgress.totalUnitCount,
-                    detail: perFileDetail(ingestProgress.completedUnitCount, ingestProgress.totalUnitCount),
-                    catalogedAssetIDs: ingestProgress.catalogedAssetIDs
-                ))
+            skippedSourceFile: skippedSourceFileHandler,
+            secondCopyFailure: secondCopyFailureHandler,
+            progress: { ingestProgress in
+                if ingestProgressCoalescer.shouldReport(
+                    completedCount: ingestProgress.completedUnitCount,
+                    totalCount: ingestProgress.totalUnitCount
+                ) {
+                    progress?(LibraryImportProgress(
+                        completedUnitCount: ingestProgress.completedUnitCount,
+                        totalUnitCount: ingestProgress.totalUnitCount,
+                        detail: perFileDetail(ingestProgress.completedUnitCount, ingestProgress.totalUnitCount),
+                        catalogedAssetIDs: ingestProgress.catalogedAssetIDs
+                    ))
+                }
             }
-        }
+        )
         if !assets.isEmpty {
             try repository.recordSourceRoot(Self.catalogSourceRoot(for: plan))
         }

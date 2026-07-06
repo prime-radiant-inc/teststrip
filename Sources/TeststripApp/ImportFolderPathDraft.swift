@@ -29,13 +29,31 @@ enum ImportPlanSteps {
         ] + followUpSetupSteps
     }
 
-    static func cardCopy(destinationName: String) -> [ImportPlanStep] {
-        [
+    static func cardCopy(
+        destinationName: String,
+        destinationPolicy: ImportDestinationPolicy = .flat,
+        secondCopyName: String? = nil
+    ) -> [ImportPlanStep] {
+        let copyDetail: String
+        switch destinationPolicy {
+        case .flat:
+            copyDetail = "Originals are copied into \(destinationName) before Teststrip catalogs the copied files."
+        case .capturedDate:
+            copyDetail = "Originals are copied into dated folders (YYYY/YYYY-MM-DD) inside \(destinationName) before Teststrip catalogs the copied files."
+        }
+        var steps = [
             ImportPlanStep(
                 title: "Copy card files first",
-                detail: "Originals are copied into \(destinationName) before Teststrip catalogs the copied files."
+                detail: copyDetail
             )
-        ] + sharedImportWorkSteps + [
+        ]
+        if let secondCopyName {
+            steps.append(ImportPlanStep(
+                title: "Write a second copy",
+                detail: "Each copied original and its sidecar is also copied into \(secondCopyName); backup failures are reported per file and never stop the import."
+            ))
+        }
+        return steps + sharedImportWorkSteps + [
             ImportPlanStep(
                 title: "Use the managed background queue",
                 detail: "Copy, preview, and metadata work remains visible, pausable, and cancellable."
@@ -145,6 +163,16 @@ struct ImportCardPathDraft: Equatable {
             }
         }
     }
+    // Dated folders match the design's destination pattern and the
+    // YYYY/YYYY-MM-DD library layout, so new card imports default to them.
+    var organizeIntoDatedFolders = true
+    var secondCopyPath: String = "" {
+        didSet {
+            if secondCopyPath != oldValue {
+                errorMessage = nil
+            }
+        }
+    }
     private(set) var errorMessage: String?
 
     init(sourcePath: String = "", destinationPath: String = "", errorMessage: String? = nil) {
@@ -154,7 +182,15 @@ struct ImportCardPathDraft: Equatable {
     }
 
     var planSteps: [ImportPlanStep] {
-        ImportPlanSteps.cardCopy(destinationName: destinationDisplayName)
+        ImportPlanSteps.cardCopy(
+            destinationName: destinationDisplayName,
+            destinationPolicy: destinationPolicy,
+            secondCopyName: secondCopyDisplayName
+        )
+    }
+
+    var destinationPolicy: ImportDestinationPolicy {
+        organizeIntoDatedFolders ? .capturedDate : .flat
     }
 
     var primaryActionTitle: String {
@@ -164,22 +200,32 @@ struct ImportCardPathDraft: Equatable {
     mutating func reset() {
         sourcePath = ""
         destinationPath = ""
+        organizeIntoDatedFolders = true
+        secondCopyPath = ""
         errorMessage = nil
     }
 
     @MainActor
     mutating func makeCardConfirmationDraft() throws -> ImportConfirmationDraft {
         let roots = try resolveCardURLs()
-        return .card(source: roots.source, destinationRoot: roots.destinationRoot)
+        return .card(
+            source: roots.source,
+            destinationRoot: roots.destinationRoot,
+            destinationPolicy: destinationPolicy,
+            secondCopyRootURL: roots.secondCopyRoot
+        )
     }
 
     @MainActor
-    mutating func resolveCardURLs() throws -> (source: URL, destinationRoot: URL) {
+    mutating func resolveCardURLs() throws -> (source: URL, destinationRoot: URL, secondCopyRoot: URL?) {
         do {
             let sourceURL = try FolderSelectionPanel.importFolderURL(fromPath: sourcePath)
             let destinationURL = try FolderSelectionPanel.importFolderURL(fromPath: destinationPath)
+            let secondCopyURL = trimmedSecondCopyPath.isEmpty
+                ? nil
+                : try FolderSelectionPanel.importFolderURL(fromPath: secondCopyPath)
             errorMessage = nil
-            return (source: sourceURL, destinationRoot: destinationURL)
+            return (source: sourceURL, destinationRoot: destinationURL, secondCopyRoot: secondCopyURL)
         } catch {
             errorMessage = error.localizedDescription
             throw error
@@ -190,6 +236,15 @@ struct ImportCardPathDraft: Equatable {
         let trimmed = destinationPath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "the destination" }
         return URL(fileURLWithPath: trimmed, isDirectory: true).lastPathComponent
+    }
+
+    private var secondCopyDisplayName: String? {
+        guard !trimmedSecondCopyPath.isEmpty else { return nil }
+        return URL(fileURLWithPath: trimmedSecondCopyPath, isDirectory: true).lastPathComponent
+    }
+
+    private var trimmedSecondCopyPath: String {
+        secondCopyPath.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

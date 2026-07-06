@@ -172,10 +172,12 @@ public struct WorkerCommandExecutor {
                 skippedSourceFileCount: result.skippedSourceFileCount,
                 skippedSourceFiles: result.skippedSourceFiles
             )
-        case .importCard(let source, let destinationRoot):
+        case .importCard(let source, let destinationRoot, let destinationPolicy, let secondCopyDestination):
             let result = try importService.copyFromCard(
                 source: source,
                 destinationRoot: destinationRoot,
+                destinationPolicy: destinationPolicy,
+                secondCopyDestination: secondCopyDestination,
                 repository: repository,
                 previewPolicy: .deferGeneration,
                 progress: progress

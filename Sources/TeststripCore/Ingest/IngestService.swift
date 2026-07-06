@@ -65,6 +65,7 @@ public struct IngestService: Sendable {
         plan: IngestPlan,
         repository: CatalogRepository,
         skippedSourceFile: IngestSkippedSourceFileHandler? = nil,
+        secondCopyFailure: IngestSkippedSourceFileHandler? = nil,
         progress: IngestProgressHandler? = nil
     ) throws -> [Asset] {
         try validate(plan: plan)
@@ -72,6 +73,7 @@ public struct IngestService: Sendable {
         var pendingCatalogAssets: [Asset] = []
         var importedSidecars: [ImportedSidecarSync] = []
         var sidecarConflicts: [SidecarSyncConflict] = []
+        var claimedDestinationPaths: Set<String> = []
         let sidecarStore = XMPSidecarStore()
         for (sourceIndex, sourceFile) in sourceFiles.enumerated() {
             try Task.checkCancellation()
@@ -79,7 +81,15 @@ public struct IngestService: Sendable {
                 let originalURL = try originalURL(for: sourceFile, plan: plan)
                 let existingAsset = try repository.asset(originalURL: originalURL)
                 let assetID = existingAsset?.id ?? .new()
+                if plan.mode == .copyToDestination,
+                   !claimedDestinationPaths.insert(originalURL.path).inserted,
+                   !FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: originalURL.path) {
+                    throw TeststripError.io("ingest destination already exists \(originalURL.path)")
+                }
                 try prepareOriginalFile(sourceFile: sourceFile, originalURL: originalURL, plan: plan, existingAsset: existingAsset)
+                if let secondCopyIssue = secondCopyIssue(for: sourceFile, plan: plan) {
+                    secondCopyFailure?(secondCopyIssue)
+                }
                 let fingerprint = try fingerprint(for: originalURL)
                 var metadata = existingAsset?.metadata ?? AssetMetadata()
                 let sidecarURL = sidecarStore.sidecarURL(forOriginalAt: originalURL)
@@ -179,6 +189,14 @@ public struct IngestService: Sendable {
         ) {
             throw TeststripError.invalidState(blockingReason)
         }
+        if let secondCopyDestination = plan.secondCopyDestination,
+           let blockingReason = CardImportDestinationPreflight.blockingReason(
+               source: plan.sourceRoot,
+               destinationRoot: secondCopyDestination,
+               destinationLabel: "Second copy destination"
+           ) {
+            throw TeststripError.invalidState(blockingReason)
+        }
     }
 
     private func flushCatalogAssetsIfNeeded(
@@ -214,8 +232,57 @@ public struct IngestService: Sendable {
             guard let destinationRoot = plan.destinationRoot else {
                 throw TeststripError.invalidState("copy ingest requires destination root")
             }
-            return try destinationURL(for: sourceFile, sourceRoot: plan.sourceRoot, destinationRoot: destinationRoot)
+            return try destinationURL(for: sourceFile, plan: plan, destinationRoot: destinationRoot)
         }
+    }
+
+    private func destinationURL(for sourceFile: URL, plan: IngestPlan, destinationRoot: URL) throws -> URL {
+        switch plan.destinationPolicy {
+        case .flat:
+            return try flatDestinationURL(for: sourceFile, sourceRoot: plan.sourceRoot, destinationRoot: destinationRoot)
+        case .capturedDate:
+            try validateSourceFileInsideRoot(sourceFile, sourceRoot: plan.sourceRoot)
+            let folderNames = Self.capturedDateFolderNames(for: try destinationDate(for: sourceFile))
+            return destinationRoot
+                .appendingPathComponent(folderNames.year, isDirectory: true)
+                .appendingPathComponent(folderNames.day, isDirectory: true)
+                .appendingPathComponent(sourceFile.lastPathComponent)
+        }
+    }
+
+    // Prefers the capture date from the existing decode metadata path (EXIF
+    // DateTimeOriginal, falling back to TIFF DateTime inside the provider) and
+    // falls back to the file modification date when no capture date is readable,
+    // matching the fingerprint's modification-date handling.
+    private func destinationDate(for sourceFile: URL) throws -> Date {
+        if let decodeRegistry,
+           let provider = try? decodeRegistry.provider(for: sourceFile),
+           let metadata = try? provider.metadata(for: sourceFile),
+           let capturedAt = metadata.capturedAt {
+            return capturedAt
+        }
+        let attributes: [FileAttributeKey: Any]
+        do {
+            attributes = try FileManager.default.attributesOfItem(atPath: sourceFile.path)
+        } catch {
+            throw TeststripError.io("could not read modification date for \(sourceFile.path): \(error.localizedDescription)")
+        }
+        return attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0)
+    }
+
+    // Capture dates are parsed and grouped in UTC across the catalog (EXIF has
+    // no timezone), so dated folders use UTC to match the camera's date string.
+    static func capturedDateFolderNames(for date: Date) -> (year: String, day: String) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        let year = components.year ?? 1970
+        let month = components.month ?? 1
+        let day = components.day ?? 1
+        return (
+            year: String(format: "%04d", year),
+            day: String(format: "%04d-%02d-%02d", year, month, day)
+        )
     }
 
     private func prepareOriginalFile(
@@ -228,29 +295,50 @@ public struct IngestService: Sendable {
         case .addInPlace:
             return
         case .copyToDestination:
-            if FileManager.default.fileExists(atPath: originalURL.path) {
-                if existingAsset != nil {
-                    return
-                }
-                guard FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: originalURL.path) else {
-                    throw TeststripError.io("ingest destination already exists \(originalURL.path)")
-                }
-                try copyAdjacentSidecar(sourceFile: sourceFile, originalURL: originalURL)
+            if existingAsset != nil, FileManager.default.fileExists(atPath: originalURL.path) {
                 return
             }
+            try copyOriginalFile(from: sourceFile, to: originalURL)
+        }
+    }
 
-            let destinationDirectory = originalURL.deletingLastPathComponent()
-            do {
-                try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
-            } catch {
-                throw TeststripError.io("could not create ingest directory \(destinationDirectory.path): \(error.localizedDescription)")
+    private func copyOriginalFile(from sourceFile: URL, to destinationURL: URL) throws {
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            guard FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: destinationURL.path) else {
+                throw TeststripError.io("ingest destination already exists \(destinationURL.path)")
             }
-            do {
-                try FileManager.default.copyItem(at: sourceFile, to: originalURL)
-            } catch {
-                throw TeststripError.io("could not copy \(sourceFile.path) to \(originalURL.path): \(error.localizedDescription)")
-            }
-            try copyAdjacentSidecar(sourceFile: sourceFile, originalURL: originalURL)
+            try copyAdjacentSidecar(sourceFile: sourceFile, originalURL: destinationURL)
+            return
+        }
+
+        let destinationDirectory = destinationURL.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+        } catch {
+            throw TeststripError.io("could not create ingest directory \(destinationDirectory.path): \(error.localizedDescription)")
+        }
+        do {
+            try FileManager.default.copyItem(at: sourceFile, to: destinationURL)
+        } catch {
+            throw TeststripError.io("could not copy \(sourceFile.path) to \(destinationURL.path): \(error.localizedDescription)")
+        }
+        try copyAdjacentSidecar(sourceFile: sourceFile, originalURL: destinationURL)
+    }
+
+    // Backup failures never fail the primary import; they surface per file
+    // through the second-copy failure handler instead.
+    private func secondCopyIssue(for sourceFile: URL, plan: IngestPlan) -> IngestSkippedSourceFile? {
+        guard plan.mode == .copyToDestination, let secondCopyDestination = plan.secondCopyDestination else {
+            return nil
+        }
+        do {
+            let backupURL = try destinationURL(for: sourceFile, plan: plan, destinationRoot: secondCopyDestination)
+            try copyOriginalFile(from: sourceFile, to: backupURL)
+            return nil
+        } catch TeststripError.io(let message) {
+            return IngestSkippedSourceFile(sourceURL: sourceFile, message: "backup copy failed: \(message)")
+        } catch {
+            return IngestSkippedSourceFile(sourceURL: sourceFile, message: "backup copy failed: \(error.localizedDescription)")
         }
     }
 
@@ -275,16 +363,20 @@ public struct IngestService: Sendable {
         }
     }
 
-    private func destinationURL(for sourceFile: URL, sourceRoot: URL, destinationRoot: URL) throws -> URL {
+    private func flatDestinationURL(for sourceFile: URL, sourceRoot: URL, destinationRoot: URL) throws -> URL {
+        let relativePath = try validateSourceFileInsideRoot(sourceFile, sourceRoot: sourceRoot)
+        return destinationRoot.appendingPathComponent(relativePath)
+    }
+
+    @discardableResult
+    private func validateSourceFileInsideRoot(_ sourceFile: URL, sourceRoot: URL) throws -> String {
         let sourceRootPath = sourceRoot.resolvingSymlinksInPath().path
         let sourceFilePath = sourceFile.resolvingSymlinksInPath().path
         let sourceRootPrefix = sourceRootPath == "/" ? sourceRootPath : sourceRootPath + "/"
         guard sourceFilePath.hasPrefix(sourceRootPrefix) else {
             throw TeststripError.io("source file \(sourceFile.path) is outside ingest root \(sourceRoot.path)")
         }
-
-        let relativePath = String(sourceFilePath.dropFirst(sourceRootPrefix.count))
-        return destinationRoot.appendingPathComponent(relativePath)
+        return String(sourceFilePath.dropFirst(sourceRootPrefix.count))
     }
 
     private func fingerprint(for url: URL) throws -> FileFingerprint {

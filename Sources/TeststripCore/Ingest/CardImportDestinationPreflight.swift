@@ -4,29 +4,30 @@ public enum CardImportDestinationPreflight {
     public static func blockingReason(
         source: URL,
         destinationRoot: URL,
+        destinationLabel: String = "Destination",
         fileManager: FileManager = .default
     ) -> String? {
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: destinationRoot.path, isDirectory: &isDirectory) else {
-            return "Destination folder is missing"
+            return "\(destinationLabel) folder is missing"
         }
         guard isDirectory.boolValue else {
-            return "Destination is not a folder"
+            return "\(destinationLabel) is not a folder"
         }
         guard fileManager.isWritableFile(atPath: destinationRoot.path) else {
-            return "Destination folder is not writable"
+            return "\(destinationLabel) folder is not writable"
         }
 
         let sourcePath = normalizedDirectoryPath(source)
         let destinationPath = normalizedDirectoryPath(destinationRoot)
         if destinationPath == sourcePath {
-            return "Destination must be different from the card source"
+            return "\(destinationLabel) must be different from the card source"
         }
         if isDirectoryPath(destinationPath, inside: sourcePath) {
-            return "Destination cannot be inside the card source"
+            return "\(destinationLabel) cannot be inside the card source"
         }
         if isDirectoryPath(sourcePath, inside: destinationPath) {
-            return "Card source cannot be inside the destination"
+            return "Card source cannot be inside the \(destinationLabel.lowercased())"
         }
         return nil
     }
