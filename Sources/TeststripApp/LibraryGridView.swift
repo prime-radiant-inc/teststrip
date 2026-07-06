@@ -2914,19 +2914,32 @@ private struct LoupeView: View {
             Image(systemName: "sparkles")
                 .foregroundStyle(color)
             VStack(alignment: .leading, spacing: 1) {
-                Text("TESTSTRIP READS")
-                    .font(.caption2.monospaced().weight(.semibold))
-                    .foregroundStyle(color)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text("TESTSTRIP READS")
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .foregroundStyle(color)
+                        .lineLimit(1)
+                    if let verdictText = presentation.verdictText {
+                        Text(verdictText)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(cullingAssistColor(for: presentation.verdictTone))
+                            .lineLimit(1)
+                    }
+                }
                 Text(presentation.title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
+                Text(presentation.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
         }
         .help(presentation.detail)
         .padding(.horizontal, 10)
-        .frame(width: 148, height: 34, alignment: .leading)
+        .frame(minWidth: 148, maxWidth: 460, alignment: .leading)
         .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
@@ -4443,28 +4456,53 @@ struct CullingStackRecommendation: Equatable {
         return scoreByKind.values.reduce(0, +)
     }
 
-    private static func weightedQualityScore(for signal: EvaluationSignal) -> Double? {
-        guard case .score(let score) = signal.value else { return nil }
-        let clampedScore = min(max(score, 0), 1)
+    // Defect-inverted score plus confidence-scaled weight for one signal.
+    // weightedQualityScore and normalizedQualityRead both derive from this,
+    // so the pill's read and the stack ranking can never disagree.
+    static func qualityComponent(for signal: EvaluationSignal) -> (score: Double, weight: Double)? {
+        guard case .score(let rawScore) = signal.value else { return nil }
+        let clampedScore = min(max(rawScore, 0), 1)
         let confidence = min(max(signal.confidence, 0), 1)
         switch signal.kind {
         case .focus:
-            return clampedScore * confidence * 100
-        case .faceQuality:
-            return clampedScore * confidence * 80
-        case .aesthetics:
-            return clampedScore * confidence * 50
-        case .framing:
-            return clampedScore * confidence * 45
-        case .motionBlur:
-            return (1 - clampedScore) * confidence * 60
+            return (clampedScore, confidence * 100)
         case .eyesOpen:
-            return clampedScore * confidence * 90
+            return (clampedScore, confidence * 90)
+        case .faceQuality:
+            return (clampedScore, confidence * 80)
         case .eyeSharpness:
-            return clampedScore * confidence * 70
+            return (clampedScore, confidence * 70)
+        case .motionBlur:
+            return (1 - clampedScore, confidence * 60)
+        case .aesthetics:
+            return (clampedScore, confidence * 50)
+        case .framing:
+            return (clampedScore, confidence * 45)
         default:
             return nil
         }
+    }
+
+    private static func weightedQualityScore(for signal: EvaluationSignal) -> Double? {
+        guard let component = qualityComponent(for: signal) else { return nil }
+        return component.score * component.weight
+    }
+
+    // Confidence-weighted mean of the best component per kind, 0...1.
+    static func normalizedQualityRead(for signals: [EvaluationSignal]) -> (score: Double, kindCount: Int)? {
+        var bestComponentByKind: [EvaluationKind: (score: Double, weight: Double)] = [:]
+        for signal in signals {
+            guard let component = qualityComponent(for: signal) else { continue }
+            if let existing = bestComponentByKind[signal.kind],
+               existing.score * existing.weight >= component.score * component.weight {
+                continue
+            }
+            bestComponentByKind[signal.kind] = component
+        }
+        let totalWeight = bestComponentByKind.values.reduce(0) { $0 + $1.weight }
+        guard totalWeight > 0 else { return nil }
+        let weightedScore = bestComponentByKind.values.reduce(0) { $0 + $1.score * $1.weight } / totalWeight
+        return (weightedScore, bestComponentByKind.count)
     }
 
     /// Short honest reasons why the winner leads the stack, in display order.
@@ -6733,32 +6771,62 @@ struct CullingAssistPresentation: Equatable {
     var title: String
     var detail: String
     var tone: Tone
+    var verdictText: String?
+    var verdictTone: Tone
+
+    private static let keepReadThreshold = 0.7
+    private static let tossReadThreshold = 0.45
 
     static func presentation(
         for signals: [EvaluationSignal],
         stackGuidance: CullingStackActionPresentation? = nil
     ) -> CullingAssistPresentation {
+        let verdict = verdict(for: signals)
         if let stackGuidance,
            stackGuidance.isEnabled,
            let stackTitle = stackGuidanceTitle(for: stackGuidance) {
             return CullingAssistPresentation(
                 title: stackTitle,
                 detail: stackGuidanceDetail(for: stackGuidance, selectedSignals: signals),
-                tone: .positive
+                tone: .positive,
+                verdictText: verdict?.text,
+                verdictTone: verdict?.tone ?? .waiting
             )
         }
         guard let signal = signals.sorted(by: signalSort).first else {
             return CullingAssistPresentation(
                 title: "No read yet",
                 detail: "Evaluate frame to show culling signals",
-                tone: .waiting
+                tone: .waiting,
+                verdictText: verdict?.text,
+                verdictTone: verdict?.tone ?? .waiting
             )
         }
         return CullingAssistPresentation(
             title: title(for: signal),
             detail: detail(primarySignal: signal, signals: signals),
-            tone: tone(for: signal)
+            tone: tone(for: signal),
+            verdictText: verdict?.text,
+            verdictTone: verdict?.tone ?? .waiting
         )
+    }
+
+    // Synthesized display-only read over the same components the stack
+    // ranking uses; at least two scored quality kinds are required because
+    // one signal is not a verdict.
+    private static func verdict(for signals: [EvaluationSignal]) -> (text: String, tone: Tone)? {
+        guard let read = CullingStackRecommendation.normalizedQualityRead(for: signals),
+              read.kindCount >= 2 else {
+            return nil
+        }
+        let percentText = EvaluationSignalPresentation.percentage(read.score)
+        if read.score >= keepReadThreshold {
+            return ("Keep read \(percentText)", .positive)
+        }
+        if read.score <= tossReadThreshold {
+            return ("Toss read \(percentText)", .caution)
+        }
+        return ("Mixed read \(percentText)", .neutral)
     }
 
     private static func stackGuidanceTitle(for action: CullingStackActionPresentation) -> String? {

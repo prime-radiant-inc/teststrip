@@ -133,7 +133,8 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "culling.assist-verdict" })
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "2a" })
 
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("supporting quality rationale"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("provisional keep/toss read"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("inline rationale"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("stack-level keep recommendations"))
         XCTAssertFalse(placeholder.currentFallback.localizedCaseInsensitiveContains("burst-level guidance is still pending"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("supporting quality rationale"))
