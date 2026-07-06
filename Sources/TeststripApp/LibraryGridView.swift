@@ -6472,11 +6472,31 @@ struct CullingAssistPresentation: Equatable {
         return rationales
     }
 
+    private static func expressionPhrase(for signal: EvaluationSignal) -> String? {
+        guard case .score(let score) = signal.value else { return nil }
+        switch signal.kind {
+        case .eyesOpen:
+            if score >= 1.0 { return "Eyes open" }
+            if score <= 0.0 { return "Eyes shut" }
+            return "Some eyes shut"
+        case .eyeSharpness:
+            return score >= 0.7 ? "Eyes sharp" : "Eyes soft"
+        case .smile:
+            if score >= 1.0 { return "Smiling" }
+            if score > 0.0 { return "Some smiling" }
+            return nil
+        default:
+            return nil
+        }
+    }
+
     private static func rationaleText(for signal: EvaluationSignal) -> String? {
         switch signal.kind {
+        case .eyesOpen, .eyeSharpness, .smile:
+            return expressionPhrase(for: signal)
         case .focus, .motionBlur, .exposure, .aesthetics, .framing, .faceQuality, .faceCount, .novelty, .colorPalette, .visualSimilarity:
             return title(for: signal)
-        case .object, .ocrText, .smile, .eyesOpen, .eyeSharpness:
+        case .object, .ocrText:
             return nil
         }
     }
@@ -6526,6 +6546,9 @@ struct CullingAssistPresentation: Equatable {
     }
 
     private static func title(for signal: EvaluationSignal) -> String {
+        if let phrase = expressionPhrase(for: signal) {
+            return phrase
+        }
         switch signal.value {
         case .score(let score):
             return "\(EvaluationSignalPresentation.displayName(for: signal.kind)) \(EvaluationSignalPresentation.percentage(score))"
@@ -6552,6 +6575,12 @@ struct CullingAssistPresentation: Equatable {
             return cautionLabels.contains(label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) ? .caution : .positive
         case (.faceCount, .count(let count)):
             return count > 0 ? .positive : .neutral
+        case (.eyesOpen, .score(let score)):
+            return score >= 1.0 ? .positive : .caution
+        case (.eyeSharpness, .score(let score)):
+            return score >= 0.7 ? .positive : .caution
+        case (.smile, .score(let score)):
+            return score > 0.0 ? .positive : .neutral
         default:
             return .neutral
         }

@@ -133,6 +133,60 @@ final class CullingAssistPresentationTests: XCTestCase {
         }
     }
 
+    func testEyeSignalsJoinVerdictRationaleAfterFocus() {
+        let presentation = CullingAssistPresentation.presentation(for: [
+            signal(kind: .focus, value: .score(0.91), confidence: 0.82),
+            signal(kind: .eyesOpen, value: .score(1.0), confidence: 0.7),
+            signal(kind: .eyeSharpness, value: .score(0.84), confidence: 0.6)
+        ])
+
+        XCTAssertEqual(presentation.title, "Focus 91%")
+        XCTAssertEqual(presentation.detail, "Focus - local-http - 82% confidence · Eyes open · Eyes sharp")
+        XCTAssertEqual(presentation.tone, .positive)
+    }
+
+    func testAllEyesShutBecomesCautionVerdictWhenPrimary() {
+        let presentation = CullingAssistPresentation.presentation(for: [
+            signal(kind: .eyesOpen, value: .score(0.0), confidence: 0.7)
+        ])
+
+        XCTAssertEqual(presentation.title, "Eyes shut")
+        XCTAssertEqual(presentation.detail, "Eyes open - local-http - 70% confidence")
+        XCTAssertEqual(presentation.tone, .caution)
+    }
+
+    func testPartialBlinkReadsAsSomeEyesShut() {
+        let presentation = CullingAssistPresentation.presentation(for: [
+            signal(kind: .focus, value: .score(0.91), confidence: 0.82),
+            signal(kind: .eyesOpen, value: .score(0.5), confidence: 0.7)
+        ])
+
+        XCTAssertEqual(presentation.detail, "Focus - local-http - 82% confidence · Some eyes shut")
+    }
+
+    func testSoftEyesUseCautionPhraseAndTone() {
+        let presentation = CullingAssistPresentation.presentation(for: [
+            signal(kind: .eyeSharpness, value: .score(0.3), confidence: 0.6)
+        ])
+
+        XCTAssertEqual(presentation.title, "Eyes soft")
+        XCTAssertEqual(presentation.tone, .caution)
+    }
+
+    func testSmilePhraseAppearsOnlyWhenSomeoneSmiles() {
+        let noSmiles = CullingAssistPresentation.presentation(for: [
+            signal(kind: .focus, value: .score(0.91), confidence: 0.82),
+            signal(kind: .smile, value: .score(0.0), confidence: 0.7)
+        ])
+        XCTAssertEqual(noSmiles.detail, "Focus - local-http - 82% confidence")
+
+        let allSmiling = CullingAssistPresentation.presentation(for: [
+            signal(kind: .focus, value: .score(0.91), confidence: 0.82),
+            signal(kind: .smile, value: .score(1.0), confidence: 0.7)
+        ])
+        XCTAssertEqual(allSmiling.detail, "Focus - local-http - 82% confidence · Smiling")
+    }
+
     private func signal(kind: EvaluationKind, value: EvaluationValue, confidence: Double) -> EvaluationSignal {
         EvaluationSignal(
             assetID: AssetID(rawValue: "asset"),

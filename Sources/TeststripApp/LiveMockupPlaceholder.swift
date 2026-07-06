@@ -145,7 +145,7 @@ public enum LiveMockupPlaceholders {
         id: "culling.assist-verdict",
         title: "Culling assist verdict",
         intendedBehavior: "Show agentic keeper/reject guidance, rationale, and confidence for the current frame or burst.",
-        currentFallback: "Selected-frame verdict uses persisted evaluation signals with compact supporting quality rationale when present, and stack-level keep recommendations surface when persisted quality signals rank the active stack."
+        currentFallback: "Selected-frame verdict uses persisted evaluation signals with compact supporting quality rationale — including eye-state, eye-sharpness, and smile reads when present — and stack-level keep recommendations surface when persisted quality signals rank the active stack."
     )
 
     public static let cullingFilmstrip = LiveMockupPlaceholder(
