@@ -20,7 +20,7 @@ struct LibraryGridView: View {
     @State private var cullingSessionName = ""
     @State private var cullingSessionIntent = ""
     @State private var batchMetadataDraft = BatchMetadataDraft()
-    @State private var batchMetadataScope: BatchMetadataScopeMode = .visible
+    @State private var batchMetadataScope: BatchScopeMode = .visible
     @State private var isAllCatalogBatchMetadataConfirmed = false
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
@@ -840,7 +840,7 @@ struct LibraryGridView: View {
             }
 
             Picker("Batch scope", selection: $batchMetadataScope) {
-                ForEach(BatchMetadataScopeMode.allCases) { scope in
+                ForEach(BatchScopeMode.allCases) { scope in
                     Text(scope.title).tag(scope)
                 }
             }
@@ -3254,7 +3254,7 @@ struct BatchMetadataDraft: Equatable {
     }
 }
 
-enum BatchMetadataScopeMode: String, CaseIterable, Identifiable {
+enum BatchScopeMode: String, CaseIterable, Identifiable {
     case selected
     case visible
     case currentScope
@@ -3286,7 +3286,7 @@ struct BatchMetadataReviewPresentation: Equatable {
         visibleAssetCount: Int,
         selectedAssetCount: Int,
         currentScopeAssetCount: Int,
-        selectedScope: BatchMetadataScopeMode,
+        selectedScope: BatchScopeMode,
         requiresAllCatalogConfirmation: Bool,
         isAllCatalogConfirmed: Bool,
         suggestions: [BatchKeywordSuggestion],
