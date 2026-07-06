@@ -26,7 +26,7 @@ Sigma/Foveon X3F is recognized as a relevant long-tail RAW family because Jesse 
 - Import discovery still includes best-effort RAW extensions so photographers can catalog existing archives.
 - Metadata extraction and preview rendering can fail per file without invalidating the catalog row.
 - Browsing uses cached previews. The app should not decode originals on hot grid paths.
-- UI copy should describe ImageIO RAW handling as best effort unless a format has fixture-backed coverage on the current macOS decoder path. The ignored local fixture directory currently verifies DNG and Fuji RAF metadata/dimension reads; Canon CRW, Canon CR2, and Sigma/Foveon X3F samples are still missing.
+- UI copy should describe ImageIO RAW handling as best effort unless a format has fixture-backed coverage on the current macOS decoder path. The ignored local fixture directory currently verifies DNG, Canon CR2, and Fuji RAF metadata/dimension reads; Canon CRW and Sigma/Foveon X3F samples are still missing.
 
 ## Provider Boundary
 
