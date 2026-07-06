@@ -1059,26 +1059,104 @@ final class CatalogDatabaseTests: XCTestCase {
         let repository = CatalogRepository(database: database)
         let strong = Asset.testAsset(id: AssetID(rawValue: "strong"), path: "/Volumes/NAS/Job/strong.jpg", rating: 0)
         let soft = Asset.testAsset(id: AssetID(rawValue: "soft"), path: "/Volumes/NAS/Job/soft.jpg", rating: 0)
-        let strongButBlurred = Asset.testAsset(id: AssetID(rawValue: "strong-blurred"), path: "/Volumes/NAS/Job/strong-blurred.jpg", rating: 0)
+        let strongButBlownOut = Asset.testAsset(id: AssetID(rawValue: "strong-blown-out"), path: "/Volumes/NAS/Job/strong-blown-out.jpg", rating: 0)
         let alreadyPicked = Asset.testAsset(
             id: AssetID(rawValue: "already-picked"),
             path: "/Volumes/NAS/Job/already-picked.jpg",
             metadata: AssetMetadata(flag: .pick)
         )
         let unread = Asset.testAsset(id: AssetID(rawValue: "unread"), path: "/Volumes/NAS/Job/unread.jpg", rating: 0)
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
-        try repository.upsert([strong, soft, strongButBlurred, alreadyPicked, unread])
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try repository.upsert([strong, soft, strongButBlownOut, alreadyPicked, unread])
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: strong.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance),
             EvaluationSignal(assetID: soft.id, kind: .focus, value: .score(0.55), confidence: 0.9, provenance: provenance),
-            EvaluationSignal(assetID: strongButBlurred.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance),
-            EvaluationSignal(assetID: strongButBlurred.id, kind: .motionBlur, value: .score(0.8), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: strongButBlownOut.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: strongButBlownOut.id, kind: .exposure, value: .score(0.95), confidence: 1.0, provenance: provenance),
             EvaluationSignal(assetID: alreadyPicked.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance)
         ])
 
         XCTAssertEqual(
             try repository.allAssets(matching: SetQuery(predicates: [.likelyPick]), limit: 10).map(\.id),
             [strong.id]
+        )
+    }
+
+    func testLikelyIssueUsesCalibratedDefectTerms() throws {
+        // Defect anchors from the 2026-07-06 calibration study:
+        // - focus defect at the calibrated p5 (study raw 0.06 / 0.15 = 0.4);
+        //   the old 0.5 sits at ~p25 calibrated and over-flags.
+        // - motionBlur is exactly 1 - focus: zero independent information,
+        //   so it is no longer a defect term at all.
+        // - fractional eyesOpen is CIDetector noise on tiny/occluded faces
+        //   (it flips between renders of identical frames); only 0.0 - all
+        //   eyes shut - stays a defect.
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-likely-issue-calibrated")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let softFocus = Asset.testAsset(id: AssetID(rawValue: "soft-focus"), path: "/Volumes/NAS/Job/soft-focus.jpg", rating: 0)
+        let midFocus = Asset.testAsset(id: AssetID(rawValue: "mid-focus"), path: "/Volumes/NAS/Job/mid-focus.jpg", rating: 0)
+        let blurOnly = Asset.testAsset(id: AssetID(rawValue: "blur-only"), path: "/Volumes/NAS/Job/blur-only.jpg", rating: 0)
+        let partialBlink = Asset.testAsset(id: AssetID(rawValue: "partial-blink"), path: "/Volumes/NAS/Job/partial-blink.jpg", rating: 0)
+        let allShut = Asset.testAsset(id: AssetID(rawValue: "all-shut"), path: "/Volumes/NAS/Job/all-shut.jpg", rating: 0)
+        let metricsProvenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "2", settingsHash: "default")
+        let facesProvenance = ProviderProvenance(provider: "core-image-faces", model: "CIDetectorFace", version: "2", settingsHash: "default")
+        try repository.upsert([softFocus, midFocus, blurOnly, partialBlink, allShut])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: softFocus.id, kind: .focus, value: .score(0.35), confidence: 0.9, provenance: metricsProvenance),
+            EvaluationSignal(assetID: midFocus.id, kind: .focus, value: .score(0.45), confidence: 0.9, provenance: metricsProvenance),
+            EvaluationSignal(assetID: blurOnly.id, kind: .motionBlur, value: .score(0.9), confidence: 0.7, provenance: metricsProvenance),
+            EvaluationSignal(assetID: partialBlink.id, kind: .eyesOpen, value: .score(0.5), confidence: 0.7, provenance: facesProvenance),
+            EvaluationSignal(assetID: allShut.id, kind: .eyesOpen, value: .score(0.0), confidence: 0.7, provenance: facesProvenance)
+        ])
+
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.likelyIssue]), limit: 10)
+                .map(\.id.rawValue)
+                .sorted(),
+            ["all-shut", "soft-focus"]
+        )
+    }
+
+    func testLikelyPickToleratesNoisyDefectSignalsButExcludesRealDefects() throws {
+        // Same calibrated defect terms on the likelyPick exclusion side:
+        // partial blinks and the redundant motionBlur read no longer
+        // disqualify a strong frame; all-eyes-shut and bottom-p5 focus do.
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-likely-pick-calibrated-defects")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let partialBlinkPick = Asset.testAsset(id: AssetID(rawValue: "partial-blink-pick"), path: "/Volumes/NAS/Job/partial-blink-pick.jpg", rating: 0)
+        let midFocusFacePick = Asset.testAsset(id: AssetID(rawValue: "mid-focus-face-pick"), path: "/Volumes/NAS/Job/mid-focus-face-pick.jpg", rating: 0)
+        let allShutFace = Asset.testAsset(id: AssetID(rawValue: "all-shut-face"), path: "/Volumes/NAS/Job/all-shut-face.jpg", rating: 0)
+        let softFocusFace = Asset.testAsset(id: AssetID(rawValue: "soft-focus-face"), path: "/Volumes/NAS/Job/soft-focus-face.jpg", rating: 0)
+        let metricsProvenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "2", settingsHash: "default")
+        let facesProvenance = ProviderProvenance(provider: "core-image-faces", model: "CIDetectorFace", version: "2", settingsHash: "default")
+        let visionProvenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.upsert([partialBlinkPick, midFocusFacePick, allShutFace, softFocusFace])
+        try repository.recordEvaluationSignals([
+            // Sharp frame where one background face reads half-blinked.
+            EvaluationSignal(assetID: partialBlinkPick.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: metricsProvenance),
+            EvaluationSignal(assetID: partialBlinkPick.id, kind: .eyesOpen, value: .score(0.5), confidence: 0.7, provenance: facesProvenance),
+            // Strong face frame at ~p20 calibrated focus: above the p5 defect
+            // floor, and its 1 - focus motionBlur read must not disqualify it.
+            EvaluationSignal(assetID: midFocusFacePick.id, kind: .faceQuality, value: .score(0.5), confidence: 0.5, provenance: visionProvenance),
+            EvaluationSignal(assetID: midFocusFacePick.id, kind: .focus, value: .score(0.45), confidence: 0.9, provenance: metricsProvenance),
+            EvaluationSignal(assetID: midFocusFacePick.id, kind: .motionBlur, value: .score(0.55), confidence: 0.7, provenance: metricsProvenance),
+            // Strong face frame, but every subject's eyes are shut.
+            EvaluationSignal(assetID: allShutFace.id, kind: .faceQuality, value: .score(0.5), confidence: 0.5, provenance: visionProvenance),
+            EvaluationSignal(assetID: allShutFace.id, kind: .eyesOpen, value: .score(0.0), confidence: 0.7, provenance: facesProvenance),
+            // Strong face frame below the calibrated p5 focus floor.
+            EvaluationSignal(assetID: softFocusFace.id, kind: .faceQuality, value: .score(0.5), confidence: 0.5, provenance: visionProvenance),
+            EvaluationSignal(assetID: softFocusFace.id, kind: .focus, value: .score(0.35), confidence: 0.9, provenance: metricsProvenance)
+        ])
+
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.likelyPick]), limit: 10)
+                .map(\.id.rawValue)
+                .sorted(),
+            ["mid-focus-face-pick", "partial-blink-pick"]
         )
     }
 
