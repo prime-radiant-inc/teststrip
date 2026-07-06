@@ -292,6 +292,8 @@ extension EvaluationKind {
             return "Color Palette"
         case .novelty:
             return "Novelty"
+        case .visualSimilarity:
+            return "Visual Similarity"
         }
     }
 }
@@ -2953,8 +2955,11 @@ public final class AppModel {
               assets.contains(where: { $0.id == selectedAssetID }) else {
             return nil
         }
-        let stack = AssetStackBuilder(maximumCaptureGap: Self.candidateStackMaximumCaptureGap)
-            .stacks(from: assets)
+        let stack = stackBuilder()
+            .stacks(
+                from: assets,
+                visualSimilarityVectorsByAssetID: visualSimilarityVectorsByAssetID(for: assets)
+            )
             .first { $0.assetIDs.contains(selectedAssetID) }
         guard let stack, stack.assetIDs.count > 1 else {
             return nil
@@ -3163,9 +3168,12 @@ public final class AppModel {
     }
 
     private func cullingStacks() -> [AssetStack] {
-        AssetStackBuilder(
-            maximumCaptureGap: Self.candidateStackMaximumCaptureGap
-        ).stacks(from: assets).filter { $0.assetIDs.count > 1 }
+        stackBuilder()
+            .stacks(
+                from: assets,
+                visualSimilarityVectorsByAssetID: visualSimilarityVectorsByAssetID(for: assets)
+            )
+            .filter { $0.assetIDs.count > 1 }
     }
 
     public func selectedCullingStackEvaluationSignals() -> [AssetID: [EvaluationSignal]] {
@@ -6020,11 +6028,52 @@ public final class AppModel {
         }
     }
 
+    private func stackBuilder() -> AssetStackBuilder {
+        AssetStackBuilder(maximumCaptureGap: Self.candidateStackMaximumCaptureGap)
+    }
+
+    private func visualSimilarityVectorsByAssetID(for assets: [Asset]) -> [AssetID: [Double]] {
+        guard catalog != nil else { return [:] }
+        return visualSimilarityVectorsByAssetID(for: assets) { assetID in
+            evaluationSignals(for: assetID)
+        }
+    }
+
+    private func visualSimilarityVectorsByAssetID(
+        for assets: [Asset],
+        repository: CatalogRepository
+    ) -> [AssetID: [Double]] {
+        visualSimilarityVectorsByAssetID(for: assets) { assetID in
+            (try? repository.evaluationSignals(assetID: assetID)) ?? []
+        }
+    }
+
+    private func visualSimilarityVectorsByAssetID(
+        for assets: [Asset],
+        signalsForAssetID: (AssetID) -> [EvaluationSignal]
+    ) -> [AssetID: [Double]] {
+        Dictionary(uniqueKeysWithValues: assets.compactMap { asset in
+            let vector = signalsForAssetID(asset.id)
+                .filter { $0.kind == .visualSimilarity }
+                .compactMap { signal -> (vector: [Double], confidence: Double)? in
+                    guard case .vector(let vector) = signal.value else { return nil }
+                    return (vector, signal.confidence)
+                }
+                .sorted { lhs, rhs in lhs.confidence > rhs.confidence }
+                .first?
+                .vector
+            return vector.map { (asset.id, $0) }
+        })
+    }
+
     private func latestImportStacks(activityID: String, repository: CatalogRepository) throws -> [AssetStack] {
         let assetIDs = try latestImportOutputAssetIDs(activityID: activityID, repository: repository)
         let importAssets = try repository.assets(ids: assetIDs, limit: assetIDs.count)
-        return AssetStackBuilder(maximumCaptureGap: Self.candidateStackMaximumCaptureGap)
-            .stacks(from: importAssets)
+        return stackBuilder()
+            .stacks(
+                from: importAssets,
+                visualSimilarityVectorsByAssetID: visualSimilarityVectorsByAssetID(for: importAssets, repository: repository)
+            )
             .filter { $0.assetIDs.count > 1 }
     }
 
@@ -7031,7 +7080,8 @@ public final class AppModel {
         .exposure,
         .aesthetics,
         .colorPalette,
-        .novelty
+        .novelty,
+        .visualSimilarity
     ]
 
     private static func evaluationKindSidebarTitle(_ kind: EvaluationKind) -> String {
@@ -7046,6 +7096,8 @@ public final class AppModel {
             return "Text"
         case .colorPalette:
             return "Color"
+        case .visualSimilarity:
+            return "Similarity"
         default:
             return kind.displayName
         }

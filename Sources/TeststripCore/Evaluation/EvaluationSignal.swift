@@ -9,6 +9,7 @@ public enum EvaluationKind: String, Codable, Sendable {
     case ocrText
     case colorPalette
     case novelty
+    case visualSimilarity
 }
 
 public enum EvaluationValue: Codable, Equatable, Sendable {

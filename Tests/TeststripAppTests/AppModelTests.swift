@@ -358,6 +358,73 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.compareGroupKind(), .candidateStack)
     }
 
+    func testCompareAssetsUseVisualSimilaritySignalsAcrossFoldersAndCaptureTimes() throws {
+        let captureStart = Date(timeIntervalSince1970: 1_900_000_250)
+        let first = makeAsset(
+            id: "visual-similarity-first",
+            path: "/Photos/Job/first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: captureStart)
+        )
+        let similar = makeAsset(
+            id: "visual-similarity-similar",
+            path: "/Photos/Other/similar.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: captureStart.addingTimeInterval(60))
+        )
+        let different = makeAsset(
+            id: "visual-similarity-different",
+            path: "/Photos/Job/different.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: captureStart.addingTimeInterval(120))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-visual-similarity",
+            assets: [first, similar, different]
+        )
+        let provenance = ProviderProvenance(provider: "local-http-model", model: "embedding", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: first.id, kind: .visualSimilarity, value: .vector([0.1, 0.2, 0.3]), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: similar.id, kind: .visualSimilarity, value: .vector([0.11, 0.2, 0.29]), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: different.id, kind: .visualSimilarity, value: .vector([0.8, 0.1, 0.1]), confidence: 0.9, provenance: provenance)
+        ])
+        model.selectedView = .compare
+        model.select(similar.id)
+
+        XCTAssertEqual(model.compareAssets().map(\.id), [first.id, similar.id])
+        XCTAssertEqual(model.compareGroupKind(), .candidateStack)
+    }
+
+    func testCompareAssetsDoNotTreatColorPaletteVectorsAsNearDuplicateSimilarity() throws {
+        let captureStart = Date(timeIntervalSince1970: 1_900_000_260)
+        let first = makeAsset(
+            id: "color-vector-first",
+            path: "/Photos/Job/first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: captureStart)
+        )
+        let similarColor = makeAsset(
+            id: "color-vector-similar",
+            path: "/Photos/Other/similar.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: captureStart.addingTimeInterval(60))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-color-vector-not-similarity",
+            assets: [first, similarColor]
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: first.id, kind: .colorPalette, value: .vector([0.1, 0.2, 0.3]), confidence: 1.0, provenance: provenance),
+            EvaluationSignal(assetID: similarColor.id, kind: .colorPalette, value: .vector([0.11, 0.2, 0.29]), confidence: 1.0, provenance: provenance)
+        ])
+        model.selectedView = .compare
+        model.select(similarColor.id)
+
+        XCTAssertEqual(model.compareAssets().map(\.id), [first.id, similarColor.id])
+        XCTAssertEqual(model.compareGroupKind(), .nearbyFrames)
+    }
+
     func testCompareGroupKindTreatsPersistedWorkStackSetAsCandidateStack() throws {
         let capturedAt = Date(timeIntervalSince1970: 1_900_000_300)
         let lead = makeAsset(
@@ -9512,6 +9579,50 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(try repository.asset(id: singleton.id).metadata.flag)
         XCTAssertNil(try repository.asset(id: stackFirst.id).metadata.flag)
         XCTAssertNil(try repository.asset(id: stackSecond.id).metadata.flag)
+    }
+
+    func testBeginningStackCullingFromLatestImportUsesVisualSimilaritySignals() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let first = makeAsset(
+            id: "visual-stack-first",
+            path: "/Photos/Import/first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let similar = makeAsset(
+            id: "visual-stack-similar",
+            path: "/Photos/Other/similar.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(60))
+        )
+        let different = makeAsset(
+            id: "visual-stack-different",
+            path: "/Photos/Import/different.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(120))
+        )
+        let (model, repository) = try makeModelWithCompletedImportSession(
+            named: "visual-stack-culling-from-import",
+            assets: [first, similar, different],
+            outputAssetIDs: [first.id, similar.id, different.id]
+        )
+        let provenance = ProviderProvenance(provider: "local-http-model", model: "embedding", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: first.id, kind: .visualSimilarity, value: .vector([0.1, 0.2, 0.3]), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: similar.id, kind: .visualSimilarity, value: .vector([0.11, 0.2, 0.29]), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: different.id, kind: .visualSimilarity, value: .vector([0.8, 0.1, 0.1]), confidence: 0.9, provenance: provenance)
+        ])
+
+        let session = try model.beginStackCullingFromLatestImportCompletion()
+
+        let stackSetID = try XCTUnwrap(session.inputSetIDs.first)
+        XCTAssertEqual(assetIDs(in: try repository.assetSet(id: stackSetID)), [first.id, similar.id])
+        XCTAssertEqual(model.selectedAssetSetID, stackSetID)
+        XCTAssertEqual(model.assets.map(\.id), [first.id, similar.id])
+        XCTAssertEqual(model.selectedAssetID, first.id)
+        XCTAssertEqual(model.selectedView, .loupe)
+        XCTAssertEqual(model.statusMessage, "Started stack cull with 1 stack")
+        XCTAssertNil(try repository.asset(id: different.id).metadata.flag)
     }
 
     func testBeginningStackCullingFromLatestImportPersistsDetectedStackSets() throws {

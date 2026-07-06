@@ -159,7 +159,7 @@ public enum LiveMockupPlaceholders {
         id: "culling.stack-cull",
         title: "Stack cull",
         intendedBehavior: "Group bursts or near-duplicates into stacks and cull the strongest candidate within each stack.",
-        currentFallback: "Loupe culling can keep a selected frame from persisted import stack sets or same-folder capture-time fallback stacks through the Keep frame action, keep the top two scored frames when persisted quality signals rank enough candidates, keep all frames in the active stack, reject alternates, and refresh persisted culling session progress; real similarity and near-duplicate grouping are still pending."
+        currentFallback: "Loupe culling can keep a selected frame from persisted import stack sets, same-folder capture-time fallback stacks, or visual-similarity vector stacks when signals exist through the Keep frame action, keep the top two scored frames when persisted quality signals rank enough candidates, keep all frames in the active stack, reject alternates, and refresh persisted culling session progress; provider generation and similarity threshold calibration are still pending."
     )
 
     public static let focusCompare = LiveMockupPlaceholder(
@@ -269,7 +269,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Stack cull",
             status: .partial,
             placeholder: .cullingStackCull,
-            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, persisted import stack sets, and loaded-scope same-folder capture-time stacks with keep-selected/reject-alternates and keep-all actions; Return accepts the selected stack frame when a persisted or loaded stack is active, persisted stack culling sessions refresh progress and complete from decided stack flags, and automatic burst/near-duplicate similarity grouping is not built."
+            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, persisted import stack sets, loaded-scope same-folder capture-time stacks, and visual-similarity vector stacks when signals exist with keep-selected/reject-alternates and keep-all actions; Return accepts the selected stack frame when a persisted or loaded stack is active, persisted stack culling sessions refresh progress and complete from decided stack flags, and automatic provider generation plus near-duplicate threshold calibration remain pending."
         ),
         LiveMockupDesignSurface(
             designID: "3b",

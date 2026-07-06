@@ -94,7 +94,8 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep all frames"))
         XCTAssertFalse(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("keep top remains disabled"))
         XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("session progress"))
-        XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("similarity"))
+        XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("visual-similarity vector stacks"))
+        XCTAssertTrue(stackPlaceholder.currentFallback.localizedCaseInsensitiveContains("threshold calibration"))
         XCTAssertTrue(comparePlaceholder.currentFallback.localizedCaseInsensitiveContains("persisted culling stack sets"))
         XCTAssertTrue(comparePlaceholder.currentFallback.localizedCaseInsensitiveContains("loaded-scope candidate stacks"))
         XCTAssertTrue(comparePlaceholder.currentFallback.localizedCaseInsensitiveContains("up to eight"))
@@ -114,7 +115,9 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("persisted import stack sets"))
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("keep-selected/reject-alternates and keep-all"))
         XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("sessions refresh progress"))
-        XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("near-duplicate"))
+        XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("visual-similarity vector stacks"))
+        XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("provider generation"))
+        XCTAssertTrue(stackSurface.currentImplementation.localizedCaseInsensitiveContains("near-duplicate threshold calibration"))
     }
 
     func testRapidCullLedgerTracksCompositeSelectedFrameRationale() throws {

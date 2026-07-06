@@ -306,6 +306,8 @@ struct SidebarView: View {
             return "paintpalette"
         case .novelty:
             return "wand.and.stars"
+        case .visualSimilarity:
+            return "rectangle.3.group"
         }
     }
 }

@@ -202,7 +202,8 @@ public struct LibrarySearchIntent: Equatable, Sendable {
             .faceQuality,
             .ocrText,
             .colorPalette,
-            .novelty
+            .novelty,
+            .visualSimilarity
         ].first { compactIdentifier($0.rawValue) == normalized }
     }
 

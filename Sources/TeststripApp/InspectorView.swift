@@ -109,7 +109,7 @@ struct InspectorEvaluationSignalGroup: Equatable, Identifiable {
             return "Text"
         case .object:
             return "Objects & Content"
-        case .aesthetics, .colorPalette, .novelty:
+        case .aesthetics, .colorPalette, .novelty, .visualSimilarity:
             return "Color & Look"
         }
     }
@@ -135,6 +135,7 @@ struct InspectorEvaluationSignalGroup: Equatable, Identifiable {
         case .ocrText: "OCR"
         case .colorPalette: "Color"
         case .novelty: "Novelty"
+        case .visualSimilarity: "Visual similarity"
         }
     }
 

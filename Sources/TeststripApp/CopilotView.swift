@@ -463,7 +463,7 @@ struct CopilotPresentation: Equatable {
     }
 
     private var signalKindOrder: [EvaluationKind] {
-        [.object, .focus, .ocrText, .faceCount, .faceQuality, .motionBlur, .exposure, .aesthetics, .colorPalette, .novelty]
+        [.object, .focus, .ocrText, .faceCount, .faceQuality, .motionBlur, .exposure, .aesthetics, .colorPalette, .novelty, .visualSimilarity]
     }
 
     private func signalTitle(for kind: EvaluationKind) -> String {
@@ -478,6 +478,8 @@ struct CopilotPresentation: Equatable {
             return "Faces"
         case .colorPalette:
             return "Color"
+        case .visualSimilarity:
+            return "Similarity"
         default:
             return kind.displayName
         }
@@ -505,6 +507,8 @@ struct CopilotPresentation: Equatable {
             return "paintpalette"
         case .novelty:
             return "wand.and.stars"
+        case .visualSimilarity:
+            return "rectangle.3.group"
         }
     }
 }

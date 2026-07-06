@@ -52,6 +52,27 @@ final class AssetStackBuilderTests: XCTestCase {
         ])
     }
 
+    func testGroupsFramesWithNearMatchingVisualSimilarityVectors() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let first = makeAsset(id: "first", path: "/Photos/Job/first.cr2", capturedAt: capturedAt)
+        let similar = makeAsset(id: "similar", path: "/Photos/Other/similar.cr2", capturedAt: capturedAt.addingTimeInterval(60))
+        let different = makeAsset(id: "different", path: "/Photos/Job/different.cr2", capturedAt: capturedAt.addingTimeInterval(120))
+
+        let stacks = AssetStackBuilder(maximumCaptureGap: 2).stacks(
+            from: [first, similar, different],
+            visualSimilarityVectorsByAssetID: [
+                first.id: [0.1, 0.2, 0.3],
+                similar.id: [0.11, 0.2, 0.29],
+                different.id: [0.8, 0.1, 0.1]
+            ]
+        )
+
+        XCTAssertEqual(stacks, [
+            AssetStack(assetIDs: [first.id, similar.id], rationale: "Visual similarity"),
+            AssetStack(assetIDs: [different.id], rationale: nil)
+        ])
+    }
+
     private func makeAsset(id: String, path: String, capturedAt: Date?) -> Asset {
         let technicalMetadata = capturedAt.map { date in
             AssetTechnicalMetadata(

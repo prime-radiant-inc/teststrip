@@ -19,6 +19,10 @@ final class EvaluationProviderTests: XCTestCase {
         XCTAssertEqual(signal.provenance.provider, "AppleVision")
     }
 
+    func testDefaultPromptListsVisualSimilaritySignalKind() {
+        XCTAssertTrue(LocalHTTPModelProvider.defaultPrompt.contains("visualSimilarity"))
+    }
+
     func testLocalHTTPProviderBuildsOpenAICompatibleRequest() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "local-http-request")
         let previewURL = directory.appendingPathComponent("frame.jpg")

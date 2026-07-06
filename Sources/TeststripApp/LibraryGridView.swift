@@ -3247,6 +3247,8 @@ private enum EvaluationSignalPresentation {
             return "Color"
         case .novelty:
             return "Novelty"
+        case .visualSimilarity:
+            return "Visual similarity"
         }
     }
 
@@ -5308,7 +5310,7 @@ struct CullingAssistPresentation: Equatable {
 
     private static func rationaleText(for signal: EvaluationSignal) -> String? {
         switch signal.kind {
-        case .focus, .motionBlur, .exposure, .aesthetics, .faceQuality, .faceCount, .novelty, .colorPalette:
+        case .focus, .motionBlur, .exposure, .aesthetics, .faceQuality, .faceCount, .novelty, .colorPalette, .visualSimilarity:
             return title(for: signal)
         case .object, .ocrText:
             return nil
@@ -5346,6 +5348,8 @@ struct CullingAssistPresentation: Equatable {
             return 8
         case .colorPalette:
             return 9
+        case .visualSimilarity:
+            return 10
         }
     }
 
