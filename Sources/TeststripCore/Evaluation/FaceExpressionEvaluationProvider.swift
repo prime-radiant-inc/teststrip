@@ -53,7 +53,9 @@ public struct FaceExpressionEvaluationProvider: EvaluationProvider {
     public func evaluate(assetID: AssetID, previewURL: URL) throws -> [EvaluationSignal] {
         let faces = try analyzer.detectFaces(previewURL: previewURL)
         guard !faces.isEmpty else { return [] }
-        let provenance = ProviderProvenance(provider: name, model: "CIDetectorFace", version: "1", settingsHash: "default")
+        // Version 2: eyeSharpness is on the calibrated 0-1 focus scale rather
+        // than the raw ~0.04-0.15 luminance-delta scale of version 1.
+        let provenance = ProviderProvenance(provider: name, model: "CIDetectorFace", version: "2", settingsHash: "default")
         let faceCount = Double(faces.count)
         let eyesOpenFraction = Double(faces.filter(\.hasBothEyesOpen).count) / faceCount
         let smileFraction = Double(faces.filter(\.hasSmile).count) / faceCount

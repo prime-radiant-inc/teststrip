@@ -219,6 +219,30 @@ final class CullingAssistPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.verdictTone, .neutral)
     }
 
+    func testVerdictTossesWeakCalibratedReadBelowHalf() {
+        // A weak frame on the calibrated scale: focus 0.4 is below the
+        // corpus p5 anchor, so the read lands at (0.4 * 100 + 0.56 * 50)
+        // / 150 = 0.45 - inside the recalibrated Toss band (<= 0.5).
+        let presentation = CullingAssistPresentation.presentation(for: [
+            signal(kind: .focus, value: .score(0.4), confidence: 1.0),
+            signal(kind: .aesthetics, value: .score(0.56), confidence: 1.0)
+        ])
+
+        XCTAssertEqual(presentation.verdictText, "Toss read 45%")
+        XCTAssertEqual(presentation.verdictTone, .caution)
+    }
+
+    func testTopQuartileCalibratedEyeSharpnessReadsAsEyesSharp() {
+        // Calibrated eyeSharpness p75 is 0.33 (raw 0.05 / 0.15); scores at or
+        // above it read "Eyes sharp" with a positive tone.
+        let presentation = CullingAssistPresentation.presentation(for: [
+            signal(kind: .eyeSharpness, value: .score(0.4), confidence: 0.6)
+        ])
+
+        XCTAssertEqual(presentation.title, "Eyes sharp")
+        XCTAssertEqual(presentation.tone, .positive)
+    }
+
     func testVerdictRequiresAtLeastTwoScoredQualityKinds() {
         let single = CullingAssistPresentation.presentation(for: [
             signal(kind: .focus, value: .score(0.96), confidence: 1.0)

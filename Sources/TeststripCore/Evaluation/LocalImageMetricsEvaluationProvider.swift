@@ -10,7 +10,10 @@ public struct LocalImageMetricsEvaluationProvider: EvaluationProvider {
     public func evaluate(assetID: AssetID, previewURL: URL) throws -> [EvaluationSignal] {
         let metrics = try Self.previewMetrics(of: previewURL)
         let exposure = PreviewPixelMetrics.luminance(red: metrics.averageColor.red, green: metrics.averageColor.green, blue: metrics.averageColor.blue)
-        let provenance = ProviderProvenance(provider: name, model: "preview-color-focus-metrics", version: "1", settingsHash: "default")
+        // Version 2: focus-family scores (focus, motionBlur, and the focus
+        // term inside aesthetics) are on the calibrated 0-1 scale rather than
+        // the raw ~0.04-0.15 luminance-delta scale of version 1.
+        let provenance = ProviderProvenance(provider: name, model: "preview-color-focus-metrics", version: "2", settingsHash: "default")
         return [
             EvaluationSignal(
                 assetID: assetID,

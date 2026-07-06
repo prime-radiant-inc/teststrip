@@ -1642,6 +1642,11 @@ public final class CatalogRepository {
                     "NOT EXISTS (SELECT 1 FROM evaluation_signals WHERE evaluation_signals.asset_id = assets.id)"
                 )
             case .likelyIssue:
+                // Defect terms per the 2026-07-06 calibration study: focus
+                // defect at the calibrated p5 (raw 0.06 / 0.15 = 0.4); no
+                // motionBlur term (it is exactly 1 - focus, pure redundancy);
+                // eyesOpen only when 0.0 - fractional CIDetector reads are
+                // noise on tiny/occluded faces and rank rather than flag.
                 clauses.append(
                     """
                     EXISTS (
@@ -1649,8 +1654,7 @@ public final class CatalogRepository {
                         FROM evaluation_signals
                         WHERE evaluation_signals.asset_id = assets.id
                           AND (
-                            (kind = 'focus' AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.5)
-                            OR (kind = 'motionBlur' AND CAST(json_extract(value_json, '$.score._0') AS REAL) >= 0.5)
+                            (kind = 'focus' AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.4)
                             OR (
                                 kind = 'exposure'
                                 AND (
@@ -1660,7 +1664,7 @@ public final class CatalogRepository {
                             )
                             OR (
                                 kind = 'eyesOpen'
-                                AND CAST(json_extract(value_json, '$.score._0') AS REAL) < 1.0
+                                AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.0
                             )
                             OR (
                                 kind = 'faceQuality'
@@ -1681,6 +1685,12 @@ public final class CatalogRepository {
                     """
                 )
             case .likelyPick:
+                // Strong-read thresholds are per kind because the three kinds
+                // live on incompatible scales (2026-07-06 calibration study):
+                // calibrated focus >= 0.8 (raw p75 0.12 / 0.15 ceiling),
+                // aesthetics >= 0.65 (calibrated p90), and Vision faceQuality
+                // >= 0.45 (p75) - each anchors "strong" at that kind's top
+                // quartile-to-decile on the study corpus.
                 clauses.append(
                     """
                     json_extract(metadata_json, '$.flag') IS NULL
@@ -1689,9 +1699,9 @@ public final class CatalogRepository {
                         FROM evaluation_signals
                         WHERE evaluation_signals.asset_id = assets.id
                           AND (
-                            (kind = 'focus' AND CAST(json_extract(value_json, '$.score._0') AS REAL) >= 0.65)
+                            (kind = 'focus' AND CAST(json_extract(value_json, '$.score._0') AS REAL) >= 0.8)
                             OR (kind = 'aesthetics' AND CAST(json_extract(value_json, '$.score._0') AS REAL) >= 0.65)
-                            OR (kind = 'faceQuality' AND CAST(json_extract(value_json, '$.score._0') AS REAL) >= 0.65)
+                            OR (kind = 'faceQuality' AND CAST(json_extract(value_json, '$.score._0') AS REAL) >= 0.45)
                           )
                     )
                     AND NOT EXISTS (
@@ -1699,8 +1709,7 @@ public final class CatalogRepository {
                         FROM evaluation_signals
                         WHERE evaluation_signals.asset_id = assets.id
                           AND (
-                            (kind = 'focus' AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.5)
-                            OR (kind = 'motionBlur' AND CAST(json_extract(value_json, '$.score._0') AS REAL) >= 0.5)
+                            (kind = 'focus' AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.4)
                             OR (
                                 kind = 'exposure'
                                 AND (
@@ -1708,7 +1717,7 @@ public final class CatalogRepository {
                                     OR CAST(json_extract(value_json, '$.score._0') AS REAL) >= 0.88
                                 )
                             )
-                            OR (kind = 'eyesOpen' AND CAST(json_extract(value_json, '$.score._0') AS REAL) < 1.0)
+                            OR (kind = 'eyesOpen' AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.0)
                           )
                     )
                     """

@@ -276,6 +276,54 @@ final class EvaluationProviderTests: XCTestCase {
         XCTAssertGreaterThan(detailedFocus, flatFocus + 0.2)
     }
 
+    func testPreviewPixelMetricsFocusScoreCalibratesRawLuminanceDeltaToEmpiricalScale() {
+        // 2x2 gray samples: three pixels at 102/255 luminance, one at 140/255.
+        // Of the four neighbor comparisons, two see a delta of 38/255, so the
+        // raw mean neighbor delta is 19/255 ~= 0.075 - squarely inside the
+        // 0.04-0.15 band the calibration study measured on real photographs.
+        // The calibrated score stretches that band over 0-1 by dividing by
+        // the 0.15 empirical ceiling.
+        var pixels = [UInt8](repeating: 255, count: 2 * 2 * 4)
+        for (index, gray) in [102, 102, 102, 140].map(UInt8.init).enumerated() {
+            pixels[index * 4] = gray
+            pixels[index * 4 + 1] = gray
+            pixels[index * 4 + 2] = gray
+        }
+
+        let score = PreviewPixelMetrics.focusScore(in: pixels, width: 2, height: 2)
+
+        let rawMeanNeighborDelta = (2.0 * 38.0 / 255.0) / 4.0
+        XCTAssertEqual(score, rawMeanNeighborDelta / 0.15, accuracy: 0.0001)
+    }
+
+    func testPreviewPixelMetricsFocusScoreClampsCalibratedValueToOne() {
+        // Full-contrast checkerboard: every neighbor delta is 1.0, far above
+        // the 0.15 empirical ceiling, so the calibrated score clamps at 1.0.
+        var pixels = [UInt8](repeating: 255, count: 2 * 2 * 4)
+        for (index, gray) in [0, 255, 255, 0].map(UInt8.init).enumerated() {
+            pixels[index * 4] = gray
+            pixels[index * 4 + 1] = gray
+            pixels[index * 4 + 2] = gray
+        }
+
+        let score = PreviewPixelMetrics.focusScore(in: pixels, width: 2, height: 2)
+
+        XCTAssertEqual(score, 1.0, accuracy: 0.0001)
+    }
+
+    func testLocalImageMetricsProviderReportsCalibratedProvenanceVersion() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "local-image-metrics-version")
+        let previewURL = directory.appendingPathComponent("preview.png")
+        try writeSolidPNG(to: previewURL, width: 64, height: 64, red: 0.2, green: 0.4, blue: 0.8)
+        let provider = LocalImageMetricsEvaluationProvider()
+
+        let signals = try provider.evaluate(assetID: AssetID(rawValue: "asset-1"), previewURL: previewURL)
+
+        // Version 2 marks signals on the calibrated focus-family scale so they
+        // are distinguishable from raw-scale version 1 rows.
+        XCTAssertEqual(Set(signals.map(\.provenance.version)), ["2"])
+    }
+
     private func sampledFocusScore(at url: URL) throws -> Double {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {

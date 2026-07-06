@@ -27,7 +27,8 @@ final class FaceExpressionEvaluationProviderTests: XCTestCase {
         ]
         let provider = FaceExpressionEvaluationProvider(analyzer: FakeFaceExpressionAnalyzer(faces: faces))
         let assetID = AssetID(rawValue: "asset-1")
-        let provenance = ProviderProvenance(provider: "core-image-faces", model: "CIDetectorFace", version: "1", settingsHash: "default")
+        // Version 2 marks signals on the calibrated focus-family scale.
+        let provenance = ProviderProvenance(provider: "core-image-faces", model: "CIDetectorFace", version: "2", settingsHash: "default")
 
         let signals = try provider.evaluate(assetID: assetID, previewURL: URL(fileURLWithPath: "/tmp/preview.png"))
 

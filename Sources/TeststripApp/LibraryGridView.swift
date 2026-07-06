@@ -4139,7 +4139,10 @@ struct CompareSurveyPresentation: Equatable {
         decisionBadges(for: asset) + (isContendersOnly ? rankBadges(for: asset) : signalBadges(for: asset))
     }
 
-    private static let softFocusBadgeThreshold = 0.5
+    // Same calibrated defect anchor as the likelyIssue focus term: the
+    // study's p5 (raw 0.06 / 0.15 = 0.4). The old 0.5 flagged every real
+    // frame on the raw scale.
+    private static let softFocusBadgeThreshold = 0.4
 
     private static func signalBadges(
         assetIDs: [AssetID],
@@ -4163,10 +4166,12 @@ struct CompareSurveyPresentation: Equatable {
     /// badge appears.
     static func flawBadges(for signals: [EvaluationSignal]) -> [CompareDecisionBadge] {
         var badges: [CompareDecisionBadge] = []
-        if let eyesOpen = highestConfidenceScore(kind: .eyesOpen, in: signals), eyesOpen < 1.0 {
+        // Fractional eyesOpen is CIDetector noise on tiny/occluded faces;
+        // only 0.0 (all eyes shut) earns the destructive badge.
+        if let eyesOpen = highestConfidenceScore(kind: .eyesOpen, in: signals), eyesOpen <= 0.0 {
             badges.append(CompareDecisionBadge(text: "EYES CLOSED", tone: .destructive))
         }
-        if let focus = highestConfidenceScore(kind: .focus, in: signals), focus < softFocusBadgeThreshold {
+        if let focus = highestConfidenceScore(kind: .focus, in: signals), focus <= softFocusBadgeThreshold {
             badges.append(CompareDecisionBadge(text: "SOFT", tone: .destructive))
         }
         return badges
@@ -4379,7 +4384,7 @@ enum CompareFocusMetricPresentation {
         case (.exposure, _):
             return .neutral
         case (.eyeSharpness, .score(let score)):
-            return score >= 0.7 ? .positive : .caution
+            return score >= EvaluationSignalPresentation.eyeSharpnessSharpThreshold ? .positive : .caution
         case (.eyesOpen, .score(let score)):
             return score >= 1.0 ? .positive : .caution
         case (.smile, _):
@@ -4391,6 +4396,11 @@ enum CompareFocusMetricPresentation {
 }
 
 private enum EvaluationSignalPresentation {
+    // Calibrated eyeSharpness p75 from the 2026-07-06 calibration study
+    // (raw 0.05 / 0.15 ceiling): eyes at or above the corpus top quartile
+    // read as sharp everywhere eye sharpness is phrased or toned.
+    static let eyeSharpnessSharpThreshold = 0.33
+
     static func displayName(for kind: EvaluationKind) -> String {
         switch kind {
         case .focus:
@@ -7214,8 +7224,12 @@ struct CullingAssistPresentation: Equatable {
     var verdictText: String?
     var verdictTone: Tone
 
+    // Anchored to the 2026-07-06 calibration study on the calibrated
+    // focus-family scale: Keep >= 0.7 selects the jointly-strong top quarter
+    // of the corpus and Toss <= 0.5 the weak quarter (eyes-shut and
+    // bottom-decile-focus frames), leaving roughly half Mixed.
     private static let keepReadThreshold = 0.7
-    private static let tossReadThreshold = 0.45
+    private static let tossReadThreshold = 0.5
 
     static func presentation(
         for signals: [EvaluationSignal],
@@ -7324,7 +7338,7 @@ struct CullingAssistPresentation: Equatable {
             if score <= 0.0 { return "Eyes shut" }
             return "Some eyes shut"
         case .eyeSharpness:
-            return score >= 0.7 ? "Eyes sharp" : "Eyes soft"
+            return score >= EvaluationSignalPresentation.eyeSharpnessSharpThreshold ? "Eyes sharp" : "Eyes soft"
         case .smile:
             if score >= 1.0 { return "Smiling" }
             if score > 0.0 { return "Some smiling" }
@@ -7422,7 +7436,7 @@ struct CullingAssistPresentation: Equatable {
         case (.eyesOpen, .score(let score)):
             return score >= 1.0 ? .positive : .caution
         case (.eyeSharpness, .score(let score)):
-            return score >= 0.7 ? .positive : .caution
+            return score >= EvaluationSignalPresentation.eyeSharpnessSharpThreshold ? .positive : .caution
         case (.smile, .score(let score)):
             return score > 0.0 ? .positive : .neutral
         default:

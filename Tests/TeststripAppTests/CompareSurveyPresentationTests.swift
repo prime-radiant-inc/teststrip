@@ -522,14 +522,33 @@ final class CompareSurveyPresentationTests: XCTestCase {
         )
 
         let metrics = CompareFocusMetricPresentation.metrics(for: [
-            EvaluationSignal(assetID: assetID, kind: .eyeSharpness, value: .score(0.4), confidence: 0.6, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .eyeSharpness, value: .score(0.2), confidence: 0.6, provenance: provenance),
             EvaluationSignal(assetID: assetID, kind: .eyesOpen, value: .score(0.0), confidence: 0.7, provenance: provenance),
             EvaluationSignal(assetID: assetID, kind: .smile, value: .score(0.0), confidence: 0.7, provenance: provenance)
         ])
 
         XCTAssertEqual(metrics.map(\.title), ["Eye sharpness", "Eyes open", "Smile"])
-        XCTAssertEqual(metrics.map(\.value), ["40%", "Shut", "No smile"])
+        XCTAssertEqual(metrics.map(\.value), ["20%", "Shut", "No smile"])
         XCTAssertEqual(metrics.map(\.tone), [.caution, .caution, .neutral])
+    }
+
+    func testTopQuartileCalibratedEyeSharpnessLaneReadsPositive() {
+        let assetID = AssetID(rawValue: "sharp-eye-frame")
+        let provenance = ProviderProvenance(
+            provider: "core-image-faces",
+            model: "CIDetectorFace",
+            version: "2",
+            settingsHash: "default"
+        )
+
+        // Calibrated eyeSharpness p75 is 0.33 (raw 0.05 / 0.15); lanes at or
+        // above the corpus top quartile read positive.
+        let metrics = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .eyeSharpness, value: .score(0.4), confidence: 0.6, provenance: provenance)
+        ])
+
+        XCTAssertEqual(metrics.map(\.value), ["40%"])
+        XCTAssertEqual(metrics.map(\.tone), [.positive])
     }
 
     func testSignalBadgesFlagBestEyesClosedAndSoftFrames() {
@@ -563,6 +582,36 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.signalBadges(for: soft), [
             CompareDecisionBadge(text: "SOFT", tone: .destructive)
         ])
+    }
+
+    func testSignalBadgesIgnorePartialBlinksAndAboveFloorFocus() {
+        // Same calibrated defect anchors as likelyIssue: fractional eyesOpen
+        // is CIDetector noise (only 0.0 - all eyes shut - earns the badge)
+        // and the focus floor is the calibrated p5 (0.4), so a ~p20 frame at
+        // 0.45 is not "SOFT".
+        let best = makeAsset(id: "best")
+        let partialBlink = makeAsset(id: "partial-blink")
+        let midFocus = makeAsset(id: "mid-focus")
+        let presentation = CompareSurveyPresentation(
+            assets: [best, partialBlink, midFocus],
+            selectedAssetID: best.id,
+            evaluationSignalsByAssetID: [
+                best.id: [
+                    signal(assetID: best.id, kind: .focus, score: 0.94),
+                    signal(assetID: best.id, kind: .eyesOpen, score: 1.0)
+                ],
+                partialBlink.id: [
+                    signal(assetID: partialBlink.id, kind: .focus, score: 0.9),
+                    signal(assetID: partialBlink.id, kind: .eyesOpen, score: 0.5)
+                ],
+                midFocus.id: [
+                    signal(assetID: midFocus.id, kind: .focus, score: 0.45)
+                ]
+            ]
+        )
+
+        XCTAssertEqual(presentation.signalBadges(for: partialBlink), [])
+        XCTAssertEqual(presentation.signalBadges(for: midFocus), [])
     }
 
     func testSignalBadgesStaySilentWithoutRankedContendersOrSignals() {
