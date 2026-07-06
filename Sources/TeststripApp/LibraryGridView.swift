@@ -3379,6 +3379,12 @@ private struct LoupeView: View {
                     .font(.caption2.monospaced())
                     .lineLimit(1)
             }
+            if let summaryText = LoupeExifSummaryPresentation(technicalMetadata: asset.technicalMetadata).summaryText {
+                Text(summaryText)
+                    .foregroundStyle(.secondary)
+                    .font(.caption2.monospaced())
+                    .lineLimit(1)
+            }
             if let status = AssetSourceStatusPresentation.presentation(for: asset.availability) {
                 Label(status.detail, systemImage: status.systemImage)
                     .font(.caption2.weight(.medium))
@@ -7601,6 +7607,49 @@ struct AssetSourceStatusPresentation: Equatable {
         default:
             return .orange
         }
+    }
+}
+
+/// Compact single-line EXIF summary for the culling loupe: camera · lens ·
+/// ISO · aperture · shutter · focal length, omitting fields the asset lacks.
+struct LoupeExifSummaryPresentation: Equatable {
+    var summaryText: String?
+
+    init(technicalMetadata: AssetTechnicalMetadata?) {
+        guard let technicalMetadata else {
+            summaryText = nil
+            return
+        }
+        var components: [String] = []
+        let camera = [technicalMetadata.cameraMake, technicalMetadata.cameraModel]
+            .compactMap(Self.trimmed)
+            .joined(separator: " ")
+        if !camera.isEmpty {
+            components.append(camera)
+        }
+        if let lensModel = Self.trimmed(technicalMetadata.lensModel) {
+            components.append(lensModel)
+        }
+        if let isoSpeed = technicalMetadata.isoSpeed {
+            components.append("ISO \(isoSpeed)")
+        }
+        if let aperture = technicalMetadata.aperture {
+            components.append(ExifSummaryFormatting.apertureText(aperture))
+        }
+        if let shutterSpeed = technicalMetadata.shutterSpeed {
+            components.append(ExifSummaryFormatting.shutterSpeedText(shutterSpeed))
+        }
+        if let focalLength = technicalMetadata.focalLength {
+            components.append(ExifSummaryFormatting.focalLengthText(focalLength))
+        }
+        summaryText = components.isEmpty ? nil : components.joined(separator: " · ")
+    }
+
+    var isVisible: Bool { summaryText != nil }
+
+    private static func trimmed(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }
 
