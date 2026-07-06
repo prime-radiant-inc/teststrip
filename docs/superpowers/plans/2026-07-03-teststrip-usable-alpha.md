@@ -772,7 +772,7 @@ These are the current alpha gates. Performance must remain respectable enough to
 - [x] Keep dev app bundle signing/helper staging reliable.
 - [x] Add diagnostics export for catalog path, preview cache path, worker path, pending work counts, source status counts, and recent worker failures.
 - [ ] Add a reset-only-isolated-test-data helper if current smoke scripts leave confusing state.
-- [ ] Add crash/relaunch recovery smoke for queued/running worker-visible work.
+- [x] Add non-focus-stealing worker recovery smoke for catalog-persisted pending preview work promoted into queued/running worker-visible work. Latest verification: `script/verify_worker_recovery.sh 4 5` passed on 2026-07-05 with 4 catalog assets, 1 running worker command, 3 queued items, and 4 pending preview records.
 - [ ] Decide later whether notarization belongs before private alpha. Do not do production packaging work until Jesse asks.
 - [ ] Commit.
 
@@ -783,8 +783,12 @@ These are the current alpha gates. Performance must remain respectable enough to
 Use these as the default confidence ladder:
 
 ```bash
-swift test
-./script/build_and_run.sh --build-sandboxed
+./script/verify_headless_workflows.sh
+```
+
+Use these only for explicit/idle-time UI automation, because they launch or foreground the app:
+
+```bash
 ./script/build_and_run.sh --verify-smoke
 ./script/verify_app_workflows.sh Teststrip
 ./script/verify_grid_activation.sh Teststrip

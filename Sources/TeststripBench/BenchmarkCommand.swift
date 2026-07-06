@@ -11,6 +11,7 @@ public enum BenchmarkCommand: Equatable {
     case metadataWrite(count: Int)
     case sourceAvailability(count: Int)
     case previewRender(count: Int)
+    case workerRecoverySmoke(count: Int)
     case realCorpusSmoke(photoDirectory: URL)
     case samplePreviewRender(photoDirectory: URL)
     case seedAppCatalog(applicationSupportDirectory: URL, count: Int)
@@ -49,6 +50,9 @@ public enum BenchmarkCommand: Equatable {
         }
         if firstArgument == "preview-render" {
             return .previewRender(count: Int(userArguments.dropFirst().first ?? "250") ?? 250)
+        }
+        if firstArgument == "worker-recovery-smoke" {
+            return .workerRecoverySmoke(count: Int(userArguments.dropFirst().first ?? "24") ?? 24)
         }
         if firstArgument == "real-corpus-smoke" {
             let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath

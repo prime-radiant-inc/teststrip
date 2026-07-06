@@ -42,6 +42,10 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "preview-render", "250"]), .previewRender(count: 250))
     }
 
+    func testWorkerRecoverySmokeCommandParsesCount() throws {
+        XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "worker-recovery-smoke", "12"]), .workerRecoverySmoke(count: 12))
+    }
+
     func testRealCorpusSmokeCommandParsesPhotoDirectory() throws {
         XCTAssertEqual(
             BenchmarkCommand.parse(["TeststripBench", "real-corpus-smoke", "/tmp/teststrip-real-corpus"]),
@@ -171,6 +175,20 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(result.sourceImageCount, 12)
         XCTAssertEqual(result.renderedPreviewCount, 48)
         XCTAssertEqual(result.cachedPreviewCount, 48)
+    }
+
+    func testWorkerRecoverySmokeLoadsPendingPreviewWorkIntoAppQueue() throws {
+        let root = try makeTemporaryDirectory(named: "worker-recovery-smoke")
+
+        let result = try WorkerRecoverySmoke(count: 4, root: root).run()
+
+        XCTAssertEqual(result.assetCount, 4)
+        XCTAssertEqual(result.recoveredPreviewWorkCount, 4)
+        XCTAssertEqual(result.runningWorkCount, 1)
+        XCTAssertEqual(result.queuedWorkCount, 3)
+        XCTAssertEqual(result.dispatchedCommandCount, 1)
+        XCTAssertEqual(result.pendingPreviewCount, 4)
+        XCTAssertTrue(result.workerProcessStarted)
     }
 
     func testSamplePreviewRenderBenchmarkCreatesCachedPreviewsFromExistingPhotos() throws {

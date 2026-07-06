@@ -24,6 +24,8 @@ case .sourceAvailability(let count):
     try runSourceAvailabilityBenchmark(count: count, root: root)
 case .previewRender(let count):
     try runPreviewRenderBenchmark(count: count, root: root)
+case .workerRecoverySmoke(let count):
+    try runWorkerRecoverySmoke(count: count, root: root)
 case .realCorpusSmoke(let photoDirectory):
     try runRealCorpusSmoke(photoDirectory: photoDirectory, root: root)
 case .samplePreviewRender(let photoDirectory):
@@ -180,6 +182,31 @@ private func runPreviewRenderBenchmark(count: Int, root: URL) throws {
     print("source images: \(result.sourceImageCount)")
     print("rendered previews: \(result.renderedPreviewCount)")
     print("cached previews: \(result.cachedPreviewCount)")
+    try printMachineReadableSummary(recorder.summary)
+}
+
+private func runWorkerRecoverySmoke(count: Int, root: URL) throws {
+    var recorder = BenchmarkSummaryRecorder(benchmark: "worker_recovery_smoke", count: count)
+
+    print("TeststripBench worker recovery smoke")
+    print("count: \(count)")
+    let result = try measure("worker recovery smoke", recorder: &recorder, key: "worker_recovery_smoke") {
+        try WorkerRecoverySmoke(count: count, root: root).run()
+    }
+    recorder.recordMetric("catalog_assets", result.assetCount)
+    recorder.recordMetric("recovered_preview_work", result.recoveredPreviewWorkCount)
+    recorder.recordMetric("running_work", result.runningWorkCount)
+    recorder.recordMetric("queued_work", result.queuedWorkCount)
+    recorder.recordMetric("dispatched_commands", result.dispatchedCommandCount)
+    recorder.recordMetric("pending_previews", result.pendingPreviewCount)
+    recorder.recordMetric("worker_process_started", result.workerProcessStarted ? 1 : 0)
+    print("catalog assets: \(result.assetCount)")
+    print("recovered preview work: \(result.recoveredPreviewWorkCount)")
+    print("running work: \(result.runningWorkCount)")
+    print("queued work: \(result.queuedWorkCount)")
+    print("dispatched commands: \(result.dispatchedCommandCount)")
+    print("pending previews: \(result.pendingPreviewCount)")
+    print("worker process started: \(result.workerProcessStarted ? "yes" : "no")")
     try printMachineReadableSummary(recorder.summary)
 }
 
