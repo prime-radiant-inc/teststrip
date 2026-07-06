@@ -4531,7 +4531,7 @@ struct SearchWorkspacePresentation: Equatable {
 
     private static func groupTitle(for row: SearchWorkspaceRefineRow) -> String {
         switch row.target {
-        case .assetSet?:
+        case .assetSet?, .workSession?:
             return "Scope"
         default:
             return groupTitle(for: row.title)
@@ -4540,6 +4540,10 @@ struct SearchWorkspacePresentation: Equatable {
 
     private static func groupTitle(for rowTitle: String) -> String {
         if rowTitle == "All photographs" {
+            return "Scope"
+        }
+        if rowTitle.hasPrefix("Session:")
+            || rowTitle.hasPrefix("Import:") {
             return "Scope"
         }
         if rowTitle == "Pick"

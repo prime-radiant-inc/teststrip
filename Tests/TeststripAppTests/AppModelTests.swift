@@ -2677,8 +2677,17 @@ final class AppModelTests: XCTestCase {
 
         try fixture.model.applyWorkSession(id: session.id)
 
-        XCTAssertEqual(fixture.model.selectedAssetSetID, outputSetID)
-        XCTAssertEqual(fixture.model.assets.map(\.id), [fixture.firstLead.id, fixture.secondLead.id])
+        XCTAssertNil(fixture.model.selectedAssetSetID)
+        XCTAssertEqual(fixture.model.librarySearchText, "session:\(session.id.rawValue)")
+        XCTAssertEqual(fixture.model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: .workSession(session.id))
+        ])
+        XCTAssertEqual(fixture.model.assets.map(\.id), [
+            fixture.firstLead.id,
+            fixture.firstAlternate.id,
+            fixture.secondLead.id,
+            fixture.secondAlternate.id
+        ])
     }
 
     func testSelectedCullingStackScopeUsesPersistedStackSetMembership() throws {
@@ -3617,7 +3626,7 @@ final class AppModelTests: XCTestCase {
 
     func testActiveLibraryFilterRowsBridgeConcreteFiltersToExistingTargets() {
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
-        model.librarySearchText = "picks 5 stars needs evaluation"
+        model.librarySearchText = "picks 5 stars needs evaluation session:cull-42 import:import-7"
         model.availabilityFilter = .missing
         model.evaluationKindFilter = .faceQuality
         model.metadataSyncPendingFilter = true
@@ -3626,6 +3635,8 @@ final class AppModelTests: XCTestCase {
             ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
             ActiveLibraryFilterRow(title: "Rating >= 5", target: .reviewQueue(.fiveStars)),
             ActiveLibraryFilterRow(title: "Needs Evaluation", target: .reviewQueue(.needsEvaluation)),
+            ActiveLibraryFilterRow(title: "Session: cull-42", target: .workSession(WorkSessionID(rawValue: "cull-42"))),
+            ActiveLibraryFilterRow(title: "Import: import-7", target: .workSession(WorkSessionID(rawValue: "import-7"))),
             ActiveLibraryFilterRow(title: "Source: Missing", target: .sourceAvailability(.missing)),
             ActiveLibraryFilterRow(title: "Signal: Face Quality", target: .evaluationKind(.faceQuality)),
             ActiveLibraryFilterRow(title: "XMP Pending", target: .metadataSyncPending)
@@ -5138,7 +5149,8 @@ final class AppModelTests: XCTestCase {
         let starredRow = try XCTUnwrap(starredRows.first { $0.title == "Long-running Cull" })
         try model.selectSidebarRow(starredRow)
 
-        XCTAssertEqual(model.selectedAssetSetID, inputSet.id)
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.librarySearchText, "session:old-starred-cull")
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
         XCTAssertEqual(model.selectedView, .loupe)
     }
@@ -5238,7 +5250,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(action.systemImage, "star.slash")
     }
 
-    func testSelectingWorkSessionAppliesAssociatedOutputSet() throws {
+    func testSelectingWorkSessionAppliesSessionQueryScope() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-select-work-session")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
@@ -5246,11 +5258,17 @@ final class AppModelTests: XCTestCase {
         let keeper = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
         let reject = makeAsset(id: "reject", path: "/Photos/reject.jpg", rating: 1)
         try repository.upsert([keeper, reject])
+        let inputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "work-input"),
+            name: "Work Input",
+            assetIDs: [keeper.id, reject.id]
+        )
         let outputSet = AssetSet.manual(
             id: AssetSetID(rawValue: "work-output"),
             name: "Work Output",
             assetIDs: [keeper.id]
         )
+        try repository.upsert(inputSet)
         try repository.upsert(outputSet)
         let session = WorkSession(
             id: WorkSessionID(rawValue: "cull-session"),
@@ -5259,7 +5277,7 @@ final class AppModelTests: XCTestCase {
             title: "Cull Session",
             detail: "Selected one keeper",
             status: .completed,
-            inputSetIDs: [],
+            inputSetIDs: [inputSet.id],
             outputSetIDs: [outputSet.id],
             completedUnitCount: 2,
             totalUnitCount: 2,
@@ -5281,10 +5299,17 @@ final class AppModelTests: XCTestCase {
         let model = try AppModel.load(catalog: catalog)
         let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
 
+        XCTAssertEqual(row.countText, "2")
+
         try model.selectSidebarRow(row)
 
-        XCTAssertEqual(model.selectedAssetSetID, outputSet.id)
-        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.librarySearchText, "session:cull-session")
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Session: cull-session", target: .workSession(session.id))
+        ])
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id, reject.id])
+        XCTAssertEqual(model.selectedView, .loupe)
     }
 
     func testSelectingCullingWorkSessionReopensLoupeView() throws {
@@ -5295,10 +5320,10 @@ final class AppModelTests: XCTestCase {
         let keeper = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
         let reject = makeAsset(id: "reject", path: "/Photos/reject.jpg", rating: 1)
         try repository.upsert([keeper, reject])
-        let inputSet = AssetSet.dynamic(
+        let inputSet = AssetSet(
             id: AssetSetID(rawValue: "cull-input"),
             name: "Cull Input",
-            query: SetQuery(predicates: [.ratingAtLeast(4)])
+            membership: .snapshot([keeper.id])
         )
         try repository.upsert(inputSet)
         let session = WorkSession(
@@ -5330,9 +5355,15 @@ final class AppModelTests: XCTestCase {
         let model = try AppModel.load(catalog: catalog)
         let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
 
+        XCTAssertEqual(row.countText, "1")
+
         try model.selectSidebarRow(row)
 
-        XCTAssertEqual(model.selectedAssetSetID, inputSet.id)
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.librarySearchText, "session:cull-session")
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Session: cull-session", target: .workSession(session.id))
+        ])
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
         XCTAssertEqual(model.selectedView, .loupe)
     }
@@ -6334,7 +6365,11 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(session.status, .running)
         XCTAssertEqual(session.title, "Ceremony Cull")
         XCTAssertEqual(session.intent, "One hero per burst")
-        XCTAssertEqual(session.inputSetIDs, [inputSet.id])
+        let inputSetID = try XCTUnwrap(session.inputSetIDs.first)
+        let workInputSet = try repository.assetSet(id: inputSetID)
+        XCTAssertTrue(inputSetID.rawValue.hasPrefix("work-input-"))
+        XCTAssertEqual(workInputSet.name, "Ceremony Cull Input")
+        XCTAssertEqual(workInputSet.membership, .snapshot([keeper.id]))
         XCTAssertEqual(session.totalUnitCount, 1)
         XCTAssertEqual(model.selectedView, .loupe)
         XCTAssertEqual(model.recentWork.first?.id, session.id.rawValue)
@@ -6344,7 +6379,11 @@ final class AppModelTests: XCTestCase {
         let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
         try model.selectSidebarRow(row)
 
-        XCTAssertEqual(model.selectedAssetSetID, inputSet.id)
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.librarySearchText, "session:\(session.id.rawValue)")
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: .workSession(session.id))
+        ])
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
     }
 
@@ -6366,7 +6405,7 @@ final class AppModelTests: XCTestCase {
         let inputSet = try repository.assetSet(id: inputSetID)
         XCTAssertTrue(inputSetID.rawValue.hasPrefix("work-input-"))
         XCTAssertEqual(inputSet.name, "Wedding Cull Input")
-        XCTAssertEqual(inputSet.membership, .dynamic(SetQuery(predicates: [.text("Wedding"), .ratingAtLeast(4), .flag(.pick)])))
+        XCTAssertEqual(inputSet.membership, .snapshot([keeper.id]))
         XCTAssertEqual(model.selectedAssetSetID, inputSetID)
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
         XCTAssertEqual(model.selectedView, .loupe)
@@ -6378,7 +6417,11 @@ final class AppModelTests: XCTestCase {
         let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
         try model.selectSidebarRow(row)
 
-        XCTAssertEqual(model.selectedAssetSetID, inputSetID)
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.librarySearchText, "session:\(session.id.rawValue)")
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: .workSession(session.id))
+        ])
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
     }
 
@@ -6416,8 +6459,12 @@ final class AppModelTests: XCTestCase {
         try model.applyWorkSession(id: session.id)
 
         XCTAssertEqual(model.selectedView, .loupe)
-        XCTAssertEqual(model.selectedAssetSetID, outputSetID)
-        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.librarySearchText, "session:\(session.id.rawValue)")
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: .workSession(session.id))
+        ])
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id, reject.id])
     }
 
     func testClearingCullingPickRemovesEmptyPicksOutputSet() throws {
@@ -6444,7 +6491,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(assetIDs(in: try repository.assetSet(id: outputSetID)), [keeper.id])
 
         try model.applyWorkSession(id: pickedSession.id)
-        XCTAssertEqual(model.selectedAssetSetID, outputSetID)
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.librarySearchText, "session:\(pickedSession.id.rawValue)")
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
 
         try model.applyCullingCommand(.clearFlag)
 
@@ -8404,7 +8453,11 @@ final class AppModelTests: XCTestCase {
         let appliedCount = try model.acceptLatestImportBatchKeywordSuggestion("mountain")
 
         XCTAssertEqual(appliedCount, 2)
-        XCTAssertEqual(model.selectedAssetSetID, outputSet.id)
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.librarySearchText, "session:\(session.id.rawValue)")
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: .workSession(session.id))
+        ])
         XCTAssertEqual(model.assets.map(\.id), [first.id, second.id])
         XCTAssertEqual(try repository.asset(id: first.id).metadata.keywords, ["mountain"])
         XCTAssertEqual(try repository.asset(id: second.id).metadata.keywords, ["mountain"])
@@ -10958,7 +11011,11 @@ final class AppModelTests: XCTestCase {
         let row = try XCTUnwrap(reloaded.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
         try reloaded.selectSidebarRow(row)
 
-        XCTAssertEqual(reloaded.selectedAssetSetID, outputSetID)
+        XCTAssertNil(reloaded.selectedAssetSetID)
+        XCTAssertEqual(reloaded.librarySearchText, "session:\(session.id.rawValue)")
+        XCTAssertEqual(reloaded.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: .workSession(session.id))
+        ])
         XCTAssertEqual(reloaded.assets.map(\.originalURL), [image])
     }
 
@@ -10989,7 +11046,12 @@ final class AppModelTests: XCTestCase {
 
         let session = try catalog.repository.session(id: WorkSessionID(rawValue: summary.activityID))
         let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
-        XCTAssertEqual(model.selectedAssetSetID, outputSetID)
+        XCTAssertEqual(assetIDs(in: try catalog.repository.assetSet(id: outputSetID)), [try XCTUnwrap(model.assets.first?.id)])
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.librarySearchText, "session:\(summary.activityID)")
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Session: \(summary.activityID)", target: .workSession(WorkSessionID(rawValue: summary.activityID)))
+        ])
         XCTAssertEqual(model.assets.map(\.originalURL), [image])
         XCTAssertEqual(model.selectedView, .grid)
     }
@@ -11028,7 +11090,11 @@ final class AppModelTests: XCTestCase {
 
         try model.selectSidebarRow(recentlyAddedRow)
 
-        XCTAssertEqual(model.selectedAssetSetID, AssetSetID(rawValue: "latest-import-output"))
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.librarySearchText, "session:latest-import-session")
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Session: latest-import-session", target: .workSession(WorkSessionID(rawValue: "latest-import-session")))
+        ])
         XCTAssertEqual(model.assets.map(\.id), [first.id, second.id])
         XCTAssertNil(model.minimumRatingFilter)
         XCTAssertEqual(model.selectedView, .grid)
@@ -11165,8 +11231,10 @@ final class AppModelTests: XCTestCase {
         let cullingSession = try model.beginCullingFromLatestImportCompletion()
 
         XCTAssertEqual(cullingSession.title, summary.cullingSessionName)
-        XCTAssertEqual(cullingSession.inputSetIDs, [outputSetID])
-        XCTAssertEqual(model.selectedAssetSetID, outputSetID)
+        let inputSetID = try XCTUnwrap(cullingSession.inputSetIDs.first)
+        XCTAssertTrue(inputSetID.rawValue.hasPrefix("work-input-\(cullingSession.id.rawValue)"))
+        XCTAssertEqual(assetIDs(in: try catalog.repository.assetSet(id: inputSetID)), assetIDs(in: try catalog.repository.assetSet(id: outputSetID)))
+        XCTAssertEqual(model.selectedAssetSetID, inputSetID)
         XCTAssertEqual(model.assets.map(\.originalURL), [image])
         XCTAssertEqual(model.selectedView, .loupe)
     }
@@ -11374,7 +11442,12 @@ final class AppModelTests: XCTestCase {
 
         try model.reviewLatestImportInCompare()
 
-        XCTAssertEqual(model.selectedAssetSetID, outputSetID)
+        XCTAssertEqual(assetIDs(in: try catalog.repository.assetSet(id: outputSetID)), [try XCTUnwrap(model.assets.first?.id)])
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.librarySearchText, "session:\(summary.activityID)")
+        XCTAssertEqual(model.activeLibraryFilterRows, [
+            ActiveLibraryFilterRow(title: "Session: \(summary.activityID)", target: .workSession(WorkSessionID(rawValue: summary.activityID)))
+        ])
         XCTAssertEqual(model.assets.map(\.originalURL), [image])
         XCTAssertEqual(model.selectedView, .compare)
         XCTAssertEqual(model.compareAssets().map(\.originalURL), [image])

@@ -226,7 +226,8 @@ final class SearchWorkspacePresentationTests: XCTestCase {
                 ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
                 ActiveLibraryFilterRow(title: "Signal: Face Quality", target: .evaluationKind(.faceQuality)),
                 ActiveLibraryFilterRow(title: "XMP Pending", target: .metadataSyncPending),
-                ActiveLibraryFilterRow(title: "Camera: Canon", target: nil)
+                ActiveLibraryFilterRow(title: "Camera: Canon", target: nil),
+                ActiveLibraryFilterRow(title: "Session: cull-42", target: .workSession(WorkSessionID(rawValue: "cull-42")))
             ]
         )
 
@@ -234,17 +235,41 @@ final class SearchWorkspacePresentationTests: XCTestCase {
             .reviewQueue(.picks),
             .evaluationKind(.faceQuality),
             .metadataSyncPending,
-            nil
+            nil,
+            .workSession(WorkSessionID(rawValue: "cull-42"))
         ])
         XCTAssertEqual(
             presentation.refineGroups.flatMap(\.rows).map(\.target),
             [
+                .workSession(WorkSessionID(rawValue: "cull-42")),
                 .reviewQueue(.picks),
                 nil,
                 .evaluationKind(.faceQuality),
                 .metadataSyncPending
             ]
         )
+        XCTAssertEqual(presentation.refineGroups.first?.title, "Scope")
+        XCTAssertEqual(presentation.refineGroups.first?.rows.map(\.title), ["Session: cull-42"])
+    }
+
+    func testGroupsSessionAndImportFiltersAsScope() {
+        let presentation = SearchWorkspacePresentation(
+            suggestedName: "Session Scope",
+            totalAssetCount: 18,
+            savedSetCount: 0,
+            starredSetCount: 0,
+            activeFilterChips: [],
+            activeFilterRows: [
+                ActiveLibraryFilterRow(title: "Import: latest-import"),
+                ActiveLibraryFilterRow(title: "Session: cull-42", target: .workSession(WorkSessionID(rawValue: "cull-42"))),
+                ActiveLibraryFilterRow(title: "Camera: Canon")
+            ]
+        )
+
+        XCTAssertEqual(presentation.refineGroups.first, SearchWorkspaceRefineGroup(title: "Scope", rows: [
+            SearchWorkspaceRefineRow(title: "Import: latest-import", value: "active"),
+            SearchWorkspaceRefineRow(title: "Session: cull-42", value: "active", target: .workSession(WorkSessionID(rawValue: "cull-42")))
+        ]))
     }
 
     func testGroupsActiveFiltersIntoMockupRefineSections() {
@@ -297,6 +322,8 @@ final class SearchWorkspacePresentationTests: XCTestCase {
             activeFilterChips: [],
             activeFilterRows: [
                 ActiveLibraryFilterRow(title: "Ceremony Keepers", target: .assetSet(setID)),
+                ActiveLibraryFilterRow(title: "Session: cull-42", target: .workSession(WorkSessionID(rawValue: "cull-42"))),
+                ActiveLibraryFilterRow(title: "Import: import-7", target: .workSession(WorkSessionID(rawValue: "import-7"))),
                 ActiveLibraryFilterRow(title: "Search: ceremony"),
                 ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
                 ActiveLibraryFilterRow(title: "Rating >= 5", target: .reviewQueue(.fiveStars)),
@@ -306,7 +333,9 @@ final class SearchWorkspacePresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.refineGroups, [
             SearchWorkspaceRefineGroup(title: "Scope", rows: [
-                SearchWorkspaceRefineRow(title: "Ceremony Keepers", value: "active", target: .assetSet(setID))
+                SearchWorkspaceRefineRow(title: "Ceremony Keepers", value: "active", target: .assetSet(setID)),
+                SearchWorkspaceRefineRow(title: "Session: cull-42", value: "active", target: .workSession(WorkSessionID(rawValue: "cull-42"))),
+                SearchWorkspaceRefineRow(title: "Import: import-7", value: "active", target: .workSession(WorkSessionID(rawValue: "import-7")))
             ]),
             SearchWorkspaceRefineGroup(title: "Decisions", rows: [
                 SearchWorkspaceRefineRow(title: "Pick", value: "active", target: .reviewQueue(.picks)),

@@ -704,6 +704,7 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
     public var failureCount: Int
     public var issues: [WorkSessionIssue]
     public var starred: Bool
+    public var inputSetIDs: [AssetSetID]
     public var outputSetIDs: [AssetSetID]
 
     public init(
@@ -717,6 +718,7 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
         failureCount: Int,
         issues: [WorkSessionIssue] = [],
         starred: Bool = false,
+        inputSetIDs: [AssetSetID] = [],
         outputSetIDs: [AssetSetID] = []
     ) {
         self.id = id
@@ -729,6 +731,7 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
         self.failureCount = failureCount
         self.issues = issues
         self.starred = starred
+        self.inputSetIDs = inputSetIDs
         self.outputSetIDs = outputSetIDs
     }
 
@@ -761,6 +764,7 @@ public struct AppWorkActivity: Identifiable, Equatable, Sendable {
             failureCount: workSession.failureCount,
             issues: workSession.issues,
             starred: workSession.starred,
+            inputSetIDs: workSession.inputSetIDs,
             outputSetIDs: workSession.outputSetIDs
         )
     }
@@ -1031,6 +1035,7 @@ public final class AppModel {
     private var detachedLibraryFilterPredicates: [SetQuery.Predicate]
     public var savedAssetSets: [AssetSet]
     public var assetSetCounts: [AssetSetID: Int]
+    public var workSessionScopeCounts: [WorkSessionID: Int]
     public var catalogFolders: [CatalogFolder]
     public var catalogTimelineDays: [CatalogTimelineDay]
     public var sourceRoots: [CatalogSourceRoot]
@@ -1949,6 +1954,7 @@ public final class AppModel {
         backgroundWorkQueue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
         savedAssetSets: [AssetSet] = [],
         assetSetCounts: [AssetSetID: Int] = [:],
+        workSessionScopeCounts: [WorkSessionID: Int] = [:],
         catalogFolders: [CatalogFolder] = [],
         catalogTimelineDays: [CatalogTimelineDay] = [],
         sourceRoots: [CatalogSourceRoot] = [],
@@ -1972,6 +1978,7 @@ public final class AppModel {
             totalAssetCount: resolvedTotalAssetCount,
             savedAssetSets: savedAssetSets,
             assetSetCounts: assetSetCounts,
+            workSessionScopeCounts: workSessionScopeCounts,
             catalogFolders: catalogFolders,
             catalogTimelineDays: catalogTimelineDays,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
@@ -2025,6 +2032,7 @@ public final class AppModel {
         self.detachedLibraryFilterPredicates = []
         self.savedAssetSets = savedAssetSets
         self.assetSetCounts = assetSetCounts
+        self.workSessionScopeCounts = workSessionScopeCounts
         self.catalogFolders = catalogFolders
         self.catalogTimelineDays = catalogTimelineDays
         self.sourceRoots = sourceRoots
@@ -2165,12 +2173,17 @@ public final class AppModel {
         )
         let recentWork = try repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
+        let workSessionScopeCounts = try Self.workSessionScopeCounts(
+            activities: recentWork + starredWork,
+            repository: repository
+        )
         let totalAssetCount = try repository.assetCount()
         return AppModel(
             sidebarSections: defaultSidebarSections(
                 totalAssetCount: totalAssetCount,
                 savedAssetSets: savedAssetSets,
                 assetSetCounts: assetSetCounts,
+                workSessionScopeCounts: workSessionScopeCounts,
                 catalogFolders: catalogFolders,
                 catalogTimelineDays: catalogTimelineDays,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
@@ -2198,6 +2211,7 @@ public final class AppModel {
             ),
             savedAssetSets: savedAssetSets,
             assetSetCounts: assetSetCounts,
+            workSessionScopeCounts: workSessionScopeCounts,
             catalogFolders: catalogFolders,
             catalogTimelineDays: catalogTimelineDays,
             sourceRoots: sourceRoots,
@@ -2234,12 +2248,17 @@ public final class AppModel {
         )
         let recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
         let starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
+        let workSessionScopeCounts = try Self.workSessionScopeCounts(
+            activities: recentWork + starredWork,
+            repository: catalog.repository
+        )
         let totalAssetCount = try catalog.repository.assetCount()
         let model = AppModel(
             sidebarSections: defaultSidebarSections(
                 totalAssetCount: totalAssetCount,
                 savedAssetSets: savedAssetSets,
                 assetSetCounts: assetSetCounts,
+                workSessionScopeCounts: workSessionScopeCounts,
                 catalogFolders: catalogFolders,
                 catalogTimelineDays: catalogTimelineDays,
                 sourceAvailabilitySummaries: sourceAvailabilitySummaries,
@@ -2268,6 +2287,7 @@ public final class AppModel {
             ),
             savedAssetSets: savedAssetSets,
             assetSetCounts: assetSetCounts,
+            workSessionScopeCounts: workSessionScopeCounts,
             catalogFolders: catalogFolders,
             catalogTimelineDays: catalogTimelineDays,
             sourceRoots: sourceRoots,
@@ -2540,13 +2560,14 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         let session = try catalog.repository.session(id: id)
-        if let assetSetID = session.outputSetIDs.first ?? session.inputSetIDs.first {
-            try applyAssetSet(id: assetSetID)
-            if session.kind == .culling {
-                selectedView = .loupe
-            }
-            return
-        }
+        selectedAssetSetID = nil
+        clearLibraryQueryFilters()
+        librarySearchText = Self.librarySearchText(
+            residualText: nil,
+            predicates: [.workSession(id.rawValue)]
+        )
+        selectedView = session.kind == .culling ? .loupe : .grid
+        try reload()
         statusMessage = session.detail.isEmpty ? session.title : session.detail
     }
 
@@ -2943,6 +2964,10 @@ public final class AppModel {
         }
         recentWork = try catalog.repository.workSessions(limit: 10).map(AppWorkActivity.init)
         starredWork = try catalog.repository.workSessions(limit: 10, starredOnly: true).map(AppWorkActivity.init)
+        workSessionScopeCounts = try Self.workSessionScopeCounts(
+            activities: recentWork + starredWork,
+            repository: catalog.repository
+        )
         rebuildSidebarSections()
     }
 
@@ -6167,9 +6192,9 @@ public final class AppModel {
         case .metadataSyncConflict:
             ActiveLibraryFilterRow(title: "XMP Conflicts", target: sidebarTarget(for: predicate))
         case .importBatch(let id):
-            ActiveLibraryFilterRow(title: "Import: \(id)")
+            ActiveLibraryFilterRow(title: "Import: \(id)", target: sidebarTarget(for: predicate))
         case .workSession(let id):
-            ActiveLibraryFilterRow(title: "Session: \(id)")
+            ActiveLibraryFilterRow(title: "Session: \(id)", target: sidebarTarget(for: predicate))
         }
     }
 
@@ -6223,6 +6248,10 @@ public final class AppModel {
             .metadataSyncPending
         case .metadataSyncConflict:
             .metadataSyncConflicts
+        case .importBatch(let id):
+            .workSession(WorkSessionID(rawValue: id))
+        case .workSession(let id):
+            .workSession(WorkSessionID(rawValue: id))
         default:
             nil
         }
@@ -6730,10 +6759,28 @@ public final class AppModel {
         }
     }
 
+    private func activeCullingSession(repository: CatalogRepository) throws -> WorkSession? {
+        if let selectedAssetSetID {
+            return try activeCullingSession(for: selectedAssetSetID, repository: repository)
+        }
+        guard let workSessionID = activeWorkSessionFilterID else { return nil }
+        let session = try repository.session(id: workSessionID)
+        return session.kind == .culling ? session : nil
+    }
+
+    private var activeWorkSessionFilterID: WorkSessionID? {
+        LibrarySearchIntent.parse(librarySearchText)
+            .predicates
+            .compactMap { predicate -> WorkSessionID? in
+                guard case .workSession(let id) = predicate else { return nil }
+                return WorkSessionID(rawValue: id)
+            }
+            .first
+    }
+
     private func updateActiveCullingSessionProgressAfterFlagChange() throws {
         guard let catalog,
-              let selectedAssetSetID,
-              var session = try activeCullingSession(for: selectedAssetSetID, repository: catalog.repository) else {
+              var session = try activeCullingSession(repository: catalog.repository) else {
             return
         }
         switch session.status {
@@ -6742,7 +6789,7 @@ public final class AppModel {
         case .queued, .running, .paused, .completed:
             break
         }
-        if Self.isWorkStackSetID(selectedAssetSetID) {
+        if let selectedAssetSetID, Self.isWorkStackSetID(selectedAssetSetID) {
             try updatePersistedStackCullingSessionProgress(selectedStackSetID: selectedAssetSetID)
             return
         }
@@ -7050,13 +7097,20 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         if let selectedAssetSetID {
-            return selectedAssetSetID
+            let selectedSet = try assetSetForSelection(id: selectedAssetSetID, repository: catalog.repository)
+            switch selectedSet.membership {
+            case .manual, .snapshot:
+                return selectedAssetSetID
+            case .dynamic:
+                break
+            }
         }
         let inputSetID = AssetSetID(rawValue: "work-input-\(sessionID.rawValue)")
+        let inputAssetIDs = try currentAssetScopeIDs(repository: catalog.repository)
         let inputSet = AssetSet(
             id: inputSetID,
             name: "\(title) Input",
-            membership: .dynamic(currentLibraryQuery() ?? SetQuery(predicates: []))
+            membership: .snapshot(inputAssetIDs)
         )
         try catalog.repository.upsert(inputSet)
         savedAssetSets = try catalog.repository.assetSets()
@@ -7081,6 +7135,7 @@ public final class AppModel {
             totalAssetCount: totalAssetCount,
             savedAssetSets: savedAssetSets,
             assetSetCounts: assetSetCounts,
+            workSessionScopeCounts: workSessionScopeCounts,
             catalogFolders: catalogFolders,
             catalogTimelineDays: catalogTimelineDays,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
@@ -7675,17 +7730,28 @@ public final class AppModel {
         inputSetIDs: [AssetSetID] = [],
         outputSetIDs: [AssetSetID] = []
     ) {
-        recentWork.removeAll { $0.id == activity.id }
-        recentWork.insert(activity, at: 0)
-        rebuildSidebarSections()
-        guard let catalog else { return }
+        var recordedActivity = activity
+        recordedActivity.inputSetIDs = inputSetIDs
+        recordedActivity.outputSetIDs = outputSetIDs
+        recentWork.removeAll { $0.id == recordedActivity.id }
+        recentWork.insert(recordedActivity, at: 0)
+        guard let catalog else {
+            rebuildSidebarSections()
+            return
+        }
         do {
-            try catalog.repository.save(activity.workSession(
+            try catalog.repository.save(recordedActivity.workSession(
                 intent: intent,
                 inputSetIDs: inputSetIDs,
                 outputSetIDs: outputSetIDs
             ))
+            let sessionID = WorkSessionID(rawValue: recordedActivity.id)
+            workSessionScopeCounts[sessionID] = try catalog.repository.assetCount(
+                matching: SetQuery(predicates: [.workSession(recordedActivity.id)])
+            )
+            rebuildSidebarSections()
         } catch {
+            rebuildSidebarSections()
             errorMessage = error.localizedDescription
         }
     }
@@ -7849,6 +7915,7 @@ public final class AppModel {
         totalAssetCount: Int? = nil,
         savedAssetSets: [AssetSet] = [],
         assetSetCounts: [AssetSetID: Int] = [:],
+        workSessionScopeCounts: [WorkSessionID: Int] = [:],
         catalogFolders: [CatalogFolder] = [],
         catalogTimelineDays: [CatalogTimelineDay] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
@@ -7985,8 +8052,16 @@ public final class AppModel {
         if !visibleSavedAssetSets.isEmpty {
             sections.append(SidebarSection(title: "Saved Sets", rows: visibleSavedAssetSets.map { Self.sidebarRow(for: $0, count: assetSetCounts[$0.id]) }))
         }
-        let recentWorkRows = Self.workSidebarRows(for: Array(recentWork.prefix(5)), idPrefix: "work-recent")
-        let starredWorkRows = Self.workSidebarRows(for: Array(starredWork.prefix(5)), idPrefix: "work-starred")
+        let recentWorkRows = Self.workSidebarRows(
+            for: Array(recentWork.prefix(5)),
+            idPrefix: "work-recent",
+            scopeCounts: workSessionScopeCounts
+        )
+        let starredWorkRows = Self.workSidebarRows(
+            for: Array(starredWork.prefix(5)),
+            idPrefix: "work-starred",
+            scopeCounts: workSessionScopeCounts
+        )
         if recentWorkRows.isEmpty && starredWorkRows.isEmpty {
             sections.append(SidebarSection(title: "Work", rows: workPlaceholderSidebarRows()))
         } else {
@@ -8268,15 +8343,36 @@ public final class AppModel {
         }
     }
 
-    private static func workSidebarRows(for activities: [AppWorkActivity], idPrefix: String) -> [SidebarRow] {
+    private static func workSessionScopeCounts(
+        activities: [AppWorkActivity],
+        repository: CatalogRepository
+    ) throws -> [WorkSessionID: Int] {
+        var counts: [WorkSessionID: Int] = [:]
+        for activity in activities {
+            let sessionID = WorkSessionID(rawValue: activity.id)
+            do {
+                counts[sessionID] = try repository.assetCount(matching: SetQuery(predicates: [.workSession(activity.id)]))
+            } catch CatalogError.notFound {
+                continue
+            }
+        }
+        return counts
+    }
+
+    private static func workSidebarRows(
+        for activities: [AppWorkActivity],
+        idPrefix: String,
+        scopeCounts: [WorkSessionID: Int]
+    ) -> [SidebarRow] {
         activities.map { activity in
-            SidebarRow(
+            let sessionID = WorkSessionID(rawValue: activity.id)
+            return SidebarRow(
                 id: "\(idPrefix)-\(activity.id)",
                 title: workSidebarTitle(for: activity),
                 detailText: activity.sidebarDetailText,
-                countText: activity.sidebarCountText,
+                countText: activity.sidebarCountText(scopeCount: scopeCounts[sessionID]),
                 tone: activity.sidebarTone,
-                target: .workSession(WorkSessionID(rawValue: activity.id))
+                target: .workSession(sessionID)
             )
         }
     }
@@ -8351,7 +8447,10 @@ private extension AppWorkActivity {
         }
     }
 
-    var sidebarCountText: String? {
+    func sidebarCountText(scopeCount: Int?) -> String? {
+        if let scopeCount {
+            return AppModel.sidebarCountText(scopeCount)
+        }
         guard let totalUnitCount, totalUnitCount > 0 else {
             return completedUnitCount > 0 ? AppModel.sidebarCountText(completedUnitCount) : nil
         }

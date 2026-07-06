@@ -1131,6 +1131,44 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(matching: query), 2)
     }
 
+    func testWorkSessionQueryMatchesDynamicInputSets() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-work-session-dynamic-query")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let keeper = Asset.testAsset(id: AssetID(rawValue: "dynamic-input-keeper"), path: "/Volumes/NAS/Job/keeper.cr2", rating: 5)
+        let reject = Asset.testAsset(id: AssetID(rawValue: "dynamic-input-reject"), path: "/Volumes/NAS/Job/reject.cr2", rating: 2)
+        let inputSet = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "dynamic-work-input"),
+            name: "Dynamic Work Input",
+            query: SetQuery(predicates: [.ratingAtLeast(5)])
+        )
+        let session = WorkSession(
+            id: WorkSessionID(rawValue: "dynamic-cull"),
+            kind: .culling,
+            intent: "Review rated work",
+            title: "Dynamic Cull",
+            detail: "Dynamic input",
+            status: .running,
+            inputSetIDs: [inputSet.id],
+            outputSetIDs: [],
+            completedUnitCount: 0,
+            totalUnitCount: 2,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        )
+        try repository.upsert([keeper, reject])
+        try repository.upsert(inputSet)
+        try repository.save(session)
+
+        let query = SetQuery(predicates: [.workSession(session.id.rawValue)])
+
+        XCTAssertEqual(try repository.allAssets(matching: query, limit: 10).map(\.id), [keeper.id])
+        XCTAssertEqual(try repository.assetIDs(matching: query), [keeper.id])
+        XCTAssertEqual(try repository.assetCount(matching: query), 1)
+    }
+
     func testPersistsEvaluationSignalsForAsset() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-signals")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

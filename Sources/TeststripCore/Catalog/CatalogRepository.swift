@@ -1391,16 +1391,38 @@ public final class CatalogRepository {
                     clauses.append("0 = 1")
                     continue
                 }
-                clauses.append(Self.workSessionAssetMembershipClause(setIDColumnNames: ["output_set_ids_json"]))
-                bindings.append(contentsOf: Array(repeating: trimmed, count: 2))
+                let setIDColumnNames = ["output_set_ids_json"]
+                let dynamicAssetIDs = try workSessionDynamicAssetIDs(
+                    sessionID: trimmed,
+                    includesInputSets: false,
+                    includesOutputSets: true
+                )
+                Self.appendWorkSessionMembershipClause(
+                    setIDColumnNames: setIDColumnNames,
+                    sessionID: trimmed,
+                    dynamicAssetIDs: dynamicAssetIDs,
+                    to: &clauses,
+                    bindings: &bindings
+                )
             case .workSession(let sessionID):
                 let trimmed = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else {
                     clauses.append("0 = 1")
                     continue
                 }
-                clauses.append(Self.workSessionAssetMembershipClause(setIDColumnNames: ["input_set_ids_json", "output_set_ids_json"]))
-                bindings.append(contentsOf: Array(repeating: trimmed, count: 4))
+                let setIDColumnNames = ["input_set_ids_json", "output_set_ids_json"]
+                let dynamicAssetIDs = try workSessionDynamicAssetIDs(
+                    sessionID: trimmed,
+                    includesInputSets: true,
+                    includesOutputSets: true
+                )
+                Self.appendWorkSessionMembershipClause(
+                    setIDColumnNames: setIDColumnNames,
+                    sessionID: trimmed,
+                    dynamicAssetIDs: dynamicAssetIDs,
+                    to: &clauses,
+                    bindings: &bindings
+                )
             }
         }
 
@@ -1408,6 +1430,60 @@ public final class CatalogRepository {
             return ("", [])
         }
         return (" WHERE " + clauses.joined(separator: " AND "), bindings)
+    }
+
+    private func workSessionDynamicAssetIDs(
+        sessionID: String,
+        includesInputSets: Bool,
+        includesOutputSets: Bool
+    ) throws -> [AssetID] {
+        let rows = try database.rows("SELECT input_set_ids_json, output_set_ids_json FROM work_sessions WHERE id = ?", bindings: [sessionID])
+        guard let row = rows.first else { return [] }
+        var assetIDs: [AssetID] = []
+        var seenAssetIDs: Set<AssetID> = []
+        var setIDs: [AssetSetID] = []
+        if includesInputSets, let inputJSON = row["input_set_ids_json"] {
+            setIDs.append(contentsOf: try Self.decodeAssetSetIDs(inputJSON))
+        }
+        if includesOutputSets, let outputJSON = row["output_set_ids_json"] {
+            setIDs.append(contentsOf: try Self.decodeAssetSetIDs(outputJSON))
+        }
+        for setID in setIDs {
+            let set: AssetSet
+            do {
+                set = try assetSet(id: setID)
+            } catch CatalogError.notFound {
+                continue
+            }
+            guard case .dynamic(let query) = set.membership else {
+                continue
+            }
+            for assetID in try self.assetIDs(matching: query) where seenAssetIDs.insert(assetID).inserted {
+                assetIDs.append(assetID)
+            }
+        }
+        return assetIDs
+    }
+
+    private static func decodeAssetSetIDs(_ json: String) throws -> [AssetSetID] {
+        let data = Data(json.utf8)
+        return try JSONDecoder().decode([AssetSetID].self, from: data)
+    }
+
+    private static func appendWorkSessionMembershipClause(
+        setIDColumnNames: [String],
+        sessionID: String,
+        dynamicAssetIDs: [AssetID],
+        to clauses: inout [String],
+        bindings: inout [String]
+    ) {
+        var membershipClauses = [workSessionAssetMembershipClause(setIDColumnNames: setIDColumnNames)]
+        bindings.append(contentsOf: Array(repeating: sessionID, count: setIDColumnNames.count * 2))
+        if !dynamicAssetIDs.isEmpty {
+            membershipClauses.append("assets.id IN (\(Array(repeating: "?", count: dynamicAssetIDs.count).joined(separator: ", ")))")
+            bindings.append(contentsOf: dynamicAssetIDs.map(\.rawValue))
+        }
+        clauses.append("(\(membershipClauses.joined(separator: " OR ")))")
     }
 
     private static func workSessionAssetMembershipClause(setIDColumnNames: [String]) -> String {
