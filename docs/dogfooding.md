@@ -66,6 +66,5 @@ Quitting any time — including mid-import or while previews are still draining 
 
 ## Known rough edges
 
-- **Large-import feedback latency is a known open item.** The last full measured run on a 600-image import showed ~19.7s to first visible feedback (budget: 1.5s) and ~48.9s until the imported photo was visible, with the preview backlog still draining after the sample window. A root-cause fix (moving repository queries out of the SwiftUI render path) landed today but hasn't been re-measured at 600+ images yet — expect the first big import to feel slower than it should; that's a known issue, not a sign something's broken.
-- App CPU runs high during import/preview-drain on the current build for the same reason.
-- Ambiguous Adobe-style sidecars (e.g. a RAW+JPEG pair sharing a basename) don't have a resolution UI yet — Teststrip silently falls back to its own sidecar name rather than asking which original a shared `frame.xmp` belongs to.
+- **Large-import feedback latency was fixed and re-measured on 2026-07-06.** After the render-path caching and publication-coalescing fixes (`dd1b598`, `1b0b2fb`, `974ede9`, `575a595`), the 600-image foreground probe shows first visible feedback at 0.75s (budget: 1.5s), the imported photo visible at 3.4s, and the preview backlog drained by the time the probe samples. Imports much larger than 600 have not been probed; if a big import feels stalled, capture Copy Diagnostics and report it.
+- Ambiguous Adobe-style sidecars that carry `photoshop:SidecarForExtension` (all 79 in this library) are now bound to their original and updated in place; shared `frame.xmp` files without that attribute still conservatively get a Teststrip-style `frame.ext.xmp` beside them.
