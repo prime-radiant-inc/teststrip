@@ -37,6 +37,7 @@ final class SearchWorkspacePresentationTests: XCTestCase {
             activeFilterChips: ["Pick", "Rating >= 4"],
             canSaveDynamicSet: true,
             canSaveSnapshotSet: true,
+            canStartCulling: true,
             reviewQueueCounts: [
                 .needsKeywords: 9,
                 .providerFailures: 0,
@@ -56,6 +57,12 @@ final class SearchWorkspacePresentationTests: XCTestCase {
                 title: "Freeze 42 results",
                 detail: "Capture this exact result set",
                 systemImage: "camera.viewfinder"
+            ),
+            SearchWorkspaceSuggestedAction(
+                action: .startCulling,
+                title: "Cull current scope",
+                detail: "Start a culling session for 42 results",
+                systemImage: "checkmark.seal"
             ),
             SearchWorkspaceSuggestedAction(
                 action: .openReviewQueue(.needsKeywords),
@@ -81,12 +88,26 @@ final class SearchWorkspacePresentationTests: XCTestCase {
             activeFilterChips: [],
             canSaveDynamicSet: false,
             canSaveSnapshotSet: false,
+            canStartCulling: true,
             reviewQueueCounts: [
                 .needsKeywords: 0
             ]
         )
 
         XCTAssertEqual(presentation.suggestedActions, [])
+    }
+
+    func testSuggestedActionsCanOmitCurrentScopeCulling() {
+        let presentation = SearchWorkspacePresentation(
+            suggestedName: "All Photographs",
+            totalAssetCount: 42,
+            savedSetCount: 0,
+            starredSetCount: 0,
+            activeFilterChips: [],
+            canStartCulling: false
+        )
+
+        XCTAssertFalse(presentation.suggestedActions.contains { $0.action == .startCulling })
     }
 
     func testRelatedFiltersSuggestNonActiveReviewQueuesWithCounts() {

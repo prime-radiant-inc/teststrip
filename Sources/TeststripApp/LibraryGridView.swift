@@ -66,7 +66,8 @@ struct LibraryGridView: View {
                     model: model,
                     assetGrid: AnyView(assetGrid),
                     saveDynamicSet: showSaveSearchPopover,
-                    saveSnapshotSet: showSaveSnapshotSetPopover
+                    saveSnapshotSet: showSaveSnapshotSetPopover,
+                    startCulling: showStartCullingPopover
                 )
             } else if model.selectedView == .timeline {
                 TimelineWorkspaceView(
@@ -98,9 +99,7 @@ struct LibraryGridView: View {
         .navigationTitle(model.libraryTitle)
         .toolbar {
             Button {
-                cullingSessionName = model.suggestedCullingSessionName
-                cullingSessionIntent = ""
-                isStartingCullingSession = true
+                showStartCullingPopover()
             } label: {
                 Label("Cull", systemImage: "checkmark.seal")
             }
@@ -2353,6 +2352,12 @@ struct LibraryGridView: View {
         }
     }
 
+    private func showStartCullingPopover() {
+        cullingSessionName = model.suggestedCullingSessionName
+        cullingSessionIntent = ""
+        isStartingCullingSession = true
+    }
+
     private func openLatestImportCompletion() {
         do {
             try model.openLatestImportCompletion()
@@ -4468,6 +4473,7 @@ struct SearchWorkspaceRefineGroup: Equatable, Identifiable {
 enum SearchWorkspaceSuggestedActionKind: Equatable {
     case saveDynamicSet
     case saveSnapshotSet
+    case startCulling
     case openReviewQueue(ReviewQueue)
 }
 
@@ -4483,6 +4489,8 @@ struct SearchWorkspaceSuggestedAction: Equatable, Identifiable {
             return "save-dynamic-set"
         case .saveSnapshotSet:
             return "save-snapshot-set"
+        case .startCulling:
+            return "start-culling"
         case .openReviewQueue(let queue):
             return "review-\(queue.rawValue)"
         }
@@ -4532,6 +4540,7 @@ struct SearchWorkspacePresentation: Equatable {
         activeFilterRows: [ActiveLibraryFilterRow]? = nil,
         canSaveDynamicSet: Bool = false,
         canSaveSnapshotSet: Bool = false,
+        canStartCulling: Bool = false,
         reviewQueueCounts: [ReviewQueue: Int] = [:],
         evaluationKindSummaries: [CatalogEvaluationKindSummary] = []
     ) {
@@ -4561,6 +4570,7 @@ struct SearchWorkspacePresentation: Equatable {
             totalAssetCount: totalAssetCount,
             canSaveDynamicSet: canSaveDynamicSet,
             canSaveSnapshotSet: canSaveSnapshotSet,
+            canStartCulling: canStartCulling,
             reviewQueueCounts: reviewQueueCounts
         )
     }
@@ -4877,6 +4887,7 @@ struct SearchWorkspacePresentation: Equatable {
         totalAssetCount: Int,
         canSaveDynamicSet: Bool,
         canSaveSnapshotSet: Bool,
+        canStartCulling: Bool,
         reviewQueueCounts: [ReviewQueue: Int]
     ) -> [SearchWorkspaceSuggestedAction] {
         var actions: [SearchWorkspaceSuggestedAction] = []
@@ -4894,6 +4905,16 @@ struct SearchWorkspacePresentation: Equatable {
                 title: totalAssetCount == 1 ? "Freeze 1 result" : "Freeze \(totalAssetCount) results",
                 detail: "Capture this exact result set",
                 systemImage: "camera.viewfinder"
+            ))
+        }
+        if canStartCulling, totalAssetCount > 0 {
+            actions.append(SearchWorkspaceSuggestedAction(
+                action: .startCulling,
+                title: "Cull current scope",
+                detail: totalAssetCount == 1
+                    ? "Start a culling session for 1 result"
+                    : "Start a culling session for \(totalAssetCount) results",
+                systemImage: "checkmark.seal"
             ))
         }
         for queue in reviewQueueActionOrder {
@@ -4935,6 +4956,7 @@ private struct SearchWorkspaceView: View {
     var assetGrid: AnyView
     var saveDynamicSet: () -> Void
     var saveSnapshotSet: () -> Void
+    var startCulling: () -> Void
 
     private var presentation: SearchWorkspacePresentation {
         SearchWorkspacePresentation(
@@ -4946,6 +4968,7 @@ private struct SearchWorkspaceView: View {
             activeFilterRows: model.activeLibraryFilterRows,
             canSaveDynamicSet: model.canSaveCurrentLibraryQuery,
             canSaveSnapshotSet: model.canSaveCurrentAssetScopeSnapshot,
+            canStartCulling: !model.isImporting && model.canBeginCullingSession,
             reviewQueueCounts: model.reviewQueueCounts,
             evaluationKindSummaries: model.catalogEvaluationKindSummaries
         )
@@ -5247,6 +5270,8 @@ private struct SearchWorkspaceView: View {
             saveDynamicSet()
         case .saveSnapshotSet:
             saveSnapshotSet()
+        case .startCulling:
+            startCulling()
         case .openReviewQueue(let queue):
             do {
                 try model.selectSidebarTarget(.reviewQueue(queue))
