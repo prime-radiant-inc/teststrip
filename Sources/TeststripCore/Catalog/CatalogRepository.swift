@@ -27,6 +27,12 @@ public final class CatalogRepository {
     public init(database: CatalogDatabase) {
         self.database = database
         encoder.dateEncodingStrategy = .secondsSince1970
+        // Upsert detects metadata edits by comparing stored metadata_json text,
+        // so encoding must be byte-stable across decode round trips; JSONEncoder
+        // key order otherwise varies per process and re-upserting an unchanged
+        // asset (reconnect, availability refresh) spuriously bumps the catalog
+        // generation and creates false XMP conflicts.
+        encoder.outputFormatting = [.sortedKeys]
         decoder.dateDecodingStrategy = .secondsSince1970
     }
 

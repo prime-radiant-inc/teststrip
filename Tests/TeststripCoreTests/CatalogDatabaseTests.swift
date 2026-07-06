@@ -191,6 +191,32 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(generation, 2)
     }
 
+    func testReupsertingDecodedAssetKeepsCatalogGenerationAndCanonicalMetadataJSON() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-generation-roundtrip")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset.testAsset(path: "/Volumes/NAS/Job/frame.cr2", rating: 4)
+        try repository.upsert(asset)
+
+        // Re-upserting an asset decoded from the catalog must never look like a
+        // metadata edit: encoding has to be byte-stable across decode round trips
+        // or reconnect/availability refreshes spuriously bump the generation and
+        // create false XMP conflicts.
+        let storedJSON = try XCTUnwrap(
+            try database.rows(
+                "SELECT metadata_json FROM assets WHERE id = ?",
+                bindings: [asset.id.rawValue]
+            ).first?["metadata_json"]
+        )
+        XCTAssertEqual(storedJSON, #"{"keywords":[],"rating":4}"#)
+
+        let decoded = try repository.asset(id: asset.id)
+        try repository.upsert(decoded)
+
+        XCTAssertEqual(try repository.catalogGeneration(assetID: asset.id), 1)
+    }
+
     func testNonMetadataAssetRefreshDoesNotIncrementCatalogGeneration() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-generation-refresh")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
