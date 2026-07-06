@@ -4108,6 +4108,12 @@ struct SearchWorkspaceGeneratedRefinement: Equatable, Identifiable {
     var id: String { preset.id }
 }
 
+private extension Array where Element == SearchWorkspaceGeneratedRefinement {
+    func containsPreset(_ preset: SmartCollectionRulePreset) -> Bool {
+        contains { $0.preset == preset }
+    }
+}
+
 struct SearchWorkspacePresentation: Equatable {
     var title: String
     var resultCountText: String
@@ -4128,7 +4134,8 @@ struct SearchWorkspacePresentation: Equatable {
         activeFilterRows: [ActiveLibraryFilterRow]? = nil,
         canSaveDynamicSet: Bool = false,
         canSaveSnapshotSet: Bool = false,
-        reviewQueueCounts: [ReviewQueue: Int] = [:]
+        reviewQueueCounts: [ReviewQueue: Int] = [:],
+        evaluationKindSummaries: [CatalogEvaluationKindSummary] = []
     ) {
         title = suggestedName
         resultCountText = "\(totalAssetCount)"
@@ -4143,6 +4150,7 @@ struct SearchWorkspacePresentation: Equatable {
         refineGroups = Self.groupRefineRows(refineRows)
         generatedRefinements = Self.generatedRefinements(
             reviewQueueCounts: reviewQueueCounts,
+            evaluationKindSummaries: evaluationKindSummaries,
             activeRows: refineRows
         )
         relatedFilterRows = Self.relatedFilterRows(
@@ -4217,8 +4225,10 @@ struct SearchWorkspacePresentation: Equatable {
 
     private static func generatedRefinements(
         reviewQueueCounts: [ReviewQueue: Int],
+        evaluationKindSummaries: [CatalogEvaluationKindSummary],
         activeRows: [SearchWorkspaceRefineRow]
     ) -> [SearchWorkspaceGeneratedRefinement] {
+        let rowLimit = evaluationKindSummaries.isEmpty ? 3 : 4
         let candidates: [(queue: ReviewQueue, preset: SmartCollectionRulePreset)] = [
             (.fiveStars, .ratingFourPlus),
             (.picks, .picked),
@@ -4228,13 +4238,81 @@ struct SearchWorkspacePresentation: Equatable {
             (.likelyIssues, .likelyIssues),
             (.providerFailures, .providerFailures)
         ]
-        return candidates.compactMap { candidate in
+        var rows: [SearchWorkspaceGeneratedRefinement] = candidates.compactMap { candidate in
             guard let count = reviewQueueCounts[candidate.queue], count > 0 else { return nil }
             guard !isPresetActive(candidate.preset, activeRows: activeRows) else { return nil }
             return generatedRefinement(preset: candidate.preset, count: count)
         }
-        .prefix(3)
+        .prefix(rowLimit)
         .map { $0 }
+
+        for row in providerSignalGeneratedRefinements(
+            evaluationKindSummaries: evaluationKindSummaries,
+            activeRows: activeRows
+        ) {
+            guard rows.count < rowLimit else { break }
+            guard !rows.containsPreset(row.preset) else { continue }
+            rows.append(row)
+        }
+        return rows
+    }
+
+    private static func providerSignalGeneratedRefinements(
+        evaluationKindSummaries: [CatalogEvaluationKindSummary],
+        activeRows: [SearchWorkspaceRefineRow]
+    ) -> [SearchWorkspaceGeneratedRefinement] {
+        let summariesByKind = Dictionary(uniqueKeysWithValues: evaluationKindSummaries.map { ($0.kind, $0) })
+        let candidates: [(kind: EvaluationKind, preset: SmartCollectionRulePreset)] = [
+            (.object, .objectSignals),
+            (.ocrText, .ocrFound),
+            (.faceCount, .facesFound)
+        ]
+        return candidates.compactMap { candidate in
+            guard let summary = summariesByKind[candidate.kind], summary.assetCount > 0 else { return nil }
+            guard !isPresetActive(candidate.preset, activeRows: activeRows) else { return nil }
+            return providerSignalGeneratedRefinement(
+                preset: candidate.preset,
+                kind: candidate.kind,
+                count: summary.assetCount
+            )
+        }
+    }
+
+    private static func providerSignalGeneratedRefinement(
+        preset: SmartCollectionRulePreset,
+        kind: EvaluationKind,
+        count: Int
+    ) -> SearchWorkspaceGeneratedRefinement {
+        switch kind {
+        case .object:
+            return SearchWorkspaceGeneratedRefinement(
+                preset: preset,
+                title: "Find object-labeled photos",
+                detail: count == 1 ? "1 photo has object labels" : "\(count) photos have object labels",
+                systemImage: preset.systemImage
+            )
+        case .ocrText:
+            return SearchWorkspaceGeneratedRefinement(
+                preset: preset,
+                title: "Find OCR text",
+                detail: count == 1 ? "1 photo has OCR text" : "\(count) photos have OCR text",
+                systemImage: preset.systemImage
+            )
+        case .faceCount:
+            return SearchWorkspaceGeneratedRefinement(
+                preset: preset,
+                title: "Review photos with people signals",
+                detail: count == 1 ? "1 photo has people signals" : "\(count) photos have people signals",
+                systemImage: preset.systemImage
+            )
+        default:
+            return SearchWorkspaceGeneratedRefinement(
+                preset: preset,
+                title: preset.title,
+                detail: count == 1 ? "1 matching signal" : "\(count) matching signals",
+                systemImage: preset.systemImage
+            )
+        }
     }
 
     private static func generatedRefinement(
@@ -4438,7 +4516,8 @@ private struct SearchWorkspaceView: View {
             activeFilterRows: model.activeLibraryFilterRows,
             canSaveDynamicSet: model.canSaveCurrentLibraryQuery,
             canSaveSnapshotSet: model.canSaveCurrentAssetScopeSnapshot,
-            reviewQueueCounts: model.reviewQueueCounts
+            reviewQueueCounts: model.reviewQueueCounts,
+            evaluationKindSummaries: model.catalogEvaluationKindSummaries
         )
     }
 

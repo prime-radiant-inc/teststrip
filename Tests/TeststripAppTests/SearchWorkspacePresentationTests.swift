@@ -154,6 +154,48 @@ final class SearchWorkspacePresentationTests: XCTestCase {
         ])
     }
 
+    func testGeneratedRefinementsIncludeProviderSignalRules() {
+        let presentation = SearchWorkspacePresentation(
+            suggestedName: "Signal Review",
+            totalAssetCount: 42,
+            savedSetCount: 2,
+            starredSetCount: 1,
+            activeFilterChips: [],
+            activeFilterRows: [
+                ActiveLibraryFilterRow(title: "Signal: OCR Text", target: .evaluationKind(.ocrText))
+            ],
+            reviewQueueCounts: [
+                .needsKeywords: 6
+            ],
+            evaluationKindSummaries: [
+                CatalogEvaluationKindSummary(kind: .object, assetCount: 8),
+                CatalogEvaluationKindSummary(kind: .ocrText, assetCount: 3),
+                CatalogEvaluationKindSummary(kind: .faceCount, assetCount: 4)
+            ]
+        )
+
+        XCTAssertEqual(presentation.generatedRefinements, [
+            SearchWorkspaceGeneratedRefinement(
+                preset: .needsKeywords,
+                title: "Find missing keywords",
+                detail: "6 photos need keywords",
+                systemImage: "tag"
+            ),
+            SearchWorkspaceGeneratedRefinement(
+                preset: .objectSignals,
+                title: "Find object-labeled photos",
+                detail: "8 photos have object labels",
+                systemImage: "shippingbox"
+            ),
+            SearchWorkspaceGeneratedRefinement(
+                preset: .facesFound,
+                title: "Review photos with people signals",
+                detail: "4 photos have people signals",
+                systemImage: "person.2"
+            )
+        ])
+    }
+
     func testUsesAllPhotographsRefineRowWhenNoFiltersAreActive() {
         let presentation = SearchWorkspacePresentation(
             suggestedName: "All Photographs",
