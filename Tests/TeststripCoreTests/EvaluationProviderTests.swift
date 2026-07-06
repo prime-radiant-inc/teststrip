@@ -396,6 +396,52 @@ final class EvaluationProviderTests: XCTestCase {
         ])
     }
 
+    func testAppleVisionProviderMapsFacesToCatalogObservations() throws {
+        let faces = [
+            AppleVisionFaceObservation(
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.2, width: 0.3, height: 0.4),
+                captureQuality: 0.8,
+                featurePrintVector: [0.1, 0.2]
+            ),
+            AppleVisionFaceObservation(
+                boundingBox: FaceBoundingBox(x: 0.6, y: 0.5, width: 0.2, height: 0.25),
+                captureQuality: nil,
+                featurePrintVector: [0.9, 0.8]
+            )
+        ]
+        let provider = AppleVisionEvaluationProvider(analyzer: FakeAppleVisionAnalyzer(analysis: AppleVisionAnalysis(
+            faceCount: 2,
+            faceQualityScores: [0.8],
+            recognizedText: [],
+            classificationLabels: [],
+            imageFeaturePrintVector: [],
+            faces: faces
+        )))
+        let assetID = AssetID(rawValue: "asset-faces")
+
+        let outcome = try provider.evaluateWithFaces(assetID: assetID, previewURL: URL(fileURLWithPath: "/tmp/preview.jpg"))
+
+        XCTAssertEqual(outcome.signals, try provider.evaluate(assetID: assetID, previewURL: URL(fileURLWithPath: "/tmp/preview.jpg")))
+        XCTAssertEqual(outcome.faceObservations, [
+            CatalogFaceObservation(
+                assetID: assetID,
+                faceIndex: 0,
+                boundingBox: faces[0].boundingBox,
+                captureQuality: 0.8,
+                embedding: [0.1, 0.2],
+                provenance: AppleVisionEvaluationProvider.faceProvenance
+            ),
+            CatalogFaceObservation(
+                assetID: assetID,
+                faceIndex: 1,
+                boundingBox: faces[1].boundingBox,
+                captureQuality: nil,
+                embedding: [0.9, 0.8],
+                provenance: AppleVisionEvaluationProvider.faceProvenance
+            )
+        ])
+    }
+
     func testAppleVisionAnalyzerProducesImageFeaturePrintVector() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "apple-vision-feature-print")
         let previewURL = directory.appendingPathComponent("preview.jpg")

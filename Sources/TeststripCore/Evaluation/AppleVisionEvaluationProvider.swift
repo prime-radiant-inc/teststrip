@@ -62,8 +62,11 @@ public struct AppleVisionEvaluationProvider: EvaluationProvider {
     }
 
     public func evaluate(assetID: AssetID, previewURL: URL) throws -> [EvaluationSignal] {
-        let analysis = try analyzer.analyze(previewURL: previewURL)
-        let provenance = ProviderProvenance(provider: name, model: "Vision", version: "1", settingsHash: "default")
+        try evaluateWithFaces(assetID: assetID, previewURL: previewURL).signals
+    }
+
+    private static func signals(assetID: AssetID, analysis: AppleVisionAnalysis) -> [EvaluationSignal] {
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
         var signals: [EvaluationSignal] = []
 
         if let faceCountSignal = Self.faceCountSignal(assetID: assetID, count: analysis.faceCount, scores: analysis.faceQualityScores, provenance: provenance) {
@@ -171,6 +174,36 @@ public struct AppleVisionEvaluationProvider: EvaluationProvider {
             value: .vector(vector),
             confidence: 1.0,
             provenance: provenance
+        )
+    }
+}
+
+extension AppleVisionEvaluationProvider: FaceObservationEvaluationProvider {
+    public static let faceProvenance = ProviderProvenance(
+        provider: "apple-vision",
+        model: "Vision",
+        version: "1",
+        settingsHash: "face-crop-pad-25"
+    )
+
+    public var faceProvenance: ProviderProvenance {
+        Self.faceProvenance
+    }
+
+    public func evaluateWithFaces(assetID: AssetID, previewURL: URL) throws -> FaceEvaluationOutcome {
+        let analysis = try analyzer.analyze(previewURL: previewURL)
+        return FaceEvaluationOutcome(
+            signals: Self.signals(assetID: assetID, analysis: analysis),
+            faceObservations: analysis.faces.enumerated().map { index, face in
+                CatalogFaceObservation(
+                    assetID: assetID,
+                    faceIndex: index,
+                    boundingBox: face.boundingBox,
+                    captureQuality: face.captureQuality,
+                    embedding: face.featurePrintVector,
+                    provenance: Self.faceProvenance
+                )
+            }
         )
     }
 }
