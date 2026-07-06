@@ -26,6 +26,7 @@ struct LibraryGridView: View {
     @State private var isShowingImportPathSheet = false
     @State private var isShowingImportCardPathSheet = false
     @State private var dismissedImportCompletionSummaryID: String?
+    @State private var importIssueReview: ImportIssueReview?
     @State private var importPathDraft = ImportFolderPathDraft()
     @State private var importCardPathDraft = ImportCardPathDraft()
     @State private var isReviewingImportPath = false
@@ -192,6 +193,9 @@ struct LibraryGridView: View {
         }
         .sheet(item: $importConfirmationDraft) { draft in
             importConfirmationSheet(draft)
+        }
+        .sheet(item: $importIssueReview) { review in
+            importIssueReviewSheet(review)
         }
         .sheet(isPresented: $isShowingSourceReconnectSheet) {
             sourceReconnectSheet
@@ -1094,6 +1098,8 @@ struct LibraryGridView: View {
             openLatestImportCompletion()
         case .evaluateImport:
             requestLatestImportEvaluations()
+        case .reviewImportIssues:
+            reviewImportIssuesFromCompletion()
         case .reviewFlaggedFrames:
             reviewLatestImportFlagged()
         case .keywordSuggestions:
@@ -1383,6 +1389,67 @@ struct LibraryGridView: View {
         }
         .padding(18)
         .frame(width: 480)
+    }
+
+    private func importIssueReviewSheet(_ review: ImportIssueReview) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(review.title)
+                .font(.headline)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(review.issues.enumerated()), id: \.offset) { _, issue in
+                        importIssueRow(issue)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .frame(width: 520, height: 260)
+            HStack {
+                Spacer()
+                Button("Done") {
+                    importIssueReview = nil
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18)
+        .frame(width: 560)
+    }
+
+    private func importIssueRow(_ issue: WorkSessionIssue) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.yellow)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(importIssueTitle(issue))
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                if let path = issue.sourceURL?.path, !path.isEmpty {
+                    Text(path)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Text(issue.message)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(9)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func importIssueTitle(_ issue: WorkSessionIssue) -> String {
+        switch issue.kind {
+        case .skippedSourceFile:
+            let fileName = issue.sourceURL?.lastPathComponent ?? ""
+            return fileName.isEmpty ? "Skipped source file" : "Skipped \(fileName)"
+        }
     }
 
     private func importPlanView(steps: [ImportPlanStep], width: CGFloat) -> some View {
@@ -2297,6 +2364,11 @@ struct LibraryGridView: View {
         } catch {
             model.errorMessage = error.localizedDescription
         }
+    }
+
+    private func reviewImportIssuesFromCompletion() {
+        guard let summary = visibleImportCompletionSummary, !summary.issues.isEmpty else { return }
+        importIssueReview = ImportIssueReview(summaryID: summary.id, issues: summary.issues)
     }
 
     private func reviewLatestImportKeywordSuggestions() {
@@ -6061,60 +6133,66 @@ struct ImportCompletionPresentation: Equatable {
         if let issueMetric = issueMetric(for: summary) {
             metricRows.append(issueMetric)
         }
+        var actionRows = [
+            ImportCompletionActionPresentation(
+                kind: .startCulling,
+                title: "Start culling",
+                detail: hasImportedSet ? "Use the imported set" : "No imported set",
+                systemImage: "checkmark.seal.fill",
+                isEnabled: hasImportedSet,
+                isPrimary: true,
+                placeholder: nil
+            ),
+            ImportCompletionActionPresentation(
+                kind: .reviewImportedFrames,
+                title: "Review imported frames",
+                detail: hasImportedSet ? "Manual Compare over this import" : "No imported set",
+                systemImage: "rectangle.grid.2x2",
+                isEnabled: hasImportedSet,
+                isPrimary: false,
+                placeholder: nil
+            ),
+            ImportCompletionActionPresentation(
+                kind: .openInLibrary,
+                title: "Open imported set",
+                detail: hasImportedSet ? "Browse this import" : "No imported set",
+                systemImage: "rectangle.stack",
+                isEnabled: hasImportedSet,
+                isPrimary: false,
+                placeholder: nil
+            ),
+            ImportCompletionActionPresentation(
+                kind: .evaluateImport,
+                title: "Evaluate import",
+                detail: canEvaluateImport ? "Run local reads on this import" : "Waiting for cached previews",
+                systemImage: "sparkles",
+                isEnabled: canEvaluateImport,
+                isPrimary: false,
+                placeholder: nil
+            )
+        ]
+        if let issueAction = importIssueAction(for: summary) {
+            actionRows.append(issueAction)
+        }
+        actionRows.append(contentsOf: [
+            flaggedReviewAction(flaggedReviewAssetCount: flaggedReviewAssetCount),
+            ImportCompletionActionPresentation(
+                kind: .stackGrouping,
+                title: "Cull stacks",
+                detail: stackCullActionDetail(for: summary),
+                systemImage: "square.stack.3d.up",
+                isEnabled: summary.stackCount > 0,
+                isPrimary: false,
+                placeholder: nil
+            ),
+            faceReviewAction(faceReviewAssetCount: faceReviewAssetCount),
+            keywordSuggestionAction(batchKeywordSuggestions: batchKeywordSuggestions)
+        ])
         return ImportCompletionPresentation(
             title: title(for: summary),
             detail: summary.detail,
             metricRows: metricRows,
-            actionRows: [
-                ImportCompletionActionPresentation(
-                    kind: .startCulling,
-                    title: "Start culling",
-                    detail: hasImportedSet ? "Use the imported set" : "No imported set",
-                    systemImage: "checkmark.seal.fill",
-                    isEnabled: hasImportedSet,
-                    isPrimary: true,
-                    placeholder: nil
-                ),
-                ImportCompletionActionPresentation(
-                    kind: .reviewImportedFrames,
-                    title: "Review imported frames",
-                    detail: hasImportedSet ? "Manual Compare over this import" : "No imported set",
-                    systemImage: "rectangle.grid.2x2",
-                    isEnabled: hasImportedSet,
-                    isPrimary: false,
-                    placeholder: nil
-                ),
-                ImportCompletionActionPresentation(
-                    kind: .openInLibrary,
-                    title: "Open imported set",
-                    detail: hasImportedSet ? "Browse this import" : "No imported set",
-                    systemImage: "rectangle.stack",
-                    isEnabled: hasImportedSet,
-                    isPrimary: false,
-                    placeholder: nil
-                ),
-                ImportCompletionActionPresentation(
-                    kind: .evaluateImport,
-                    title: "Evaluate import",
-                    detail: canEvaluateImport ? "Run local reads on this import" : "Waiting for cached previews",
-                    systemImage: "sparkles",
-                    isEnabled: canEvaluateImport,
-                    isPrimary: false,
-                    placeholder: nil
-                ),
-                flaggedReviewAction(flaggedReviewAssetCount: flaggedReviewAssetCount),
-                ImportCompletionActionPresentation(
-                    kind: .stackGrouping,
-                    title: "Cull stacks",
-                    detail: stackCullActionDetail(for: summary),
-                    systemImage: "square.stack.3d.up",
-                    isEnabled: summary.stackCount > 0,
-                    isPrimary: false,
-                    placeholder: nil
-                ),
-                faceReviewAction(faceReviewAssetCount: faceReviewAssetCount),
-                keywordSuggestionAction(batchKeywordSuggestions: batchKeywordSuggestions)
-            ]
+            actionRows: actionRows
         )
     }
 
@@ -6208,6 +6286,26 @@ struct ImportCompletionPresentation: Equatable {
         guard !fileName.isEmpty else { return message }
         guard !message.isEmpty else { return fileName }
         return "\(fileName): \(message)"
+    }
+
+    private static func importIssueAction(for summary: ImportCompletionSummary) -> ImportCompletionActionPresentation? {
+        guard !summary.issues.isEmpty else { return nil }
+        let skippedCount = summary.issues.filter { $0.kind == .skippedSourceFile }.count
+        let title: String
+        if skippedCount == summary.issues.count {
+            title = skippedCount == 1 ? "Review 1 skipped file" : "Review \(skippedCount) skipped files"
+        } else {
+            title = summary.issues.count == 1 ? "Review 1 import issue" : "Review \(summary.issues.count) import issues"
+        }
+        return ImportCompletionActionPresentation(
+            kind: .reviewImportIssues,
+            title: title,
+            detail: summary.issues.first.map(issueDetail) ?? "Review import issues",
+            systemImage: "exclamationmark.triangle",
+            isEnabled: true,
+            isPrimary: false,
+            placeholder: nil
+        )
     }
 
     private static func cullScopeMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
@@ -6379,6 +6477,7 @@ struct ImportCompletionActionPresentation: Equatable, Identifiable {
         case reviewImportedFrames
         case openInLibrary
         case evaluateImport
+        case reviewImportIssues
         case reviewFlaggedFrames
         case stackGrouping
         case faceNaming
@@ -6395,6 +6494,17 @@ struct ImportCompletionActionPresentation: Equatable, Identifiable {
 
     var id: String {
         kind.rawValue
+    }
+}
+
+struct ImportIssueReview: Equatable, Identifiable {
+    var summaryID: String
+    var issues: [WorkSessionIssue]
+
+    var id: String { summaryID }
+
+    var title: String {
+        issues.count == 1 ? "1 Import Issue" : "\(issues.count) Import Issues"
     }
 }
 

@@ -171,6 +171,11 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertEqual(issueMetric.label, "Skipped files")
         XCTAssertEqual(issueMetric.detail, "bad.cr2: could not fingerprint /Photos/Import/bad.cr2")
         XCTAssertEqual(issueMetric.tone, .yellow)
+
+        let action = try XCTUnwrap(presentation.actionRows.first { $0.kind == .reviewImportIssues })
+        XCTAssertTrue(action.isEnabled)
+        XCTAssertEqual(action.title, "Review 1 skipped file")
+        XCTAssertEqual(action.detail, "bad.cr2: could not fingerprint /Photos/Import/bad.cr2")
     }
 
     func testEnablesKeywordReviewActionWhenBatchSuggestionsExist() throws {
