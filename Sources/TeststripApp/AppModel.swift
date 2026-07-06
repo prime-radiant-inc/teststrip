@@ -310,6 +310,7 @@ public enum SidebarRowTarget: Equatable, Sendable {
     case reviewQueue(ReviewQueue)
     case folder(String)
     case sourceAvailability(SourceAvailability)
+    case sourceBookmarkRepair(String)
     case evaluationKind(EvaluationKind)
     case metadataSyncPending
     case metadataSyncConflicts
@@ -2337,6 +2338,8 @@ public final class AppModel {
             availabilityFilter = availability
             selectedView = .grid
             try reload()
+        case .sourceBookmarkRepair:
+            break
         case .evaluationKind(let kind):
             try applyEvaluationKindFilter(kind)
         case .metadataSyncPending:
@@ -7434,7 +7437,8 @@ public final class AppModel {
                     title: "Reconnect \(sourceRoot.name)",
                     detailText: "Permission needs refresh",
                     countText: sidebarCountText(sourceRoot.assetCount),
-                    tone: .warning
+                    tone: .warning,
+                    target: .sourceBookmarkRepair(sourceRoot.path)
                 )
             }
     }

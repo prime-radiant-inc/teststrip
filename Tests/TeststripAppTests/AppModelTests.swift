@@ -4489,7 +4489,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(repairRow.detailText, "Permission needs refresh")
         XCTAssertEqual(repairRow.countText, "1")
         XCTAssertEqual(repairRow.tone, .warning)
-        XCTAssertEqual(repairRow.target, .placeholder)
+        XCTAssertTrue(repairRow.isSelectable)
+        XCTAssertEqual(repairRow.target, .sourceBookmarkRepair(sourceRoot.path))
     }
 
     func testReconnectSourceRootRefreshesLoadedAssetsAndSourceSidebar() throws {

@@ -1323,35 +1323,12 @@ struct LibraryGridView: View {
     }
 
     private var sourceReconnectSheet: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Reconnect Source Root")
-                .font(.headline)
-            TextField("Old root path", text: $sourceReconnectDraft.oldRootPath)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 460)
-            TextField("New mounted root path", text: $sourceReconnectDraft.newRootPath)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 460)
-            if let errorMessage = sourceReconnectDraft.errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-            HStack {
-                Spacer()
-                Button("Cancel") {
-                    isShowingSourceReconnectSheet = false
-                }
-                Button("Reconnect") {
-                    reconnectSourceRoot()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(sourceReconnectDraft.oldRootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || sourceReconnectDraft.newRootPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || isImporting)
-            }
-        }
-        .padding(18)
+        SourceReconnectSheet(
+            draft: $sourceReconnectDraft,
+            isImporting: isImporting,
+            cancel: { isShowingSourceReconnectSheet = false },
+            reconnect: reconnectSourceRoot
+        )
     }
 
     private struct SaveSetPopover: View {

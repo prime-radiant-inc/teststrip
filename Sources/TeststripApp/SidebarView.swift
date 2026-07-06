@@ -13,6 +13,8 @@ struct SidebarView: View {
     @State private var assetSetSnapshotStarred = false
     @State private var deletingAssetSetID: AssetSetID?
     @State private var deletingAssetSetName = ""
+    @State private var isShowingSourceReconnectSheet = false
+    @State private var sourceReconnectDraft = SourceReconnectPathDraft()
 
     var body: some View {
         List {
@@ -64,6 +66,14 @@ struct SidebarView: View {
                 starred: $assetSetSnapshotStarred,
                 cancel: cancelAssetSetSnapshot,
                 save: saveAssetSetSnapshot
+            )
+        }
+        .sheet(isPresented: $isShowingSourceReconnectSheet) {
+            SourceReconnectSheet(
+                draft: $sourceReconnectDraft,
+                isImporting: model.isImporting,
+                cancel: cancelSourceReconnect,
+                reconnect: reconnectSourceRoot
             )
         }
         .confirmationDialog("Delete Set?", isPresented: isDeletingAssetSet, titleVisibility: .visible) {
@@ -129,6 +139,10 @@ struct SidebarView: View {
     }
 
     private func select(_ row: SidebarRow) {
+        if case .sourceBookmarkRepair(let path) = row.target {
+            showSourceReconnectSheet(oldRootPath: path)
+            return
+        }
         do {
             try model.selectSidebarRow(row)
         } catch {
@@ -247,6 +261,26 @@ struct SidebarView: View {
         deletingAssetSetName = ""
     }
 
+    private func showSourceReconnectSheet(oldRootPath: String) {
+        sourceReconnectDraft = SourceReconnectPathDraft(oldRootPath: oldRootPath)
+        isShowingSourceReconnectSheet = true
+    }
+
+    private func reconnectSourceRoot() {
+        do {
+            let roots = try sourceReconnectDraft.resolveRootURLs()
+            try model.reconnectSourceRoot(from: roots.oldRoot, to: roots.newRoot)
+            cancelSourceReconnect()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func cancelSourceReconnect() {
+        isShowingSourceReconnectSheet = false
+        sourceReconnectDraft.reset()
+    }
+
     private func iconName(for target: SidebarRowTarget) -> String {
         switch target {
         case .allPhotographs:
@@ -264,6 +298,8 @@ struct SidebarView: View {
         case .folder:
             return "folder"
         case .sourceAvailability:
+            return "externaldrive.badge.exclamationmark"
+        case .sourceBookmarkRepair:
             return "externaldrive.badge.exclamationmark"
         case .evaluationKind(let kind):
             return evaluationKindIconName(kind)
