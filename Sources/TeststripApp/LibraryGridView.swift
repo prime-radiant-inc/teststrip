@@ -2742,7 +2742,7 @@ private struct LoupeView: View {
                 )
             }
             cullingStackRail(presentation: stackPresentation)
-            cullingFilmstrip
+            cullingFilmstrip(recommendedAssetID: stackPresentation.recommendedAssetID)
             cullingCommandRail
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2889,7 +2889,7 @@ private struct LoupeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var cullingFilmstrip: some View {
+    private func cullingFilmstrip(recommendedAssetID: AssetID?) -> some View {
         let presentation = CullingFilmstripPresentation(
             assets: model.assets,
             selectedAssetID: model.selectedAssetID
@@ -2906,7 +2906,11 @@ private struct LoupeView: View {
             }
             HStack(spacing: 7) {
                 ForEach(presentation.visibleAssets, id: \.id.rawValue) { asset in
-                    filmstripTile(for: asset, isSelected: asset.id == model.selectedAssetID)
+                    filmstripTile(
+                        for: asset,
+                        isSelected: asset.id == model.selectedAssetID,
+                        isRecommended: asset.id == recommendedAssetID
+                    )
                 }
                 Spacer(minLength: 0)
             }
@@ -2969,19 +2973,25 @@ private struct LoupeView: View {
                         Button {
                             model.select(item.assetID)
                         } label: {
-                            Text(item.label)
-                                .font(.caption2.monospacedDigit().weight(.semibold))
-                                .frame(width: 24, height: 22)
-                                .foregroundStyle(item.isSelected ? Color.black : Color.orange)
-                                .background(item.isSelected ? Color.orange : Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .strokeBorder(Color.orange.opacity(item.isSelected ? 0.4 : 0.26))
+                            HStack(spacing: 2) {
+                                if item.isRecommended {
+                                    Text("✦")
+                                        .font(.system(size: 9, weight: .bold))
                                 }
+                                Text(item.label)
+                                    .font(.caption2.monospacedDigit().weight(.semibold))
+                            }
+                            .frame(width: item.isRecommended ? 32 : 24, height: 22)
+                            .foregroundStyle(item.isSelected ? Color.black : Color.orange)
+                            .background(item.isSelected ? Color.orange : Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .strokeBorder(Color.orange.opacity(item.isSelected ? 0.4 : 0.26))
+                            }
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Stack frame \(item.label)")
-                        .accessibilityValue(item.isSelected ? "Selected" : "Not selected")
+                        .accessibilityValue(item.isSelected ? "Selected" : (item.isRecommended ? "Recommended" : "Not selected"))
                     }
                 }
             }
@@ -3013,7 +3023,7 @@ private struct LoupeView: View {
         }
     }
 
-    private func filmstripTile(for asset: Asset, isSelected: Bool) -> some View {
+    private func filmstripTile(for asset: Asset, isSelected: Bool, isRecommended: Bool) -> some View {
         Button {
             model.select(asset.id)
         } label: {
@@ -3034,6 +3044,15 @@ private struct LoupeView: View {
                 }
                 filmstripDecisionOverlay(for: asset)
                     .padding(4)
+                if isRecommended {
+                    Text("✦")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.orange)
+                        .padding(3)
+                        .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .padding(3)
+                }
             }
             .frame(width: 64, height: 44)
             .clipShape(RoundedRectangle(cornerRadius: 5))
@@ -3044,7 +3063,7 @@ private struct LoupeView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(asset.originalURL.lastPathComponent)
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityValue(isSelected ? "Selected" : (isRecommended ? "Recommended" : "Not selected"))
     }
 
     @ViewBuilder
@@ -4200,6 +4219,10 @@ struct CullingStackRailPresentation: Equatable {
 
     var isVisible: Bool {
         !items.isEmpty
+    }
+
+    var recommendedAssetID: AssetID? {
+        items.first { $0.isRecommended }?.assetID
     }
 
     private static func visualSimilarityVectorsByAssetID(
