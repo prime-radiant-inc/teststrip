@@ -700,7 +700,14 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let result = try executor.execute(.runEvaluation(assetID: asset.id, provider: "local-image-metrics"))
 
         XCTAssertEqual(result, .completed("evaluated source.jpg with local-image-metrics"))
-        XCTAssertEqual(try repository.evaluationSignals(assetID: asset.id).map(\.kind), [.exposure, .colorPalette, .focus, .motionBlur])
+        XCTAssertEqual(try repository.evaluationSignals(assetID: asset.id).map(\.kind), [
+            .exposure,
+            .colorPalette,
+            .focus,
+            .motionBlur,
+            .framing,
+            .aesthetics
+        ])
     }
 
     func testRuntimeConfigurationRegistersAppleVisionProvider() throws {

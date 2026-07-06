@@ -39,6 +39,25 @@ public struct LocalImageMetricsEvaluationProvider: EvaluationProvider {
                 value: .score(Self.motionBlurScore(focusScore: metrics.focusScore)),
                 confidence: 0.7,
                 provenance: provenance
+            ),
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .framing,
+                value: .score(metrics.framingScore),
+                confidence: 0.6,
+                provenance: provenance
+            ),
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .aesthetics,
+                value: .score(Self.aestheticScore(
+                    focusScore: metrics.focusScore,
+                    exposure: exposure,
+                    color: metrics.averageColor,
+                    framingScore: metrics.framingScore
+                )),
+                confidence: 0.55,
+                provenance: provenance
             )
         ]
     }
@@ -73,7 +92,8 @@ public struct LocalImageMetricsEvaluationProvider: EvaluationProvider {
 
         return PreviewImageMetrics(
             averageColor: averageColor(in: pixels, width: sampleWidth, height: sampleHeight),
-            focusScore: focusScore(in: pixels, width: sampleWidth, height: sampleHeight)
+            focusScore: focusScore(in: pixels, width: sampleWidth, height: sampleHeight),
+            framingScore: framingScore(in: pixels, width: sampleWidth, height: sampleHeight)
         )
     }
 
@@ -115,6 +135,63 @@ public struct LocalImageMetricsEvaluationProvider: EvaluationProvider {
         min(max(1.0 - focusScore, 0.0), 1.0)
     }
 
+    private static func aestheticScore(
+        focusScore: Double,
+        exposure: Double,
+        color: RGBColor,
+        framingScore: Double
+    ) -> Double {
+        let balancedExposure = 1.0 - min(abs(exposure - 0.5) * 2.0, 1.0)
+        let colorContrast = max(color.red, color.green, color.blue) - min(color.red, color.green, color.blue)
+        let score = focusScore * 0.35
+            + balancedExposure * 0.25
+            + colorContrast * 0.20
+            + framingScore * 0.20
+        return min(max(score, 0.0), 1.0)
+    }
+
+    private static func framingScore(in pixels: [UInt8], width: Int, height: Int) -> Double {
+        let average = averageLuminance(in: pixels, width: width, height: height)
+        var weightedX = 0.0
+        var weightedY = 0.0
+        var totalWeight = 0.0
+
+        for y in 0..<height {
+            for x in 0..<width {
+                let luminance = luminance(atX: x, y: y, in: pixels, width: width)
+                let weight = abs(luminance - average)
+                weightedX += (Double(x) + 0.5) / Double(width) * weight
+                weightedY += (Double(y) + 0.5) / Double(height) * weight
+                totalWeight += weight
+            }
+        }
+
+        guard totalWeight > 0.0001 else { return 0.5 }
+
+        let centerX = weightedX / totalWeight
+        let centerY = weightedY / totalWeight
+        let thirds = [1.0 / 3.0, 2.0 / 3.0]
+        let nearestDistance = thirds.flatMap { targetX in
+            thirds.map { targetY in
+                hypot(centerX - targetX, centerY - targetY)
+            }
+        }.min() ?? 0.5
+
+        return min(max(1.0 - nearestDistance / 0.5, 0.0), 1.0)
+    }
+
+    private static func averageLuminance(in pixels: [UInt8], width: Int, height: Int) -> Double {
+        let pixelCount = Double(width * height)
+        guard pixelCount > 0 else { return 0 }
+        var total = 0.0
+        for y in 0..<height {
+            for x in 0..<width {
+                total += luminance(atX: x, y: y, in: pixels, width: width)
+            }
+        }
+        return total / pixelCount
+    }
+
     private static func luminance(atX x: Int, y: Int, in pixels: [UInt8], width: Int) -> Double {
         let index = (y * width + x) * 4
         return luminance(
@@ -132,6 +209,7 @@ public struct LocalImageMetricsEvaluationProvider: EvaluationProvider {
 private struct PreviewImageMetrics {
     var averageColor: RGBColor
     var focusScore: Double
+    var framingScore: Double
 }
 
 private struct RGBColor {
