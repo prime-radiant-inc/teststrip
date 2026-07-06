@@ -8247,7 +8247,7 @@ public final class AppModel {
                 id: "source-availability-\(availability.rawValue)",
                 title: sourceAvailabilitySidebarTitle(availability),
                 countText: sidebarCountText(summary.assetCount),
-                tone: availability == .stale ? .warning : .destructive,
+                tone: sourceAvailabilitySidebarTone(availability),
                 target: .sourceAvailability(availability)
             )
         })
@@ -8256,6 +8256,17 @@ public final class AppModel {
             sourceRootBookmarkRepairPaths: sourceRootBookmarkRepairPaths
         ))
         return rows
+    }
+
+    private static func sourceAvailabilitySidebarTone(_ availability: SourceAvailability) -> SidebarRowTone {
+        switch availability {
+        case .offline, .stale:
+            return .warning
+        case .missing, .moved:
+            return .destructive
+        case .online:
+            return .neutral
+        }
     }
 
     private static func sourceRootSidebarRows(_ sourceRoots: [CatalogSourceRoot]) -> [SidebarRow] {

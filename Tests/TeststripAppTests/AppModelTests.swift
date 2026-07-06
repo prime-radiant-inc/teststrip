@@ -4635,6 +4635,7 @@ final class AppModelTests: XCTestCase {
             "Stale Originals"
         ])
         XCTAssertEqual(sourceSection.rows.map(\.countText), ["1", "2", "1", "1"])
+        XCTAssertEqual(sourceSection.rows.map(\.tone), [.warning, .destructive, .destructive, .warning])
         let missingRow = try XCTUnwrap(sourceSection.rows.first { $0.title == "Missing Originals" })
 
         try model.selectSidebarRow(missingRow)
