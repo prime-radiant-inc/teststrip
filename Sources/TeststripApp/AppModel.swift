@@ -5226,12 +5226,13 @@ public final class AppModel {
                 existingAssetCount: existingAssetCount
             )
             updateImportStatus(with: result)
-            recordCompletedImportActivity(
+            let outputSetIDs = recordCompletedImportActivity(
                 id: itemID.rawValue,
                 folderURL: context.source,
                 destinationRoot: context.destinationRoot,
                 result: result
             )
+            presentCompletedImportResultIfNeeded(result: result, outputSetIDs: outputSetIDs)
         } catch {
             statusMessage = nil
             errorMessage = error.localizedDescription
@@ -6519,7 +6520,8 @@ public final class AppModel {
             )
             try loadCatalogPage(preferredSelection: result.importedAssets.first?.id)
             updateImportStatus(with: result)
-            recordCompletedImportActivity(folderURL: folderURL, result: result)
+            let outputSetIDs = recordCompletedImportActivity(folderURL: folderURL, result: result)
+            presentCompletedImportResultIfNeeded(result: result, outputSetIDs: outputSetIDs)
             return result
         } catch {
             failImportActivity(folderURL: folderURL, error: error)
@@ -6554,7 +6556,8 @@ public final class AppModel {
             totalAssetCount = output.totalAssetCount
             try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
-            recordCompletedImportActivity(folderURL: folderURL, result: output.result)
+            let outputSetIDs = recordCompletedImportActivity(folderURL: folderURL, result: output.result)
+            presentCompletedImportResultIfNeeded(result: output.result, outputSetIDs: outputSetIDs)
             return output.result
         } catch {
             failImportActivity(folderURL: folderURL, error: error)
@@ -6590,7 +6593,8 @@ public final class AppModel {
             totalAssetCount = output.totalAssetCount
             try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
-            recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
+            let outputSetIDs = recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
+            presentCompletedImportResultIfNeeded(result: output.result, outputSetIDs: outputSetIDs)
             return output.result
         } catch {
             failImportActivity(folderURL: source, destinationRoot: destinationRoot, error: error)
@@ -6652,7 +6656,8 @@ public final class AppModel {
                 self.totalAssetCount = output.totalAssetCount
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
-                self.recordCompletedImportActivity(folderURL: folderURL, result: output.result)
+                let outputSetIDs = self.recordCompletedImportActivity(folderURL: folderURL, result: output.result)
+                self.presentCompletedImportResultIfNeeded(result: output.result, outputSetIDs: outputSetIDs)
                 self.activeImportTask = nil
             } catch is CancellationError {
                 guard let self, self.activeWork?.id == activityID else { return }
@@ -6740,7 +6745,8 @@ public final class AppModel {
                 self.totalAssetCount = output.totalAssetCount
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
-                self.recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
+                let outputSetIDs = self.recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
+                self.presentCompletedImportResultIfNeeded(result: output.result, outputSetIDs: outputSetIDs)
                 self.activeImportTask = nil
             } catch is CancellationError {
                 guard let self, self.activeWork?.id == activityID else { return }
@@ -6855,7 +6861,7 @@ public final class AppModel {
         folderURL: URL,
         destinationRoot: URL? = nil,
         result: LibraryImportResult
-    ) {
+    ) -> [AssetSetID] {
         let activity = AppWorkActivity(
             id: id ?? activeWork?.id ?? UUID().uuidString,
             kind: .ingest,
@@ -6878,6 +6884,23 @@ public final class AppModel {
         refreshCatalogFolders()
         activeWork = nil
         recordRecentActivity(activity, outputSetIDs: outputSetIDs)
+        return outputSetIDs
+    }
+
+    private func presentCompletedImportResultIfNeeded(result: LibraryImportResult, outputSetIDs: [AssetSetID]) {
+        guard let firstImportedAssetID = result.importedAssets.first?.id,
+              let outputSetID = outputSetIDs.first else {
+            return
+        }
+        let activeScopeWouldHideImport = selectedAssetSetID != nil || currentLibraryQuery() != nil
+        let loadedPageHidesImport = !assets.contains { $0.id == firstImportedAssetID }
+        guard activeScopeWouldHideImport || loadedPageHidesImport else { return }
+        do {
+            try applyAssetSet(id: outputSetID)
+            selectAssetID(firstImportedAssetID)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func persistSecurityScopedBookmarkForImportedSource(

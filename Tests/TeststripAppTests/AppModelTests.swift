@@ -5810,6 +5810,32 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(reviewQueueCount("Needs Keywords", in: model), "1")
     }
 
+    func testImportFolderOpensImportedSetWhenActiveFiltersWouldHideNewPhotos() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-import-filtered")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(catalog: catalog)
+        model.minimumRatingFilter = 5
+        try model.applyLibraryFilters()
+        XCTAssertEqual(model.assets, [])
+
+        let result = try model.importFolder(photoFolder)
+
+        let activity = try XCTUnwrap(model.recentWork.first)
+        let session = try catalog.repository.session(id: WorkSessionID(rawValue: activity.id))
+        let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
+        XCTAssertEqual(result.importedAssets.count, 1)
+        XCTAssertEqual(model.selectedAssetSetID, outputSetID)
+        XCTAssertNil(model.minimumRatingFilter)
+        XCTAssertEqual(model.assets.map(\.originalURL), [image])
+        XCTAssertEqual(model.selectedAssetID, result.importedAssets[0].id)
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
     func testReimportFolderReportsNoNewPhotos() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-reimport")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
