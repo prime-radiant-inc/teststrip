@@ -3944,6 +3944,23 @@ struct CompareSurveyPresentation: Equatable {
         ]
     }
 
+    /// A tie-break action for contenders-only mode: pick the top 2 ranked
+    /// contenders and reject the third. Only present with 3+ ranked
+    /// contenders, since with fewer there is nothing left to reject.
+    func contendersKeepTopTwoAction(canApplyPrimaryChoice: Bool) -> CompareSurveyActionPresentation? {
+        guard isContendersOnly, contenderAssets.count >= Self.contenderCount else {
+            return nil
+        }
+        let topTwoAssetIDs = contenderAssets.prefix(2).map(\.id)
+        return CompareSurveyActionPresentation(
+            action: .keepTopContendersAndRejectRemaining(topTwoAssetIDs),
+            title: "Keep #1 & #2",
+            isEnabled: canApplyPrimaryChoice,
+            help: "Keeps the top two ranked contenders and rejects the remaining visible contender",
+            liveMockupPlaceholder: nil
+        )
+    }
+
     func decisionBadges(for asset: Asset) -> [CompareDecisionBadge] {
         var badges: [CompareDecisionBadge] = []
         if asset.id == primaryAsset?.id {
@@ -4051,6 +4068,7 @@ struct CompareSurveyActionPresentation: Equatable, Identifiable {
         case keepRecommendedAndRejectAlternates(AssetID)
         case keepAll
         case chooseManually
+        case keepTopContendersAndRejectRemaining([AssetID])
     }
 
     var action: Action
@@ -4069,6 +4087,8 @@ struct CompareSurveyActionPresentation: Equatable, Identifiable {
             return "keep-all"
         case .chooseManually:
             return "choose-manually"
+        case .keepTopContendersAndRejectRemaining(let assetIDs):
+            return "keep-top-contenders-and-reject-remaining-\(assetIDs.map(\.rawValue).joined(separator: "-"))"
         }
     }
 }
@@ -5043,6 +5063,18 @@ private struct CompareView: View {
                 .disabled(!chooseManuallyAction.isEnabled)
                 .help(chooseManuallyAction.help)
                 .liveMockupPlaceholder(chooseManuallyAction.liveMockupPlaceholder)
+            if let keepTopTwoAction = presentation.contendersKeepTopTwoAction(
+                canApplyPrimaryChoice: model.canKeepComparePrimaryAndRejectAlternates
+            ) {
+                Button(keepTopTwoAction.title) {
+                    applyCompareGroupAction(keepTopTwoAction.action)
+                }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!keepTopTwoAction.isEnabled)
+                    .help(keepTopTwoAction.help)
+                    .liveMockupPlaceholder(keepTopTwoAction.liveMockupPlaceholder)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -5089,6 +5121,17 @@ private struct CompareView: View {
             applyCompareKeepAll()
         case .chooseManually:
             beginManualCompareCulling()
+        case .keepTopContendersAndRejectRemaining(let assetIDs):
+            applyKeepTopTwoContenders(assetIDs)
+        }
+    }
+
+    private func applyKeepTopTwoContenders(_ assetIDs: [AssetID]) {
+        do {
+            focusCullingSurface()
+            try model.keepTopTwoCompareContendersAndRejectAlternates(assetIDs: assetIDs)
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 

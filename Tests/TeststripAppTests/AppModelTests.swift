@@ -617,6 +617,105 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.assets[8].metadata.flag)
     }
 
+    func testKeepTopTwoCompareContendersPicksTopTwoAndRejectsThirdContenderOnly() throws {
+        let assets = (0..<9).map { makeAsset(id: "compare-contenders-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-contenders-action",
+            assets: assets
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: assets[0].id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: assets[3].id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: assets[5].id, kind: .focus, value: .score(0.5), confidence: 0.9, provenance: provenance)
+        ])
+        model.selectedView = .compare
+        model.select(assets[1].id)
+
+        try model.keepTopTwoCompareContendersAndRejectAlternates(assetIDs: [assets[0].id, assets[3].id])
+
+        XCTAssertEqual(try repository.asset(id: assets[0].id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: assets[3].id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: assets[5].id).metadata.flag, .reject)
+        // Unranked frames inside the compare window, and everything outside
+        // it, must stay untouched: only the visible contenders are decided.
+        for index in [1, 2, 4, 6, 7] {
+            XCTAssertNil(try repository.asset(id: assets[index].id).metadata.flag)
+        }
+        XCTAssertNil(try repository.asset(id: assets[8].id).metadata.flag)
+    }
+
+    func testKeepTopTwoCompareContendersRequiresAtLeastThreeRankedContenders() throws {
+        let assets = (0..<9).map { makeAsset(id: "compare-contenders-few-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-contenders-few-action",
+            assets: assets
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: assets[0].id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: assets[3].id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance)
+        ])
+        model.selectedView = .compare
+        model.select(assets[1].id)
+
+        XCTAssertThrowsError(try model.keepTopTwoCompareContendersAndRejectAlternates(assetIDs: [assets[0].id, assets[3].id]))
+    }
+
+    func testKeepTopTwoCompareContendersRejectsInvalidKeepSelection() throws {
+        let assets = (0..<9).map { makeAsset(id: "compare-contenders-invalid-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-contenders-invalid-action",
+            assets: assets
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: assets[0].id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: assets[3].id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: assets[5].id, kind: .focus, value: .score(0.5), confidence: 0.9, provenance: provenance)
+        ])
+        model.selectedView = .compare
+        model.select(assets[1].id)
+
+        // Rank 1 and rank 3, not the top two.
+        XCTAssertThrowsError(try model.keepTopTwoCompareContendersAndRejectAlternates(assetIDs: [assets[0].id, assets[5].id]))
+    }
+
+    func testKeepTopTwoCompareContendersRefreshesActiveCullingSessionProgress() throws {
+        let assets = (0..<9).map { makeAsset(id: "compare-contenders-progress-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-contenders-progress-action",
+            assets: assets
+        )
+        let inputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "compare-contenders-progress-set"),
+            name: "Compare Contenders Progress Set",
+            assetIDs: assets.map(\.id)
+        )
+        try repository.upsert(inputSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: inputSet.id)
+        let startedSession = try model.beginCullingSession(named: "Compare Contenders Progress")
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: assets[0].id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: assets[3].id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: assets[5].id, kind: .focus, value: .score(0.5), confidence: 0.9, provenance: provenance)
+        ])
+        model.selectedView = .compare
+        model.select(assets[1].id)
+
+        try model.keepTopTwoCompareContendersAndRejectAlternates(assetIDs: [assets[0].id, assets[3].id])
+
+        let session = try repository.session(id: startedSession.id)
+        XCTAssertEqual(session.status, .running)
+        XCTAssertEqual(session.completedUnitCount, 3)
+        XCTAssertEqual(session.totalUnitCount, 9)
+        XCTAssertEqual(session.detail, "Reviewed 3 of 9 frames · 2 picks · 1 reject")
+        let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
+        XCTAssertEqual(Set(assetIDs(in: try repository.assetSet(id: outputSetID))), Set([assets[0].id, assets[3].id]))
+    }
+
     func testCompareGroupDecisionAdvancesToNextPersistedStackInCompare() throws {
         let fixture = try makePersistedStackCullingFixture(
             named: "compare-advance-persisted",

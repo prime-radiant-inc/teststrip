@@ -322,6 +322,81 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertNil(actions[2].liveMockupPlaceholder)
     }
 
+    func testContendersKeepTopTwoActionAppearsWithThreeRankedContendersInContendersMode() {
+        let assets = (0..<3).map { makeAsset(id: "keep-top-two-\($0)") }
+        let signals: [AssetID: [EvaluationSignal]] = [
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.7)],
+            assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.9)],
+            assets[2].id: [signal(assetID: assets[2].id, kind: .focus, score: 0.5)]
+        ]
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: true
+        )
+
+        let action = presentation.contendersKeepTopTwoAction(canApplyPrimaryChoice: true)
+
+        // Ranked by focus descending: 1 (0.9), 0 (0.7), 2 (0.5).
+        XCTAssertEqual(action?.title, "Keep #1 & #2")
+        XCTAssertEqual(action?.action, .keepTopContendersAndRejectRemaining([assets[1].id, assets[0].id]))
+        XCTAssertEqual(action?.isEnabled, true)
+    }
+
+    func testContendersKeepTopTwoActionIsNilWithFewerThanThreeRankedContenders() {
+        let assets = (0..<2).map { makeAsset(id: "keep-top-two-few-\($0)") }
+        let signals: [AssetID: [EvaluationSignal]] = [
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.7)],
+            assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.9)]
+        ]
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: true
+        )
+
+        XCTAssertNil(presentation.contendersKeepTopTwoAction(canApplyPrimaryChoice: true))
+    }
+
+    func testContendersKeepTopTwoActionIsNilOutsideContendersMode() {
+        let assets = (0..<3).map { makeAsset(id: "keep-top-two-off-\($0)") }
+        let signals: [AssetID: [EvaluationSignal]] = [
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.7)],
+            assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.9)],
+            assets[2].id: [signal(assetID: assets[2].id, kind: .focus, score: 0.5)]
+        ]
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: false
+        )
+
+        XCTAssertNil(presentation.contendersKeepTopTwoAction(canApplyPrimaryChoice: true))
+    }
+
+    func testContendersKeepTopTwoActionRespectsCanApplyPrimaryChoice() {
+        let assets = (0..<3).map { makeAsset(id: "keep-top-two-disabled-\($0)") }
+        let signals: [AssetID: [EvaluationSignal]] = [
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.7)],
+            assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.9)],
+            assets[2].id: [signal(assetID: assets[2].id, kind: .focus, score: 0.5)]
+        ]
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: true
+        )
+
+        let action = presentation.contendersKeepTopTwoAction(canApplyPrimaryChoice: false)
+
+        XCTAssertNotNil(action)
+        XCTAssertEqual(action?.isEnabled, false)
+    }
+
     func testFocusMetricsUseRealQualitySignalsWithoutClaimingBest() {
         let assetID = AssetID(rawValue: "quality-frame")
         let provenance = ProviderProvenance(
