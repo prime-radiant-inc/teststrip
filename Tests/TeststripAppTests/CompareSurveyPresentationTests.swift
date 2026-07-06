@@ -59,7 +59,7 @@ final class CompareSurveyPresentationTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(presentation.recommendationText, "Top signal: frame 3")
+        XCTAssertEqual(presentation.recommendationText, "Top signal: frame 3 — sharpest")
         XCTAssertFalse(presentation.recommendationText.localizedCaseInsensitiveContains("suggests"))
     }
 
@@ -301,6 +301,118 @@ final class CompareSurveyPresentationTests: XCTestCase {
             ]),
             [CompareFocusMetric(title: "No read yet", value: "Evaluate", detail: "No compare quality signals", tone: .waiting)]
         )
+    }
+
+    func testFocusMetricsIncludeEyeStateAndEyeSharpnessLanes() {
+        let assetID = AssetID(rawValue: "expression-frame")
+        let provenance = ProviderProvenance(
+            provider: "core-image-faces",
+            model: "CIDetectorFace",
+            version: "1",
+            settingsHash: "default"
+        )
+
+        let metrics = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .focus, value: .score(0.88), confidence: 0.81, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .eyeSharpness, value: .score(0.74), confidence: 0.6, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .eyesOpen, value: .score(1.0), confidence: 0.7, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .smile, value: .score(1.0), confidence: 0.7, provenance: provenance)
+        ])
+
+        XCTAssertEqual(metrics.map(\.title), ["Focus", "Eye sharpness", "Eyes open", "Smile"])
+        XCTAssertEqual(metrics.map(\.value), ["88%", "74%", "Open", "Smiling"])
+        XCTAssertEqual(metrics.map(\.tone), [.positive, .positive, .positive, .neutral])
+    }
+
+    func testShutEyesAndSoftEyeLanesUseCautionTones() {
+        let assetID = AssetID(rawValue: "blink-frame")
+        let provenance = ProviderProvenance(
+            provider: "core-image-faces",
+            model: "CIDetectorFace",
+            version: "1",
+            settingsHash: "default"
+        )
+
+        let metrics = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .eyeSharpness, value: .score(0.4), confidence: 0.6, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .eyesOpen, value: .score(0.0), confidence: 0.7, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .smile, value: .score(0.0), confidence: 0.7, provenance: provenance)
+        ])
+
+        XCTAssertEqual(metrics.map(\.title), ["Eye sharpness", "Eyes open", "Smile"])
+        XCTAssertEqual(metrics.map(\.value), ["40%", "Shut", "No smile"])
+        XCTAssertEqual(metrics.map(\.tone), [.caution, .caution, .neutral])
+    }
+
+    func testSignalBadgesFlagBestEyesClosedAndSoftFrames() {
+        let best = makeAsset(id: "best")
+        let blink = makeAsset(id: "blink")
+        let soft = makeAsset(id: "soft")
+        let presentation = CompareSurveyPresentation(
+            assets: [best, blink, soft],
+            selectedAssetID: best.id,
+            evaluationSignalsByAssetID: [
+                best.id: [
+                    signal(assetID: best.id, kind: .focus, score: 0.94),
+                    signal(assetID: best.id, kind: .eyesOpen, score: 1.0)
+                ],
+                blink.id: [
+                    signal(assetID: blink.id, kind: .focus, score: 0.9),
+                    signal(assetID: blink.id, kind: .eyesOpen, score: 0.0)
+                ],
+                soft.id: [
+                    signal(assetID: soft.id, kind: .focus, score: 0.3)
+                ]
+            ]
+        )
+
+        XCTAssertEqual(presentation.signalBadges(for: best), [
+            CompareDecisionBadge(text: "✦ BEST", tone: .best)
+        ])
+        XCTAssertEqual(presentation.signalBadges(for: blink), [
+            CompareDecisionBadge(text: "EYES CLOSED", tone: .destructive)
+        ])
+        XCTAssertEqual(presentation.signalBadges(for: soft), [
+            CompareDecisionBadge(text: "SOFT", tone: .destructive)
+        ])
+    }
+
+    func testSignalBadgesStaySilentWithoutRankedContendersOrSignals() {
+        let only = makeAsset(id: "only")
+        let unread = makeAsset(id: "unread")
+        let presentation = CompareSurveyPresentation(
+            assets: [only, unread],
+            selectedAssetID: only.id,
+            evaluationSignalsByAssetID: [
+                only.id: [signal(assetID: only.id, kind: .focus, score: 0.94)]
+            ]
+        )
+
+        // A single ranked candidate is not a comparison; no BEST claim.
+        XCTAssertEqual(presentation.signalBadges(for: only), [])
+        XCTAssertEqual(presentation.signalBadges(for: unread), [])
+    }
+
+    func testRecommendationTextExplainsWhyTopSignalFrameLeads() {
+        let assets = [
+            makeAsset(id: "primary"),
+            makeAsset(id: "second"),
+            makeAsset(id: "third")
+        ]
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: [
+                assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.72)],
+                assets[2].id: [
+                    signal(assetID: assets[2].id, kind: .focus, score: 0.95),
+                    signal(assetID: assets[2].id, kind: .eyesOpen, score: 1.0)
+                ]
+            ]
+        )
+
+        XCTAssertEqual(presentation.recommendationText, "Top signal: frame 3 — sharpest, eyes open")
     }
 
     private func makeAsset(

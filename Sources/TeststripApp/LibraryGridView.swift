@@ -1974,7 +1974,7 @@ struct LibraryGridView: View {
     }
 
     private var evaluationKindFilterOptions: [EvaluationKind] {
-        [.focus, .motionBlur, .exposure, .aesthetics, .framing, .object, .faceCount, .faceQuality, .ocrText, .colorPalette, .novelty, .visualSimilarity]
+        [.focus, .motionBlur, .exposure, .aesthetics, .framing, .object, .faceCount, .faceQuality, .eyesOpen, .eyeSharpness, .smile, .ocrText, .colorPalette, .novelty, .visualSimilarity]
     }
 
     private var metadataSyncFilterBinding: Binding<String> {
@@ -3492,6 +3492,7 @@ struct CompareSurveyPresentation: Equatable {
     var recommendationText: String
     var recommendedAssetID: AssetID?
     private var recommendedFrameLabel: String?
+    private var signalBadgesByAssetID: [AssetID: [CompareDecisionBadge]]
 
     init(
         assets: [Asset],
@@ -3508,6 +3509,7 @@ struct CompareSurveyPresentation: Equatable {
             self.recommendationText = "No comparison set"
             self.recommendedAssetID = nil
             self.recommendedFrameLabel = nil
+            self.signalBadgesByAssetID = [:]
             return
         }
 
@@ -3535,8 +3537,21 @@ struct CompareSurveyPresentation: Equatable {
         let recommendation = rankedCandidates.first
         self.recommendedAssetID = recommendation?.assetID
         self.recommendedFrameLabel = recommendation?.frameLabel
+        self.signalBadgesByAssetID = Self.signalBadges(
+            assetIDs: assets.map(\.id),
+            bestAssetID: rankedCandidates.count >= 2 ? rankedCandidates.first?.assetID : nil,
+            evaluationSignalsByAssetID: evaluationSignalsByAssetID
+        )
+        let recommendationPhrases = recommendation.map { winner in
+            CullingStackRecommendation.rationalePhrases(
+                forWinner: winner.assetID,
+                stackAssetIDs: assets.map(\.id),
+                evaluationSignalsByAssetID: evaluationSignalsByAssetID
+            )
+        } ?? []
         self.recommendationText = Self.recommendationText(
             rankedCandidates: rankedCandidates,
+            recommendationPhrases: recommendationPhrases,
             primaryAsset: self.primaryAsset,
             rejectCount: max(assets.count - 1, 0)
         )
@@ -3549,6 +3564,7 @@ struct CompareSurveyPresentation: Equatable {
 
     private static func recommendationText(
         rankedCandidates: [CullingStackRecommendation],
+        recommendationPhrases: [String],
         primaryAsset: Asset?,
         rejectCount: Int
     ) -> String {
@@ -3556,6 +3572,9 @@ struct CompareSurveyPresentation: Equatable {
             return "No ranking yet"
         }
         guard recommendation.assetID == primaryAsset?.id else {
+            guard recommendationPhrases.isEmpty else {
+                return "Top signal: frame \(recommendation.frameLabel) — \(recommendationPhrases.joined(separator: ", "))"
+            }
             return "Top signal: frame \(recommendation.frameLabel)"
         }
         guard rejectCount > 0 else {
@@ -3654,6 +3673,49 @@ struct CompareSurveyPresentation: Equatable {
         return badges
     }
 
+    /// Signal-derived read badges (BEST / EYES CLOSED / SOFT). Separate from
+    /// decisionBadges so metadata badges never claim machine reads.
+    func signalBadges(for asset: Asset) -> [CompareDecisionBadge] {
+        signalBadgesByAssetID[asset.id] ?? []
+    }
+
+    private static let softFocusBadgeThreshold = 0.5
+
+    private static func signalBadges(
+        assetIDs: [AssetID],
+        bestAssetID: AssetID?,
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
+    ) -> [AssetID: [CompareDecisionBadge]] {
+        var badgesByAssetID: [AssetID: [CompareDecisionBadge]] = [:]
+        for assetID in assetIDs {
+            if assetID == bestAssetID {
+                badgesByAssetID[assetID] = [CompareDecisionBadge(text: "✦ BEST", tone: .best)]
+                continue
+            }
+            var badges: [CompareDecisionBadge] = []
+            let signals = evaluationSignalsByAssetID[assetID] ?? []
+            if let eyesOpen = highestConfidenceScore(kind: .eyesOpen, in: signals), eyesOpen < 1.0 {
+                badges.append(CompareDecisionBadge(text: "EYES CLOSED", tone: .destructive))
+            }
+            if let focus = highestConfidenceScore(kind: .focus, in: signals), focus < softFocusBadgeThreshold {
+                badges.append(CompareDecisionBadge(text: "SOFT", tone: .destructive))
+            }
+            badgesByAssetID[assetID] = badges
+        }
+        return badgesByAssetID
+    }
+
+    private static func highestConfidenceScore(kind: EvaluationKind, in signals: [EvaluationSignal]) -> Double? {
+        signals
+            .filter { $0.kind == kind }
+            .sorted { $0.confidence > $1.confidence }
+            .compactMap { signal -> Double? in
+                guard case .score(let score) = signal.value else { return nil }
+                return score
+            }
+            .first
+    }
+
     static func decisionSummary(for asset: Asset) -> String {
         if let flag = asset.metadata.flag {
             switch flag {
@@ -3708,6 +3770,7 @@ struct CompareDecisionBadge: Equatable, Identifiable {
         case destructive
         case rating
         case label
+        case best
     }
 
     var text: String
@@ -3743,7 +3806,10 @@ enum CompareFocusMetricPresentation {
         .exposure,
         .framing,
         .aesthetics,
-        .faceQuality
+        .faceQuality,
+        .eyeSharpness,
+        .eyesOpen,
+        .smile
     ]
 
     static func metrics(for signals: [EvaluationSignal]) -> [CompareFocusMetric] {
@@ -3778,6 +3844,9 @@ enum CompareFocusMetricPresentation {
     }
 
     private static func valueText(for signal: EvaluationSignal) -> String {
+        if let expressionValue = expressionValueText(for: signal) {
+            return expressionValue
+        }
         switch signal.value {
         case .score(let score):
             return EvaluationSignalPresentation.percentage(score)
@@ -3794,6 +3863,22 @@ enum CompareFocusMetricPresentation {
         }
     }
 
+    private static func expressionValueText(for signal: EvaluationSignal) -> String? {
+        guard case .score(let score) = signal.value else { return nil }
+        switch signal.kind {
+        case .eyesOpen:
+            if score >= 1.0 { return "Open" }
+            if score <= 0.0 { return "Shut" }
+            return "Some shut"
+        case .smile:
+            if score >= 1.0 { return "Smiling" }
+            if score > 0.0 { return "Some smiling" }
+            return "No smile"
+        default:
+            return nil
+        }
+    }
+
     private static func tone(for signal: EvaluationSignal) -> CompareFocusMetric.Tone {
         switch (signal.kind, signal.value) {
         case (.motionBlur, .score(let score)):
@@ -3804,6 +3889,12 @@ enum CompareFocusMetricPresentation {
              (.faceQuality, .score(let score)):
             return score >= 0.7 ? .positive : .caution
         case (.exposure, _):
+            return .neutral
+        case (.eyeSharpness, .score(let score)):
+            return score >= 0.7 ? .positive : .caution
+        case (.eyesOpen, .score(let score)):
+            return score >= 1.0 ? .positive : .caution
+        case (.smile, _):
             return .neutral
         default:
             return .neutral
@@ -3838,6 +3929,12 @@ private enum EvaluationSignalPresentation {
             return "Novelty"
         case .visualSimilarity:
             return "Visual similarity"
+        case .smile:
+            return "Smile"
+        case .eyesOpen:
+            return "Eyes open"
+        case .eyeSharpness:
+            return "Eye sharpness"
         }
     }
 
@@ -4018,7 +4115,11 @@ struct CullingStackRailPresentation: Equatable {
                 help: keepActionHelp,
                 liveMockupPlaceholder: nil
             ),
-            Self.rankedAction(for: rankedCandidates, stackCount: stackScope.assetIDs.count),
+            Self.rankedAction(
+                for: rankedCandidates,
+                stackAssetIDs: stackScope.assetIDs,
+                evaluationSignalsByAssetID: evaluationSignalsByAssetID
+            ),
             CullingStackActionPresentation(
                 action: .keepAll,
                 title: "Keep all \(stackScope.assetIDs.count)",
@@ -4050,10 +4151,11 @@ struct CullingStackRailPresentation: Equatable {
 
     private static func rankedAction(
         for rankedCandidates: [CullingStackRecommendation],
-        stackCount: Int
+        stackAssetIDs: [AssetID],
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
     ) -> CullingStackActionPresentation? {
         let topTwo = Array(rankedCandidates.prefix(2))
-        if stackCount > 2, topTwo.count >= 2 {
+        if stackAssetIDs.count > 2, topTwo.count >= 2 {
             return CullingStackActionPresentation(
                 action: .keepTopRanked(topTwo.map(\.assetID)),
                 title: "Keep top 2",
@@ -4066,11 +4168,19 @@ struct CullingStackRailPresentation: Equatable {
 
         guard let recommendation = rankedCandidates.first else { return nil }
 
+        let phrases = CullingStackRecommendation.rationalePhrases(
+            forWinner: recommendation.assetID,
+            stackAssetIDs: stackAssetIDs,
+            evaluationSignalsByAssetID: evaluationSignalsByAssetID
+        )
+        let help = phrases.isEmpty
+            ? "Keep frame \(recommendation.frameLabel) based on focus and quality signals."
+            : "Keep frame \(recommendation.frameLabel) — \(phrases.joined(separator: ", "))."
         return CullingStackActionPresentation(
             action: .keepRecommended(recommendation.assetID),
             title: "Keep recommended \(recommendation.frameLabel)",
             isEnabled: true,
-            help: "Keep frame \(recommendation.frameLabel) based on focus and quality signals.",
+            help: help,
             liveMockupPlaceholder: nil,
             assistTitle: "Recommended frame \(recommendation.frameLabel)"
         )
@@ -4170,9 +4280,45 @@ private struct CullingStackRecommendation: Equatable {
             return clampedScore * confidence * 45
         case .motionBlur:
             return (1 - clampedScore) * confidence * 60
+        case .eyesOpen:
+            return clampedScore * confidence * 90
+        case .eyeSharpness:
+            return clampedScore * confidence * 70
         default:
             return nil
         }
+    }
+
+    /// Short honest reasons why the winner leads the stack, in display order.
+    static func rationalePhrases(
+        forWinner winner: AssetID,
+        stackAssetIDs: [AssetID],
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
+    ) -> [String] {
+        var phrases: [String] = []
+        let focusScores = stackAssetIDs.compactMap { assetID in
+            bestScore(kind: .focus, in: evaluationSignalsByAssetID[assetID] ?? []).map { (assetID: assetID, score: $0) }
+        }
+        if focusScores.count >= 2,
+           let winnerFocus = focusScores.first(where: { $0.assetID == winner })?.score,
+           focusScores.allSatisfy({ $0.assetID == winner || $0.score < winnerFocus }) {
+            phrases.append("sharpest")
+        }
+        if let eyesOpen = bestScore(kind: .eyesOpen, in: evaluationSignalsByAssetID[winner] ?? []),
+           eyesOpen >= 1.0 {
+            phrases.append("eyes open")
+        }
+        return phrases
+    }
+
+    private static func bestScore(kind: EvaluationKind, in signals: [EvaluationSignal]) -> Double? {
+        signals
+            .filter { $0.kind == kind }
+            .compactMap { signal -> Double? in
+                guard case .score(let score) = signal.value else { return nil }
+                return score
+            }
+            .max()
     }
 }
 
@@ -4304,7 +4450,7 @@ private struct CompareView: View {
             .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
                 model.select(assetID)
             }
-            compareDecisionBadges(presentation.decisionBadges(for: asset))
+            compareDecisionBadges(presentation.decisionBadges(for: asset) + presentation.signalBadges(for: asset))
                 .padding(8)
         }
     }
@@ -4328,7 +4474,7 @@ private struct CompareView: View {
 
     private func compareBadgeForeground(for tone: CompareDecisionBadge.Tone) -> Color {
         switch tone {
-        case .primary, .rating:
+        case .primary, .rating, .best:
             return .black
         case .positive, .destructive, .label:
             return .white
@@ -4347,6 +4493,8 @@ private struct CompareView: View {
             return .yellow
         case .label:
             return .blue.opacity(0.9)
+        case .best:
+            return .orange
         }
     }
 
@@ -6466,8 +6614,28 @@ struct CullingAssistPresentation: Equatable {
         return rationales
     }
 
+    private static func expressionPhrase(for signal: EvaluationSignal) -> String? {
+        guard case .score(let score) = signal.value else { return nil }
+        switch signal.kind {
+        case .eyesOpen:
+            if score >= 1.0 { return "Eyes open" }
+            if score <= 0.0 { return "Eyes shut" }
+            return "Some eyes shut"
+        case .eyeSharpness:
+            return score >= 0.7 ? "Eyes sharp" : "Eyes soft"
+        case .smile:
+            if score >= 1.0 { return "Smiling" }
+            if score > 0.0 { return "Some smiling" }
+            return nil
+        default:
+            return nil
+        }
+    }
+
     private static func rationaleText(for signal: EvaluationSignal) -> String? {
         switch signal.kind {
+        case .eyesOpen, .eyeSharpness, .smile:
+            return expressionPhrase(for: signal)
         case .focus, .motionBlur, .exposure, .aesthetics, .framing, .faceQuality, .faceCount, .novelty, .colorPalette, .visualSimilarity:
             return title(for: signal)
         case .object, .ocrText:
@@ -6496,24 +6664,33 @@ struct CullingAssistPresentation: Equatable {
             return 3
         case .faceQuality:
             return 4
-        case .faceCount:
+        case .eyesOpen:
             return 5
-        case .exposure:
+        case .eyeSharpness:
             return 6
-        case .object:
+        case .smile:
             return 7
-        case .ocrText:
+        case .faceCount:
             return 8
-        case .novelty:
+        case .exposure:
             return 9
-        case .colorPalette:
+        case .object:
             return 10
-        case .visualSimilarity:
+        case .ocrText:
             return 11
+        case .novelty:
+            return 12
+        case .colorPalette:
+            return 13
+        case .visualSimilarity:
+            return 14
         }
     }
 
     private static func title(for signal: EvaluationSignal) -> String {
+        if let phrase = expressionPhrase(for: signal) {
+            return phrase
+        }
         switch signal.value {
         case .score(let score):
             return "\(EvaluationSignalPresentation.displayName(for: signal.kind)) \(EvaluationSignalPresentation.percentage(score))"
@@ -6540,6 +6717,12 @@ struct CullingAssistPresentation: Equatable {
             return cautionLabels.contains(label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) ? .caution : .positive
         case (.faceCount, .count(let count)):
             return count > 0 ? .positive : .neutral
+        case (.eyesOpen, .score(let score)):
+            return score >= 1.0 ? .positive : .caution
+        case (.eyeSharpness, .score(let score)):
+            return score >= 0.7 ? .positive : .caution
+        case (.smile, .score(let score)):
+            return score > 0.0 ? .positive : .neutral
         default:
             return .neutral
         }

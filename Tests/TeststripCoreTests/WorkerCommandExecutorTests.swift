@@ -862,6 +862,39 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(result, .completed("evaluated source.jpg with apple-vision"))
     }
 
+    func testRuntimeConfigurationRegistersFaceExpressionProvider() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-runtime-face-expression")
+        let source = root.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1200, height: 800)
+        let catalogURL = root.appendingPathComponent("catalog.sqlite")
+        let database = try CatalogDatabase.open(at: catalogURL)
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid))
+        try FileManager.default.createDirectory(at: previewURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try TestDirectories.writeTestJPEG(to: previewURL, width: 512, height: 340)
+        let executor = try WorkerCommandExecutor(configuration: WorkerRuntimeConfiguration(
+            catalogURL: catalogURL,
+            previewCacheRoot: previewCache.root
+        ))
+
+        let result = try executor.execute(.runEvaluation(assetID: asset.id, provider: "core-image-faces"))
+
+        XCTAssertEqual(result, .completed("evaluated source.jpg with core-image-faces"))
+        // The faceless test JPEG must record no expression signals rather than fake reads.
+        XCTAssertEqual(try repository.evaluationSignals(assetID: asset.id), [])
+    }
+
     func testRuntimeConfigurationRegistersLocalHTTPModelProviderWhenConfigured() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-runtime-local-http-model")
         let source = root.appendingPathComponent("source.jpg")

@@ -218,6 +218,59 @@ final class CullingStackRailPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.items, [])
     }
 
+    func testRecommendedActionExplainsSharpestEyesOpenRationale() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let selected = makeAsset(id: "selected", path: "/Photos/Job/selected.cr2", capturedAt: capturedAt)
+        let alternate = makeAsset(id: "alternate", path: "/Photos/Job/alternate.cr2", capturedAt: capturedAt.addingTimeInterval(1))
+
+        let presentation = CullingStackRailPresentation(
+            assets: [selected, alternate],
+            selectedAssetID: selected.id,
+            evaluationSignalsByAssetID: [
+                selected.id: [
+                    signal(assetID: selected.id, kind: .focus, score: 0.62)
+                ],
+                alternate.id: [
+                    signal(assetID: alternate.id, kind: .focus, score: 0.94),
+                    signal(assetID: alternate.id, kind: .eyesOpen, score: 1.0)
+                ]
+            ],
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 2)
+        )
+
+        XCTAssertEqual(presentation.items.map(\.isRecommended), [false, true])
+        XCTAssertEqual(presentation.actions[1].action, .keepRecommended(alternate.id))
+        XCTAssertEqual(presentation.actions[1].help, "Keep frame 2 — sharpest, eyes open.")
+        XCTAssertEqual(presentation.actions[1].assistTitle, "Recommended frame 2")
+    }
+
+    func testEyesOpenSignalBreaksFocusTieInRecommendation() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let selected = makeAsset(id: "selected", path: "/Photos/Job/selected.cr2", capturedAt: capturedAt)
+        let alternate = makeAsset(id: "alternate", path: "/Photos/Job/alternate.cr2", capturedAt: capturedAt.addingTimeInterval(1))
+
+        let presentation = CullingStackRailPresentation(
+            assets: [selected, alternate],
+            selectedAssetID: selected.id,
+            evaluationSignalsByAssetID: [
+                selected.id: [
+                    signal(assetID: selected.id, kind: .focus, score: 0.9),
+                    signal(assetID: selected.id, kind: .eyesOpen, score: 0.0)
+                ],
+                alternate.id: [
+                    signal(assetID: alternate.id, kind: .focus, score: 0.9),
+                    signal(assetID: alternate.id, kind: .eyesOpen, score: 1.0)
+                ]
+            ],
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 2)
+        )
+
+        XCTAssertEqual(presentation.items.map(\.isRecommended), [false, true])
+        XCTAssertEqual(presentation.actions[1].action, .keepRecommended(alternate.id))
+        // Focus is tied, so "sharpest" is not claimed; eyes decide.
+        XCTAssertEqual(presentation.actions[1].help, "Keep frame 2 — eyes open.")
+    }
+
     private func makeAsset(id: String, path: String, capturedAt: Date?) -> Asset {
         let technicalMetadata = capturedAt.map { date in
             AssetTechnicalMetadata(

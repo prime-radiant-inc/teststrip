@@ -139,7 +139,8 @@ public struct WorkerCommandExecutor {
         try database.migrate()
         var evaluationProviders: [any EvaluationProvider] = [
             LocalImageMetricsEvaluationProvider(),
-            AppleVisionEvaluationProvider()
+            AppleVisionEvaluationProvider(),
+            FaceExpressionEvaluationProvider()
         ]
         if let localHTTPModel = configuration.localHTTPModel {
             evaluationProviders.append(LocalHTTPModelProvider(

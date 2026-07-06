@@ -360,6 +360,12 @@ extension EvaluationKind {
             return "Novelty"
         case .visualSimilarity:
             return "Visual Similarity"
+        case .smile:
+            return "Smile"
+        case .eyesOpen:
+            return "Eyes Open"
+        case .eyeSharpness:
+            return "Eye Sharpness"
         }
     }
 }
@@ -1292,7 +1298,7 @@ public final class AppModel {
     private var compareAssetIDs: [AssetID]?
 
     public static let defaultEvaluationProviderName = "local-image-metrics"
-    public static let defaultEvaluationProviderNames = [defaultEvaluationProviderName, "apple-vision"]
+    public static let defaultEvaluationProviderNames = [defaultEvaluationProviderName, "apple-vision", "core-image-faces"]
     private static let assetPageSize = 120
     private static let loadedAssetWindowSize = assetPageSize * 2
     private static let pendingPreviewRecoveryBatchSize = 40
@@ -8918,6 +8924,9 @@ public final class AppModel {
     private static let evaluationKindSidebarOrder: [EvaluationKind] = [
         .faceCount,
         .faceQuality,
+        .eyesOpen,
+        .eyeSharpness,
+        .smile,
         .object,
         .ocrText,
         .focus,

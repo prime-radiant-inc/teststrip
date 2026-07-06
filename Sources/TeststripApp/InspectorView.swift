@@ -153,7 +153,7 @@ struct InspectorEvaluationSignalGroup: Equatable, Identifiable {
         switch kind {
         case .focus, .motionBlur, .exposure:
             return "Technical Quality"
-        case .faceCount, .faceQuality:
+        case .faceCount, .faceQuality, .smile, .eyesOpen, .eyeSharpness:
             return "Faces"
         case .ocrText:
             return "Text"
@@ -187,6 +187,9 @@ struct InspectorEvaluationSignalGroup: Equatable, Identifiable {
         case .colorPalette: "Color"
         case .novelty: "Novelty"
         case .visualSimilarity: "Visual similarity"
+        case .smile: "Smile"
+        case .eyesOpen: "Eyes open"
+        case .eyeSharpness: "Eye sharpness"
         }
     }
 

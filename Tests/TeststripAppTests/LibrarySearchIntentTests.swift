@@ -131,6 +131,18 @@ final class LibrarySearchIntentTests: XCTestCase {
         ])
     }
 
+    func testParsesExpressionSignalFieldTokens() {
+        let eyesOpen = LibrarySearchIntent.parse("signal:eyesopen")
+        XCTAssertEqual(eyesOpen.predicates, [.evaluationKind(.eyesOpen)])
+        XCTAssertEqual(eyesOpen.chips, ["Signal: Eyes Open"])
+
+        let smile = LibrarySearchIntent.parse("signal:smile")
+        XCTAssertEqual(smile.predicates, [.evaluationKind(.smile)])
+
+        let eyeSharpness = LibrarySearchIntent.parse("signal:eyesharpness")
+        XCTAssertEqual(eyeSharpness.predicates, [.evaluationKind(.eyeSharpness)])
+    }
+
     func testParsesQuotedFieldValuesAndImportBatch() {
         let intent = LibrarySearchIntent.parse(
             "folder:\"/Volumes/NAS/Wedding 2026\" keyword:\"New York\" import:import-42 \"quiet moments\""
