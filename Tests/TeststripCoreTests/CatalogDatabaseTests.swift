@@ -924,6 +924,108 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.faceObservations(assetID: AssetID(rawValue: "other")), [])
     }
 
+    func testUnassignedFaceObservationsExcludeConfirmedDismissedAndAssignedAssets() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-unassigned-faces")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "face-crop-pad-25")
+        let otherProvenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "2", settingsHash: "face-crop-pad-25")
+        let open = Asset.testAsset(id: AssetID(rawValue: "open"), path: "/Volumes/NAS/Job/open.jpg", rating: 0)
+        let confirmed = Asset.testAsset(id: AssetID(rawValue: "confirmed"), path: "/Volumes/NAS/Job/confirmed.jpg", rating: 0)
+        let dismissedFace = Asset.testAsset(id: AssetID(rawValue: "dismissed-face"), path: "/Volumes/NAS/Job/dismissed-face.jpg", rating: 0)
+        let dismissedAsset = Asset.testAsset(id: AssetID(rawValue: "dismissed-asset"), path: "/Volumes/NAS/Job/dismissed-asset.jpg", rating: 0)
+        try repository.upsert([open, confirmed, dismissedFace, dismissedAsset])
+        func face(_ asset: Asset, _ index: Int, _ prov: ProviderProvenance = provenance) -> CatalogFaceObservation {
+            CatalogFaceObservation(
+                assetID: asset.id,
+                faceIndex: index,
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                captureQuality: 0.5,
+                embedding: [1, 0, 0],
+                provenance: prov
+            )
+        }
+        try repository.replaceFaceObservations(assetID: open.id, provenance: provenance, with: [face(open, 0)])
+        try repository.replaceFaceObservations(assetID: open.id, provenance: otherProvenance, with: [face(open, 0, otherProvenance)])
+        try repository.replaceFaceObservations(assetID: confirmed.id, provenance: provenance, with: [face(confirmed, 0)])
+        try repository.replaceFaceObservations(assetID: dismissedFace.id, provenance: provenance, with: [face(dismissedFace, 0)])
+        try repository.replaceFaceObservations(assetID: dismissedAsset.id, provenance: provenance, with: [face(dismissedAsset, 0)])
+        try repository.upsertPerson(id: "person-maya", name: "Maya")
+        try repository.assignFaces([FaceID(assetID: confirmed.id, faceIndex: 0)], toPersonID: "person-maya")
+        try repository.dismissFaces([FaceID(assetID: dismissedFace.id, faceIndex: 0)])
+        try repository.dismissFaceAssets([dismissedAsset.id])
+
+        let unassigned = try repository.unassignedFaceObservations(provenance: provenance, limit: 10)
+
+        XCTAssertEqual(unassigned.map(\.faceID), [FaceID(assetID: open.id, faceIndex: 0)])
+        XCTAssertEqual(try repository.faceObservationAssetCount(provenance: provenance), 4)
+    }
+
+    func testAssignFacesRecordsPersonFacesAndPersonAssets() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-assign-faces")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "face-crop-pad-25")
+        let frame = Asset.testAsset(id: AssetID(rawValue: "frame"), path: "/Volumes/NAS/Job/frame.jpg", rating: 0)
+        try repository.upsert(frame)
+        try repository.replaceFaceObservations(assetID: frame.id, provenance: provenance, with: [
+            CatalogFaceObservation(
+                assetID: frame.id,
+                faceIndex: 0,
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                captureQuality: 0.5,
+                embedding: [0.6, 0.8, 0],
+                provenance: provenance
+            )
+        ])
+        try repository.upsertPerson(id: "person-maya", name: "Maya")
+
+        try repository.assignFaces([FaceID(assetID: frame.id, faceIndex: 0)], toPersonID: "person-maya")
+
+        XCTAssertEqual(try repository.assetIDs(personID: "person-maya"), [frame.id])
+        XCTAssertEqual(
+            try repository.confirmedFaceEmbeddingsByPerson(provenance: provenance),
+            ["person-maya": [[0.6, 0.8, 0]]]
+        )
+        XCTAssertEqual(try repository.unassignedFaceObservations(provenance: provenance, limit: 10), [])
+    }
+
+    func testMergePersonMovesConfirmedFacesAndDismissFaceAssetsClearsThem() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-face-merge-dismiss")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "face-crop-pad-25")
+        let frame = Asset.testAsset(id: AssetID(rawValue: "frame"), path: "/Volumes/NAS/Job/frame.jpg", rating: 0)
+        try repository.upsert(frame)
+        try repository.replaceFaceObservations(assetID: frame.id, provenance: provenance, with: [
+            CatalogFaceObservation(
+                assetID: frame.id,
+                faceIndex: 0,
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                captureQuality: 0.5,
+                embedding: [1, 0, 0],
+                provenance: provenance
+            )
+        ])
+        try repository.upsertPerson(id: "source", name: "Maya duplicate")
+        try repository.upsertPerson(id: "target", name: "Maya")
+        try repository.assignFaces([FaceID(assetID: frame.id, faceIndex: 0)], toPersonID: "source")
+
+        try repository.mergePerson(sourceID: "source", into: "target")
+
+        XCTAssertEqual(
+            try repository.confirmedFaceEmbeddingsByPerson(provenance: provenance),
+            ["target": [[1, 0, 0]]]
+        )
+
+        try repository.dismissFaceAssets([frame.id])
+
+        XCTAssertEqual(try repository.confirmedFaceEmbeddingsByPerson(provenance: provenance), [:])
+    }
+
     func testEyesClosedSignalJoinsLikelyIssueQueue() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-eyes-closed-likely-issue")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

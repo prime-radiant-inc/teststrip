@@ -495,6 +495,10 @@ public final class CatalogRepository {
                 """,
                 bindings: [trimmedTargetID, trimmedSourceID]
             )
+            try database.execute(
+                "UPDATE person_faces SET person_id = ? WHERE person_id = ?",
+                bindings: [trimmedTargetID, trimmedSourceID]
+            )
             try database.execute("DELETE FROM person_assets WHERE person_id = ?", bindings: [trimmedSourceID])
             try database.execute("DELETE FROM people WHERE id = ?", bindings: [trimmedSourceID])
         }
@@ -510,6 +514,7 @@ public final class CatalogRepository {
                     bindings: [assetID.rawValue, now]
                 )
                 try database.execute("DELETE FROM person_assets WHERE asset_id = ?", bindings: [assetID.rawValue])
+                try database.execute("DELETE FROM person_faces WHERE asset_id = ?", bindings: [assetID.rawValue])
             }
         }
     }
@@ -635,6 +640,127 @@ public final class CatalogRepository {
             embedding: payload.embedding,
             provenance: try decode(ProviderProvenance.self, from: provenanceJSON)
         )
+    }
+
+    public func unassignedFaceObservations(provenance: ProviderProvenance, limit: Int) throws -> [CatalogFaceObservation] {
+        let rows = try database.rows(
+            """
+            SELECT asset_id, face_index, face_json, provenance_json
+            FROM face_observations
+            WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM person_faces
+                  WHERE person_faces.asset_id = face_observations.asset_id
+                    AND person_faces.face_index = face_observations.face_index
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM dismissed_faces
+                  WHERE dismissed_faces.asset_id = face_observations.asset_id
+                    AND dismissed_faces.face_index = face_observations.face_index
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM dismissed_face_assets
+                  WHERE dismissed_face_assets.asset_id = face_observations.asset_id
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM person_assets
+                  WHERE person_assets.asset_id = face_observations.asset_id
+              )
+            ORDER BY created_at DESC, asset_id ASC, face_index ASC
+            LIMIT ?
+            """,
+            bindings: [provenance.provider, provenance.model, provenance.version, provenance.settingsHash, "\(limit)"]
+        )
+        return try rows.map(decodeFaceObservation)
+    }
+
+    public func confirmedFaceEmbeddingsByPerson(provenance: ProviderProvenance) throws -> [String: [[Double]]] {
+        let rows = try database.rows(
+            """
+            SELECT person_faces.person_id AS person_id, face_observations.face_json AS face_json
+            FROM person_faces
+            JOIN face_observations
+              ON face_observations.asset_id = person_faces.asset_id
+             AND face_observations.face_index = person_faces.face_index
+            WHERE face_observations.provider = ? AND face_observations.model = ?
+              AND face_observations.version = ? AND face_observations.settings_hash = ?
+            ORDER BY person_faces.person_id ASC, person_faces.asset_id ASC, person_faces.face_index ASC
+            """,
+            bindings: [provenance.provider, provenance.model, provenance.version, provenance.settingsHash]
+        )
+        var embeddingsByPerson: [String: [[Double]]] = [:]
+        for row in rows {
+            guard let personID = row["person_id"], let faceJSON = row["face_json"] else {
+                throw CatalogError.sqlite("confirmed face row is missing required columns")
+            }
+            let payload = try decode(FaceObservationPayload.self, from: faceJSON)
+            embeddingsByPerson[personID, default: []].append(payload.embedding)
+        }
+        return embeddingsByPerson
+    }
+
+    public func faceObservationAssetCount(provenance: ProviderProvenance) throws -> Int {
+        let rows = try database.rows(
+            """
+            SELECT COUNT(DISTINCT asset_id) AS asset_count
+            FROM face_observations
+            WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?
+            """,
+            bindings: [provenance.provider, provenance.model, provenance.version, provenance.settingsHash]
+        )
+        return rows.first.flatMap { $0["asset_count"] }.flatMap(Int.init) ?? 0
+    }
+
+    public func assignFaces(_ faceIDs: [FaceID], toPersonID personID: String) throws {
+        let trimmedPersonID = personID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPersonID.isEmpty else {
+            throw TeststripError.invalidState("person id is required")
+        }
+        guard !faceIDs.isEmpty else { return }
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.transaction {
+            for faceID in faceIDs {
+                try database.execute(
+                    """
+                    INSERT INTO person_faces (person_id, asset_id, face_index, created_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(asset_id, face_index) DO UPDATE SET person_id = excluded.person_id
+                    """,
+                    bindings: [trimmedPersonID, faceID.assetID.rawValue, "\(faceID.faceIndex)", now]
+                )
+                try database.execute(
+                    "DELETE FROM dismissed_faces WHERE asset_id = ? AND face_index = ?",
+                    bindings: [faceID.assetID.rawValue, "\(faceID.faceIndex)"]
+                )
+            }
+            for assetID in Set(faceIDs.map(\.assetID)).sorted(by: { $0.rawValue < $1.rawValue }) {
+                try database.execute(
+                    "INSERT OR IGNORE INTO person_assets (person_id, asset_id, created_at) VALUES (?, ?, ?)",
+                    bindings: [trimmedPersonID, assetID.rawValue, now]
+                )
+                try database.execute(
+                    "DELETE FROM dismissed_face_assets WHERE asset_id = ?",
+                    bindings: [assetID.rawValue]
+                )
+            }
+        }
+    }
+
+    public func dismissFaces(_ faceIDs: [FaceID]) throws {
+        guard !faceIDs.isEmpty else { return }
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.transaction {
+            for faceID in faceIDs {
+                try database.execute(
+                    "INSERT OR IGNORE INTO dismissed_faces (asset_id, face_index, created_at) VALUES (?, ?, ?)",
+                    bindings: [faceID.assetID.rawValue, "\(faceID.faceIndex)", now]
+                )
+                try database.execute(
+                    "DELETE FROM person_faces WHERE asset_id = ? AND face_index = ?",
+                    bindings: [faceID.assetID.rawValue, "\(faceID.faceIndex)"]
+                )
+            }
+        }
     }
 
     public func save(_ session: WorkSession) throws {
