@@ -38,6 +38,13 @@ final class BenchmarkCommandTests: XCTestCase {
         )
     }
 
+    func testOfflineReconnectSmokeCommandParses() throws {
+        XCTAssertEqual(
+            BenchmarkCommand.parse(["TeststripBench", "offline-reconnect-smoke"]),
+            .offlineReconnectSmoke
+        )
+    }
+
     func testPreviewRenderCommandParsesCount() throws {
         XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "preview-render", "250"]), .previewRender(count: 250))
     }
@@ -166,6 +173,21 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(result.onlineCount, 4)
         XCTAssertEqual(result.missingCount, 4)
         XCTAssertEqual(result.staleCount, 4)
+    }
+
+    func testOfflineReconnectSmokeKeepsCachedPreviewAndMovesSidecarPath() throws {
+        let root = try makeTemporaryDirectory(named: "offline-reconnect-smoke")
+
+        let result = try OfflineReconnectSmoke(root: root).run()
+
+        XCTAssertEqual(result.catalogAssetCount, 1)
+        XCTAssertTrue(result.cachedPreviewReadableBeforeReconnect)
+        XCTAssertTrue(result.cachedPreviewReadableAfterReconnect)
+        XCTAssertEqual(result.reconnectedAssetCount, 1)
+        XCTAssertEqual(result.onlineAssetCountAfterReconnect, 1)
+        XCTAssertEqual(result.sidecarPathUpdatedCount, 1)
+        XCTAssertEqual(result.unchangedOriginalCount, 1)
+        XCTAssertEqual(result.unchangedSidecarCount, 1)
     }
 
     func testPreviewRenderBenchmarkCreatesCachedPreviews() throws {

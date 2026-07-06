@@ -20,6 +20,8 @@ case .localHTTPSmoke(let endpoint, let model, let imagePath, let timeout):
     try runLocalHTTPModelSmoke(endpoint: endpoint, model: model, imagePath: imagePath, timeout: timeout)
 case .metadataWrite(let count):
     try runMetadataWriteBenchmark(count: count, root: root)
+case .offlineReconnectSmoke:
+    try runOfflineReconnectSmoke(root: root)
 case .sourceAvailability(let count):
     try runSourceAvailabilityBenchmark(count: count, root: root)
 case .previewRender(let count):
@@ -153,6 +155,32 @@ private func runMetadataWriteBenchmark(count: Int, root: URL) throws {
     print("synced fingerprints: \(result.syncedFingerprintCount)")
     print("pending sync items: \(result.pendingSyncCount)")
     print("unchanged originals: \(result.unchangedOriginalCount)")
+    try printMachineReadableSummary(recorder.summary)
+}
+
+private func runOfflineReconnectSmoke(root: URL) throws {
+    var recorder = BenchmarkSummaryRecorder(benchmark: "offline_reconnect_smoke", count: 1)
+
+    print("TeststripBench offline reconnect smoke")
+    let result = try measure("offline reconnect smoke", recorder: &recorder, key: "offline_reconnect_smoke") {
+        try OfflineReconnectSmoke(root: root).run()
+    }
+    recorder.recordMetric("catalog_assets", result.catalogAssetCount)
+    recorder.recordMetric("cached_preview_readable_before_reconnect", result.cachedPreviewReadableBeforeReconnect ? 1 : 0)
+    recorder.recordMetric("cached_preview_readable_after_reconnect", result.cachedPreviewReadableAfterReconnect ? 1 : 0)
+    recorder.recordMetric("reconnected_assets", result.reconnectedAssetCount)
+    recorder.recordMetric("online_assets_after_reconnect", result.onlineAssetCountAfterReconnect)
+    recorder.recordMetric("sidecar_path_updated", result.sidecarPathUpdatedCount)
+    recorder.recordMetric("unchanged_originals", result.unchangedOriginalCount)
+    recorder.recordMetric("unchanged_sidecars", result.unchangedSidecarCount)
+    print("catalog assets: \(result.catalogAssetCount)")
+    print("cached preview readable before reconnect: \(result.cachedPreviewReadableBeforeReconnect ? "yes" : "no")")
+    print("cached preview readable after reconnect: \(result.cachedPreviewReadableAfterReconnect ? "yes" : "no")")
+    print("reconnected assets: \(result.reconnectedAssetCount)")
+    print("online assets after reconnect: \(result.onlineAssetCountAfterReconnect)")
+    print("sidecar path updated: \(result.sidecarPathUpdatedCount)")
+    print("unchanged originals: \(result.unchangedOriginalCount)")
+    print("unchanged sidecars: \(result.unchangedSidecarCount)")
     try printMachineReadableSummary(recorder.summary)
 }
 

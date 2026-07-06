@@ -9,6 +9,7 @@ public enum BenchmarkCommand: Equatable {
     case importPreviewDrain(count: Int)
     case localHTTPSmoke(endpoint: URL, model: String, imagePath: String?, timeout: TimeInterval)
     case metadataWrite(count: Int)
+    case offlineReconnectSmoke
     case sourceAvailability(count: Int)
     case previewRender(count: Int)
     case workerRecoverySmoke(count: Int)
@@ -44,6 +45,9 @@ public enum BenchmarkCommand: Equatable {
         }
         if firstArgument == "metadata-write" {
             return .metadataWrite(count: Int(userArguments.dropFirst().first ?? "1000") ?? 1_000)
+        }
+        if firstArgument == "offline-reconnect-smoke" {
+            return .offlineReconnectSmoke
         }
         if firstArgument == "source-availability" {
             return .sourceAvailability(count: Int(userArguments.dropFirst().first ?? "1000") ?? 1_000)
