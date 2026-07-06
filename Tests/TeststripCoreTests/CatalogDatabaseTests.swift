@@ -1243,6 +1243,27 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(matching: failureQuery), 0)
     }
 
+    func testEvaluationFailuresCanBeListedForAsset() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-failures-by-asset")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let selected = Asset.testAsset(id: AssetID(rawValue: "selected"), path: "/Volumes/NAS/Job/selected.jpg", rating: 0)
+        let other = Asset.testAsset(id: AssetID(rawValue: "other"), path: "/Volumes/NAS/Job/other.jpg", rating: 0)
+        try repository.upsert([selected, other])
+
+        try repository.recordEvaluationFailure(assetID: selected.id, provider: "local-http-model", message: "model timed out")
+        try repository.recordEvaluationFailure(assetID: selected.id, provider: "apple-vision", message: "vision unavailable")
+        try repository.recordEvaluationFailure(assetID: other.id, provider: "local-http-model", message: "other timed out")
+
+        let failures = try repository.evaluationFailures(assetID: selected.id)
+
+        XCTAssertEqual(failures.map(\.assetID), [selected.id, selected.id])
+        XCTAssertEqual(failures.map(\.provider), ["apple-vision", "local-http-model"])
+        XCTAssertEqual(failures.map(\.message), ["vision unavailable", "model timed out"])
+        XCTAssertTrue(failures.allSatisfy { $0.failedAt.timeIntervalSince1970 > 0 })
+    }
+
     func testRecordingEvaluationSignalReplacesSameProviderSignal() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-upsert")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

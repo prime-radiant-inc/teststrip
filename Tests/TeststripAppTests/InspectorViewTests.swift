@@ -135,6 +135,22 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(presentation.helpText(for: suggestion), "Accept OCR caption: Invoice 123 Client ABC")
     }
 
+    func testProviderFailurePresentationNamesFailureAndRetryAction() {
+        let failure = CatalogEvaluationFailure(
+            assetID: AssetID(rawValue: "failed"),
+            provider: "local-http-model",
+            message: "model timed out",
+            failedAt: Date(timeIntervalSince1970: 1_704_067_200)
+        )
+
+        let presentation = InspectorProviderFailurePresentation(failures: [failure])
+
+        XCTAssertTrue(presentation.isVisible)
+        XCTAssertEqual(presentation.title, "Provider retry needed")
+        XCTAssertEqual(presentation.detailText(for: failure), "local-http-model failed: model timed out")
+        XCTAssertEqual(presentation.actionLabel(for: failure), "Retry local-http-model")
+    }
+
     func testEvaluationRowsKeepDuplicateProvidersVisible() {
         let signals = [
             evaluationSignal(

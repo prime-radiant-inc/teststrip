@@ -67,6 +67,26 @@ struct InspectorCaptionSuggestionPresentation: Equatable {
     }
 }
 
+struct InspectorProviderFailurePresentation: Equatable {
+    var failures: [CatalogEvaluationFailure]
+
+    var isVisible: Bool {
+        !failures.isEmpty
+    }
+
+    var title: String {
+        "Provider retry needed"
+    }
+
+    func detailText(for failure: CatalogEvaluationFailure) -> String {
+        "\(failure.provider) failed: \(failure.message)"
+    }
+
+    func actionLabel(for failure: CatalogEvaluationFailure) -> String {
+        "Retry \(failure.provider)"
+    }
+}
+
 struct InspectorTechnicalRows: Equatable {
     var rows: [InspectorMetadataRow]
 
@@ -414,6 +434,10 @@ struct InspectorView: View {
         if !model.selectedPreviewGenerationFailures.isEmpty {
             previewFailureStatus(model.selectedPreviewGenerationFailures)
         }
+        let providerFailurePresentation = InspectorProviderFailurePresentation(failures: model.selectedProviderFailures)
+        if providerFailurePresentation.isVisible {
+            providerFailureStatus(providerFailurePresentation)
+        }
     }
 
     private func previewFailureStatus(_ failures: [PreviewGenerationQueueState]) -> some View {
@@ -434,6 +458,26 @@ struct InspectorView: View {
             }
             .controlSize(.small)
             .disabled(!model.canRetrySelectedPreviewGenerationFailures)
+        }
+    }
+
+    private func providerFailureStatus(_ presentation: InspectorProviderFailurePresentation) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Label(presentation.title, systemImage: "bolt.horizontal.circle")
+                .font(.caption)
+                .foregroundStyle(.yellow)
+            ForEach(presentation.failures, id: \.provider) { failure in
+                Text(presentation.detailText(for: failure))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                Button {
+                    apply { try model.retrySelectedProviderFailure(provider: failure.provider) }
+                } label: {
+                    Label(presentation.actionLabel(for: failure), systemImage: "arrow.clockwise")
+                }
+                .controlSize(.small)
+            }
         }
     }
 

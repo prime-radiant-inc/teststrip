@@ -8011,6 +8011,33 @@ final class AppModelTests: XCTestCase {
         ], in: transport))
     }
 
+    func testSelectedProviderFailuresExposeProviderMessageAndRetryFailedProvider() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let asset = makeAsset(id: "selected-provider-failure", path: "/Photos/selected-provider-failure.jpg", rating: 0, keywords: ["tagged"])
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "selected-provider-failure",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
+        try repository.recordEvaluationFailure(assetID: asset.id, provider: "local-http-model", message: "model timed out")
+
+        let failure = try XCTUnwrap(model.selectedProviderFailures.first)
+        XCTAssertEqual(failure.assetID, asset.id)
+        XCTAssertEqual(failure.provider, "local-http-model")
+        XCTAssertEqual(failure.message, "model timed out")
+
+        try model.retrySelectedProviderFailure(provider: "local-http-model")
+
+        XCTAssertEqual(try transport.commands(), [
+            .runEvaluation(assetID: asset.id, provider: "local-http-model")
+        ])
+    }
+
     func testRequestVisibleAssetEvaluationsDispatchesForLoadedAssets() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

@@ -1493,6 +1493,14 @@ public final class AppModel {
         return evaluationSignals(for: selectedAssetID)
     }
 
+    public var selectedProviderFailures: [CatalogEvaluationFailure] {
+        guard let catalog,
+              let selectedAssetID else {
+            return []
+        }
+        return (try? catalog.repository.evaluationFailures(assetID: selectedAssetID)) ?? []
+    }
+
     public func evaluationSignals(for assetID: AssetID) -> [EvaluationSignal] {
         guard let catalog else { return [] }
         _ = evaluationSignalGeneration(for: assetID)
@@ -5155,6 +5163,13 @@ public final class AppModel {
     }
 
     public func requestSelectedAssetEvaluation(provider: String = AppModel.defaultEvaluationProviderName) throws {
+        guard let selectedAssetID else {
+            throw TeststripError.invalidState("no selected asset")
+        }
+        try requestEvaluation(assetID: selectedAssetID, provider: provider)
+    }
+
+    public func retrySelectedProviderFailure(provider: String) throws {
         guard let selectedAssetID else {
             throw TeststripError.invalidState("no selected asset")
         }

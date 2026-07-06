@@ -680,6 +680,19 @@ public final class CatalogRepository {
         )
     }
 
+    public func evaluationFailures(assetID: AssetID) throws -> [CatalogEvaluationFailure] {
+        let rows = try database.rows(
+            """
+            SELECT asset_id, provider, message, failed_at
+            FROM evaluation_failures
+            WHERE asset_id = ?
+            ORDER BY provider ASC
+            """,
+            bindings: [assetID.rawValue]
+        )
+        return try rows.map(decodeEvaluationFailure)
+    }
+
     public func evaluationKindSummaries() throws -> [CatalogEvaluationKindSummary] {
         let rows = try database.rows(
             """
@@ -1209,6 +1222,23 @@ public final class CatalogRepository {
             value: try decode(EvaluationValue.self, from: valueJSON),
             confidence: confidence,
             provenance: try decode(ProviderProvenance.self, from: provenanceJSON)
+        )
+    }
+
+    private func decodeEvaluationFailure(_ row: [String: String]) throws -> CatalogEvaluationFailure {
+        guard let assetID = row["asset_id"],
+              let provider = row["provider"],
+              let message = row["message"],
+              let failedAtValue = row["failed_at"],
+              let failedAt = Double(failedAtValue) else {
+            throw CatalogError.sqlite("evaluation failure row is missing required columns")
+        }
+
+        return CatalogEvaluationFailure(
+            assetID: AssetID(rawValue: assetID),
+            provider: provider,
+            message: message,
+            failedAt: Date(timeIntervalSince1970: failedAt)
         )
     }
 

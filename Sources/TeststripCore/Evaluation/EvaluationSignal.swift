@@ -1,3 +1,5 @@
+import Foundation
+
 public enum EvaluationKind: String, Codable, Sendable {
     case focus
     case motionBlur
@@ -35,5 +37,19 @@ public struct EvaluationSignal: Codable, Equatable, Sendable {
         self.value = value
         self.confidence = confidence
         self.provenance = provenance
+    }
+}
+
+public struct CatalogEvaluationFailure: Equatable, Sendable {
+    public var assetID: AssetID
+    public var provider: String
+    public var message: String
+    public var failedAt: Date
+
+    public init(assetID: AssetID, provider: String, message: String, failedAt: Date) {
+        self.assetID = assetID
+        self.provider = provider
+        self.message = message
+        self.failedAt = failedAt
     }
 }
