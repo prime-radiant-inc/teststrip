@@ -747,8 +747,15 @@ struct LibraryGridView: View {
                         removeActiveLibraryFilter(row)
                     } label: {
                         HStack(spacing: 5) {
-                            Text(row.title)
-                                .lineLimit(1)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(row.title)
+                                    .lineLimit(1)
+                                if row.isPlainSearchFallback {
+                                    Text("Plain search fallback")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                             Image(systemName: "xmark")
                                 .font(.system(size: 9, weight: .bold))
                         }
@@ -762,7 +769,11 @@ struct LibraryGridView: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Remove filter \(row.title)")
+                    .accessibilityLabel(
+                        row.isPlainSearchFallback
+                            ? "Remove plain search fallback filter \(row.title)"
+                            : "Remove filter \(row.title)"
+                    )
                     .help("Remove \(row.title) filter")
                 }
             }
