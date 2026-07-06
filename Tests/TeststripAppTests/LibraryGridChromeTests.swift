@@ -67,6 +67,27 @@ final class LibraryGridChromeTests: XCTestCase {
         XCTAssertEqual(LibraryGridChromePolicy.primaryCardImportRoute, .userGrantedPanel)
     }
 
+    func testPrimaryCardImportRouteCanUseTypedPathForAutomationOverride() {
+        XCTAssertEqual(
+            LibraryGridChromePolicy.primaryCardImportRoute(environment: [
+                "TESTSTRIP_CARD_IMPORT_ROUTE": "typed-path"
+            ]),
+            .typedPathSheet
+        )
+        XCTAssertEqual(
+            LibraryGridChromePolicy.primaryCardImportRoute(environment: [
+                "TESTSTRIP_CARD_IMPORT_ROUTE": "panel"
+            ]),
+            .userGrantedPanel
+        )
+        XCTAssertEqual(
+            LibraryGridChromePolicy.primaryCardImportRoute(environment: [
+                "TESTSTRIP_CARD_IMPORT_ROUTE": "unexpected"
+            ]),
+            .userGrantedPanel
+        )
+    }
+
     func testLibrarySortPresentationExposesImportCaptureTimeAndFilenameOptions() {
         let options = LibrarySortOptionPresentation.options(selected: .captureTimeNewestFirst)
 

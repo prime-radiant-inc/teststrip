@@ -2078,7 +2078,7 @@ struct LibraryGridView: View {
     }
 
     private func showPrimaryCardImportRoute() {
-        switch LibraryGridChromePolicy.primaryCardImportRoute {
+        switch LibraryGridChromePolicy.primaryCardImportRoute(environment: ProcessInfo.processInfo.environment) {
         case .userGrantedPanel:
             showImportCardPanel()
         case .typedPathSheet:
@@ -5741,6 +5741,15 @@ enum ImportCardEntryRoute: Equatable {
 
 enum LibraryGridChromePolicy {
     static let primaryCardImportRoute: ImportCardEntryRoute = .userGrantedPanel
+
+    static func primaryCardImportRoute(environment: [String: String]) -> ImportCardEntryRoute {
+        switch environment["TESTSTRIP_CARD_IMPORT_ROUTE"] {
+        case "typed-path":
+            return .typedPathSheet
+        default:
+            return .userGrantedPanel
+        }
+    }
 
     static func shouldShowImportProgressBanner(isImporting: Bool, visibleAssetCount _: Int) -> Bool {
         isImporting
