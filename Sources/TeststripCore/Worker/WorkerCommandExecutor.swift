@@ -321,13 +321,27 @@ public struct WorkerCommandExecutor {
         }
         let catalogGeneration = try repository.catalogGeneration(assetID: assetID)
         let syncItem = try repository.metadataSyncItem(assetID: assetID)
-        let decision = try metadataSyncDecision(
-            catalogMetadata: asset.metadata,
-            catalogGeneration: catalogGeneration,
-            syncItem: syncItem,
-            sidecarData: sidecarData,
-            sidecarModificationDate: sidecarModificationDate
-        )
+        let decision: MetadataSyncDecision
+        do {
+            decision = try metadataSyncDecision(
+                catalogMetadata: asset.metadata,
+                catalogGeneration: catalogGeneration,
+                syncItem: syncItem,
+                sidecarData: sidecarData,
+                sidecarModificationDate: sidecarModificationDate
+            )
+        } catch {
+            if let conflict = try recordConflictForUnreadableSidecar(
+                assetID: assetID,
+                assetName: assetName,
+                sidecarURL: sidecarURL,
+                sidecarData: sidecarData,
+                catalogGeneration: catalogGeneration
+            ) {
+                return conflict
+            }
+            throw error
+        }
 
         switch decision {
         case .upToDate:
@@ -351,6 +365,15 @@ public struct WorkerCommandExecutor {
                 )
                 return .completed("synced metadata for \(assetName)")
             } catch {
+                if let conflict = try recordConflictForUnreadableSidecar(
+                    assetID: assetID,
+                    assetName: assetName,
+                    sidecarURL: sidecarURL,
+                    sidecarData: sidecarData,
+                    catalogGeneration: catalogGeneration
+                ) {
+                    return conflict
+                }
                 try repository.recordMetadataSyncPending(MetadataSyncItem(
                     assetID: assetID,
                     sidecarURL: sidecarURL,
@@ -386,6 +409,30 @@ public struct WorkerCommandExecutor {
             ))
             return .completed("metadata conflict for \(assetName)")
         }
+    }
+
+    /// A sync step that fails because the existing sidecar cannot be parsed would otherwise
+    /// retry forever as a silently pending item. Recording the existing conflict state instead
+    /// routes the asset into XMP Conflicts review, where the inspector surfaces the unreadable
+    /// sidecar and offers Use Catalog to recreate it. Returns nil when the sidecar is absent or
+    /// parses cleanly, so unrelated failures keep their current handling.
+    private func recordConflictForUnreadableSidecar(
+        assetID: AssetID,
+        assetName: String,
+        sidecarURL: URL,
+        sidecarData: Data?,
+        catalogGeneration: Int
+    ) throws -> WorkerCommandResult? {
+        guard let sidecarData, (try? XMPPacket.parse(sidecarData)) == nil else {
+            return nil
+        }
+        try repository.recordMetadataSyncConflict(MetadataSyncItem(
+            assetID: assetID,
+            sidecarURL: sidecarURL,
+            catalogGeneration: catalogGeneration,
+            lastSyncedFingerprint: try repository.lastMetadataSyncFingerprint(assetID: assetID)
+        ))
+        return .completed("metadata conflict for \(assetName)")
     }
 
     private func metadataSyncDecision(
