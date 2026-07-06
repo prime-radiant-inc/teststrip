@@ -1553,6 +1553,207 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: outsideAsset.originalURL.appendingPathExtension("xmp").path))
     }
 
+    @MainActor
+    func testExportVisibleAssetsWritesJpegCopiesAndReportsCompletionSummary() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-export-visible")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let goodURL = photosDirectory.appendingPathComponent("good.png")
+        let brokenURL = photosDirectory.appendingPathComponent("broken.jpg")
+        let missingURL = photosDirectory.appendingPathComponent("missing.jpg")
+        try writeTestPNG(to: goodURL)
+        try Data("not an image".utf8).write(to: brokenURL)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let good = makeAsset(id: "export-good", path: goodURL.path, rating: 0)
+        let broken = makeAsset(id: "export-broken", path: brokenURL.path, rating: 0)
+        let missing = makeAsset(id: "export-missing", path: missingURL.path, rating: 0, availability: .missing)
+        try repository.upsert([good, broken, missing])
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        let destination = directory.appendingPathComponent("exports", isDirectory: true)
+        let originalBytes = try Data(contentsOf: goodURL)
+
+        let summary = try await model.exportVisibleAssets(
+            settings: ExportPreset.web2048.settings,
+            destinationFolder: destination
+        )
+
+        XCTAssertEqual(summary.exportedCount, 1)
+        XCTAssertEqual(summary.skippedCount, 1)
+        XCTAssertEqual(summary.failedCount, 1)
+        XCTAssertEqual(summary.destinationFolder, destination)
+        XCTAssertEqual(summary.firstFailureMessage, "could not decode broken.jpg")
+        XCTAssertEqual(model.statusMessage, "Exported 1 photo to exports (1 skipped, 1 failed)")
+        XCTAssertEqual(model.errorMessage, "could not decode broken.jpg")
+        XCTAssertFalse(model.isExporting)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: destination.path), ["good.jpg"])
+        XCTAssertEqual(try Data(contentsOf: goodURL), originalBytes)
+        XCTAssertEqual(try repository.asset(id: good.id), good)
+        XCTAssertEqual(try repository.asset(id: broken.id), broken)
+        XCTAssertEqual(try repository.asset(id: missing.id), missing)
+    }
+
+    @MainActor
+    func testExportSelectedAssetsExportsOnlySelectedBatch() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-export-selected")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assets = try (0..<3).map { index -> Asset in
+            let url = photosDirectory.appendingPathComponent("photo-\(index).png")
+            try writeTestPNG(to: url)
+            return makeAsset(id: "export-selected-\(index)", path: url.path, rating: 0)
+        }
+        try repository.upsert(assets)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        model.setBatchSelection(assets[0].id, isSelected: true)
+        model.setBatchSelection(assets[2].id, isSelected: true)
+        let destination = directory.appendingPathComponent("exports", isDirectory: true)
+
+        let summary = try await model.exportSelectedAssets(
+            settings: ExportPreset.fullResolutionJPEG.settings,
+            destinationFolder: destination
+        )
+
+        XCTAssertEqual(summary.exportedCount, 2)
+        XCTAssertEqual(summary.skippedCount, 0)
+        XCTAssertEqual(summary.failedCount, 0)
+        XCTAssertEqual(model.statusMessage, "Exported 2 photos to exports")
+        XCTAssertEqual(
+            try FileManager.default.contentsOfDirectory(atPath: destination.path).sorted(),
+            ["photo-0.jpg", "photo-2.jpg"]
+        )
+    }
+
+    @MainActor
+    func testExportCurrentScopeAssetsExportsFilteredAssetsBeyondLoadedPage() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-export-current-scope")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let matchingAssets = try (0..<121).map { index -> Asset in
+            let url = photosDirectory.appendingPathComponent("matching-\(index).png")
+            try writeTestPNG(to: url)
+            return makeAsset(id: "export-scope-\(index)", path: url.path, rating: 0, colorLabel: .green)
+        }
+        let outsideURL = photosDirectory.appendingPathComponent("outside.png")
+        try writeTestPNG(to: outsideURL)
+        let outsideAsset = makeAsset(id: "export-scope-outside", path: outsideURL.path, rating: 0, colorLabel: .red)
+        try repository.upsert(matchingAssets + [outsideAsset])
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        model.colorLabelFilter = .green
+        try model.applyLibraryFilters()
+        XCTAssertLessThan(model.assets.count, matchingAssets.count)
+        let destination = directory.appendingPathComponent("exports", isDirectory: true)
+
+        let summary = try await model.exportCurrentScopeAssets(
+            settings: ExportPreset.web2048.settings,
+            destinationFolder: destination
+        )
+
+        XCTAssertEqual(summary.exportedCount, matchingAssets.count)
+        XCTAssertEqual(summary.skippedCount, 0)
+        XCTAssertEqual(summary.failedCount, 0)
+        XCTAssertEqual(model.statusMessage, "Exported 121 photos to exports")
+        let writtenNames = try FileManager.default.contentsOfDirectory(atPath: destination.path)
+        XCTAssertEqual(writtenNames.count, matchingAssets.count)
+        XCTAssertFalse(writtenNames.contains("outside.jpg"))
+    }
+
+    @MainActor
+    func testExportWithNoAssetsThrows() async throws {
+        let (model, _) = try makeModelWithCatalogAssets(named: "app-model-export-empty", assets: [])
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-export-empty-\(UUID().uuidString)", isDirectory: true)
+
+        do {
+            _ = try await model.exportVisibleAssets(
+                settings: ExportPreset.web2048.settings,
+                destinationFolder: destination
+            )
+            XCTFail("expected export of empty scope to throw")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "no photos to export")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+    }
+
+    @MainActor
+    func testSecondExportWhileRunningThrows() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-export-reentrancy")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let url = photosDirectory.appendingPathComponent("photo.png")
+        try writeTestPNG(to: url)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = makeAsset(id: "export-reentrancy", path: url.path, rating: 0)
+        try repository.upsert(asset)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        let destination = directory.appendingPathComponent("exports", isDirectory: true)
+
+        let firstExport = Task { @MainActor in
+            try await model.exportVisibleAssets(
+                settings: ExportPreset.web2048.settings,
+                destinationFolder: destination
+            )
+        }
+        while !model.isExporting {
+            await Task.yield()
+        }
+
+        do {
+            _ = try await model.exportVisibleAssets(
+                settings: ExportPreset.web2048.settings,
+                destinationFolder: destination
+            )
+            XCTFail("expected concurrent export to throw")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "another export is already running")
+        }
+        let summary = try await firstExport.value
+        XCTAssertEqual(summary.exportedCount, 1)
+        XCTAssertFalse(model.isExporting)
+    }
+
     func testRatingSelectedAssetQueuesXmpWhenSidecarCannotBeWritten() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "xmp-pending")
 
