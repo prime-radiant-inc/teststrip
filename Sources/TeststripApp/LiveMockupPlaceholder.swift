@@ -117,7 +117,7 @@ public enum LiveMockupPlaceholders {
         id: "keywording.batch",
         title: "Batch keywording",
         intendedBehavior: "Apply Teststrip-suggested keywords, captions, creator, and copyright to a selected batch.",
-        currentFallback: "Single-selected metadata controls with removable selected keyword chips plus latest-import keyword review, current-scope keyword suggestions, freeform keyword entry, and a selected/visible/current-scope metadata popover that writes command and shift selected assets plus matching selected, visible, and current-scope assets through catalog and XMP with all-catalog confirmation."
+        currentFallback: "Single-selected metadata controls with removable selected keyword chips plus latest-import keyword review, current-scope keyword suggestions, freeform keyword entry with typed keyword preview chips, and a selected/visible/current-scope metadata popover that writes command and shift selected assets plus matching selected, visible, and current-scope assets through catalog and XMP with all-catalog confirmation."
     )
 
     public static let exportWorkflow = LiveMockupPlaceholder(
@@ -325,7 +325,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Keywording",
             status: .partial,
             placeholder: .keywordingBatch,
-            currentImplementation: "Selected asset metadata controls edit keywords, caption, creator, and copyright with XMP writeback, removable selected keyword chips, plus single-asset suggestions, latest-import keyword review, current-scope keyword suggestions, freeform keyword entry, and a selected/visible/current-scope metadata popover from object evaluation labels that writes command and shift selected assets plus matching selected, visible, and current-scope assets with all-catalog confirmation."
+            currentImplementation: "Selected asset metadata controls edit keywords, caption, creator, and copyright with XMP writeback, removable selected keyword chips, plus single-asset suggestions, latest-import keyword review, current-scope keyword suggestions, freeform keyword entry with typed keyword preview chips, and a selected/visible/current-scope metadata popover from object evaluation labels that writes command and shift selected assets plus matching selected, visible, and current-scope assets with all-catalog confirmation."
         ),
         LiveMockupDesignSurface(
             designID: "5f",

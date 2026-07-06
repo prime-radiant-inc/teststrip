@@ -193,6 +193,7 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("matching selected, visible, and current-scope assets"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("all-catalog confirmation"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("freeform keyword entry"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("typed keyword preview chips"))
     }
 
     func testSmartCollectionsLedgerTracksRulePresetsWithoutFreeformEditing() throws {

@@ -828,6 +828,30 @@ struct LibraryGridView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 TextField("Keywords", text: $batchMetadataDraft.keywords)
+                if !presentation.draftKeywordChips.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(presentation.draftKeywordCountText ?? "")
+                            .font(.caption2.monospaced().weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(presentation.draftKeywordChips, id: \.self) { keyword in
+                                    Text(keyword)
+                                        .font(.caption.weight(.medium))
+                                        .foregroundStyle(.orange)
+                                        .lineLimit(1)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.orange.opacity(0.12), in: Capsule())
+                                        .overlay {
+                                            Capsule()
+                                                .strokeBorder(Color.orange.opacity(0.24))
+                                        }
+                                }
+                            }
+                        }
+                    }
+                }
                 TextField("Caption", text: $batchMetadataDraft.caption)
                 TextField("Creator", text: $batchMetadataDraft.creator)
                 TextField("Copyright", text: $batchMetadataDraft.copyright)
@@ -2849,19 +2873,33 @@ struct BatchMetadataDraft: Equatable {
             || !copyright.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var keywordChips: [String] {
+        Self.keywordChips(from: keywords)
+    }
+
     mutating func appendKeyword(_ keyword: String) {
         let cleanedKeyword = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanedKeyword.isEmpty else { return }
-        var existingKeywords = keywords
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        var existingKeywords = keywordChips
         let key = cleanedKeyword.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
         guard !existingKeywords.contains(where: {
             $0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil) == key
         }) else { return }
         existingKeywords.append(cleanedKeyword)
         keywords = existingKeywords.joined(separator: ", ")
+    }
+
+    private static func keywordChips(from text: String) -> [String] {
+        var seen: Set<String> = []
+        return text
+            .split(separator: ",")
+            .compactMap { token -> String? in
+                let keyword = token.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !keyword.isEmpty else { return nil }
+                let key = keyword.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+                guard seen.insert(key).inserted else { return nil }
+                return keyword
+            }
     }
 }
 
@@ -2887,6 +2925,8 @@ enum BatchMetadataScopeMode: String, CaseIterable, Identifiable {
 struct BatchMetadataReviewPresentation: Equatable {
     var countText: String
     var suggestionRows: [BatchKeywordSuggestionPresentation]
+    var draftKeywordChips: [String]
+    var draftKeywordCountText: String?
     var isApplyEnabled: Bool
     var applyTitle: String
     var confirmationText: String?
@@ -2901,6 +2941,10 @@ struct BatchMetadataReviewPresentation: Equatable {
         suggestions: [BatchKeywordSuggestion],
         draft: BatchMetadataDraft
     ) {
+        draftKeywordChips = draft.keywordChips
+        draftKeywordCountText = draftKeywordChips.isEmpty
+            ? nil
+            : "\(draftKeywordChips.count) \(draftKeywordChips.count == 1 ? "keyword" : "keywords") to add"
         switch selectedScope {
         case .selected:
             countText = "\(selectedAssetCount) selected \(selectedAssetCount == 1 ? "photo" : "photos")"

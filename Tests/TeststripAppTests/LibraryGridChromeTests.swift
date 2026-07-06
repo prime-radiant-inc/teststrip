@@ -143,7 +143,7 @@ final class LibraryGridChromeTests: XCTestCase {
 
     func testBatchMetadataReviewPresentationSummarizesSelectedBatch() {
         var draft = BatchMetadataDraft()
-        draft.keywords = "keepers"
+        draft.keywords = "keepers, Portfolio, keepers"
 
         let presentation = BatchMetadataReviewPresentation(
             visibleAssetCount: 12,
@@ -169,6 +169,27 @@ final class LibraryGridChromeTests: XCTestCase {
         XCTAssertTrue(presentation.isApplyEnabled)
         XCTAssertEqual(presentation.applyTitle, "Apply to selected batch")
         XCTAssertNil(presentation.confirmationText)
+        XCTAssertEqual(presentation.draftKeywordChips, ["keepers", "Portfolio"])
+        XCTAssertEqual(presentation.draftKeywordCountText, "2 keywords to add")
+    }
+
+    func testBatchMetadataReviewPresentationHidesDraftKeywordReviewWhenNoKeywordsAreTyped() {
+        var draft = BatchMetadataDraft()
+        draft.caption = "Portfolio selects"
+
+        let presentation = BatchMetadataReviewPresentation(
+            visibleAssetCount: 12,
+            selectedAssetCount: 2,
+            currentScopeAssetCount: 121,
+            selectedScope: .selected,
+            requiresAllCatalogConfirmation: false,
+            isAllCatalogConfirmed: false,
+            suggestions: [],
+            draft: draft
+        )
+
+        XCTAssertEqual(presentation.draftKeywordChips, [])
+        XCTAssertNil(presentation.draftKeywordCountText)
     }
 
     func testBatchMetadataReviewPresentationSummarizesCurrentScopeAndShowsScopeSuggestions() {
