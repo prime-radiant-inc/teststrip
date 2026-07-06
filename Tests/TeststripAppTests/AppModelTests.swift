@@ -5607,6 +5607,76 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
     }
 
+    func testCullingSessionOverSelectedSetPersistsPicksOutputSet() throws {
+        let keeper = makeAsset(id: "keeper", path: "/Photos/Cull/keeper.jpg", rating: 5)
+        let reject = makeAsset(id: "reject", path: "/Photos/Cull/reject.jpg", rating: 1)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "culling-session-selected-set-output",
+            assets: [keeper, reject]
+        )
+        let inputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "selected-cull-set"),
+            name: "Selected Cull Set",
+            assetIDs: [keeper.id, reject.id]
+        )
+        try repository.upsert(inputSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: inputSet.id)
+
+        let startedSession = try model.beginCullingSession(named: "Selected Cull")
+        XCTAssertEqual(startedSession.outputSetIDs, [])
+
+        model.select(keeper.id)
+        try model.applyCullingCommand(.pick)
+        model.select(reject.id)
+        try model.applyCullingCommand(.reject)
+
+        let session = try repository.session(id: startedSession.id)
+        XCTAssertEqual(session.status, .completed)
+        XCTAssertEqual(session.completedUnitCount, 2)
+
+        let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
+        XCTAssertEqual(assetIDs(in: try repository.assetSet(id: outputSetID)), [keeper.id])
+
+        try model.applyWorkSession(id: session.id)
+
+        XCTAssertEqual(model.selectedView, .loupe)
+        XCTAssertEqual(model.selectedAssetSetID, outputSetID)
+        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
+    }
+
+    func testClearingCullingPickRemovesEmptyPicksOutputSet() throws {
+        let keeper = makeAsset(id: "keeper", path: "/Photos/Cull/keeper.jpg", rating: 5)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "culling-session-clear-empty-output",
+            assets: [keeper]
+        )
+        let inputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "single-cull-set"),
+            name: "Single Cull Set",
+            assetIDs: [keeper.id]
+        )
+        try repository.upsert(inputSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: inputSet.id)
+
+        let startedSession = try model.beginCullingSession(named: "Single Cull")
+        model.select(keeper.id)
+        try model.applyCullingCommand(.pick)
+
+        let pickedSession = try repository.session(id: startedSession.id)
+        let outputSetID = try XCTUnwrap(pickedSession.outputSetIDs.first)
+        XCTAssertEqual(assetIDs(in: try repository.assetSet(id: outputSetID)), [keeper.id])
+
+        try model.applyCullingCommand(.clearFlag)
+
+        let clearedSession = try repository.session(id: startedSession.id)
+        XCTAssertEqual(clearedSession.status, .running)
+        XCTAssertEqual(clearedSession.completedUnitCount, 0)
+        XCTAssertEqual(clearedSession.outputSetIDs, [])
+        XCTAssertThrowsError(try repository.assetSet(id: outputSetID))
+    }
+
     func testLoadingEmptyRepositoryLeavesSelectionEmpty() throws {
         let directory = try makeTemporaryDirectory(named: "empty-app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

@@ -3404,6 +3404,7 @@ public final class AppModel {
         try updateSelectedAssetMetadata { metadata in
             metadata.flag = flag
         }
+        try updateActiveCullingSessionProgressAfterFlagChange()
     }
 
     public func setColorLabelForSelectedAsset(_ colorLabel: ColorLabel?) throws {
@@ -5920,6 +5921,13 @@ public final class AppModel {
         for selectedAssetSetID: AssetSetID,
         repository: CatalogRepository
     ) throws -> WorkSession? {
+        try activeCullingSession(for: selectedAssetSetID, repository: repository)
+    }
+
+    private func activeCullingSession(
+        for selectedAssetSetID: AssetSetID,
+        repository: CatalogRepository
+    ) throws -> WorkSession? {
         let cullingSessions = try repository.workSessions(
             kind: .culling,
             statuses: [.queued, .running, .paused, .completed, .failed, .cancelled]
@@ -5927,6 +5935,39 @@ public final class AppModel {
         return cullingSessions.first { session in
             session.inputSetIDs.contains(selectedAssetSetID)
         }
+    }
+
+    private func updateActiveCullingSessionProgressAfterFlagChange() throws {
+        guard let catalog,
+              let selectedAssetSetID,
+              var session = try activeCullingSession(for: selectedAssetSetID, repository: catalog.repository) else {
+            return
+        }
+        switch session.status {
+        case .failed, .cancelled:
+            return
+        case .queued, .running, .paused, .completed:
+            break
+        }
+        if Self.isWorkStackSetID(selectedAssetSetID) {
+            try updatePersistedStackCullingSessionProgress(selectedStackSetID: selectedAssetSetID)
+            return
+        }
+
+        let inputAssetIDs = try cullingInputAssetIDs(in: session, repository: catalog.repository)
+        let totalUnitCount = session.totalUnitCount ?? inputAssetIDs.count
+        let completedUnitCount = try inputAssetIDs.reduce(into: 0) { count, assetID in
+            if try catalog.repository.asset(id: assetID).metadata.flag != nil {
+                count += 1
+            }
+        }
+        session.completedUnitCount = min(completedUnitCount, totalUnitCount)
+        session.totalUnitCount = totalUnitCount
+        session.status = totalUnitCount > 0 && session.completedUnitCount >= totalUnitCount ? .completed : .running
+        try refreshCullingSessionOutputSet(session: &session, repository: catalog.repository)
+        session.updatedAt = Date()
+        try catalog.repository.save(session)
+        try refreshWorkSessions()
     }
 
     private func updatePersistedStackCullingSessionProgress(selectedStackSetID: AssetSetID) throws {
@@ -5971,8 +6012,17 @@ public final class AppModel {
         repository: CatalogRepository
     ) throws {
         let pickedAssetIDs = try pickedAssetIDs(in: session, repository: repository)
-        guard !pickedAssetIDs.isEmpty else { return }
         let outputSetID = Self.cullingOutputSetID(sessionID: session.id)
+        guard !pickedAssetIDs.isEmpty else {
+            if session.outputSetIDs.contains(outputSetID) {
+                session.outputSetIDs.removeAll { $0 == outputSetID }
+                try repository.deleteAssetSet(id: outputSetID)
+                savedAssetSets = try repository.assetSets()
+                assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: repository)
+                rebuildSidebarSections()
+            }
+            return
+        }
         let outputSet = AssetSet(
             id: outputSetID,
             name: "\(session.title) Picks",
@@ -5992,16 +6042,27 @@ public final class AppModel {
         repository: CatalogRepository
     ) throws -> [AssetID] {
         var pickedAssetIDs: [AssetID] = []
+        for assetID in try cullingInputAssetIDs(in: session, repository: repository) {
+            if try repository.asset(id: assetID).metadata.flag == .pick {
+                pickedAssetIDs.append(assetID)
+            }
+        }
+        return pickedAssetIDs
+    }
+
+    private func cullingInputAssetIDs(
+        in session: WorkSession,
+        repository: CatalogRepository
+    ) throws -> [AssetID] {
+        var sessionAssetIDs: [AssetID] = []
         var seenAssetIDs: Set<AssetID> = []
         for inputSetID in session.inputSetIDs {
             let inputAssetIDs = try assetIDs(in: inputSetID, repository: repository)
             for assetID in inputAssetIDs where seenAssetIDs.insert(assetID).inserted {
-                if try repository.asset(id: assetID).metadata.flag == .pick {
-                    pickedAssetIDs.append(assetID)
-                }
+                sessionAssetIDs.append(assetID)
             }
         }
-        return pickedAssetIDs
+        return sessionAssetIDs
     }
 
     private func assetIDs(

@@ -269,7 +269,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Stack cull",
             status: .partial,
             placeholder: .cullingStackCull,
-            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, persisted import stack sets, loaded-scope same-folder capture-time stacks, and visual-similarity vector stacks from Apple Vision/local model signals with keep-selected/reject-alternates and keep-all actions; Return accepts the selected stack frame when a persisted or loaded stack is active, persisted stack culling sessions refresh progress and complete from decided stack flags, and near-duplicate threshold calibration remains pending."
+            currentImplementation: "Current app culls arbitrary sets, compare neighborhoods, persisted import stack sets, loaded-scope same-folder capture-time stacks, and visual-similarity vector stacks from Apple Vision/local model signals with keep-selected/reject-alternates and keep-all actions; Return accepts the selected stack frame when a persisted or loaded stack is active, culling sessions refresh progress and write Picks output sets from catalog flags, and near-duplicate threshold calibration remains pending."
         ),
         LiveMockupDesignSurface(
             designID: "3b",
