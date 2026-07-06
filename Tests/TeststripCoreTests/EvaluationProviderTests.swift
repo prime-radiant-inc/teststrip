@@ -406,6 +406,41 @@ final class EvaluationProviderTests: XCTestCase {
         XCTAssertFalse(analysis.imageFeaturePrintVector.isEmpty)
     }
 
+    func testPaddedRegionOfInterestExpandsAndClampsFaceBox() {
+        let padded = AppleVisionAnalyzer.paddedRegionOfInterest(
+            FaceBoundingBox(x: 0.4, y: 0.4, width: 0.2, height: 0.2),
+            padding: 0.25
+        )
+        XCTAssertEqual(padded.origin.x, 0.35, accuracy: 0.0001)
+        XCTAssertEqual(padded.origin.y, 0.35, accuracy: 0.0001)
+        XCTAssertEqual(padded.width, 0.3, accuracy: 0.0001)
+        XCTAssertEqual(padded.height, 0.3, accuracy: 0.0001)
+
+        let clamped = AppleVisionAnalyzer.paddedRegionOfInterest(
+            FaceBoundingBox(x: 0.0, y: 0.9, width: 0.2, height: 0.2),
+            padding: 0.25
+        )
+        XCTAssertGreaterThanOrEqual(clamped.minX, 0)
+        XCTAssertGreaterThanOrEqual(clamped.minY, 0)
+        XCTAssertLessThanOrEqual(clamped.maxX, 1)
+        XCTAssertLessThanOrEqual(clamped.maxY, 1)
+
+        XCTAssertEqual(
+            AppleVisionAnalyzer.paddedRegionOfInterest(FaceBoundingBox(x: 0.5, y: 0.5, width: 0, height: 0)),
+            CGRect(x: 0, y: 0, width: 1, height: 1)
+        )
+    }
+
+    func testAppleVisionAnalyzerFaceObservationsMatchFaceCount() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "apple-vision-face-observations")
+        let previewURL = directory.appendingPathComponent("preview.jpg")
+        try TestDirectories.writeTestJPEG(to: previewURL, width: 128, height: 128)
+
+        let analysis = try AppleVisionAnalyzer().analyze(previewURL: previewURL)
+
+        XCTAssertEqual(analysis.faces.count, analysis.faceCount)
+    }
+
     func testEvaluationValuesRoundTripThroughJSON() throws {
         let values: [EvaluationValue] = [
             .score(0.92),
