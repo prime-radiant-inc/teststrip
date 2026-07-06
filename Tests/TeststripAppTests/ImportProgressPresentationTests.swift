@@ -21,6 +21,7 @@ final class ImportProgressPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.phaseText, "Scanning source")
         XCTAssertEqual(presentation.detail, "Importing from photos")
+        XCTAssertEqual(presentation.reassuranceText, "Import is underway; thumbnails appear as previews become ready.")
         XCTAssertNil(presentation.countText)
     }
 
@@ -34,6 +35,7 @@ final class ImportProgressPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.phaseText, "Waiting")
         XCTAssertEqual(presentation.detail, "Importing from photos - queued for the background worker")
+        XCTAssertEqual(presentation.reassuranceText, "Queued safely; originals will not be modified.")
         XCTAssertNil(presentation.countText)
     }
 
@@ -86,6 +88,7 @@ final class ImportProgressPresentationTests: XCTestCase {
         ))
 
         XCTAssertEqual(presentation.phaseText, "Building previews")
+        XCTAssertEqual(presentation.reassuranceText, "Catalog is updated; preview building may continue after import.")
         XCTAssertEqual(presentation.countText, "2 of 10")
     }
 

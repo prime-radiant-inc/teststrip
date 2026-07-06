@@ -951,6 +951,10 @@ struct LibraryGridView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                Text(presentation.reassuranceText)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
             }
             Spacer(minLength: 0)
             if let countText = presentation.countText {
@@ -6766,6 +6770,7 @@ struct ImportProgressPresentation: Equatable {
     var title: String
     var phaseText: String
     var detail: String
+    var reassuranceText: String
     var countText: String?
     var cancelHelp: String
 
@@ -6775,6 +6780,7 @@ struct ImportProgressPresentation: Equatable {
                 title: "Import photos",
                 phaseText: "Starting",
                 detail: "Preparing import",
+                reassuranceText: "Preparing safe catalog import.",
                 countText: nil,
                 cancelHelp: "Cancel import"
             )
@@ -6783,6 +6789,7 @@ struct ImportProgressPresentation: Equatable {
             title: activity.title,
             phaseText: phaseText(for: activity),
             detail: detail(for: activity),
+            reassuranceText: reassuranceText(for: activity),
             countText: countText(for: activity),
             cancelHelp: cancelHelp(for: activity)
         )
@@ -6800,6 +6807,28 @@ struct ImportProgressPresentation: Equatable {
             return "Cancel import from \(activity.detail.dropFirst(prefix.count))"
         }
         return "Cancel import"
+    }
+
+    private static func reassuranceText(for activity: AppWorkActivity) -> String {
+        switch activity.status {
+        case .queued:
+            return "Queued safely; originals will not be modified."
+        case .paused:
+            return "Import is paused; catalog state is preserved."
+        case .running:
+            break
+        case .completed:
+            return "Import finished."
+        case .failed:
+            return "Import stopped before completing."
+        case .cancelled:
+            return "Import was cancelled."
+        }
+        let lowercasedDetail = activity.detail.lowercased()
+        if lowercasedDetail.contains("preview") || lowercasedDetail.contains("generated") {
+            return "Catalog is updated; preview building may continue after import."
+        }
+        return "Import is underway; thumbnails appear as previews become ready."
     }
 
     private static func phaseText(for activity: AppWorkActivity) -> String {
