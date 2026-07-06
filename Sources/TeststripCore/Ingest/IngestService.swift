@@ -45,10 +45,14 @@ public struct IngestService: Sendable {
         self.decodeRegistry = decodeRegistry
     }
 
-    public func files(for plan: IngestPlan, progress: FolderScanProgressHandler? = nil) throws -> [URL] {
+    public func files(
+        for plan: IngestPlan,
+        progress: FolderScanProgressHandler? = nil,
+        skipped: FolderScanSkippedFileHandler? = nil
+    ) throws -> [URL] {
         try Task.checkCancellation()
         try validate(plan: plan)
-        return try scanner.scan(root: plan.sourceRoot, progress: progress)
+        return try scanner.scan(root: plan.sourceRoot, progress: progress, skipped: skipped)
     }
 
     public func ingest(plan: IngestPlan, repository: CatalogRepository) throws -> [Asset] {

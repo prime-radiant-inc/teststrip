@@ -157,16 +157,34 @@ public struct LibraryImportService: Sendable {
             detail: "Scanning \(scanRootName)"
         ))
         let scanProgressCoalescer = ScanProgressCoalescer(interval: Self.scanProgressInterval)
-        let scannedSourceFiles = try ingestService.files(for: plan) { scanProgress in
-            if scanProgressCoalescer.shouldReportScanCount(scanProgress.supportedFileCount) {
-                reportScanProgress(
-                    count: scanProgress.supportedFileCount,
-                    rootName: scanRootName,
-                    progress: progress
+        var scanSkippedFiles: [FolderScanSkippedFile] = []
+        let scannedSourceFiles = try ingestService.files(
+            for: plan,
+            progress: { scanProgress in
+                if scanProgressCoalescer.shouldReportScanCount(scanProgress.supportedFileCount) {
+                    reportScanProgress(
+                        count: scanProgress.supportedFileCount,
+                        rootName: scanRootName,
+                        progress: progress
+                    )
+                }
+            },
+            skipped: { scanSkippedFile in
+                scanSkippedFiles.append(scanSkippedFile)
+            }
+        )
+        let sourceFiles = scannedSourceFiles.filter { !isPreviewCacheFile($0) }
+        var skippedSourceFiles = scanSkippedFiles
+            .filter { !isPreviewCacheFile($0.url) }
+            .sorted { first, second in
+                first.url.path.localizedStandardCompare(second.url.path) == .orderedAscending
+            }
+            .map { scanSkippedFile in
+                LibrarySkippedSourceFile(
+                    sourceURL: scanSkippedFile.url,
+                    message: Self.skippedSourceFileMessage(for: scanSkippedFile.reason)
                 )
             }
-        }
-        let sourceFiles = scannedSourceFiles.filter { !isPreviewCacheFile($0) }
         if scanProgressCoalescer.shouldReportFinalScanCount(sourceFiles.count) {
             reportScanProgress(
                 count: sourceFiles.count,
@@ -188,7 +206,6 @@ public struct LibraryImportService: Sendable {
             interval: Self.ingestProgressInterval,
             eagerLimit: Self.eagerIngestProgressLimit
         )
-        var skippedSourceFiles: [LibrarySkippedSourceFile] = []
         let skippedSourceFileHandler: IngestSkippedSourceFileHandler? = plan.mode == .addInPlace ? { skippedSourceFile in
             skippedSourceFiles.append(LibrarySkippedSourceFile(
                 sourceURL: skippedSourceFile.sourceURL,
@@ -383,6 +400,15 @@ public struct LibraryImportService: Sendable {
 
     private static func photoCountDescription(_ count: Int) -> String {
         "\(count) \(count == 1 ? "photo" : "photos")"
+    }
+
+    private static func skippedSourceFileMessage(for reason: FolderScanSkippedFile.Reason) -> String {
+        switch reason {
+        case .videoFile:
+            return "video file not supported"
+        case .unrecognizedFile:
+            return "file type not supported"
+        }
     }
 }
 

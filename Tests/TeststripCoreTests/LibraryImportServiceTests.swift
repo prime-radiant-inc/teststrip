@@ -157,15 +157,17 @@ final class LibraryImportServiceTests: XCTestCase {
 
     func testAddFolderContinuesWhenOneSourceDisappearsBeforeCataloging() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-disappearing-source")
-        let survivor = root.appendingPathComponent("one.jpg")
-        let disappearing = root.appendingPathComponent("two.jpg")
+        let photoFolder = root.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let survivor = photoFolder.appendingPathComponent("one.jpg")
+        let disappearing = photoFolder.appendingPathComponent("two.jpg")
         try TestDirectories.writeTestJPEG(to: survivor, width: 1200, height: 800)
         try TestDirectories.writeTestJPEG(to: disappearing, width: 800, height: 1200)
         let repository = try makeRepository(in: root)
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let service = makeService(previewCache: previewCache)
 
-        let result = try service.addFolderInPlace(root, repository: repository, previewPolicy: .deferGeneration) { progress in
+        let result = try service.addFolderInPlace(photoFolder, repository: repository, previewPolicy: .deferGeneration) { progress in
             if progress.detail == "Cataloging 2 photos" {
                 try? FileManager.default.removeItem(at: disappearing)
             }
@@ -180,6 +182,61 @@ final class LibraryImportServiceTests: XCTestCase {
             PreviewGenerationItem(assetID: result.importedAssets[0].id, level: .micro),
             PreviewGenerationItem(assetID: result.importedAssets[0].id, level: .grid)
         ])
+    }
+
+    func testAddFolderReportsNonCatalogableFilesAsSkipped() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-non-catalogable")
+        let photoFolder = root.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.jpg")
+        try TestDirectories.writeTestJPEG(to: image, width: 1200, height: 800)
+        let video = photoFolder.appendingPathComponent("clip.mov")
+        try Data("mov".utf8).write(to: video)
+        let stray = photoFolder.appendingPathComponent("notes.txt")
+        try Data("notes".utf8).write(to: stray)
+        let sidecarData = try XMPPacket(metadata: AssetMetadata(rating: 3)).xmlData()
+        try sidecarData.write(to: photoFolder.appendingPathComponent("one.jpg.xmp"))
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+
+        let result = try service.addFolderInPlace(photoFolder, repository: repository, previewPolicy: .deferGeneration)
+
+        XCTAssertEqual(result.importedAssets.map(\.originalURL), [image])
+        XCTAssertEqual(result.skippedSourceFileCount, 2)
+        XCTAssertEqual(result.skippedSourceFiles, [
+            LibrarySkippedSourceFile(sourceURL: video, message: "video file not supported"),
+            LibrarySkippedSourceFile(sourceURL: stray, message: "file type not supported")
+        ])
+    }
+
+    func testCopyFromCardReportsNonCatalogableFilesAsSkippedWithoutCopyingThem() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-card-non-catalogable")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let image = source.appendingPathComponent("one.jpg")
+        try TestDirectories.writeTestJPEG(to: image, width: 1200, height: 800)
+        let video = source.appendingPathComponent("clip.mp4")
+        try Data("mp4".utf8).write(to: video)
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+
+        let result = try service.copyFromCard(
+            source: source,
+            destinationRoot: destination,
+            repository: repository,
+            previewPolicy: .deferGeneration
+        )
+
+        XCTAssertEqual(result.importedAssets.map(\.originalURL), [destination.appendingPathComponent("one.jpg")])
+        XCTAssertEqual(result.skippedSourceFileCount, 1)
+        XCTAssertEqual(result.skippedSourceFiles, [
+            LibrarySkippedSourceFile(sourceURL: video, message: "video file not supported")
+        ])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("clip.mp4").path))
     }
 
     func testAddFolderReportsPreviewProgress() throws {

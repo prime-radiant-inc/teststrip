@@ -7092,7 +7092,6 @@ final class AppModelTests: XCTestCase {
         let directory = try makeTemporaryDirectory(named: "app-model-empty-import")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
         try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
-        try Data("notes".utf8).write(to: photoFolder.appendingPathComponent("notes.txt"))
         let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(catalog: catalog)
