@@ -8,6 +8,7 @@ public struct XMPPacket: Equatable, Sendable {
     private static let xmpNamespace = "http://ns.adobe.com/xap/1.0/"
     private static let dcNamespace = "http://purl.org/dc/elements/1.1/"
     private static let teststripNamespace = "https://teststrip.app/xmp/1.0/"
+    private static let photoshopNamespace = "http://ns.adobe.com/photoshop/1.0/"
 
     public init(metadata: AssetMetadata) {
         self.metadata = metadata
@@ -158,6 +159,21 @@ public struct XMPPacket: Equatable, Sendable {
             containerLocalName: "Alt"
         ).first
         return XMPPacket(metadata: metadata)
+    }
+
+    /// Reads `photoshop:SidecarForExtension`, the attribute Adobe tools use to bind a basename-shared
+    /// sidecar such as `frame.xmp` to one original in a RAW+JPEG pair. Returns nil when the attribute
+    /// is absent or the data is not a readable XMP packet.
+    public static func sidecarForExtension(in data: Data) -> String? {
+        guard let document = try? XMLDocument(data: data),
+              let root = document.rootElement(),
+              root.localName == "xmpmeta",
+              root.uri == Self.xmpMetaNamespace,
+              let description = Self.rdfDescription(in: root)
+        else {
+            return nil
+        }
+        return attribute(description, localName: "SidecarForExtension", uri: Self.photoshopNamespace)
     }
 
     private static func addContainer(

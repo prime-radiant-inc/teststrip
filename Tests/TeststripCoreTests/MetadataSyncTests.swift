@@ -176,6 +176,66 @@ final class MetadataSyncTests: XCTestCase {
         XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: result.sidecarURL)).metadata, metadata)
     }
 
+    func testSidecarStoreUsesAmbiguousAdobeStyleSidecarWhenSidecarForExtensionMatchesOriginal() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "xmp-sidecar-ambiguous-claimed")
+        let originalURL = directory.appendingPathComponent("frame.RAF")
+        let siblingURL = directory.appendingPathComponent("frame.JPG")
+        let adobeStyleSidecarURL = directory.appendingPathComponent("frame.xmp")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        try Data("sibling jpg bytes".utf8).write(to: siblingURL)
+        try standardXMP(
+            attributes: "xmp:Rating=\"1\" photoshop:SidecarForExtension=\"raf\"",
+            extraDescriptionNamespaces: "xmlns:photoshop=\"\(photoshopNamespace)\""
+        ).write(to: adobeStyleSidecarURL)
+        let metadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["keeper"])
+
+        let result = try XMPSidecarStore().write(metadata: metadata, forOriginalAt: originalURL)
+
+        XCTAssertEqual(result.sidecarURL, adobeStyleSidecarURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: originalURL.appendingPathExtension("xmp").path))
+        let document = try XMLDocument(data: Data(contentsOf: adobeStyleSidecarURL))
+        let description = try rdfDescription(in: document)
+        XCTAssertEqual(attribute(description, localName: "SidecarForExtension", uri: photoshopNamespace), "raf")
+        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: adobeStyleSidecarURL)).metadata, metadata)
+    }
+
+    func testSidecarStoreIgnoresAmbiguousAdobeStyleSidecarWhenSidecarForExtensionNamesOtherOriginal() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "xmp-sidecar-ambiguous-other-claim")
+        let rawURL = directory.appendingPathComponent("frame.RAF")
+        let jpegURL = directory.appendingPathComponent("frame.JPG")
+        let adobeStyleSidecarURL = directory.appendingPathComponent("frame.xmp")
+        try Data("original raw bytes".utf8).write(to: rawURL)
+        try Data("sibling jpg bytes".utf8).write(to: jpegURL)
+        try standardXMP(
+            attributes: "xmp:Rating=\"1\" photoshop:SidecarForExtension=\"raf\"",
+            extraDescriptionNamespaces: "xmlns:photoshop=\"\(photoshopNamespace)\""
+        ).write(to: adobeStyleSidecarURL)
+        let metadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["keeper"])
+
+        let result = try XMPSidecarStore().write(metadata: metadata, forOriginalAt: jpegURL)
+
+        XCTAssertEqual(result.sidecarURL, jpegURL.appendingPathExtension("xmp"))
+        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: adobeStyleSidecarURL)).metadata.rating, 1)
+        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: result.sidecarURL)).metadata, metadata)
+    }
+
+    func testSidecarStoreIgnoresAmbiguousAdobeStyleSidecarThatCannotBeParsed() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "xmp-sidecar-ambiguous-unparsable")
+        let originalURL = directory.appendingPathComponent("frame.RAF")
+        let siblingURL = directory.appendingPathComponent("frame.JPG")
+        let adobeStyleSidecarURL = directory.appendingPathComponent("frame.xmp")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        try Data("sibling jpg bytes".utf8).write(to: siblingURL)
+        try Data("not xml".utf8).write(to: adobeStyleSidecarURL)
+        let metadata = AssetMetadata(rating: 5, colorLabel: .green, flag: .pick, keywords: ["keeper"])
+
+        let result = try XMPSidecarStore().write(metadata: metadata, forOriginalAt: originalURL)
+
+        XCTAssertEqual(result.sidecarURL, originalURL.appendingPathExtension("xmp"))
+        XCTAssertEqual(try Data(contentsOf: adobeStyleSidecarURL), Data("not xml".utf8))
+        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: result.sidecarURL)).metadata, metadata)
+    }
+
     func testSidecarStorePreservesUnmanagedXMPPropertiesWhenWritingPortableMetadata() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "xmp-sidecar-merge")
         let originalURL = directory.appendingPathComponent("frame.cr2")

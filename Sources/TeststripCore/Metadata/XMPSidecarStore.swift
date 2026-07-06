@@ -29,8 +29,13 @@ public struct XMPSidecarStore: Sendable {
         }
 
         guard let adobeStyleSidecarURL = adobeStyleSidecarURL(forOriginalAt: originalURL),
-              FileManager.default.fileExists(atPath: adobeStyleSidecarURL.path),
-              !hasSiblingWithSameBasename(as: originalURL) else {
+              FileManager.default.fileExists(atPath: adobeStyleSidecarURL.path) else {
+            return nil
+        }
+        if !hasSiblingWithSameBasename(as: originalURL) {
+            return adobeStyleSidecarURL
+        }
+        guard sidecarClaimsOriginal(sidecarURL: adobeStyleSidecarURL, originalURL: originalURL) else {
             return nil
         }
         return adobeStyleSidecarURL
@@ -67,6 +72,17 @@ public struct XMPSidecarStore: Sendable {
             return nil
         }
         return adobeStyleSidecarURL
+    }
+
+    /// Adobe tools disambiguate a basename-shared sidecar via `photoshop:SidecarForExtension`.
+    /// A sidecar explicitly naming this original's extension is unambiguous even when RAW+JPEG
+    /// siblings share the basename. An absent attribute or unreadable sidecar stays ambiguous.
+    private func sidecarClaimsOriginal(sidecarURL: URL, originalURL: URL) -> Bool {
+        guard let sidecarData = try? Data(contentsOf: sidecarURL),
+              let claimedExtension = XMPPacket.sidecarForExtension(in: sidecarData) else {
+            return false
+        }
+        return claimedExtension.lowercased() == originalURL.pathExtension.lowercased()
     }
 
     private func hasSiblingWithSameBasename(as originalURL: URL) -> Bool {
