@@ -3927,7 +3927,10 @@ struct CompareSurveyPresentation: Equatable {
         signalBadgesByAssetID[asset.id] ?? []
     }
 
-    private static let softFocusBadgeThreshold = 0.5
+    // Same calibrated defect anchor as the likelyIssue focus term: the
+    // study's p5 (raw 0.06 / 0.15 = 0.4). The old 0.5 flagged every real
+    // frame on the raw scale.
+    private static let softFocusBadgeThreshold = 0.4
 
     private static func signalBadges(
         assetIDs: [AssetID],
@@ -3942,10 +3945,12 @@ struct CompareSurveyPresentation: Equatable {
             }
             var badges: [CompareDecisionBadge] = []
             let signals = evaluationSignalsByAssetID[assetID] ?? []
-            if let eyesOpen = highestConfidenceScore(kind: .eyesOpen, in: signals), eyesOpen < 1.0 {
+            // Fractional eyesOpen is CIDetector noise on tiny/occluded faces;
+            // only 0.0 (all eyes shut) earns the destructive badge.
+            if let eyesOpen = highestConfidenceScore(kind: .eyesOpen, in: signals), eyesOpen <= 0.0 {
                 badges.append(CompareDecisionBadge(text: "EYES CLOSED", tone: .destructive))
             }
-            if let focus = highestConfidenceScore(kind: .focus, in: signals), focus < softFocusBadgeThreshold {
+            if let focus = highestConfidenceScore(kind: .focus, in: signals), focus <= softFocusBadgeThreshold {
                 badges.append(CompareDecisionBadge(text: "SOFT", tone: .destructive))
             }
             badgesByAssetID[assetID] = badges

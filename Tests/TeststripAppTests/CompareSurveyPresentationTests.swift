@@ -396,6 +396,36 @@ final class CompareSurveyPresentationTests: XCTestCase {
         ])
     }
 
+    func testSignalBadgesIgnorePartialBlinksAndAboveFloorFocus() {
+        // Same calibrated defect anchors as likelyIssue: fractional eyesOpen
+        // is CIDetector noise (only 0.0 - all eyes shut - earns the badge)
+        // and the focus floor is the calibrated p5 (0.4), so a ~p20 frame at
+        // 0.45 is not "SOFT".
+        let best = makeAsset(id: "best")
+        let partialBlink = makeAsset(id: "partial-blink")
+        let midFocus = makeAsset(id: "mid-focus")
+        let presentation = CompareSurveyPresentation(
+            assets: [best, partialBlink, midFocus],
+            selectedAssetID: best.id,
+            evaluationSignalsByAssetID: [
+                best.id: [
+                    signal(assetID: best.id, kind: .focus, score: 0.94),
+                    signal(assetID: best.id, kind: .eyesOpen, score: 1.0)
+                ],
+                partialBlink.id: [
+                    signal(assetID: partialBlink.id, kind: .focus, score: 0.9),
+                    signal(assetID: partialBlink.id, kind: .eyesOpen, score: 0.5)
+                ],
+                midFocus.id: [
+                    signal(assetID: midFocus.id, kind: .focus, score: 0.45)
+                ]
+            ]
+        )
+
+        XCTAssertEqual(presentation.signalBadges(for: partialBlink), [])
+        XCTAssertEqual(presentation.signalBadges(for: midFocus), [])
+    }
+
     func testSignalBadgesStaySilentWithoutRankedContendersOrSignals() {
         let only = makeAsset(id: "only")
         let unread = makeAsset(id: "unread")
