@@ -7,13 +7,20 @@ final class AppModelTests: XCTestCase {
         let model = AppModel.demo()
 
         XCTAssertTrue(model.sidebarSections.map(\.title).contains("Library"))
-        XCTAssertTrue(model.sidebarSections.map(\.title).contains("Work"))
+        XCTAssertFalse(model.sidebarSections.map(\.title).contains("Work"))
         let librarySection = model.sidebarSections.first { $0.title == "Library" }
         XCTAssertEqual(librarySection?.rows.first { $0.title == "All Photographs" }?.countText, "1")
-        let workSection = model.sidebarSections.first { $0.title == "Work" }
-        XCTAssertEqual(workSection?.rows.first { $0.title == "Recent" }?.detailText, "No recent work")
         XCTAssertEqual(model.selectedView, .grid)
         XCTAssertEqual(model.selectedAsset?.id, model.assets.first?.id)
+    }
+
+    func testEmptyCatalogDoesNotShowDeadWorkSidebarPlaceholders() {
+        let model = AppModel.demo()
+
+        XCTAssertFalse(model.sidebarSections.contains { $0.title == "Work" })
+        XCTAssertFalse(model.sidebarSections.flatMap(\.rows).contains { row in
+            row.title == "Recent" || row.title == "Starred"
+        })
     }
 
     func testSidebarSectionCanBeConstructedByPublicClients() {

@@ -8163,34 +8163,13 @@ public final class AppModel {
             idPrefix: "work-starred",
             scopeCounts: workSessionScopeCounts
         )
-        if recentWorkRows.isEmpty && starredWorkRows.isEmpty {
-            sections.append(SidebarSection(title: "Work", rows: workPlaceholderSidebarRows()))
-        } else {
-            if !recentWorkRows.isEmpty {
-                sections.append(SidebarSection(title: "Recent Work", rows: recentWorkRows))
-            }
-            if !starredWorkRows.isEmpty {
-                sections.append(SidebarSection(title: "Starred Work", rows: starredWorkRows))
-            }
+        if !recentWorkRows.isEmpty {
+            sections.append(SidebarSection(title: "Recent Work", rows: recentWorkRows))
+        }
+        if !starredWorkRows.isEmpty {
+            sections.append(SidebarSection(title: "Starred Work", rows: starredWorkRows))
         }
         return sections
-    }
-
-    private static func workPlaceholderSidebarRows() -> [SidebarRow] {
-        [
-            SidebarRow(
-                id: "work-recent-placeholder",
-                title: "Recent",
-                detailText: "No recent work",
-                liveMockupPlaceholder: .workHistory
-            ),
-            SidebarRow(
-                id: "work-starred-placeholder",
-                title: "Starred",
-                detailText: "No starred work",
-                liveMockupPlaceholder: .workHistory
-            )
-        ]
     }
 
     private static func reviewQueueSidebarRows(reviewQueueCounts: [ReviewQueue: Int]) -> [SidebarRow] {

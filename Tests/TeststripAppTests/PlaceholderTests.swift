@@ -327,12 +327,11 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertEqual(model.minimumRatingFilter, 4)
     }
 
-    func testEmptyWorkSidebarRowsAreMarkedAsLiveMockupPlaceholders() throws {
-        let model = AppModel.demo()
-        let workSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Work" })
+    func testWorkHistoryLedgerTracksRecentAndStarredWorkWithoutEmptyRows() throws {
+        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "work.history" })
 
-        XCTAssertEqual(workSection.rows.map(\.title), ["Recent", "Starred"])
-        XCTAssertTrue(workSection.rows.allSatisfy { $0.liveMockupPlaceholder == .workHistory })
-        XCTAssertTrue(workSection.rows.allSatisfy { !$0.isSelectable })
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Recent"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("starred"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("when activities exist"))
     }
 }
