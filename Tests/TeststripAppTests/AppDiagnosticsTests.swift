@@ -129,7 +129,8 @@ final class AppDiagnosticsTests: XCTestCase {
                 name: "Archive",
                 assetCount: 20,
                 unavailableAssetCount: 7,
-                hasSecurityScopedBookmark: true
+                hasSecurityScopedBookmark: true,
+                needsSecurityScopedBookmarkRepair: true
             )
         ])
         XCTAssertEqual(diagnostics.recentFailures, [
@@ -151,6 +152,7 @@ final class AppDiagnosticsTests: XCTestCase {
         XCTAssertTrue(model.diagnosticsReportText.contains("Catalog database: \(paths.catalogURL.path)"))
         XCTAssertTrue(model.diagnosticsReportText.contains("Worker process: running"))
         XCTAssertTrue(model.diagnosticsReportText.contains("XMP pending/conflicts: 1/1"))
+        XCTAssertTrue(model.diagnosticsReportText.contains("bookmark repair needed"))
         XCTAssertTrue(model.diagnosticsReportText.contains("recognition recognition-failed: Local model timeout"))
     }
 

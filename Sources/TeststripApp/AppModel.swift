@@ -446,19 +446,22 @@ public struct AppDiagnosticsSourceRoot: Equatable, Sendable {
     public var assetCount: Int
     public var unavailableAssetCount: Int
     public var hasSecurityScopedBookmark: Bool
+    public var needsSecurityScopedBookmarkRepair: Bool
 
     public init(
         path: String,
         name: String,
         assetCount: Int,
         unavailableAssetCount: Int,
-        hasSecurityScopedBookmark: Bool = false
+        hasSecurityScopedBookmark: Bool = false,
+        needsSecurityScopedBookmarkRepair: Bool = false
     ) {
         self.path = path
         self.name = name
         self.assetCount = assetCount
         self.unavailableAssetCount = unavailableAssetCount
         self.hasSecurityScopedBookmark = hasSecurityScopedBookmark
+        self.needsSecurityScopedBookmarkRepair = needsSecurityScopedBookmarkRepair
     }
 }
 
@@ -597,7 +600,8 @@ public enum AppDiagnosticsReport {
         let sourceCounts = snapshot.sourceAvailabilityCounts
             .map { "  \($0.availability.rawValue): \($0.count)" }
         let sourceRoots = snapshot.sourceRoots.map { root in
-            let bookmarkText = root.hasSecurityScopedBookmark ? ", bookmark yes" : ", bookmark no"
+            let repairText = root.needsSecurityScopedBookmarkRepair ? ", bookmark repair needed" : ""
+            let bookmarkText = root.hasSecurityScopedBookmark ? ", bookmark yes\(repairText)" : ", bookmark no"
             return "  \(root.name): \(root.path) (\(root.unavailableAssetCount) unavailable of \(root.assetCount)\(bookmarkText))"
         }
         let failures = snapshot.recentFailures.map { failure in
@@ -799,19 +803,29 @@ public typealias AppCardImportTaskFactory = @Sendable (
     @escaping LibraryImportProgressHandler
 ) -> Task<AppImportOutput, Error>
 
+public struct SecurityScopedBookmarkResolution: Sendable {
+    public var url: URL
+    public var isStale: Bool
+
+    public init(url: URL, isStale: Bool = false) {
+        self.url = url
+        self.isStale = isStale
+    }
+}
+
 public struct SecurityScopedResourceAccess: Sendable {
     public var requiresSuccessfulAccess: Bool
     public var startAccessing: @Sendable (URL) -> Bool
     public var stopAccessing: @Sendable (URL) -> Void
     public var securityScopedBookmarkData: @Sendable (URL) throws -> Data?
-    public var resolveSecurityScopedBookmarkData: @Sendable (Data) throws -> URL
+    public var resolveSecurityScopedBookmarkData: @Sendable (Data) throws -> SecurityScopedBookmarkResolution
 
     public init(
         requiresSuccessfulAccess: Bool,
         startAccessing: @escaping @Sendable (URL) -> Bool,
         stopAccessing: @escaping @Sendable (URL) -> Void,
         securityScopedBookmarkData: @escaping @Sendable (URL) throws -> Data? = { _ in nil },
-        resolveSecurityScopedBookmarkData: @escaping @Sendable (Data) throws -> URL = { _ in
+        resolveSecurityScopedBookmarkData: @escaping @Sendable (Data) throws -> SecurityScopedBookmarkResolution = { _ in
             throw TeststripError.invalidState("security-scoped bookmark resolution is unavailable")
         }
     ) {
@@ -831,12 +845,13 @@ public struct SecurityScopedResourceAccess: Sendable {
         },
         resolveSecurityScopedBookmarkData: { data in
             var isStale = false
-            return try URL(
+            let url = try URL(
                 resolvingBookmarkData: data,
                 options: [.withSecurityScope],
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )
+            return SecurityScopedBookmarkResolution(url: url, isStale: isStale)
         }
     )
 
@@ -849,12 +864,13 @@ public struct SecurityScopedResourceAccess: Sendable {
         },
         resolveSecurityScopedBookmarkData: { data in
             var isStale = false
-            return try URL(
+            let url = try URL(
                 resolvingBookmarkData: data,
                 options: [.withSecurityScope],
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )
+            return SecurityScopedBookmarkResolution(url: url, isStale: isStale)
         }
     )
 }
@@ -970,6 +986,9 @@ public final class AppModel {
 
     @ObservationIgnored
     private var activeSecurityScopedSourceRootURLs: [URL]
+
+    @ObservationIgnored
+    private var sourceRootBookmarkRepairPaths: Set<String>
 
     @ObservationIgnored
     private var evaluationAssetIDsByItemID: [WorkSessionID: AssetID]
@@ -1289,7 +1308,8 @@ public final class AppModel {
                     name: $0.name,
                     assetCount: $0.assetCount,
                     unavailableAssetCount: $0.unavailableAssetCount,
-                    hasSecurityScopedBookmark: $0.securityScopedBookmarkData != nil
+                    hasSecurityScopedBookmark: $0.securityScopedBookmarkData != nil,
+                    needsSecurityScopedBookmarkRepair: sourceRootBookmarkRepairPaths.contains($0.path)
                 )
             },
             recentFailures: diagnosticsRecentFailures()
@@ -1879,6 +1899,7 @@ public final class AppModel {
         self.compareAssetIDs = nil
         self.workerImportContextsByItemID = [:]
         self.activeSecurityScopedSourceRootURLs = []
+        self.sourceRootBookmarkRepairPaths = []
         restoreSecurityScopedSourceRootAccess()
         self.workerSupervisor?.onQueueChanged = { [weak self] queue in
             let previousQueue = self?.backgroundWorkQueue
@@ -1919,12 +1940,22 @@ public final class AppModel {
 
     private func restoreSecurityScopedSourceRootAccess() {
         for sourceRoot in sourceRoots {
-            guard let bookmarkData = sourceRoot.securityScopedBookmarkData,
-                  let url = try? resourceAccess.resolveSecurityScopedBookmarkData(bookmarkData),
-                  resourceAccess.startAccessing(url) else {
+            guard let bookmarkData = sourceRoot.securityScopedBookmarkData else {
                 continue
             }
-            activeSecurityScopedSourceRootURLs.append(url)
+            do {
+                let resolution = try resourceAccess.resolveSecurityScopedBookmarkData(bookmarkData)
+                if resolution.isStale {
+                    sourceRootBookmarkRepairPaths.insert(sourceRoot.path)
+                }
+                guard resourceAccess.startAccessing(resolution.url) else {
+                    sourceRootBookmarkRepairPaths.insert(sourceRoot.path)
+                    continue
+                }
+                activeSecurityScopedSourceRootURLs.append(resolution.url)
+            } catch {
+                sourceRootBookmarkRepairPaths.insert(sourceRoot.path)
+            }
         }
     }
 
