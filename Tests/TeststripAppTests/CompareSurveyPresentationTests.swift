@@ -334,14 +334,33 @@ final class CompareSurveyPresentationTests: XCTestCase {
         )
 
         let metrics = CompareFocusMetricPresentation.metrics(for: [
-            EvaluationSignal(assetID: assetID, kind: .eyeSharpness, value: .score(0.4), confidence: 0.6, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .eyeSharpness, value: .score(0.2), confidence: 0.6, provenance: provenance),
             EvaluationSignal(assetID: assetID, kind: .eyesOpen, value: .score(0.0), confidence: 0.7, provenance: provenance),
             EvaluationSignal(assetID: assetID, kind: .smile, value: .score(0.0), confidence: 0.7, provenance: provenance)
         ])
 
         XCTAssertEqual(metrics.map(\.title), ["Eye sharpness", "Eyes open", "Smile"])
-        XCTAssertEqual(metrics.map(\.value), ["40%", "Shut", "No smile"])
+        XCTAssertEqual(metrics.map(\.value), ["20%", "Shut", "No smile"])
         XCTAssertEqual(metrics.map(\.tone), [.caution, .caution, .neutral])
+    }
+
+    func testTopQuartileCalibratedEyeSharpnessLaneReadsPositive() {
+        let assetID = AssetID(rawValue: "sharp-eye-frame")
+        let provenance = ProviderProvenance(
+            provider: "core-image-faces",
+            model: "CIDetectorFace",
+            version: "2",
+            settingsHash: "default"
+        )
+
+        // Calibrated eyeSharpness p75 is 0.33 (raw 0.05 / 0.15); lanes at or
+        // above the corpus top quartile read positive.
+        let metrics = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .eyeSharpness, value: .score(0.4), confidence: 0.6, provenance: provenance)
+        ])
+
+        XCTAssertEqual(metrics.map(\.value), ["40%"])
+        XCTAssertEqual(metrics.map(\.tone), [.positive])
     }
 
     func testSignalBadgesFlagBestEyesClosedAndSoftFrames() {
