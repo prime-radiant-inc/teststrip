@@ -937,7 +937,8 @@ struct LibraryGridView: View {
                 Image(systemName: "xmark.circle")
             }
             .buttonStyle(.borderless)
-            .help("Cancel import")
+            .accessibilityLabel(presentation.cancelHelp)
+            .help(presentation.cancelHelp)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
@@ -6118,6 +6119,7 @@ struct ImportProgressPresentation: Equatable {
     var phaseText: String
     var detail: String
     var countText: String?
+    var cancelHelp: String
 
     static func presentation(for activity: AppWorkActivity?) -> ImportProgressPresentation {
         guard let activity else {
@@ -6125,15 +6127,25 @@ struct ImportProgressPresentation: Equatable {
                 title: "Import photos",
                 phaseText: "Starting",
                 detail: "Preparing import",
-                countText: nil
+                countText: nil,
+                cancelHelp: "Cancel import"
             )
         }
         return ImportProgressPresentation(
             title: activity.title,
             phaseText: phaseText(for: activity),
             detail: activity.detail.isEmpty ? "Preparing import" : activity.detail,
-            countText: countText(for: activity)
+            countText: countText(for: activity),
+            cancelHelp: cancelHelp(for: activity)
         )
+    }
+
+    private static func cancelHelp(for activity: AppWorkActivity) -> String {
+        let prefix = "Importing from "
+        if activity.detail.hasPrefix(prefix) {
+            return "Cancel import from \(activity.detail.dropFirst(prefix.count))"
+        }
+        return "Cancel import"
     }
 
     private static func phaseText(for activity: AppWorkActivity) -> String {

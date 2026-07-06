@@ -37,6 +37,22 @@ final class ImportProgressPresentationTests: XCTestCase {
         XCTAssertNil(presentation.countText)
     }
 
+    func testCancelHelpNamesTheActiveImportSource() {
+        let folderPresentation = ImportProgressPresentation.presentation(for: activity(
+            detail: "Importing from photos",
+            completed: 0,
+            total: nil
+        ))
+        let cardPresentation = ImportProgressPresentation.presentation(for: activity(
+            detail: "Importing from DCIM to Library",
+            completed: 0,
+            total: nil
+        ))
+
+        XCTAssertEqual(folderPresentation.cancelHelp, "Cancel import from photos")
+        XCTAssertEqual(cardPresentation.cancelHelp, "Cancel import from DCIM to Library")
+    }
+
     func testPausedActivityShowsPausedState() {
         let presentation = ImportProgressPresentation.presentation(for: activity(
             status: .paused,
