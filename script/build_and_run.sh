@@ -29,9 +29,11 @@ APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_HELPERS="$APP_CONTENTS/Helpers"
+APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 WORKER_BINARY="$APP_HELPERS/$WORKER_PRODUCT_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
+APP_ICON_ICNS="$ROOT_DIR/config/macos/AppIcon.icns"
 APP_ENTITLEMENTS="$ROOT_DIR/config/macos/Teststrip.entitlements"
 WORKER_ENTITLEMENTS="$ROOT_DIR/config/macos/TeststripWorker.entitlements"
 
@@ -56,11 +58,17 @@ build_app_bundle() {
   local build_worker_binary="$build_dir/$WORKER_PRODUCT_NAME"
 
   rm -rf "$APP_BUNDLE"
-  mkdir -p "$APP_MACOS" "$APP_HELPERS"
+  mkdir -p "$APP_MACOS" "$APP_HELPERS" "$APP_RESOURCES"
   cp "$build_binary" "$APP_BINARY"
   cp "$build_worker_binary" "$WORKER_BINARY"
   chmod +x "$APP_BINARY"
   chmod +x "$WORKER_BINARY"
+
+  if [[ -f "$APP_ICON_ICNS" ]]; then
+    cp "$APP_ICON_ICNS" "$APP_RESOURCES/AppIcon.icns"
+  else
+    echo "warning: $APP_ICON_ICNS is missing; building without an app icon (run script/generate_app_icon.sh)" >&2
+  fi
 
   cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -69,6 +77,8 @@ build_app_bundle() {
 <dict>
   <key>CFBundleExecutable</key>
   <string>$APP_NAME</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
   <string>$BUNDLE_ID</string>
   <key>CFBundleName</key>
