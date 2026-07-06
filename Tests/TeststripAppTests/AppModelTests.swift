@@ -4563,6 +4563,52 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [pendingPreview])
     }
 
+    func testReconnectSourceRootPersistsFreshSecurityScopedBookmarkForNewRoot() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-source-reconnect-bookmark")
+        let oldRoot = directory.appendingPathComponent("OfflineArchive", isDirectory: true)
+        let newRoot = directory.appendingPathComponent("MountedArchive", isDirectory: true)
+        let newOriginalURL = newRoot.appendingPathComponent("Job/frame.jpg")
+        try FileManager.default.createDirectory(
+            at: newOriginalURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("same original bytes".utf8).write(to: newOriginalURL)
+        let oldOriginalURL = oldRoot.appendingPathComponent("Job/frame.jpg")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "source-reconnect-bookmark"),
+            originalURL: oldOriginalURL,
+            volumeIdentifier: "OfflineArchive",
+            fingerprint: try fileFingerprint(for: newOriginalURL),
+            availability: .missing,
+            metadata: AssetMetadata(rating: 4)
+        )
+        try repository.upsert(asset)
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        )
+        let bookmarkData = Data("fresh-mounted-root-bookmark".utf8)
+        let access = RecordingSecurityScopedResourceAccess(
+            requiresSuccessfulAccess: false,
+            bookmarkDataByURL: [newRoot: bookmarkData]
+        )
+        let model = try AppModel.load(catalog: catalog, resourceAccess: access.value)
+
+        let result = try model.reconnectSourceRoot(from: oldRoot, to: newRoot)
+        let reconnectedRoot = try XCTUnwrap(try repository.sourceRoots().first { $0.path == newRoot.path })
+
+        XCTAssertEqual(result.reconnectedAssetCount, 1)
+        XCTAssertEqual(reconnectedRoot.securityScopedBookmarkData, bookmarkData)
+    }
+
     func testSuggestedReconnectOldRootUsesVisibleUnavailableAssets() {
         let online = makeAsset(id: "online", path: "/Volumes/Current/Job/online.jpg", rating: 0)
         let firstMissing = makeAsset(id: "missing-a", path: "/Volumes/Archive/Job/a.jpg", rating: 0, availability: .missing)

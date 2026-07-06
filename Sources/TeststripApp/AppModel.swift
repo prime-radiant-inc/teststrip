@@ -5564,6 +5564,9 @@ public final class AppModel {
         }
         let preferredSelection = selectedAssetID
         let result = try catalog.repository.reconnectSourceRoot(from: oldRoot, to: newRoot)
+        if result.reconnectedAssetCount > 0 {
+            persistSecurityScopedBookmarkForSourceRoot(newRoot)
+        }
         try loadCatalogPage(preferredSelection: preferredSelection)
         catalogFolders = try catalog.repository.folders()
         sourceRoots = try catalog.repository.sourceRoots()
@@ -6876,14 +6879,27 @@ public final class AppModel {
         destinationRoot: URL?,
         result: LibraryImportResult
     ) {
-        guard !result.importedAssets.isEmpty, let catalog else { return }
+        guard !result.importedAssets.isEmpty else { return }
         let sourceRoot = destinationRoot ?? folderURL
-        guard let bookmarkData = try? resourceAccess.securityScopedBookmarkData(sourceRoot) else { return }
+        persistSecurityScopedBookmarkForSourceRoot(sourceRoot)
+    }
+
+    private func persistSecurityScopedBookmarkForSourceRoot(_ sourceRoot: URL) {
+        guard let catalog, let bookmarkData = try? resourceAccess.securityScopedBookmarkData(sourceRoot) else { return }
         do {
             try catalog.repository.recordSourceRoot(sourceRoot, securityScopedBookmarkData: bookmarkData)
+            sourceRootBookmarkRepairPaths.remove(Self.normalizedSourceRootPath(sourceRoot))
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private static func normalizedSourceRootPath(_ sourceRoot: URL) -> String {
+        var path = sourceRoot.standardizedFileURL.path
+        if path != "/", path.hasSuffix("/") {
+            path.removeLast()
+        }
+        return path
     }
 
     private static func importCompletionDetail(result: LibraryImportResult, sourceDescription: String) -> String {
