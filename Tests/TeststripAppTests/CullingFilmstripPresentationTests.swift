@@ -55,16 +55,40 @@ final class CullingFilmstripPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.positionText, "8 frames")
     }
 
+    func testDecisionStateReflectsAssetFlag() {
+        let picked = Self.asset(id: "picked", flag: .pick)
+        let rejected = Self.asset(id: "rejected", flag: .reject)
+        let undecided = Self.asset(id: "undecided", flag: nil)
+        let presentation = CullingFilmstripPresentation(
+            assets: [picked, rejected, undecided],
+            selectedAssetID: nil
+        )
+
+        XCTAssertEqual(presentation.decisionState(for: picked), .picked)
+        XCTAssertEqual(presentation.decisionState(for: rejected), .rejected)
+        XCTAssertEqual(presentation.decisionState(for: undecided), .undecided)
+    }
+
+    func testOnlyRejectedDecisionStateIsDimmed() {
+        XCTAssertTrue(CullingFilmstripPresentation.DecisionState.rejected.isDimmed)
+        XCTAssertFalse(CullingFilmstripPresentation.DecisionState.picked.isDimmed)
+        XCTAssertFalse(CullingFilmstripPresentation.DecisionState.undecided.isDimmed)
+    }
+
     private static func assets(count: Int) -> [Asset] {
         (0..<count).map { index in
-            Asset(
-                id: AssetID(rawValue: "asset-\(index)"),
-                originalURL: URL(fileURLWithPath: "/Photos/asset-\(index).jpg"),
-                volumeIdentifier: nil,
-                fingerprint: FileFingerprint(size: Int64(index + 1), modificationDate: Date(timeIntervalSince1970: TimeInterval(index + 1))),
-                availability: .online,
-                metadata: AssetMetadata()
-            )
+            asset(id: "asset-\(index)")
         }
+    }
+
+    private static func asset(id: String, flag: PickFlag? = nil) -> Asset {
+        Asset(
+            id: AssetID(rawValue: id),
+            originalURL: URL(fileURLWithPath: "/Photos/\(id).jpg"),
+            volumeIdentifier: nil,
+            fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
+            availability: .online,
+            metadata: AssetMetadata(flag: flag)
+        )
     }
 }

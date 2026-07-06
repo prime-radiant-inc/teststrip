@@ -256,11 +256,42 @@ final class CompareSurveyPresentationTests: XCTestCase {
         ])
 
         XCTAssertEqual(metrics.map(\.title), ["Focus", "Motion blur", "Exposure"])
-        XCTAssertEqual(metrics.map(\.value), ["88%", "21%", "63%"])
+        XCTAssertEqual(metrics.map(\.value), ["88%", "21%", "+0.5 EV"])
         XCTAssertEqual(metrics.map(\.tone), [.positive, .positive, .neutral])
         XCTAssertFalse(metrics.contains { metric in
             [metric.title, metric.value, metric.detail].contains { $0.localizedCaseInsensitiveContains("best") }
         })
+    }
+
+    func testExposureRendersAsEVStyleDeltaWhileFocusStaysPercentage() {
+        let assetID = AssetID(rawValue: "exposure-frame")
+        let provenance = ProviderProvenance(
+            provider: "local-image-metrics",
+            model: "preview-color-focus-metrics",
+            version: "1",
+            settingsHash: "default"
+        )
+
+        let overexposed = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .exposure, value: .score(0.9), confidence: 1.0, provenance: provenance)
+        ])
+        let underexposed = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .exposure, value: .score(0.1), confidence: 1.0, provenance: provenance)
+        ])
+        let neutral = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .exposure, value: .score(0.5), confidence: 1.0, provenance: provenance)
+        ])
+
+        XCTAssertEqual(overexposed.map(\.value), ["+1.6 EV"])
+        XCTAssertEqual(underexposed.map(\.value), ["-1.6 EV"])
+        XCTAssertEqual(neutral.map(\.value), ["0.0 EV"])
+
+        let combined = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .focus, value: .score(0.72), confidence: 0.81, provenance: provenance),
+            EvaluationSignal(assetID: assetID, kind: .exposure, value: .score(0.2), confidence: 1.0, provenance: provenance)
+        ])
+        XCTAssertEqual(combined.map(\.title), ["Focus", "Exposure"])
+        XCTAssertEqual(combined.map(\.value), ["72%", "-1.2 EV"])
     }
 
     func testFocusMetricsIncludeLocalFramingAndAestheticScores() {

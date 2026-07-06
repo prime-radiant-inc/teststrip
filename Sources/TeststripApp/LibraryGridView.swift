@@ -2676,6 +2676,7 @@ private struct CullingCompletionBannerView: View {
     var summary: CullingSessionCompletionSummary
     var canViewPicks: Bool
     var viewPicks: () -> Void
+    var cullRemainingSingles: () -> Void
     var dismiss: () -> Void
 
     var body: some View {
@@ -2691,6 +2692,14 @@ private struct CullingCompletionBannerView: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
+            if summary.remainingSingleCount > 0 {
+                Button("Cull remaining \(summary.remainingSingleCount) singles") {
+                    cullRemainingSingles()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Start a rapid-cull session over the frames this stack cull left unstacked and undecided")
+            }
             Button("View Picks") {
                 viewPicks()
             }
@@ -2749,12 +2758,13 @@ private struct LoupeView: View {
                     summary: completion,
                     canViewPicks: completion.picksSetID != nil,
                     viewPicks: { openCullingSessionPicks() },
+                    cullRemainingSingles: { cullRemainingSingles() },
                     dismiss: { model.dismissCullingSessionCompletion() }
                 )
             }
             cullingStackRail(presentation: stackPresentation)
             cullingFilmstrip(recommendedAssetID: stackPresentation.recommendedAssetID)
-            cullingCommandRail
+            cullingCommandRail(stackPresentation: stackPresentation)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.34))
@@ -2763,6 +2773,14 @@ private struct LoupeView: View {
     private func openCullingSessionPicks() {
         do {
             try model.openCullingSessionPicks()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func cullRemainingSingles() {
+        do {
+            try model.cullRemainingSinglesFromCullingCompletion()
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -3070,7 +3088,8 @@ private struct LoupeView: View {
                     filmstripTile(
                         for: asset,
                         isSelected: asset.id == model.selectedAssetID,
-                        isRecommended: asset.id == recommendedAssetID
+                        isRecommended: asset.id == recommendedAssetID,
+                        decisionState: presentation.decisionState(for: asset)
                     )
                 }
                 Spacer(minLength: 0)
@@ -3149,10 +3168,19 @@ private struct LoupeView: View {
                                 RoundedRectangle(cornerRadius: 6)
                                     .strokeBorder(Color.orange.opacity(item.isSelected ? 0.4 : 0.26))
                             }
+                            .overlay(alignment: .bottomTrailing) {
+                                if !item.flawBadges.isEmpty {
+                                    Circle()
+                                        .fill(Color.red)
+                                        .frame(width: 6, height: 6)
+                                        .offset(x: 1, y: 1)
+                                }
+                            }
                         }
                         .buttonStyle(.plain)
+                        .help(stackChipFlawHelpText(item))
                         .accessibilityLabel("Stack frame \(item.label)")
-                        .accessibilityValue(item.isSelected ? "Selected" : (item.isRecommended ? "Recommended" : "Not selected"))
+                        .accessibilityValue(stackChipAccessibilityValue(item))
                     }
                 }
             }
@@ -3161,6 +3189,17 @@ private struct LoupeView: View {
             .background(Color.black.opacity(0.23))
             .liveMockupPlaceholder(.cullingStackCull)
         }
+    }
+
+    private func stackChipFlawHelpText(_ item: CullingStackRailPresentation.Item) -> String {
+        guard !item.flawBadges.isEmpty else { return "" }
+        return "Frame \(item.label): \(item.flawBadges.map(\.text).joined(separator: ", "))"
+    }
+
+    private func stackChipAccessibilityValue(_ item: CullingStackRailPresentation.Item) -> String {
+        var segments = [item.isSelected ? "Selected" : (item.isRecommended ? "Recommended" : "Not selected")]
+        segments.append(contentsOf: item.flawBadges.map(\.text))
+        return segments.joined(separator: ", ")
     }
 
     private var cullingStackPresentation: CullingStackRailPresentation {
@@ -3184,7 +3223,12 @@ private struct LoupeView: View {
         }
     }
 
-    private func filmstripTile(for asset: Asset, isSelected: Bool, isRecommended: Bool) -> some View {
+    private func filmstripTile(
+        for asset: Asset,
+        isSelected: Bool,
+        isRecommended: Bool,
+        decisionState: CullingFilmstripPresentation.DecisionState
+    ) -> some View {
         Button {
             model.select(asset.id)
         } label: {
@@ -3216,7 +3260,11 @@ private struct LoupeView: View {
                 }
             }
             .frame(width: 64, height: 44)
+            .opacity(decisionState.isDimmed ? 0.45 : 1.0)
             .clipShape(RoundedRectangle(cornerRadius: 5))
+            .overlay(alignment: .top) {
+                filmstripDecisionBar(decisionState)
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: 5)
                     .strokeBorder(isSelected ? Color.orange : Color.white.opacity(0.12), lineWidth: isSelected ? 2 : 1)
@@ -3224,7 +3272,36 @@ private struct LoupeView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(asset.originalURL.lastPathComponent)
-        .accessibilityValue(isSelected ? "Selected" : (isRecommended ? "Recommended" : "Not selected"))
+        .accessibilityValue(filmstripTileAccessibilityValue(isSelected: isSelected, isRecommended: isRecommended, decisionState: decisionState))
+    }
+
+    @ViewBuilder
+    private func filmstripDecisionBar(_ decisionState: CullingFilmstripPresentation.DecisionState) -> some View {
+        switch decisionState {
+        case .undecided:
+            EmptyView()
+        case .picked:
+            Rectangle().fill(Color.green).frame(height: 3)
+        case .rejected:
+            Rectangle().fill(Color.red).frame(height: 3)
+        }
+    }
+
+    private func filmstripTileAccessibilityValue(
+        isSelected: Bool,
+        isRecommended: Bool,
+        decisionState: CullingFilmstripPresentation.DecisionState
+    ) -> String {
+        var segments = [isSelected ? "Selected" : (isRecommended ? "Recommended" : "Not selected")]
+        switch decisionState {
+        case .undecided:
+            break
+        case .picked:
+            segments.append("Picked")
+        case .rejected:
+            segments.append("Rejected")
+        }
+        return segments.joined(separator: ", ")
     }
 
     @ViewBuilder
@@ -3248,8 +3325,14 @@ private struct LoupeView: View {
         }
     }
 
-    private var cullingCommandRail: some View {
+    private func cullingCommandRail(stackPresentation: CullingStackRailPresentation) -> some View {
         HStack(spacing: 14) {
+            cullingNavChevron(direction: .previous)
+            cullingNavChevron(direction: .next)
+
+            Divider()
+                .frame(height: 22)
+
             cullingActionButton(key: "P", title: "Pick", color: .green, shortcut: .pick)
             cullingActionButton(key: "X", title: "Reject", color: .red, shortcut: .reject)
             cullingActionButton(key: "U", title: "Clear", color: .secondary, shortcut: .clearFlag)
@@ -3314,10 +3397,54 @@ private struct LoupeView: View {
             .frame(height: 34)
             .background(.quaternary, in: RoundedRectangle(cornerRadius: 9))
             Spacer(minLength: 0)
+            Text(CullingNavLegendPresentation(isStackActive: stackPresentation.isVisible).legendText)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
         .padding(.horizontal, 14)
         .frame(height: 58)
         .background(.bar)
+    }
+
+    private enum CullingNavDirection {
+        case previous
+        case next
+
+        var shortcut: CullingShortcut {
+            switch self {
+            case .previous: .previousPhoto
+            case .next: .nextPhoto
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .previous: "chevron.left"
+            case .next: "chevron.right"
+            }
+        }
+
+        var accessibilityLabel: String {
+            switch self {
+            case .previous: "Previous photo"
+            case .next: "Next photo"
+            }
+        }
+    }
+
+    private func cullingNavChevron(direction: CullingNavDirection) -> some View {
+        Button {
+            applyCullingShortcut(direction.shortcut)
+        } label: {
+            Image(systemName: direction.systemImage)
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .buttonStyle(.plain)
+        .frame(width: 28, height: 34)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        .help(direction.accessibilityLabel)
+        .accessibilityLabel(direction.accessibilityLabel)
     }
 
     private func cullingActionButton(key: String, title: String, color: Color, shortcut: CullingShortcut) -> some View {
@@ -3946,17 +4073,24 @@ struct CompareSurveyPresentation: Equatable {
                 badgesByAssetID[assetID] = [CompareDecisionBadge(text: "✦ BEST", tone: .best)]
                 continue
             }
-            var badges: [CompareDecisionBadge] = []
-            let signals = evaluationSignalsByAssetID[assetID] ?? []
-            if let eyesOpen = highestConfidenceScore(kind: .eyesOpen, in: signals), eyesOpen < 1.0 {
-                badges.append(CompareDecisionBadge(text: "EYES CLOSED", tone: .destructive))
-            }
-            if let focus = highestConfidenceScore(kind: .focus, in: signals), focus < softFocusBadgeThreshold {
-                badges.append(CompareDecisionBadge(text: "SOFT", tone: .destructive))
-            }
-            badgesByAssetID[assetID] = badges
+            badgesByAssetID[assetID] = flawBadges(for: evaluationSignalsByAssetID[assetID] ?? [])
         }
         return badgesByAssetID
+    }
+
+    /// Compact flaw reads (EYES CLOSED / SOFT) derived straight from
+    /// persisted signals. Shared with other frame surfaces (e.g. the stack
+    /// rail chips) so the wording and tone stay identical everywhere a flaw
+    /// badge appears.
+    static func flawBadges(for signals: [EvaluationSignal]) -> [CompareDecisionBadge] {
+        var badges: [CompareDecisionBadge] = []
+        if let eyesOpen = highestConfidenceScore(kind: .eyesOpen, in: signals), eyesOpen < 1.0 {
+            badges.append(CompareDecisionBadge(text: "EYES CLOSED", tone: .destructive))
+        }
+        if let focus = highestConfidenceScore(kind: .focus, in: signals), focus < softFocusBadgeThreshold {
+            badges.append(CompareDecisionBadge(text: "SOFT", tone: .destructive))
+        }
+        return badges
     }
 
     private static func highestConfidenceScore(kind: EvaluationKind, in signals: [EvaluationSignal]) -> Double? {
@@ -4098,8 +4232,8 @@ enum CompareFocusMetricPresentation {
     }
 
     private static func valueText(for signal: EvaluationSignal) -> String {
-        if let expressionValue = expressionValueText(for: signal) {
-            return expressionValue
+        if let overrideValue = overrideValueText(for: signal) {
+            return overrideValue
         }
         switch signal.value {
         case .score(let score):
@@ -4117,7 +4251,10 @@ enum CompareFocusMetricPresentation {
         }
     }
 
-    private static func expressionValueText(for signal: EvaluationSignal) -> String? {
+    // Signal kinds whose raw 0...1 score reads better as something other than
+    // a bare percentage: eyes/smile as plain-language state, exposure as an
+    // EV-style delta from neutral so over/under exposure reads at a glance.
+    private static func overrideValueText(for signal: EvaluationSignal) -> String? {
         guard case .score(let score) = signal.value else { return nil }
         switch signal.kind {
         case .eyesOpen:
@@ -4128,9 +4265,22 @@ enum CompareFocusMetricPresentation {
             if score >= 1.0 { return "Smiling" }
             if score > 0.0 { return "Some smiling" }
             return "No smile"
+        case .exposure:
+            return exposureDeltaText(score: score)
         default:
             return nil
         }
+    }
+
+    private static let exposureNeutralScore = 0.5
+    private static let exposureEVRange = 4.0
+
+    private static func exposureDeltaText(score: Double) -> String {
+        let delta = (score - exposureNeutralScore) * exposureEVRange
+        let rounded = (delta * 10).rounded() / 10
+        guard rounded != 0 else { return "0.0 EV" }
+        let sign = rounded > 0 ? "+" : ""
+        return "\(sign)\(String(format: "%.1f", rounded)) EV"
     }
 
     private static func tone(for signal: EvaluationSignal) -> CompareFocusMetric.Tone {
@@ -4218,6 +4368,22 @@ struct CullingDecisionFeedbackPresentation: Equatable {
     }
 }
 
+/// A compact one-line reminder of the culling keyboard shortcuts, shown next
+/// to the on-screen prev/next chevrons. Keyboard already does everything
+/// this legend describes; it exists purely for discoverability.
+struct CullingNavLegendPresentation: Equatable {
+    var legendText: String
+
+    init(isStackActive: Bool) {
+        var segments = ["← → navigate", "Space advances"]
+        if isStackActive {
+            segments.append("↑↓ stacks")
+            segments.append("↵ accept best")
+        }
+        legendText = segments.joined(separator: " · ")
+    }
+}
+
 struct CullingFilmstripPresentation: Equatable {
     static let defaultVisibleLimit = 12
 
@@ -4260,6 +4426,28 @@ struct CullingFilmstripPresentation: Equatable {
             String(totalCount)
         ].joined(separator: "\n")
     }
+
+    /// A tile's pick/reject state, so the filmstrip can dim rejects and show
+    /// a decision color bar without the view reaching into asset metadata.
+    enum DecisionState: Equatable {
+        case undecided
+        case picked
+        case rejected
+
+        init(flag: PickFlag?) {
+            switch flag {
+            case .pick: self = .picked
+            case .reject: self = .rejected
+            case nil: self = .undecided
+            }
+        }
+
+        var isDimmed: Bool { self == .rejected }
+    }
+
+    func decisionState(for asset: Asset) -> DecisionState {
+        DecisionState(flag: asset.metadata.flag)
+    }
 }
 
 struct CullingStackRailPresentation: Equatable {
@@ -4268,6 +4456,7 @@ struct CullingStackRailPresentation: Equatable {
         var label: String
         var isSelected: Bool
         var isRecommended: Bool
+        var flawBadges: [CompareDecisionBadge]
     }
 
     var items: [Item]
@@ -4348,7 +4537,8 @@ struct CullingStackRailPresentation: Equatable {
                 assetID: assetID,
                 label: "\(index + 1)",
                 isSelected: assetID == selectedAssetID,
-                isRecommended: assetID == recommendation?.assetID
+                isRecommended: assetID == recommendation?.assetID,
+                flawBadges: CompareSurveyPresentation.flawBadges(for: evaluationSignalsByAssetID[assetID] ?? [])
             )
         }
         if let stackIndex = stackScope.stackIndex,
@@ -4630,6 +4820,7 @@ private struct CompareView: View {
                         summary: completion,
                         canViewPicks: completion.picksSetID != nil,
                         viewPicks: { openCullingSessionPicks() },
+                        cullRemainingSingles: { cullRemainingSingles() },
                         dismiss: { model.dismissCullingSessionCompletion() }
                     )
                 }
@@ -4652,6 +4843,14 @@ private struct CompareView: View {
     private func openCullingSessionPicks() {
         do {
             try model.openCullingSessionPicks()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func cullRemainingSingles() {
+        do {
+            try model.cullRemainingSinglesFromCullingCompletion()
         } catch {
             model.errorMessage = error.localizedDescription
         }

@@ -736,6 +736,51 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(try repository.asset(id: assets[8].id).metadata.flag)
     }
 
+    func testBeginManualCullingFromCompareSetReusesOpenSessionForSameSet() throws {
+        let assets = (0..<9).map { makeAsset(id: "compare-manual-reuse-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-manual-cull-reuse",
+            assets: assets
+        )
+        model.selectedView = .compare
+        model.select(assets[1].id)
+
+        let firstSession = try model.beginManualCullingFromCompareSet()
+
+        model.selectedView = .compare
+        let secondSession = try model.beginManualCullingFromCompareSet()
+
+        XCTAssertEqual(secondSession.id, firstSession.id)
+        XCTAssertEqual(secondSession.inputSetIDs, firstSession.inputSetIDs)
+        XCTAssertEqual(model.selectedAssetSetID, firstSession.inputSetIDs.first)
+        XCTAssertEqual(model.selectedView, .loupe)
+        XCTAssertEqual(
+            try repository.workSessions(kind: .culling, statuses: [.queued, .running, .paused]).count,
+            1
+        )
+    }
+
+    func testBeginManualCullingFromCompareSetDoesNotReuseCompletedSession() throws {
+        let assets = (0..<3).map { makeAsset(id: "compare-manual-completed-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "compare-manual-cull-completed",
+            assets: assets
+        )
+        model.selectedView = .compare
+        model.select(assets[0].id)
+
+        let firstSession = try model.beginManualCullingFromCompareSet()
+        try model.applyCullingShortcut(.pick)
+        try model.applyCullingShortcut(.pick)
+        try model.applyCullingShortcut(.pick)
+        XCTAssertEqual(try repository.session(id: firstSession.id).status, .completed)
+
+        model.selectedView = .compare
+        let secondSession = try model.beginManualCullingFromCompareSet()
+
+        XCTAssertNotEqual(secondSession.id, firstSession.id)
+    }
+
     func testLibraryCountTextShowsLoadedAndTotalWhenGridIsLimited() {
         let asset = Asset(
             id: AssetID(rawValue: "first"),
@@ -3240,6 +3285,101 @@ final class AppModelTests: XCTestCase {
         _ = try fixture.model.beginCullingSession(named: "Fresh Cull")
 
         XCTAssertNil(fixture.model.cullingSessionCompletion)
+    }
+
+    func testStackCullCompletionOffersToCullLeftoverSingles() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let singletonFirst = makeAsset(
+            id: "leftover-singleton-first",
+            path: "/Photos/Import/leftover-singleton-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let singletonSecond = makeAsset(
+            id: "leftover-singleton-second",
+            path: "/Photos/Import/leftover-singleton-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(100))
+        )
+        let stackFirst = makeAsset(
+            id: "leftover-stack-first",
+            path: "/Photos/Import/leftover-stack-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(200))
+        )
+        let stackSecond = makeAsset(
+            id: "leftover-stack-second",
+            path: "/Photos/Import/leftover-stack-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(201))
+        )
+        let assets = [singletonFirst, singletonSecond, stackFirst, stackSecond]
+        let (model, repository, _) = try makeModelWithCompletedImportSession(
+            named: "stack-cull-leftover-singles",
+            assets: assets,
+            outputAssetIDs: assets.map(\.id)
+        )
+
+        let session = try model.beginStackCullingFromLatestImportCompletion()
+        XCTAssertEqual(session.inputSetIDs.count, 1)
+        XCTAssertNil(model.cullingSessionCompletion)
+
+        // Decide the only stack; the session completes and should notice the
+        // two unstacked singles that never got a flag.
+        try model.applyCullingShortcut(.acceptStackSelection)
+
+        let completion = try XCTUnwrap(model.cullingSessionCompletion)
+        XCTAssertEqual(completion.remainingSingleCount, 2)
+        XCTAssertEqual(
+            Set(completion.remainingSingleAssetIDs),
+            [singletonFirst.id, singletonSecond.id]
+        )
+
+        let singlesSession = try model.cullRemainingSinglesFromCullingCompletion()
+
+        let singlesSetID = try XCTUnwrap(singlesSession.inputSetIDs.first)
+        XCTAssertEqual(
+            Set(assetIDs(in: try repository.assetSet(id: singlesSetID))),
+            [singletonFirst.id, singletonSecond.id]
+        )
+        XCTAssertEqual(model.selectedView, .loupe)
+        XCTAssertEqual(
+            Set(model.assets.map(\.id)),
+            [singletonFirst.id, singletonSecond.id]
+        )
+        XCTAssertNil(try repository.asset(id: singletonFirst.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: singletonSecond.id).metadata.flag)
+    }
+
+    func testCullingCompletionHasNoLeftoverSinglesWhenEveryFrameIsStacked() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let stackFirst = makeAsset(
+            id: "fully-stacked-first",
+            path: "/Photos/Import/fully-stacked-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let stackSecond = makeAsset(
+            id: "fully-stacked-second",
+            path: "/Photos/Import/fully-stacked-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let assets = [stackFirst, stackSecond]
+        let (model, _, _) = try makeModelWithCompletedImportSession(
+            named: "stack-cull-no-leftover-singles",
+            assets: assets,
+            outputAssetIDs: assets.map(\.id)
+        )
+
+        _ = try model.beginStackCullingFromLatestImportCompletion()
+        try model.applyCullingShortcut(.acceptStackSelection)
+
+        let completion = try XCTUnwrap(model.cullingSessionCompletion)
+        XCTAssertEqual(completion.remainingSingleCount, 0)
+        XCTAssertTrue(completion.remainingSingleAssetIDs.isEmpty)
+
+        XCTAssertThrowsError(try model.cullRemainingSinglesFromCullingCompletion())
     }
 
     func testCullingStackListEntriesDescribeSessionStacksWithDecidedState() throws {
