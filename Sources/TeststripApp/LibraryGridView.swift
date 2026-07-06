@@ -3323,6 +3323,45 @@ struct BatchMetadataReviewPresentation: Equatable {
     }
 }
 
+struct ExportReviewPresentation: Equatable {
+    var countText: String
+    var isExportEnabled: Bool
+    var exportTitle: String
+    var confirmationText: String?
+
+    init(
+        visibleAssetCount: Int,
+        selectedAssetCount: Int,
+        currentScopeAssetCount: Int,
+        selectedScope: BatchScopeMode,
+        requiresAllCatalogConfirmation: Bool,
+        isAllCatalogConfirmed: Bool,
+        isExporting: Bool
+    ) {
+        switch selectedScope {
+        case .selected:
+            countText = "\(selectedAssetCount) selected \(selectedAssetCount == 1 ? "photo" : "photos")"
+            confirmationText = nil
+            isExportEnabled = selectedAssetCount > 0 && !isExporting
+            exportTitle = "Export selected batch"
+        case .visible:
+            countText = "\(visibleAssetCount) visible \(visibleAssetCount == 1 ? "photo" : "photos")"
+            confirmationText = nil
+            isExportEnabled = visibleAssetCount > 0 && !isExporting
+            exportTitle = "Export visible batch"
+        case .currentScope:
+            countText = "\(currentScopeAssetCount) \(currentScopeAssetCount == 1 ? "photo" : "photos") in current scope"
+            confirmationText = requiresAllCatalogConfirmation
+                ? "Confirm exporting all \(currentScopeAssetCount) catalog \(currentScopeAssetCount == 1 ? "photo" : "photos")."
+                : nil
+            isExportEnabled = currentScopeAssetCount > 0
+                && !isExporting
+                && (!requiresAllCatalogConfirmation || isAllCatalogConfirmed)
+            exportTitle = "Export current scope"
+        }
+    }
+}
+
 struct CompareSurveyPresentation: Equatable {
     private static let maximumSurveyColumnCount = 4
 
