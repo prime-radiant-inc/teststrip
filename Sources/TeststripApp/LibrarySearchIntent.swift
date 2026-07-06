@@ -197,6 +197,7 @@ public struct LibrarySearchIntent: Equatable, Sendable {
             .motionBlur,
             .exposure,
             .aesthetics,
+            .framing,
             .object,
             .faceCount,
             .faceQuality,

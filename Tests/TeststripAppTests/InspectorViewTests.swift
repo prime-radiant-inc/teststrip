@@ -76,6 +76,7 @@ final class InspectorViewTests: XCTestCase {
             evaluationSignal(kind: .object, value: .label("camera")),
             evaluationSignal(kind: .focus, value: .score(0.92)),
             evaluationSignal(kind: .ocrText, value: .text("Invoice 123")),
+            evaluationSignal(kind: .framing, value: .label("tight crop")),
             evaluationSignal(kind: .colorPalette, value: .vector([0.12, 0.34, 0.56])),
             evaluationSignal(kind: .faceCount, value: .count(2))
         ]
@@ -93,7 +94,8 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(groups[1].rows.map(\.title), ["Face count"])
         XCTAssertEqual(groups[2].rows.map(\.value), ["Invoice 123"])
         XCTAssertEqual(groups[3].rows.map(\.title), ["Object"])
-        XCTAssertEqual(groups[4].rows.map(\.value), ["0.12, 0.34, 0.56"])
+        XCTAssertEqual(groups[4].rows.map(\.title), ["Framing", "Color"])
+        XCTAssertEqual(groups[4].rows.map(\.value), ["tight crop", "0.12, 0.34, 0.56"])
     }
 
     func testEvaluationRowsKeepConfidenceAndProviderProvenance() {

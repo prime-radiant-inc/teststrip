@@ -161,8 +161,8 @@ public struct LocalHTTPModelProvider: EvaluationProvider {
     }
 
     public static let defaultPrompt = """
-    Evaluate this photo for culling. Return only JSON shaped as {"signals":[{"kind":"aesthetics","label":"keeper","confidence":0.0},{"kind":"focus","score":0.0,"confidence":0.0},{"kind":"faceCount","count":1,"confidence":0.0}]}.
-    Use Teststrip signal kinds when possible: focus, motionBlur, exposure, aesthetics, object, faceCount, faceQuality, ocrText, colorPalette, novelty, visualSimilarity.
+    Evaluate this photo for culling. Return only JSON shaped as {"signals":[{"kind":"aesthetics","label":"keeper","confidence":0.0},{"kind":"framing","label":"balanced composition","confidence":0.0},{"kind":"focus","score":0.0,"confidence":0.0},{"kind":"faceCount","count":1,"confidence":0.0}]}.
+    Use Teststrip signal kinds when possible: focus, motionBlur, exposure, aesthetics, framing, object, faceCount, faceQuality, ocrText, colorPalette, novelty, visualSimilarity.
     """
 
     private static func dataURL(forImageAt url: URL) throws -> String {

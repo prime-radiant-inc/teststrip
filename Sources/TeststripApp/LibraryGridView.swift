@@ -1660,7 +1660,7 @@ struct LibraryGridView: View {
     }
 
     private var evaluationKindFilterOptions: [EvaluationKind] {
-        [.focus, .motionBlur, .exposure, .aesthetics, .object, .faceCount, .faceQuality, .ocrText, .colorPalette, .novelty, .visualSimilarity]
+        [.focus, .motionBlur, .exposure, .aesthetics, .framing, .object, .faceCount, .faceQuality, .ocrText, .colorPalette, .novelty, .visualSimilarity]
     }
 
     private var metadataSyncFilterBinding: Binding<String> {
@@ -3235,6 +3235,8 @@ private enum EvaluationSignalPresentation {
             return "Exposure"
         case .aesthetics:
             return "Aesthetics"
+        case .framing:
+            return "Framing"
         case .object:
             return "Object"
         case .faceCount:
@@ -3537,6 +3539,8 @@ private struct CullingStackRecommendation: Equatable {
             return clampedScore * confidence * 80
         case .aesthetics:
             return clampedScore * confidence * 50
+        case .framing:
+            return clampedScore * confidence * 45
         case .motionBlur:
             return (1 - clampedScore) * confidence * 60
         default:
@@ -5310,7 +5314,7 @@ struct CullingAssistPresentation: Equatable {
 
     private static func rationaleText(for signal: EvaluationSignal) -> String? {
         switch signal.kind {
-        case .focus, .motionBlur, .exposure, .aesthetics, .faceQuality, .faceCount, .novelty, .colorPalette, .visualSimilarity:
+        case .focus, .motionBlur, .exposure, .aesthetics, .framing, .faceQuality, .faceCount, .novelty, .colorPalette, .visualSimilarity:
             return title(for: signal)
         case .object, .ocrText:
             return nil
@@ -5330,26 +5334,28 @@ struct CullingAssistPresentation: Equatable {
         switch kind {
         case .aesthetics:
             return 0
-        case .motionBlur:
+        case .framing:
             return 1
-        case .focus:
+        case .motionBlur:
             return 2
-        case .faceQuality:
+        case .focus:
             return 3
-        case .faceCount:
+        case .faceQuality:
             return 4
-        case .exposure:
+        case .faceCount:
             return 5
-        case .object:
+        case .exposure:
             return 6
-        case .ocrText:
+        case .object:
             return 7
-        case .novelty:
+        case .ocrText:
             return 8
-        case .colorPalette:
+        case .novelty:
             return 9
-        case .visualSimilarity:
+        case .colorPalette:
             return 10
+        case .visualSimilarity:
+            return 11
         }
     }
 
@@ -5374,7 +5380,7 @@ struct CullingAssistPresentation: Equatable {
             return score >= 0.5 ? .caution : .positive
         case (.focus, .score(let score)), (.faceQuality, .score(let score)):
             return score >= 0.7 ? .positive : .caution
-        case (.aesthetics, .label(let label)):
+        case (.aesthetics, .label(let label)), (.framing, .label(let label)):
             return cautionLabels.contains(label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) ? .caution : .positive
         case (.faceCount, .count(let count)):
             return count > 0 ? .positive : .neutral

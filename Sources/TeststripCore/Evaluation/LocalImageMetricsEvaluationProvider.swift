@@ -32,6 +32,13 @@ public struct LocalImageMetricsEvaluationProvider: EvaluationProvider {
                 value: .score(metrics.focusScore),
                 confidence: 1.0,
                 provenance: provenance
+            ),
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .motionBlur,
+                value: .score(Self.motionBlurScore(focusScore: metrics.focusScore)),
+                confidence: 0.7,
+                provenance: provenance
             )
         ]
     }
@@ -102,6 +109,10 @@ public struct LocalImageMetricsEvaluationProvider: EvaluationProvider {
         }
         guard comparisonCount > 0 else { return 0 }
         return min(max(totalDelta / Double(comparisonCount), 0.0), 1.0)
+    }
+
+    private static func motionBlurScore(focusScore: Double) -> Double {
+        min(max(1.0 - focusScore, 0.0), 1.0)
     }
 
     private static func luminance(atX x: Int, y: Int, in pixels: [UInt8], width: Int) -> Double {

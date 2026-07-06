@@ -109,7 +109,7 @@ struct InspectorEvaluationSignalGroup: Equatable, Identifiable {
             return "Text"
         case .object:
             return "Objects & Content"
-        case .aesthetics, .colorPalette, .novelty, .visualSimilarity:
+        case .aesthetics, .framing, .colorPalette, .novelty, .visualSimilarity:
             return "Color & Look"
         }
     }
@@ -129,6 +129,7 @@ struct InspectorEvaluationSignalGroup: Equatable, Identifiable {
         case .motionBlur: "Motion blur"
         case .exposure: "Exposure"
         case .aesthetics: "Aesthetics"
+        case .framing: "Framing"
         case .object: "Object"
         case .faceCount: "Face count"
         case .faceQuality: "Face quality"

@@ -3372,11 +3372,13 @@ final class AppModelTests: XCTestCase {
         let repository = CatalogRepository(database: database)
         let focused = makeAsset(id: "focused", path: "/Photos/Job/focused.jpg", rating: 0)
         let object = makeAsset(id: "object", path: "/Photos/Job/object.jpg", rating: 0)
+        let framed = makeAsset(id: "framed", path: "/Photos/Job/framed.jpg", rating: 0)
         let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
-        try repository.upsert([focused, object])
+        try repository.upsert([focused, object, framed])
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: focused.id, kind: .focus, value: .score(0.91), confidence: 0.82, provenance: provenance),
-            EvaluationSignal(assetID: object.id, kind: .object, value: .label("camera"), confidence: 0.74, provenance: provenance)
+            EvaluationSignal(assetID: object.id, kind: .object, value: .label("camera"), confidence: 0.74, provenance: provenance),
+            EvaluationSignal(assetID: framed.id, kind: .framing, value: .label("balanced"), confidence: 0.8, provenance: provenance)
         ])
         let catalog = AppCatalog(
             paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
@@ -3396,6 +3398,14 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 1)
         let savedSet = try model.saveCurrentLibraryQuery(named: "Focused")
         XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [.evaluationKind(.focus)])))
+
+        try model.clearLibraryFilters()
+        model.librarySearchText = "signal:framing"
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.assets.map(\.id), [framed.id])
+        let framingSet = try model.saveCurrentLibraryQuery(named: "Framed")
+        XCTAssertEqual(framingSet.membership, .dynamic(SetQuery(predicates: [.evaluationKind(.framing)])))
     }
 
     func testSelectingPeopleSignalAppliesEvaluationFilterAndShowsMatchingAssets() throws {

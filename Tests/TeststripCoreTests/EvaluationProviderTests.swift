@@ -19,8 +19,9 @@ final class EvaluationProviderTests: XCTestCase {
         XCTAssertEqual(signal.provenance.provider, "AppleVision")
     }
 
-    func testDefaultPromptListsVisualSimilaritySignalKind() {
+    func testDefaultPromptListsVisualSimilarityAndFramingSignalKinds() {
         XCTAssertTrue(LocalHTTPModelProvider.defaultPrompt.contains("visualSimilarity"))
+        XCTAssertTrue(LocalHTTPModelProvider.defaultPrompt.contains("framing"))
     }
 
     func testLocalHTTPProviderBuildsOpenAICompatibleRequest() throws {
@@ -65,7 +66,7 @@ final class EvaluationProviderTests: XCTestCase {
         let transport = RecordingLocalHTTPTransport(response: .success(LocalHTTPModelHTTPResponse(
             statusCode: 200,
             data: try chatCompletionData(content: """
-            {"signals":[{"kind":"aesthetics","label":"keeper","confidence":0.74},{"kind":"focus","score":0.91,"confidence":0.82},{"kind":"faceCount","count":2,"confidence":0.9}]}
+            {"signals":[{"kind":"aesthetics","label":"keeper","confidence":0.74},{"kind":"framing","label":"tight crop","confidence":0.7},{"kind":"focus","score":0.91,"confidence":0.82},{"kind":"faceCount","count":2,"confidence":0.9}]}
             """)
         )))
         let provider = LocalHTTPModelProvider(
@@ -83,6 +84,13 @@ final class EvaluationProviderTests: XCTestCase {
                 kind: .aesthetics,
                 value: .label("keeper"),
                 confidence: 0.74,
+                provenance: ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+            ),
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .framing,
+                value: .label("tight crop"),
+                confidence: 0.7,
                 provenance: ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
             ),
             EvaluationSignal(
@@ -185,7 +193,7 @@ final class EvaluationProviderTests: XCTestCase {
         XCTAssertEqual(signals.map(\.kind), [.aesthetics])
     }
 
-    func testLocalImageMetricsProviderEmitsExposureColorAndFocusSignalsFromPreview() throws {
+    func testLocalImageMetricsProviderEmitsExposureColorFocusAndMotionBlurSignalsFromPreview() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "local-image-metrics")
         let previewURL = directory.appendingPathComponent("preview.png")
         try writeSolidPNG(to: previewURL, width: 1200, height: 800, red: 0.2, green: 0.4, blue: 0.8)
@@ -194,9 +202,9 @@ final class EvaluationProviderTests: XCTestCase {
 
         let signals = try provider.evaluate(assetID: assetID, previewURL: previewURL)
 
-        XCTAssertEqual(signals.map(\.kind), [.exposure, .colorPalette, .focus])
-        XCTAssertEqual(signals.map(\.assetID), [assetID, assetID, assetID])
-        XCTAssertEqual(signals.map(\.provenance.provider), ["local-image-metrics", "local-image-metrics", "local-image-metrics"])
+        XCTAssertEqual(signals.map(\.kind), [.exposure, .colorPalette, .focus, .motionBlur])
+        XCTAssertEqual(signals.map(\.assetID), [assetID, assetID, assetID, assetID])
+        XCTAssertEqual(signals.map(\.provenance.provider), ["local-image-metrics", "local-image-metrics", "local-image-metrics", "local-image-metrics"])
 
         guard case .score(let exposure)? = signals.first?.value else {
             return XCTFail("expected exposure score")
@@ -215,6 +223,11 @@ final class EvaluationProviderTests: XCTestCase {
             return XCTFail("expected focus score")
         }
         XCTAssertEqual(focus, 0, accuracy: 0.0001)
+
+        guard case .score(let blur)? = signals.first(where: { $0.kind == .motionBlur })?.value else {
+            return XCTFail("expected motion blur score")
+        }
+        XCTAssertGreaterThan(blur, 0.9)
     }
 
     func testLocalImageMetricsFocusScoreReflectsPreviewEdgeDetail() throws {
@@ -230,6 +243,21 @@ final class EvaluationProviderTests: XCTestCase {
 
         XCTAssertLessThan(flatFocus, 0.01)
         XCTAssertGreaterThan(detailedFocus, flatFocus + 0.2)
+    }
+
+    func testLocalImageMetricsMotionBlurScoreFallsAsEdgeDetailRises() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "local-image-motion-blur")
+        let flatURL = directory.appendingPathComponent("flat.png")
+        let detailedURL = directory.appendingPathComponent("detailed.png")
+        try writeSolidPNG(to: flatURL, width: 64, height: 64, red: 0.5, green: 0.5, blue: 0.5)
+        try writeCheckerboardPNG(to: detailedURL, width: 64, height: 64, cellSize: 4)
+        let provider = LocalImageMetricsEvaluationProvider()
+
+        let flatBlur = try motionBlurScore(from: provider.evaluate(assetID: AssetID(rawValue: "flat"), previewURL: flatURL))
+        let detailedBlur = try motionBlurScore(from: provider.evaluate(assetID: AssetID(rawValue: "detailed"), previewURL: detailedURL))
+
+        XCTAssertGreaterThan(flatBlur, 0.9)
+        XCTAssertLessThan(detailedBlur, flatBlur - 0.2)
     }
 
     func testAppleVisionProviderMapsAnalysisToSignals() throws {
@@ -434,6 +462,14 @@ private func focusScore(from signals: [EvaluationSignal]) throws -> Double {
     let signal = try XCTUnwrap(signals.first { $0.kind == .focus })
     guard case .score(let score) = signal.value else {
         throw TeststripError.invalidState("expected focus score")
+    }
+    return score
+}
+
+private func motionBlurScore(from signals: [EvaluationSignal]) throws -> Double {
+    let signal = try XCTUnwrap(signals.first { $0.kind == .motionBlur })
+    guard case .score(let score) = signal.value else {
+        throw TeststripError.invalidState("expected motion blur score")
     }
     return score
 }

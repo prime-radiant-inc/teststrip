@@ -302,6 +302,8 @@ struct SidebarView: View {
             return "sun.max"
         case .aesthetics:
             return "sparkles"
+        case .framing:
+            return "crop"
         case .colorPalette:
             return "paintpalette"
         case .novelty:

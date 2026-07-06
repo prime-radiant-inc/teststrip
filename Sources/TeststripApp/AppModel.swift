@@ -280,6 +280,8 @@ extension EvaluationKind {
             return "Exposure"
         case .aesthetics:
             return "Aesthetics"
+        case .framing:
+            return "Framing"
         case .object:
             return "Object"
         case .faceCount:
@@ -7201,6 +7203,7 @@ public final class AppModel {
         .motionBlur,
         .exposure,
         .aesthetics,
+        .framing,
         .colorPalette,
         .novelty,
         .visualSimilarity
@@ -7218,6 +7221,8 @@ public final class AppModel {
             return "Text"
         case .colorPalette:
             return "Color"
+        case .framing:
+            return "Framing"
         case .visualSimilarity:
             return "Similarity"
         default:

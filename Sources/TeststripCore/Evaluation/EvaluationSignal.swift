@@ -3,6 +3,7 @@ public enum EvaluationKind: String, Codable, Sendable {
     case motionBlur
     case exposure
     case aesthetics
+    case framing
     case object
     case faceCount
     case faceQuality
