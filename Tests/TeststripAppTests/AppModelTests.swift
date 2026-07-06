@@ -1336,6 +1336,39 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.isBatchSelected(outside.id))
     }
 
+    func testChangingLibrarySortReloadsCurrentFilteredScope() throws {
+        let oldKeeper = makeAsset(
+            id: "sort-old-keeper",
+            path: "/Photos/sort/old-keeper.cr2",
+            rating: 4,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Date(timeIntervalSince1970: 100))
+        )
+        let newKeeper = makeAsset(
+            id: "sort-new-keeper",
+            path: "/Photos/sort/new-keeper.cr2",
+            rating: 5,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Date(timeIntervalSince1970: 200))
+        )
+        let filteredOut = makeAsset(
+            id: "sort-filtered-out",
+            path: "/Photos/sort/filtered-out.cr2",
+            rating: 1,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Date(timeIntervalSince1970: 300))
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "library-sort-filtered-scope",
+            assets: [oldKeeper, newKeeper, filteredOut]
+        )
+        model.minimumRatingFilter = 4
+        try model.applyLibraryFilters()
+
+        try model.setLibrarySortOption(.captureTimeNewestFirst)
+
+        XCTAssertEqual(model.librarySortOption, .captureTimeNewestFirst)
+        XCTAssertEqual(model.assets.map(\.id), [newKeeper.id, oldKeeper.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
+    }
+
     func testBatchSelectionKeepsMatchingAssetsOutsideReloadedPage() throws {
         let model = try makeModelWithSeededCatalog(named: "batch-selection-filtered-cross-page", count: 121)
         let firstKeeperID = AssetID(rawValue: "asset-5")

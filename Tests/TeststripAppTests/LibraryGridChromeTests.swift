@@ -67,6 +67,30 @@ final class LibraryGridChromeTests: XCTestCase {
         XCTAssertEqual(LibraryGridChromePolicy.primaryCardImportRoute, .userGrantedPanel)
     }
 
+    func testLibrarySortPresentationExposesImportCaptureTimeAndFilenameOptions() {
+        let options = LibrarySortOptionPresentation.options(selected: .captureTimeNewestFirst)
+
+        XCTAssertEqual(options.map(\.title), [
+            "Import Order",
+            "Capture Time",
+            "Capture Time",
+            "Filename"
+        ])
+        XCTAssertEqual(options.map(\.subtitle), [
+            "Oldest import first",
+            "Newest first",
+            "Oldest first",
+            "A to Z"
+        ])
+        XCTAssertEqual(options.map(\.option), [
+            .importOrder,
+            .captureTimeNewestFirst,
+            .captureTimeOldestFirst,
+            .filename
+        ])
+        XCTAssertEqual(options.map(\.isSelected), [false, true, false, false])
+    }
+
     func testMetadataSyncFilterOptionMapsPendingAndConflictFlags() {
         XCTAssertEqual(MetadataSyncFilterOption(pending: false, conflict: false), .any)
         XCTAssertEqual(MetadataSyncFilterOption(pending: true, conflict: false), .pending)

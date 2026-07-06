@@ -88,18 +88,23 @@ public final class CatalogRepository {
         return try rows.first.map(decodeAsset)
     }
 
-    public func allAssets(limit: Int, offset: Int = 0) throws -> [Asset] {
+    public func allAssets(limit: Int, offset: Int = 0, sort: LibrarySortOption = .importOrder) throws -> [Asset] {
         let rows = try database.rows(
-            "SELECT * FROM assets ORDER BY rowid ASC LIMIT ? OFFSET ?",
+            "SELECT * FROM assets ORDER BY \(Self.orderSQL(for: sort)) LIMIT ? OFFSET ?",
             bindings: ["\(limit)", "\(offset)"]
         )
         return try rows.map(decodeAsset)
     }
 
-    public func allAssets(matching query: SetQuery, limit: Int, offset: Int = 0) throws -> [Asset] {
+    public func allAssets(
+        matching query: SetQuery,
+        limit: Int,
+        offset: Int = 0,
+        sort: LibrarySortOption = .importOrder
+    ) throws -> [Asset] {
         let compiledQuery = try compile(query)
         let rows = try database.rows(
-            "SELECT * FROM assets\(compiledQuery.whereSQL) ORDER BY rowid ASC LIMIT ? OFFSET ?",
+            "SELECT * FROM assets\(compiledQuery.whereSQL) ORDER BY \(Self.orderSQL(for: sort)) LIMIT ? OFFSET ?",
             bindings: compiledQuery.bindings + ["\(limit)", "\(offset)"]
         )
         return try rows.map(decodeAsset)
@@ -136,6 +141,36 @@ public final class CatalogRepository {
             matchingAssetIDs.append(contentsOf: try rows.map(decodeAssetID))
         }
         return matchingAssetIDs
+    }
+
+    private static func orderSQL(for sort: LibrarySortOption) -> String {
+        let validCapturedAtSQL = """
+        CASE
+            WHEN json_valid(technical_metadata_json)
+                AND json_type(technical_metadata_json, '$.capturedAt') IN ('integer', 'real')
+            THEN 0
+            ELSE 1
+        END
+        """
+        let capturedAtSQL = """
+        CASE
+            WHEN json_valid(technical_metadata_json)
+                AND json_type(technical_metadata_json, '$.capturedAt') IN ('integer', 'real')
+            THEN CAST(json_extract(technical_metadata_json, '$.capturedAt') AS REAL)
+            ELSE NULL
+        END
+        """
+
+        switch sort {
+        case .importOrder:
+            return "rowid ASC"
+        case .captureTimeNewestFirst:
+            return "\(validCapturedAtSQL) ASC, \(capturedAtSQL) DESC, LOWER(original_path) ASC, rowid ASC"
+        case .captureTimeOldestFirst:
+            return "\(validCapturedAtSQL) ASC, \(capturedAtSQL) ASC, LOWER(original_path) ASC, rowid ASC"
+        case .filename:
+            return "LOWER(original_path) ASC, rowid ASC"
+        }
     }
 
     public func assets(ids: [AssetID], limit: Int, offset: Int = 0) throws -> [Asset] {

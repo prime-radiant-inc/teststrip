@@ -450,6 +450,8 @@ struct LibraryGridView: View {
                 HStack(spacing: 8) {
                     searchControl
 
+                    librarySortPicker
+
                     filterTextField(
                         "Keyword",
                         text: Binding(
@@ -624,6 +626,17 @@ struct LibraryGridView: View {
                 .strokeBorder(Color.orange.opacity(0.25))
         }
         .liveMockupPlaceholder(.agenticSearch)
+    }
+
+    private var librarySortPicker: some View {
+        Picker("Sort", selection: librarySortBinding) {
+            ForEach(LibrarySortOptionPresentation.options(selected: model.librarySortOption), id: \.option) { option in
+                Text("\(option.title): \(option.subtitle)").tag(option.option)
+            }
+        }
+        .frame(width: 158)
+        .controlSize(.small)
+        .help("Sort library")
     }
 
     private func filterTextField(_ title: String, text: Binding<String>, width: CGFloat) -> some View {
@@ -1808,6 +1821,15 @@ struct LibraryGridView: View {
         )
     }
 
+    private var librarySortBinding: Binding<LibrarySortOption> {
+        Binding(
+            get: { model.librarySortOption },
+            set: { option in
+                applyLibrarySort(option)
+            }
+        )
+    }
+
     private var flagFilterBinding: Binding<String> {
         Binding(
             get: { model.flagFilter?.rawValue ?? "" },
@@ -2190,6 +2212,14 @@ struct LibraryGridView: View {
     private func applyLibraryFilters() {
         do {
             try model.applyLibraryFilters()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyLibrarySort(_ option: LibrarySortOption) {
+        do {
+            try model.setLibrarySortOption(option)
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -5669,6 +5699,48 @@ enum LibraryGridChromePolicy {
 
     static func isPendingMetadataSyncRetryActionDisabled(isImporting: Bool, canRetry: Bool) -> Bool {
         isImporting || !canRetry
+    }
+}
+
+struct LibrarySortOptionPresentation: Equatable {
+    var option: LibrarySortOption
+    var title: String
+    var subtitle: String
+    var isSelected: Bool
+
+    static func options(selected: LibrarySortOption) -> [LibrarySortOptionPresentation] {
+        LibrarySortOption.allCases.map { option in
+            LibrarySortOptionPresentation(
+                option: option,
+                title: title(for: option),
+                subtitle: subtitle(for: option),
+                isSelected: option == selected
+            )
+        }
+    }
+
+    private static func title(for option: LibrarySortOption) -> String {
+        switch option {
+        case .importOrder:
+            return "Import Order"
+        case .captureTimeNewestFirst, .captureTimeOldestFirst:
+            return "Capture Time"
+        case .filename:
+            return "Filename"
+        }
+    }
+
+    private static func subtitle(for option: LibrarySortOption) -> String {
+        switch option {
+        case .importOrder:
+            return "Oldest import first"
+        case .captureTimeNewestFirst:
+            return "Newest first"
+        case .captureTimeOldestFirst:
+            return "Oldest first"
+        case .filename:
+            return "A to Z"
+        }
     }
 }
 

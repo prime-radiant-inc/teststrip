@@ -176,6 +176,80 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(assets.map(\.id), [first.id, second.id])
     }
 
+    func testFetchesAllAssetsSortedByNewestCaptureTimeWithUndatedAssetsLast() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-capture-sort")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let old = Asset.testAsset(
+            id: AssetID(rawValue: "old"),
+            path: "/Volumes/NAS/Job/b.cr2",
+            rating: 3,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Date(timeIntervalSince1970: 100))
+        )
+        let newestLaterPath = Asset.testAsset(
+            id: AssetID(rawValue: "newest-later-path"),
+            path: "/Volumes/NAS/Job/c.cr2",
+            rating: 4,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Date(timeIntervalSince1970: 300))
+        )
+        let undated = Asset.testAsset(
+            id: AssetID(rawValue: "undated"),
+            path: "/Volumes/NAS/Job/z.cr2",
+            rating: 5
+        )
+        let newestEarlierPath = Asset.testAsset(
+            id: AssetID(rawValue: "newest-earlier-path"),
+            path: "/Volumes/NAS/Job/a.cr2",
+            rating: 5,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Date(timeIntervalSince1970: 300))
+        )
+        try repository.upsert([old, newestLaterPath, undated, newestEarlierPath])
+
+        let assets = try repository.allAssets(limit: 100, sort: .captureTimeNewestFirst)
+
+        XCTAssertEqual(assets.map(\.id), [
+            newestEarlierPath.id,
+            newestLaterPath.id,
+            old.id,
+            undated.id
+        ])
+    }
+
+    func testFetchesFilteredAssetsUsingSelectedSortOrder() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-filtered-sort")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let matchingOld = Asset.testAsset(
+            id: AssetID(rawValue: "matching-old"),
+            path: "/Volumes/NAS/Job/old.cr2",
+            rating: 4,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Date(timeIntervalSince1970: 100))
+        )
+        let matchingNew = Asset.testAsset(
+            id: AssetID(rawValue: "matching-new"),
+            path: "/Volumes/NAS/Job/new.cr2",
+            rating: 5,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Date(timeIntervalSince1970: 200))
+        )
+        let filteredOut = Asset.testAsset(
+            id: AssetID(rawValue: "filtered-out"),
+            path: "/Volumes/NAS/Job/filtered.cr2",
+            rating: 1,
+            technicalMetadata: Self.technicalMetadata(capturedAt: Date(timeIntervalSince1970: 300))
+        )
+        try repository.upsert([matchingOld, matchingNew, filteredOut])
+
+        let assets = try repository.allAssets(
+            matching: SetQuery(predicates: [.ratingAtLeast(4)]),
+            limit: 100,
+            sort: .captureTimeOldestFirst
+        )
+
+        XCTAssertEqual(assets.map(\.id), [matchingOld.id, matchingNew.id])
+    }
+
     func testCountsAssetsWithoutLoadingRows() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -1449,6 +1523,17 @@ private extension Asset {
             availability: .online,
             metadata: metadata,
             technicalMetadata: technicalMetadata
+        )
+    }
+}
+
+private extension CatalogDatabaseTests {
+    static func technicalMetadata(capturedAt: Date) -> AssetTechnicalMetadata {
+        AssetTechnicalMetadata(
+            pixelWidth: 6000,
+            pixelHeight: 4000,
+            capturedAt: capturedAt,
+            provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
         )
     }
 }

@@ -1038,6 +1038,7 @@ public final class AppModel {
     public var keywordFilterText: String
     public var folderFilterText: String
     public var minimumRatingFilter: Int?
+    public private(set) var librarySortOption: LibrarySortOption
     public var flagFilter: PickFlag?
     public var colorLabelFilter: ColorLabel?
     public var cameraFilterText: String
@@ -2069,6 +2070,7 @@ public final class AppModel {
         self.keywordFilterText = ""
         self.folderFilterText = ""
         self.minimumRatingFilter = nil
+        self.librarySortOption = .importOrder
         self.flagFilter = nil
         self.colorLabelFilter = nil
         self.cameraFilterText = ""
@@ -5899,6 +5901,12 @@ public final class AppModel {
         try reload()
     }
 
+    public func setLibrarySortOption(_ option: LibrarySortOption) throws {
+        guard librarySortOption != option else { return }
+        librarySortOption = option
+        try loadCatalogPage(preferredSelection: nil)
+    }
+
     public func selectPeopleSignal(_ kind: EvaluationKind) throws {
         try applyEvaluationKindFilter(kind)
     }
@@ -6231,7 +6239,8 @@ public final class AppModel {
         let page = try Self.catalogPage(
             containing: preferredSelection,
             repository: catalog.repository,
-            query: currentLibraryQuery()
+            query: currentLibraryQuery(),
+            sort: librarySortOption
         )
         replaceAssets(page.assets, pageOffset: page.offset, preferredSelection: preferredSelection)
         totalAssetCount = page.totalAssetCount
@@ -7952,22 +7961,23 @@ public final class AppModel {
     private static func catalogPage(
         containing preferredAssetID: AssetID?,
         repository: CatalogRepository,
-        query: SetQuery?
+        query: SetQuery?,
+        sort: LibrarySortOption = .importOrder
     ) throws -> (assets: [Asset], offset: Int, totalAssetCount: Int) {
         if let query {
-            let assets = try repository.allAssets(matching: query, limit: assetPageSize)
+            let assets = try repository.allAssets(matching: query, limit: assetPageSize, sort: sort)
             let totalAssetCount = try repository.assetCount(matching: query)
             return (assets, 0, totalAssetCount)
         }
 
         let offset: Int
-        if let preferredAssetID {
+        if sort == .importOrder, let preferredAssetID {
             let assetOffset = try repository.assetOffset(id: preferredAssetID)
             offset = (assetOffset / assetPageSize) * assetPageSize
         } else {
             offset = 0
         }
-        let assets = try repository.allAssets(limit: assetPageSize, offset: offset)
+        let assets = try repository.allAssets(limit: assetPageSize, offset: offset, sort: sort)
         let totalAssetCount = try repository.assetCount()
         return (assets, offset, totalAssetCount)
     }
