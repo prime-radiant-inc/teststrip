@@ -103,7 +103,7 @@ public enum LiveMockupPlaceholders {
         id: "search.refine",
         title: "Search refine rail",
         intendedBehavior: "Show parsed facets, query refinements, and agent-suggested set actions beside search results.",
-        currentFallback: "Search view shows a deterministic Teststrip Reads rail from active filter chips, known target rows are actionable, generated refinements and provider signal refinements can apply concrete catalog rules, related filters are actionable, and existing save/freeze/review workflows appear as suggested actions; broader natural-language planning is not built."
+        currentFallback: "Search view shows a deterministic Teststrip Reads rail from active filter chips, a plain search fallback for unparsed Ask text, known target rows are actionable, generated refinements and provider signal refinements can apply concrete catalog rules, related filters are actionable, and existing save/freeze/review workflows appear as suggested actions; broader natural-language planning is not built."
     )
 
     public static let smartCollectionsBuilder = LiveMockupPlaceholder(

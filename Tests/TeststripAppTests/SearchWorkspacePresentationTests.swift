@@ -215,6 +215,58 @@ final class SearchWorkspacePresentationTests: XCTestCase {
         ])
     }
 
+    func testPlainResidualSearchShowsHonestAskFallback() {
+        let presentation = SearchWorkspacePresentation(
+            suggestedName: "best group portraits",
+            totalAssetCount: 12,
+            savedSetCount: 0,
+            starredSetCount: 0,
+            activeFilterChips: [
+                "Search: best group portraits"
+            ]
+        )
+
+        XCTAssertEqual(presentation.askInterpretation, SearchWorkspaceAskInterpretation(
+            queryText: "best group portraits",
+            title: "Plain search fallback",
+            detail: "No structured filters were recognized yet",
+            systemImage: "text.magnifyingglass"
+        ))
+        XCTAssertEqual(presentation.generatedRefinements, [])
+        XCTAssertEqual(presentation.refineGroups, [
+            SearchWorkspaceRefineGroup(title: "Metadata", rows: [
+                SearchWorkspaceRefineRow(title: "Search: best group portraits", value: "active")
+            ])
+        ])
+    }
+
+    func testMixedParsedAndResidualSearchShowsParsedAndRemainingAskState() {
+        let presentation = SearchWorkspacePresentation(
+            suggestedName: "Ceremony Picks",
+            totalAssetCount: 8,
+            savedSetCount: 0,
+            starredSetCount: 0,
+            activeFilterChips: [],
+            activeFilterRows: [
+                ActiveLibraryFilterRow(title: "Search: ceremony"),
+                ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
+                ActiveLibraryFilterRow(title: "Rating >= 4", target: .reviewQueue(.fiveStars))
+            ]
+        )
+
+        XCTAssertEqual(presentation.askInterpretation?.queryText, "ceremony")
+        XCTAssertEqual(presentation.askInterpretation?.detail, "Plain text remains after parsed filters")
+        XCTAssertEqual(presentation.refineGroups, [
+            SearchWorkspaceRefineGroup(title: "Decisions", rows: [
+                SearchWorkspaceRefineRow(title: "Pick", value: "active", target: .reviewQueue(.picks)),
+                SearchWorkspaceRefineRow(title: "Rating >= 4", value: "active", target: .reviewQueue(.fiveStars))
+            ]),
+            SearchWorkspaceRefineGroup(title: "Metadata", rows: [
+                SearchWorkspaceRefineRow(title: "Search: ceremony", value: "active")
+            ])
+        ])
+    }
+
     func testRefineRowsPreserveActionTargetsWhenGrouped() {
         let presentation = SearchWorkspacePresentation(
             suggestedName: "Review Targets",

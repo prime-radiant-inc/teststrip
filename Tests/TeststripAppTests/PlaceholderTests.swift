@@ -255,6 +255,7 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("generated refinements"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("provider signal refinements"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("suggested actions"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("plain search fallback"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("broader natural-language planning is not built"))
     }
 

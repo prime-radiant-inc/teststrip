@@ -4498,6 +4498,13 @@ struct SearchWorkspaceGeneratedRefinement: Equatable, Identifiable {
     var id: String { preset.id }
 }
 
+struct SearchWorkspaceAskInterpretation: Equatable {
+    var queryText: String
+    var title: String
+    var detail: String
+    var systemImage: String
+}
+
 private extension Array where Element == SearchWorkspaceGeneratedRefinement {
     func containsPreset(_ preset: SmartCollectionRulePreset) -> Bool {
         contains { $0.preset == preset }
@@ -4509,6 +4516,7 @@ struct SearchWorkspacePresentation: Equatable {
     var resultCountText: String
     var savedSetCountText: String
     var starredSetCountText: String
+    var askInterpretation: SearchWorkspaceAskInterpretation?
     var refineRows: [SearchWorkspaceRefineRow]
     var refineGroups: [SearchWorkspaceRefineGroup]
     var generatedRefinements: [SearchWorkspaceGeneratedRefinement]
@@ -4537,6 +4545,7 @@ struct SearchWorkspacePresentation: Equatable {
         } else {
             refineRows = rows.map { SearchWorkspaceRefineRow(title: $0.title, value: "active", target: $0.target) }
         }
+        askInterpretation = Self.askInterpretation(for: refineRows)
         refineGroups = Self.groupRefineRows(refineRows)
         generatedRefinements = Self.generatedRefinements(
             reviewQueueCounts: reviewQueueCounts,
@@ -4553,6 +4562,23 @@ struct SearchWorkspacePresentation: Equatable {
             canSaveDynamicSet: canSaveDynamicSet,
             canSaveSnapshotSet: canSaveSnapshotSet,
             reviewQueueCounts: reviewQueueCounts
+        )
+    }
+
+    private static func askInterpretation(for rows: [SearchWorkspaceRefineRow]) -> SearchWorkspaceAskInterpretation? {
+        let searchRows = rows.filter { $0.title.hasPrefix("Search:") }
+        guard let searchRow = searchRows.first else { return nil }
+        let queryText = String(searchRow.title.dropFirst("Search:".count))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !queryText.isEmpty else { return nil }
+        let hasParsedFilters = rows.contains { row in
+            !row.title.hasPrefix("Search:") && row.title != "All photographs"
+        }
+        return SearchWorkspaceAskInterpretation(
+            queryText: queryText,
+            title: "Plain search fallback",
+            detail: hasParsedFilters ? "Plain text remains after parsed filters" : "No structured filters were recognized yet",
+            systemImage: "text.magnifyingglass"
         )
     }
 
@@ -4976,6 +5002,9 @@ private struct SearchWorkspaceView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
+            if let askInterpretation = presentation.askInterpretation {
+                askInterpretationRow(askInterpretation)
+            }
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(presentation.refineGroups) { group in
                     VStack(alignment: .leading, spacing: 6) {
@@ -5029,6 +5058,39 @@ private struct SearchWorkspaceView: View {
         .padding(14)
         .frame(width: 214, alignment: .topLeading)
         .liveMockupPlaceholder(.searchRefine)
+    }
+
+    private func askInterpretationRow(_ interpretation: SearchWorkspaceAskInterpretation) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: interpretation.systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(interpretation.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(interpretation.queryText)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                Text(interpretation.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(interpretation.title)
+        .accessibilityValue("\(interpretation.queryText), \(interpretation.detail)")
     }
 
     @ViewBuilder
