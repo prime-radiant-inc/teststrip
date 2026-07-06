@@ -64,6 +64,14 @@ Quitting any time — including mid-import or while previews are still draining 
 - Any import that was still queued/running/paused gets marked failed with "Import interrupted before completion" (visible in Work history); re-run Import Folder on the same folder to finish it. Already-cataloged files are matched by path and won't be duplicated — only what's missing gets added.
 - Any pending preview work resumes automatically in the background (bounded, and it skips sources that are still offline) — you don't need to do anything to restart it.
 
+## New since this runbook was written (2026-07-06 evening)
+
+- Imports offer **"Read imported frames"** (default on): evaluation runs automatically as previews complete, so verdicts, stack recommendations, and badges are live by the time you cull. Watch Activity if you want to see it work.
+- **Card imports organize into `YYYY/YYYY-MM-DD/` folders by default** (toggle off for flat copy) and can write a **second copy** to a backup destination; backup failures show per-file in the issue sheet without failing the import.
+- **Export** lives in the toolbar: selected/visible/current-scope, Full-res or Web 2048px, optional EXIF/IPTC carry (default on).
+- Culling now shows a **provisional Keep/Toss read** with inline rationale, a stack list rail, ✦ recommended-frame markers, face **Close-Ups** beside the loupe, and a **Potential Picks** review queue. All reads are display-only until you act. Thresholds were calibrated against this library's real signal distributions on 2026-07-06; if reads feel wrong, say so — they're one constant away.
+- **People** suggests automatic face groupings with a "needs a name" confirm band; nothing is written until you confirm.
+
 ## Known rough edges
 
 - **Large-import feedback latency was fixed and re-measured on 2026-07-06.** After the render-path caching and publication-coalescing fixes (`dd1b598`, `1b0b2fb`, `974ede9`, `575a595`), the 600-image foreground probe shows first visible feedback at 0.75s (budget: 1.5s), the imported photo visible at 3.4s, and the preview backlog drained by the time the probe samples. Imports much larger than 600 have not been probed; if a big import feels stalled, capture Copy Diagnostics and report it.
