@@ -237,7 +237,8 @@ final class EvaluationProviderTests: XCTestCase {
             faceCount: 2,
             faceQualityScores: [0.6, 0.9],
             recognizedText: ["Invoice 123", "Total 45"],
-            classificationLabels: [AppleVisionLabel(identifier: "document", confidence: 0.82)]
+            classificationLabels: [AppleVisionLabel(identifier: "document", confidence: 0.82)],
+            imageFeaturePrintVector: [0.1, 0.2, 0.3]
         )))
         let assetID = AssetID(rawValue: "asset-1")
 
@@ -270,6 +271,13 @@ final class EvaluationProviderTests: XCTestCase {
                 kind: .object,
                 value: .label("document"),
                 confidence: 0.82,
+                provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+            ),
+            EvaluationSignal(
+                assetID: assetID,
+                kind: .visualSimilarity,
+                value: .vector([0.1, 0.2, 0.3]),
+                confidence: 1.0,
                 provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
             )
         ])

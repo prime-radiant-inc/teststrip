@@ -16,17 +16,20 @@ public struct AppleVisionAnalysis: Equatable, Sendable {
     public var faceQualityScores: [Double]
     public var recognizedText: [String]
     public var classificationLabels: [AppleVisionLabel]
+    public var imageFeaturePrintVector: [Double]
 
     public init(
         faceCount: Int,
         faceQualityScores: [Double],
         recognizedText: [String],
-        classificationLabels: [AppleVisionLabel]
+        classificationLabels: [AppleVisionLabel],
+        imageFeaturePrintVector: [Double] = []
     ) {
         self.faceCount = faceCount
         self.faceQualityScores = faceQualityScores
         self.recognizedText = recognizedText
         self.classificationLabels = classificationLabels
+        self.imageFeaturePrintVector = imageFeaturePrintVector
     }
 }
 
@@ -59,6 +62,9 @@ public struct AppleVisionEvaluationProvider: EvaluationProvider {
         }
         if let objectSignal = Self.objectSignal(assetID: assetID, labels: analysis.classificationLabels, provenance: provenance) {
             signals.append(objectSignal)
+        }
+        if let imageSimilaritySignal = Self.imageSimilaritySignal(assetID: assetID, vector: analysis.imageFeaturePrintVector, provenance: provenance) {
+            signals.append(imageSimilaritySignal)
         }
 
         return signals
@@ -130,6 +136,21 @@ public struct AppleVisionEvaluationProvider: EvaluationProvider {
             provenance: provenance
         )
     }
+
+    private static func imageSimilaritySignal(
+        assetID: AssetID,
+        vector: [Double],
+        provenance: ProviderProvenance
+    ) -> EvaluationSignal? {
+        guard !vector.isEmpty else { return nil }
+        return EvaluationSignal(
+            assetID: assetID,
+            kind: .visualSimilarity,
+            value: .vector(vector),
+            confidence: 1.0,
+            provenance: provenance
+        )
+    }
 }
 
 public struct AppleVisionAnalyzer: AppleVisionAnalyzing {
@@ -141,9 +162,10 @@ public struct AppleVisionAnalyzer: AppleVisionAnalyzing {
         textRequest.recognitionLevel = .fast
         textRequest.usesLanguageCorrection = false
         let classificationRequest = VNClassifyImageRequest()
+        let imageFeaturePrintRequest = VNGenerateImageFeaturePrintRequest()
 
         let handler = VNImageRequestHandler(url: previewURL, options: [:])
-        try handler.perform([faceQualityRequest, textRequest, classificationRequest])
+        try handler.perform([faceQualityRequest, textRequest, classificationRequest, imageFeaturePrintRequest])
 
         return AppleVisionAnalysis(
             faceCount: (faceQualityRequest.results ?? []).count,
@@ -155,7 +177,18 @@ public struct AppleVisionAnalyzer: AppleVisionAnalyzing {
             },
             classificationLabels: (classificationRequest.results ?? [])
                 .filter { $0.confidence > 0 }
-                .map { AppleVisionLabel(identifier: $0.identifier, confidence: Double($0.confidence)) }
+                .map { AppleVisionLabel(identifier: $0.identifier, confidence: Double($0.confidence)) },
+            imageFeaturePrintVector: Self.imageFeaturePrintVector(from: imageFeaturePrintRequest.results?.first)
         )
+    }
+
+    private static func imageFeaturePrintVector(from observation: VNFeaturePrintObservation?) -> [Double] {
+        guard let observation,
+              observation.elementType == .float else {
+            return []
+        }
+        return observation.data.withUnsafeBytes { rawBuffer in
+            Array(rawBuffer.bindMemory(to: Float.self).prefix(observation.elementCount)).map(Double.init)
+        }
     }
 }

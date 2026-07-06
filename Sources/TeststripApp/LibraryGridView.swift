@@ -1660,7 +1660,7 @@ struct LibraryGridView: View {
     }
 
     private var evaluationKindFilterOptions: [EvaluationKind] {
-        [.focus, .motionBlur, .exposure, .aesthetics, .object, .faceCount, .faceQuality, .ocrText, .colorPalette, .novelty]
+        [.focus, .motionBlur, .exposure, .aesthetics, .object, .faceCount, .faceQuality, .ocrText, .colorPalette, .novelty, .visualSimilarity]
     }
 
     private var metadataSyncFilterBinding: Binding<String> {
