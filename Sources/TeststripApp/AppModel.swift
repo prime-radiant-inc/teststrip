@@ -1512,6 +1512,20 @@ public final class AppModel {
         return faceAssetIDs.count
     }
 
+    public var latestImportFlaggedReviewAssetCount: Int {
+        guard let catalog,
+              let summary = latestImportCompletionSummary,
+              let count = try? catalog.repository.assetCount(
+                matching: SetQuery(predicates: [
+                    .importBatch(summary.activityID),
+                    .likelyIssue
+                ])
+              ) else {
+            return 0
+        }
+        return count
+    }
+
     public var currentScopeBatchKeywordSuggestions: [BatchKeywordSuggestion] {
         guard let catalog,
               let assetIDs = try? currentAssetScopeIDs(repository: catalog.repository),
@@ -2601,6 +2615,18 @@ public final class AppModel {
     public func reviewLatestImportInCompare() throws {
         _ = try openLatestImportCompletion()
         selectedView = .compare
+    }
+
+    public func reviewLatestImportFlagged() throws {
+        guard let summary = latestImportCompletionSummary else {
+            throw TeststripError.invalidState("there is no completed import to review")
+        }
+        selectedAssetSetID = nil
+        clearLibraryQueryFilters()
+        librarySearchText = "import:\(summary.activityID)"
+        likelyIssuesFilter = true
+        selectedView = .grid
+        try reload()
     }
 
     @discardableResult

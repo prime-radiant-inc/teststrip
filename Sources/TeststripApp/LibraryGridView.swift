@@ -961,6 +961,7 @@ struct LibraryGridView: View {
             for: summary,
             batchKeywordSuggestions: model.latestImportBatchKeywordSuggestions,
             faceReviewAssetCount: model.latestImportFaceReviewAssetCount,
+            flaggedReviewAssetCount: model.latestImportFlaggedReviewAssetCount,
             canEvaluateImport: model.canRequestLatestImportAssetEvaluations
         )
         return VStack(alignment: .leading, spacing: 12) {
@@ -1093,6 +1094,8 @@ struct LibraryGridView: View {
             openLatestImportCompletion()
         case .evaluateImport:
             requestLatestImportEvaluations()
+        case .reviewFlaggedFrames:
+            reviewLatestImportFlagged()
         case .keywordSuggestions:
             reviewLatestImportKeywordSuggestions()
         case .stackGrouping:
@@ -2283,6 +2286,14 @@ struct LibraryGridView: View {
         do {
             try model.reviewLatestImportInCompare()
             focusCullingSurface()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func reviewLatestImportFlagged() {
+        do {
+            try model.reviewLatestImportFlagged()
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -6038,6 +6049,7 @@ struct ImportCompletionPresentation: Equatable {
         for summary: ImportCompletionSummary,
         batchKeywordSuggestions: [BatchKeywordSuggestion] = [],
         faceReviewAssetCount: Int = 0,
+        flaggedReviewAssetCount: Int = 0,
         canEvaluateImport: Bool = false
     ) -> ImportCompletionPresentation {
         let hasImportedSet = summary.importedPhotoCount > 0
@@ -6086,6 +6098,7 @@ struct ImportCompletionPresentation: Equatable {
                     isPrimary: false,
                     placeholder: nil
                 ),
+                flaggedReviewAction(flaggedReviewAssetCount: flaggedReviewAssetCount),
                 ImportCompletionActionPresentation(
                     kind: .stackGrouping,
                     title: "Cull stacks",
@@ -6155,6 +6168,18 @@ struct ImportCompletionPresentation: Equatable {
 
     private static func stackCountText(_ count: Int) -> String {
         "\(count) \(count == 1 ? "stack" : "stacks")"
+    }
+
+    private static func flaggedReviewAction(flaggedReviewAssetCount: Int) -> ImportCompletionActionPresentation {
+        ImportCompletionActionPresentation(
+            kind: .reviewFlaggedFrames,
+            title: flaggedReviewAssetCount > 0 ? "Review \(flaggedReviewAssetCount) flagged" : "Review flagged",
+            detail: flaggedReviewAssetCount > 0 ? "Review likely issues from this import" : "No flagged frames yet",
+            systemImage: "exclamationmark.triangle",
+            isEnabled: flaggedReviewAssetCount > 0,
+            isPrimary: false,
+            placeholder: nil
+        )
     }
 
     private static func cullScopeMetric(for summary: ImportCompletionSummary) -> ImportCompletionMetricRow {
@@ -6326,6 +6351,7 @@ struct ImportCompletionActionPresentation: Equatable, Identifiable {
         case reviewImportedFrames
         case openInLibrary
         case evaluateImport
+        case reviewFlaggedFrames
         case stackGrouping
         case faceNaming
         case keywordSuggestions

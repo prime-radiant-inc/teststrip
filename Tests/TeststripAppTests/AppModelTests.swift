@@ -7936,6 +7936,48 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.latestImportFaceReviewAssetCount, 1)
     }
 
+    func testLatestImportFlaggedReviewCountIsScopedToImportOutputSet() throws {
+        let importedIssue = makeAsset(id: "latest-import-likely-issue", size: 1)
+        let importedClean = makeAsset(id: "latest-import-clean", size: 2)
+        let outsideIssue = makeAsset(id: "outside-latest-import-issue", size: 3)
+        let (model, repository, _) = try makeModelWithCompletedImportSession(
+            named: "latest-import-flagged-review-count",
+            assets: [importedIssue, importedClean, outsideIssue],
+            outputAssetIDs: [importedIssue.id, importedClean.id]
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: importedIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance),
+            EvaluationSignal(assetID: outsideIssue.id, kind: .focus, value: .score(0.29), confidence: 0.89, provenance: provenance)
+        ])
+
+        XCTAssertEqual(model.latestImportFlaggedReviewAssetCount, 1)
+    }
+
+    func testReviewLatestImportFlaggedAppliesImportBatchLikelyIssueScope() throws {
+        let importedIssue = makeAsset(id: "review-import-likely-issue", size: 1)
+        let importedClean = makeAsset(id: "review-import-clean", size: 2)
+        let outsideIssue = makeAsset(id: "review-outside-import-issue", size: 3)
+        let (model, repository, _) = try makeModelWithCompletedImportSession(
+            named: "review-latest-import-flagged",
+            assets: [importedIssue, importedClean, outsideIssue],
+            outputAssetIDs: [importedIssue.id, importedClean.id]
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: importedIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance),
+            EvaluationSignal(assetID: outsideIssue.id, kind: .focus, value: .score(0.29), confidence: 0.89, provenance: provenance)
+        ])
+
+        try model.reviewLatestImportFlagged()
+
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.assets.map(\.id), [importedIssue.id])
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Import: latest-import-session", "Likely Issues"])
+        XCTAssertNil(try repository.asset(id: importedIssue.id).metadata.flag)
+        XCTAssertEqual(try repository.pendingMetadataSyncItems(limit: 10), [])
+    }
+
     func testRequestCompareAssetEvaluationsDispatchesOnlyCachedCompareAssets() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(

@@ -131,6 +131,29 @@ final class ImportCompletionPresentationTests: XCTestCase {
         XCTAssertNil(action.placeholder)
     }
 
+    func testEnablesFlaggedReviewActionWhenLatestImportHasReviewCandidates() throws {
+        let presentation = ImportCompletionPresentation.presentation(
+            for: summary(),
+            flaggedReviewAssetCount: 3
+        )
+
+        let action = try XCTUnwrap(presentation.actionRows.first { $0.kind == .reviewFlaggedFrames })
+        XCTAssertTrue(action.isEnabled)
+        XCTAssertEqual(action.title, "Review 3 flagged")
+        XCTAssertEqual(action.detail, "Review likely issues from this import")
+        XCTAssertNil(action.placeholder)
+    }
+
+    func testFlaggedReviewActionUsesDisabledEmptyStateWithoutCandidates() throws {
+        let presentation = ImportCompletionPresentation.presentation(for: summary())
+
+        let action = try XCTUnwrap(presentation.actionRows.first { $0.kind == .reviewFlaggedFrames })
+        XCTAssertFalse(action.isEnabled)
+        XCTAssertEqual(action.title, "Review flagged")
+        XCTAssertEqual(action.detail, "No flagged frames yet")
+        XCTAssertNil(action.placeholder)
+    }
+
     func testEnablesKeywordReviewActionWhenBatchSuggestionsExist() throws {
         let presentation = ImportCompletionPresentation.presentation(
             for: summary(),
