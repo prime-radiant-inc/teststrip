@@ -2781,7 +2781,7 @@ private struct LoupeView: View {
             switch action.action {
             case .keepRecommended, .keepTopRanked:
                 return true
-            case .keepSelectedAndRejectAlternates, .keepTopRankedPlaceholder, .keepAll:
+            case .keepSelectedAndRejectAlternates, .keepAll:
                 return false
             }
         }
@@ -3023,8 +3023,6 @@ private struct LoupeView: View {
             keepRecommendedStackFrame(assetID)
         case .keepTopRanked(let assetIDs):
             keepTopRankedStackFrames(assetIDs)
-        case .keepTopRankedPlaceholder:
-            break
         case .keepAll:
             keepAllFramesInSelectedStack()
         }
@@ -3824,7 +3822,7 @@ struct CullingStackRailPresentation: Equatable {
                 help: "Keep every frame in this stack.",
                 liveMockupPlaceholder: nil
             )
-        ]
+        ].compactMap { $0 }
     }
 
     var isVisible: Bool {
@@ -3834,7 +3832,7 @@ struct CullingStackRailPresentation: Equatable {
     private static func rankedAction(
         for rankedCandidates: [CullingStackRecommendation],
         stackCount: Int
-    ) -> CullingStackActionPresentation {
+    ) -> CullingStackActionPresentation? {
         let topTwo = Array(rankedCandidates.prefix(2))
         if stackCount > 2, topTwo.count >= 2 {
             return CullingStackActionPresentation(
@@ -3847,15 +3845,7 @@ struct CullingStackRailPresentation: Equatable {
             )
         }
 
-        guard let recommendation = rankedCandidates.first else {
-            return CullingStackActionPresentation(
-                action: .keepTopRankedPlaceholder,
-                title: "Keep top 2",
-                isEnabled: false,
-                help: "Keeps the top-ranked frames once stack ranking is available.",
-                liveMockupPlaceholder: .cullingStackCull
-            )
-        }
+        guard let recommendation = rankedCandidates.first else { return nil }
 
         return CullingStackActionPresentation(
             action: .keepRecommended(recommendation.assetID),
@@ -3870,7 +3860,6 @@ struct CullingStackRailPresentation: Equatable {
 
 enum CullingStackAction: Equatable {
     case keepSelectedAndRejectAlternates
-    case keepTopRankedPlaceholder
     case keepTopRanked([AssetID])
     case keepRecommended(AssetID)
     case keepAll
@@ -3904,8 +3893,6 @@ struct CullingStackActionPresentation: Equatable, Identifiable {
         switch action {
         case .keepSelectedAndRejectAlternates:
             return "keep-selected-and-reject-alternates"
-        case .keepTopRankedPlaceholder:
-            return "keep-top-ranked-placeholder"
         case .keepTopRanked(let assetIDs):
             return "keep-top-ranked-\(assetIDs.map(\.rawValue).joined(separator: "-"))"
         case .keepRecommended(let assetID):
@@ -5976,7 +5963,7 @@ struct CullingAssistPresentation: Equatable {
         switch action.action {
         case .keepRecommended, .keepTopRanked:
             return action.assistTitle ?? action.title
-        case .keepSelectedAndRejectAlternates, .keepTopRankedPlaceholder, .keepAll:
+        case .keepSelectedAndRejectAlternates, .keepAll:
             return nil
         }
     }

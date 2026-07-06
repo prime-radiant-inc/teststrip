@@ -44,12 +44,11 @@ final class CullingStackRailPresentationTests: XCTestCase {
         )
 
         let actions = presentation.actions
-        XCTAssertEqual(actions.map(\.title), ["Keep frame 2 · cut 2", "Keep top 2", "Keep all 3"])
-        XCTAssertEqual(actions.map(\.isEnabled), [true, false, true])
-        XCTAssertEqual(actions.map(\.liveMockupPlaceholder), [nil, .cullingStackCull, nil])
+        XCTAssertEqual(actions.map(\.title), ["Keep frame 2 · cut 2", "Keep all 3"])
+        XCTAssertEqual(actions.map(\.isEnabled), [true, true])
+        XCTAssertEqual(actions.map(\.liveMockupPlaceholder), [nil, nil])
         XCTAssertEqual(actions[0].help, "Keep selected frame and reject stack alternates")
-        XCTAssertTrue(actions[1].help.localizedCaseInsensitiveContains("ranking"))
-        XCTAssertTrue(actions[2].help.localizedCaseInsensitiveContains("keep every frame"))
+        XCTAssertTrue(actions[1].help.localizedCaseInsensitiveContains("keep every frame"))
     }
 
     func testRecommendedActionUsesPersistedQualitySignals() {

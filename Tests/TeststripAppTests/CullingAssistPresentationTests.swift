@@ -112,14 +112,6 @@ final class CullingAssistPresentationTests: XCTestCase {
                 assistTitle: "Recommended frame 3"
             ),
             CullingStackActionPresentation(
-                action: .keepTopRankedPlaceholder,
-                title: "Keep top 2",
-                isEnabled: false,
-                help: "Keeps the top-ranked frames once stack ranking is available.",
-                liveMockupPlaceholder: .cullingStackCull,
-                assistTitle: "Top 2 frames"
-            ),
-            CullingStackActionPresentation(
                 action: .keepAll,
                 title: "Keep all 3",
                 isEnabled: true,
