@@ -139,29 +139,24 @@ final class DecodeRegistryTests: XCTestCase {
         }
     }
 
-    func testRawFixtureCoverageUsesRealFilesWhenConfigured() throws {
-        let directory = try rawFixtureDirectory()
-        let requiredFixtures = [
-            "dng": "Adobe DNG",
-            "crw": "Canon CRW",
-            "cr2": "Canon CR2",
-            "raf": "Fuji RAF",
-            "x3f": "Sigma/Foveon X3F"
-        ]
-        let provider = ImageIODecodeProvider()
+    func testRawFixtureCoverageUsesRealDNGWhenConfigured() throws {
+        try assertRawFixtureCoverage(fileExtension: "dng", label: "Adobe DNG")
+    }
 
-        for (fileExtension, label) in requiredFixtures.sorted(by: { $0.key < $1.key }) {
-            let fixtureURL = directory.appendingPathComponent("sample.\(fileExtension)")
-            XCTAssertTrue(
-                FileManager.default.fileExists(atPath: fixtureURL.path),
-                "Missing \(label) fixture at \(fixtureURL.path)"
-            )
-            XCTAssertEqual(
-                provider.capability(forFileExtension: fixtureURL.pathExtension)?.support,
-                ImageIODecodeProvider.knownUnsupportedRawExtensions.contains(fileExtension) ? .unsupported : .bestEffort,
-                label
-            )
-        }
+    func testRawFixtureCoverageUsesRealCRWWhenConfigured() throws {
+        try assertRawFixtureCoverage(fileExtension: "crw", label: "Canon CRW")
+    }
+
+    func testRawFixtureCoverageUsesRealCR2WhenConfigured() throws {
+        try assertRawFixtureCoverage(fileExtension: "cr2", label: "Canon CR2")
+    }
+
+    func testRawFixtureCoverageUsesRealRAFWhenConfigured() throws {
+        try assertRawFixtureCoverage(fileExtension: "raf", label: "Fuji RAF")
+    }
+
+    func testRawFixtureCoverageUsesRealX3FWhenConfigured() throws {
+        try assertRawFixtureCoverage(fileExtension: "x3f", label: "Sigma/Foveon X3F")
     }
 
     func testImageIOCapabilityMatrixRecognizesX3FAsUnsupportedUntilDedicatedProviderExists() {
@@ -236,9 +231,22 @@ final class DecodeRegistryTests: XCTestCase {
     private func rawFixtureDirectory() throws -> URL {
         guard let path = ProcessInfo.processInfo.environment["TESTSTRIP_RAW_FIXTURE_DIRECTORY"],
               !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw XCTSkip("Set TESTSTRIP_RAW_FIXTURE_DIRECTORY with real sample.dng, sample.crw, sample.cr2, sample.raf, and sample.x3f files to run RAW fixture coverage.")
+            throw XCTSkip("Set TESTSTRIP_RAW_FIXTURE_DIRECTORY with real sample.<ext> files to run RAW fixture coverage.")
         }
         return URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
+    }
+
+    private func assertRawFixtureCoverage(fileExtension: String, label: String) throws {
+        let fixtureURL = try rawFixtureDirectory().appendingPathComponent("sample.\(fileExtension)")
+        guard FileManager.default.fileExists(atPath: fixtureURL.path) else {
+            throw XCTSkip("Missing \(label) fixture at \(fixtureURL.path)")
+        }
+
+        XCTAssertEqual(
+            ImageIODecodeProvider().capability(forFileExtension: fixtureURL.pathExtension)?.support,
+            ImageIODecodeProvider.knownUnsupportedRawExtensions.contains(fileExtension) ? .unsupported : .bestEffort,
+            label
+        )
     }
 }
 
