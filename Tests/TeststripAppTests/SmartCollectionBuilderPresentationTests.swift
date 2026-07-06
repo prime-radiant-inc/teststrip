@@ -55,6 +55,23 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
         ])
     }
 
+    func testRuleRowsPreserveRemovalTargetsFromActiveFilterRows() {
+        let presentation = SmartCollectionBuilderPresentation(
+            proposedName: "Filtered",
+            ruleChips: ["Pick", "XMP Pending"],
+            activeFilterRows: [
+                ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
+                ActiveLibraryFilterRow(title: "XMP Pending", target: .metadataSyncPending)
+            ],
+            matchCount: 12
+        )
+
+        XCTAssertEqual(presentation.ruleRows.map(\.target), [
+            .reviewQueue(.picks),
+            .metadataSyncPending
+        ])
+    }
+
     func testPreviewCountTextCapsAtMatchCount() {
         let presentation = SmartCollectionBuilderPresentation(
             proposedName: "Preview",

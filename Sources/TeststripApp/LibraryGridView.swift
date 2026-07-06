@@ -1177,6 +1177,7 @@ struct LibraryGridView: View {
             presentation: SmartCollectionBuilderPresentation(
                 proposedName: savedSearchName,
                 ruleChips: model.activeLibraryFilterChips,
+                activeFilterRows: model.activeLibraryFilterRows,
                 matchCount: model.totalAssetCount,
                 typedRuleText: savedSearchRuleText,
                 reviewQueueCounts: model.reviewQueueCounts,
@@ -1188,6 +1189,7 @@ struct LibraryGridView: View {
             cancel: { isSavingSearch = false },
             applyRulePreset: applySmartCollectionRulePreset,
             applyRuleText: applySmartCollectionRuleText,
+            removeRule: removeActiveLibraryFilter,
             save: saveCurrentSearch
         )
     }
@@ -1474,6 +1476,7 @@ struct LibraryGridView: View {
         var cancel: () -> Void
         var applyRulePreset: (SmartCollectionRulePreset) -> Void
         var applyRuleText: () -> Void
+        var removeRule: (ActiveLibraryFilterRow) -> Void
         var save: () -> Void
 
         var body: some View {
@@ -1568,6 +1571,14 @@ struct LibraryGridView: View {
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 7)
                                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
+                            Button {
+                                removeRule(rule.activeFilterRow)
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Remove rule")
                         }
                     }
                 }
@@ -5492,6 +5503,7 @@ enum MetadataSyncFilterOption: String, Equatable {
 struct SmartCollectionBuilderPresentation: Equatable {
     var proposedName: String
     var ruleChips: [String]
+    var activeFilterRows: [ActiveLibraryFilterRow]? = nil
     var matchCount: Int
     var typedRuleText: String = ""
     var reviewQueueCounts: [ReviewQueue: Int] = [:]
@@ -5506,11 +5518,11 @@ struct SmartCollectionBuilderPresentation: Equatable {
     }
 
     var ruleCountText: String {
-        "\(ruleChips.count) \(ruleChips.count == 1 ? "rule" : "rules")"
+        "\(resolvedActiveFilterRows.count) \(resolvedActiveFilterRows.count == 1 ? "rule" : "rules")"
     }
 
     var ruleRows: [SmartCollectionRuleRow] {
-        ruleChips.map(SmartCollectionRuleRow.init)
+        resolvedActiveFilterRows.map(SmartCollectionRuleRow.init)
     }
 
     var addRuleRows: [SmartCollectionAddRuleRow] {
@@ -5522,7 +5534,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
     }
 
     var canCreate: Bool {
-        !proposedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !ruleChips.isEmpty
+        !proposedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !resolvedActiveFilterRows.isEmpty
     }
 
     var canApplyTypedRule: Bool {
@@ -5675,6 +5687,10 @@ struct SmartCollectionBuilderPresentation: Equatable {
             }
         }
     }
+
+    private var resolvedActiveFilterRows: [ActiveLibraryFilterRow] {
+        activeFilterRows ?? ruleChips.map { ActiveLibraryFilterRow(title: $0) }
+    }
 }
 
 struct SmartCollectionSuggestedTemplateRow: Equatable, Identifiable {
@@ -5714,14 +5730,35 @@ struct SmartCollectionRuleRow: Equatable, Identifiable {
     var field: String
     var operation: String
     var value: String
+    var target: SidebarRowTarget?
+    private var title: String
 
-    init(field: String, operation: String, value: String) {
+    var activeFilterRow: ActiveLibraryFilterRow {
+        ActiveLibraryFilterRow(title: title, target: target)
+    }
+
+    init(field: String, operation: String, value: String, target: SidebarRowTarget? = nil) {
         self.field = field
         self.operation = operation
         self.value = value
+        self.target = target
+        if operation == "matches", field == "Filter" {
+            self.title = value
+        } else if operation == "matches" {
+            self.title = "\(field): \(value)"
+        } else if operation == "is at least" {
+            self.title = "\(field) >= \(value)"
+        } else {
+            self.title = "\(field) \(operation) \(value)"
+        }
     }
 
     init(chip: String) {
+        self.init(activeFilterRow: ActiveLibraryFilterRow(title: chip))
+    }
+
+    init(activeFilterRow: ActiveLibraryFilterRow) {
+        let chip = activeFilterRow.title
         let trimmed = chip.trimmingCharacters(in: .whitespacesAndNewlines)
         if let range = trimmed.range(of: ":") {
             field = String(trimmed[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -5747,6 +5784,8 @@ struct SmartCollectionRuleRow: Equatable, Identifiable {
         if value.isEmpty {
             value = trimmed.isEmpty ? "Any" : trimmed
         }
+        target = activeFilterRow.target
+        title = activeFilterRow.title
     }
 }
 
