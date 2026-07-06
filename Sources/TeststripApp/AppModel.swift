@@ -8084,7 +8084,10 @@ public final class AppModel {
             )
         )
         var sections = [SidebarSection(title: "Library", rows: libraryRows)]
-        sections.append(SidebarSection(title: "Review", rows: reviewQueueSidebarRows(reviewQueueCounts: reviewQueueCounts)))
+        let reviewRows = reviewQueueSidebarRows(reviewQueueCounts: reviewQueueCounts)
+        if !reviewRows.isEmpty {
+            sections.append(SidebarSection(title: "Review", rows: reviewRows))
+        }
         if !catalogFolders.isEmpty {
             sections.append(SidebarSection(title: "Folders", rows: catalogFolders.prefix(20).map { folder in
                 SidebarRow(
@@ -8163,11 +8166,15 @@ public final class AppModel {
     }
 
     private static func reviewQueueSidebarRows(reviewQueueCounts: [ReviewQueue: Int]) -> [SidebarRow] {
-        reviewQueueSidebarOrder.map { queue in
-            SidebarRow(
+        reviewQueueSidebarOrder.compactMap { queue in
+            guard let count = reviewQueueCounts[queue],
+                  count > 0 else {
+                return nil
+            }
+            return SidebarRow(
                 id: "review-\(queue.rawValue)",
                 title: queue.presentation.title,
-                countText: reviewQueueCounts[queue].map(sidebarCountText),
+                countText: sidebarCountText(count),
                 target: .reviewQueue(queue)
             )
         }

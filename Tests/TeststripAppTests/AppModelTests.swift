@@ -23,6 +23,25 @@ final class AppModelTests: XCTestCase {
         })
     }
 
+    func testEmptyCatalogDoesNotShowDeadReviewQueueSidebarPlaceholders() throws {
+        let (model, _) = try makeModelWithCatalogAssets(named: "empty-review-sidebar", assets: [])
+
+        XCTAssertFalse(model.sidebarSections.contains { $0.title == "Review" })
+        XCTAssertFalse(model.sidebarSections.flatMap(\.rows).contains { row in
+            [
+                "Picks",
+                "Rejects",
+                "5 Stars",
+                "Needs Keywords",
+                "Needs Evaluation",
+                "Faces Found",
+                "OCR Found",
+                "Likely Issues",
+                "Provider Failures"
+            ].contains(row.title)
+        })
+    }
+
     func testSidebarSectionCanBeConstructedByPublicClients() {
         let section = SidebarSection(title: "Library", rows: ["All Photographs"])
 
@@ -1686,7 +1705,7 @@ final class AppModelTests: XCTestCase {
             sidecarMetadata: sidecarMetadata
         )
         XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("Rejects", in: model), "0")
+        XCTAssertNil(reviewQueueCount("Rejects", in: model))
         XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "1")
 
         try model.resolveSelectedMetadataConflictUsingSidecar()
@@ -1699,9 +1718,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.metadataSyncConflictItems(), [])
         XCTAssertEqual(model.metadataSyncConflictItems, [])
         XCTAssertEqual(model.pendingMetadataSyncItems, [])
-        XCTAssertEqual(reviewQueueCount("Picks", in: model), "0")
+        XCTAssertNil(reviewQueueCount("Picks", in: model))
         XCTAssertEqual(reviewQueueCount("Rejects", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "0")
+        XCTAssertNil(reviewQueueCount("5 Stars", in: model))
         XCTAssertEqual(
             try repository.lastMetadataSyncFingerprint(assetID: asset.id),
             XMPSidecarStore.fingerprint(for: sidecarData)
@@ -4183,6 +4202,26 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 
+    func testReviewSidebarShowsOnlyQueuesWithCatalogBackedCounts() throws {
+        let pick = makeAsset(id: "single-review-pick", path: "/Photos/Job/single-review-pick.jpg", rating: 4, flag: .pick, keywords: ["tagged"])
+        let plain = makeAsset(id: "single-review-plain", path: "/Photos/Job/single-review-plain.jpg", rating: 3, keywords: ["tagged"])
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "single-review-sidebar",
+            assets: [pick, plain]
+        )
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: pick.id, kind: .object, value: .label("camera"), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: plain.id, kind: .object, value: .label("camera"), confidence: 0.8, provenance: provenance)
+        ])
+        try model.reload()
+
+        let reviewSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Review" })
+        XCTAssertEqual(reviewSection.rowTitles, ["Picks", "Needs Evaluation"])
+        XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("Needs Evaluation", in: model), "2")
+    }
+
     func testSelectingAllPhotographsSidebarRowReturnsToGridAndClearsFilters() throws {
         let filtered = makeAsset(id: "filtered", path: "/Photos/Job/filtered.jpg", rating: 5, keywords: ["selected"])
         let unfiltered = makeAsset(id: "unfiltered", path: "/Photos/Job/unfiltered.jpg", rating: 2)
@@ -4217,9 +4256,9 @@ final class AppModelTests: XCTestCase {
             assets: [asset]
         )
 
-        XCTAssertEqual(reviewQueueCount("Picks", in: model), "0")
-        XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "0")
-        XCTAssertEqual(reviewQueueCount("Needs Keywords", in: model), "0")
+        XCTAssertNil(reviewQueueCount("Picks", in: model))
+        XCTAssertNil(reviewQueueCount("5 Stars", in: model))
+        XCTAssertNil(reviewQueueCount("Needs Keywords", in: model))
 
         try model.setFlagForSelectedAsset(.pick)
         try model.setRatingForSelectedAsset(5)
@@ -4262,7 +4301,7 @@ final class AppModelTests: XCTestCase {
         )))
 
         try await waitForEvaluationSignalGeneration(1, for: asset.id, in: model)
-        XCTAssertEqual(reviewQueueCount("Needs Evaluation", in: model), "0")
+        XCTAssertNil(reviewQueueCount("Needs Evaluation", in: model))
     }
 
     func testTechnicalFiltersCountAsActiveLibraryFiltersAndClear() throws {
@@ -6735,9 +6774,9 @@ final class AppModelTests: XCTestCase {
             CatalogFolder(path: "\(photoFolder.path)/", name: "photos", assetCount: 1)
         ])
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Folders" }?.rowTitles, ["photos"])
-        XCTAssertEqual(reviewQueueCount("Picks", in: model), "0")
-        XCTAssertEqual(reviewQueueCount("Rejects", in: model), "0")
-        XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "0")
+        XCTAssertNil(reviewQueueCount("Picks", in: model))
+        XCTAssertNil(reviewQueueCount("Rejects", in: model))
+        XCTAssertNil(reviewQueueCount("5 Stars", in: model))
         XCTAssertEqual(reviewQueueCount("Needs Keywords", in: model), "1")
     }
 
