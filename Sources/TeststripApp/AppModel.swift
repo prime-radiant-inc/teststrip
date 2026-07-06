@@ -861,19 +861,39 @@ public struct BatchKeywordSuggestion: Identifiable, Equatable, Sendable {
     }
 }
 
-public struct LatestImportPresentation: Equatable, Sendable {
-    public var summary: ImportCompletionSummary?
-    public var flaggedReviewAssetCount: Int
-    public var faceReviewAssetCount: Int
-    public var batchKeywordSuggestions: [BatchKeywordSuggestion]
-    public var canRequestAssetEvaluations: Bool
+// Stable part of the latest-import panel: changes only when activities, metadata,
+// or evaluations change, never on preview queue transitions. The summary's preview
+// fields are placeholders until LatestImportPreviewStatus is patched in.
+private struct LatestImportPresentationCore: Equatable, Sendable {
+    var summary: ImportCompletionSummary?
+    var flaggedReviewAssetCount: Int
+    var faceReviewAssetCount: Int
+    var batchKeywordSuggestions: [BatchKeywordSuggestion]
+    var canRequestAssetEvaluations: Bool
+    var outputAssetIDs: [AssetID]
 
-    public static let empty = LatestImportPresentation(
+    static let empty = LatestImportPresentationCore(
         summary: nil,
         flaggedReviewAssetCount: 0,
         faceReviewAssetCount: 0,
         batchKeywordSuggestions: [],
-        canRequestAssetEvaluations: false
+        canRequestAssetEvaluations: false,
+        outputAssetIDs: []
+    )
+}
+
+// Live preview-drain part of the latest-import panel, rebuilt on preview queue
+// transitions; its rebuild must stay limited to indexed count queries because those
+// transitions fire for every preview of an import.
+private struct LatestImportPreviewStatus: Equatable, Sendable {
+    var previewFailureCount: Int
+    var failureText: String?
+    var previewStatusText: String
+
+    static let empty = LatestImportPreviewStatus(
+        previewFailureCount: 0,
+        failureText: nil,
+        previewStatusText: ""
     )
 }
 
@@ -1095,8 +1115,11 @@ public final class AppModel {
     public var reviewQueueCounts: [ReviewQueue: Int]
     public var selectedAssetSetID: AssetSetID?
     // Cached latest-import panel state so SwiftUI render passes never run catalog
-    // queries; nil means the presentation is rebuilt on the next getter access.
-    private var latestImportPresentation: LatestImportPresentation?
+    // queries; nil means the piece is rebuilt on the next getter access. Split in
+    // two so per-preview queue transitions refresh only the cheap preview status,
+    // not the full rebuild (asset loads, JSON decoding, stack detection).
+    private var latestImportPresentationCore: LatestImportPresentationCore?
+    private var latestImportPreviewStatus: LatestImportPreviewStatus?
 
     @ObservationIgnored
     private var catalog: AppCatalog?
@@ -1519,7 +1542,7 @@ public final class AppModel {
     }
 
     public var canRequestLatestImportAssetEvaluations: Bool {
-        latestImportPresentationRebuildingIfNeeded().canRequestAssetEvaluations
+        latestImportCoreRebuildingIfNeeded().canRequestAssetEvaluations
     }
 
     public var canRequestCurrentScopeAssetEvaluations: Bool {
@@ -1599,15 +1622,15 @@ public final class AppModel {
     }
 
     public var latestImportBatchKeywordSuggestions: [BatchKeywordSuggestion] {
-        latestImportPresentationRebuildingIfNeeded().batchKeywordSuggestions
+        latestImportCoreRebuildingIfNeeded().batchKeywordSuggestions
     }
 
     public var latestImportFaceReviewAssetCount: Int {
-        latestImportPresentationRebuildingIfNeeded().faceReviewAssetCount
+        latestImportCoreRebuildingIfNeeded().faceReviewAssetCount
     }
 
     public var latestImportFlaggedReviewAssetCount: Int {
-        latestImportPresentationRebuildingIfNeeded().flaggedReviewAssetCount
+        latestImportCoreRebuildingIfNeeded().flaggedReviewAssetCount
     }
 
     public var currentScopeBatchKeywordSuggestions: [BatchKeywordSuggestion] {
@@ -1750,7 +1773,13 @@ public final class AppModel {
     }
 
     public var latestImportCompletionSummary: ImportCompletionSummary? {
-        latestImportPresentationRebuildingIfNeeded().summary
+        let core = latestImportCoreRebuildingIfNeeded()
+        guard var summary = core.summary else { return nil }
+        let previewStatus = latestImportPreviewStatusRebuildingIfNeeded(core: core)
+        summary.previewFailureCount = previewStatus.previewFailureCount
+        summary.failureText = previewStatus.failureText
+        summary.previewStatusText = previewStatus.previewStatusText
+        return summary
     }
 
     /// Marks the cached latest-import panel state stale so the next getter access
@@ -1758,35 +1787,78 @@ public final class AppModel {
     /// panel; the getters themselves must stay cheap because SwiftUI evaluates them
     /// on every render pass.
     public func refreshLatestImportPresentation() {
-        latestImportPresentation = nil
+        latestImportPresentationCore = nil
+        latestImportPreviewStatus = nil
     }
 
-    private func latestImportPresentationRebuildingIfNeeded() -> LatestImportPresentation {
-        if let latestImportPresentation {
-            return latestImportPresentation
+    /// Marks only the live preview-drain status stale. Preview queue transitions
+    /// fire for every preview of an import, so they must not trigger the full
+    /// presentation rebuild.
+    private func refreshLatestImportPreviewStatus() {
+        latestImportPreviewStatus = nil
+    }
+
+    private func latestImportCoreRebuildingIfNeeded() -> LatestImportPresentationCore {
+        if let latestImportPresentationCore {
+            return latestImportPresentationCore
         }
-        let presentation = buildLatestImportPresentation()
-        latestImportPresentation = presentation
-        return presentation
+        let core = buildLatestImportPresentationCore()
+        latestImportPresentationCore = core
+        return core
     }
 
-    private func buildLatestImportPresentation() -> LatestImportPresentation {
+    private func latestImportPreviewStatusRebuildingIfNeeded(core: LatestImportPresentationCore) -> LatestImportPreviewStatus {
+        if let latestImportPreviewStatus {
+            return latestImportPreviewStatus
+        }
+        let previewStatus = buildLatestImportPreviewStatus(core: core)
+        latestImportPreviewStatus = previewStatus
+        return previewStatus
+    }
+
+    private func buildLatestImportPresentationCore() -> LatestImportPresentationCore {
         guard let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
             return .empty
         }
+        let outputAssetIDs: [AssetID]
+        if let catalog {
+            outputAssetIDs = (try? latestImportOutputAssetIDs(activityID: activity.id, repository: catalog.repository)) ?? []
+        } else {
+            outputAssetIDs = []
+        }
         let summary = latestImportCompletionSummary(activity: activity)
-        return LatestImportPresentation(
+        return LatestImportPresentationCore(
             summary: summary,
             flaggedReviewAssetCount: latestImportFlaggedReviewAssetCount(summary: summary),
-            faceReviewAssetCount: latestImportFaceReviewAssetCount(activity: activity),
-            batchKeywordSuggestions: latestImportBatchKeywordSuggestions(activity: activity),
-            canRequestAssetEvaluations: canRequestLatestImportAssetEvaluations(activity: activity)
+            faceReviewAssetCount: latestImportFaceReviewAssetCount(assetIDs: outputAssetIDs),
+            batchKeywordSuggestions: latestImportBatchKeywordSuggestions(assetIDs: outputAssetIDs),
+            canRequestAssetEvaluations: canRequestLatestImportAssetEvaluations(assetIDs: outputAssetIDs),
+            outputAssetIDs: outputAssetIDs
         )
     }
 
-    private func latestImportBatchKeywordSuggestions(activity: AppWorkActivity) -> [BatchKeywordSuggestion] {
+    private func buildLatestImportPreviewStatus(core: LatestImportPresentationCore) -> LatestImportPreviewStatus {
+        guard let summary = core.summary,
+              let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
+            return .empty
+        }
+        let previewFailureCount = latestImportPreviewFailureCount(activity: activity, assetIDs: core.outputAssetIDs)
+        let failureText = previewFailureCount > 0
+            ? "\(previewFailureCount) preview \(previewFailureCount == 1 ? "failure" : "failures")"
+            : nil
+        return LatestImportPreviewStatus(
+            previewFailureCount: previewFailureCount,
+            failureText: failureText,
+            previewStatusText: latestImportPreviewStatusText(
+                assetIDs: core.outputAssetIDs,
+                hasImportedPhotos: summary.importedPhotoCount > 0,
+                failureText: failureText
+            )
+        )
+    }
+
+    private func latestImportBatchKeywordSuggestions(assetIDs: [AssetID]) -> [BatchKeywordSuggestion] {
         guard let catalog,
-              let assetIDs = try? latestImportOutputAssetIDs(activityID: activity.id, repository: catalog.repository),
               !assetIDs.isEmpty,
               let importedAssets = try? catalog.repository.assets(ids: assetIDs, limit: assetIDs.count) else {
             return []
@@ -1794,9 +1866,8 @@ public final class AppModel {
         return batchKeywordSuggestions(for: importedAssets)
     }
 
-    private func latestImportFaceReviewAssetCount(activity: AppWorkActivity) -> Int {
+    private func latestImportFaceReviewAssetCount(assetIDs: [AssetID]) -> Int {
         guard let catalog,
-              let assetIDs = try? latestImportOutputAssetIDs(activityID: activity.id, repository: catalog.repository),
               !assetIDs.isEmpty,
               let faceAssetIDs = try? catalog.repository.assetIDs(
                 ids: assetIDs,
@@ -1821,20 +1892,16 @@ public final class AppModel {
         return count
     }
 
-    private func canRequestLatestImportAssetEvaluations(activity: AppWorkActivity) -> Bool {
-        guard workerSupervisor != nil,
-              let catalog,
-              let assetIDs = try? latestImportOutputAssetIDs(activityID: activity.id, repository: catalog.repository) else {
+    private func canRequestLatestImportAssetEvaluations(assetIDs: [AssetID]) -> Bool {
+        guard workerSupervisor != nil, catalog != nil else {
             return false
         }
         return assetIDs.contains { hasCachedPreview(for: $0) }
     }
 
+    // The preview fields hold placeholders here; latestImportCompletionSummary
+    // patches in the separately cached LatestImportPreviewStatus.
     private func latestImportCompletionSummary(activity: AppWorkActivity) -> ImportCompletionSummary {
-        let previewFailureCount = latestImportPreviewFailureCount(activity: activity)
-        let failureText = previewFailureCount > 0
-            ? "\(previewFailureCount) preview \(previewFailureCount == 1 ? "failure" : "failures")"
-            : nil
         let importedPhotoCount = activity.totalUnitCount ?? activity.completedUnitCount
         let newPhotoCount = activity.completedUnitCount
         let existingPhotoCount = max(importedPhotoCount - newPhotoCount, 0)
@@ -1848,13 +1915,9 @@ public final class AppModel {
             photoCountText: Self.photoCountDescription(importedPhotoCount),
             newPhotoCount: newPhotoCount,
             existingPhotoCount: existingPhotoCount,
-            previewFailureCount: previewFailureCount,
-            failureText: failureText,
-            previewStatusText: latestImportPreviewStatusText(
-                activity: activity,
-                hasImportedPhotos: hasImportedPhotos,
-                failureText: failureText
-            ),
+            previewFailureCount: 0,
+            failureText: nil,
+            previewStatusText: "",
             issues: activity.issues,
             stackCount: stackSummary.stackCount,
             stackedPhotoCount: stackSummary.stackedPhotoCount,
@@ -1863,7 +1926,7 @@ public final class AppModel {
     }
 
     private func latestImportPreviewStatusText(
-        activity: AppWorkActivity,
+        assetIDs: [AssetID],
         hasImportedPhotos: Bool,
         failureText: String?
     ) -> String {
@@ -1877,7 +1940,6 @@ public final class AppModel {
             return activePreviewGenerationStatusText ?? "Previews ready"
         }
         do {
-            let assetIDs = try latestImportOutputAssetIDs(activityID: activity.id, repository: catalog.repository)
             let pendingPreviewCount = try catalog.repository.previewGenerationPendingAssetCount(assetIDs: assetIDs)
             guard pendingPreviewCount > 0 else {
                 return "Previews ready"
@@ -1888,10 +1950,9 @@ public final class AppModel {
         }
     }
 
-    private func latestImportPreviewFailureCount(activity: AppWorkActivity) -> Int {
+    private func latestImportPreviewFailureCount(activity: AppWorkActivity, assetIDs: [AssetID]) -> Int {
         guard let catalog else { return activity.failureCount }
         do {
-            let assetIDs = try latestImportOutputAssetIDs(activityID: activity.id, repository: catalog.repository)
             let deferredFailureCount = try catalog.repository.previewGenerationFailureAssetCount(assetIDs: assetIDs)
             return max(activity.failureCount, deferredFailureCount)
         } catch {
@@ -2196,7 +2257,8 @@ public final class AppModel {
         self.catalogPeople = catalogPeople
         self.reviewQueueCounts = reviewQueueCounts
         self.selectedAssetSetID = selectedAssetSetID
-        self.latestImportPresentation = nil
+        self.latestImportPresentationCore = nil
+        self.latestImportPreviewStatus = nil
         self.catalog = catalog
         self.workerSupervisor = workerSupervisor
         self.workerImportsEnabled = resolvedWorkerImportsEnabled
@@ -2246,7 +2308,7 @@ public final class AppModel {
                 try? self?.refreshMetadataSyncState()
             }
             if Self.previewGenerationWorkChanged(from: previousQueue, to: queue) {
-                self?.refreshLatestImportPresentation()
+                self?.refreshLatestImportPreviewStatus()
             }
             let failedPreviewItemIDs = Self.failedPreviewGenerationItemIDs(in: queue)
             let newFailedPreviewItemIDs = failedPreviewItemIDs.subtracting(previousPreviewFailureIDs)

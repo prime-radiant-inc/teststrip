@@ -8636,6 +8636,40 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.latestImportFlaggedReviewAssetCount, 2)
     }
 
+    func testLatestImportPreviewQueueChangeKeepsFlaggedCountCachedWhileUpdatingPreviewStatus() throws {
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 4),
+            transport: RecordingWorkerTransport()
+        )
+        let firstIssue = makeAsset(id: "latest-import-split-first-issue", size: 1)
+        let secondIssue = makeAsset(id: "latest-import-split-second-issue", size: 2)
+        let (model, repository, _) = try makeModelWithCompletedImportSession(
+            named: "latest-import-preview-status-split",
+            assets: [firstIssue, secondIssue],
+            outputAssetIDs: [firstIssue.id, secondIssue.id],
+            workerSupervisor: supervisor
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: firstIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance)
+        ])
+
+        XCTAssertEqual(model.latestImportFlaggedReviewAssetCount, 1)
+        XCTAssertEqual(model.latestImportCompletionSummary?.previewStatusText, "Previews ready")
+
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: secondIssue.id, kind: .focus, value: .score(0.29), confidence: 0.89, provenance: provenance)
+        ])
+        try model.requestPreview(assetID: secondIssue.id, level: .grid)
+
+        XCTAssertEqual(model.latestImportCompletionSummary?.previewStatusText, "generating previews")
+        XCTAssertEqual(model.latestImportFlaggedReviewAssetCount, 1)
+
+        model.refreshLatestImportPresentation()
+
+        XCTAssertEqual(model.latestImportFlaggedReviewAssetCount, 2)
+    }
+
     func testReviewLatestImportFlaggedAppliesImportBatchLikelyIssueScope() throws {
         let importedIssue = makeAsset(id: "review-import-likely-issue", size: 1)
         let importedClean = makeAsset(id: "review-import-clean", size: 2)
