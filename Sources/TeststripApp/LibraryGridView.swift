@@ -3731,6 +3731,9 @@ struct ExportReviewPresentation: Equatable {
 
 struct CompareSurveyPresentation: Equatable {
     private static let maximumSurveyColumnCount = 4
+    /// Tie-break focus-compare (mockup 3b) narrows to the top 3 ranked
+    /// contenders; unrelated to the 8-frame survey grid limit above.
+    static let contenderCount = 3
 
     var primaryAsset: Asset?
     var alternateAssets: [Asset]
@@ -3739,6 +3742,9 @@ struct CompareSurveyPresentation: Equatable {
     var groupKindText: String
     var recommendationText: String
     var recommendedAssetID: AssetID?
+    var isContendersModeAvailable: Bool
+    var isContendersOnly: Bool
+    var contenderAssets: [Asset]
     private var recommendedFrameLabel: String?
     private var signalBadgesByAssetID: [AssetID: [CompareDecisionBadge]]
 
@@ -3746,7 +3752,8 @@ struct CompareSurveyPresentation: Equatable {
         assets: [Asset],
         selectedAssetID: AssetID?,
         evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]] = [:],
-        groupKind: CompareGroupKind = .nearbyFrames
+        groupKind: CompareGroupKind = .nearbyFrames,
+        contendersOnly: Bool = false
     ) {
         guard !assets.isEmpty else {
             self.primaryAsset = nil
@@ -3756,6 +3763,9 @@ struct CompareSurveyPresentation: Equatable {
             self.groupKindText = "Compare set"
             self.recommendationText = "No comparison set"
             self.recommendedAssetID = nil
+            self.isContendersModeAvailable = false
+            self.isContendersOnly = false
+            self.contenderAssets = []
             self.recommendedFrameLabel = nil
             self.signalBadgesByAssetID = [:]
             return
@@ -3782,6 +3792,12 @@ struct CompareSurveyPresentation: Equatable {
             stackAssetIDs: assets.map(\.id),
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
+        self.isContendersModeAvailable = !rankedCandidates.isEmpty
+        self.isContendersOnly = contendersOnly && isContendersModeAvailable
+        let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+        self.contenderAssets = rankedCandidates
+            .prefix(Self.contenderCount)
+            .compactMap { assetsByID[$0.assetID] }
         let recommendation = rankedCandidates.first
         self.recommendedAssetID = recommendation?.assetID
         self.recommendedFrameLabel = recommendation?.frameLabel
@@ -3803,6 +3819,18 @@ struct CompareSurveyPresentation: Equatable {
             primaryAsset: self.primaryAsset,
             rejectCount: max(assets.count - 1, 0)
         )
+    }
+
+    /// Title for the reversible contenders-only toggle; independent of
+    /// availability so the disabled button still reads correctly.
+    var contendersToggleTitle: String {
+        isContendersOnly ? "Full set" : "Top \(Self.contenderCount) contenders"
+    }
+
+    var contendersToggleHelp: String {
+        isContendersOnly
+            ? "Shows the full compare set again"
+            : "Narrows the compare grid to the top \(Self.contenderCount) ranked contenders"
     }
 
     var primaryDecisionText: String {
@@ -3832,6 +3860,9 @@ struct CompareSurveyPresentation: Equatable {
     }
 
     var orderedAssets: [Asset] {
+        if isContendersOnly {
+            return contenderAssets
+        }
         guard let primaryAsset else { return alternateAssets }
         return [primaryAsset] + alternateAssets
     }
@@ -4603,6 +4634,8 @@ private struct CompareView: View {
     var model: AppModel
     var focusCullingSurface: () -> Void
 
+    @State private var isContendersOnly = false
+
     private let focusMetricColumns = [GridItem(.adaptive(minimum: 78), spacing: 5)]
 
     var body: some View {
@@ -4613,7 +4646,8 @@ private struct CompareView: View {
             evaluationSignalsByAssetID: Dictionary(uniqueKeysWithValues: compareAssets.map { asset in
                 (asset.id, model.evaluationSignals(for: asset.id))
             }),
-            groupKind: model.compareGroupKind()
+            groupKind: model.compareGroupKind(),
+            contendersOnly: isContendersOnly
         )
 
         ScrollView {
@@ -4678,6 +4712,16 @@ private struct CompareView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
+            Button {
+                isContendersOnly.toggle()
+            } label: {
+                Label(presentation.contendersToggleTitle, systemImage: "3.circle")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(!presentation.isContendersModeAvailable)
+            .help(presentation.contendersToggleHelp)
+            .liveMockupPlaceholder(.focusCompare)
             Button {
                 requestCompareEvaluations()
             } label: {

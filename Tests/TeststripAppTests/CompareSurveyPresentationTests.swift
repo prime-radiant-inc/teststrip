@@ -99,6 +99,88 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.orderedAssets.count, 8)
     }
 
+    func testContendersOnlyModeIsUnavailableWithoutRankingSignals() {
+        let assets = (0..<5).map { makeAsset(id: "no-signal-\($0)") }
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            contendersOnly: true
+        )
+
+        XCTAssertFalse(presentation.isContendersModeAvailable)
+        XCTAssertFalse(presentation.isContendersOnly)
+        XCTAssertEqual(presentation.orderedAssets.count, assets.count)
+        XCTAssertEqual(presentation.contenderAssets, [])
+    }
+
+    func testContendersOnlyModeNarrowsToTopRankedThree() {
+        let assets = (0..<5).map { makeAsset(id: "ranked-\($0)") }
+        let signals: [AssetID: [EvaluationSignal]] = [
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.7)],
+            assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.5)],
+            assets[2].id: [signal(assetID: assets[2].id, kind: .focus, score: 0.9)],
+            assets[3].id: [signal(assetID: assets[3].id, kind: .focus, score: 0.6)],
+            assets[4].id: [signal(assetID: assets[4].id, kind: .focus, score: 0.8)]
+        ]
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: true
+        )
+
+        XCTAssertTrue(presentation.isContendersModeAvailable)
+        XCTAssertTrue(presentation.isContendersOnly)
+        // Ranked by focus score descending: 2 (0.9), 4 (0.8), 0 (0.7).
+        XCTAssertEqual(presentation.orderedAssets.map(\.id), [assets[2].id, assets[4].id, assets[0].id])
+        XCTAssertEqual(presentation.contenderAssets.map(\.id), [assets[2].id, assets[4].id, assets[0].id])
+    }
+
+    func testContendersOnlyModeIsReversibleBackToFullSet() {
+        let assets = (0..<5).map { makeAsset(id: "reversible-\($0)") }
+        let signals: [AssetID: [EvaluationSignal]] = [
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.7)],
+            assets[2].id: [signal(assetID: assets[2].id, kind: .focus, score: 0.9)],
+            assets[4].id: [signal(assetID: assets[4].id, kind: .focus, score: 0.8)]
+        ]
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: false
+        )
+
+        XCTAssertTrue(presentation.isContendersModeAvailable)
+        XCTAssertFalse(presentation.isContendersOnly)
+        XCTAssertEqual(presentation.orderedAssets.map(\.id), assets.map(\.id))
+    }
+
+    func testContendersToggleTitleDescribesTopThreeAndFullSet() {
+        let assets = (0..<5).map { makeAsset(id: "toggle-\($0)") }
+        let signals: [AssetID: [EvaluationSignal]] = [
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.7)]
+        ]
+
+        let off = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: false
+        )
+        let on = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: true
+        )
+
+        XCTAssertEqual(off.contendersToggleTitle, "Top 3 contenders")
+        XCTAssertEqual(on.contendersToggleTitle, "Full set")
+    }
+
     func testFirstAssetBecomesPrimaryWhenSelectionIsOutsideCompareSet() {
         let assets = [
             makeAsset(id: "first"),

@@ -166,7 +166,7 @@ public enum LiveMockupPlaceholders {
         id: "compare.focus",
         title: "Focus compare",
         intendedBehavior: "Line up close contenders and use sharpness, eye state, exposure, and frame signals to break ties.",
-        currentFallback: "Survey Compare shows persisted focus, motion blur, exposure, framing, aesthetics, face-quality, eye-sharpness, eye-state, and smile signals for visible contenders."
+        currentFallback: "Survey Compare shows persisted focus, motion blur, exposure, framing, aesthetics, face-quality, eye-sharpness, eye-state, and smile signals for visible contenders, with a reversible toggle that narrows the grid to the top 3 ranked contenders when quality signals exist."
     )
 
     public static let compareSurvey = LiveMockupPlaceholder(
@@ -276,7 +276,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Focus compare",
             status: .partial,
             placeholder: .focusCompare,
-            currentImplementation: "Compare has a persisted focus/motion/exposure/framing/aesthetics/face-quality lane and cached-preview evaluation action; eye-state and richer frame rationale depend on future providers."
+            currentImplementation: "Compare has a persisted focus/motion/exposure/framing/aesthetics/face-quality/eye-sharpness/eye-state/smile lane, cached-preview evaluation action, and a reversible Top 3 contenders toggle that narrows the grid to the top ranked frames when quality signals exist; rank badges and comparative tie-break copy are not yet built."
         ),
         LiveMockupDesignSurface(
             designID: "4a",
