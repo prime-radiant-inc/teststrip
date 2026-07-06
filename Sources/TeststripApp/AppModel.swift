@@ -4459,6 +4459,10 @@ public final class AppModel {
         if workerSupervisor != nil {
             try catalog.repository.recordMetadataSyncPending(pendingItem)
             upsertPendingMetadataSyncItem(pendingItem)
+            try cancelStaleQueuedMetadataSyncWrites(
+                keeping: asset.id,
+                generation: generation
+            )
             guard canAutomaticallyRetryMetadataSync(for: asset, sidecarURL: pendingItem.sidecarURL) else {
                 statusMessage = "XMP write pending for \(asset.originalURL.lastPathComponent)"
                 return
@@ -4687,6 +4691,21 @@ public final class AppModel {
         }
     }
 
+    private func cancelStaleQueuedMetadataSyncWrites(keeping assetID: AssetID, generation: Int) throws {
+        guard let workerSupervisor else { return }
+        let keptID = Self.metadataSyncWorkItemID(assetID: assetID, catalogGeneration: generation).rawValue
+        let staleQueuedWrites = backgroundWorkQueue.queuedItems.filter { item in
+            isMetadataSyncWrite(item, assetID: assetID) && item.id.rawValue != keptID
+        }
+        for item in staleQueuedWrites {
+            try workerSupervisor.cancel(id: item.id)
+            metadataSyncAssetIDsByItemID[item.id] = nil
+        }
+        if !staleQueuedWrites.isEmpty {
+            syncBackgroundWorkQueueFromSupervisor()
+        }
+    }
+
     private func hasActiveMetadataSyncWork(assetID: AssetID, generation: Int) -> Bool {
         let writeSyncID = Self.metadataSyncWorkItemID(assetID: assetID, catalogGeneration: generation).rawValue
         let selectionCheckPrefix = metadataSyncCheckPrefix(assetID: assetID, generation: generation)
@@ -4757,6 +4776,12 @@ public final class AppModel {
 
     private func isSelectionMetadataSyncCheck(_ item: BackgroundWorkItem) -> Bool {
         item.kind == .xmpSync && item.title == "Check XMP"
+    }
+
+    private func isMetadataSyncWrite(_ item: BackgroundWorkItem, assetID: AssetID) -> Bool {
+        item.kind == .xmpSync
+            && item.title == "Sync XMP"
+            && item.id.rawValue.hasPrefix("xmp-\(assetID.rawValue)-")
     }
 
     private func upsertPendingMetadataSyncItem(_ item: MetadataSyncItem) {

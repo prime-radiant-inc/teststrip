@@ -1846,6 +1846,43 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.visibleWorkActivity?.detail, "Writing XMP sidecar")
     }
 
+    func testWorkerBackedSelectedMetadataEditsCoalesceQueuedXmpSyncToLatestGeneration() throws {
+        let (model, repository, asset, originalURL, transport) = try makeWorkerMetadataSyncModel(
+            named: "app-model-worker-xmp-coalesce",
+            assetID: "worker-xmp-coalesce-target"
+        )
+        model.pauseBackgroundWork()
+
+        try model.setColorLabelForSelectedAsset(.green)
+        try model.setFlagForSelectedAsset(.pick)
+        try model.setKeywordTextForSelectedAsset("portfolio")
+        try model.setCaptionForSelectedAsset("Final select")
+
+        let latestGeneration = try repository.catalogGeneration(assetID: asset.id)
+        let pending = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: originalURL.appendingPathExtension("xmp"),
+            catalogGeneration: latestGeneration,
+            lastSyncedFingerprint: nil
+        )
+        XCTAssertEqual(latestGeneration, 5)
+        XCTAssertEqual(model.selectedAsset?.metadata.colorLabel, .green)
+        XCTAssertEqual(model.selectedAsset?.metadata.flag, .pick)
+        XCTAssertEqual(model.selectedAsset?.metadata.keywords, ["portfolio"])
+        XCTAssertEqual(model.selectedAsset?.metadata.caption, "Final select")
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata, model.selectedAsset?.metadata)
+        XCTAssertEqual(try repository.pendingMetadataSyncItems(), [pending])
+        XCTAssertEqual(model.pendingMetadataSyncItems, [pending])
+        XCTAssertEqual(try Data(contentsOf: originalURL), Data("original raw bytes".utf8))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: originalURL.appendingPathExtension("xmp").path))
+        XCTAssertEqual(try transport.commands(), [])
+        XCTAssertEqual(
+            model.backgroundWorkQueue.queuedItems.filter { $0.kind == .xmpSync }.map(\.id.rawValue),
+            ["xmp-\(asset.id.rawValue)-\(latestGeneration)"]
+        )
+        XCTAssertEqual(model.visibleWorkActivities.filter { $0.kind == .xmpSync }.count, 1)
+    }
+
     func testRatingOfflineSelectedAssetRecordsPendingXmpWithoutDispatchingWorkerSync() throws {
         let (model, repository, asset, originalURL, transport) = try makeWorkerMetadataSyncModel(
             named: "app-model-worker-xmp-offline-edit",
