@@ -55,7 +55,11 @@ struct LibraryGridView: View {
             if model.selectedView == .people {
                 PeopleView(model: model)
             } else if model.selectedView == .copilot {
-                CopilotView(model: model)
+                CopilotView(
+                    model: model,
+                    saveDynamicSet: showSaveSearchPopover,
+                    saveSnapshotSet: showSaveSnapshotSetPopover
+                )
             } else if model.selectedView == .search {
                 SearchWorkspaceView(
                     model: model,

@@ -189,8 +189,10 @@ final class LiveMockupPlaceholderTests: XCTestCase {
 
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("copilot route"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("review queues"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("scope save/freeze actions"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("autonomous"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("copilot route"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("scope save/freeze actions"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("autonomous"))
     }
 

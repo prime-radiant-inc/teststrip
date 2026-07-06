@@ -3,6 +3,8 @@ import TeststripCore
 
 struct CopilotView: View {
     var model: AppModel
+    var saveDynamicSet: () -> Void = {}
+    var saveSnapshotSet: () -> Void = {}
 
     private var presentation: CopilotPresentation {
         CopilotPresentation(
@@ -13,7 +15,10 @@ struct CopilotView: View {
             evaluationSummaries: model.catalogEvaluationKindSummaries,
             pendingMetadataSyncCount: model.pendingMetadataSyncCount,
             metadataSyncConflictCount: model.metadataSyncConflictCount,
-            canRequestVisibleAssetEvaluations: model.canRequestVisibleAssetEvaluations
+            canRequestVisibleAssetEvaluations: model.canRequestVisibleAssetEvaluations,
+            suggestedName: model.suggestedSavedSearchName,
+            canSaveDynamicSet: model.canSaveCurrentLibraryQuery,
+            canSaveSnapshotSet: model.canSaveCurrentAssetScopeSnapshot
         )
     }
 
@@ -22,6 +27,9 @@ struct CopilotView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 metricGrid
+                if !presentation.scopeActions.isEmpty {
+                    scopeActionsPanel
+                }
                 HStack(alignment: .top, spacing: 14) {
                     reviewPanel
                     signalPanel
@@ -65,6 +73,23 @@ struct CopilotView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .help(primaryAction.detail)
+            }
+        }
+    }
+
+    private var scopeActionsPanel: some View {
+        panel(title: "Scope Actions", placeholderText: nil) {
+            HStack(spacing: 10) {
+                ForEach(presentation.scopeActions) { action in
+                    Button {
+                        perform(action.action)
+                    } label: {
+                        Label(action.title, systemImage: action.systemImage)
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.bordered)
+                    .help(action.detail)
+                }
             }
         }
     }
@@ -208,6 +233,15 @@ struct CopilotView: View {
         }
     }
 
+    private func perform(_ action: CopilotScopeAction) {
+        switch action {
+        case .saveDynamicSet:
+            saveDynamicSet()
+        case .saveSnapshotSet:
+            saveSnapshotSet()
+        }
+    }
+
     private func perform(_ action: CopilotPrimaryAction) {
         do {
             switch action {
@@ -270,11 +304,32 @@ enum CopilotPrimaryAction: Equatable {
     case evaluateVisibleAssets
 }
 
+enum CopilotScopeAction: Equatable {
+    case saveDynamicSet
+    case saveSnapshotSet
+}
+
 struct CopilotPrimaryActionPresentation: Equatable {
     var title: String
     var detail: String
     var systemImage: String
     var action: CopilotPrimaryAction
+}
+
+struct CopilotScopeActionPresentation: Equatable, Identifiable {
+    var action: CopilotScopeAction
+    var title: String
+    var detail: String
+    var systemImage: String
+
+    var id: String {
+        switch action {
+        case .saveDynamicSet:
+            return "save-dynamic-set"
+        case .saveSnapshotSet:
+            return "save-snapshot-set"
+        }
+    }
 }
 
 struct CopilotPresentation: Equatable {
@@ -286,6 +341,9 @@ struct CopilotPresentation: Equatable {
     var pendingMetadataSyncCount: Int
     var metadataSyncConflictCount: Int
     var canRequestVisibleAssetEvaluations: Bool
+    var suggestedName: String = "Current Scope"
+    var canSaveDynamicSet: Bool = false
+    var canSaveSnapshotSet: Bool = false
 
     var statusTitle: String {
         "TESTSTRIP COPILOT"
@@ -368,6 +426,27 @@ struct CopilotPresentation: Equatable {
 
     var readChips: [String] {
         activeFilterChips.isEmpty ? ["All photographs"] : activeFilterChips
+    }
+
+    var scopeActions: [CopilotScopeActionPresentation] {
+        var actions: [CopilotScopeActionPresentation] = []
+        if canSaveDynamicSet {
+            actions.append(CopilotScopeActionPresentation(
+                action: .saveDynamicSet,
+                title: "Save Dynamic Set",
+                detail: "\(suggestedName) updates as the catalog changes",
+                systemImage: "bookmark"
+            ))
+        }
+        if canSaveSnapshotSet {
+            actions.append(CopilotScopeActionPresentation(
+                action: .saveSnapshotSet,
+                title: totalAssetCount == 1 ? "Freeze 1 Result" : "Freeze \(totalAssetCount) Results",
+                detail: "Capture this exact result set",
+                systemImage: "camera.viewfinder"
+            ))
+        }
+        return actions
     }
 
     var primaryAction: CopilotPrimaryActionPresentation? {

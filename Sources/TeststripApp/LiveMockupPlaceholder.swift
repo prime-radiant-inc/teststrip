@@ -47,7 +47,7 @@ public enum LiveMockupPlaceholders {
         id: "library.copilot",
         title: "Copilot library direction",
         intendedBehavior: "Put plain-language search, agentic culling, and background catalog work at the center of the library experience.",
-        currentFallback: "Selectable Copilot route aggregates real review queues, local signal coverage, XMP state, and background work; autonomous planning and actions are not built."
+        currentFallback: "Selectable Copilot route aggregates real review queues, local signal coverage, XMP state, background work, and scope save/freeze actions; autonomous planning and actions are not built."
     )
 
     public static let timelineLibrary = LiveMockupPlaceholder(
@@ -241,7 +241,7 @@ public enum LiveMockupDesignSurfaces {
             title: "Copilot",
             status: .partial,
             placeholder: .copilotLibrary,
-            currentImplementation: "Copilot route aggregates real review queues, local signal coverage, XMP state, and background work beside deterministic search parsing and explicit filters; natural-language planning and autonomous actions are not built."
+            currentImplementation: "Copilot route aggregates real review queues, local signal coverage, XMP state, background work, and scope save/freeze actions beside deterministic search parsing and explicit filters; natural-language planning and autonomous actions are not built."
         ),
         LiveMockupDesignSurface(
             designID: "1c",

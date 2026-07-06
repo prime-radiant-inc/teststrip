@@ -127,4 +127,35 @@ final class CopilotPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.primaryAction?.detail, "Evaluate loaded photos with local providers")
         XCTAssertEqual(presentation.primaryAction?.action, .evaluateVisibleAssets)
     }
+
+    func testPresentationOffersScopeSetActionsWhenCurrentReadCanBeSaved() {
+        let presentation = CopilotPresentation(
+            totalAssetCount: 42,
+            activeFilterChips: ["Pick", "Camera: Canon"],
+            visibleWorkActivities: [],
+            reviewQueueCounts: [:],
+            evaluationSummaries: [],
+            pendingMetadataSyncCount: 0,
+            metadataSyncConflictCount: 0,
+            canRequestVisibleAssetEvaluations: false,
+            suggestedName: "Canon Picks",
+            canSaveDynamicSet: true,
+            canSaveSnapshotSet: true
+        )
+
+        XCTAssertEqual(presentation.scopeActions, [
+            CopilotScopeActionPresentation(
+                action: .saveDynamicSet,
+                title: "Save Dynamic Set",
+                detail: "Canon Picks updates as the catalog changes",
+                systemImage: "bookmark"
+            ),
+            CopilotScopeActionPresentation(
+                action: .saveSnapshotSet,
+                title: "Freeze 42 Results",
+                detail: "Capture this exact result set",
+                systemImage: "camera.viewfinder"
+            )
+        ])
+    }
 }
