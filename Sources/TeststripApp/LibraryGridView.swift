@@ -2199,6 +2199,9 @@ struct LibraryGridView: View {
                     dismiss: { model.dismissAutopilotRunSummary() }
                 )
             }
+            if model.isAutopilotReviewActive {
+                autopilotReviewToolbar
+            }
             LazyVGrid(columns: columns, spacing: gridLayout.gridSpacing) {
                 ForEach(model.assets, id: \.id.rawValue) { asset in
                     AssetGridCell(
@@ -2230,6 +2233,62 @@ struct LibraryGridView: View {
     private func beginAutopilotReview() {
         do {
             try model.beginAutopilotReview()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private var autopilotReviewToolbar: some View {
+        let selectedIDs = model.selectedBatchAssetIDsInCatalogOrder
+        return HStack(spacing: 8) {
+            Text("Reviewing \(model.autopilotReviewProposalCount) proposals")
+                .font(.caption.weight(.semibold))
+            Spacer(minLength: 0)
+            Button("Commit \(selectedIDs.count)") {
+                commitAutopilotProposals(assetIDs: selectedIDs)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .tint(.green)
+            .disabled(selectedIDs.isEmpty)
+            .help("Commit the selected proposals' keeps, cuts, and keywords")
+            Button("Commit all \(model.autopilotReviewProposalCount)") {
+                commitAllAutopilotProposals()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            Button("Dismiss selected") {
+                dismissAutopilotProposals(assetIDs: selectedIDs)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(selectedIDs.isEmpty)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 38)
+        .background(Color.purple.opacity(0.08))
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private func commitAutopilotProposals(assetIDs: [AssetID]) {
+        do {
+            try model.commitAutopilotProposals(assetIDs: assetIDs)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func commitAllAutopilotProposals() {
+        do {
+            try model.commitAllAutopilotProposals()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func dismissAutopilotProposals(assetIDs: [AssetID]) {
+        do {
+            try model.dismissAutopilotProposals(assetIDs: assetIDs)
         } catch {
             model.errorMessage = error.localizedDescription
         }

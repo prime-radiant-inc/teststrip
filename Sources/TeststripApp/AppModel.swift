@@ -1289,6 +1289,7 @@ public final class AppModel {
     public private(set) var cullingSessionCompletion: CullingSessionCompletionSummary?
     public private(set) var autopilotRunSummary: AutopilotRunSummary?
     public private(set) var pendingAutopilotProposals: [AutopilotProposal] = []
+    public private(set) var isAutopilotReviewActive = false
     // Maps a scope's identity (sorted asset-id join) to the run that last
     // proposed for it, so re-running the same scope replaces its pending
     // proposals instead of stacking duplicates. In-memory only.
@@ -3189,7 +3190,7 @@ public final class AppModel {
         }
     }
 
-    private var selectedBatchAssetIDsInCatalogOrder: [AssetID] {
+    public var selectedBatchAssetIDsInCatalogOrder: [AssetID] {
         let fallbackOrder = Dictionary(uniqueKeysWithValues: selectedBatchAssetIDOrder.enumerated().map { ($0.element, $0.offset) })
         return selectedBatchAssetIDOrder
             .filter { selectedBatchAssetIDs.contains($0) }
@@ -6365,10 +6366,51 @@ public final class AppModel {
         autopilotRunSummary = nil
     }
 
-    // Review surface is filled in by Task 7; stubbed so the banner's Review
-    // action is landable now.
+    public var autopilotReviewProposalCount: Int {
+        pendingAutopilotProposals.count
+    }
+
+    /// Narrows the grid to just the assets that carry a pending proposal so the
+    /// user can review the provisional keeps/cuts (KEEP/CUT badges stay
+    /// visible) and commit or dismiss them. Reads only; writes nothing.
     public func beginAutopilotReview() throws {
-        statusMessage = "Autopilot review coming"
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let assetIDs = distinctPendingAutopilotProposalAssetIDs()
+        selectedAssetSetID = nil
+        clearLibraryQueryFilters()
+        let loadedAssets = try catalog.repository.assets(ids: assetIDs, limit: Self.assetPageSize)
+        replaceAssets(loadedAssets, pageOffset: 0)
+        totalAssetCount = try catalog.repository.assetCount(ids: assetIDs)
+        isAutopilotReviewActive = true
+        selectedView = .grid
+    }
+
+    private func distinctPendingAutopilotProposalAssetIDs() -> [AssetID] {
+        var seen = Set<AssetID>()
+        var orderedIDs: [AssetID] = []
+        for proposal in pendingAutopilotProposals where seen.insert(proposal.assetID).inserted {
+            orderedIDs.append(proposal.assetID)
+        }
+        return orderedIDs
+    }
+
+    // Commit/dismiss lifecycle is implemented by Task 8; these no-op-safe
+    // stubs let the review toolbar land now without writing any metadata.
+    @discardableResult
+    public func commitAutopilotProposals(assetIDs: [AssetID]) throws -> Int {
+        0
+    }
+
+    @discardableResult
+    public func commitAllAutopilotProposals() throws -> Int {
+        0
+    }
+
+    @discardableResult
+    public func dismissAutopilotProposals(assetIDs: [AssetID]) throws -> Int {
+        0
     }
 
     private func autopilotScopeAssets(_ scope: AutopilotScope, repository: CatalogRepository) throws -> [Asset] {
@@ -7158,6 +7200,7 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
+        isAutopilotReviewActive = false
         try refreshWorkHistorySearchResults(repository: catalog.repository)
         if let explicitAssetIDs = selectedExplicitAssetIDs {
             let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, limit: Self.assetPageSize)
