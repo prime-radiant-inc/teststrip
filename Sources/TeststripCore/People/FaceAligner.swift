@@ -63,10 +63,16 @@ public enum FaceAligner {
         guard let ctx = CGContext(data: nil, width: outputSize, height: outputSize, bitsPerComponent: 8,
                                   bytesPerRow: 0, space: colorSpace,
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        // CGContext origin is bottom-left; landmark math above is top-left. Flip Y.
+        // The similarity transform is defined in top-left pixel coordinates for
+        // both source and canonical frames, but CGContext (and the CGImage it
+        // draws) is bottom-left. Flip the destination frame to top-left, apply
+        // the transform, then flip the source image so its pixel rows line up
+        // with the top-left landmark space it was measured in.
         ctx.translateBy(x: 0, y: CGFloat(outputSize))
         ctx.scaleBy(x: 1, y: -1)
         ctx.concatenate(transform)
+        ctx.translateBy(x: 0, y: CGFloat(image.height))
+        ctx.scaleBy(x: 1, y: -1)
         ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         return ctx.makeImage()
     }
