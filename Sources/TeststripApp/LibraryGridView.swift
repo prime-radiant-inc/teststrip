@@ -5067,45 +5067,14 @@ struct CullingStackRecommendation: Equatable {
     }
 
     private static func qualityScore(for signals: [EvaluationSignal]) -> Double? {
-        var scoreByKind: [EvaluationKind: Double] = [:]
-        for signal in signals {
-            guard let weightedScore = weightedQualityScore(for: signal) else { continue }
-            scoreByKind[signal.kind] = max(scoreByKind[signal.kind] ?? 0, weightedScore)
-        }
-        guard !scoreByKind.isEmpty else { return nil }
-        return scoreByKind.values.reduce(0, +)
+        CullingQualityScore.qualityScore(for: signals)
     }
 
     // Defect-inverted score plus confidence-scaled weight for one signal.
-    // weightedQualityScore and normalizedQualityRead both derive from this,
-    // so the pill's read and the stack ranking can never disagree.
+    // The pill's read, the stack ranking, and the autopilot planner all derive
+    // from the shared Core scorer, so they can never disagree.
     static func qualityComponent(for signal: EvaluationSignal) -> (score: Double, weight: Double)? {
-        guard case .score(let rawScore) = signal.value else { return nil }
-        let clampedScore = min(max(rawScore, 0), 1)
-        let confidence = min(max(signal.confidence, 0), 1)
-        switch signal.kind {
-        case .focus:
-            return (clampedScore, confidence * 100)
-        case .eyesOpen:
-            return (clampedScore, confidence * 90)
-        case .faceQuality:
-            return (clampedScore, confidence * 80)
-        case .eyeSharpness:
-            return (clampedScore, confidence * 70)
-        case .motionBlur:
-            return (1 - clampedScore, confidence * 60)
-        case .aesthetics:
-            return (clampedScore, confidence * 50)
-        case .framing:
-            return (clampedScore, confidence * 45)
-        default:
-            return nil
-        }
-    }
-
-    private static func weightedQualityScore(for signal: EvaluationSignal) -> Double? {
-        guard let component = qualityComponent(for: signal) else { return nil }
-        return component.score * component.weight
+        CullingQualityScore.qualityComponent(for: signal)
     }
 
     // Confidence-weighted mean of the best component per kind, 0...1.
