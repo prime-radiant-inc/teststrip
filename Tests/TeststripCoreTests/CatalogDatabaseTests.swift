@@ -123,6 +123,52 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(fetched.technicalMetadata, technicalMetadata)
     }
 
+    func testWithinGeoBoundsPredicateFiltersByCoordinate() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-geo-bounds")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        func asset(_ name: String, latitude: Double, longitude: Double) -> Asset {
+            Asset.testAsset(
+                path: "/Volumes/NAS/\(name).cr2",
+                rating: 0,
+                technicalMetadata: AssetTechnicalMetadata(
+                    pixelWidth: 100, pixelHeight: 100,
+                    latitude: latitude, longitude: longitude,
+                    provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+                )
+            )
+        }
+        try repository.upsert(asset("sf", latitude: 37.77, longitude: -122.42))
+        try repository.upsert(asset("oakland", latitude: 37.80, longitude: -122.27))
+        try repository.upsert(asset("sydney", latitude: -33.87, longitude: 151.21))
+        try repository.upsert(Asset.testAsset(path: "/Volumes/NAS/no-gps.cr2", rating: 0))
+
+        let bayArea = GeoBounds(minLatitude: 37.5, maxLatitude: 38.0, minLongitude: -122.6, maxLongitude: -122.2)
+        let count = try repository.assetCount(matching: SetQuery(predicates: [.withinGeoBounds(bayArea)]))
+
+        XCTAssertEqual(count, 2)
+    }
+
+    func testGeoBoundsQueryUsesCoordinateExpressionIndex() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-geo-index")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+
+        let plan = try database.rows(
+            """
+            EXPLAIN QUERY PLAN
+            SELECT COUNT(*) FROM assets
+            WHERE json_valid(technical_metadata_json)
+              AND \(CatalogRepository.latitudeExpressionSQL) BETWEEN -1 AND 1
+              AND \(CatalogRepository.longitudeExpressionSQL) BETWEEN -1 AND 1
+            """
+        )
+        let detail = plan.compactMap { $0["detail"] }.joined(separator: " ")
+        XCTAssertTrue(detail.contains("idx_assets_gps"), "expected the geo expression index, got: \(detail)")
+    }
+
     // Proves the audit's no-migration claim: `technical_metadata_json` is a JSON blob
     // decoded into AssetTechnicalMetadata, and the new aperture/shutterSpeed/focalLength
     // fields are optional, so a row written before this change (missing those keys

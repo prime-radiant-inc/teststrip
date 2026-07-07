@@ -1,5 +1,5 @@
 enum CatalogMigrations {
-    static let version = 14
+    static let version = 18
 
     static let statements = [
         """
@@ -178,4 +178,16 @@ enum CatalogMigrations {
         )
         """
     ]
+
+    // Runs after `technical_metadata_json` is ensured on legacy catalogs (the
+    // `statements` above run before that column is patched in). Partial on
+    // `json_valid(...)` so the expression is never evaluated on the empty-string
+    // JSON that no-metadata assets store (a bare `json_extract('', ...)` errors).
+    static let coordinateIndexStatement =
+        """
+        CREATE INDEX IF NOT EXISTS idx_assets_gps ON assets(
+            CAST(json_extract(technical_metadata_json, '$.latitude') AS REAL),
+            CAST(json_extract(technical_metadata_json, '$.longitude') AS REAL)
+        ) WHERE json_valid(technical_metadata_json)
+        """
 }

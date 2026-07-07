@@ -24,6 +24,13 @@ public final class CatalogRepository {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
+    // Single source of truth for the coordinate expressions. The SQLite planner
+    // only uses `idx_assets_gps` when the predicate expression is byte-identical
+    // to the indexed expression, so the geo predicate, the cluster aggregation,
+    // and the migration's index must all reference these exact strings.
+    static let latitudeExpressionSQL = "CAST(json_extract(technical_metadata_json, '$.latitude') AS REAL)"
+    static let longitudeExpressionSQL = "CAST(json_extract(technical_metadata_json, '$.longitude') AS REAL)"
+
     public init(database: CatalogDatabase) {
         self.database = database
         encoder.dateEncodingStrategy = .secondsSince1970
@@ -1743,6 +1750,18 @@ public final class CatalogRepository {
                     "(json_valid(technical_metadata_json) AND CAST(json_extract(technical_metadata_json, '$.capturedAt') AS REAL) < ?)"
                 )
                 bindings.append("\(date.timeIntervalSince1970)")
+            case .withinGeoBounds(let bounds):
+                clauses.append(
+                    """
+                    (json_valid(technical_metadata_json)
+                     AND \(Self.latitudeExpressionSQL) BETWEEN ? AND ?
+                     AND \(Self.longitudeExpressionSQL) BETWEEN ? AND ?)
+                    """
+                )
+                bindings.append(contentsOf: [
+                    "\(bounds.minLatitude)", "\(bounds.maxLatitude)",
+                    "\(bounds.minLongitude)", "\(bounds.maxLongitude)"
+                ])
             case .evaluationKind(let kind):
                 if kind == .faceCount || kind == .faceQuality {
                     clauses.append(

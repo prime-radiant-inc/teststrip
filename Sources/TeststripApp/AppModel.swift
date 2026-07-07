@@ -7467,6 +7467,8 @@ public final class AppModel {
             ActiveLibraryFilterRow(title: "From \(date.formatted(date: .abbreviated, time: .omitted))")
         case .capturedBefore(let date):
             ActiveLibraryFilterRow(title: "Before \(date.formatted(date: .abbreviated, time: .omitted))")
+        case .withinGeoBounds:
+            ActiveLibraryFilterRow(title: "Location")
         case .evaluationKind(let kind):
             activeLibraryFilterRow(forEvaluationKind: kind)
         case .unevaluated:
@@ -8026,6 +8028,8 @@ public final class AppModel {
             "from:\(searchDateString(for: date))"
         case .capturedBefore(let date):
             "before:\(searchDateString(for: date))"
+        case .withinGeoBounds:
+            nil
         case .evaluationKind(let kind):
             "signal:\(kind.rawValue)"
         case .unevaluated:
