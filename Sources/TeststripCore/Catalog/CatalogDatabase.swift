@@ -34,6 +34,11 @@ public final class CatalogDatabase: @unchecked Sendable {
             try execute(statement)
         }
         try addColumnIfMissing(table: "assets", column: "technical_metadata_json", definition: "TEXT")
+        // Add the content-hash column before its index: an upgraded catalog
+        // already has an assets table, so the CREATE TABLE above is a no-op and
+        // the column arrives here. Indexing it must therefore follow.
+        try addColumnIfMissing(table: "assets", column: "content_hash", definition: "TEXT")
+        try execute("CREATE INDEX IF NOT EXISTS idx_assets_content_hash ON assets(content_hash)")
         try addColumnIfMissing(table: "source_roots", column: "security_scoped_bookmark_base64", definition: "TEXT")
         try addColumnIfMissing(table: "work_sessions", column: "issues_json", definition: "TEXT NOT NULL DEFAULT '[]'")
         try addColumnIfMissing(
