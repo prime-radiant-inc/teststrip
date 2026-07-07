@@ -6365,6 +6365,12 @@ public final class AppModel {
         autopilotRunSummary = nil
     }
 
+    // Review surface is filled in by Task 7; stubbed so the banner's Review
+    // action is landable now.
+    public func beginAutopilotReview() throws {
+        statusMessage = "Autopilot review coming"
+    }
+
     private func autopilotScopeAssets(_ scope: AutopilotScope, repository: CatalogRepository) throws -> [Asset] {
         switch scope {
         case .visible:

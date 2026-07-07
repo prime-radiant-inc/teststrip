@@ -2190,30 +2190,48 @@ struct LibraryGridView: View {
     }
 
     private var assetGrid: some View {
-        LazyVGrid(columns: columns, spacing: gridLayout.gridSpacing) {
-            ForEach(model.assets, id: \.id.rawValue) { asset in
-                AssetGridCell(
-                    asset: asset,
-                    previewURL: model.gridPreviewURL(for: asset.id),
-                    previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
-                    previewStatus: model.gridPreviewStatus(for: asset.id),
-                    isSelected: model.selectedAssetID == asset.id,
-                    isBatchSelected: model.isBatchSelected(asset.id)
+        VStack(spacing: 0) {
+            if let summary = model.autopilotRunSummary {
+                AutopilotBannerView(
+                    presentation: AutopilotBannerPresentation(summary: summary),
+                    review: { beginAutopilotReview() },
+                    undoAll: {},
+                    dismiss: { model.dismissAutopilotRunSummary() }
                 )
-                .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
-                    selectAssetFromGrid(assetID)
-                }
-                .id(asset.id.rawValue)
-                .task(id: asset.id.rawValue) {
-                    do {
-                        try model.requestVisibleGridPreview(assetID: asset.id)
-                    } catch {
-                        model.errorMessage = error.localizedDescription
+            }
+            LazyVGrid(columns: columns, spacing: gridLayout.gridSpacing) {
+                ForEach(model.assets, id: \.id.rawValue) { asset in
+                    AssetGridCell(
+                        asset: asset,
+                        previewURL: model.gridPreviewURL(for: asset.id),
+                        previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
+                        previewStatus: model.gridPreviewStatus(for: asset.id),
+                        isSelected: model.selectedAssetID == asset.id,
+                        isBatchSelected: model.isBatchSelected(asset.id)
+                    )
+                    .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
+                        selectAssetFromGrid(assetID)
+                    }
+                    .id(asset.id.rawValue)
+                    .task(id: asset.id.rawValue) {
+                        do {
+                            try model.requestVisibleGridPreview(assetID: asset.id)
+                        } catch {
+                            model.errorMessage = error.localizedDescription
+                        }
                     }
                 }
             }
+            .padding(12)
         }
-        .padding(12)
+    }
+
+    private func beginAutopilotReview() {
+        do {
+            try model.beginAutopilotReview()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     private var emptyLibraryView: some View {
@@ -2927,6 +2945,78 @@ struct LibraryGridView: View {
     }
 }
 
+struct AutopilotBannerPresentation: Equatable {
+    var title: String
+    var detailText: String
+    var canUndoAll: Bool
+
+    init(summary: AutopilotRunSummary, canUndoAll: Bool = false) {
+        let frameCount = summary.keeperCount + summary.rejectCount
+        let formattedFrames = Self.frameCountFormatter.string(from: NSNumber(value: frameCount)) ?? "\(frameCount)"
+        self.title = "Autopilot reviewed \(formattedFrames) frames"
+        self.detailText = summary.bannerText
+        self.canUndoAll = canUndoAll
+    }
+
+    private static let frameCountFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = true
+        formatter.groupingSeparator = ","
+        formatter.groupingSize = 3
+        return formatter
+    }()
+}
+
+private struct AutopilotBannerView: View {
+    var presentation: AutopilotBannerPresentation
+    var review: () -> Void
+    var undoAll: () -> Void
+    var dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "wand.and.stars")
+                .foregroundStyle(.purple)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(presentation.title)
+                    .font(.caption.weight(.semibold))
+                Text(presentation.detailText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Button("Review") {
+                review()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .tint(.purple)
+            .help("Open the proposed keeps and cuts to commit or dismiss")
+            Button("Undo all") {
+                undoAll()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(!presentation.canUndoAll)
+            .help(presentation.canUndoAll ? "Revert the last committed autopilot batch" : "Nothing committed to undo yet")
+            Button("Dismiss") {
+                dismiss()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 40)
+        .background(Color.purple.opacity(0.12))
+        .overlay(alignment: .top) { Divider() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Autopilot run summary")
+        .accessibilityValue(presentation.detailText)
+    }
+}
+
 private struct CullingCompletionBannerView: View {
     var summary: CullingSessionCompletionSummary
     var canViewPicks: Bool
@@ -2986,6 +3076,20 @@ private struct LoupeView: View {
     var body: some View {
         let stackPresentation = cullingStackPresentation
         VStack(spacing: 0) {
+            if let summary = model.autopilotRunSummary {
+                AutopilotBannerView(
+                    presentation: AutopilotBannerPresentation(summary: summary),
+                    review: {
+                        do {
+                            try model.beginAutopilotReview()
+                        } catch {
+                            model.errorMessage = error.localizedDescription
+                        }
+                    },
+                    undoAll: {},
+                    dismiss: { model.dismissAutopilotRunSummary() }
+                )
+            }
             cullingHeader(stackPresentation: stackPresentation)
             HStack(spacing: 0) {
                 cullingStackListRail
