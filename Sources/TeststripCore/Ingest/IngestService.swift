@@ -74,18 +74,24 @@ public struct IngestService: Sendable {
         var importedSidecars: [ImportedSidecarSync] = []
         var sidecarConflicts: [SidecarSyncConflict] = []
         var claimedDestinationPaths: Set<String> = []
+        // Assets can sit unflushed past the eager persistence limit, so a
+        // catalog lookup alone misses in-run claims; identical duplicates of
+        // one destination path must reuse the pending asset ID or the flush
+        // violates the unique original_path index.
+        var assetIDsByClaimedPath: [String: AssetID] = [:]
         let sidecarStore = XMPSidecarStore()
         for (sourceIndex, sourceFile) in sourceFiles.enumerated() {
             try Task.checkCancellation()
             do {
                 let originalURL = try originalURL(for: sourceFile, plan: plan)
                 let existingAsset = try repository.asset(originalURL: originalURL)
-                let assetID = existingAsset?.id ?? .new()
+                let assetID = existingAsset?.id ?? assetIDsByClaimedPath[originalURL.path] ?? .new()
                 if plan.mode == .copyToDestination,
                    !claimedDestinationPaths.insert(originalURL.path).inserted,
                    !FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: originalURL.path) {
                     throw TeststripError.io("ingest destination already exists \(originalURL.path)")
                 }
+                assetIDsByClaimedPath[originalURL.path] = assetID
                 try prepareOriginalFile(sourceFile: sourceFile, originalURL: originalURL, plan: plan, existingAsset: existingAsset)
                 if let secondCopyIssue = secondCopyIssue(for: sourceFile, plan: plan) {
                     secondCopyFailure?(secondCopyIssue)

@@ -742,6 +742,53 @@ final class FolderImportTests: XCTestCase {
         }
     }
 
+    func testCapturedDateCardCopyImportsIdenticalDuplicateBasenamesPastEagerFlushLimitOnce() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-dated-identical-duplicates")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        let firstDirectory = source.appendingPathComponent("100CANON", isDirectory: true)
+        let secondDirectory = source.appendingPathComponent("101CANON", isDirectory: true)
+        try FileManager.default.createDirectory(at: firstDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        var sourceFiles: [URL] = []
+        for index in 1...10 {
+            let uniqueFile = firstDirectory.appendingPathComponent(String(format: "IMG_%04d.jpg", index))
+            try Data("unique \(index)".utf8).write(to: uniqueFile)
+            sourceFiles.append(uniqueFile)
+        }
+        let firstDuplicate = firstDirectory.appendingPathComponent("IMG_0099.jpg")
+        let secondDuplicate = secondDirectory.appendingPathComponent("IMG_0099.jpg")
+        try Data("same bytes".utf8).write(to: firstDuplicate)
+        try Data("same bytes".utf8).write(to: secondDuplicate)
+        sourceFiles.append(firstDuplicate)
+        sourceFiles.append(secondDuplicate)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(
+            scanner: FolderScanner(supportedExtensions: ["jpg"]),
+            decodeRegistry: DecodeRegistry(providers: [FakeDecodeProvider(
+                technicalMetadata: Self.fakeTechnicalMetadata(capturedAt: Self.utcDate(2025, 1, 3, 10, 30, 0))
+            )])
+        )
+
+        let imported = try service.ingest(
+            files: sourceFiles,
+            plan: IngestPlanner.copyFromCard(source: source, destinationRoot: destination, destinationPolicy: .capturedDate),
+            repository: repository
+        )
+
+        XCTAssertEqual(imported.count, 12)
+        XCTAssertEqual(imported[10].id, imported[11].id, "identical duplicates of one destination path must share one asset ID")
+        XCTAssertEqual(try repository.allAssets(limit: 100).count, 11)
+        let duplicateDestination = destination
+            .appendingPathComponent("2025", isDirectory: true)
+            .appendingPathComponent("2025-01-03", isDirectory: true)
+            .appendingPathComponent("IMG_0099.jpg")
+        XCTAssertEqual(try repository.asset(originalURL: duplicateDestination)?.id, imported[10].id)
+    }
+
     func testCapturedDateCardCopyThrowsWhenCatalogedDestinationHoldsDifferentBytes() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-dated-cataloged-conflict")
         let firstCard = root.appendingPathComponent("CardA", isDirectory: true)
