@@ -1049,6 +1049,128 @@ public final class CatalogRepository {
         return try rows.map(decodeWorkSession)
     }
 
+    public func save(_ proposals: [AutopilotProposal]) throws {
+        guard !proposals.isEmpty else { return }
+        try database.transaction {
+            for proposal in proposals {
+                try database.execute(
+                    """
+                    INSERT INTO autopilot_proposals (
+                        id,
+                        run_id,
+                        asset_id,
+                        kind,
+                        keyword,
+                        rationale,
+                        confidence,
+                        status,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        run_id = excluded.run_id,
+                        asset_id = excluded.asset_id,
+                        kind = excluded.kind,
+                        keyword = excluded.keyword,
+                        rationale = excluded.rationale,
+                        confidence = excluded.confidence,
+                        status = excluded.status,
+                        updated_at = excluded.updated_at
+                    """,
+                    bindings: [
+                        proposal.id.rawValue,
+                        proposal.runID.rawValue,
+                        proposal.assetID.rawValue,
+                        proposal.kind.rawValue,
+                        proposal.keyword ?? "",
+                        proposal.rationale,
+                        "\(proposal.confidence)",
+                        proposal.status.rawValue,
+                        "\(proposal.createdAt.timeIntervalSince1970)",
+                        "\(proposal.updatedAt.timeIntervalSince1970)"
+                    ]
+                )
+            }
+        }
+    }
+
+    public func autopilotProposals(runID: AutopilotRunID) throws -> [AutopilotProposal] {
+        let rows = try database.rows(
+            "SELECT * FROM autopilot_proposals WHERE run_id = ? ORDER BY created_at ASC, id ASC",
+            bindings: [runID.rawValue]
+        )
+        return try rows.map(decodeAutopilotProposal)
+    }
+
+    public func autopilotProposals(status: AutopilotProposalStatus) throws -> [AutopilotProposal] {
+        let rows = try database.rows(
+            "SELECT * FROM autopilot_proposals WHERE status = ? ORDER BY created_at ASC, id ASC",
+            bindings: [status.rawValue]
+        )
+        return try rows.map(decodeAutopilotProposal)
+    }
+
+    public func updateAutopilotProposalStatus(ids: [AutopilotProposalID], to status: AutopilotProposalStatus) throws {
+        guard !ids.isEmpty else { return }
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.transaction {
+            for id in ids {
+                try database.execute(
+                    "UPDATE autopilot_proposals SET status = ?, updated_at = ? WHERE id = ?",
+                    bindings: [status.rawValue, now, id.rawValue]
+                )
+            }
+        }
+    }
+
+    public func pendingAutopilotProposalCount() throws -> Int {
+        let rows = try database.rows(
+            "SELECT COUNT(*) AS proposal_count FROM autopilot_proposals WHERE status = ?",
+            bindings: [AutopilotProposalStatus.pending.rawValue]
+        )
+        return rows.first.flatMap { $0["proposal_count"] }.flatMap(Int.init) ?? 0
+    }
+
+    public func deleteAutopilotProposals(runID: AutopilotRunID) throws {
+        try database.execute(
+            "DELETE FROM autopilot_proposals WHERE run_id = ?",
+            bindings: [runID.rawValue]
+        )
+    }
+
+    private func decodeAutopilotProposal(_ row: [String: String]) throws -> AutopilotProposal {
+        guard let id = row["id"],
+              let runID = row["run_id"],
+              let assetID = row["asset_id"],
+              let kindRawValue = row["kind"],
+              let kind = AutopilotProposalKind(rawValue: kindRawValue),
+              let rationale = row["rationale"],
+              let confidenceValue = row["confidence"],
+              let confidence = Double(confidenceValue),
+              let statusRawValue = row["status"],
+              let status = AutopilotProposalStatus(rawValue: statusRawValue),
+              let createdAtValue = row["created_at"],
+              let createdAtInterval = TimeInterval(createdAtValue),
+              let updatedAtValue = row["updated_at"],
+              let updatedAtInterval = TimeInterval(updatedAtValue) else {
+            throw CatalogError.sqlite("autopilot proposal row is missing required columns")
+        }
+        let keywordValue = row["keyword"] ?? ""
+        return AutopilotProposal(
+            id: AutopilotProposalID(rawValue: id),
+            runID: AutopilotRunID(rawValue: runID),
+            assetID: AssetID(rawValue: assetID),
+            kind: kind,
+            keyword: keywordValue.isEmpty ? nil : keywordValue,
+            rationale: rationale,
+            confidence: confidence,
+            status: status,
+            createdAt: Date(timeIntervalSince1970: createdAtInterval),
+            updatedAt: Date(timeIntervalSince1970: updatedAtInterval)
+        )
+    }
+
     public func recordEvaluationSignals(_ signals: [EvaluationSignal]) throws {
         guard !signals.isEmpty else { return }
         try database.transaction {

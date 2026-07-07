@@ -109,6 +109,15 @@ struct LibraryGridView: View {
         }
         .navigationTitle(model.libraryTitle)
         .toolbar {
+            Toggle(isOn: Binding(
+                get: { model.autopilotEnabled },
+                set: { model.autopilotEnabled = $0 }
+            )) {
+                Label("Autopilot", systemImage: "wand.and.stars")
+            }
+            .toggleStyle(.button)
+            .help("When on, a finished import proposes keeps and cuts for review once its reads finish. Nothing is written until you commit.")
+
             Button {
                 showStartCullingPopover()
             } label: {
@@ -1703,6 +1712,17 @@ struct LibraryGridView: View {
             .toggleStyle(.checkbox)
             .font(.caption)
             .help("Queues the standard evaluation passes over the imported set's cached previews as previews complete. Reads stay provisional; nothing is written without your action.")
+            Toggle(
+                "Autopilot cull after reading",
+                isOn: Binding(
+                    get: { importConfirmationDraft?.autopilotAfterImport ?? false },
+                    set: { importConfirmationDraft?.autopilotAfterImport = $0 }
+                )
+            )
+            .toggleStyle(.checkbox)
+            .font(.caption)
+            .disabled(!(importConfirmationDraft?.evaluateAfterImport ?? true))
+            .help("Once the imported reads finish, Autopilot proposes keeps and cuts for review. Proposals stay provisional; nothing is written until you commit.")
             HStack {
                 Spacer()
                 Button("Cancel") {
@@ -2225,30 +2245,116 @@ struct LibraryGridView: View {
     }
 
     private var assetGrid: some View {
-        LazyVGrid(columns: columns, spacing: gridLayout.gridSpacing) {
-            ForEach(model.assets, id: \.id.rawValue) { asset in
-                AssetGridCell(
-                    asset: asset,
-                    previewURL: model.gridPreviewURL(for: asset.id),
-                    previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
-                    previewStatus: model.gridPreviewStatus(for: asset.id),
-                    isSelected: model.selectedAssetID == asset.id,
-                    isBatchSelected: model.isBatchSelected(asset.id)
+        VStack(spacing: 0) {
+            if let summary = model.autopilotRunSummary {
+                AutopilotBannerView(
+                    presentation: AutopilotBannerPresentation(summary: summary, canUndoAll: model.canUndoAutopilotRun),
+                    review: { beginAutopilotReview() },
+                    undoAll: { undoAutopilotRun() },
+                    dismiss: { model.dismissAutopilotRunSummary() }
                 )
-                .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
-                    selectAssetFromGrid(assetID)
-                }
-                .id(asset.id.rawValue)
-                .task(id: asset.id.rawValue) {
-                    do {
-                        try model.requestVisibleGridPreview(assetID: asset.id)
-                    } catch {
-                        model.errorMessage = error.localizedDescription
+            }
+            if model.isAutopilotReviewActive {
+                autopilotReviewToolbar
+            }
+            LazyVGrid(columns: columns, spacing: gridLayout.gridSpacing) {
+                ForEach(model.assets, id: \.id.rawValue) { asset in
+                    AssetGridCell(
+                        asset: asset,
+                        previewURL: model.gridPreviewURL(for: asset.id),
+                        previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
+                        previewStatus: model.gridPreviewStatus(for: asset.id),
+                        isSelected: model.selectedAssetID == asset.id,
+                        isBatchSelected: model.isBatchSelected(asset.id),
+                        autopilotDecision: model.autopilotProposalDecision(for: asset.id)
+                    )
+                    .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
+                        selectAssetFromGrid(assetID)
+                    }
+                    .id(asset.id.rawValue)
+                    .task(id: asset.id.rawValue) {
+                        do {
+                            try model.requestVisibleGridPreview(assetID: asset.id)
+                        } catch {
+                            model.errorMessage = error.localizedDescription
+                        }
                     }
                 }
             }
+            .padding(12)
         }
-        .padding(12)
+    }
+
+    private func beginAutopilotReview() {
+        do {
+            try model.beginAutopilotReview()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func undoAutopilotRun() {
+        do {
+            try model.undoAutopilotRun()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private var autopilotReviewToolbar: some View {
+        let selectedIDs = model.selectedBatchAssetIDsInCatalogOrder
+        return HStack(spacing: 8) {
+            Text("Reviewing \(model.autopilotReviewProposalCount) proposals")
+                .font(.caption.weight(.semibold))
+            Spacer(minLength: 0)
+            Button("Commit \(selectedIDs.count)") {
+                commitAutopilotProposals(assetIDs: selectedIDs)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .tint(.green)
+            .disabled(selectedIDs.isEmpty)
+            .help("Commit the selected proposals' keeps, cuts, and keywords")
+            Button("Commit all \(model.autopilotReviewProposalCount)") {
+                commitAllAutopilotProposals()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            Button("Dismiss selected") {
+                dismissAutopilotProposals(assetIDs: selectedIDs)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(selectedIDs.isEmpty)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 38)
+        .background(Color.purple.opacity(0.08))
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private func commitAutopilotProposals(assetIDs: [AssetID]) {
+        do {
+            try model.commitAutopilotProposals(assetIDs: assetIDs)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func commitAllAutopilotProposals() {
+        do {
+            try model.commitAllAutopilotProposals()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func dismissAutopilotProposals(assetIDs: [AssetID]) {
+        do {
+            try model.dismissAutopilotProposals(assetIDs: assetIDs)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     private var emptyLibraryView: some View {
@@ -2375,7 +2481,15 @@ struct LibraryGridView: View {
 
     private func showImportFolderPanel() {
         guard let folderURL = FolderSelectionPanel.chooseImportFolder() else { return }
-        importConfirmationDraft = .folder(folderURL)
+        presentImportConfirmation(.folder(folderURL))
+    }
+
+    // Seeds the draft's Autopilot-after-import toggle from the persisted app
+    // setting so the sheet reflects the standing "Autopilot on" preference.
+    private func presentImportConfirmation(_ draft: ImportConfirmationDraft) {
+        var draft = draft
+        draft.autopilotAfterImport = model.autopilotEnabled
+        importConfirmationDraft = draft
     }
 
     private func showImportPathSheet() {
@@ -2409,7 +2523,7 @@ struct LibraryGridView: View {
     private func showImportCardPanel() {
         guard let source = FolderSelectionPanel.chooseCardSourceFolder() else { return }
         guard let destinationRoot = FolderSelectionPanel.chooseCardDestinationFolder() else { return }
-        importConfirmationDraft = .card(source: source, destinationRoot: destinationRoot)
+        presentImportConfirmation(.card(source: source, destinationRoot: destinationRoot))
     }
 
     private func importFolderPath() {
@@ -2430,7 +2544,7 @@ struct LibraryGridView: View {
                     importPathReviewID = nil
                     isReviewingImportPath = false
                     isShowingImportPathSheet = false
-                    importConfirmationDraft = confirmationDraft
+                    presentImportConfirmation(confirmationDraft)
                 }
             }
         } catch {
@@ -2464,7 +2578,7 @@ struct LibraryGridView: View {
                     importCardPathReviewID = nil
                     isReviewingImportCardPath = false
                     isShowingImportCardPathSheet = false
-                    importConfirmationDraft = confirmationDraft
+                    presentImportConfirmation(confirmationDraft)
                 }
             }
         } catch {
@@ -2482,7 +2596,8 @@ struct LibraryGridView: View {
             importFolder(
                 draft.sourceURL,
                 evaluateAfterImport: draft.evaluateAfterImport,
-                importNewOnly: draft.importNewOnly
+                importNewOnly: draft.importNewOnly,
+                autopilotAfterImport: draft.autopilotAfterImport
             )
         case .card:
             guard let destinationRootURL = draft.destinationRootURL else {
@@ -2495,7 +2610,8 @@ struct LibraryGridView: View {
                 destinationPolicy: draft.destinationPolicy,
                 secondCopyDestination: draft.secondCopyRootURL,
                 evaluateAfterImport: draft.evaluateAfterImport,
-                importNewOnly: draft.importNewOnly
+                importNewOnly: draft.importNewOnly,
+                autopilotAfterImport: draft.autopilotAfterImport
             )
         }
     }
@@ -2526,8 +2642,18 @@ struct LibraryGridView: View {
         }
     }
 
-    private func importFolder(_ folderURL: URL, evaluateAfterImport: Bool = true, importNewOnly: Bool = true) {
-        model.beginImportFolder(folderURL, evaluateAfterImport: evaluateAfterImport, importNewOnly: importNewOnly)
+    private func importFolder(
+        _ folderURL: URL,
+        evaluateAfterImport: Bool = true,
+        importNewOnly: Bool = true,
+        autopilotAfterImport: Bool = false
+    ) {
+        model.beginImportFolder(
+            folderURL,
+            evaluateAfterImport: evaluateAfterImport,
+            importNewOnly: importNewOnly,
+            autopilotAfterImport: autopilotAfterImport
+        )
     }
 
     private func importCard(
@@ -2536,7 +2662,8 @@ struct LibraryGridView: View {
         destinationPolicy: ImportDestinationPolicy,
         secondCopyDestination: URL?,
         evaluateAfterImport: Bool = true,
-        importNewOnly: Bool = true
+        importNewOnly: Bool = true,
+        autopilotAfterImport: Bool = false
     ) {
         model.beginImportCard(
             source: source,
@@ -2544,7 +2671,8 @@ struct LibraryGridView: View {
             destinationPolicy: destinationPolicy,
             secondCopyDestination: secondCopyDestination,
             evaluateAfterImport: evaluateAfterImport,
-            importNewOnly: importNewOnly
+            importNewOnly: importNewOnly,
+            autopilotAfterImport: autopilotAfterImport
         )
     }
 
@@ -3065,6 +3193,93 @@ struct LibraryGridView: View {
     }
 }
 
+struct AutopilotBadgePresentation: Equatable {
+    // Maps a pending proposal's decision to the grid cell's KEEP/CUT badge.
+    // Keyword proposals and undecided cells carry no keep/cut badge.
+    static func badge(for kind: AutopilotProposalKind?) -> (text: String, isKeep: Bool)? {
+        switch kind {
+        case .pick:
+            return (text: "KEEP", isKeep: true)
+        case .reject:
+            return (text: "CUT", isKeep: false)
+        case .keyword, nil:
+            return nil
+        }
+    }
+}
+
+struct AutopilotBannerPresentation: Equatable {
+    var title: String
+    var detailText: String
+    var canUndoAll: Bool
+
+    init(summary: AutopilotRunSummary, canUndoAll: Bool = false) {
+        let frameCount = summary.keeperCount + summary.rejectCount
+        let formattedFrames = Self.frameCountFormatter.string(from: NSNumber(value: frameCount)) ?? "\(frameCount)"
+        self.title = "Autopilot reviewed \(formattedFrames) frames"
+        self.detailText = summary.bannerText
+        self.canUndoAll = canUndoAll
+    }
+
+    private static let frameCountFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = true
+        formatter.groupingSeparator = ","
+        formatter.groupingSize = 3
+        return formatter
+    }()
+}
+
+private struct AutopilotBannerView: View {
+    var presentation: AutopilotBannerPresentation
+    var review: () -> Void
+    var undoAll: () -> Void
+    var dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "wand.and.stars")
+                .foregroundStyle(.purple)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(presentation.title)
+                    .font(.caption.weight(.semibold))
+                Text(presentation.detailText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Button("Review") {
+                review()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .tint(.purple)
+            .help("Open the proposed keeps and cuts to commit or dismiss")
+            Button("Undo all") {
+                undoAll()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(!presentation.canUndoAll)
+            .help(presentation.canUndoAll ? "Revert the last committed autopilot batch" : "Nothing committed to undo yet")
+            Button("Dismiss") {
+                dismiss()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 40)
+        .background(Color.purple.opacity(0.12))
+        .overlay(alignment: .top) { Divider() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Autopilot run summary")
+        .accessibilityValue(presentation.detailText)
+    }
+}
+
 private struct CullingCompletionBannerView: View {
     var summary: CullingSessionCompletionSummary
     var canViewPicks: Bool
@@ -3158,6 +3373,26 @@ private struct LoupeView: View {
     var body: some View {
         let stackPresentation = cullingStackPresentation
         VStack(spacing: 0) {
+            if let summary = model.autopilotRunSummary {
+                AutopilotBannerView(
+                    presentation: AutopilotBannerPresentation(summary: summary, canUndoAll: model.canUndoAutopilotRun),
+                    review: {
+                        do {
+                            try model.beginAutopilotReview()
+                        } catch {
+                            model.errorMessage = error.localizedDescription
+                        }
+                    },
+                    undoAll: {
+                        do {
+                            try model.undoAutopilotRun()
+                        } catch {
+                            model.errorMessage = error.localizedDescription
+                        }
+                    },
+                    dismiss: { model.dismissAutopilotRunSummary() }
+                )
+            }
             cullingHeader(stackPresentation: stackPresentation)
             HStack(spacing: 0) {
                 cullingStackListRail
@@ -5257,45 +5492,14 @@ struct CullingStackRecommendation: Equatable {
     }
 
     private static func qualityScore(for signals: [EvaluationSignal]) -> Double? {
-        var scoreByKind: [EvaluationKind: Double] = [:]
-        for signal in signals {
-            guard let weightedScore = weightedQualityScore(for: signal) else { continue }
-            scoreByKind[signal.kind] = max(scoreByKind[signal.kind] ?? 0, weightedScore)
-        }
-        guard !scoreByKind.isEmpty else { return nil }
-        return scoreByKind.values.reduce(0, +)
+        CullingQualityScore.qualityScore(for: signals)
     }
 
     // Defect-inverted score plus confidence-scaled weight for one signal.
-    // weightedQualityScore and normalizedQualityRead both derive from this,
-    // so the pill's read and the stack ranking can never disagree.
+    // The pill's read, the stack ranking, and the autopilot planner all derive
+    // from the shared Core scorer, so they can never disagree.
     static func qualityComponent(for signal: EvaluationSignal) -> (score: Double, weight: Double)? {
-        guard case .score(let rawScore) = signal.value else { return nil }
-        let clampedScore = min(max(rawScore, 0), 1)
-        let confidence = min(max(signal.confidence, 0), 1)
-        switch signal.kind {
-        case .focus:
-            return (clampedScore, confidence * 100)
-        case .eyesOpen:
-            return (clampedScore, confidence * 90)
-        case .faceQuality:
-            return (clampedScore, confidence * 80)
-        case .eyeSharpness:
-            return (clampedScore, confidence * 70)
-        case .motionBlur:
-            return (1 - clampedScore, confidence * 60)
-        case .aesthetics:
-            return (clampedScore, confidence * 50)
-        case .framing:
-            return (clampedScore, confidence * 45)
-        default:
-            return nil
-        }
-    }
-
-    private static func weightedQualityScore(for signal: EvaluationSignal) -> Double? {
-        guard let component = qualityComponent(for: signal) else { return nil }
-        return component.score * component.weight
+        CullingQualityScore.qualityComponent(for: signal)
     }
 
     // Confidence-weighted mean of the best component per kind, 0...1.
@@ -7107,7 +7311,8 @@ private struct TimelineWorkspaceView: View {
                             previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
                             previewStatus: model.gridPreviewStatus(for: asset.id),
                             isSelected: model.selectedAssetID == asset.id,
-                            isBatchSelected: model.isBatchSelected(asset.id)
+                            isBatchSelected: model.isBatchSelected(asset.id),
+                            autopilotDecision: model.autopilotProposalDecision(for: asset.id)
                         )
                         .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
                             selectAsset(assetID)
@@ -8535,6 +8740,7 @@ private struct AssetGridCell: View {
     var previewStatus: AssetGridPreviewStatusPresentation?
     var isSelected: Bool
     var isBatchSelected = false
+    var autopilotDecision: AutopilotProposalKind? = nil
 
     var body: some View {
         GeometryReader { geometry in
@@ -8566,10 +8772,15 @@ private struct AssetGridCell: View {
                 }
             }
             .overlay(alignment: .topLeading) {
-                if isBatchSelected {
-                    batchSelectionBadge
-                        .padding(6)
+                HStack(spacing: 4) {
+                    if isBatchSelected {
+                        batchSelectionBadge
+                    }
+                    if let badge = AutopilotBadgePresentation.badge(for: autopilotDecision) {
+                        autopilotBadge(badge)
+                    }
                 }
+                .padding(6)
             }
             .background(
                 RoundedRectangle(cornerRadius: 5)
@@ -8625,6 +8836,16 @@ private struct AssetGridCell: View {
             .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(.black.opacity(0.82), Color.orange)
             .accessibilityLabel("Batch selected")
+    }
+
+    private func autopilotBadge(_ badge: (text: String, isKeep: Bool)) -> some View {
+        Text(badge.text)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(badge.isKeep ? Color.green : Color.red)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(.black.opacity(0.55), in: Capsule())
+            .accessibilityLabel(badge.isKeep ? "Proposed keep" : "Proposed cut")
     }
 
     private var metadataOverlay: some View {

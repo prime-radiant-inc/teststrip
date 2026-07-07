@@ -17,6 +17,15 @@ final class LibraryGridChromeTests: XCTestCase {
         ))
     }
 
+    func testAutopilotBadgeMapsKindToKeepOrCut() {
+        XCTAssertEqual(AutopilotBadgePresentation.badge(for: .pick)?.text, "KEEP")
+        XCTAssertEqual(AutopilotBadgePresentation.badge(for: .pick)?.isKeep, true)
+        XCTAssertEqual(AutopilotBadgePresentation.badge(for: .reject)?.text, "CUT")
+        XCTAssertEqual(AutopilotBadgePresentation.badge(for: .reject)?.isKeep, false)
+        XCTAssertNil(AutopilotBadgePresentation.badge(for: .keyword))
+        XCTAssertNil(AutopilotBadgePresentation.badge(for: nil))
+    }
+
     func testImportCompletionSummaryShowsOnlyAfterImportFinishes() {
         XCTAssertTrue(LibraryGridChromePolicy.shouldShowImportCompletionSummary(
             isImporting: false,

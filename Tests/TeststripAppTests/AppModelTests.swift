@@ -4210,6 +4210,223 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.canRedoMetadataChange)
     }
 
+    func testBatchMetadataUndoRevertsAllAssetsInOneStep() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let first = makeAsset(id: "undo-batch-a", path: "/Photos/Job/undo-batch-a.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let second = makeAsset(id: "undo-batch-b", path: "/Photos/Job/undo-batch-b.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "undo-batch-metadata", assets: [first, second])
+        try model.selectSidebarTarget(.allPhotographs)
+
+        let applied = try model.applyVisibleBatchMetadata(keywordText: "patagonia", caption: "", creator: "", copyright: "")
+        XCTAssertEqual(applied, 2)
+        XCTAssertTrue(model.canUndoMetadataChange)
+        XCTAssertEqual(model.lastUndoableActionLabel, "Applied metadata to 2 photos")
+
+        try model.undoMetadataChange()
+
+        XCTAssertEqual(try repository.asset(id: first.id).metadata.keywords, [])
+        XCTAssertEqual(try repository.asset(id: second.id).metadata.keywords, [])
+        XCTAssertFalse(model.canUndoMetadataChange)
+        XCTAssertTrue(model.canRedoMetadataChange)
+        XCTAssertEqual(model.statusMessage, "Undid: Applied metadata to 2 photos")
+    }
+
+    func testSingleFlagEditRemainsAOneChangeGroup() throws {
+        let asset = makeAsset(id: "undo-single", path: "/Photos/Job/undo-single.cr2", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(named: "undo-single", assets: [asset])
+        model.select(asset.id)
+
+        try model.setFlagForSelectedAsset(.pick)
+        XCTAssertEqual(model.lastUndoableActionLabel, "Flag")
+
+        try model.undoMetadataChange()
+        XCTAssertNil(try repository.asset(id: asset.id).metadata.flag)
+        try model.redoMetadataChange()
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .pick)
+    }
+
+    func testRunAutopilotProducesPendingProposalsWithoutWritingMetadata() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "ap-lead", path: "/Photos/Job/ap-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "ap-alt", path: "/Photos/Job/ap-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "run-autopilot", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.30), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+
+        let summary = try model.runAutopilot(scope: .visible)
+
+        XCTAssertEqual(summary.keeperCount, 1)
+        XCTAssertEqual(summary.rejectCount, 1)
+        XCTAssertEqual(summary.stackCount, 1)
+        XCTAssertEqual(summary.bannerText, "1 keepers · 1 rejects · dupes→stacks")
+        XCTAssertEqual(model.autopilotProposalDecision(for: alternate.id), .pick)
+        XCTAssertEqual(model.autopilotProposalDecision(for: lead.id), .reject)
+        // Provisional only: nothing written.
+        XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
+        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
+    }
+
+    func testBeginAutopilotReviewLoadsProposedAssets() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "rev-lead", path: "/Photos/Job/rev-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "rev-alt", path: "/Photos/Job/rev-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, _) = try makeModelWithCatalogAssets(named: "autopilot-review", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+
+        try model.beginAutopilotReview()
+
+        XCTAssertTrue(model.isAutopilotReviewActive)
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(Set(model.assets.map(\.id)), [lead.id, alternate.id])
+        XCTAssertEqual(model.autopilotReviewProposalCount, 2)
+    }
+
+    func testRunAutopilotIsIdempotentForTheSameScope() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "ap2-lead", path: "/Photos/Job/ap2-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "ap2-alt", path: "/Photos/Job/ap2-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "run-autopilot-idem", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.30), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+
+        _ = try model.runAutopilot(scope: .visible)
+        _ = try model.runAutopilot(scope: .visible)
+
+        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
+    }
+
+    func testCommitAllAutopilotProposalsWritesFlagsAndKeywordsAsOneUndoGroup() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "commit-lead", path: "/Photos/Job/commit-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "commit-alt", path: "/Photos/Job/commit-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "commit-autopilot", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+
+        let committed = try model.commitAllAutopilotProposals()
+
+        XCTAssertEqual(committed, 2)
+        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: lead.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 0)
+        XCTAssertEqual(model.lastUndoableActionLabel, "Autopilot")
+
+        // Exactly one undo group reverts the whole batch.
+        try model.undoMetadataChange()
+        XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
+        XCTAssertFalse(model.canUndoMetadataChange)
+    }
+
+    func testUndoAutopilotRunRevertsMetadataAndRestoresPendingProposals() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "undoall-lead", path: "/Photos/Job/undoall-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "undoall-alt", path: "/Photos/Job/undoall-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "undo-all-autopilot", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+        _ = try model.commitAllAutopilotProposals()
+        XCTAssertTrue(model.canUndoAutopilotRun)
+
+        try model.undoAutopilotRun()
+
+        XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
+        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
+        XCTAssertEqual(model.autopilotProposalDecision(for: alternate.id), .pick)
+        XCTAssertFalse(model.canUndoAutopilotRun)
+    }
+
+    func testDismissAutopilotProposalsLeavesMetadataUntouched() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "dismiss-lead", path: "/Photos/Job/dismiss-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "dismiss-alt", path: "/Photos/Job/dismiss-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "dismiss-autopilot", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+
+        let dismissed = try model.dismissAutopilotProposals(assetIDs: [lead.id])
+
+        XCTAssertEqual(dismissed, 1)
+        XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
+        XCTAssertEqual(model.autopilotProposalDecision(for: lead.id), nil)
+        XCTAssertEqual(model.autopilotProposalDecision(for: alternate.id), .pick)
+        XCTAssertFalse(model.canUndoMetadataChange)
+    }
+
+    func testAskFallsBackToDeterministicParserWithoutTranslator() throws {
+        let asset = makeAsset(id: "ask-fallback", path: "/Photos/Job/ask-fallback.cr2", rating: 5)
+        let (model, _) = try makeModelWithCatalogAssets(named: "ask-fallback", assets: [asset])
+        try model.selectSidebarTarget(.allPhotographs)
+
+        try model.applyNaturalLanguageAsk("rating:5")
+
+        XCTAssertEqual(model.librarySearchText, "rating:5")
+        XCTAssertTrue(model.activeLibraryFilterChips.contains("Rating >= 5"))
+    }
+
+    func testAskUsesConfiguredTranslatorAndRendersSameChipVocabulary() throws {
+        let asset = makeAsset(id: "ask-translated", path: "/Photos/Job/ask-translated.cr2", rating: 4, keywords: ["dog"])
+        let (model, _) = try makeModelWithCatalogAssets(named: "ask-translated", assets: [asset])
+        try model.selectSidebarTarget(.allPhotographs)
+        model.autopilotQueryTranslator = StubQueryTranslator(query: "rating:4 keyword:dog")
+
+        try model.applyNaturalLanguageAsk("four star dog photos")
+
+        XCTAssertEqual(model.librarySearchText, "rating:4 keyword:dog")
+        XCTAssertTrue(model.activeLibraryFilterChips.contains("Rating >= 4"))
+        XCTAssertTrue(model.activeLibraryFilterChips.contains("Keyword: dog"))
+    }
+
+    func testAskFallsBackToRawTextWhenTranslatorFails() throws {
+        let asset = makeAsset(id: "ask-error", path: "/Photos/Job/ask-error.cr2", rating: 5)
+        let (model, _) = try makeModelWithCatalogAssets(named: "ask-error", assets: [asset])
+        try model.selectSidebarTarget(.allPhotographs)
+        model.autopilotQueryTranslator = FailingQueryTranslator()
+
+        try model.applyNaturalLanguageAsk("rating:5")
+
+        XCTAssertEqual(model.librarySearchText, "rating:5")
+        XCTAssertTrue(model.activeLibraryFilterChips.contains("Rating >= 5"))
+        XCTAssertEqual(model.statusMessage, "Ask used plain-text search (model unavailable)")
+    }
+
     func testLoadsAssetsFromCatalogRepository() throws {
         let directory = try makeTemporaryDirectory(named: "app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -11959,6 +12176,68 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testAutopilotArmedImportPublishesRunSummaryAfterEvaluationsComplete() async throws {
+        let directory = try makeTemporaryDirectory(named: "autopilot-armed-import")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 8), transport: transport)
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+        model.autopilotEnabled = true
+
+        model.beginImportFolder(photoFolder, autopilotAfterImport: true)
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "autopilot-armed-imported"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try catalog.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: importedAsset.id, kind: .focus, value: .score(0.8), confidence: 0.9, provenance: provenance)
+        ])
+        // Preview already cached so evaluations queue at import completion.
+        try writePreviewPlaceholder(to: catalog.previewCache.url(for: PreviewCacheKey(assetID: importedAsset.id, level: .grid)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+        try await waitForRecognitionItemCount(AppModel.defaultEvaluationProviderNames.count, in: model)
+
+        // Provisional-only until evaluations resolve: no run summary yet.
+        XCTAssertNil(model.autopilotRunSummary)
+
+        // Complete each provider's evaluation; the last one resolves the armed set.
+        for provider in AppModel.defaultEvaluationProviderNames {
+            transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+                itemID: WorkSessionID(rawValue: "evaluation-\(importedAsset.id.rawValue)-\(provider)"),
+                message: "evaluated"
+            )))
+        }
+
+        for _ in 0..<200 {
+            if model.autopilotRunSummary != nil { break }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertNotNil(model.autopilotRunSummary)
+        // Provisional only: import autopilot never writes catalog metadata.
+        XCTAssertNil(try catalog.repository.asset(id: importedAsset.id).metadata.flag)
+    }
+
+    @MainActor
     func testPreviewCompletionQueuesEvaluationsForPendingImportedAsset() async throws {
         let directory = try makeTemporaryDirectory(named: "auto-eval-preview-drain")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
@@ -16130,4 +16409,15 @@ private final class ManualBackgroundWorkPublicationCancellation: WorkerTimeoutCa
 
 private final class ObservationChangeFlag: @unchecked Sendable {
     var value = false
+}
+
+private struct StubQueryTranslator: AutopilotQueryTranslator {
+    var query: String
+    func translate(_ naturalLanguage: String) throws -> String { query }
+}
+
+private struct FailingQueryTranslator: AutopilotQueryTranslator {
+    func translate(_ naturalLanguage: String) throws -> String {
+        throw TeststripError.io("translator offline")
+    }
 }

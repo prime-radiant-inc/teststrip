@@ -105,6 +105,14 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(draft.planSteps, ImportPlanSteps.folderInPlace)
     }
 
+    func testDraftCarriesAutopilotAfterImportDefault() {
+        var draft = ImportConfirmationDraft.folder(URL(fileURLWithPath: "/Volumes/Archive/Decades", isDirectory: true))
+        draft.autopilotAfterImport = true
+        XCTAssertTrue(draft.planSteps.contains { $0.title == "Autopilot cull" })
+        draft.autopilotAfterImport = false
+        XCTAssertFalse(draft.planSteps.contains { $0.title == "Autopilot cull" })
+    }
+
     func testCardDraftSummarizesCopyThenCatalogImport() {
         let sourceURL = URL(fileURLWithPath: "/Volumes/CARD/DCIM", isDirectory: true)
         let destinationURL = URL(fileURLWithPath: "/Volumes/Archive/Incoming", isDirectory: true)

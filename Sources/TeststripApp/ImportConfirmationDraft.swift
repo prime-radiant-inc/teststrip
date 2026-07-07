@@ -246,6 +246,7 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     var evaluateAfterImport = true
     var importNewOnly = true
     var dedupPreview: ImportDedupPreview?
+    var autopilotAfterImport = false
 
     var id: String {
         [
@@ -388,7 +389,13 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
                 secondCopyName: secondCopyName
             )
         }
-        guard evaluateAfterImport else { return baseSteps }
-        return baseSteps + [ImportPlanSteps.autoEvaluation]
+        var steps = baseSteps
+        if evaluateAfterImport {
+            steps.append(ImportPlanSteps.autoEvaluation)
+        }
+        if autopilotAfterImport {
+            steps.append(ImportPlanSteps.autopilot)
+        }
+        return steps
     }
 }

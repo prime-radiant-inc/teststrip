@@ -1273,6 +1273,11 @@ private struct MetadataChange: Equatable {
     var after: AssetMetadata
 }
 
+private struct MetadataChangeGroup: Equatable {
+    var label: String
+    var changes: [MetadataChange]
+}
+
 public struct CullingMetadataDecisionFeedback: Equatable, Sendable {
     public var assetID: AssetID
     public var filename: String
@@ -1282,6 +1287,43 @@ public struct CullingMetadataDecisionFeedback: Equatable, Sendable {
         self.assetID = assetID
         self.filename = filename
         self.decisionText = decisionText
+    }
+}
+
+public enum AutopilotScope: Equatable, Sendable {
+    case visible
+    case assetIDs([AssetID])
+}
+
+public struct AutopilotRunSummary: Equatable, Identifiable, Sendable {
+    public var runID: AutopilotRunID
+    public var keeperCount: Int
+    public var rejectCount: Int
+    public var keywordCount: Int
+    public var stackCount: Int
+
+    public init(
+        runID: AutopilotRunID,
+        keeperCount: Int,
+        rejectCount: Int,
+        keywordCount: Int,
+        stackCount: Int
+    ) {
+        self.runID = runID
+        self.keeperCount = keeperCount
+        self.rejectCount = rejectCount
+        self.keywordCount = keywordCount
+        self.stackCount = stackCount
+    }
+
+    public var id: String { runID.rawValue }
+
+    public var bannerText: String {
+        var text = "\(keeperCount) keepers · \(rejectCount) rejects"
+        if stackCount > 0 {
+            text += " · dupes→stacks"
+        }
+        return text
     }
 }
 
@@ -1346,6 +1388,17 @@ public final class AppModel {
     public private(set) var rejectRelocationSummary: RejectRelocationSummary?
     public private(set) var isRelocatingRejects = false
     private var rejectRelocationAbortRequested = false
+    public private(set) var autopilotRunSummary: AutopilotRunSummary?
+    public private(set) var pendingAutopilotProposals: [AutopilotProposal] = []
+    public private(set) var isAutopilotReviewActive = false
+    public private(set) var lastCommittedAutopilotRunID: AutopilotRunID?
+    // Opt-in natural-language Ask translator. nil (default) keeps the Ask on
+    // the always-available deterministic parser with byte-identical behavior.
+    public var autopilotQueryTranslator: (any AutopilotQueryTranslator)?
+    // Maps a scope's identity (sorted asset-id join) to the run that last
+    // proposed for it, so re-running the same scope replaces its pending
+    // proposals instead of stacking duplicates. In-memory only.
+    private var lastAutopilotRunIDByScopeKey: [String: AutopilotRunID] = [:]
     // Tracks which stack-cull sessions came from beginStackCullingFromLatestImportCompletion()
     // and which import they scoped, so completion can offer to cull the
     // import's unstacked singles afterward. In-memory only; not persisted.
@@ -1520,6 +1573,24 @@ public final class AppModel {
     @ObservationIgnored
     private var importAutoEvaluationEnabled = true
 
+    // Persisted "Autopilot on" toggle. When on, a finished import runs
+    // runAutopilot over the imported set once its evaluations resolve. On-demand
+    // runAutopilot is always available regardless of this toggle.
+    public var autopilotEnabled = false {
+        didSet {
+            sessionRestoreDefaults?.set(autopilotEnabled, forKey: Self.autopilotEnabledDefaultsKey)
+        }
+    }
+    static let autopilotEnabledDefaultsKey = "AppModel.autopilotEnabled"
+
+    // Set at import start from the import's autopilotAfterImport decision; the
+    // imported asset IDs land in armedAutopilotImportAssetIDs once the import
+    // completes, and autopilot runs once their evaluations all resolve.
+    @ObservationIgnored
+    private var autopilotArmedForActiveImport = false
+    @ObservationIgnored
+    private var armedAutopilotImportAssetIDs: Set<AssetID>?
+
     @ObservationIgnored
     private var pendingImportEvaluationAssetIDs: Set<AssetID> = []
 
@@ -1543,8 +1614,8 @@ public final class AppModel {
 
     private var previewCacheGenerationsByAssetID: [AssetID: Int]
     private var evaluationSignalGenerationsByAssetID: [AssetID: Int]
-    private var metadataUndoStack: [MetadataChange]
-    private var metadataRedoStack: [MetadataChange]
+    private var metadataUndoStack: [MetadataChangeGroup]
+    private var metadataRedoStack: [MetadataChangeGroup]
     private var assetPageOffset: Int
     private var compareAssetIDs: [AssetID]?
 
@@ -1762,6 +1833,10 @@ public final class AppModel {
 
     public var canRedoMetadataChange: Bool {
         !metadataRedoStack.isEmpty
+    }
+
+    public var lastUndoableActionLabel: String? {
+        metadataUndoStack.last?.label
     }
 
     public var visibleWorkActivity: AppWorkActivity? {
@@ -3087,6 +3162,10 @@ public final class AppModel {
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
         try model.restoreSessionStateIfAvailable()
+        try model.reconstructAutopilotStateAfterLoad()
+        if let sessionRestoreDefaults {
+            model.autopilotEnabled = sessionRestoreDefaults.bool(forKey: autopilotEnabledDefaultsKey)
+        }
         return model
     }
 
@@ -3239,7 +3318,7 @@ public final class AppModel {
         }
     }
 
-    private var selectedBatchAssetIDsInCatalogOrder: [AssetID] {
+    public var selectedBatchAssetIDsInCatalogOrder: [AssetID] {
         let fallbackOrder = Dictionary(uniqueKeysWithValues: selectedBatchAssetIDOrder.enumerated().map { ($0.element, $0.offset) })
         return selectedBatchAssetIDOrder
             .filter { selectedBatchAssetIDs.contains($0) }
@@ -3848,6 +3927,27 @@ public final class AppModel {
         try reload()
     }
 
+    /// Applies a natural-language Ask as a library filter. When an opt-in
+    /// translator is configured it maps the text to the deterministic parser's
+    /// field syntax (rendered as the same removable chips); with no translator,
+    /// or on any translation error, the raw text flows through the deterministic
+    /// parser unchanged. Filtering only — never runs autopilot.
+    public func applyNaturalLanguageAsk(_ text: String) throws {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var queryText = trimmed
+        if let translator = autopilotQueryTranslator, !trimmed.isEmpty {
+            do {
+                let translated = try translator.translate(trimmed).trimmingCharacters(in: .whitespacesAndNewlines)
+                queryText = translated.isEmpty ? trimmed : translated
+            } catch {
+                queryText = trimmed
+                statusMessage = "Ask used plain-text search (model unavailable)"
+            }
+        }
+        librarySearchText = queryText
+        try reload()
+    }
+
     public func applySmartCollectionRuleText(_ text: String) throws {
         let normalizedText = Self.normalizedRuleText(text)
         guard !normalizedText.isEmpty else {
@@ -4153,6 +4253,7 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         var summary = CompareFlagChangeSummary()
+        var changes: [MetadataChange] = []
         for compareAsset in compareGroup {
             guard let targetFlag = flagsByAssetID[compareAsset.id] else { continue }
             switch targetFlag {
@@ -4166,7 +4267,7 @@ public final class AppModel {
             var updatedMetadata = originalAsset.metadata
             updatedMetadata.flag = targetFlag
             try applyMetadataSnapshot(assetID: compareAsset.id, metadata: updatedMetadata)
-            metadataUndoStack.append(MetadataChange(
+            changes.append(MetadataChange(
                 assetID: compareAsset.id,
                 before: originalAsset.metadata,
                 after: updatedMetadata
@@ -4174,8 +4275,8 @@ public final class AppModel {
             summary.changedCount += 1
         }
 
+        recordMetadataChangeGroup(label: "Culling decision", changes: changes)
         if summary.changedCount > 0 {
-            metadataRedoStack.removeAll()
             try updateActiveCullingSessionProgressAfterFlagChange()
         }
         return summary
@@ -4782,26 +4883,26 @@ public final class AppModel {
         guard (0...5).contains(rating) else {
             throw TeststripError.invalidState("rating must be between 0 and 5")
         }
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Rating") { metadata in
             metadata.rating = rating
         }
     }
 
     public func setFlagForSelectedAsset(_ flag: PickFlag?) throws {
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Flag") { metadata in
             metadata.flag = flag
         }
         try updateActiveCullingSessionProgressAfterFlagChange()
     }
 
     public func setColorLabelForSelectedAsset(_ colorLabel: ColorLabel?) throws {
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Color label") { metadata in
             metadata.colorLabel = colorLabel
         }
     }
 
     public func setKeywordTextForSelectedAsset(_ keywordText: String) throws {
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Keywords") { metadata in
             metadata.keywords = Self.keywords(from: keywordText)
         }
     }
@@ -4809,7 +4910,7 @@ public final class AppModel {
     public func removeKeywordFromSelectedAsset(_ keyword: String) throws {
         let key = Self.keywordKey(keyword)
         guard !key.isEmpty else { return }
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Keywords") { metadata in
             metadata.keywords.removeAll { Self.keywordKey($0) == key }
         }
     }
@@ -4817,7 +4918,7 @@ public final class AppModel {
     public func acceptSuggestedKeywordForSelectedAsset(_ keyword: String) throws {
         let cleanedKeyword = Self.cleanedKeyword(keyword)
         guard !cleanedKeyword.isEmpty else { return }
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Keywords") { metadata in
             guard !Self.keywordList(metadata.keywords, contains: cleanedKeyword) else { return }
             metadata.keywords.append(cleanedKeyword)
         }
@@ -4825,7 +4926,7 @@ public final class AppModel {
 
     public func acceptSuggestedCaptionForSelectedAsset(_ caption: String) throws {
         guard let portableCaption = Self.portableCaption(from: caption) else { return }
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Caption") { metadata in
             guard metadata.caption != portableCaption else { return }
             metadata.caption = portableCaption
         }
@@ -4849,6 +4950,7 @@ public final class AppModel {
         let cleanedKeyword = Self.cleanedKeyword(keyword)
         guard !cleanedKeyword.isEmpty else { return 0 }
         var appliedCount = 0
+        var changes: [MetadataChange] = []
 
         for assetID in assetIDs {
             guard try assetNeedsSuggestedKeyword(assetID: assetID, keyword: cleanedKeyword) else {
@@ -4862,7 +4964,7 @@ public final class AppModel {
             updatedMetadata.keywords.append(cleanedKeyword)
 
             try applyMetadataSnapshot(assetID: assetID, metadata: updatedMetadata)
-            metadataUndoStack.append(MetadataChange(
+            changes.append(MetadataChange(
                 assetID: assetID,
                 before: originalAsset.metadata,
                 after: updatedMetadata
@@ -4870,8 +4972,11 @@ public final class AppModel {
             appliedCount += 1
         }
 
+        recordMetadataChangeGroup(
+            label: "Applied \(cleanedKeyword) to \(Self.photoCountDescription(appliedCount))",
+            changes: changes
+        )
         if appliedCount > 0 {
-            metadataRedoStack.removeAll()
             statusMessage = "Applied \(cleanedKeyword) to \(Self.photoCountDescription(appliedCount))"
         }
         return appliedCount
@@ -5018,15 +5123,17 @@ public final class AppModel {
             guard let updatedAsset = updatedAssetsByID[assets[index].id] else { continue }
             assets[index] = updatedAsset
         }
-        for change in changes {
-            metadataUndoStack.append(MetadataChange(
-                assetID: change.updated.id,
-                before: change.original.metadata,
-                after: change.updated.metadata
-            ))
-        }
+        recordMetadataChangeGroup(
+            label: "Applied metadata to \(Self.photoCountDescription(changes.count))",
+            changes: changes.map { change in
+                MetadataChange(
+                    assetID: change.updated.id,
+                    before: change.original.metadata,
+                    after: change.updated.metadata
+                )
+            }
+        )
         try refreshCatalogSidebarCounts()
-        metadataRedoStack.removeAll()
         statusMessage = "Applied batch metadata to \(Self.photoCountDescription(changes.count))"
         return changes.count
     }
@@ -5109,19 +5216,19 @@ public final class AppModel {
     }
 
     public func setCaptionForSelectedAsset(_ caption: String) throws {
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Caption") { metadata in
             metadata.caption = Self.portableText(from: caption)
         }
     }
 
     public func setCreatorForSelectedAsset(_ creator: String) throws {
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Creator") { metadata in
             metadata.creator = Self.portableText(from: creator)
         }
     }
 
     public func setCopyrightForSelectedAsset(_ copyright: String) throws {
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Copyright") { metadata in
             metadata.copyright = Self.portableText(from: copyright)
         }
     }
@@ -5197,19 +5304,35 @@ public final class AppModel {
         return queuedCount
     }
 
+    private func recordMetadataChangeGroup(label: String, changes: [MetadataChange]) {
+        let effectiveChanges = changes.filter { $0.before != $0.after }
+        guard !effectiveChanges.isEmpty else { return }
+        metadataUndoStack.append(MetadataChangeGroup(label: label, changes: effectiveChanges))
+        metadataRedoStack.removeAll()
+    }
+
     public func undoMetadataChange() throws {
-        guard let change = metadataUndoStack.popLast() else { return }
-        try applyMetadataSnapshot(assetID: change.assetID, metadata: change.before)
-        metadataRedoStack.append(change)
+        guard let group = metadataUndoStack.popLast() else { return }
+        for change in group.changes.reversed() {
+            try applyMetadataSnapshot(assetID: change.assetID, metadata: change.before)
+        }
+        metadataRedoStack.append(group)
+        statusMessage = "Undid: \(group.label)"
     }
 
     public func redoMetadataChange() throws {
-        guard let change = metadataRedoStack.popLast() else { return }
-        try applyMetadataSnapshot(assetID: change.assetID, metadata: change.after)
-        metadataUndoStack.append(change)
+        guard let group = metadataRedoStack.popLast() else { return }
+        for change in group.changes {
+            try applyMetadataSnapshot(assetID: change.assetID, metadata: change.after)
+        }
+        metadataUndoStack.append(group)
+        statusMessage = "Redid: \(group.label)"
     }
 
-    private func updateSelectedAssetMetadata(_ update: (inout AssetMetadata) throws -> Void) throws {
+    private func updateSelectedAssetMetadata(
+        label: String = "Edit",
+        _ update: (inout AssetMetadata) throws -> Void
+    ) throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -5222,12 +5345,11 @@ public final class AppModel {
         guard updatedMetadata != originalAsset.metadata else { return }
 
         try applyMetadataSnapshot(assetID: selectedAssetID, metadata: updatedMetadata)
-        metadataUndoStack.append(MetadataChange(
+        recordMetadataChangeGroup(label: label, changes: [MetadataChange(
             assetID: selectedAssetID,
             before: originalAsset.metadata,
             after: updatedMetadata
-        ))
-        metadataRedoStack.removeAll()
+        )])
     }
 
     private static func keywords(from keywordText: String) -> [String] {
@@ -5561,12 +5683,11 @@ public final class AppModel {
         }
         try refreshCatalogSidebarCounts()
         if originalAsset.metadata != sidecarMetadata {
-            metadataUndoStack.append(MetadataChange(
+            recordMetadataChangeGroup(label: "Resolved XMP conflict", changes: [MetadataChange(
                 assetID: assetID,
                 before: originalAsset.metadata,
                 after: sidecarMetadata
-            ))
-            metadataRedoStack.removeAll()
+            )])
         }
         clearMetadataSyncState(assetID: assetID)
         try refreshAfterMetadataConflictResolution()
@@ -5603,12 +5724,11 @@ public final class AppModel {
         }
         try refreshCatalogSidebarCounts()
         if originalAsset.metadata != mergedMetadata {
-            metadataUndoStack.append(MetadataChange(
+            recordMetadataChangeGroup(label: "Resolved XMP conflict", changes: [MetadataChange(
                 assetID: assetID,
                 before: originalAsset.metadata,
                 after: mergedMetadata
-            ))
-            metadataRedoStack.removeAll()
+            )])
         }
 
         do {
@@ -6329,6 +6449,269 @@ public final class AppModel {
         }
     }
 
+    /// Runs autopilot over a scope: gathers already-computed signals, plans
+    /// provisional pick/reject/keyword proposals with the pure planner,
+    /// replaces any prior pending proposals for the identical scope, and
+    /// persists the new set. NOTHING is written to catalog metadata or XMP —
+    /// only `pending` proposal rows. Committing (a separate explicit gesture)
+    /// is the only path that writes metadata.
+    @discardableResult
+    public func runAutopilot(scope: AutopilotScope = .visible) throws -> AutopilotRunSummary {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let scopeAssets = try autopilotScopeAssets(scope, repository: catalog.repository)
+
+        var signalsByAssetID: [AssetID: [EvaluationSignal]] = [:]
+        var keywordCandidatesByAssetID: [AssetID: [String]] = [:]
+        for asset in scopeAssets {
+            let signals = (try? catalog.repository.evaluationSignals(assetID: asset.id)) ?? []
+            signalsByAssetID[asset.id] = signals
+            let candidates = Self.autopilotKeywordCandidates(
+                from: signals,
+                existingKeywords: asset.metadata.keywords
+            )
+            if !candidates.isEmpty {
+                keywordCandidatesByAssetID[asset.id] = candidates
+            }
+        }
+
+        let scopeKey = scopeAssets.map(\.id.rawValue).sorted().joined(separator: ",")
+        if let priorRunID = lastAutopilotRunIDByScopeKey[scopeKey] {
+            try catalog.repository.deleteAutopilotProposals(runID: priorRunID)
+        }
+
+        let runID = AutopilotRunID.new()
+        let planner = AutopilotProposalPlanner(stackBuilder: stackBuilder())
+        let input = AutopilotPlanInput(
+            assets: scopeAssets,
+            signalsByAssetID: signalsByAssetID,
+            keywordCandidatesByAssetID: keywordCandidatesByAssetID
+        )
+        let proposals = planner.proposals(for: input, runID: runID, now: Date())
+        try catalog.repository.save(proposals)
+        lastAutopilotRunIDByScopeKey[scopeKey] = runID
+
+        let summary = AutopilotRunSummary(
+            runID: runID,
+            keeperCount: proposals.filter { $0.kind == .pick }.count,
+            rejectCount: proposals.filter { $0.kind == .reject }.count,
+            keywordCount: proposals.filter { $0.kind == .keyword }.count,
+            stackCount: autopilotStackCount(for: scopeAssets)
+        )
+        autopilotRunSummary = summary
+        pendingAutopilotProposals = (try? catalog.repository.autopilotProposals(status: .pending)) ?? []
+        statusMessage = "Autopilot: \(summary.bannerText)"
+        return summary
+    }
+
+    public func autopilotProposalDecision(for assetID: AssetID) -> AutopilotProposalKind? {
+        pendingAutopilotProposals.first {
+            $0.assetID == assetID && ($0.kind == .pick || $0.kind == .reject)
+        }?.kind
+    }
+
+    public func dismissAutopilotRunSummary() {
+        autopilotRunSummary = nil
+    }
+
+    public var autopilotReviewProposalCount: Int {
+        pendingAutopilotProposals.count
+    }
+
+    /// Narrows the grid to just the assets that carry a pending proposal so the
+    /// user can review the provisional keeps/cuts (KEEP/CUT badges stay
+    /// visible) and commit or dismiss them. Reads only; writes nothing.
+    public func beginAutopilotReview() throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let assetIDs = distinctPendingAutopilotProposalAssetIDs()
+        selectedAssetSetID = nil
+        clearLibraryQueryFilters()
+        let loadedAssets = try catalog.repository.assets(ids: assetIDs, limit: Self.assetPageSize)
+        replaceAssets(loadedAssets, pageOffset: 0)
+        totalAssetCount = try catalog.repository.assetCount(ids: assetIDs)
+        isAutopilotReviewActive = true
+        selectedView = .grid
+    }
+
+    private func distinctPendingAutopilotProposalAssetIDs() -> [AssetID] {
+        var seen = Set<AssetID>()
+        var orderedIDs: [AssetID] = []
+        for proposal in pendingAutopilotProposals where seen.insert(proposal.assetID).inserted {
+            orderedIDs.append(proposal.assetID)
+        }
+        return orderedIDs
+    }
+
+    /// Commits the pending proposals for the given assets by writing their
+    /// flags/keywords through the grouped-undo metadata path as ONE undo group
+    /// labeled "Autopilot", then marks those proposals `committed`. This is the
+    /// ONLY autopilot path that writes catalog metadata/XMP, and it happens
+    /// only on this explicit user gesture.
+    @discardableResult
+    public func commitAutopilotProposals(assetIDs: [AssetID]) throws -> Int {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let targetAssetIDs = Set(assetIDs)
+        let targetProposals = pendingAutopilotProposals.filter { targetAssetIDs.contains($0.assetID) }
+        guard !targetProposals.isEmpty else { return 0 }
+
+        let proposalsByAsset = Dictionary(grouping: targetProposals, by: { $0.assetID })
+        var orderedTargetAssetIDs: [AssetID] = []
+        var seenAssets = Set<AssetID>()
+        for proposal in pendingAutopilotProposals where targetAssetIDs.contains(proposal.assetID) {
+            if seenAssets.insert(proposal.assetID).inserted {
+                orderedTargetAssetIDs.append(proposal.assetID)
+            }
+        }
+
+        var changes: [MetadataChange] = []
+        var committedProposalIDs: [AutopilotProposalID] = []
+        for assetID in orderedTargetAssetIDs {
+            guard let assetProposals = proposalsByAsset[assetID] else { continue }
+            let originalAsset = try catalog.repository.asset(id: assetID)
+            var updatedMetadata = originalAsset.metadata
+            for proposal in assetProposals {
+                switch proposal.kind {
+                case .pick:
+                    updatedMetadata.flag = .pick
+                case .reject:
+                    updatedMetadata.flag = .reject
+                case .keyword:
+                    if let keyword = proposal.keyword,
+                       !Self.keywordList(updatedMetadata.keywords, contains: keyword) {
+                        updatedMetadata.keywords.append(keyword)
+                    }
+                }
+                committedProposalIDs.append(proposal.id)
+            }
+            if updatedMetadata != originalAsset.metadata {
+                try applyMetadataSnapshot(assetID: assetID, metadata: updatedMetadata)
+                changes.append(MetadataChange(
+                    assetID: assetID,
+                    before: originalAsset.metadata,
+                    after: updatedMetadata
+                ))
+            }
+        }
+
+        recordMetadataChangeGroup(label: "Autopilot", changes: changes)
+        try catalog.repository.updateAutopilotProposalStatus(ids: committedProposalIDs, to: .committed)
+        lastCommittedAutopilotRunID = targetProposals.first?.runID
+        pendingAutopilotProposals = (try? catalog.repository.autopilotProposals(status: .pending)) ?? []
+        try refreshCatalogSidebarCounts()
+        statusMessage = "Committed \(committedProposalIDs.count) autopilot decisions"
+        return committedProposalIDs.count
+    }
+
+    @discardableResult
+    public func commitAllAutopilotProposals() throws -> Int {
+        try commitAutopilotProposals(assetIDs: distinctPendingAutopilotProposalAssetIDs())
+    }
+
+    @discardableResult
+    public func dismissAutopilotProposals(assetIDs: [AssetID]) throws -> Int {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let targetAssetIDs = Set(assetIDs)
+        let targetProposals = pendingAutopilotProposals.filter { targetAssetIDs.contains($0.assetID) }
+        guard !targetProposals.isEmpty else { return 0 }
+        try catalog.repository.updateAutopilotProposalStatus(ids: targetProposals.map(\.id), to: .dismissed)
+        pendingAutopilotProposals = (try? catalog.repository.autopilotProposals(status: .pending)) ?? []
+        statusMessage = "Dismissed \(targetProposals.count) proposals"
+        return targetProposals.count
+    }
+
+    public var canUndoAutopilotRun: Bool {
+        metadataUndoStack.last?.label == "Autopilot"
+    }
+
+    /// Reverses the last committed autopilot batch in one gesture: reverts the
+    /// "Autopilot" undo group and returns that run's committed proposals to
+    /// `pending` so they are reviewable (and their KEEP/CUT badges reappear).
+    public func undoAutopilotRun() throws {
+        guard canUndoAutopilotRun else { return }
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let runID = lastCommittedAutopilotRunID
+        try undoMetadataChange()
+        if let runID {
+            let committedProposalIDs = try catalog.repository.autopilotProposals(runID: runID)
+                .filter { $0.status == .committed }
+                .map(\.id)
+            try catalog.repository.updateAutopilotProposalStatus(ids: committedProposalIDs, to: .pending)
+            pendingAutopilotProposals = (try? catalog.repository.autopilotProposals(status: .pending)) ?? []
+        }
+        lastCommittedAutopilotRunID = nil
+        statusMessage = "Undid autopilot batch"
+    }
+
+    private func autopilotScopeAssets(_ scope: AutopilotScope, repository: CatalogRepository) throws -> [Asset] {
+        switch scope {
+        case .visible:
+            return assets
+        case .assetIDs(let ids):
+            guard !ids.isEmpty else { return [] }
+            return try repository.assets(ids: ids, limit: ids.count)
+        }
+    }
+
+    private func autopilotStackCount(for scopeAssets: [Asset]) -> Int {
+        stackBuilder()
+            .stacks(from: scopeAssets, visualSimilarityVectorsByAssetID: [:])
+            .filter { $0.assetIDs.count > 1 }
+            .count
+    }
+
+    /// Multi-frame near-duplicate stacks detected across the visible scope, for
+    /// the Agents panel's honest projection.
+    public var autopilotVisibleStackCount: Int {
+        autopilotStackCount(for: assets)
+    }
+
+    private static func autopilotKeywordCandidates(
+        from signals: [EvaluationSignal],
+        existingKeywords: [String]
+    ) -> [String] {
+        var seen = Set(existingKeywords.map(keywordKey).filter { !$0.isEmpty })
+        var candidates: [String] = []
+        for signal in signals {
+            for label in objectLabels(from: signal) {
+                let keyword = cleanedKeyword(label)
+                let key = keywordKey(keyword)
+                guard !key.isEmpty, seen.insert(key).inserted else { continue }
+                candidates.append(keyword)
+            }
+        }
+        return candidates
+    }
+
+    /// Rebuilds provisional-proposal state after a session restore so KEEP/CUT
+    /// badges and the auto-cull banner survive relaunch. Reads only persisted
+    /// `pending` proposals; never writes.
+    private func reconstructAutopilotStateAfterLoad() throws {
+        guard let catalog else { return }
+        let pending = try catalog.repository.autopilotProposals(status: .pending)
+        pendingAutopilotProposals = pending
+        guard let latestRunID = pending.max(by: { $0.createdAt < $1.createdAt })?.runID else {
+            return
+        }
+        let latestRunProposals = pending.filter { $0.runID == latestRunID }
+        let keeperCount = latestRunProposals.filter { $0.kind == .pick }.count
+        autopilotRunSummary = AutopilotRunSummary(
+            runID: latestRunID,
+            keeperCount: keeperCount,
+            rejectCount: latestRunProposals.filter { $0.kind == .reject }.count,
+            keywordCount: latestRunProposals.filter { $0.kind == .keyword }.count,
+            stackCount: keeperCount
+        )
+    }
+
     public func requestCurrentScopeAssetEvaluations(providers: [String] = AppModel.defaultEvaluationProviderNames) throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
@@ -6388,7 +6771,33 @@ public final class AppModel {
         // requestEvaluation dedups against the live queue, so this cannot
         // double-enqueue.
         pendingImportEvaluationAssetIDs.formUnion(importedAssetIDs)
+        if autopilotArmedForActiveImport {
+            armedAutopilotImportAssetIDs = (armedAutopilotImportAssetIDs ?? []).union(importedAssetIDs)
+        }
         enqueueImportEvaluationsForCachedPreviews(assetIDs: importedAssetIDs)
+        runImportAutopilotIfArmedAndResolved()
+    }
+
+    // Runs autopilot over the armed import set once every armed asset's
+    // evaluations have resolved (nothing queued waiting on a preview, nothing
+    // in-flight in the worker). Runs at most once per armed import, then disarms.
+    private func runImportAutopilotIfArmedAndResolved() {
+        guard let armed = armedAutopilotImportAssetIDs, !armed.isEmpty else { return }
+        if armed.contains(where: { pendingImportEvaluationAssetIDs.contains($0) }) { return }
+        let inFlightEvaluationAssetIDs = Set(evaluationAssetIDsByItemID.values)
+        if armed.contains(where: { inFlightEvaluationAssetIDs.contains($0) }) { return }
+        armedAutopilotImportAssetIDs = nil
+        autopilotArmedForActiveImport = false
+        runImportAutopilotIfEnabled(importedAssetIDs: Array(armed))
+    }
+
+    private func runImportAutopilotIfEnabled(importedAssetIDs: [AssetID]) {
+        guard autopilotEnabled else { return }
+        do {
+            _ = try runAutopilot(scope: .assetIDs(importedAssetIDs))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func enqueueImportEvaluationsForCachedPreviews(assetIDs: [AssetID]) {
@@ -6604,6 +7013,7 @@ public final class AppModel {
                let previewAssetID = Self.previewAssetID(from: itemID) {
                 enqueueImportEvaluationsForCachedPreviews(assetIDs: [previewAssetID])
             }
+            runImportAutopilotIfArmedAndResolved()
         case .completedImport(
             let itemID,
             _,
@@ -7061,6 +7471,7 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
+        isAutopilotReviewActive = false
         try refreshWorkHistorySearchResults(repository: catalog.repository)
         if let explicitAssetIDs = selectedExplicitAssetIDs {
             let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, limit: Self.assetPageSize)
@@ -9137,7 +9548,12 @@ public final class AppModel {
     }
 
     @MainActor
-    public func beginImportFolder(_ folderURL: URL, evaluateAfterImport: Bool = true, importNewOnly: Bool = true) {
+    public func beginImportFolder(
+        _ folderURL: URL,
+        evaluateAfterImport: Bool = true,
+        importNewOnly: Bool = true,
+        autopilotAfterImport: Bool = false
+    ) {
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
             return
@@ -9150,6 +9566,7 @@ public final class AppModel {
         // the in-flight import's auto-evaluation outcome.
         importAutoEvaluationEnabled = evaluateAfterImport
         let duplicateHandling: DuplicateHandling = importNewOnly ? .skipCatalogedContent : .importAll
+        autopilotArmedForActiveImport = autopilotAfterImport
         if let blockingReason = ImportSourcePreflight.blockingReason(for: folderURL) {
             failImportBeforeStart(folderURL: folderURL, reason: blockingReason)
             return
@@ -9224,7 +9641,8 @@ public final class AppModel {
         destinationPolicy: ImportDestinationPolicy = .flat,
         secondCopyDestination: URL? = nil,
         evaluateAfterImport: Bool = true,
-        importNewOnly: Bool = true
+        importNewOnly: Bool = true,
+        autopilotAfterImport: Bool = false
     ) {
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
@@ -9238,6 +9656,7 @@ public final class AppModel {
         // the in-flight import's auto-evaluation outcome.
         importAutoEvaluationEnabled = evaluateAfterImport
         let duplicateHandling: DuplicateHandling = importNewOnly ? .skipCatalogedContent : .importAll
+        autopilotArmedForActiveImport = autopilotAfterImport
         if let blockingReason = ImportSourcePreflight.blockingReason(for: source) {
             failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: blockingReason)
             return

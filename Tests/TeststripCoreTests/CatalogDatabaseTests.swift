@@ -16,6 +16,52 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(fetched, asset)
     }
 
+    func testPersistsAndReadsAutopilotProposalsByRunAndStatus() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "autopilot-proposals")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset.testAsset(path: "/Volumes/NAS/Job/frame.cr2", rating: 0)
+        try repository.upsert(asset)
+        let runID = AutopilotRunID(rawValue: "run-1")
+        let keep = AutopilotProposal(
+            id: AutopilotProposalID(rawValue: "p-keep"),
+            runID: runID,
+            assetID: asset.id,
+            kind: .pick,
+            keyword: nil,
+            rationale: "Sharpest frame in its burst",
+            confidence: 0.82,
+            status: .pending,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 10)
+        )
+        let keyword = AutopilotProposal(
+            id: AutopilotProposalID(rawValue: "p-kw"),
+            runID: runID,
+            assetID: asset.id,
+            kind: .keyword,
+            keyword: "dog",
+            rationale: "Vision detected dog",
+            confidence: 0.7,
+            status: .pending,
+            createdAt: Date(timeIntervalSince1970: 11),
+            updatedAt: Date(timeIntervalSince1970: 11)
+        )
+        try repository.save([keep, keyword])
+
+        XCTAssertEqual(try repository.autopilotProposals(runID: runID).map(\.id), [keep.id, keyword.id])
+        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
+
+        try repository.updateAutopilotProposalStatus(ids: [keep.id], to: .committed)
+        XCTAssertEqual(try repository.autopilotProposals(status: .committed).map(\.id), [keep.id])
+        XCTAssertEqual(try repository.autopilotProposals(status: .pending).map(\.id), [keyword.id])
+        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 1)
+
+        try repository.deleteAutopilotProposals(runID: runID)
+        XCTAssertEqual(try repository.autopilotProposals(runID: runID), [])
+    }
+
     func testSecondConnectionWaitsForBusyWriter() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-busy-timeout")
         let catalogURL = directory.appendingPathComponent("catalog.sqlite")
