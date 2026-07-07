@@ -70,7 +70,7 @@ enum FolderTreePresentation {
         }
         return FolderTreeNode(
             fullPath: "/" + allComponents.joined(separator: "/") + "/",
-            title: mergedComponents[mergedComponents.count - 1],
+            title: mergedComponents.last ?? name,
             assetCount: totalAssetCount(currentNode),
             children: children
         )

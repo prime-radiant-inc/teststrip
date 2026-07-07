@@ -3107,8 +3107,10 @@ public final class AppModel {
     /// current library scope/selection - purely a rendering concern, so it
     /// never calls `reload()`.
     public func toggleFolderExpansion(path: String) {
-        if !expandedFolderPaths.insert(path).inserted {
+        if expandedFolderPaths.contains(path) {
             expandedFolderPaths.remove(path)
+        } else {
+            expandedFolderPaths.insert(path)
         }
         rebuildSidebarSections()
     }
