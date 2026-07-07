@@ -131,21 +131,84 @@ public struct ExportService: Sendable {
             format: settings.format,
             claimedFilenames: &claimedFilenames
         )
-        guard let destination = CGImageDestinationCreateWithURL(destinationURL as CFURL, settings.format.utType.identifier as CFString, 1, nil) else {
-            return .failed(message: "could not create \(destinationURL.lastPathComponent)")
-        }
-        var destinationProperties: [CFString: Any] = settings.includeSourceMetadata
+        let destinationProperties: [CFString: Any] = settings.includeSourceMetadata
             ? carriedSourceProperties(from: source)
             : [:]
-        if settings.format == .jpeg {
-            destinationProperties[kCGImageDestinationLossyCompressionQuality] = settings.jpegQuality
-        }
-        CGImageDestinationAddImage(destination, image, destinationProperties as CFDictionary)
-        guard CGImageDestinationFinalize(destination) else {
-            return .failed(message: "could not write \(destinationURL.lastPathComponent)")
+        switch settings.format {
+        case .jpeg:
+            guard let data = jpegData(for: image, settings: settings, destinationProperties: destinationProperties) else {
+                return .failed(message: "could not write \(destinationURL.lastPathComponent)")
+            }
+            do {
+                try data.write(to: destinationURL)
+            } catch {
+                return .failed(message: "could not write \(destinationURL.lastPathComponent): \(error.localizedDescription)")
+            }
+        case .png:
+            guard let destination = CGImageDestinationCreateWithURL(destinationURL as CFURL, ExportFormat.png.utType.identifier as CFString, 1, nil) else {
+                return .failed(message: "could not create \(destinationURL.lastPathComponent)")
+            }
+            CGImageDestinationAddImage(destination, image, destinationProperties as CFDictionary)
+            guard CGImageDestinationFinalize(destination) else {
+                return .failed(message: "could not write \(destinationURL.lastPathComponent)")
+            }
         }
         return .exported(destinationURL: destinationURL)
     }
+
+    /// Encodes a JPEG at `settings.jpegQuality`, then — only when
+    /// `targetFileSizeBytes` is set and that initial encode is too large —
+    /// binary-searches quality downward to fit the budget. Never fails the
+    /// export just because the budget is unreachable: it returns the
+    /// smallest encoding it found (best effort).
+    private func jpegData(
+        for image: CGImage,
+        settings: ExportSettings,
+        destinationProperties: [CFString: Any]
+    ) -> Data? {
+        guard let initialData = encodedJPEGData(image: image, quality: settings.jpegQuality, properties: destinationProperties) else {
+            return nil
+        }
+        guard let targetByteBudget = settings.targetFileSizeBytes, initialData.count > targetByteBudget else {
+            return initialData
+        }
+        var lowQuality = 0.0
+        var highQuality = settings.jpegQuality
+        var bestFit: Data?
+        var smallestSeen = initialData
+        for _ in 0..<Self.qualitySteppingMaxIterations {
+            let midQuality = (lowQuality + highQuality) / 2
+            guard let midData = encodedJPEGData(image: image, quality: midQuality, properties: destinationProperties) else {
+                break
+            }
+            if midData.count < smallestSeen.count {
+                smallestSeen = midData
+            }
+            if midData.count <= targetByteBudget {
+                bestFit = midData
+                lowQuality = midQuality
+            } else {
+                highQuality = midQuality
+            }
+        }
+        return bestFit ?? smallestSeen
+    }
+
+    private func encodedJPEGData(image: CGImage, quality: Double, properties: [CFString: Any]) -> Data? {
+        let mutableData = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(mutableData, ExportFormat.jpeg.utType.identifier as CFString, 1, nil) else {
+            return nil
+        }
+        var properties = properties
+        properties[kCGImageDestinationLossyCompressionQuality] = quality
+        CGImageDestinationAddImage(destination, image, properties as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else {
+            return nil
+        }
+        return mutableData as Data
+    }
+
+    private static let qualitySteppingMaxIterations = 8
 
     private func carriedSourceProperties(from source: CGImageSource) -> [CFString: Any] {
         guard var properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
