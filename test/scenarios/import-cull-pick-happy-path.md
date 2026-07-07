@@ -11,9 +11,9 @@ shows nothing), this card catches it where per-feature unit tests can't.
 - Fresh build, isolated catalog (starts with synthetic seed already cataloged;
   we import a *new* folder on top so the import path is exercised for real):
   ```bash
-  ./script/build_and_run.sh --isolated
+  ./script/build_and_run.sh --smoke
   ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-  DB="$ISOLATED/catalog.sqlite"
+  DB="$ISOLATED/Teststrip/catalog.sqlite"
   ```
 - A fixture folder of a handful of JPEGs to import: `IMP=$(mktemp -d)/shoot`.
   Reuse the same JPEG-writing path the import verifiers use; a small burst

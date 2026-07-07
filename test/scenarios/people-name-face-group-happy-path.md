@@ -13,7 +13,7 @@ merely-suggested group leaves the catalog untouched).
   ```bash
   ./script/build_and_run.sh --sample-photos      # or --real-corpus, if it has people in it
   ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-  DB="$ISOLATED/catalog.sqlite"
+  DB="$ISOLATED/Teststrip/catalog.sqlite"
   ```
   If `--sample-photos` has no faces either, that is a fixture gap: report it and
   recommend a face-bearing seed corpus, rather than passing the card vacuously.

@@ -11,9 +11,9 @@ folder, and never drops a distinct frame that merely shares a hash prefix.
 ## Pre-state
 - Fresh build, isolated catalog:
   ```bash
-  ./script/build_and_run.sh --isolated
+  ./script/build_and_run.sh --smoke
   ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-  DB="$ISOLATED/catalog.sqlite"
+  DB="$ISOLATED/Teststrip/catalog.sqlite"
   ```
 - **Two fixture folders** (KNOWN FIXTURE GAP — no seed command builds these):
   - `CARD1/`: N distinct JPEGs.

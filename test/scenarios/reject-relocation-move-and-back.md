@@ -11,9 +11,9 @@ exact same path on Move back — per-file atomic, nothing orphaned.
 ## Pre-state
 - Fresh build, isolated catalog:
   ```bash
-  ./script/build_and_run.sh --isolated
+  ./script/build_and_run.sh --smoke
   ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-  DB="$ISOLATED/catalog.sqlite"
+  DB="$ISOLATED/Teststrip/catalog.sqlite"
   ```
 - A scratch destination folder that does NOT already exist inside any source
   root: `REJECTS=$(mktemp -d)/rejects` (do not `mkdir` it; let the app create it).

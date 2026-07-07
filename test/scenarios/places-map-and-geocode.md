@@ -12,7 +12,7 @@ a human place name, cross-checked against the `place_cache` table.
   ```bash
   ./script/build_and_run.sh --isolated
   ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-  DB="$ISOLATED/catalog.sqlite"
+  DB="$ISOLATED/Teststrip/catalog.sqlite"
   ```
 - **Network reachable** — reverse geocoding is a live CLGeocoder round-trip.
   First confirm the geocoder path works at all:

@@ -11,7 +11,7 @@ unchecked strips it.
 ## Pre-state
 - Fresh build, isolated catalog:
   ```bash
-  ./script/build_and_run.sh --isolated
+  ./script/build_and_run.sh --smoke
   ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
   ```
 - Scratch export destination: `OUT=$(mktemp -d)/export` (let the app create it).

@@ -15,11 +15,16 @@ keyboard cull, evaluate, import, card-import) is already driven live by
 ## How a card is run
 
 1. **Build fresh and launch isolated.** Every card's Pre-state launches with
-   `./script/build_and_run.sh --isolated` (or a seed variant). `--isolated`
-   points the app at a throwaway application-support directory under
-   `$TMPDIR`, so a driving session never touches Jesse's real catalog at
-   `~/Library/Application Support/Teststrip`. Confirm the running instance is
-   the freshly built one, not a process left up from a prior run.
+   `./script/build_and_run.sh --smoke` (or a seed variant). **`--smoke` seeds
+   24 synthetic photos** into a throwaway application-support directory under
+   `$TMPDIR`; **plain `--isolated` gives an *empty* catalog** — use `--smoke`
+   when the card needs seeded content, `--sample-photos`/`--real-corpus` when
+   it needs real photos (faces, EXIF, GPS). Either way the app never touches
+   Jesse's real catalog at `~/Library/Application Support/Teststrip`. Note the
+   catalog lives at **`$ISOLATED/Teststrip/catalog.sqlite`** (nested under a
+   `Teststrip/` subdir; the top-level `catalog.sqlite` is a zero-byte stub).
+   Confirm the running instance is the freshly built one, not a process left up
+   from a prior run.
 2. **Drive via accessibility, not pixels.** The pattern the `verify_*.sh`
    scripts use: `script/activate_app.sh Teststrip` to bring it frontmost
    (raw `NSRunningApplication.activate` is refused when another app holds
@@ -27,9 +32,24 @@ keyboard cull, evaluate, import, card-import) is already driven live by
    that finds an element by role + accessible label, `AXPerformAction`s it,
    and `waitFor`s a predicate on the re-dumped tree. Match on the labels the
    card quotes (button titles, `accessibilityLabel`s), never brittle indices.
+   Three hard-won realities of driving this app, learned running these cards:
+   - **AX content is only vended while the app is genuinely key.** A separate
+     `swift` process that starts after focus has slipped back to the terminal
+     sees an empty window subtree (menu bar only). Call `app.activate` *inside*
+     the driving process and retry the dump in a short loop until the window's
+     children appear before acting.
+   - **The grid is lazily virtualized.** Off-screen thumbnails are not in the
+     AX tree at all — scroll the target into view before matching its filename,
+     or you will get a false "not found." Present-but-not-visible ≠ absent.
+   - **Icon-only controls carry their meaning in `AXHelp`, not the title.** The
+     star rating buttons AX-title as `"Favorite"` (the SF Symbol default); their
+     distinguishing label is the help text `"Rate 1"…"Rate 5"`. Match on
+     `kAXHelpAttribute` for such controls, and read ratings/labels from the
+     catalog's `metadata_json` (there is no `rating` column) and the sidecar's
+     `xmp:Rating="N"` attribute.
 3. **Assert against ground truth, not just the render.** The UI can lag or
    lie. Cross-check every rendered claim against the on-disk catalog
-   (`$ISOLATED/catalog.sqlite`) or the filesystem (relocated originals, XMP
+   (`$ISOLATED/Teststrip/catalog.sqlite`) or the filesystem (relocated originals, XMP
    sidecars, exported files) — that is authoritative.
 4. **Capture evidence you re-read.** A screenshot via
    `script/capture_app_window.sh` and/or the on-disk value. Evidence you

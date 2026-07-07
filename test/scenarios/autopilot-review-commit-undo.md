@@ -11,14 +11,14 @@ Commit, and Undo all must return the catalog to its pre-run state.
 ## Pre-state
 - Fresh build, isolated catalog seeded with synthetic photos:
   ```bash
-  ./script/build_and_run.sh --isolated
+  ./script/build_and_run.sh --smoke
   ```
-  `--isolated` seeds the synthetic app catalog into a throwaway
+  `--smoke` seeds the synthetic app catalog into a throwaway
   application-support dir under `$TMPDIR` and opens the app against it. Capture
-  that dir — every ground-truth query runs against `$ISOLATED/catalog.sqlite`:
+  that dir — every ground-truth query runs against `$ISOLATED/Teststrip/catalog.sqlite`:
   ```bash
   ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-  DB="$ISOLATED/catalog.sqlite"
+  DB="$ISOLATED/Teststrip/catalog.sqlite"
   ```
 - The grid shows the seeded photos. No autopilot banner is visible yet.
 
@@ -84,6 +84,6 @@ Quit the app instance you launched. Leave any pre-existing Teststrip untouched.
   (`sqlite3 "$DB" .schema assets`) before trusting a zero count; a query
   against a wrong column silently reads 0 and would make the invariant check
   vacuous.
-- Autopilot needs cached previews/evaluations to propose. `--isolated` seeds
+- Autopilot needs cached previews/evaluations to propose. `--smoke` seeds
   evaluable synthetic photos; if the banner reports 0 proposals, evaluation
   hasn't drained — wait on the Activity panel before running.
