@@ -287,7 +287,11 @@ public struct AppleVisionAnalyzer: AppleVisionAnalyzing {
                 observation.topCandidates(1).first?.string
             },
             classificationLabels: (classificationRequest.results ?? [])
-                .filter { $0.confidence > 0 }
+                // VNClassifyImageRequest scores Apple's full ~1,300-label
+                // taxonomy; confidence > 0 keeps ~100+ noise labels per photo.
+                // The precision/recall filter is Apple's intended way to keep
+                // only the labels that actually describe the image.
+                .filter { $0.hasMinimumRecall(0.01, forPrecision: 0.9) }
                 .map { AppleVisionLabel(identifier: $0.identifier, confidence: Double($0.confidence)) },
             imageFeaturePrintVector: Self.imageFeaturePrintVector(from: imageFeaturePrintRequest.results?.first),
             faces: faces
