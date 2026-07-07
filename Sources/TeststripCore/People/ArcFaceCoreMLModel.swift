@@ -55,6 +55,18 @@ public final class ArcFaceCoreMLModel: FaceEmbeddingModel, @unchecked Sendable {
         if let bundled = Bundle.main.url(forResource: "arcface-w600k-r50", withExtension: "mlpackage") {
             urls.append(bundled)
         }
+        // Face embedding runs in the out-of-process worker, whose Bundle.main is
+        // Contents/Helpers — not the app's Contents/Resources where the model is
+        // bundled. Resolve the enclosing .app/Contents/Resources from the
+        // executable path so both the app (Contents/MacOS) and the worker
+        // (Contents/Helpers) find the same model.
+        if let executable = Bundle.main.executableURL {
+            let contentsResources = executable
+                .deletingLastPathComponent()   // .../Contents/{MacOS,Helpers}
+                .deletingLastPathComponent()   // .../Contents
+                .appendingPathComponent("Resources/\(modelFileName)")
+            urls.append(contentsResources)
+        }
         let devPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("sample-data/models/\(modelFileName)")
         urls.append(devPath)
