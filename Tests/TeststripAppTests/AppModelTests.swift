@@ -4342,6 +4342,31 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.canUndoMetadataChange)
     }
 
+    func testUndoAutopilotRunRevertsMetadataAndRestoresPendingProposals() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "undoall-lead", path: "/Photos/Job/undoall-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "undoall-alt", path: "/Photos/Job/undoall-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "undo-all-autopilot", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+        _ = try model.commitAllAutopilotProposals()
+        XCTAssertTrue(model.canUndoAutopilotRun)
+
+        try model.undoAutopilotRun()
+
+        XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
+        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
+        XCTAssertEqual(model.autopilotProposalDecision(for: alternate.id), .pick)
+        XCTAssertFalse(model.canUndoAutopilotRun)
+    }
+
     func testDismissAutopilotProposalsLeavesMetadataUntouched() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let lead = makeAsset(id: "dismiss-lead", path: "/Photos/Job/dismiss-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))

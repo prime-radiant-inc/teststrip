@@ -6478,6 +6478,31 @@ public final class AppModel {
         return targetProposals.count
     }
 
+    public var canUndoAutopilotRun: Bool {
+        metadataUndoStack.last?.label == "Autopilot"
+    }
+
+    /// Reverses the last committed autopilot batch in one gesture: reverts the
+    /// "Autopilot" undo group and returns that run's committed proposals to
+    /// `pending` so they are reviewable (and their KEEP/CUT badges reappear).
+    public func undoAutopilotRun() throws {
+        guard canUndoAutopilotRun else { return }
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let runID = lastCommittedAutopilotRunID
+        try undoMetadataChange()
+        if let runID {
+            let committedProposalIDs = try catalog.repository.autopilotProposals(runID: runID)
+                .filter { $0.status == .committed }
+                .map(\.id)
+            try catalog.repository.updateAutopilotProposalStatus(ids: committedProposalIDs, to: .pending)
+            pendingAutopilotProposals = (try? catalog.repository.autopilotProposals(status: .pending)) ?? []
+        }
+        lastCommittedAutopilotRunID = nil
+        statusMessage = "Undid autopilot batch"
+    }
+
     private func autopilotScopeAssets(_ scope: AutopilotScope, repository: CatalogRepository) throws -> [Asset] {
         switch scope {
         case .visible:

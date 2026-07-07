@@ -2193,9 +2193,9 @@ struct LibraryGridView: View {
         VStack(spacing: 0) {
             if let summary = model.autopilotRunSummary {
                 AutopilotBannerView(
-                    presentation: AutopilotBannerPresentation(summary: summary),
+                    presentation: AutopilotBannerPresentation(summary: summary, canUndoAll: model.canUndoAutopilotRun),
                     review: { beginAutopilotReview() },
-                    undoAll: {},
+                    undoAll: { undoAutopilotRun() },
                     dismiss: { model.dismissAutopilotRunSummary() }
                 )
             }
@@ -2233,6 +2233,14 @@ struct LibraryGridView: View {
     private func beginAutopilotReview() {
         do {
             try model.beginAutopilotReview()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func undoAutopilotRun() {
+        do {
+            try model.undoAutopilotRun()
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -3153,7 +3161,7 @@ private struct LoupeView: View {
         VStack(spacing: 0) {
             if let summary = model.autopilotRunSummary {
                 AutopilotBannerView(
-                    presentation: AutopilotBannerPresentation(summary: summary),
+                    presentation: AutopilotBannerPresentation(summary: summary, canUndoAll: model.canUndoAutopilotRun),
                     review: {
                         do {
                             try model.beginAutopilotReview()
@@ -3161,7 +3169,13 @@ private struct LoupeView: View {
                             model.errorMessage = error.localizedDescription
                         }
                     },
-                    undoAll: {},
+                    undoAll: {
+                        do {
+                            try model.undoAutopilotRun()
+                        } catch {
+                            model.errorMessage = error.localizedDescription
+                        }
+                    },
                     dismiss: { model.dismissAutopilotRunSummary() }
                 )
             }
