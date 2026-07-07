@@ -30,6 +30,35 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertLessThanOrEqual(max(dimensions.width, dimensions.height), PreviewLevel.medium.maxPixelDimension!)
     }
 
+    func testGeneratePreviewCommandRendersOriginalLevelAtFullResolution() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-command-executor-original")
+        let source = root.appendingPathComponent("source.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1600, height: 1000)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "asset-1"),
+            originalURL: source,
+            volumeIdentifier: "local",
+            fingerprint: try fileFingerprint(for: source),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .original))
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
+
+        let result = try executor.execute(.generatePreview(assetID: asset.id, level: .original))
+
+        XCTAssertEqual(result, .completed("generated original preview for source.jpg"))
+        let previewURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .original))
+        let dimensions = try PreviewRenderer().dimensions(of: previewURL)
+        XCTAssertEqual(dimensions, PreviewDimensions(width: 1600, height: 1000))
+        XCTAssertEqual(try repository.pendingPreviewGenerationItems(), [])
+    }
+
     func testGeneratePreviewCommandClearsPendingPreviewGeneration() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-preview-queue-clear")
         let source = root.appendingPathComponent("source.jpg")

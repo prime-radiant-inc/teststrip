@@ -43,6 +43,19 @@ final class PreviewRendererTests: XCTestCase {
         )
     }
 
+    func testRendererCreatesFullResolutionOriginalPreview() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "preview-render-original")
+        let source = directory.appendingPathComponent("source.jpg")
+        let output = directory.appendingPathComponent("original.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 1200, height: 800)
+
+        let renderer = PreviewRenderer()
+        try renderer.render(sourceURL: source, level: .original, destinationURL: output)
+
+        let dimensions = try renderer.dimensions(of: output)
+        XCTAssertEqual(dimensions, PreviewDimensions(width: 1200, height: 800))
+    }
+
     func testRendererWrapsDestinationDirectoryCreationFailureAsIO() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "preview-render-directory-error")
         let source = directory.appendingPathComponent("source.jpg")

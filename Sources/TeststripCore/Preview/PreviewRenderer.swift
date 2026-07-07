@@ -16,17 +16,18 @@ public struct PreviewRenderer: Sendable {
     public init() {}
 
     public func render(sourceURL: URL, level: PreviewLevel, destinationURL: URL) throws {
-        guard let maxDimension = level.maxPixelDimension else {
-            throw TeststripError.invalidState("original preview level is not rendered into cache")
-        }
         guard let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil) else {
             throw TeststripError.unsupportedFormat("could not read \(sourceURL.lastPathComponent)")
         }
-        let options: [CFString: Any] = [
+        // Levels without a pixel bound (.original) decode at the source's full
+        // resolution so the loupe's 1:1 pixel zoom has real pixels to show.
+        var options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxDimension
+            kCGImageSourceCreateThumbnailWithTransform: true
         ]
+        if let maxDimension = level.maxPixelDimension {
+            options[kCGImageSourceThumbnailMaxPixelSize] = maxDimension
+        }
         guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
             throw TeststripError.unsupportedFormat("could not render preview for \(sourceURL.lastPathComponent)")
         }

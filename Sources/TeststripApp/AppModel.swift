@@ -109,6 +109,7 @@ public enum CullingShortcut: Equatable, Sendable {
     case reject
     case clearFlag
     case acceptStackSelection
+    case toggleZoom
 
     public init?(key: CullingShortcutKey) {
         switch key {
@@ -140,6 +141,7 @@ public enum CullingShortcut: Equatable, Sendable {
             case "p": self = .pick
             case "x": self = .reject
             case "u": self = .clearFlag
+            case "z": self = .toggleZoom
             default: return nil
             }
         }
@@ -210,6 +212,9 @@ public enum CullingCommandMenuPresentation {
             CullingCommandMenuItem(title: "Pick", shortcut: .pick, key: .character("p")),
             CullingCommandMenuItem(title: "Reject", shortcut: .reject, key: .character("x")),
             CullingCommandMenuItem(title: "Clear Flag", shortcut: .clearFlag, key: .character("u"))
+        ]),
+        CullingCommandMenuSection(title: "Loupe", items: [
+            CullingCommandMenuItem(title: "Toggle 1:1 Zoom", shortcut: .toggleZoom, key: .character("z"))
         ])
     ]
 }
@@ -1225,6 +1230,9 @@ public final class AppModel {
     public var selectedAssetID: AssetID? {
         didSet { persistSessionState() }
     }
+    // Loupe 1:1 zoom state: nil shows the fitted frame. Reset whenever the
+    // selection moves so every new frame starts fitted.
+    public private(set) var loupeZoomFocus: LoupeZoomFocus?
     public private(set) var selectedBatchAssetIDs: Set<AssetID>
     private var selectedBatchAssetIDOrder: [AssetID]
     private var selectedBatchAssetSortKeys: [AssetID: Int]
@@ -3105,6 +3113,9 @@ public final class AppModel {
     }
 
     private func selectAssetID(_ assetID: AssetID?) {
+        if assetID != selectedAssetID {
+            resetLoupeZoom()
+        }
         selectedAssetID = assetID
         updateCompareSetAfterSelectionChange(to: assetID)
         guard let assetID else { return }
@@ -4291,7 +4302,21 @@ public final class AppModel {
         case .acceptStackSelection:
             clearCullingMetadataDecisionFeedback()
             try acceptSelectedStackSelectionForCulling()
+        case .toggleZoom:
+            toggleLoupeZoom()
         }
+    }
+
+    public func toggleLoupeZoom() {
+        loupeZoomFocus = loupeZoomFocus == nil ? .center : nil
+    }
+
+    public func zoomLoupe(to focus: LoupeZoomFocus) {
+        loupeZoomFocus = focus
+    }
+
+    public func resetLoupeZoom() {
+        loupeZoomFocus = nil
     }
 
     private func applyCullingCommandAndAdvance(_ command: CullingCommand) throws {
@@ -6031,6 +6056,11 @@ public final class AppModel {
     }
 
     public func requestVisibleLoupePreview(assetID: AssetID) throws {
+        try requestVisibleLoupeAssetPreview(assetID: assetID)
+        try prefetchLoupeNeighborLargePreviews(around: assetID)
+    }
+
+    private func requestVisibleLoupeAssetPreview(assetID: AssetID) throws {
         let request = PreviewScheduler().request(
             assetID: assetID,
             context: .loupe(isVisible: true, requestedFullResolution: false)
@@ -6045,6 +6075,70 @@ public final class AppModel {
             try requestPreview(assetID: assetID, level: .medium, placement: .front)
         }
         try requestPreview(assetID: assetID, level: request.level, placement: .front)
+    }
+
+    // Warms the immediate neighbors' large previews so arrow-key advance in
+    // the loupe lands on a sharp frame. Bounded to one ahead and one behind;
+    // frames whose originals are unreachable are skipped.
+    private func prefetchLoupeNeighborLargePreviews(around assetID: AssetID) throws {
+        guard workerSupervisor != nil else { return }
+        guard let index = assets.firstIndex(where: { $0.id == assetID }) else { return }
+        for neighborIndex in [index + 1, index - 1] where assets.indices.contains(neighborIndex) {
+            let neighbor = assets[neighborIndex]
+            guard !neighbor.availability.requiresCachedPreviewOnly else { continue }
+            let request = PreviewScheduler().request(
+                assetID: neighbor.id,
+                context: .loupe(isVisible: false, requestedFullResolution: false)
+            )
+            try requestPreview(assetID: request.assetID, level: request.level, placement: .back)
+        }
+    }
+
+    // Escalates the zoomed loupe frame to an original-resolution render when
+    // the best cached preview cannot cover the asset's pixels at 1:1. The
+    // render happens in the worker through the normal preview queue; nothing
+    // decodes on the main thread.
+    public func requestLoupeFullResolutionPreview(assetID: AssetID) throws {
+        guard LoupeZoomRenderPolicy.fullResolutionIsRequired(
+            cachedLevel: cachedLoupePreviewLevel(for: assetID),
+            assetMaxPixelDimension: assetMaxPixelDimension(for: assetID)
+        ) else {
+            return
+        }
+        guard let asset = assets.first(where: { $0.id == assetID }),
+              !asset.availability.requiresCachedPreviewOnly else {
+            return
+        }
+        let request = PreviewScheduler().request(
+            assetID: assetID,
+            context: .loupe(isVisible: true, requestedFullResolution: true)
+        )
+        try requestPreview(assetID: request.assetID, level: request.level, placement: .front)
+    }
+
+    public func loupeZoomFullResolutionStatus(for assetID: AssetID) -> LoupeZoomFullResolutionStatus {
+        guard LoupeZoomRenderPolicy.fullResolutionIsRequired(
+            cachedLevel: cachedLoupePreviewLevel(for: assetID),
+            assetMaxPixelDimension: assetMaxPixelDimension(for: assetID)
+        ) else {
+            return .satisfied
+        }
+        if let asset = assets.first(where: { $0.id == assetID }),
+           asset.availability.requiresCachedPreviewOnly {
+            return .unavailable
+        }
+        let itemID = Self.previewWorkItemID(assetID: assetID, level: .original)
+        if backgroundWorkQueue.item(id: itemID)?.status == .failed {
+            return .unavailable
+        }
+        return .loading
+    }
+
+    private func assetMaxPixelDimension(for assetID: AssetID) -> Int? {
+        guard let metadata = assets.first(where: { $0.id == assetID })?.technicalMetadata else {
+            return nil
+        }
+        return max(metadata.pixelWidth, metadata.pixelHeight)
     }
 
     public func requestVisibleComparePreviews() throws {
@@ -9397,6 +9491,19 @@ public final class AppModel {
 
     public func loupePreviewURL(for assetID: AssetID) -> URL? {
         previewURL(for: assetID, levels: [.large, .medium, .grid, .micro])
+    }
+
+    // The zoomed loupe prefers an original-resolution render when one has
+    // been cached; the fitted loupe keeps using loupePreviewURL so frame
+    // advance never decodes full-resolution files it does not need.
+    public func loupeZoomPreviewURL(for assetID: AssetID) -> URL? {
+        previewURL(for: assetID, levels: [.original, .large, .medium, .grid, .micro])
+    }
+
+    private func cachedLoupePreviewLevel(for assetID: AssetID) -> PreviewLevel? {
+        [PreviewLevel.original, .large, .medium, .grid, .micro].first { level in
+            previewURL(for: assetID, levels: [level]) != nil
+        }
     }
 
     public func originalAccessURL(for assetID: AssetID) throws -> URL? {

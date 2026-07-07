@@ -13,4 +13,12 @@ final class CullingCommandMenuPresentationTests: XCTestCase {
             CullingCommandMenuItem(title: "Accept Stack Selection", shortcut: .acceptStackSelection, key: .returnKey)
         ])
     }
+
+    func testLoupeSectionExposesZoomToggleShortcut() {
+        let loupe = CullingCommandMenuPresentation.sections.first { $0.title == "Loupe" }
+
+        XCTAssertEqual(loupe?.items, [
+            CullingCommandMenuItem(title: "Toggle 1:1 Zoom", shortcut: .toggleZoom, key: .character("z"))
+        ])
+    }
 }

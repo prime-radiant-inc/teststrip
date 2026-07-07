@@ -3005,6 +3005,66 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAsset?.id, first.id)
     }
 
+    func testToggleZoomCullingShortcutTogglesBetweenFitAndCenteredActualSize() throws {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom", size: 1)])
+
+        XCTAssertNil(model.loupeZoomFocus)
+
+        try model.applyCullingShortcut(.toggleZoom)
+        XCTAssertEqual(model.loupeZoomFocus, .center)
+
+        try model.applyCullingShortcut(.toggleZoom)
+        XCTAssertNil(model.loupeZoomFocus)
+    }
+
+    func testZoomLoupeSetsFocusPoint() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-focus", size: 1)])
+
+        model.zoomLoupe(to: LoupeZoomFocus(x: 0.25, y: 0.75))
+
+        XCTAssertEqual(model.loupeZoomFocus, LoupeZoomFocus(x: 0.25, y: 0.75))
+    }
+
+    func testFrameAdvanceResetsLoupeZoom() throws {
+        let first = makeAsset(id: "first", size: 1)
+        let second = makeAsset(id: "second", size: 2)
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [first, second])
+        model.zoomLoupe(to: .center)
+
+        try model.applyCullingShortcut(.nextPhoto)
+
+        XCTAssertEqual(model.selectedAssetID, second.id)
+        XCTAssertNil(model.loupeZoomFocus)
+    }
+
+    func testReselectingSameAssetKeepsLoupeZoom() {
+        let first = makeAsset(id: "first", size: 1)
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [first])
+        model.zoomLoupe(to: .center)
+
+        model.select(first.id)
+
+        XCTAssertEqual(model.loupeZoomFocus, .center)
+    }
+
+    func testToggleZoomKeepsSelectionAndMetadataDecisionFeedback() throws {
+        let first = makeAsset(id: "first", size: 1)
+        let second = makeAsset(id: "second", size: 2)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "toggle-zoom-keeps-feedback",
+            assets: [first, second]
+        )
+
+        try model.applyCullingShortcut(.pick)
+        XCTAssertNotNil(model.lastCullingMetadataDecision)
+        let selectionAfterPick = model.selectedAssetID
+
+        try model.applyCullingShortcut(.toggleZoom)
+
+        XCTAssertEqual(model.selectedAssetID, selectionAfterPick)
+        XCTAssertNotNil(model.lastCullingMetadataDecision)
+    }
+
     func testCullingShortcutAppliesMetadataToSelectedAsset() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "shortcut-metadata")
 
@@ -8799,6 +8859,280 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items.count, 1)
     }
 
+    func testLoupeZoomPreviewURLPrefersOriginalLevel() throws {
+        let (model, previewCache, asset) = try makeModelWithPreviewCache(named: "loupe-zoom-url")
+        let largeURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large))
+        let originalURL = previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .original))
+        try writePreviewPlaceholder(to: largeURL)
+
+        XCTAssertEqual(model.loupeZoomPreviewURL(for: asset.id), largeURL)
+
+        try writePreviewPlaceholder(to: originalURL)
+
+        XCTAssertEqual(model.loupeZoomPreviewURL(for: asset.id), originalURL)
+    }
+
+    func testRequestLoupeFullResolutionPreviewDispatchesOriginalRender() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let asset = makeAsset(
+            id: "full-res",
+            path: "/Photos/full-res.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(pixelWidth: 8000, pixelHeight: 5000)
+        )
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "loupe-full-res-request",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+
+        try result.model.requestLoupeFullResolutionPreview(assetID: asset.id)
+
+        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: asset.id, level: .original)])
+    }
+
+    func testRequestLoupeFullResolutionPreviewRendersWhenAssetPixelSizeUnknown() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let asset = makeAsset(id: "full-res-unknown", path: "/Photos/full-res-unknown.jpg", rating: 0)
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "loupe-full-res-unknown",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+
+        try result.model.requestLoupeFullResolutionPreview(assetID: asset.id)
+
+        XCTAssertEqual(try transport.commands(), [.generatePreview(assetID: asset.id, level: .original)])
+    }
+
+    func testRequestLoupeFullResolutionPreviewSkipsWhenCachedPreviewCoversAssetPixels() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let asset = makeAsset(
+            id: "full-res-covered",
+            path: "/Photos/full-res-covered.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(pixelWidth: 3000, pixelHeight: 2000)
+        )
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "loupe-full-res-covered",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+
+        try result.model.requestLoupeFullResolutionPreview(assetID: asset.id)
+
+        XCTAssertEqual(try transport.commands(), [])
+    }
+
+    func testRequestLoupeFullResolutionPreviewSkipsWhenOriginalLevelCached() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let asset = makeAsset(
+            id: "full-res-cached",
+            path: "/Photos/full-res-cached.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(pixelWidth: 8000, pixelHeight: 5000)
+        )
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "loupe-full-res-cached",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .original)))
+
+        try result.model.requestLoupeFullResolutionPreview(assetID: asset.id)
+
+        XCTAssertEqual(try transport.commands(), [])
+    }
+
+    func testRequestLoupeFullResolutionPreviewSkipsWhenOriginalUnavailable() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let asset = makeAsset(
+            id: "full-res-offline",
+            path: "/Volumes/Archive/full-res-offline.jpg",
+            rating: 0,
+            availability: .offline,
+            technicalMetadata: Self.technicalMetadata(pixelWidth: 8000, pixelHeight: 5000)
+        )
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "loupe-full-res-offline",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+
+        try result.model.requestLoupeFullResolutionPreview(assetID: asset.id)
+
+        XCTAssertEqual(try transport.commands(), [])
+    }
+
+    func testLoupeZoomFullResolutionStatusReportsSatisfiedLoadingAndUnavailable() throws {
+        let originalCached = makeAsset(
+            id: "status-original",
+            path: "/Photos/status-original.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(pixelWidth: 8000, pixelHeight: 5000)
+        )
+        let coveredByLarge = makeAsset(
+            id: "status-covered",
+            path: "/Photos/status-covered.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(pixelWidth: 3000, pixelHeight: 2000)
+        )
+        let needsOriginal = makeAsset(
+            id: "status-needs-original",
+            path: "/Photos/status-needs-original.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(pixelWidth: 8000, pixelHeight: 5000)
+        )
+        let offline = makeAsset(
+            id: "status-offline",
+            path: "/Volumes/Archive/status-offline.jpg",
+            rating: 0,
+            availability: .offline,
+            technicalMetadata: Self.technicalMetadata(pixelWidth: 8000, pixelHeight: 5000)
+        )
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "loupe-full-res-status",
+            assets: [originalCached, coveredByLarge, needsOriginal, offline]
+        )
+        for asset in [originalCached, coveredByLarge, needsOriginal, offline] {
+            try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+        }
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: originalCached.id, level: .original)))
+
+        XCTAssertEqual(result.model.loupeZoomFullResolutionStatus(for: originalCached.id), .satisfied)
+        XCTAssertEqual(result.model.loupeZoomFullResolutionStatus(for: coveredByLarge.id), .satisfied)
+        XCTAssertEqual(result.model.loupeZoomFullResolutionStatus(for: needsOriginal.id), .loading)
+        XCTAssertEqual(result.model.loupeZoomFullResolutionStatus(for: offline.id), .unavailable)
+    }
+
+    @MainActor
+    func testLoupeZoomFullResolutionStatusReportsUnavailableAfterRenderFailure() async throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let asset = makeAsset(
+            id: "status-failed",
+            path: "/Photos/status-failed.jpg",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(pixelWidth: 8000, pixelHeight: 5000)
+        )
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "loupe-full-res-failed",
+            assets: [asset],
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(to: result.previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+        try result.model.requestLoupeFullResolutionPreview(assetID: asset.id)
+        let itemID = try XCTUnwrap(result.model.backgroundWorkQueue.runningItems.first?.id)
+
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.failed(
+            itemID: itemID,
+            message: "could not render original"
+        )))
+
+        try await waitForBackgroundWorkStatus(.failed, itemID: itemID, in: result.model)
+        XCTAssertEqual(result.model.loupeZoomFullResolutionStatus(for: asset.id), .unavailable)
+    }
+
+    func testRequestVisibleLoupePreviewPrefetchesNeighborLargePreviews() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let fixture = try makeLoupeCullingFixture(
+            named: "loupe-neighbor-prefetch",
+            assetCount: 4,
+            workerSupervisor: supervisor
+        )
+
+        try fixture.model.requestVisibleLoupePreview(assetID: fixture.assets[1].id)
+
+        // The transport only sees one command at a time; the queue carries the
+        // visible frame's previews first, then exactly one neighbor each way.
+        XCTAssertEqual(previewGenerationItemIDs(in: fixture.model), [
+            "preview-\(fixture.assets[1].id.rawValue)-medium",
+            "preview-\(fixture.assets[1].id.rawValue)-large",
+            "preview-\(fixture.assets[2].id.rawValue)-large",
+            "preview-\(fixture.assets[0].id.rawValue)-large"
+        ])
+        XCTAssertEqual(try transport.commands(), [
+            .generatePreview(assetID: fixture.assets[1].id, level: .medium)
+        ])
+    }
+
+    func testRequestVisibleLoupePreviewPrefetchesNeighborsWhenVisiblePreviewIsCached() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let fixture = try makeLoupeCullingFixture(
+            named: "loupe-neighbor-prefetch-cached",
+            assetCount: 3,
+            workerSupervisor: supervisor
+        )
+        try writePreviewPlaceholder(
+            to: fixture.previewCache.url(for: PreviewCacheKey(assetID: fixture.assets[1].id, level: .large))
+        )
+
+        try fixture.model.requestVisibleLoupePreview(assetID: fixture.assets[1].id)
+
+        XCTAssertEqual(previewGenerationItemIDs(in: fixture.model), [
+            "preview-\(fixture.assets[2].id.rawValue)-large",
+            "preview-\(fixture.assets[0].id.rawValue)-large"
+        ])
+    }
+
+    func testRequestVisibleLoupePreviewSkipsUnavailableNeighborPrefetch() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 8),
+            transport: transport
+        )
+        let fixture = try makeLoupeCullingFixture(
+            named: "loupe-neighbor-prefetch-offline",
+            assetCount: 3,
+            workerSupervisor: supervisor,
+            availabilityForIndex: { index in index == 2 ? .offline : .online }
+        )
+        try writePreviewPlaceholder(
+            to: fixture.previewCache.url(for: PreviewCacheKey(assetID: fixture.assets[1].id, level: .large))
+        )
+
+        try fixture.model.requestVisibleLoupePreview(assetID: fixture.assets[1].id)
+
+        XCTAssertEqual(previewGenerationItemIDs(in: fixture.model), [
+            "preview-\(fixture.assets[0].id.rawValue)-large"
+        ])
+    }
+
     func testLoadEnqueuesPendingPreviewGenerationWithWorker() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
@@ -14576,6 +14910,68 @@ final class AppModelTests: XCTestCase {
             capturedAt: capturedAt,
             provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
         )
+    }
+
+    private static func technicalMetadata(pixelWidth: Int, pixelHeight: Int) -> AssetTechnicalMetadata {
+        AssetTechnicalMetadata(
+            pixelWidth: pixelWidth,
+            pixelHeight: pixelHeight,
+            provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+        )
+    }
+
+    private struct LoupeCullingFixture {
+        var model: AppModel
+        var previewCache: PreviewCache
+        var assets: [Asset]
+    }
+
+    private func previewGenerationItemIDs(in model: AppModel) -> [String] {
+        model.backgroundWorkQueue.items
+            .filter { $0.kind == .previewGeneration }
+            .map(\.id.rawValue)
+    }
+
+    // Builds a culling-sized asset run whose online originals exist on disk,
+    // so requestVisibleLoupePreview's availability probe sees them as present.
+    private func makeLoupeCullingFixture(
+        named name: String,
+        assetCount: Int,
+        workerSupervisor: WorkerSupervisor,
+        availabilityForIndex: (Int) -> SourceAvailability = { _ in .online }
+    ) throws -> LoupeCullingFixture {
+        let originalsDirectory = try makeTemporaryDirectory(named: "\(name)-originals")
+        var assets: [Asset] = []
+        for index in 0..<assetCount {
+            let availability = availabilityForIndex(index)
+            let originalURL = availability == .online
+                ? originalsDirectory.appendingPathComponent("frame-\(index).jpg")
+                : URL(fileURLWithPath: "/Volumes/Archive/\(name)/frame-\(index).jpg")
+            let fingerprint: FileFingerprint
+            if availability == .online {
+                try Data("original".utf8).write(to: originalURL)
+                fingerprint = try fileFingerprint(for: originalURL)
+            } else {
+                fingerprint = FileFingerprint(
+                    size: Int64(index + 1),
+                    modificationDate: Date(timeIntervalSince1970: TimeInterval(index + 1))
+                )
+            }
+            assets.append(Asset(
+                id: AssetID(rawValue: "\(name)-\(index)"),
+                originalURL: originalURL,
+                volumeIdentifier: "Photos",
+                fingerprint: fingerprint,
+                availability: availability,
+                metadata: AssetMetadata()
+            ))
+        }
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: name,
+            assets: assets,
+            workerSupervisor: workerSupervisor
+        )
+        return LoupeCullingFixture(model: result.model, previewCache: result.previewCache, assets: assets)
     }
 
     private func makeAsset(
