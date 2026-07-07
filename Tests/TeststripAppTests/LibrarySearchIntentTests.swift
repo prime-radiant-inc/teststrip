@@ -166,6 +166,29 @@ final class LibrarySearchIntentTests: XCTestCase {
         ])
     }
 
+    func testParsesPersonFilterTokens() {
+        let intent = LibrarySearchIntent.parse("person:\"Anna Lee\" person:Ben ceremony")
+
+        XCTAssertEqual(intent.residualText, "ceremony")
+        XCTAssertEqual(intent.predicates, [
+            .person("Anna Lee"),
+            .person("Ben")
+        ])
+        XCTAssertEqual(intent.chips, [
+            "Person: Anna Lee",
+            "Person: Ben"
+        ])
+        XCTAssertEqual(intent.nameParts, [
+            "Anna Lee",
+            "Ben"
+        ])
+    }
+
+    func testSearchFieldHelpDocumentsPersonIntersection() {
+        XCTAssertTrue(LibrarySearchIntent.searchFieldHelp.contains("person:\"Name\""))
+        XCTAssertTrue(LibrarySearchIntent.searchFieldHelp.contains("every"))
+    }
+
     func testParsesDateFieldAsSingleCaptureDay() {
         let start = Self.utcDate(year: 2026, month: 2, day: 4)
         let nextDay = Self.utcDate(year: 2026, month: 2, day: 5)

@@ -7007,6 +7007,37 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 2)
     }
 
+    func testRemovingPersonChipRewritesSearchTextAndReloads() throws {
+        let both = makeAsset(id: "both", path: "/Photos/Wedding/both.jpg", rating: 0)
+        let annaOnly = makeAsset(id: "anna-only", path: "/Photos/Wedding/anna-only.jpg", rating: 0)
+        let unassigned = makeAsset(id: "unassigned", path: "/Photos/Wedding/unassigned.jpg", rating: 0)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "remove-person-chip",
+            assets: [both, annaOnly, unassigned],
+            configureRepository: { repository in
+                try repository.upsertPerson(id: "person-anna", name: "Anna Lee")
+                try repository.upsertPerson(id: "person-ben", name: "Ben")
+                try repository.assignAssets([both.id, annaOnly.id], toPersonID: "person-anna")
+                try repository.assignAssets([both.id], toPersonID: "person-ben")
+            }
+        )
+
+        model.librarySearchText = "person:\"Anna Lee\" person:Ben"
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Person: Anna Lee", "Person: Ben"])
+        XCTAssertEqual(model.assets.map(\.id), [both.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+
+        let benRow = try XCTUnwrap(model.activeLibraryFilterRows.first { $0.title == "Person: Ben" })
+        try model.removeActiveLibraryFilter(benRow)
+
+        XCTAssertEqual(model.librarySearchText, "person:\"Anna Lee\"")
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Person: Anna Lee"])
+        XCTAssertEqual(model.assets.map(\.id), [both.id, annaOnly.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
+    }
+
     func testRemovingPlainSearchFallbackRowClearsResidualTextButKeepsParsedFilters() throws {
         let keeper = makeAsset(
             id: "keeper",

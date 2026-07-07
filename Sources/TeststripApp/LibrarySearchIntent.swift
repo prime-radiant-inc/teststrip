@@ -19,6 +19,15 @@ public struct LibrarySearchIntent: Equatable, Sendable {
         self.nameParts = nameParts
     }
 
+    /// Tooltip copy for the search fields describing the deterministic filter grammar.
+    public static let searchFieldHelp = """
+        Search with filter tokens: person:"Name", keyword:, folder:, camera:, lens:, \
+        rating:, iso:, from:, before:, date:, color:, source:, signal:, xmp:. \
+        person: matches a confirmed person's photos; repeat it to require every \
+        person named, e.g. person:"Anna" person:"Ben" finds photos with both. \
+        Anything else is plain text search.
+        """
+
     public static func parse(_ text: String) -> LibrarySearchIntent {
         let normalized = Self.normalizedWhitespace(text)
         guard !normalized.isEmpty else {
@@ -112,6 +121,8 @@ public struct LibrarySearchIntent: Equatable, Sendable {
             return singleFieldPredicate(.lens(value), chip: "Lens: \(value)", namePart: value)
         case "keyword", "tag":
             return singleFieldPredicate(.keyword(value), chip: "Keyword: \(value)", namePart: value)
+        case "person":
+            return singleFieldPredicate(.person(value), chip: "Person: \(value)", namePart: value)
         case "folder", "path":
             let title = URL(fileURLWithPath: value).lastPathComponent
             return singleFieldPredicate(.folderPrefix(value), chip: "Folder: \(title)", namePart: title)
