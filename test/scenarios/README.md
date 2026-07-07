@@ -46,6 +46,16 @@ are the point; do not weaken them to make a card pass.
 
 ## Cards
 
+**Happy paths** — the everyday journeys a real session lives in:
+
+| Card | Journey under test |
+| --- | --- |
+| `import-cull-pick-happy-path.md` | Import a folder → auto-evaluate → cull → accept a recommendation → see it in Picks |
+| `rate-writes-xmp-happy-path.md` | Rate a photo → `.xmp` sidecar written, original bytes untouched |
+| `people-name-face-group-happy-path.md` | Face grouping → confirm/name a group → person persists (written only on confirm) |
+
+**Flagship surfaces** — the sharp edges unit tests and the headless gate can't reach:
+
 | Card | Surface under test |
 | --- | --- |
 | `autopilot-review-commit-undo.md` | Autopilot proposal → Review → Commit → Undo all |
