@@ -479,6 +479,56 @@ final class LibraryImportServiceTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: sourceFile), try Data(contentsOf: destinationFile))
     }
 
+    func testCopyFromCardReportsDatedFolderNameCollisionAsSkipAndImportsRemainingFiles() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-copy-dated-collision")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Library", isDirectory: true)
+        let firstDirectory = source.appendingPathComponent("100CANON", isDirectory: true)
+        let secondDirectory = source.appendingPathComponent("101CANON", isDirectory: true)
+        try FileManager.default.createDirectory(at: firstDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let firstFile = firstDirectory.appendingPathComponent("IMG_0001.jpg")
+        let collidingFile = secondDirectory.appendingPathComponent("IMG_0001.jpg")
+        let laterFile = secondDirectory.appendingPathComponent("IMG_0002.jpg")
+        try Data("first".utf8).write(to: firstFile)
+        try Data("second".utf8).write(to: collidingFile)
+        try Data("third".utf8).write(to: laterFile)
+        let captureInstant = FolderImportTests.utcDate(2025, 1, 3, 12, 0, 0)
+        for file in [firstFile, collidingFile, laterFile] {
+            try FileManager.default.setAttributes([.modificationDate: captureInstant], ofItemAtPath: file.path)
+        }
+        let repository = try makeRepository(in: root)
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let service = makeService(previewCache: previewCache)
+
+        let result = try service.copyFromCard(
+            source: source,
+            destinationRoot: destination,
+            destinationPolicy: .capturedDate,
+            repository: repository,
+            previewPolicy: .deferGeneration
+        )
+
+        XCTAssertEqual(
+            result.importedAssets.map(\.originalURL.lastPathComponent),
+            ["IMG_0001.jpg", "IMG_0002.jpg"],
+            "files before and after the collision must still be imported"
+        )
+        XCTAssertEqual(try repository.allAssets(limit: 10).count, 2)
+        let importedByName = Dictionary(uniqueKeysWithValues: result.importedAssets.map { ($0.originalURL.lastPathComponent, $0.originalURL) })
+        XCTAssertEqual(try String(contentsOf: importedByName["IMG_0001.jpg"]!, encoding: .utf8), "first")
+        XCTAssertEqual(try String(contentsOf: importedByName["IMG_0002.jpg"]!, encoding: .utf8), "third")
+        XCTAssertEqual(result.skippedSourceFiles.map(\.sourceURL), [collidingFile])
+        XCTAssertEqual(result.skippedSourceFileCount, 1)
+        let message = try XCTUnwrap(result.skippedSourceFiles.first?.message)
+        XCTAssertTrue(
+            message.contains("ingest destination already exists"),
+            "expected destination-collision skip message, got \(message)"
+        )
+        XCTAssertEqual(try String(contentsOf: collidingFile, encoding: .utf8), "second")
+    }
+
     func testCopyFromCardWritesSecondCopyAndReportsBackupFailuresWithoutFailingImport() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "library-import-copy-second")
         let source = root.appendingPathComponent("DCIM", isDirectory: true)

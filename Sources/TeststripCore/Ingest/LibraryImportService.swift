@@ -213,12 +213,15 @@ public struct LibraryImportService: Sendable {
             interval: Self.ingestProgressInterval,
             eagerLimit: Self.eagerIngestProgressLimit
         )
-        let skippedSourceFileHandler: IngestSkippedSourceFileHandler? = plan.mode == .addInPlace ? { skippedSourceFile in
+        // Copy imports need per-file skips as much as add-in-place: without a
+        // handler one dated-folder name collision aborts the whole import and
+        // strands copied-but-uncataloged files, so every mode records skips.
+        let skippedSourceFileHandler: IngestSkippedSourceFileHandler = { skippedSourceFile in
             skippedSourceFiles.append(LibrarySkippedSourceFile(
                 sourceURL: skippedSourceFile.sourceURL,
                 message: skippedSourceFile.message
             ))
-        } : nil
+        }
         let secondCopyFailureHandler: IngestSkippedSourceFileHandler? = plan.secondCopyDestination != nil ? { secondCopyFailure in
             skippedSourceFiles.append(LibrarySkippedSourceFile(
                 sourceURL: secondCopyFailure.sourceURL,
