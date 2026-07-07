@@ -925,6 +925,69 @@ public final class CatalogRepository {
         )
     }
 
+    public func saveRelocationManifestEntry(_ entry: RelocationManifestEntry, sessionID: WorkSessionID) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT INTO relocation_manifest_entries (
+                session_id, sequence, asset_id,
+                original_from_path, original_to_path,
+                sidecar_from_path, sidecar_to_path, created_at
+            )
+            VALUES (
+                ?,
+                (SELECT COALESCE(MAX(sequence), -1) + 1 FROM relocation_manifest_entries WHERE session_id = ?),
+                ?, ?, ?, ?, ?, ?
+            )
+            ON CONFLICT(session_id, asset_id) DO UPDATE SET
+                original_from_path = excluded.original_from_path,
+                original_to_path = excluded.original_to_path,
+                sidecar_from_path = excluded.sidecar_from_path,
+                sidecar_to_path = excluded.sidecar_to_path
+            """,
+            bindings: [
+                sessionID.rawValue,
+                sessionID.rawValue,
+                entry.assetID.rawValue,
+                entry.originalFrom.path,
+                entry.originalTo.path,
+                entry.sidecarFrom?.path ?? "",
+                entry.sidecarTo?.path ?? "",
+                now
+            ]
+        )
+    }
+
+    public func relocationManifestEntries(sessionID: WorkSessionID) throws -> [RelocationManifestEntry] {
+        let rows = try database.rows(
+            "SELECT * FROM relocation_manifest_entries WHERE session_id = ? ORDER BY sequence ASC",
+            bindings: [sessionID.rawValue]
+        )
+        return try rows.map(decodeRelocationManifestEntry)
+    }
+
+    public func deleteRelocationManifest(sessionID: WorkSessionID) throws {
+        try database.execute(
+            "DELETE FROM relocation_manifest_entries WHERE session_id = ?",
+            bindings: [sessionID.rawValue]
+        )
+    }
+
+    private func decodeRelocationManifestEntry(_ row: [String: String]) throws -> RelocationManifestEntry {
+        guard let assetID = row["asset_id"],
+              let originalFrom = row["original_from_path"],
+              let originalTo = row["original_to_path"] else {
+            throw CatalogError.sqlite("relocation manifest row is missing required columns")
+        }
+        return RelocationManifestEntry(
+            assetID: AssetID(rawValue: assetID),
+            originalFrom: URL(fileURLWithPath: originalFrom),
+            originalTo: URL(fileURLWithPath: originalTo),
+            sidecarFrom: row["sidecar_from_path"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) },
+            sidecarTo: row["sidecar_to_path"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+        )
+    }
+
     public func session(id: WorkSessionID) throws -> WorkSession {
         let rows = try database.rows("SELECT * FROM work_sessions WHERE id = ?", bindings: [id.rawValue])
         guard let row = rows.first else {
@@ -1174,6 +1237,30 @@ public final class CatalogRepository {
         }
 
         return result
+    }
+
+    /// Rewrites one asset's path after Teststrip itself has moved the file's
+    /// bytes to `newOriginalURL`. Adopts the destination's fingerprint (rather
+    /// than requiring a match) because this is a deliberate, catalog-authored
+    /// move, and updates the sidecar sync path so a pending XMP write follows
+    /// the file. One transaction: the row and its sync state move together.
+    public func relocateOriginal(assetID: AssetID, to newOriginalURL: URL) throws {
+        let asset = try asset(id: assetID)
+        guard let destinationFingerprint = Self.fingerprint(for: newOriginalURL) else {
+            throw TeststripError.io("relocation destination is unreadable \(newOriginalURL.path)")
+        }
+        try database.transaction {
+            var relocatedAsset = asset
+            relocatedAsset.originalURL = newOriginalURL
+            relocatedAsset.volumeIdentifier = Self.volumeIdentifier(for: newOriginalURL)
+            relocatedAsset.fingerprint = destinationFingerprint
+            relocatedAsset.availability = .online
+            try upsert(relocatedAsset)
+            try updateMetadataSyncSidecarPathIfPresent(
+                assetID: assetID,
+                sidecarURL: XMPSidecarStore().sidecarURL(forOriginalAt: newOriginalURL)
+            )
+        }
     }
 
     public func catalogGeneration(assetID: AssetID) throws -> Int {

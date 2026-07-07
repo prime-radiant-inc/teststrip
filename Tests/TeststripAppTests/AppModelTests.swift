@@ -14772,6 +14772,200 @@ final class AppModelTests: XCTestCase {
         try await waitForActivityStatus(.cancelled, in: model)
     }
 
+    func testRejectRelocationPreflightCountsRejectsSidecarsAndBytesInScope() throws {
+        let directory = try makeTemporaryDirectory(named: "reject-preflight")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let rejectOriginal = shoot.appendingPathComponent("reject.cr2")
+        let rejectSidecar = shoot.appendingPathComponent("reject.cr2.xmp")
+        let keeperOriginal = shoot.appendingPathComponent("keeper.cr2")
+        try Data(repeating: 0, count: 100).write(to: rejectOriginal)
+        try Data(repeating: 0, count: 20).write(to: rejectSidecar)
+        try Data(repeating: 0, count: 100).write(to: keeperOriginal)
+        let reject = makeAsset(id: "pf-reject", path: rejectOriginal.path, rating: 0, flag: .reject)
+        let keeper = makeAsset(id: "pf-keeper", path: keeperOriginal.path, rating: 4, flag: .pick)
+        let (model, _) = try makeModelWithCatalogAssets(named: "reject-preflight-model", assets: [reject, keeper])
+
+        let preflight = try model.rejectRelocationPreflight(
+            destinationFolder: directory.appendingPathComponent("rejects", isDirectory: true)
+        )
+
+        XCTAssertEqual(preflight.assetIDs, [reject.id])
+        XCTAssertEqual(preflight.moveCount, 1)
+        XCTAssertEqual(preflight.sidecarCount, 1)
+        XCTAssertEqual(preflight.totalByteCount, 120)
+        XCTAssertEqual(preflight.confirmationText, "Move 1 reject photo to rejects")
+    }
+
+    func testRejectRelocationPreflightRespectsCurrentSetScope() throws {
+        let directory = try makeTemporaryDirectory(named: "reject-preflight-scope")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let inScope = shoot.appendingPathComponent("in.cr2")
+        let outOfScope = shoot.appendingPathComponent("out.cr2")
+        try Data(repeating: 0, count: 10).write(to: inScope)
+        try Data(repeating: 0, count: 10).write(to: outOfScope)
+        let inScopeReject = makeAsset(id: "scope-in", path: inScope.path, rating: 0, flag: .reject)
+        let outOfScopeReject = makeAsset(id: "scope-out", path: outOfScope.path, rating: 0, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "reject-preflight-scope-model",
+            assets: [inScopeReject, outOfScopeReject]
+        )
+        try repository.upsert(AssetSet.manual(
+            id: AssetSetID(rawValue: "only-in"),
+            name: "Only In",
+            assetIDs: [inScopeReject.id]
+        ))
+        try model.reload()
+        try model.applyAssetSet(id: AssetSetID(rawValue: "only-in"))
+
+        let preflight = try model.rejectRelocationPreflight(
+            destinationFolder: directory.appendingPathComponent("rejects", isDirectory: true)
+        )
+
+        XCTAssertEqual(preflight.assetIDs, [inScopeReject.id])
+    }
+
+    func testRejectRelocationPreflightFlagsUnavailableOriginals() throws {
+        let missingReject = makeAsset(
+            id: "pf-missing",
+            path: "/Volumes/Gone/missing.cr2",
+            rating: 0,
+            flag: .reject,
+            availability: .missing
+        )
+        let (model, _) = try makeModelWithCatalogAssets(named: "reject-preflight-missing", assets: [missingReject])
+
+        let preflight = try model.rejectRelocationPreflight(
+            destinationFolder: URL(fileURLWithPath: "/tmp/rejects", isDirectory: true)
+        )
+
+        XCTAssertEqual(preflight.unavailableCount, 1)
+        XCTAssertEqual(preflight.moveCount, 0)
+    }
+
+    func testMoveRejectsToFolderMovesOriginalsSidecarsAndRewritesCatalog() throws {
+        let directory = try makeTemporaryDirectory(named: "move-rejects")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let original = shoot.appendingPathComponent("reject.cr2")
+        let sidecar = shoot.appendingPathComponent("reject.cr2.xmp")
+        try Data("raw".utf8).write(to: original)
+        try Data("<xmp/>".utf8).write(to: sidecar)
+        let reject = makeAsset(id: "mv-reject", path: original.path, rating: 0, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(named: "move-rejects-model", assets: [reject])
+        let destination = directory.appendingPathComponent("rejects", isDirectory: true)
+        let preflight = try model.rejectRelocationPreflight(destinationFolder: destination)
+
+        let summary = try model.moveRejectsToFolder(preflight)
+
+        XCTAssertEqual(summary.movedCount, 1)
+        XCTAssertEqual(summary.sidecarCount, 1)
+        XCTAssertEqual(summary.skippedCount, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: original.path))
+        let movedOriginal = destination.appendingPathComponent("reject.cr2")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: movedOriginal.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent("reject.cr2.xmp").path))
+        let updated = try repository.asset(id: reject.id)
+        XCTAssertEqual(updated.originalURL, movedOriginal)
+        XCTAssertEqual(updated.availability, .online)
+        XCTAssertEqual(updated.metadata.flag, .reject)
+    }
+
+    func testMoveRejectsRecordsAReversibleManifestAndActivity() throws {
+        let directory = try makeTemporaryDirectory(named: "move-rejects-manifest")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let original = shoot.appendingPathComponent("reject.cr2")
+        try Data("raw".utf8).write(to: original)
+        let reject = makeAsset(id: "mf-reject", path: original.path, rating: 0, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(named: "move-rejects-manifest-model", assets: [reject])
+        let preflight = try model.rejectRelocationPreflight(
+            destinationFolder: directory.appendingPathComponent("rejects", isDirectory: true)
+        )
+
+        let summary = try model.moveRejectsToFolder(preflight)
+
+        let entries = try repository.relocationManifestEntries(sessionID: summary.sessionID)
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.assetID, reject.id)
+        XCTAssertEqual(entries.first?.originalFrom, original)
+        XCTAssertEqual(try repository.session(id: summary.sessionID).kind, .relocation)
+        XCTAssertTrue(model.recentWork.contains { $0.id == summary.sessionID.rawValue })
+        XCTAssertEqual(model.rejectRelocationSummary?.sessionID, summary.sessionID)
+    }
+
+    func testMoveRejectsSkipsUnwritableDestinationWithoutTouchingCatalog() throws {
+        let directory = try makeTemporaryDirectory(named: "move-rejects-skip")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let goodOriginal = shoot.appendingPathComponent("good.cr2")
+        let blockedOriginal = shoot.appendingPathComponent("blocked.cr2")
+        try Data("raw".utf8).write(to: goodOriginal)
+        try Data("raw".utf8).write(to: blockedOriginal)
+        let good = makeAsset(id: "skip-good", path: goodOriginal.path, rating: 0, flag: .reject)
+        let blocked = makeAsset(id: "skip-blocked", path: blockedOriginal.path, rating: 0, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(named: "move-rejects-skip-model", assets: [good, blocked])
+        let destination = directory.appendingPathComponent("rejects", isDirectory: true)
+        let preflight = try model.rejectRelocationPreflight(destinationFolder: destination)
+        // Delete the blocked source between preflight and move so its per-file
+        // moveItem throws deterministically (a missing source always fails),
+        // forcing a skip-with-issue while the good file still moves.
+        try FileManager.default.removeItem(at: blockedOriginal)
+
+        let summary = try model.moveRejectsToFolder(preflight)
+
+        XCTAssertEqual(summary.skippedCount, 1)
+        XCTAssertEqual(summary.movedCount, 1)
+        // The blocked asset keeps its original catalog path; the good one moved.
+        XCTAssertEqual(try repository.asset(id: blocked.id).originalURL, blockedOriginal)
+        XCTAssertNotEqual(try repository.asset(id: good.id).originalURL, goodOriginal)
+    }
+
+    func testMoveBackRelocationRestoresFilesAndCatalogPaths() throws {
+        let directory = try makeTemporaryDirectory(named: "move-back")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let original = shoot.appendingPathComponent("reject.cr2")
+        let sidecar = shoot.appendingPathComponent("reject.cr2.xmp")
+        try Data("raw".utf8).write(to: original)
+        try Data("<xmp/>".utf8).write(to: sidecar)
+        let reject = makeAsset(id: "mb-reject", path: original.path, rating: 0, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(named: "move-back-model", assets: [reject])
+        let preflight = try model.rejectRelocationPreflight(
+            destinationFolder: directory.appendingPathComponent("rejects", isDirectory: true)
+        )
+        let summary = try model.moveRejectsToFolder(preflight)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: original.path))
+
+        let restored = try model.moveBackRelocation(sessionID: summary.sessionID)
+
+        XCTAssertEqual(restored, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: original.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sidecar.path))
+        XCTAssertEqual(try repository.asset(id: reject.id).originalURL, original)
+        XCTAssertEqual(try repository.relocationManifestEntries(sessionID: summary.sessionID), [])
+        XCTAssertNil(model.rejectRelocationSummary)
+    }
+
+    func testMoveBackRelocationIsIdempotentWhenAlreadyRestored() throws {
+        let directory = try makeTemporaryDirectory(named: "move-back-twice")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let original = shoot.appendingPathComponent("reject.cr2")
+        try Data("raw".utf8).write(to: original)
+        let reject = makeAsset(id: "mb2-reject", path: original.path, rating: 0, flag: .reject)
+        let (model, _) = try makeModelWithCatalogAssets(named: "move-back-twice-model", assets: [reject])
+        let preflight = try model.rejectRelocationPreflight(
+            destinationFolder: directory.appendingPathComponent("rejects", isDirectory: true)
+        )
+        let summary = try model.moveRejectsToFolder(preflight)
+        _ = try model.moveBackRelocation(sessionID: summary.sessionID)
+
+        // Manifest already deleted; a second call restores nothing and does not throw.
+        XCTAssertEqual(try model.moveBackRelocation(sessionID: summary.sessionID), 0)
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-app-tests", isDirectory: true)

@@ -937,6 +937,102 @@ public struct ExportCompletionSummary: Equatable, Sendable {
     }
 }
 
+public struct RejectRelocationPreflight: Equatable, Identifiable, Sendable {
+    public var id: String { destinationFolder.path }
+    public var assetIDs: [AssetID]
+    public var originalURLs: [URL]
+    public var plans: [RejectRelocationPlan]
+    public var sidecarCount: Int
+    public var totalByteCount: Int64
+    public var unavailableCount: Int
+    public var alreadyInDestinationCount: Int
+    public var destinationFolder: URL
+
+    public init(
+        assetIDs: [AssetID],
+        originalURLs: [URL],
+        plans: [RejectRelocationPlan],
+        sidecarCount: Int,
+        totalByteCount: Int64,
+        unavailableCount: Int,
+        alreadyInDestinationCount: Int,
+        destinationFolder: URL
+    ) {
+        self.assetIDs = assetIDs
+        self.originalURLs = originalURLs
+        self.plans = plans
+        self.sidecarCount = sidecarCount
+        self.totalByteCount = totalByteCount
+        self.unavailableCount = unavailableCount
+        self.alreadyInDestinationCount = alreadyInDestinationCount
+        self.destinationFolder = destinationFolder
+    }
+
+    public var moveCount: Int { plans.count }
+
+    public var hasMovableFiles: Bool { moveCount > 0 }
+
+    public var confirmationText: String {
+        "Move \(moveCount) reject \(moveCount == 1 ? "photo" : "photos") to \(destinationFolder.lastPathComponent)"
+    }
+
+    public var summaryText: String {
+        let sidecarText = "\(sidecarCount) \(sidecarCount == 1 ? "sidecar" : "sidecars")"
+        let sizeText = ByteCountFormatter.string(fromByteCount: totalByteCount, countStyle: .file)
+        return "\(moveCount) \(moveCount == 1 ? "file" : "files") · \(sidecarText) · \(sizeText)"
+    }
+
+    public var destinationPreview: [String] {
+        plans.prefix(8).map { plan in
+            plan.originalTo.path.replacingOccurrences(
+                of: destinationFolder.standardizedFileURL.path + "/",
+                with: ""
+            )
+        }
+    }
+
+    public var warningText: String? {
+        var parts: [String] = []
+        if unavailableCount > 0 {
+            parts.append("\(unavailableCount) unavailable \(unavailableCount == 1 ? "original is" : "originals are") skipped")
+        }
+        if alreadyInDestinationCount > 0 {
+            parts.append("\(alreadyInDestinationCount) already in the destination")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}
+
+public struct RejectRelocationSummary: Equatable, Identifiable, Sendable {
+    public var sessionID: WorkSessionID
+    public var movedCount: Int
+    public var sidecarCount: Int
+    public var skippedCount: Int
+    public var destinationFolder: URL
+
+    public init(
+        sessionID: WorkSessionID,
+        movedCount: Int,
+        sidecarCount: Int,
+        skippedCount: Int,
+        destinationFolder: URL
+    ) {
+        self.sessionID = sessionID
+        self.movedCount = movedCount
+        self.sidecarCount = sidecarCount
+        self.skippedCount = skippedCount
+        self.destinationFolder = destinationFolder
+    }
+
+    public var id: String { sessionID.rawValue }
+
+    public var detailText: String {
+        let movedText = "Moved \(movedCount) reject \(movedCount == 1 ? "photo" : "photos") to \(destinationFolder.lastPathComponent)"
+        guard skippedCount > 0 else { return movedText }
+        return "\(movedText) · \(skippedCount) skipped"
+    }
+}
+
 public struct KeywordSuggestion: Identifiable, Equatable, Sendable {
     public var keyword: String
     public var sourceKind: EvaluationKind
@@ -1247,6 +1343,9 @@ public final class AppModel {
     public var workHistorySearchResults: [AppWorkActivity]
     public var lastCullingMetadataDecision: CullingMetadataDecisionFeedback?
     public private(set) var cullingSessionCompletion: CullingSessionCompletionSummary?
+    public private(set) var rejectRelocationSummary: RejectRelocationSummary?
+    public private(set) var isRelocatingRejects = false
+    private var rejectRelocationAbortRequested = false
     // Tracks which stack-cull sessions came from beginStackCullingFromLatestImportCompletion()
     // and which import they scoped, so completion can offer to cull the
     // import's unstacked singles afterward. In-memory only; not persisted.
@@ -8081,6 +8180,214 @@ public final class AppModel {
         return try repository.assetCount()
     }
 
+    public func rejectRelocationPreflight(destinationFolder: URL) throws -> RejectRelocationPreflight {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let scopeIDs = try currentAssetScopeIDs(repository: catalog.repository)
+        let rejectIDs = try catalog.repository.assetIDs(
+            ids: scopeIDs,
+            matching: SetQuery(predicates: [.flag(.reject)])
+        )
+        let sidecarStore = XMPSidecarStore()
+        let destinationRootPath = destinationFolder.standardizedFileURL.path
+        var movableAssetIDs: [AssetID] = []
+        var movableOriginalURLs: [URL] = []
+        var sidecarCount = 0
+        var totalByteCount: Int64 = 0
+        var unavailableCount = 0
+        var alreadyInDestinationCount = 0
+        for assetID in rejectIDs {
+            let asset = try catalog.repository.asset(id: assetID)
+            guard FileManager.default.fileExists(atPath: asset.originalURL.path) else {
+                unavailableCount += 1
+                continue
+            }
+            if asset.originalURL.standardizedFileURL.path.hasPrefix(destinationRootPath + "/") {
+                alreadyInDestinationCount += 1
+                continue
+            }
+            movableAssetIDs.append(assetID)
+            movableOriginalURLs.append(asset.originalURL)
+            totalByteCount += Self.fileByteCount(at: asset.originalURL)
+            if let sidecarURL = sidecarStore.existingSidecarURL(forOriginalAt: asset.originalURL) {
+                sidecarCount += 1
+                totalByteCount += Self.fileByteCount(at: sidecarURL)
+            }
+        }
+        let plans = RejectRelocationPlanner(destinationRoot: destinationFolder).plan(originals: movableOriginalURLs)
+        return RejectRelocationPreflight(
+            assetIDs: movableAssetIDs,
+            originalURLs: movableOriginalURLs,
+            plans: plans,
+            sidecarCount: sidecarCount,
+            totalByteCount: totalByteCount,
+            unavailableCount: unavailableCount,
+            alreadyInDestinationCount: alreadyInDestinationCount,
+            destinationFolder: destinationFolder
+        )
+    }
+
+    private static func fileByteCount(at url: URL) -> Int64 {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return 0 }
+        return (attributes[.size] as? NSNumber)?.int64Value ?? 0
+    }
+
+    @discardableResult
+    public func moveRejectsToFolder(_ preflight: RejectRelocationPreflight) throws -> RejectRelocationSummary {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard !isRelocatingRejects else {
+            throw TeststripError.invalidState("a relocation is already running")
+        }
+        isRelocatingRejects = true
+        rejectRelocationAbortRequested = false
+        defer { isRelocatingRejects = false }
+
+        let sessionID = WorkSessionID(rawValue: "relocation-\(UUID().uuidString)")
+        let service = RejectRelocationService()
+        // Persist a running session before the loop so a crash still leaves an
+        // Activity row and a partial, reversible manifest.
+        try catalog.repository.save(Self.relocationWorkSession(
+            id: sessionID,
+            status: .running,
+            destinationFolder: preflight.destinationFolder,
+            movedCount: 0,
+            skippedCount: 0,
+            issues: []
+        ))
+
+        var movedCount = 0
+        var sidecarCount = 0
+        var issues: [WorkSessionIssue] = []
+        // Per-file loop: move file N's bytes (original + sidecar), then rewrite
+        // file N's catalog row, then record file N's manifest entry, then advance.
+        // The abort flag is checked at the top of each iteration so whatever
+        // already moved stays truthful and reversible.
+        for (assetID, plan) in zip(preflight.assetIDs, preflight.plans) {
+            if rejectRelocationAbortRequested { break }
+            do {
+                let result = try service.move(originalFrom: plan.originalFrom, originalTo: plan.originalTo)
+                try catalog.repository.relocateOriginal(assetID: assetID, to: result.originalTo)
+                try catalog.repository.saveRelocationManifestEntry(
+                    RelocationManifestEntry(
+                        assetID: assetID,
+                        originalFrom: result.originalFrom,
+                        originalTo: result.originalTo,
+                        sidecarFrom: result.sidecarFrom,
+                        sidecarTo: result.sidecarTo
+                    ),
+                    sessionID: sessionID
+                )
+                movedCount += 1
+                if result.sidecarTo != nil { sidecarCount += 1 }
+            } catch {
+                // Skip-with-issue: a file that can't move is recorded and the
+                // loop continues; its catalog row is left untouched.
+                issues.append(WorkSessionIssue(
+                    kind: .skippedSourceFile,
+                    sourceURL: plan.originalFrom,
+                    message: error.localizedDescription
+                ))
+            }
+        }
+
+        let finalStatus: WorkSessionStatus = rejectRelocationAbortRequested ? .cancelled : .completed
+        let session = Self.relocationWorkSession(
+            id: sessionID,
+            status: finalStatus,
+            destinationFolder: preflight.destinationFolder,
+            movedCount: movedCount,
+            skippedCount: issues.count,
+            issues: issues
+        )
+        try catalog.repository.save(session)
+        recordRecentActivity(AppWorkActivity(workSession: session))
+        try reload()
+
+        let summary = RejectRelocationSummary(
+            sessionID: sessionID,
+            movedCount: movedCount,
+            sidecarCount: sidecarCount,
+            skippedCount: issues.count,
+            destinationFolder: preflight.destinationFolder
+        )
+        rejectRelocationSummary = summary
+        statusMessage = summary.detailText
+        return summary
+    }
+
+    public func abortRejectRelocation() {
+        rejectRelocationAbortRequested = true
+    }
+
+    public func dismissRejectRelocationSummary() {
+        rejectRelocationSummary = nil
+    }
+
+    @discardableResult
+    public func moveBackRelocation(sessionID: WorkSessionID) throws -> Int {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let entries = try catalog.repository.relocationManifestEntries(sessionID: sessionID)
+        guard !entries.isEmpty else { return 0 }
+        let service = RejectRelocationService()
+        var restoredCount = 0
+        var skippedCount = 0
+        // Reverse order so nested-directory recreations undo cleanly.
+        for entry in entries.reversed() {
+            do {
+                try service.moveBack(entry)
+                if FileManager.default.fileExists(atPath: entry.originalFrom.path) {
+                    try catalog.repository.relocateOriginal(assetID: entry.assetID, to: entry.originalFrom)
+                    restoredCount += 1
+                } else {
+                    skippedCount += 1
+                }
+            } catch {
+                skippedCount += 1
+                errorMessage = error.localizedDescription
+            }
+        }
+        if skippedCount == 0 {
+            try catalog.repository.deleteRelocationManifest(sessionID: sessionID)
+            if rejectRelocationSummary?.sessionID == sessionID {
+                rejectRelocationSummary = nil
+            }
+        }
+        try reload()
+        statusMessage = "Moved back \(restoredCount) \(restoredCount == 1 ? "photo" : "photos")"
+        return restoredCount
+    }
+
+    private static func relocationWorkSession(
+        id: WorkSessionID,
+        status: WorkSessionStatus,
+        destinationFolder: URL,
+        movedCount: Int,
+        skippedCount: Int,
+        issues: [WorkSessionIssue]
+    ) -> WorkSession {
+        WorkSession(
+            id: id,
+            kind: .relocation,
+            intent: "move-rejects-to-folder",
+            title: "Move rejects to \(destinationFolder.lastPathComponent)",
+            detail: "Moved \(movedCount) · skipped \(skippedCount)",
+            status: status,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: movedCount,
+            totalUnitCount: movedCount + skippedCount,
+            failureCount: skippedCount,
+            issues: issues,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
+    }
+
     private func currentAssetScopeIDs(repository: CatalogRepository) throws -> [AssetID] {
         if let explicitAssetIDs = selectedExplicitAssetIDs {
             return explicitAssetIDs
@@ -10092,6 +10399,8 @@ public final class AppModel {
             return "Source scan"
         case .export:
             return "Export"
+        case .relocation:
+            return "Move rejects"
         }
     }
 }

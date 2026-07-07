@@ -19,6 +19,7 @@ public enum WorkSessionKind: String, Codable, Hashable, Sendable {
     case xmpSync
     case sourceScan
     case export
+    case relocation
 }
 
 public enum WorkSessionStatus: String, Codable, Hashable, Sendable {

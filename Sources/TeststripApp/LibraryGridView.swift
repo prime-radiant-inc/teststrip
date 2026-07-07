@@ -31,6 +31,8 @@ struct LibraryGridView: View {
     @State private var isNamingNewExportPreset = false
     @State private var newExportPresetName = ""
     @State private var exportSizeEstimateText: String?
+    @State private var rejectRelocationPreflight: RejectRelocationPreflight?
+    @State private var isRejectRelocationConfirmed = false
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
     @State private var isShowingImportCardPathSheet = false
@@ -199,12 +201,32 @@ struct LibraryGridView: View {
             .popover(isPresented: $isReviewingExport) {
                 exportPopover
             }
+
+            Button {
+                beginRejectRelocation()
+            } label: {
+                Label("Move Rejects", systemImage: "tray.and.arrow.down")
+            }
+            .disabled(isImporting || model.assets.isEmpty || model.isRelocatingRejects)
+            .help("Move reject-flagged photos in the current view to a folder")
         }
         .safeAreaInset(edge: .top) {
             topInsetContent
         }
         .safeAreaInset(edge: .bottom) {
-            footer
+            VStack(spacing: 0) {
+                if let summary = model.rejectRelocationSummary {
+                    RejectRelocationBannerView(
+                        summary: summary,
+                        moveBack: { moveBackRejectRelocation(sessionID: summary.sessionID) },
+                        dismiss: { model.dismissRejectRelocationSummary() }
+                    )
+                }
+                footer
+            }
+        }
+        .sheet(item: $rejectRelocationPreflight) { preflight in
+            rejectRelocationSheet(preflight)
         }
         .sheet(isPresented: $isShowingImportPathSheet) {
             importPathSheet
@@ -2871,6 +2893,86 @@ struct LibraryGridView: View {
         }
     }
 
+    private func beginRejectRelocation() {
+        guard let destination = FolderSelectionPanel.chooseRejectDestinationFolder() else { return }
+        isRejectRelocationConfirmed = false
+        do {
+            rejectRelocationPreflight = try model.rejectRelocationPreflight(destinationFolder: destination)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func confirmRejectRelocation(_ preflight: RejectRelocationPreflight) {
+        rejectRelocationPreflight = nil
+        isRejectRelocationConfirmed = false
+        do {
+            try model.moveRejectsToFolder(preflight)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func moveBackRejectRelocation(sessionID: WorkSessionID) {
+        do {
+            try model.moveBackRelocation(sessionID: sessionID)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    @ViewBuilder
+    private func rejectRelocationSheet(_ preflight: RejectRelocationPreflight) -> some View {
+        let presentation = RejectRelocationSheetPresentation(
+            preflight: preflight,
+            isConfirmed: isRejectRelocationConfirmed
+        )
+        VStack(alignment: .leading, spacing: 12) {
+            Text(presentation.titleText)
+                .font(.headline)
+            Text(presentation.summaryText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let warningText = presentation.warningText {
+                Label(warningText, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            if !presentation.destinationPreviewRows.isEmpty {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(presentation.destinationPreviewRows, id: \.self) { row in
+                            Text(row)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 140)
+            }
+            if preflight.hasMovableFiles {
+                Toggle(preflight.confirmationText, isOn: $isRejectRelocationConfirmed)
+                    .font(.caption)
+            }
+            HStack {
+                Button("Cancel") {
+                    rejectRelocationPreflight = nil
+                    isRejectRelocationConfirmed = false
+                }
+                Spacer()
+                Button(presentation.moveButtonTitle) {
+                    confirmRejectRelocation(preflight)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!presentation.isMoveEnabled)
+            }
+        }
+        .padding(16)
+        .frame(width: 420)
+    }
+
     private func saveNewExportPreset() {
         let trimmedName = newExportPresetName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return }
@@ -3011,6 +3113,40 @@ private struct CullingCompletionBannerView: View {
         .overlay(alignment: .top) { Divider() }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Culling session complete")
+    }
+}
+
+private struct RejectRelocationBannerView: View {
+    var summary: RejectRelocationSummary
+    var moveBack: () -> Void
+    var dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "tray.and.arrow.down.fill")
+                .foregroundStyle(.blue)
+            Text(summary.detailText)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button("Move back") {
+                moveBack()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .help("Move these photos back to where they came from")
+            Button("Dismiss") {
+                dismiss()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 40)
+        .background(Color.blue.opacity(0.12))
+        .overlay(alignment: .top) { Divider() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Reject relocation complete")
     }
 }
 
@@ -4146,6 +4282,24 @@ struct ExportReviewPresentation: Equatable {
                 && (!requiresAllCatalogConfirmation || isAllCatalogConfirmed)
             exportTitle = "Export current scope"
         }
+    }
+}
+
+struct RejectRelocationSheetPresentation: Equatable {
+    var titleText: String
+    var summaryText: String
+    var warningText: String?
+    var destinationPreviewRows: [String]
+    var isMoveEnabled: Bool
+    var moveButtonTitle: String
+
+    init(preflight: RejectRelocationPreflight, isConfirmed: Bool) {
+        titleText = "Move rejects to \(preflight.destinationFolder.lastPathComponent)"
+        summaryText = preflight.summaryText
+        warningText = preflight.warningText
+        destinationPreviewRows = preflight.destinationPreview
+        isMoveEnabled = preflight.hasMovableFiles && isConfirmed
+        moveButtonTitle = preflight.confirmationText
     }
 }
 

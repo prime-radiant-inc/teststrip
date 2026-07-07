@@ -8,6 +8,7 @@ enum FolderSelectionPanel {
     private static let cardDestinationParentKey = "FolderSelectionPanel.cardDestinationParent"
     private static let cardSecondCopyParentKey = "FolderSelectionPanel.cardSecondCopyParent"
     private static let exportDestinationParentKey = "FolderSelectionPanel.exportDestinationParent"
+    private static let rejectDestinationParentKey = "FolderSelectionPanel.rejectDestinationParent"
 
     static func chooseImportFolder(defaults: UserDefaults = .standard) -> URL? {
         let panel = NSOpenPanel()
@@ -67,6 +68,41 @@ enum FolderSelectionPanel {
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         rememberExportDestinationFolder(url, defaults: defaults)
         return url
+    }
+
+    static func chooseRejectDestinationFolder(defaults: UserDefaults = .standard) -> URL? {
+        let panel = NSOpenPanel()
+        configureRejectDestinationPanel(
+            panel,
+            startingDirectory: defaultStartingDirectory(),
+            rememberedDirectory: rememberedDirectory(for: rejectDestinationParentKey, defaults: defaults)
+        )
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        rememberRejectDestinationFolder(url, defaults: defaults)
+        return url
+    }
+
+    static func configureRejectDestinationPanel(
+        _ panel: NSOpenPanel,
+        startingDirectory: URL? = nil,
+        rememberedDirectory: URL? = nil
+    ) {
+        configureDirectoryPanel(
+            panel,
+            startingDirectory: startingDirectory,
+            rememberedDirectory: rememberedDirectory,
+            canCreateDirectories: true,
+            prompt: "Move Here",
+            message: "Select where reject photos should be moved."
+        )
+    }
+
+    static func startingRejectDestinationDirectory(defaults: UserDefaults = .standard) -> URL? {
+        rememberedDirectory(for: rejectDestinationParentKey, defaults: defaults) ?? defaultStartingDirectory()
+    }
+
+    static func rememberRejectDestinationFolder(_ folderURL: URL, defaults: UserDefaults = .standard) {
+        rememberDirectory(folderURL, for: rejectDestinationParentKey, defaults: defaults)
     }
 
     static func configureImportFolderPanel(
