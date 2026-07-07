@@ -5802,6 +5802,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.assetIDs(personID: "person-lee"), [])
     }
 
+    func testDismissSelectedFaceReviewAssetsRefreshesFaceSuggestions() throws {
+        let (model, _, incoming, _, _) = try makeFaceSuggestionModel(named: "app-model-dismiss-assets-refreshes-suggestions")
+        model.refreshPeopleFaceSuggestions()
+        XCTAssertNotNil(model.peopleFaceSuggestions.first { $0.id == "face-match-person-maya" })
+        model.selectedAssetID = incoming.id
+
+        try model.dismissSelectedFaceReviewAssets()
+
+        XCTAssertNil(model.peopleFaceSuggestions.first { $0.id == "face-match-person-maya" })
+        XCTAssertNotNil(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
+    }
+
+    func testConfirmSelectedAssetsAsPersonRefreshesFaceSuggestions() throws {
+        let (model, _, incoming, _, _) = try makeFaceSuggestionModel(named: "app-model-confirm-assets-refreshes-suggestions")
+        model.refreshPeopleFaceSuggestions()
+        XCTAssertNotNil(model.peopleFaceSuggestions.first { $0.id == "face-match-person-maya" })
+        model.selectedAssetID = incoming.id
+
+        try model.confirmSelectedAssetsAsPerson(named: "Ida", id: "person-ida")
+
+        XCTAssertNil(model.peopleFaceSuggestions.first { $0.id == "face-match-person-maya" })
+        XCTAssertNotNil(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
+    }
+
     func testSelectingPeopleSidebarTargetRefreshesFaceSuggestions() throws {
         let (model, _, _, _, _) = try makeFaceSuggestionModel(named: "app-model-face-people-entry")
         XCTAssertEqual(model.peopleFaceSuggestions, [])
