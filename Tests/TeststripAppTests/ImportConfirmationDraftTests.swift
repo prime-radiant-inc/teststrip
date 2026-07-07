@@ -66,6 +66,37 @@ final class ImportConfirmationDraftTests: XCTestCase {
         ))
     }
 
+    func testDraftDefaultsToImportingNewContentOnly() {
+        let folderDraft = ImportConfirmationDraft.folder(URL(fileURLWithPath: "/Volumes/Archive/Decades", isDirectory: true))
+        let cardDraft = ImportConfirmationDraft.card(
+            source: URL(fileURLWithPath: "/Volumes/CARD/DCIM", isDirectory: true),
+            destinationRoot: URL(fileURLWithPath: "/Volumes/Archive/Incoming", isDirectory: true)
+        )
+
+        XCTAssertTrue(folderDraft.importNewOnly)
+        XCTAssertTrue(cardDraft.importNewOnly)
+    }
+
+    func testDedupCountsDescribeNewAndAlreadyPresentSplit() {
+        var draft = ImportConfirmationDraft.folder(URL(fileURLWithPath: "/Volumes/Archive/Decades", isDirectory: true))
+        draft.dedupPreview = ImportDedupPreview(newContentCount: 2_310, existingContentCount: 418, reachedLimit: false)
+
+        XCTAssertEqual(draft.dedupCountText, "2,310 new · 418 already in catalog")
+    }
+
+    func testDedupCountTextIsNilWithoutPreview() {
+        let draft = ImportConfirmationDraft.folder(URL(fileURLWithPath: "/Volumes/Archive/Decades", isDirectory: true))
+
+        XCTAssertNil(draft.dedupCountText)
+    }
+
+    func testDedupCountTextMarksBoundedPreviewCounts() {
+        var draft = ImportConfirmationDraft.folder(URL(fileURLWithPath: "/Volumes/Archive/Decades", isDirectory: true))
+        draft.dedupPreview = ImportDedupPreview(newContentCount: 300, existingContentCount: 0, reachedLimit: true)
+
+        XCTAssertEqual(draft.dedupCountText, "300+ new")
+    }
+
     func testDisablingEvaluateAfterImportRemovesThePlanStep() {
         var draft = ImportConfirmationDraft.folder(URL(fileURLWithPath: "/Volumes/Archive/Decades", isDirectory: true))
         draft.evaluateAfterImport = false

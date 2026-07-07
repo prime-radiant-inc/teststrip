@@ -8711,6 +8711,12 @@ public final class AppModel {
         rebuildSidebarSections()
     }
 
+    // Exposed so the import sheet can open a read-only catalog off the main
+    // actor to preview how a source folder splits into new and known content.
+    public var catalogPaths: AppCatalogPaths? {
+        catalog?.paths
+    }
+
     @discardableResult
     public func importFolder(_ folderURL: URL) throws -> LibraryImportResult {
         guard let catalog else {

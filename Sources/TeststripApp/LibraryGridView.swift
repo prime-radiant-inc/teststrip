@@ -1613,6 +1613,9 @@ struct LibraryGridView: View {
                     LabeledContent("Second copy", value: draft.secondCopyName ?? "None")
                 }
                 LabeledContent("Photos", value: draft.sourceSummary.countText)
+                if let dedupCountText = draft.dedupCountText {
+                    LabeledContent("Duplicates", value: dedupCountText)
+                }
                 LabeledContent("Size", value: draft.sourceSummary.byteCountText)
                 Text(draft.sourceSummary.detailText)
                     .font(.caption2)
@@ -1658,6 +1661,16 @@ struct LibraryGridView: View {
                 }
             }
             importPlanView(steps: draft.planSteps, width: 440)
+            Toggle(
+                "Import new photos only",
+                isOn: Binding(
+                    get: { importConfirmationDraft?.importNewOnly ?? true },
+                    set: { importConfirmationDraft?.importNewOnly = $0 }
+                )
+            )
+            .toggleStyle(.checkbox)
+            .font(.caption)
+            .help("Skips source files whose content is already in the catalog — re-inserting a card copies only the new frames. Turn off to import everything, keeping intentional duplicates.")
             Toggle(
                 "Read imported frames automatically",
                 isOn: Binding(
@@ -2383,9 +2396,12 @@ struct LibraryGridView: View {
             let reviewID = UUID()
             importPathReviewID = reviewID
             isReviewingImportPath = true
+            let catalogPaths = model.catalogPaths
             Task {
                 let confirmationDraft = await Task.detached(priority: .userInitiated) {
-                    ImportConfirmationDraft.folder(folderURL)
+                    var draft = ImportConfirmationDraft.folder(folderURL)
+                    draft.dedupPreview = Self.dedupPreview(for: folderURL, catalogPaths: catalogPaths)
+                    return draft
                 }.value
                 await MainActor.run {
                     guard importPathReviewID == reviewID else { return }
@@ -2409,14 +2425,17 @@ struct LibraryGridView: View {
             let reviewID = UUID()
             importCardPathReviewID = reviewID
             isReviewingImportCardPath = true
+            let catalogPaths = model.catalogPaths
             Task {
                 let confirmationDraft = await Task.detached(priority: .userInitiated) {
-                    ImportConfirmationDraft.card(
+                    var draft = ImportConfirmationDraft.card(
                         source: roots.source,
                         destinationRoot: roots.destinationRoot,
                         destinationPolicy: destinationPolicy,
                         secondCopyRootURL: roots.secondCopyRoot
                     )
+                    draft.dedupPreview = Self.dedupPreview(for: roots.source, catalogPaths: catalogPaths)
+                    return draft
                 }.value
                 await MainActor.run {
                     guard importCardPathReviewID == reviewID else { return }
@@ -2438,7 +2457,11 @@ struct LibraryGridView: View {
         switch draft.mode {
         case .folder:
             FolderSelectionPanel.rememberImportFolder(draft.sourceURL)
-            importFolder(draft.sourceURL, evaluateAfterImport: draft.evaluateAfterImport)
+            importFolder(
+                draft.sourceURL,
+                evaluateAfterImport: draft.evaluateAfterImport,
+                importNewOnly: draft.importNewOnly
+            )
         case .card:
             guard let destinationRootURL = draft.destinationRootURL else {
                 model.errorMessage = "Card import destination is missing"
@@ -2449,9 +2472,20 @@ struct LibraryGridView: View {
                 destinationRoot: destinationRootURL,
                 destinationPolicy: draft.destinationPolicy,
                 secondCopyDestination: draft.secondCopyRootURL,
-                evaluateAfterImport: draft.evaluateAfterImport
+                evaluateAfterImport: draft.evaluateAfterImport,
+                importNewOnly: draft.importNewOnly
             )
         }
+    }
+
+    // Opens a short-lived read-only catalog connection off the main actor so the
+    // import sheet can promise the new/known split before any copy runs.
+    private nonisolated static func dedupPreview(for sourceURL: URL, catalogPaths: AppCatalogPaths?) -> ImportDedupPreview? {
+        guard let catalogPaths,
+              let database = try? CatalogDatabase.open(at: catalogPaths.catalogURL) else {
+            return nil
+        }
+        return ImportDedupPreview.scan(sourceURL: sourceURL, repository: CatalogRepository(database: database))
     }
 
     private func chooseImportSecondCopyDestination() {
@@ -2470,8 +2504,8 @@ struct LibraryGridView: View {
         }
     }
 
-    private func importFolder(_ folderURL: URL, evaluateAfterImport: Bool = true) {
-        model.beginImportFolder(folderURL, evaluateAfterImport: evaluateAfterImport)
+    private func importFolder(_ folderURL: URL, evaluateAfterImport: Bool = true, importNewOnly: Bool = true) {
+        model.beginImportFolder(folderURL, evaluateAfterImport: evaluateAfterImport, importNewOnly: importNewOnly)
     }
 
     private func importCard(
@@ -2479,14 +2513,16 @@ struct LibraryGridView: View {
         destinationRoot: URL,
         destinationPolicy: ImportDestinationPolicy,
         secondCopyDestination: URL?,
-        evaluateAfterImport: Bool = true
+        evaluateAfterImport: Bool = true,
+        importNewOnly: Bool = true
     ) {
         model.beginImportCard(
             source: source,
             destinationRoot: destinationRoot,
             destinationPolicy: destinationPolicy,
             secondCopyDestination: secondCopyDestination,
-            evaluateAfterImport: evaluateAfterImport
+            evaluateAfterImport: evaluateAfterImport,
+            importNewOnly: importNewOnly
         )
     }
 

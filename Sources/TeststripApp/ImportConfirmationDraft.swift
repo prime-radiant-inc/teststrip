@@ -168,6 +168,67 @@ struct ImportSourceSummary: Equatable {
     }
 }
 
+// A bounded preview of how a source folder splits into content the catalog has
+// never seen and content already present, so the import sheet can promise "N
+// new · M already in catalog" before any copy runs. Counts mirror the ingest
+// dedup outcome: newContentCount is distinct never-seen content; every other
+// scanned photo (a catalog match or a within-batch duplicate) will be skipped.
+struct ImportDedupPreview: Equatable {
+    var newContentCount: Int
+    var existingContentCount: Int
+    var reachedLimit: Bool
+
+    static func scan(
+        sourceURL: URL,
+        supportedExtensions: Set<String> = ImageIODecodeProvider.catalogableExtensions,
+        repository: CatalogRepository,
+        limit: Int = ImportSourceSummary.defaultScanLimit,
+        entryLimit: Int = ImportSourceSummary.defaultEntryLimit
+    ) -> ImportDedupPreview? {
+        let boundedLimit = max(1, limit)
+        let boundedEntryLimit = max(1, entryLimit)
+        let supportedExtensions = Set(supportedExtensions.map { $0.lowercased() })
+        guard let enumerator = FileManager.default.enumerator(
+            at: sourceURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        var scannedPhotoCount = 0
+        var contentHashes: [String] = []
+        var scannedEntryCount = 0
+        var reachedLimit = false
+        for case let fileURL as URL in enumerator {
+            if scannedEntryCount == boundedEntryLimit {
+                reachedLimit = true
+                break
+            }
+            scannedEntryCount += 1
+            guard supportedExtensions.contains(fileURL.pathExtension.lowercased()) else { continue }
+            guard (try? fileURL.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else { continue }
+            if scannedPhotoCount == boundedLimit {
+                reachedLimit = true
+                break
+            }
+            scannedPhotoCount += 1
+            if let hash = try? ContentHash.compute(forFileAt: fileURL) {
+                contentHashes.append(hash)
+            }
+        }
+
+        let uniqueHashes = Set(contentHashes)
+        let existingHashes = (try? repository.containedContentHashes(uniqueHashes)) ?? []
+        let newContentCount = uniqueHashes.subtracting(existingHashes).count
+        return ImportDedupPreview(
+            newContentCount: newContentCount,
+            existingContentCount: max(scannedPhotoCount - newContentCount, 0),
+            reachedLimit: reachedLimit
+        )
+    }
+}
+
 struct ImportConfirmationDraft: Equatable, Identifiable {
     enum Mode: Equatable {
         case folder
@@ -183,6 +244,8 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     private(set) var secondCopyUnavailableReason: String?
     var sourceSummary: ImportSourceSummary
     var evaluateAfterImport = true
+    var importNewOnly = true
+    var dedupPreview: ImportDedupPreview?
 
     var id: String {
         [
@@ -270,6 +333,26 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
 
     var sourceName: String {
         sourceURL.lastPathComponent
+    }
+
+    // "2,310 new · 418 already in catalog" — the new count alone when nothing is
+    // recognized, with a "+" when the preview stopped at its scan cap.
+    var dedupCountText: String? {
+        guard let dedupPreview else { return nil }
+        let newText = "\(Self.grouped(dedupPreview.newContentCount))\(dedupPreview.reachedLimit ? "+" : "") new"
+        guard dedupPreview.existingContentCount > 0 else {
+            return newText
+        }
+        return "\(newText) · \(Self.grouped(dedupPreview.existingContentCount)) already in catalog"
+    }
+
+    private static func grouped(_ value: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = true
+        formatter.groupingSeparator = ","
+        formatter.groupingSize = 3
+        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 
     var destinationName: String? {
