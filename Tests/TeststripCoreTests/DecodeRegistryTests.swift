@@ -110,6 +110,61 @@ final class DecodeRegistryTests: XCTestCase {
         XCTAssertEqual(metadata.focalLength, 56)
     }
 
+    func testImageIOTechnicalMetadataReadsGPSCoordinatesWithHemisphereRefs() throws {
+        let provenance = ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+
+        let metadata = try ImageIODecodeProvider.metadata(from: [
+            kCGImagePropertyPixelWidth: 6000,
+            kCGImagePropertyPixelHeight: 4000,
+            kCGImagePropertyGPSDictionary: [
+                kCGImagePropertyGPSLatitude: 37.8199,
+                kCGImagePropertyGPSLatitudeRef: "N",
+                kCGImagePropertyGPSLongitude: 122.4783,
+                kCGImagePropertyGPSLongitudeRef: "W",
+                kCGImagePropertyGPSAltitude: 67.5,
+                kCGImagePropertyGPSAltitudeRef: 0
+            ]
+        ], provenance: provenance, filename: "photo.cr3")
+
+        XCTAssertEqual(metadata.latitude, 37.8199)
+        XCTAssertEqual(metadata.longitude, -122.4783)
+        XCTAssertEqual(metadata.altitude, 67.5)
+    }
+
+    func testImageIOTechnicalMetadataAppliesSouthAndBelowSeaLevelSigns() throws {
+        let provenance = ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+
+        let metadata = try ImageIODecodeProvider.metadata(from: [
+            kCGImagePropertyPixelWidth: 6000,
+            kCGImagePropertyPixelHeight: 4000,
+            kCGImagePropertyGPSDictionary: [
+                kCGImagePropertyGPSLatitude: 33.8688,
+                kCGImagePropertyGPSLatitudeRef: "S",
+                kCGImagePropertyGPSLongitude: 151.2093,
+                kCGImagePropertyGPSLongitudeRef: "E",
+                kCGImagePropertyGPSAltitude: 12.0,
+                kCGImagePropertyGPSAltitudeRef: 1
+            ]
+        ], provenance: provenance, filename: "photo.cr3")
+
+        XCTAssertEqual(metadata.latitude, -33.8688)
+        XCTAssertEqual(metadata.longitude, 151.2093)
+        XCTAssertEqual(metadata.altitude, -12.0)
+    }
+
+    func testImageIOTechnicalMetadataLeavesCoordinatesNilWhenGPSDictionaryAbsent() throws {
+        let provenance = ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+
+        let metadata = try ImageIODecodeProvider.metadata(from: [
+            kCGImagePropertyPixelWidth: 6000,
+            kCGImagePropertyPixelHeight: 4000
+        ], provenance: provenance, filename: "photo.cr3")
+
+        XCTAssertNil(metadata.latitude)
+        XCTAssertNil(metadata.longitude)
+        XCTAssertNil(metadata.altitude)
+    }
+
     func testImageIOTechnicalMetadataOmitsApertureShutterSpeedAndFocalLengthWhenAbsent() throws {
         let provenance = ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
 

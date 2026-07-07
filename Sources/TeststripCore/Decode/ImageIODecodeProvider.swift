@@ -112,6 +112,8 @@ public struct ImageIODecodeProvider: DecodeProvider {
         let dimensions = try dimensions(from: properties, filename: filename)
         let tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
         let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:]
+        let gps = properties[kCGImagePropertyGPSDictionary] as? [CFString: Any] ?? [:]
+        let coordinate = signedCoordinate(from: gps)
         return DecodeMetadata(
             pixelWidth: dimensions.pixelWidth,
             pixelHeight: dimensions.pixelHeight,
@@ -123,10 +125,38 @@ public struct ImageIODecodeProvider: DecodeProvider {
             shutterSpeed: doubleValue(from: exif[kCGImagePropertyExifExposureTime]),
             focalLength: doubleValue(from: exif[kCGImagePropertyExifFocalLenIn35mmFilm])
                 ?? doubleValue(from: exif[kCGImagePropertyExifFocalLength]),
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
+            altitude: coordinate.altitude,
             capturedAt: capturedAt(from: exif[kCGImagePropertyExifDateTimeOriginal])
                 ?? capturedAt(from: tiff[kCGImagePropertyTIFFDateTime]),
             provenance: provenance
         )
+    }
+
+    private static func signedCoordinate(
+        from gps: [CFString: Any]
+    ) -> (latitude: Double?, longitude: Double?, altitude: Double?) {
+        let latitude = doubleValue(from: gps[kCGImagePropertyGPSLatitude]).map { magnitude in
+            stringValue(gps[kCGImagePropertyGPSLatitudeRef])?.uppercased() == "S" ? -magnitude : magnitude
+        }
+        let longitude = doubleValue(from: gps[kCGImagePropertyGPSLongitude]).map { magnitude in
+            stringValue(gps[kCGImagePropertyGPSLongitudeRef])?.uppercased() == "W" ? -magnitude : magnitude
+        }
+        let altitude = doubleValue(from: gps[kCGImagePropertyGPSAltitude]).map { magnitude in
+            intValue(gps[kCGImagePropertyGPSAltitudeRef]) == 1 ? -magnitude : magnitude
+        }
+        // A 0,0 fix ("Null Island") is the canonical camera "no fix" sentinel; treat
+        // it as absent so it never plots off the Gulf of Guinea.
+        if latitude == 0, longitude == 0 {
+            return (nil, nil, altitude)
+        }
+        return (latitude, longitude, altitude)
+    }
+
+    private static func intValue(_ value: Any?) -> Int? {
+        if let number = value as? NSNumber { return number.intValue }
+        return value as? Int
     }
 
     static func dimensions(from properties: [CFString: Any], filename: String) throws -> (pixelWidth: Int, pixelHeight: Int) {
