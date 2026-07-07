@@ -99,6 +99,30 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(fetched.technicalMetadata, technicalMetadata)
     }
 
+    func testPersistsGPSCoordinatesThroughExistingTechnicalMetadataStorage() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-metadata-gps")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let technicalMetadata = AssetTechnicalMetadata(
+            pixelWidth: 6000,
+            pixelHeight: 4000,
+            latitude: 37.8199,
+            longitude: -122.4783,
+            altitude: 67.5,
+            provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+        )
+        let asset = Asset.testAsset(path: "/Volumes/NAS/Job/frame.cr2", rating: 3, technicalMetadata: technicalMetadata)
+
+        try repository.upsert(asset)
+
+        let fetched = try repository.asset(id: asset.id)
+        XCTAssertEqual(fetched.technicalMetadata?.latitude, 37.8199)
+        XCTAssertEqual(fetched.technicalMetadata?.longitude, -122.4783)
+        XCTAssertEqual(fetched.technicalMetadata?.altitude, 67.5)
+        XCTAssertEqual(fetched.technicalMetadata, technicalMetadata)
+    }
+
     // Proves the audit's no-migration claim: `technical_metadata_json` is a JSON blob
     // decoded into AssetTechnicalMetadata, and the new aperture/shutterSpeed/focalLength
     // fields are optional, so a row written before this change (missing those keys
