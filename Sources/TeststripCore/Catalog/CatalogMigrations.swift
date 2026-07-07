@@ -1,5 +1,5 @@
 enum CatalogMigrations {
-    static let version = 18
+    static let version = 19
 
     static let statements = [
         """
@@ -176,7 +176,29 @@ enum CatalogMigrations {
             created_at REAL NOT NULL,
             PRIMARY KEY (asset_id, face_index)
         )
+        """,
         """
+        CREATE TABLE IF NOT EXISTS place_cache (
+            coordinate_key TEXT PRIMARY KEY NOT NULL,
+            locality TEXT,
+            administrative_area TEXT,
+            country TEXT,
+            display_name TEXT,
+            updated_at REAL NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS geocode_queue (
+            coordinate_key TEXT PRIMARY KEY NOT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            last_attempted_at REAL,
+            updated_at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_geocode_queue_updated_at ON geocode_queue(updated_at)"
     ]
 
     // Runs after `technical_metadata_json` is ensured on legacy catalogs (the

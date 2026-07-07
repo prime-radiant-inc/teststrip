@@ -220,6 +220,84 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(coverage.totalCount, 2)
     }
 
+    func testEnqueueMissingGeocodeCoordinatesDeduplicatesByRoundedKey() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-geocode-enqueue")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        func upsert(_ name: String, _ lat: Double, _ lon: Double) throws {
+            try repository.upsert(Asset.testAsset(
+                path: "/Volumes/NAS/\(name).cr2", rating: 0,
+                technicalMetadata: AssetTechnicalMetadata(
+                    pixelWidth: 1, pixelHeight: 1, latitude: lat, longitude: lon,
+                    provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+                )
+            ))
+        }
+        // Two frames round to the same 2dp key; a third is distinct.
+        try upsert("a", 37.8199, -122.4783)
+        try upsert("b", 37.8203, -122.4791)
+        try upsert("c", 48.8584, 2.2945)
+
+        let enqueued = try repository.enqueueMissingGeocodeCoordinates(limit: 100)
+        XCTAssertEqual(enqueued, 2)
+
+        // Re-running enqueues nothing new (both keys are already queued).
+        XCTAssertEqual(try repository.enqueueMissingGeocodeCoordinates(limit: 100), 0)
+        XCTAssertEqual(try repository.geocodeQueueDepth(), 2)
+    }
+
+    func testRecordPlaceNameCachesAndClearsQueue() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-geocode-record")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        try repository.upsert(Asset.testAsset(
+            path: "/Volumes/NAS/eiffel.cr2", rating: 0,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 1, pixelHeight: 1, latitude: 48.8584, longitude: 2.2945,
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        ))
+        _ = try repository.enqueueMissingGeocodeCoordinates(limit: 10)
+        let key = GeocodeCoordinateKey.key(latitude: 48.8584, longitude: 2.2945)
+
+        try repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: key, locality: "Paris", administrativeArea: "Île-de-France",
+            country: "France", displayName: "Paris · France"
+        ))
+
+        XCTAssertEqual(try repository.placeName(coordinateKey: key)?.displayName, "Paris · France")
+        XCTAssertEqual(try repository.geocodeQueueDepth(), 0)
+        // An already-cached coordinate is never re-enqueued.
+        XCTAssertEqual(try repository.enqueueMissingGeocodeCoordinates(limit: 10), 0)
+    }
+
+    func testRecordGeocodeFailureIncrementsAttemptCount() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-geocode-failure")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        try repository.upsert(Asset.testAsset(
+            path: "/Volumes/NAS/x.cr2", rating: 0,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 1, pixelHeight: 1, latitude: 10.0, longitude: 10.0,
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        ))
+        _ = try repository.enqueueMissingGeocodeCoordinates(limit: 10)
+        let key = GeocodeCoordinateKey.key(latitude: 10.0, longitude: 10.0)
+
+        try repository.recordGeocodeFailure(coordinateKey: key, errorMessage: "network down")
+        try repository.recordGeocodeFailure(coordinateKey: key, errorMessage: "network down")
+
+        XCTAssertEqual(try repository.pendingGeocodeItems(limit: 10, maximumAttemptCount: 2).count, 0)
+        XCTAssertEqual(try repository.pendingGeocodeItems(limit: 10, maximumAttemptCount: 3).count, 1)
+    }
+
     // Proves the audit's no-migration claim: `technical_metadata_json` is a JSON blob
     // decoded into AssetTechnicalMetadata, and the new aperture/shutterSpeed/focalLength
     // fields are optional, so a row written before this change (missing those keys

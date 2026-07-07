@@ -433,6 +433,144 @@ public final class CatalogRepository {
         return CatalogGeotaggedCoverage(geotaggedCount: geotagged, totalCount: total)
     }
 
+    public func enqueueMissingGeocodeCoordinates(limit: Int) throws -> Int {
+        guard limit > 0 else { return 0 }
+        let now = "\(Date().timeIntervalSince1970)"
+        let rows = try database.rows(
+            """
+            WITH located AS (
+                SELECT \(Self.latitudeExpressionSQL) AS lat,
+                       \(Self.longitudeExpressionSQL) AS lon
+                FROM assets
+                WHERE json_valid(technical_metadata_json)
+                  AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
+                  AND json_type(technical_metadata_json, '$.longitude') IN ('integer', 'real')
+            ),
+            keyed AS (
+                SELECT printf('%.2f,%.2f', ROUND(lat, 2), ROUND(lon, 2)) AS coordinate_key,
+                       AVG(lat) AS lat, AVG(lon) AS lon
+                FROM located
+                GROUP BY coordinate_key
+            )
+            SELECT coordinate_key, lat, lon
+            FROM keyed
+            WHERE coordinate_key NOT IN (SELECT coordinate_key FROM place_cache)
+              AND coordinate_key NOT IN (SELECT coordinate_key FROM geocode_queue)
+            LIMIT ?
+            """,
+            bindings: ["\(limit)"]
+        )
+        try database.transaction {
+            for row in rows {
+                guard let key = row["coordinate_key"],
+                      let lat = row["lat"], let lon = row["lon"] else { continue }
+                try database.execute(
+                    """
+                    INSERT OR IGNORE INTO geocode_queue (coordinate_key, latitude, longitude, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    bindings: [key, lat, lon, now]
+                )
+            }
+        }
+        return rows.count
+    }
+
+    public func pendingGeocodeItems(limit: Int, maximumAttemptCount: Int) throws -> [GeocodeQueueItem] {
+        guard limit > 0, maximumAttemptCount > 0 else { return [] }
+        let rows = try database.rows(
+            """
+            SELECT coordinate_key, latitude, longitude
+            FROM geocode_queue
+            WHERE attempt_count < ?
+            ORDER BY updated_at ASC
+            LIMIT ?
+            """,
+            bindings: ["\(maximumAttemptCount)", "\(limit)"]
+        )
+        return try rows.map { row in
+            guard let key = row["coordinate_key"],
+                  let latitude = row["latitude"].flatMap(Double.init),
+                  let longitude = row["longitude"].flatMap(Double.init) else {
+                throw CatalogError.sqlite("geocode queue row is missing required columns")
+            }
+            return GeocodeQueueItem(coordinateKey: key, latitude: latitude, longitude: longitude)
+        }
+    }
+
+    public func recordGeocodeFailure(coordinateKey: String, errorMessage: String) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            UPDATE geocode_queue
+            SET attempt_count = attempt_count + 1,
+                last_error = ?,
+                last_attempted_at = ?,
+                updated_at = ?
+            WHERE coordinate_key = ?
+            """,
+            bindings: [errorMessage, now, now, coordinateKey]
+        )
+    }
+
+    public func recordPlaceName(_ placeName: CatalogPlaceName) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.transaction {
+            try database.execute(
+                """
+                INSERT INTO place_cache (coordinate_key, locality, administrative_area, country, display_name, updated_at)
+                VALUES (?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?)
+                ON CONFLICT(coordinate_key) DO UPDATE SET
+                    locality = excluded.locality,
+                    administrative_area = excluded.administrative_area,
+                    country = excluded.country,
+                    display_name = excluded.display_name,
+                    updated_at = excluded.updated_at
+                """,
+                bindings: [
+                    placeName.coordinateKey,
+                    placeName.locality ?? "",
+                    placeName.administrativeArea ?? "",
+                    placeName.country ?? "",
+                    placeName.displayName ?? "",
+                    now
+                ]
+            )
+            try database.execute(
+                "DELETE FROM geocode_queue WHERE coordinate_key = ?",
+                bindings: [placeName.coordinateKey]
+            )
+        }
+    }
+
+    public func placeName(coordinateKey: String) throws -> CatalogPlaceName? {
+        let rows = try database.rows(
+            """
+            SELECT coordinate_key, locality, administrative_area, country, display_name
+            FROM place_cache
+            WHERE coordinate_key = ?
+            LIMIT 1
+            """,
+            bindings: [coordinateKey]
+        )
+        guard let row = rows.first, let key = row["coordinate_key"] else { return nil }
+        return CatalogPlaceName(
+            coordinateKey: key,
+            locality: row["locality"],
+            administrativeArea: row["administrative_area"],
+            country: row["country"],
+            displayName: row["display_name"]
+        )
+    }
+
+    public func geocodeQueueDepth() throws -> Int {
+        let rows = try database.rows("SELECT COUNT(*) AS count FROM geocode_queue")
+        guard let count = rows.first?["count"].flatMap(Int.init) else {
+            throw CatalogError.sqlite("geocode queue depth query returned no count")
+        }
+        return count
+    }
+
     public func recordSourceRoot(_ root: URL, securityScopedBookmarkData: Data? = nil) throws {
         let path = Self.normalizedDirectoryPath(root)
         let now = "\(Date().timeIntervalSince1970)"
