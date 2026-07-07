@@ -32,13 +32,19 @@ public struct XMPSidecarStore: Sendable {
               FileManager.default.fileExists(atPath: adobeStyleSidecarURL.path) else {
             return nil
         }
-        if !hasSiblingWithSameBasename(as: originalURL) {
-            return adobeStyleSidecarURL
+        let claimedExtension = claimedSidecarExtension(at: adobeStyleSidecarURL)
+        let originalExtension = originalURL.pathExtension.lowercased()
+        if hasSiblingWithSameBasename(as: originalURL) {
+            // Ambiguous basename: bind only when the sidecar explicitly
+            // claims this original.
+            return claimedExtension == originalExtension ? adobeStyleSidecarURL : nil
         }
-        guard sidecarClaimsOriginal(sidecarURL: adobeStyleSidecarURL, originalURL: originalURL) else {
-            return nil
-        }
-        return adobeStyleSidecarURL
+        // Unambiguous basename: bind unless the sidecar explicitly claims a
+        // different original (e.g. a culled RAW+JPEG sibling), so plain
+        // attribute-free frame.xmp sidecars keep working.
+        return claimedExtension == nil || claimedExtension == originalExtension
+            ? adobeStyleSidecarURL
+            : nil
     }
 
     public func write(metadata: AssetMetadata, forOriginalAt originalURL: URL) throws -> XMPSidecarWriteResult {
@@ -74,15 +80,14 @@ public struct XMPSidecarStore: Sendable {
         return adobeStyleSidecarURL
     }
 
-    /// Adobe tools disambiguate a basename-shared sidecar via `photoshop:SidecarForExtension`.
-    /// A sidecar explicitly naming this original's extension is unambiguous even when RAW+JPEG
-    /// siblings share the basename. An absent attribute or unreadable sidecar stays ambiguous.
-    private func sidecarClaimsOriginal(sidecarURL: URL, originalURL: URL) -> Bool {
-        guard let sidecarData = try? Data(contentsOf: sidecarURL),
-              let claimedExtension = XMPPacket.sidecarForExtension(in: sidecarData) else {
-            return false
+    /// Adobe tools record which basename-shared original a sidecar belongs to via
+    /// `photoshop:SidecarForExtension`. Returns the claimed extension lowercased, or nil
+    /// when the sidecar is unreadable or carries no claim.
+    private func claimedSidecarExtension(at sidecarURL: URL) -> String? {
+        guard let sidecarData = try? Data(contentsOf: sidecarURL) else {
+            return nil
         }
-        return claimedExtension.lowercased() == originalURL.pathExtension.lowercased()
+        return XMPPacket.sidecarForExtension(in: sidecarData)?.lowercased()
     }
 
     private func hasSiblingWithSameBasename(as originalURL: URL) -> Bool {
