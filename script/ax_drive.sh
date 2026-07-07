@@ -20,12 +20,15 @@ set -euo pipefail
 #   wait  [App] MATCHSPEC             Poll until >=1 element matches (assert that
 #                                     something appeared); exit 0/1 on timeout.
 #   press [App] MATCHSPEC             AXPress the first matching element.
+#   type  [App] MATCHSPEC --text STR  Set the first matching field's value to STR
+#                                     (role defaults to AXTextField for `type`).
 #
 # MATCHSPEC (all optional, ANDed):
 #   --role  ROLE     AX role, e.g. AXButton, AXStaticText (default: any)
 #   --label TEXT     exact match on title/description/value
 #   --help  TEXT     exact match on AXHelp (icon-only controls carry meaning here)
 #   --contains TEXT  substring match on title/description/value
+#   --text  STR      (type only) the string to write into the matched field
 #
 # Env: TESTSTRIP_AX_TIMEOUT_SECONDS (default 20), TESTSTRIP_AX_POLL_SECONDS (0.15).
 # Exit: 0 success, 1 not found / timeout, 2 usage/permission error.
@@ -34,7 +37,7 @@ usage() { sed -n '3,32p' "$0" >&2; }
 
 VERB="${1:-}"; shift || true
 case "$VERB" in
-  wait-vended|find|wait|press) ;;
+  wait-vended|find|wait|press|type) ;;
   ""|-h|--help|help) usage; exit 2 ;;
   *) echo "unknown verb: $VERB" >&2; usage; exit 2 ;;
 esac
@@ -42,16 +45,20 @@ esac
 APP="Teststrip"
 if [[ "${1:-}" != "" && "${1:-}" != --* ]]; then APP="$1"; shift; fi
 
-ROLE=""; LABEL=""; HELP=""; CONTAINS=""
+ROLE=""; LABEL=""; HELP=""; CONTAINS=""; TEXT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --role) ROLE="$2"; shift 2 ;;
     --label) LABEL="$2"; shift 2 ;;
     --help) HELP="$2"; shift 2 ;;
     --contains) CONTAINS="$2"; shift 2 ;;
+    --text) TEXT="$2"; shift 2 ;;
     *) echo "unknown option: $1" >&2; usage; exit 2 ;;
   esac
 done
+
+# `type` defaults to text fields, and needs somewhere to descend from.
+if [[ "$VERB" == "type" && -z "$ROLE" ]]; then ROLE="AXTextField"; fi
 
 TESTSTRIP_AX_VERB="$VERB" \
 TESTSTRIP_AX_APP_NAME="$APP" \
@@ -59,6 +66,7 @@ TESTSTRIP_AX_ROLE="$ROLE" \
 TESTSTRIP_AX_LABEL="$LABEL" \
 TESTSTRIP_AX_HELP="$HELP" \
 TESTSTRIP_AX_CONTAINS="$CONTAINS" \
+TESTSTRIP_AX_TEXT="$TEXT" \
 /usr/bin/swift -e '
 import AppKit
 import ApplicationServices
@@ -71,6 +79,7 @@ let wantRole = env["TESTSTRIP_AX_ROLE"] ?? ""
 let wantLabel = env["TESTSTRIP_AX_LABEL"] ?? ""
 let wantHelp = env["TESTSTRIP_AX_HELP"] ?? ""
 let wantContains = env["TESTSTRIP_AX_CONTAINS"] ?? ""
+let wantText = env["TESTSTRIP_AX_TEXT"] ?? ""
 let timeout = TimeInterval(env["TESTSTRIP_AX_TIMEOUT_SECONDS"] ?? "20") ?? 20
 let poll = TimeInterval(env["TESTSTRIP_AX_POLL_SECONDS"] ?? "0.15") ?? 0.15
 
@@ -166,6 +175,17 @@ repeat {
                     exit(0)
                 }
                 FileHandle.standardError.write(Data("AXPress failed: \(result.rawValue)\n".utf8))
+                exit(1)
+            case "type":
+                // Focus the field, then set its value directly — the mechanism
+                // submit_import_path.sh proved for the import-path sheet field.
+                _ = AXUIElementSetAttributeValue(found[0], kAXFocusedAttribute as CFString, kCFBooleanTrue)
+                let result = AXUIElementSetAttributeValue(found[0], kAXValueAttribute as CFString, wantText as CFTypeRef)
+                if result == .success {
+                    print("typed into: \(label(found[0]) ?? role(found[0]) ?? "?")")
+                    exit(0)
+                }
+                FileHandle.standardError.write(Data("set value failed: \(result.rawValue)\n".utf8))
                 exit(1)
             default: break
             }

@@ -9,64 +9,74 @@ must leave zero keep/cut/rating writes in the catalog until an explicit
 Commit, and Undo all must return the catalog to its pre-run state.
 
 ## Pre-state
-- Fresh build, isolated catalog seeded with synthetic photos:
+- **Autopilot only runs after an import** — `runAutopilot` has no on-demand UI
+  trigger (it is invoked once, over the imported set, when an import with
+  Autopilot armed finishes evaluating). The "Autopilot on" checkbox is only the
+  persisted *setting* that arms post-import runs; toggling it on a static
+  catalog does nothing. So this card imports a folder to trigger a run.
+- An import fixture folder of a few frames:
+  ```bash
+  FIX=$(mktemp -d); swift run TeststripBench seed-dup-fixtures "$FIX" >/dev/null
+  IMP="$FIX/card1"        # 4 distinct JPEGs
+  ```
+- Fresh build, isolated seeded catalog:
   ```bash
   ./script/build_and_run.sh --smoke
-  ```
-  `--smoke` seeds the synthetic app catalog into a throwaway
-  application-support dir under `$TMPDIR` and opens the app against it. Capture
-  that dir — every ground-truth query runs against `$ISOLATED/Teststrip/catalog.sqlite`:
-  ```bash
   ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
   DB="$ISOLATED/Teststrip/catalog.sqlite"
   ```
-- The grid shows the seeded photos. No autopilot banner is visible yet.
 
 ## Steps
-1. **Record the pre-run baseline** (ground truth, before any UI action):
+1. **Arm autopilot and record the baseline.** `script/ax_drive.sh wait-vended`,
+   then arm the setting: `script/ax_drive.sh press --role AXCheckBox --contains
+   "Autopilot"`. Baseline (ground truth):
    ```bash
-   sqlite3 "$DB" "SELECT count(*) FROM autopilot_proposals;"          # committed/pending proposal rows
-   sqlite3 "$DB" "SELECT count(*) FROM assets WHERE rating IS NOT NULL OR keep_state IS NOT NULL;"
+   sqlite3 "$DB" "SELECT count(*) FROM autopilot_proposals;"                       # PROP0 (expect 0)
+   sqlite3 "$DB" "SELECT COALESCE(SUM(catalog_generation),0) FROM assets;"          # GEN0 (write signal)
    ```
-   Note both numbers; call them `PROP0` and `WRITES0`.
-2. **Run autopilot.** `script/activate_app.sh Teststrip`, then AX-press the
-   toolbar toggle whose accessible label is **"Autopilot on"**.
-3. **Wait for the proposal banner.** `waitFor` a `AXStaticText` whose value
-   begins with **"Autopilot: "** (the AutopilotBanner `bannerText`).
-4. **Assert nothing is written yet** (the invariant):
+2. **Import the fixture** (drives the whole Import Path flow — path field →
+   Review Import → Start Import; Autopilot-after-import is seeded from the armed
+   setting):
    ```bash
-   sqlite3 "$DB" "SELECT count(*) FROM assets WHERE rating IS NOT NULL OR keep_state IS NOT NULL;"
+   ./script/submit_import_path.sh Teststrip "$IMP"
    ```
-   This must still equal `WRITES0`.
-5. **Open review.** AX-press the banner's **"Review"** button. `waitFor` an
-   `AXStaticText` matching **"Reviewing N proposals"** (N ≥ 1).
-6. **Commit all.** AX-press **"Commit all N"** (the review toolbar button).
-   `waitFor` the "Reviewing" toolbar to disappear.
+3. **Wait for the imported set to evaluate and autopilot to run.** Poll until
+   proposals appear (autopilot runs once the imported frames' evaluations
+   resolve):
+   ```bash
+   for i in $(seq 1 60); do p=$(sqlite3 "$DB" "SELECT count(*) FROM autopilot_proposals;"); [ "$p" -gt 0 ] && break; sleep 2; done
+   ```
+   Also expect the AutopilotBanner: `script/ax_drive.sh wait --role AXStaticText
+   --contains "Autopilot"`.
+4. **Assert proposals exist but nothing is written yet** (the invariant):
+   ```bash
+   sqlite3 "$DB" "SELECT count(*) FROM autopilot_proposals;"                        # > PROP0
+   sqlite3 "$DB" "SELECT COALESCE(SUM(catalog_generation),0) FROM assets;"           # still == GEN0
+   ```
+5. **Open review.** `script/ax_drive.sh press --contains "Review"`; then
+   `script/ax_drive.sh wait --role AXStaticText --contains "Reviewing"`.
+6. **Commit all.** `script/ax_drive.sh press --role AXButton --contains "Commit all"`.
 7. **Assert the commit wrote through**:
    ```bash
-   sqlite3 "$DB" "SELECT count(*) FROM assets WHERE rating IS NOT NULL OR keep_state IS NOT NULL;"
+   sqlite3 "$DB" "SELECT COALESCE(SUM(catalog_generation),0) FROM assets;"           # GEN1 > GEN0
    ```
-   Call it `WRITES1`.
-8. **Re-run and Undo all.** AX-press **"Autopilot on"** again, wait for the
-   banner, then AX-press the banner's **"Undo all"** button; `waitFor` the
-   banner to clear.
-9. **Assert undo restored state**:
+8. **Undo all.** `script/ax_drive.sh press --role AXButton --contains "Undo all"`.
+9. **Assert undo reverted the committed writes**:
    ```bash
-   sqlite3 "$DB" "SELECT count(*) FROM assets WHERE rating IS NOT NULL OR keep_state IS NOT NULL;"
+   sqlite3 "$DB" "SELECT COALESCE(SUM(catalog_generation),0) FROM assets;"           # generations settle back
    ```
 
 ## Expected
-- Step 3: banner appears with `Autopilot: …` text within 20s. **Fails if** no
-  banner appears (autopilot never produced a summary) or an error alert shows.
-- Step 4: `WRITES0` unchanged. **Fails if** the count rose — that is a
-  confirm-before-write violation; report it, do not soften it.
-- Step 5: "Reviewing N proposals" with N ≥ 1. **Fails if** N = 0 or the review
-  toolbar never appears.
-- Step 7: `WRITES1 > WRITES0`. **Fails if** the count is unchanged — Commit
-  did not reach `commitAutopilotProposals`.
-- Step 9: count returns to `WRITES1`'s pre-second-run baseline (i.e. Undo all
-  reverted the second run's writes). **Fails if** writes from the undone run
-  persist. Quote `WRITES0`, `WRITES1`, and the final count side by side.
+- Step 3: `autopilot_proposals` becomes > 0 and the banner appears within ~120s.
+  **Fails if** proposals stay 0 (autopilot never ran — check the import
+  finished and evaluations drained) or an error alert shows.
+- Step 4: proposals > `PROP0`, but `SUM(catalog_generation)` still equals `GEN0`.
+  **Fails if** the generation sum rose before Commit — a confirm-before-write
+  violation; report it, do not soften it.
+- Step 5: "Reviewing N proposals" appears with N ≥ 1.
+- Step 7: `GEN1 > GEN0` — Commit reached `commitAutopilotProposals`.
+- Step 9: the generation sum settles back toward `GEN0` (Undo reverted the
+  committed writes). Quote `GEN0`, `GEN1`, and the final sum side by side.
 
 ## Cleanup
 ```bash
@@ -75,15 +85,16 @@ Commit, and Undo all must return the catalog to its pre-run state.
 Quit the app instance you launched. Leave any pre-existing Teststrip untouched.
 
 ## Sharp edges
-- The **"Autopilot on"** control is a toggle: pressing it a second time in
-  step 8 must re-trigger a run, not toggle autopilot off. Re-dump and confirm a
-  fresh banner appeared before pressing Undo all; if the label reads
-  "Autopilot off", you toggled the mode instead of running — press again.
-- `keep_state`/`rating` column names above are the assumed catalog columns for
-  autopilot's keep/cut/rating writes — verify against the live schema
-  (`sqlite3 "$DB" .schema assets`) before trusting a zero count; a query
-  against a wrong column silently reads 0 and would make the invariant check
-  vacuous.
-- Autopilot needs cached previews/evaluations to propose. `--smoke` seeds
-  evaluable synthetic photos; if the banner reports 0 proposals, evaluation
-  hasn't drained — wait on the Activity panel before running.
+- **There is no on-demand "run autopilot" gesture.** `runAutopilot` is called
+  from exactly one place (AppModel, over the imported set post-import). Do not
+  try to trigger a run by toggling "Autopilot on" on a static catalog — it will
+  never produce proposals. Import is the trigger. (The source comment claiming
+  on-demand availability is stale; the affordance does not exist in the UI.)
+- Ground truth uses `SUM(catalog_generation)` as the write signal because the
+  `--smoke` seed already populates ratings/flags on every asset, which makes a
+  "rating IS NOT NULL" check vacuous. A generation bump means *some* metadata
+  was written; that is what Commit must cause and the pre-commit run must not.
+- Autopilot proposes only over frames that have evaluations. The imported set
+  auto-evaluates because "Read imported frames" defaults on; if proposals stay
+  0, confirm the import finished (`SELECT count(*) FROM assets` grew) and give
+  evaluation time to drain before concluding failure.
