@@ -4434,6 +4434,44 @@ public final class AppModel {
         selectAssetID(assets[max(index - 1, 0)].id)
     }
 
+    public func moveGridSelection(_ direction: GridMoveDirection, columns: Int) {
+        guard !assets.isEmpty else { return }
+        let currentIndex = selectedAssetID.flatMap { id in
+            assets.firstIndex(where: { $0.id == id })
+        } ?? 0
+        guard let nextIndex = GridSelectionMovement.nextIndex(
+            from: currentIndex,
+            direction: direction,
+            count: assets.count,
+            columns: columns
+        ) else { return }
+        selectAssetID(assets[nextIndex].id)
+    }
+
+    public func returnToLibraryGrid() {
+        selectedView = .grid
+    }
+
+    public func applyGridKeyCommand(_ command: GridKeyCommand, columns: Int) throws {
+        switch command {
+        case .move(let direction):
+            moveGridSelection(direction, columns: columns)
+        case .rating(let rating):
+            try setRatingForSelectedAsset(rating)
+        case .pick:
+            try setFlagForSelectedAsset(.pick)
+        case .reject:
+            try setFlagForSelectedAsset(.reject)
+        case .clearFlag:
+            try setFlagForSelectedAsset(nil)
+        case .openLoupe:
+            guard let selectedAssetID else { return }
+            openAssetInLoupe(selectedAssetID)
+        case .returnToGrid:
+            returnToLibraryGrid()
+        }
+    }
+
     public func applyCullingCommand(_ command: CullingCommand) throws {
         switch command {
         case .rating(let rating):

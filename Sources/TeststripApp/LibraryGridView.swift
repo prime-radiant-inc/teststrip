@@ -49,6 +49,8 @@ struct LibraryGridView: View {
     @State private var importConfirmationDraft: ImportConfirmationDraft?
     @State private var sourceReconnectDraft = SourceReconnectPathDraft()
     @State private var cullingFocusRequest = 0
+    @State private var gridFocusRequest = 0
+    @State private var gridColumnCount = 1
     @State private var suppressedSelectionScrollAssetID: String?
     @AppStorage("LibraryGridView.thumbnailWidth") private var storedThumbnailWidth = LibraryGridLayout.defaultThumbnailWidth
 
@@ -59,6 +61,9 @@ struct LibraryGridView: View {
     private var columns: [GridItem] {
         [GridItem(.adaptive(minimum: gridLayout.gridItemMinimumWidth), spacing: gridLayout.gridSpacing)]
     }
+
+    // Horizontal padding applied around the asset grid (`.padding(12)` on each side).
+    private let gridContentInset: CGFloat = 24
 
     private var isImporting: Bool {
         model.isImporting
@@ -104,10 +109,20 @@ struct LibraryGridView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         assetGrid
+                            .background {
+                                GeometryReader { geometry in
+                                    Color.clear
+                                        .onAppear { updateGridColumnCount(width: geometry.size.width) }
+                                        .onChange(of: geometry.size.width) { _, width in
+                                            updateGridColumnCount(width: width)
+                                        }
+                                }
+                            }
                     }
                     .onChange(of: model.selectedAssetID?.rawValue) { _, selectedAssetID in
                         handleSelectedAssetChange(selectedAssetID, with: proxy)
                     }
+                    .onAppear { gridFocusRequest += 1 }
                 }
             }
         }
@@ -257,9 +272,22 @@ struct LibraryGridView: View {
             sourceReconnectSheet
         }
         .overlay(alignment: .topLeading) {
-            CullingKeyCaptureView(focusRequest: cullingFocusRequest, onShortcut: handleCullingShortcut)
-                .frame(width: 1, height: 1)
-                .accessibilityHidden(true)
+            CullingKeyCaptureView(
+                focusRequest: cullingFocusRequest,
+                isActive: model.selectedView != .grid,
+                onShortcut: handleCullingShortcut
+            )
+            .frame(width: 1, height: 1)
+            .accessibilityHidden(true)
+        }
+        .overlay(alignment: .topLeading) {
+            GridKeyCaptureView(
+                mode: model.selectedView,
+                focusRequest: gridFocusRequest,
+                onCommand: handleGridCommand
+            )
+            .frame(width: 1, height: 1)
+            .accessibilityHidden(true)
         }
     }
 
@@ -3215,6 +3243,22 @@ struct LibraryGridView: View {
         } catch {
             model.errorMessage = error.localizedDescription
         }
+    }
+
+    private func handleGridCommand(_ command: GridKeyCommand) {
+        do {
+            try model.applyGridKeyCommand(command, columns: gridColumnCount)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func updateGridColumnCount(width: CGFloat) {
+        gridColumnCount = LibraryGridColumnCount.columns(
+            availableWidth: width - gridContentInset,
+            minimumItemWidth: gridLayout.gridItemMinimumWidth,
+            spacing: gridLayout.gridSpacing
+        )
     }
 }
 

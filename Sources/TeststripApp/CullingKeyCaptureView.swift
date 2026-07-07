@@ -3,15 +3,18 @@ import SwiftUI
 
 struct CullingKeyCaptureView: NSViewRepresentable {
     var focusRequest: Int
+    var isActive: Bool = true
     var onShortcut: (CullingShortcut) -> Void
 
     func makeNSView(context: Context) -> CullingKeyCaptureNSView {
         let view = CullingKeyCaptureNSView()
+        view.isActive = isActive
         view.onShortcut = onShortcut
         return view
     }
 
     func updateNSView(_ nsView: CullingKeyCaptureNSView, context: Context) {
+        nsView.isActive = isActive
         nsView.onShortcut = onShortcut
         guard nsView.lastFocusRequest != focusRequest else { return }
         nsView.lastFocusRequest = focusRequest
@@ -24,6 +27,7 @@ struct CullingKeyCaptureView: NSViewRepresentable {
 
 final class CullingKeyCaptureNSView: NSView {
     var lastFocusRequest = 0
+    var isActive = true
     var onShortcut: ((CullingShortcut) -> Void)?
     private var localKeyMonitor: Any?
 
@@ -39,7 +43,7 @@ final class CullingKeyCaptureNSView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
-        guard let shortcut = CullingShortcut(event: event) else {
+        guard isActive, let shortcut = CullingShortcut(event: event) else {
             super.keyDown(with: event)
             return
         }
@@ -62,7 +66,8 @@ final class CullingKeyCaptureNSView: NSView {
         targetWindowIsKey: Bool,
         firstResponder: NSResponder?
     ) -> NSEvent? {
-        guard eventTargetsWindow(event, targetWindowNumber: targetWindowNumber, targetWindowIsKey: targetWindowIsKey),
+        guard isActive,
+              eventTargetsWindow(event, targetWindowNumber: targetWindowNumber, targetWindowIsKey: targetWindowIsKey),
               !firstResponder.isTextEditor,
               let shortcut = CullingShortcut(event: event) else {
             return event
