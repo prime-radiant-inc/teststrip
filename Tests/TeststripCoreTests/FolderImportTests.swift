@@ -1012,6 +1012,33 @@ final class FolderImportTests: XCTestCase {
         }
     }
 
+    func testCopyFromCardRejectsSecondCopyDestinationMatchingPrimaryDestination() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-second-matching-primary")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try Data("raw bytes".utf8).write(to: source.appendingPathComponent("IMG_0001.CR2"))
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["cr2"]))
+
+        XCTAssertThrowsError(
+            try service.ingest(
+                plan: IngestPlanner.copyFromCard(
+                    source: source,
+                    destinationRoot: destination,
+                    secondCopyDestination: destination
+                ),
+                repository: repository
+            ),
+            "a second copy into the primary destination writes no backup and must be blocked"
+        ) { error in
+            XCTAssertEqual(error as? TeststripError, .invalidState("Second copy destination must be different from the primary destination"))
+        }
+    }
+
     static func fakeTechnicalMetadata(capturedAt: Date?) -> AssetTechnicalMetadata {
         AssetTechnicalMetadata(
             pixelWidth: 100,

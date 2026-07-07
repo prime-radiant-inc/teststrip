@@ -196,10 +196,10 @@ public struct IngestService: Sendable {
             throw TeststripError.invalidState(blockingReason)
         }
         if let secondCopyDestination = plan.secondCopyDestination,
-           let blockingReason = CardImportDestinationPreflight.blockingReason(
+           let blockingReason = CardImportDestinationPreflight.secondCopyBlockingReason(
                source: plan.sourceRoot,
-               destinationRoot: secondCopyDestination,
-               destinationLabel: "Second copy destination"
+               destinationRoot: destinationRoot,
+               secondCopyDestination: secondCopyDestination
            ) {
             throw TeststripError.invalidState(blockingReason)
         }

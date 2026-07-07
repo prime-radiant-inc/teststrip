@@ -8569,10 +8569,10 @@ public final class AppModel {
             return
         }
         if let secondCopyDestination,
-           let blockingReason = CardImportDestinationPreflight.blockingReason(
+           let blockingReason = CardImportDestinationPreflight.secondCopyBlockingReason(
                source: source,
-               destinationRoot: secondCopyDestination,
-               destinationLabel: "Second copy destination"
+               destinationRoot: destinationRoot,
+               secondCopyDestination: secondCopyDestination
            ) {
             failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: blockingReason)
             return

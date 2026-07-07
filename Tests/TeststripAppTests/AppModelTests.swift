@@ -12388,6 +12388,46 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBeginImportCardRejectsSecondCopyDestinationMatchingPrimaryWithoutStartingLocalImport() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-local-card-second-copy-matching-primary")
+        let source = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let destinationRoot = directory.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let importTask = RecordingCall()
+        let model = try AppModel.load(
+            catalog: catalog,
+            cardImportTaskFactory: { _, _, _, _, _, _ in
+                importTask.call()
+                return Task {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            }
+        )
+
+        model.beginImportCard(
+            source: source,
+            destinationRoot: destinationRoot,
+            secondCopyDestination: destinationRoot
+        )
+
+        XCTAssertFalse(importTask.wasCalled)
+        XCTAssertFalse(model.isImporting)
+        XCTAssertNil(model.activeWork)
+        XCTAssertEqual(model.errorMessage, "Second copy destination must be different from the primary destination")
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.status, .failed)
+        XCTAssertEqual(activity.detail, "Import failed from DCIM to Library: Second copy destination must be different from the primary destination")
+    }
+
+    @MainActor
     func testBeginImportCardWithWorkerRejectsDestinationMatchingSourceWithoutEnqueueing() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-card-matching-destination")
         let source = directory.appendingPathComponent("DCIM", isDirectory: true)
