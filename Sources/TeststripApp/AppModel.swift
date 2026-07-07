@@ -8321,6 +8321,42 @@ public final class AppModel {
         rejectRelocationSummary = nil
     }
 
+    @discardableResult
+    public func moveBackRelocation(sessionID: WorkSessionID) throws -> Int {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let entries = try catalog.repository.relocationManifestEntries(sessionID: sessionID)
+        guard !entries.isEmpty else { return 0 }
+        let service = RejectRelocationService()
+        var restoredCount = 0
+        var skippedCount = 0
+        // Reverse order so nested-directory recreations undo cleanly.
+        for entry in entries.reversed() {
+            do {
+                try service.moveBack(entry)
+                if FileManager.default.fileExists(atPath: entry.originalFrom.path) {
+                    try catalog.repository.relocateOriginal(assetID: entry.assetID, to: entry.originalFrom)
+                    restoredCount += 1
+                } else {
+                    skippedCount += 1
+                }
+            } catch {
+                skippedCount += 1
+                errorMessage = error.localizedDescription
+            }
+        }
+        if skippedCount == 0 {
+            try catalog.repository.deleteRelocationManifest(sessionID: sessionID)
+            if rejectRelocationSummary?.sessionID == sessionID {
+                rejectRelocationSummary = nil
+            }
+        }
+        try reload()
+        statusMessage = "Moved back \(restoredCount) \(restoredCount == 1 ? "photo" : "photos")"
+        return restoredCount
+    }
+
     private static func relocationWorkSession(
         id: WorkSessionID,
         status: WorkSessionStatus,

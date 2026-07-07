@@ -14920,6 +14920,50 @@ final class AppModelTests: XCTestCase {
         XCTAssertNotEqual(try repository.asset(id: good.id).originalURL, goodOriginal)
     }
 
+    func testMoveBackRelocationRestoresFilesAndCatalogPaths() throws {
+        let directory = try makeTemporaryDirectory(named: "move-back")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let original = shoot.appendingPathComponent("reject.cr2")
+        let sidecar = shoot.appendingPathComponent("reject.cr2.xmp")
+        try Data("raw".utf8).write(to: original)
+        try Data("<xmp/>".utf8).write(to: sidecar)
+        let reject = makeAsset(id: "mb-reject", path: original.path, rating: 0, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(named: "move-back-model", assets: [reject])
+        let preflight = try model.rejectRelocationPreflight(
+            destinationFolder: directory.appendingPathComponent("rejects", isDirectory: true)
+        )
+        let summary = try model.moveRejectsToFolder(preflight)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: original.path))
+
+        let restored = try model.moveBackRelocation(sessionID: summary.sessionID)
+
+        XCTAssertEqual(restored, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: original.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sidecar.path))
+        XCTAssertEqual(try repository.asset(id: reject.id).originalURL, original)
+        XCTAssertEqual(try repository.relocationManifestEntries(sessionID: summary.sessionID), [])
+        XCTAssertNil(model.rejectRelocationSummary)
+    }
+
+    func testMoveBackRelocationIsIdempotentWhenAlreadyRestored() throws {
+        let directory = try makeTemporaryDirectory(named: "move-back-twice")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let original = shoot.appendingPathComponent("reject.cr2")
+        try Data("raw".utf8).write(to: original)
+        let reject = makeAsset(id: "mb2-reject", path: original.path, rating: 0, flag: .reject)
+        let (model, _) = try makeModelWithCatalogAssets(named: "move-back-twice-model", assets: [reject])
+        let preflight = try model.rejectRelocationPreflight(
+            destinationFolder: directory.appendingPathComponent("rejects", isDirectory: true)
+        )
+        let summary = try model.moveRejectsToFolder(preflight)
+        _ = try model.moveBackRelocation(sessionID: summary.sessionID)
+
+        // Manifest already deleted; a second call restores nothing and does not throw.
+        XCTAssertEqual(try model.moveBackRelocation(sessionID: summary.sessionID), 0)
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-app-tests", isDirectory: true)
