@@ -13,12 +13,29 @@ public struct LibraryPreviewFailure: Equatable, Sendable {
 }
 
 public struct LibrarySkippedSourceFile: Codable, Equatable, Sendable {
+    // A skipped file never made it into the catalog; a failed backup belongs
+    // to a fully imported photo whose second copy is missing. Conflating the
+    // two makes import summaries report imported photos as skipped.
+    public enum Kind: String, Codable, Sendable {
+        case skipped
+        case backupFailed
+    }
+
     public var sourceURL: URL
     public var message: String
+    public var kind: Kind
 
-    public init(sourceURL: URL, message: String) {
+    public init(sourceURL: URL, message: String, kind: Kind = .skipped) {
         self.sourceURL = sourceURL
         self.message = message
+        self.kind = kind
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sourceURL = try container.decode(URL.self, forKey: .sourceURL)
+        message = try container.decode(String.self, forKey: .message)
+        kind = try container.decodeIfPresent(Kind.self, forKey: .kind) ?? .skipped
     }
 }
 
@@ -27,6 +44,7 @@ public struct LibraryImportResult: Sendable {
     public var previewFailures: [LibraryPreviewFailure]
     public var skippedSourceFiles: [LibrarySkippedSourceFile]
     public var skippedSourceFileCount: Int
+    public var backupFailureCount: Int
     public var newAssetCount: Int
     public var existingAssetCount: Int
 
@@ -41,7 +59,9 @@ public struct LibraryImportResult: Sendable {
         self.importedAssets = importedAssets
         self.previewFailures = previewFailures
         self.skippedSourceFiles = skippedSourceFiles
-        self.skippedSourceFileCount = skippedSourceFileCount ?? skippedSourceFiles.count
+        self.skippedSourceFileCount = skippedSourceFileCount
+            ?? skippedSourceFiles.filter { $0.kind == .skipped }.count
+        self.backupFailureCount = skippedSourceFiles.filter { $0.kind == .backupFailed }.count
         self.newAssetCount = newAssetCount ?? max(importedAssets.count - existingAssetCount, 0)
         self.existingAssetCount = existingAssetCount
     }
@@ -225,7 +245,8 @@ public struct LibraryImportService: Sendable {
         let secondCopyFailureHandler: IngestSkippedSourceFileHandler? = plan.secondCopyDestination != nil ? { secondCopyFailure in
             skippedSourceFiles.append(LibrarySkippedSourceFile(
                 sourceURL: secondCopyFailure.sourceURL,
-                message: secondCopyFailure.message
+                message: secondCopyFailure.message,
+                kind: .backupFailed
             ))
         } : nil
         let assets = try ingestService.ingest(

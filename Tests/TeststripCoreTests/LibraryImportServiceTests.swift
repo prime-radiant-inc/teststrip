@@ -568,7 +568,9 @@ final class LibraryImportServiceTests: XCTestCase {
         )
         XCTAssertEqual(try String(contentsOf: conflictingBackup, encoding: .utf8), "existing")
         XCTAssertEqual(result.skippedSourceFiles.map(\.sourceURL), [source.appendingPathComponent("IMG_0002.jpg")])
-        XCTAssertEqual(result.skippedSourceFileCount, 1)
+        XCTAssertEqual(result.skippedSourceFiles.map(\.kind), [.backupFailed])
+        XCTAssertEqual(result.skippedSourceFileCount, 0, "a photo imported with a failed backup is not a skipped file")
+        XCTAssertEqual(result.backupFailureCount, 1)
         let message = try XCTUnwrap(result.skippedSourceFiles.first?.message)
         XCTAssertTrue(
             message.hasPrefix("backup copy failed: "),

@@ -8712,6 +8712,10 @@ public final class AppModel {
             let fileLabel = result.skippedSourceFileCount == 1 ? "file" : "files"
             warnings.append("\(result.skippedSourceFileCount) \(fileLabel) skipped")
         }
+        if result.backupFailureCount > 0 {
+            let copyLabel = result.backupFailureCount == 1 ? "backup copy" : "backup copies"
+            warnings.append("\(result.backupFailureCount) \(copyLabel) failed")
+        }
         if !result.previewFailures.isEmpty {
             let previewLabel = result.previewFailures.count == 1 ? "preview failure" : "preview failures"
             warnings.append("\(result.previewFailures.count) \(previewLabel)")
