@@ -4390,6 +4390,43 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.canUndoMetadataChange)
     }
 
+    func testAskFallsBackToDeterministicParserWithoutTranslator() throws {
+        let asset = makeAsset(id: "ask-fallback", path: "/Photos/Job/ask-fallback.cr2", rating: 5)
+        let (model, _) = try makeModelWithCatalogAssets(named: "ask-fallback", assets: [asset])
+        try model.selectSidebarTarget(.allPhotographs)
+
+        try model.applyNaturalLanguageAsk("rating:5")
+
+        XCTAssertEqual(model.librarySearchText, "rating:5")
+        XCTAssertTrue(model.activeLibraryFilterChips.contains("Rating >= 5"))
+    }
+
+    func testAskUsesConfiguredTranslatorAndRendersSameChipVocabulary() throws {
+        let asset = makeAsset(id: "ask-translated", path: "/Photos/Job/ask-translated.cr2", rating: 4, keywords: ["dog"])
+        let (model, _) = try makeModelWithCatalogAssets(named: "ask-translated", assets: [asset])
+        try model.selectSidebarTarget(.allPhotographs)
+        model.autopilotQueryTranslator = StubQueryTranslator(query: "rating:4 keyword:dog")
+
+        try model.applyNaturalLanguageAsk("four star dog photos")
+
+        XCTAssertEqual(model.librarySearchText, "rating:4 keyword:dog")
+        XCTAssertTrue(model.activeLibraryFilterChips.contains("Rating >= 4"))
+        XCTAssertTrue(model.activeLibraryFilterChips.contains("Keyword: dog"))
+    }
+
+    func testAskFallsBackToRawTextWhenTranslatorFails() throws {
+        let asset = makeAsset(id: "ask-error", path: "/Photos/Job/ask-error.cr2", rating: 5)
+        let (model, _) = try makeModelWithCatalogAssets(named: "ask-error", assets: [asset])
+        try model.selectSidebarTarget(.allPhotographs)
+        model.autopilotQueryTranslator = FailingQueryTranslator()
+
+        try model.applyNaturalLanguageAsk("rating:5")
+
+        XCTAssertEqual(model.librarySearchText, "rating:5")
+        XCTAssertTrue(model.activeLibraryFilterChips.contains("Rating >= 5"))
+        XCTAssertEqual(model.statusMessage, "Ask used plain-text search (model unavailable)")
+    }
+
     func testLoadsAssetsFromCatalogRepository() throws {
         let directory = try makeTemporaryDirectory(named: "app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -16114,4 +16151,15 @@ private final class ManualBackgroundWorkPublicationCancellation: WorkerTimeoutCa
 
 private final class ObservationChangeFlag: @unchecked Sendable {
     var value = false
+}
+
+private struct StubQueryTranslator: AutopilotQueryTranslator {
+    var query: String
+    func translate(_ naturalLanguage: String) throws -> String { query }
+}
+
+private struct FailingQueryTranslator: AutopilotQueryTranslator {
+    func translate(_ naturalLanguage: String) throws -> String {
+        throw TeststripError.io("translator offline")
+    }
 }

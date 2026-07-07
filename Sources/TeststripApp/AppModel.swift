@@ -1291,6 +1291,9 @@ public final class AppModel {
     public private(set) var pendingAutopilotProposals: [AutopilotProposal] = []
     public private(set) var isAutopilotReviewActive = false
     public private(set) var lastCommittedAutopilotRunID: AutopilotRunID?
+    // Opt-in natural-language Ask translator. nil (default) keeps the Ask on
+    // the always-available deterministic parser with byte-identical behavior.
+    public var autopilotQueryTranslator: (any AutopilotQueryTranslator)?
     // Maps a scope's identity (sorted asset-id join) to the run that last
     // proposed for it, so re-running the same scope replaces its pending
     // proposals instead of stacking duplicates. In-memory only.
@@ -3797,6 +3800,27 @@ public final class AppModel {
             metadataSyncPendingFilter = false
             metadataSyncConflictFilter = true
         }
+        try reload()
+    }
+
+    /// Applies a natural-language Ask as a library filter. When an opt-in
+    /// translator is configured it maps the text to the deterministic parser's
+    /// field syntax (rendered as the same removable chips); with no translator,
+    /// or on any translation error, the raw text flows through the deterministic
+    /// parser unchanged. Filtering only — never runs autopilot.
+    public func applyNaturalLanguageAsk(_ text: String) throws {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var queryText = trimmed
+        if let translator = autopilotQueryTranslator, !trimmed.isEmpty {
+            do {
+                let translated = try translator.translate(trimmed).trimmingCharacters(in: .whitespacesAndNewlines)
+                queryText = translated.isEmpty ? trimmed : translated
+            } catch {
+                queryText = trimmed
+                statusMessage = "Ask used plain-text search (model unavailable)"
+            }
+        }
+        librarySearchText = queryText
         try reload()
     }
 
