@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import TeststripCore
 
-public enum LibraryViewMode: String, Sendable {
+public enum LibraryViewMode: String, Codable, Sendable {
     case grid
     case search
     case copilot
