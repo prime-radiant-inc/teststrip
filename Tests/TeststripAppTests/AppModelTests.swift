@@ -14770,6 +14770,78 @@ final class AppModelTests: XCTestCase {
         try await waitForActivityStatus(.cancelled, in: model)
     }
 
+    func testRejectRelocationPreflightCountsRejectsSidecarsAndBytesInScope() throws {
+        let directory = try makeTemporaryDirectory(named: "reject-preflight")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let rejectOriginal = shoot.appendingPathComponent("reject.cr2")
+        let rejectSidecar = shoot.appendingPathComponent("reject.cr2.xmp")
+        let keeperOriginal = shoot.appendingPathComponent("keeper.cr2")
+        try Data(repeating: 0, count: 100).write(to: rejectOriginal)
+        try Data(repeating: 0, count: 20).write(to: rejectSidecar)
+        try Data(repeating: 0, count: 100).write(to: keeperOriginal)
+        let reject = makeAsset(id: "pf-reject", path: rejectOriginal.path, rating: 0, flag: .reject)
+        let keeper = makeAsset(id: "pf-keeper", path: keeperOriginal.path, rating: 4, flag: .pick)
+        let (model, _) = try makeModelWithCatalogAssets(named: "reject-preflight-model", assets: [reject, keeper])
+
+        let preflight = try model.rejectRelocationPreflight(
+            destinationFolder: directory.appendingPathComponent("rejects", isDirectory: true)
+        )
+
+        XCTAssertEqual(preflight.assetIDs, [reject.id])
+        XCTAssertEqual(preflight.moveCount, 1)
+        XCTAssertEqual(preflight.sidecarCount, 1)
+        XCTAssertEqual(preflight.totalByteCount, 120)
+        XCTAssertEqual(preflight.confirmationText, "Move 1 reject photo to rejects")
+    }
+
+    func testRejectRelocationPreflightRespectsCurrentSetScope() throws {
+        let directory = try makeTemporaryDirectory(named: "reject-preflight-scope")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let inScope = shoot.appendingPathComponent("in.cr2")
+        let outOfScope = shoot.appendingPathComponent("out.cr2")
+        try Data(repeating: 0, count: 10).write(to: inScope)
+        try Data(repeating: 0, count: 10).write(to: outOfScope)
+        let inScopeReject = makeAsset(id: "scope-in", path: inScope.path, rating: 0, flag: .reject)
+        let outOfScopeReject = makeAsset(id: "scope-out", path: outOfScope.path, rating: 0, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "reject-preflight-scope-model",
+            assets: [inScopeReject, outOfScopeReject]
+        )
+        try repository.upsert(AssetSet.manual(
+            id: AssetSetID(rawValue: "only-in"),
+            name: "Only In",
+            assetIDs: [inScopeReject.id]
+        ))
+        try model.reload()
+        try model.applyAssetSet(id: AssetSetID(rawValue: "only-in"))
+
+        let preflight = try model.rejectRelocationPreflight(
+            destinationFolder: directory.appendingPathComponent("rejects", isDirectory: true)
+        )
+
+        XCTAssertEqual(preflight.assetIDs, [inScopeReject.id])
+    }
+
+    func testRejectRelocationPreflightFlagsUnavailableOriginals() throws {
+        let missingReject = makeAsset(
+            id: "pf-missing",
+            path: "/Volumes/Gone/missing.cr2",
+            rating: 0,
+            flag: .reject,
+            availability: .missing
+        )
+        let (model, _) = try makeModelWithCatalogAssets(named: "reject-preflight-missing", assets: [missingReject])
+
+        let preflight = try model.rejectRelocationPreflight(
+            destinationFolder: URL(fileURLWithPath: "/tmp/rejects", isDirectory: true)
+        )
+
+        XCTAssertEqual(preflight.unavailableCount, 1)
+        XCTAssertEqual(preflight.moveCount, 0)
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-app-tests", isDirectory: true)

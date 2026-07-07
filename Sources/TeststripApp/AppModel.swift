@@ -937,6 +937,71 @@ public struct ExportCompletionSummary: Equatable, Sendable {
     }
 }
 
+public struct RejectRelocationPreflight: Equatable, Sendable {
+    public var assetIDs: [AssetID]
+    public var originalURLs: [URL]
+    public var plans: [RejectRelocationPlan]
+    public var sidecarCount: Int
+    public var totalByteCount: Int64
+    public var unavailableCount: Int
+    public var alreadyInDestinationCount: Int
+    public var destinationFolder: URL
+
+    public init(
+        assetIDs: [AssetID],
+        originalURLs: [URL],
+        plans: [RejectRelocationPlan],
+        sidecarCount: Int,
+        totalByteCount: Int64,
+        unavailableCount: Int,
+        alreadyInDestinationCount: Int,
+        destinationFolder: URL
+    ) {
+        self.assetIDs = assetIDs
+        self.originalURLs = originalURLs
+        self.plans = plans
+        self.sidecarCount = sidecarCount
+        self.totalByteCount = totalByteCount
+        self.unavailableCount = unavailableCount
+        self.alreadyInDestinationCount = alreadyInDestinationCount
+        self.destinationFolder = destinationFolder
+    }
+
+    public var moveCount: Int { plans.count }
+
+    public var hasMovableFiles: Bool { moveCount > 0 }
+
+    public var confirmationText: String {
+        "Move \(moveCount) reject \(moveCount == 1 ? "photo" : "photos") to \(destinationFolder.lastPathComponent)"
+    }
+
+    public var summaryText: String {
+        let sidecarText = "\(sidecarCount) \(sidecarCount == 1 ? "sidecar" : "sidecars")"
+        let sizeText = ByteCountFormatter.string(fromByteCount: totalByteCount, countStyle: .file)
+        return "\(moveCount) \(moveCount == 1 ? "file" : "files") · \(sidecarText) · \(sizeText)"
+    }
+
+    public var destinationPreview: [String] {
+        plans.prefix(8).map { plan in
+            plan.originalTo.path.replacingOccurrences(
+                of: destinationFolder.standardizedFileURL.path + "/",
+                with: ""
+            )
+        }
+    }
+
+    public var warningText: String? {
+        var parts: [String] = []
+        if unavailableCount > 0 {
+            parts.append("\(unavailableCount) unavailable \(unavailableCount == 1 ? "original is" : "originals are") skipped")
+        }
+        if alreadyInDestinationCount > 0 {
+            parts.append("\(alreadyInDestinationCount) already in the destination")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}
+
 public struct KeywordSuggestion: Identifiable, Equatable, Sendable {
     public var keyword: String
     public var sourceKind: EvaluationKind
@@ -8075,6 +8140,59 @@ public final class AppModel {
             return try repository.assetCount(matching: query)
         }
         return try repository.assetCount()
+    }
+
+    public func rejectRelocationPreflight(destinationFolder: URL) throws -> RejectRelocationPreflight {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let scopeIDs = try currentAssetScopeIDs(repository: catalog.repository)
+        let rejectIDs = try catalog.repository.assetIDs(
+            ids: scopeIDs,
+            matching: SetQuery(predicates: [.flag(.reject)])
+        )
+        let sidecarStore = XMPSidecarStore()
+        let destinationRootPath = destinationFolder.standardizedFileURL.path
+        var movableAssetIDs: [AssetID] = []
+        var movableOriginalURLs: [URL] = []
+        var sidecarCount = 0
+        var totalByteCount: Int64 = 0
+        var unavailableCount = 0
+        var alreadyInDestinationCount = 0
+        for assetID in rejectIDs {
+            let asset = try catalog.repository.asset(id: assetID)
+            guard FileManager.default.fileExists(atPath: asset.originalURL.path) else {
+                unavailableCount += 1
+                continue
+            }
+            if asset.originalURL.standardizedFileURL.path.hasPrefix(destinationRootPath + "/") {
+                alreadyInDestinationCount += 1
+                continue
+            }
+            movableAssetIDs.append(assetID)
+            movableOriginalURLs.append(asset.originalURL)
+            totalByteCount += Self.fileByteCount(at: asset.originalURL)
+            if let sidecarURL = sidecarStore.existingSidecarURL(forOriginalAt: asset.originalURL) {
+                sidecarCount += 1
+                totalByteCount += Self.fileByteCount(at: sidecarURL)
+            }
+        }
+        let plans = RejectRelocationPlanner(destinationRoot: destinationFolder).plan(originals: movableOriginalURLs)
+        return RejectRelocationPreflight(
+            assetIDs: movableAssetIDs,
+            originalURLs: movableOriginalURLs,
+            plans: plans,
+            sidecarCount: sidecarCount,
+            totalByteCount: totalByteCount,
+            unavailableCount: unavailableCount,
+            alreadyInDestinationCount: alreadyInDestinationCount,
+            destinationFolder: destinationFolder
+        )
+    }
+
+    private static func fileByteCount(at url: URL) -> Int64 {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return 0 }
+        return (attributes[.size] as? NSNumber)?.int64Value ?? 0
     }
 
     private func currentAssetScopeIDs(repository: CatalogRepository) throws -> [AssetID] {
