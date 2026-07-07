@@ -958,9 +958,9 @@ final class CatalogDatabaseTests: XCTestCase {
         try repository.upsert([dismissed, active])
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: dismissed.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
-            EvaluationSignal(assetID: dismissed.id, kind: .faceQuality, value: .score(0.3), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: dismissed.id, kind: .faceQuality, value: .score(0.08), confidence: 0.8, provenance: provenance),
             EvaluationSignal(assetID: active.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
-            EvaluationSignal(assetID: active.id, kind: .faceQuality, value: .score(0.3), confidence: 0.8, provenance: provenance)
+            EvaluationSignal(assetID: active.id, kind: .faceQuality, value: .score(0.08), confidence: 0.8, provenance: provenance)
         ])
 
         try repository.dismissFaceAssets([dismissed.id])
@@ -995,9 +995,9 @@ final class CatalogDatabaseTests: XCTestCase {
         try repository.upsert([assigned, unnamed])
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: assigned.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
-            EvaluationSignal(assetID: assigned.id, kind: .faceQuality, value: .score(0.3), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: assigned.id, kind: .faceQuality, value: .score(0.08), confidence: 0.8, provenance: provenance),
             EvaluationSignal(assetID: unnamed.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
-            EvaluationSignal(assetID: unnamed.id, kind: .faceQuality, value: .score(0.3), confidence: 0.8, provenance: provenance)
+            EvaluationSignal(assetID: unnamed.id, kind: .faceQuality, value: .score(0.08), confidence: 0.8, provenance: provenance)
         ])
 
         try repository.upsertPerson(id: "person-maya", name: "Maya")
@@ -1468,6 +1468,183 @@ final class CatalogDatabaseTests: XCTestCase {
                 .sorted(),
             ["sharp-focus", "strong-aesthetics", "strong-face"]
         )
+    }
+
+    func testLikelyIssueIgnoresRawScaleFocusRowsFromSupersededProviderVersion() throws {
+        // Version-1 local-image-metrics focus rows are raw luminance deltas
+        // (0.044-0.148 on the study corpus), all below the calibrated 0.4
+        // defect anchor. Reading them would flag every asset evaluated
+        // before the calibration, so superseded-version focus-family rows
+        // must be invisible to the queue.
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-likely-issue-raw-scale")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let rawOnly = Asset.testAsset(id: AssetID(rawValue: "raw-only"), path: "/Volumes/NAS/Job/raw-only.jpg", rating: 0)
+        let calibratedSoft = Asset.testAsset(id: AssetID(rawValue: "calibrated-soft"), path: "/Volumes/NAS/Job/calibrated-soft.jpg", rating: 0)
+        let rawProvenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "1", settingsHash: "default")
+        let calibratedProvenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "2", settingsHash: "default")
+        try repository.upsert([rawOnly, calibratedSoft])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: rawOnly.id, kind: .focus, value: .score(0.09), confidence: 1.0, provenance: rawProvenance),
+            EvaluationSignal(assetID: calibratedSoft.id, kind: .focus, value: .score(0.35), confidence: 1.0, provenance: calibratedProvenance)
+        ])
+
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.likelyIssue]), limit: 10).map(\.id),
+            [calibratedSoft.id]
+        )
+    }
+
+    func testLikelyPickDefectExclusionIgnoresRawScaleFocusRows() throws {
+        // A stale raw-scale focus row (always <= 0.148) must not permanently
+        // veto an asset out of Potential Picks; a current-scale focus defect
+        // still must.
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-likely-pick-raw-scale")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let staleVeto = Asset.testAsset(id: AssetID(rawValue: "stale-veto"), path: "/Volumes/NAS/Job/stale-veto.jpg", rating: 0)
+        let realDefect = Asset.testAsset(id: AssetID(rawValue: "real-defect"), path: "/Volumes/NAS/Job/real-defect.jpg", rating: 0)
+        let rawProvenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "1", settingsHash: "default")
+        let calibratedProvenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "2", settingsHash: "default")
+        try repository.upsert([staleVeto, realDefect])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: staleVeto.id, kind: .focus, value: .score(0.09), confidence: 1.0, provenance: rawProvenance),
+            EvaluationSignal(assetID: staleVeto.id, kind: .aesthetics, value: .score(0.7), confidence: 0.55, provenance: calibratedProvenance),
+            EvaluationSignal(assetID: realDefect.id, kind: .focus, value: .score(0.3), confidence: 1.0, provenance: calibratedProvenance),
+            EvaluationSignal(assetID: realDefect.id, kind: .aesthetics, value: .score(0.7), confidence: 0.55, provenance: calibratedProvenance)
+        ])
+
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.likelyPick]), limit: 10).map(\.id),
+            [staleVeto.id]
+        )
+    }
+
+    func testReEvaluationDeletesSupersededVersionRowsForSameKindAndProvider() throws {
+        // The primary key includes version, so a bare upsert would leave one
+        // row per version forever. Recording a signal must delete the same
+        // provider's rows for that kind at other versions, and the repaired
+        // asset must land in the right queues.
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-reevaluation-prunes-versions")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset.testAsset(id: AssetID(rawValue: "re-evaluated"), path: "/Volumes/NAS/Job/re-evaluated.jpg", rating: 0)
+        let rawProvenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "1", settingsHash: "default")
+        let calibratedProvenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "2", settingsHash: "default")
+        try repository.upsert(asset)
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: asset.id, kind: .focus, value: .score(0.09), confidence: 1.0, provenance: rawProvenance),
+            EvaluationSignal(assetID: asset.id, kind: .exposure, value: .score(0.5), confidence: 1.0, provenance: rawProvenance)
+        ])
+
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: asset.id, kind: .focus, value: .score(0.9), confidence: 1.0, provenance: calibratedProvenance),
+            EvaluationSignal(assetID: asset.id, kind: .exposure, value: .score(0.5), confidence: 1.0, provenance: calibratedProvenance)
+        ])
+
+        let versions = try database.rows(
+            "SELECT version FROM evaluation_signals WHERE asset_id = ? ORDER BY kind",
+            bindings: [asset.id.rawValue]
+        ).compactMap { $0["version"] }
+        XCTAssertEqual(versions, ["2", "2"])
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.likelyIssue]), limit: 10).map(\.id),
+            []
+        )
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.likelyPick]), limit: 10).map(\.id),
+            [asset.id]
+        )
+    }
+
+    func testFaceQualityDefectAnchorSitsBelowStrongReadAnchor() throws {
+        // Calibration-study percentile anchors: strong faceQuality at p75
+        // (0.45), defect at p5 (0.1). The defect anchor must sit below the
+        // strong anchor so no value is simultaneously the strong read that
+        // makes an asset a Potential Pick and the defect that lists it under
+        // Likely Issues; the old 0.5 defect line covered ~82% of face photos
+        // and straddled the strong anchor.
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-face-quality-anchors")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let strongFace = Asset.testAsset(id: AssetID(rawValue: "strong-face"), path: "/Volumes/NAS/Job/strong-face.jpg", rating: 0)
+        let weakFace = Asset.testAsset(id: AssetID(rawValue: "weak-face"), path: "/Volumes/NAS/Job/weak-face.jpg", rating: 0)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.upsert([strongFace, weakFace])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: strongFace.id, kind: .faceQuality, value: .score(0.47), confidence: 0.5, provenance: provenance),
+            EvaluationSignal(assetID: weakFace.id, kind: .faceQuality, value: .score(0.08), confidence: 0.5, provenance: provenance)
+        ])
+
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.likelyPick]), limit: 10).map(\.id),
+            [strongFace.id]
+        )
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.likelyIssue]), limit: 10).map(\.id),
+            [weakFace.id]
+        )
+    }
+
+    func testEvaluationSignalsHideRawScaleFocusFamilyRows() throws {
+        // Focus-family rows from the recalibrated providers are readable
+        // only at each provider's current version: raw-scale rows must not
+        // feed badges, rankings, or verdicts. Non-focus-family rows and
+        // focus rows from other providers stay visible, and an asset left
+        // with only raw-scale focus-family rows honestly has no such read.
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-hide-raw-scale-signals")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let neverReEvaluated = Asset.testAsset(id: AssetID(rawValue: "never-re-evaluated"), path: "/Volumes/NAS/Job/never-re-evaluated.jpg", rating: 0)
+        let mixed = Asset.testAsset(id: AssetID(rawValue: "mixed-versions"), path: "/Volumes/NAS/Job/mixed-versions.jpg", rating: 0)
+        let rawMetricsProvenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "1", settingsHash: "default")
+        let rawFacesProvenance = ProviderProvenance(provider: "core-image-faces", model: "CIDetectorFace", version: "1", settingsHash: "default")
+        let httpProvenance = ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+        let calibratedProvenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "2", settingsHash: "default")
+        try repository.upsert([neverReEvaluated, mixed])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: neverReEvaluated.id, kind: .focus, value: .score(0.14), confidence: 1.0, provenance: rawMetricsProvenance),
+            EvaluationSignal(assetID: neverReEvaluated.id, kind: .motionBlur, value: .score(0.86), confidence: 0.7, provenance: rawMetricsProvenance),
+            EvaluationSignal(assetID: neverReEvaluated.id, kind: .exposure, value: .score(0.5), confidence: 1.0, provenance: rawMetricsProvenance),
+            EvaluationSignal(assetID: neverReEvaluated.id, kind: .eyeSharpness, value: .score(0.05), confidence: 0.6, provenance: rawFacesProvenance),
+            EvaluationSignal(assetID: neverReEvaluated.id, kind: .focus, value: .score(0.9), confidence: 0.8, provenance: httpProvenance)
+        ])
+
+        let visible = try repository.evaluationSignals(assetID: neverReEvaluated.id)
+
+        XCTAssertEqual(visible.map(\.kind), [.exposure, .focus])
+        XCTAssertEqual(visible.map(\.provenance.provider), ["local-image-metrics", "local-http-model"])
+
+        // Catalogs evaluated across the calibration hold version-1 rows
+        // beside version-2 rows (nothing pruned them at write time back
+        // then); only the calibrated row may be read.
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: mixed.id, kind: .focus, value: .score(0.93), confidence: 1.0, provenance: calibratedProvenance)
+        ])
+        try database.execute(
+            """
+            INSERT INTO evaluation_signals (
+                asset_id, kind, value_json, confidence, provenance_json,
+                provider, model, version, settings_hash, created_at, updated_at
+            )
+            VALUES (
+                ?, 'focus', '{"score":{"_0":0.14}}', 1.0,
+                '{"provider":"local-image-metrics","model":"preview-color-focus-metrics","version":"1","settingsHash":"default"}',
+                'local-image-metrics', 'preview-color-focus-metrics', '1', 'default', 0, 0
+            )
+            """,
+            bindings: [mixed.id.rawValue]
+        )
+
+        let mixedSignals = try repository.evaluationSignals(assetID: mixed.id)
+
+        XCTAssertEqual(mixedSignals.map(\.kind), [.focus])
+        XCTAssertEqual(mixedSignals.map(\.value), [.score(0.93)])
     }
 
     func testSearchesAssetsWithTechnicalMetadataPredicates() throws {

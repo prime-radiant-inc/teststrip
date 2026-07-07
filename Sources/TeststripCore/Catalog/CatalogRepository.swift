@@ -973,6 +973,7 @@ public final class CatalogRepository {
             SELECT asset_id, kind, value_json, confidence, provenance_json
             FROM evaluation_signals
             WHERE asset_id = ?
+              AND \(Self.currentScaleSignalSQL)
             ORDER BY rowid ASC
             """,
             bindings: [assetID.rawValue]
@@ -1518,6 +1519,29 @@ public final class CatalogRepository {
         )
     }
 
+    // Focus-family scores (focus, motionBlur, eyeSharpness) changed scale in
+    // the 2026-07-06 calibration: rows written by the recalibrated providers
+    // at any other provenance version are raw-scale, and mixing the two
+    // scales poisons the likelyIssue/likelyPick queues, flaw badges, and
+    // stack rankings. Every read treats those rows as absent, so affected
+    // assets honestly report no focus-family read until re-evaluated.
+    private static let focusFamilyKinds: [EvaluationKind] = [.focus, .motionBlur, .eyeSharpness]
+
+    private static let calibratedFocusFamilyProviders: [(name: String, version: String)] = [
+        (LocalImageMetricsEvaluationProvider.providerName, LocalImageMetricsEvaluationProvider.provenanceVersion),
+        (FaceExpressionEvaluationProvider.providerName, FaceExpressionEvaluationProvider.provenanceVersion)
+    ]
+
+    /// SQL condition that is true for evaluation_signals rows on the current
+    /// score scale; superseded raw-scale focus-family rows fail it.
+    private static let currentScaleSignalSQL: String = {
+        let kinds = focusFamilyKinds.map { "'\($0.rawValue)'" }.joined(separator: ", ")
+        let staleProviders = calibratedFocusFamilyProviders
+            .map { "(provider = '\($0.name)' AND version <> '\($0.version)')" }
+            .joined(separator: " OR ")
+        return "NOT (kind IN (\(kinds)) AND (\(staleProviders)))"
+    }()
+
     private func recordEvaluationSignal(_ signal: EvaluationSignal) throws {
         let now = "\(Date().timeIntervalSince1970)"
         try database.execute(
@@ -1554,6 +1578,25 @@ public final class CatalogRepository {
                 signal.provenance.settingsHash,
                 now,
                 now
+            ]
+        )
+        // A provider's newer version supersedes its older rows for the same
+        // kind. The primary key includes version, so without this prune a
+        // version bump would leave stale rows beside fresh ones forever and
+        // re-evaluation could never clear them.
+        try database.execute(
+            """
+            DELETE FROM evaluation_signals
+            WHERE asset_id = ?
+              AND kind = ?
+              AND provider = ?
+              AND version <> ?
+            """,
+            bindings: [
+                signal.assetID.rawValue,
+                signal.kind.rawValue,
+                signal.provenance.provider,
+                signal.provenance.version
             ]
         )
     }
@@ -1717,13 +1760,20 @@ public final class CatalogRepository {
                 // defect at the calibrated p5 (raw 0.06 / 0.15 = 0.4); no
                 // motionBlur term (it is exactly 1 - focus, pure redundancy);
                 // eyesOpen only when 0.0 - fractional CIDetector reads are
-                // noise on tiny/occluded faces and rank rather than flag.
+                // noise on tiny/occluded faces and rank rather than flag;
+                // faceQuality defect at its own p5 (0.1) - below likelyPick's
+                // 0.45 strong anchor, so one value can never be both a strong
+                // read and a defect (the old 0.5 line flagged ~82% of face
+                // photos and sat above the strong anchor).
+                // Superseded raw-scale focus rows sit entirely below the
+                // calibrated defect anchor and must not count as defects.
                 clauses.append(
                     """
                     EXISTS (
                         SELECT 1
                         FROM evaluation_signals
                         WHERE evaluation_signals.asset_id = assets.id
+                          AND \(Self.currentScaleSignalSQL)
                           AND (
                             (kind = 'focus' AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.4)
                             OR (
@@ -1739,7 +1789,7 @@ public final class CatalogRepository {
                             )
                             OR (
                                 kind = 'faceQuality'
-                                AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.5
+                                AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.1
                                 AND NOT EXISTS (
                                     SELECT 1
                                     FROM dismissed_face_assets
@@ -1769,6 +1819,7 @@ public final class CatalogRepository {
                         SELECT 1
                         FROM evaluation_signals
                         WHERE evaluation_signals.asset_id = assets.id
+                          AND \(Self.currentScaleSignalSQL)
                           AND (
                             (kind = 'focus' AND CAST(json_extract(value_json, '$.score._0') AS REAL) >= 0.8)
                             OR (kind = 'aesthetics' AND CAST(json_extract(value_json, '$.score._0') AS REAL) >= 0.65)
@@ -1779,6 +1830,7 @@ public final class CatalogRepository {
                         SELECT 1
                         FROM evaluation_signals
                         WHERE evaluation_signals.asset_id = assets.id
+                          AND \(Self.currentScaleSignalSQL)
                           AND (
                             (kind = 'focus' AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.4)
                             OR (

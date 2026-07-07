@@ -551,6 +551,33 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(metrics.map(\.tone), [.positive])
     }
 
+    func testFaceQualityLaneUsesCalibratedStrongAnchor() {
+        // Vision faceCaptureQuality maxes out at 0.703 on the study corpus,
+        // so the shared 0.7 positive line rendered virtually every face
+        // lane as caution. The lane tones at the calibrated strong anchor
+        // (p75, 0.45) - the same line that admits an asset to Potential
+        // Picks - so the queue and the lane cannot contradict each other.
+        let assetID = AssetID(rawValue: "face-frame")
+        let provenance = ProviderProvenance(
+            provider: "apple-vision",
+            model: "Vision",
+            version: "1",
+            settingsHash: "default"
+        )
+
+        let strong = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .faceQuality, value: .score(0.6), confidence: 0.7, provenance: provenance)
+        ])
+        let weak = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .faceQuality, value: .score(0.4), confidence: 0.7, provenance: provenance)
+        ])
+
+        XCTAssertEqual(strong.map(\.value), ["60%"])
+        XCTAssertEqual(strong.map(\.tone), [.positive])
+        XCTAssertEqual(weak.map(\.value), ["40%"])
+        XCTAssertEqual(weak.map(\.tone), [.caution])
+    }
+
     func testSignalBadgesFlagBestEyesClosedAndSoftFrames() {
         let best = makeAsset(id: "best")
         let blink = makeAsset(id: "blink")
@@ -851,6 +878,59 @@ final class CompareSurveyPresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.recommendationText, "Top signal: frame 3 — sharpest, eyes open")
+    }
+
+    func testCatalogReadsHideRawScaleFocusRowsFromBadgesAndVerdicts() throws {
+        // An asset whose only focus row is a superseded raw-scale read
+        // (version 1, capped at ~0.148 on the study corpus) must not earn a
+        // destructive SOFT badge, and a calibrated leader must not claim a
+        // percentage sharpness delta against it across incompatible scales.
+        let directory = try makeTemporaryDirectory(named: "compare-raw-scale-signals")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let stale = makeAsset(id: "stale-raw-scale")
+        let fresh = makeAsset(id: "fresh-calibrated")
+        try repository.upsert([stale, fresh])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(
+                assetID: stale.id,
+                kind: .focus,
+                value: .score(0.14),
+                confidence: 1.0,
+                provenance: ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "1", settingsHash: "default")
+            ),
+            EvaluationSignal(
+                assetID: fresh.id,
+                kind: .focus,
+                value: .score(0.93),
+                confidence: 1.0,
+                provenance: ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "2", settingsHash: "default")
+            )
+        ])
+        let signalsByAssetID: [AssetID: [EvaluationSignal]] = [
+            stale.id: try repository.evaluationSignals(assetID: stale.id),
+            fresh.id: try repository.evaluationSignals(assetID: fresh.id)
+        ]
+
+        XCTAssertEqual(CompareSurveyPresentation.flawBadges(for: signalsByAssetID[stale.id] ?? []), [])
+        XCTAssertEqual(
+            CullingStackRecommendation.comparativeQualifiers(
+                leader: fresh.id,
+                runnerUp: stale.id,
+                evaluationSignalsByAssetID: signalsByAssetID
+            ),
+            []
+        )
+    }
+
+    private func makeTemporaryDirectory(named name: String) throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-compare-survey-tests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
     }
 
     private func makeAsset(

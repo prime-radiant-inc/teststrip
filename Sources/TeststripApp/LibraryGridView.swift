@@ -4449,9 +4449,10 @@ enum CompareFocusMetricPresentation {
             return score >= 0.5 ? .caution : .positive
         case (.focus, .score(let score)),
              (.framing, .score(let score)),
-             (.aesthetics, .score(let score)),
-             (.faceQuality, .score(let score)):
+             (.aesthetics, .score(let score)):
             return score >= 0.7 ? .positive : .caution
+        case (.faceQuality, .score(let score)):
+            return score >= EvaluationSignalPresentation.faceQualityStrongThreshold ? .positive : .caution
         case (.exposure, _):
             return .neutral
         case (.eyeSharpness, .score(let score)):
@@ -4471,6 +4472,12 @@ private enum EvaluationSignalPresentation {
     // (raw 0.05 / 0.15 ceiling): eyes at or above the corpus top quartile
     // read as sharp everywhere eye sharpness is phrased or toned.
     static let eyeSharpnessSharpThreshold = 0.33
+
+    // faceQuality p75 from the same study; matches the likelyPick
+    // strong-read anchor (CatalogRepository). Vision faceCaptureQuality
+    // tops out near 0.703 on the corpus, so the old shared 0.7 line
+    // rendered virtually every face lane as caution.
+    static let faceQualityStrongThreshold = 0.45
 
     static func displayName(for kind: EvaluationKind) -> String {
         switch kind {
@@ -7498,8 +7505,10 @@ struct CullingAssistPresentation: Equatable {
         switch (signal.kind, signal.value) {
         case (.motionBlur, .score(let score)):
             return score >= 0.5 ? .caution : .positive
-        case (.focus, .score(let score)), (.faceQuality, .score(let score)):
+        case (.focus, .score(let score)):
             return score >= 0.7 ? .positive : .caution
+        case (.faceQuality, .score(let score)):
+            return score >= EvaluationSignalPresentation.faceQualityStrongThreshold ? .positive : .caution
         case (.aesthetics, .label(let label)), (.framing, .label(let label)):
             return cautionLabels.contains(label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) ? .caution : .positive
         case (.faceCount, .count(let count)):
