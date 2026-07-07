@@ -3123,13 +3123,9 @@ private struct LoupeView: View {
     private func loupeStage(for asset: Asset) -> some View {
         ZStack(alignment: .bottomLeading) {
             Color.black.opacity(0.22)
-            if let previewURL = model.loupePreviewURL(for: asset.id) {
-                CachedPreviewImage(
-                    previewURL: previewURL,
-                    scaling: .fit,
-                    cacheGeneration: model.previewCacheGeneration(for: asset.id)
-                )
-                .padding(24)
+            if model.loupeZoomPreviewURL(for: asset.id) != nil {
+                LoupeZoomStageView(model: model, asset: asset)
+                    .padding(24)
             } else {
                 unavailableView(title: "No cached preview", systemImage: "photo.badge.exclamationmark")
             }

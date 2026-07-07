@@ -122,6 +122,36 @@ final class LoupeZoomGeometryTests: XCTestCase {
         )
     }
 
+    func testImagePixelSizePrefersAssetTechnicalDimensions() {
+        XCTAssertEqual(
+            LoupeZoomGeometry.imagePixelSize(
+                technicalPixelWidth: 6000,
+                technicalPixelHeight: 4000,
+                fallback: CGSize(width: 3200, height: 2133)
+            ),
+            CGSize(width: 6000, height: 4000)
+        )
+    }
+
+    func testImagePixelSizeFallsBackToLoadedImagePixelsWhenDimensionsUnknownOrInvalid() {
+        XCTAssertEqual(
+            LoupeZoomGeometry.imagePixelSize(
+                technicalPixelWidth: nil,
+                technicalPixelHeight: nil,
+                fallback: CGSize(width: 3200, height: 2133)
+            ),
+            CGSize(width: 3200, height: 2133)
+        )
+        XCTAssertEqual(
+            LoupeZoomGeometry.imagePixelSize(
+                technicalPixelWidth: 0,
+                technicalPixelHeight: 4000,
+                fallback: CGSize(width: 3200, height: 2133)
+            ),
+            CGSize(width: 3200, height: 2133)
+        )
+    }
+
     func testDegenerateSizesFallBackToCenteredFit() {
         let geometry = makeGeometry(imagePixelSize: .zero, displayScale: 0)
 

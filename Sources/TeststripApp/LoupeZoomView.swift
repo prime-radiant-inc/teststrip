@@ -1,4 +1,5 @@
-import CoreGraphics
+import AppKit
+import SwiftUI
 import TeststripCore
 
 /// Whether the loupe's 1:1 zoom is honestly sharp with what the preview
@@ -129,5 +130,249 @@ struct LoupeZoomGeometry: Equatable {
 
     private static func unitClamped(_ value: Double) -> Double {
         min(max(value, 0), 1)
+    }
+
+    /// The pixel size to zoom against: the asset's true dimensions when the
+    /// catalog knows them (so an upscaled preview occupies the same footprint
+    /// the original render will), otherwise the loaded preview's own pixels.
+    static func imagePixelSize(
+        technicalPixelWidth: Int?,
+        technicalPixelHeight: Int?,
+        fallback: CGSize
+    ) -> CGSize {
+        guard let technicalPixelWidth, let technicalPixelHeight,
+              technicalPixelWidth > 0, technicalPixelHeight > 0 else {
+            return fallback
+        }
+        return CGSize(width: technicalPixelWidth, height: technicalPixelHeight)
+    }
+}
+
+/// What the zoom chip in the loupe says while pixel-peeking: always the zoom
+/// factor, plus an honest note whenever the pixels on screen are not yet (or
+/// can never be) original resolution.
+struct LoupeZoomHUDPresentation: Equatable {
+    var zoomLabelText: String
+    var statusText: String?
+    var isLoading: Bool
+
+    init(fullResolutionStatus: LoupeZoomFullResolutionStatus) {
+        zoomLabelText = "100%"
+        switch fullResolutionStatus {
+        case .satisfied:
+            statusText = nil
+            isLoading = false
+        case .loading:
+            statusText = "Loading full resolution…"
+            isLoading = true
+        case .unavailable:
+            statusText = "Full resolution unavailable"
+            isLoading = false
+        }
+    }
+
+    var accessibilityValue: String {
+        switch (statusText, isLoading) {
+        case (nil, _):
+            return zoomLabelText
+        case (.some, true):
+            return "\(zoomLabelText), loading full resolution"
+        case (.some, false):
+            return "\(zoomLabelText), full resolution unavailable"
+        }
+    }
+}
+
+/// The loupe's image stage: aspect-fitted by default, and a 1:1 pixel zoom
+/// when the model carries a zoom focus. Click zooms into the clicked point,
+/// click again returns to fit, dragging pans while zoomed. Zooming requests
+/// an original-resolution render through the preview queue and shows the
+/// upscaled cached preview honestly labelled until it lands.
+struct LoupeZoomStageView: View {
+    var model: AppModel
+    var asset: Asset
+
+    @Environment(\.displayScale) private var displayScale
+    @State private var image: NSImage?
+    @State private var loadedURL: URL?
+    @State private var loadedGeneration: Int?
+    @State private var dragStartFocus: LoupeZoomFocus?
+
+    private var isZoomed: Bool {
+        model.loupeZoomFocus != nil
+    }
+
+    private var displayedPreviewURL: URL? {
+        isZoomed ? model.loupeZoomPreviewURL(for: asset.id) : model.loupePreviewURL(for: asset.id)
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            stageContent(viewportSize: proxy.size)
+        }
+        .task(id: StagePreviewLoadKey(
+            url: displayedPreviewURL,
+            cacheGeneration: model.previewCacheGeneration(for: asset.id)
+        )) {
+            await loadPreview()
+        }
+        .task(id: FullResolutionRequestKey(assetID: asset.id.rawValue, isZoomed: isZoomed)) {
+            guard isZoomed else { return }
+            do {
+                try model.requestLoupeFullResolutionPreview(assetID: asset.id)
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if isZoomed {
+                zoomHUD
+                    .padding(10)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func stageContent(viewportSize: CGSize) -> some View {
+        if let image {
+            if let focus = model.loupeZoomFocus {
+                zoomedImage(image, focus: focus, viewportSize: viewportSize)
+            } else {
+                fittedImage(image, viewportSize: viewportSize)
+            }
+        } else {
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.gray.opacity(0.35))
+        }
+    }
+
+    private func fittedImage(_ image: NSImage, viewportSize: CGSize) -> some View {
+        Image(nsImage: image)
+            .resizable()
+            .scaledToFit()
+            .frame(width: viewportSize.width, height: viewportSize.height)
+            .contentShape(Rectangle())
+            .onTapGesture(coordinateSpace: .local) { location in
+                let geometry = zoomGeometry(viewportSize: viewportSize, image: image)
+                model.zoomLoupe(to: geometry.focus(atFittedViewportPoint: location))
+            }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel("Zoom to 100%")
+    }
+
+    private func zoomedImage(_ image: NSImage, focus: LoupeZoomFocus, viewportSize: CGSize) -> some View {
+        let geometry = zoomGeometry(viewportSize: viewportSize, image: image)
+        let displaySize = geometry.actualSizeDisplaySize
+        let offset = geometry.offset(for: focus)
+        return ZStack {
+            Image(nsImage: image)
+                .resizable()
+                .frame(width: displaySize.width, height: displaySize.height)
+                .position(
+                    x: viewportSize.width / 2 + offset.width,
+                    y: viewportSize.height / 2 + offset.height
+                )
+        }
+        .frame(width: viewportSize.width, height: viewportSize.height)
+        .clipped()
+        .contentShape(Rectangle())
+        .onTapGesture {
+            model.resetLoupeZoom()
+        }
+        .gesture(panGesture(geometry: geometry))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("Return to fit")
+    }
+
+    private func panGesture(geometry: LoupeZoomGeometry) -> some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                let start = dragStartFocus ?? model.loupeZoomFocus ?? .center
+                dragStartFocus = start
+                model.zoomLoupe(to: geometry.focus(pannedBy: value.translation, from: start))
+            }
+            .onEnded { _ in
+                dragStartFocus = nil
+            }
+    }
+
+    private var zoomHUD: some View {
+        let presentation = LoupeZoomHUDPresentation(
+            fullResolutionStatus: model.loupeZoomFullResolutionStatus(for: asset.id)
+        )
+        return HStack(spacing: 8) {
+            if presentation.isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            }
+            if let statusText = presentation.statusText {
+                Text(statusText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Text(presentation.zoomLabelText)
+                .font(.caption.monospacedDigit().weight(.semibold))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 6))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Loupe zoom")
+        .accessibilityValue(presentation.accessibilityValue)
+    }
+
+    private func zoomGeometry(viewportSize: CGSize, image: NSImage) -> LoupeZoomGeometry {
+        LoupeZoomGeometry(
+            imagePixelSize: LoupeZoomGeometry.imagePixelSize(
+                technicalPixelWidth: asset.technicalMetadata?.pixelWidth,
+                technicalPixelHeight: asset.technicalMetadata?.pixelHeight,
+                fallback: image.previewPixelSize
+            ),
+            viewportSize: viewportSize,
+            displayScale: displayScale
+        )
+    }
+
+    @MainActor
+    private func loadPreview() async {
+        guard let displayedPreviewURL else {
+            image = nil
+            loadedURL = nil
+            loadedGeneration = model.previewCacheGeneration(for: asset.id)
+            return
+        }
+        let generation = model.previewCacheGeneration(for: asset.id)
+        guard loadedURL != displayedPreviewURL || loadedGeneration != generation else { return }
+        if !PreviewImageTransition.shouldRetainCurrentImage(loadedURL: loadedURL, nextURL: displayedPreviewURL) {
+            image = nil
+        }
+        loadedURL = displayedPreviewURL
+        loadedGeneration = generation
+        guard let loadedImage = await PreviewImageDataLoader.loadImage(from: displayedPreviewURL),
+              !Task.isCancelled else {
+            return
+        }
+        image = loadedImage
+    }
+}
+
+private struct StagePreviewLoadKey: Equatable {
+    var url: URL?
+    var cacheGeneration: Int
+}
+
+private struct FullResolutionRequestKey: Equatable {
+    var assetID: String
+    var isZoomed: Bool
+}
+
+private extension NSImage {
+    /// Pixel dimensions of the highest-resolution representation; NSImage's
+    /// own size is in points and understates Retina-density previews.
+    var previewPixelSize: CGSize {
+        guard let representation = representations.max(by: { $0.pixelsWide < $1.pixelsWide }) else {
+            return CGSize(width: size.width, height: size.height)
+        }
+        return CGSize(width: representation.pixelsWide, height: representation.pixelsHigh)
     }
 }
