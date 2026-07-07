@@ -51,7 +51,26 @@ public struct ExportPreset: Hashable, Sendable {
         settings: ExportSettings(jpegQuality: 0.8, longEdgeMaximumPixels: 2048)
     )
 
-    public static let all = [fullResolutionJPEG, web2048]
+    // The design mock names this "Instagram 1080²" with a square crop, but
+    // Teststrip never crops on export. This caps the long edge at 1080
+    // instead — smaller than a true square crop would need, but honest
+    // about what the export actually does to the frame.
+    public static let instagramSquareCapped = ExportPreset(
+        name: "Instagram 1080²",
+        settings: ExportSettings(jpegQuality: 0.85, longEdgeMaximumPixels: 1080)
+    )
+
+    public static let print300dpi = ExportPreset(
+        name: "Print 300dpi",
+        settings: ExportSettings(jpegQuality: 0.95)
+    )
+
+    public static let email1MB = ExportPreset(
+        name: "Email 1MB",
+        settings: ExportSettings(jpegQuality: 0.85, targetFileSizeBytes: 1_000_000)
+    )
+
+    public static let all = [fullResolutionJPEG, web2048, instagramSquareCapped, print300dpi, email1MB]
 }
 
 public enum ExportOutcome: Equatable, Sendable {

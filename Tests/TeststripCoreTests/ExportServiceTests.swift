@@ -12,7 +12,38 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(ExportPreset.web2048.name, "Web 2048px")
         XCTAssertEqual(ExportPreset.web2048.settings.jpegQuality, 0.8)
         XCTAssertEqual(ExportPreset.web2048.settings.longEdgeMaximumPixels, 2048)
-        XCTAssertEqual(ExportPreset.all, [.fullResolutionJPEG, .web2048])
+        XCTAssertEqual(ExportPreset.all, [
+            .fullResolutionJPEG,
+            .web2048,
+            .instagramSquareCapped,
+            .print300dpi,
+            .email1MB
+        ])
+    }
+
+    func testInstagramPresetCapsLongEdgeInsteadOfCroppingSquare() {
+        // The design mock implies a square crop ("Instagram 1080²"), but
+        // Teststrip never crops on export — that would silently discard
+        // pixels the user didn't ask to lose. This preset instead caps the
+        // long edge at 1080, which is honest about what actually happens.
+        XCTAssertEqual(ExportPreset.instagramSquareCapped.name, "Instagram 1080²")
+        XCTAssertEqual(ExportPreset.instagramSquareCapped.settings.longEdgeMaximumPixels, 1080)
+        XCTAssertEqual(ExportPreset.instagramSquareCapped.settings.jpegQuality, 0.85)
+        XCTAssertEqual(ExportPreset.instagramSquareCapped.settings.format, .jpeg)
+        XCTAssertNil(ExportPreset.instagramSquareCapped.settings.targetFileSizeBytes)
+    }
+
+    func testPrintPresetIsFullResolutionAtHighQuality() {
+        XCTAssertEqual(ExportPreset.print300dpi.name, "Print 300dpi")
+        XCTAssertEqual(ExportPreset.print300dpi.settings.jpegQuality, 0.95)
+        XCTAssertNil(ExportPreset.print300dpi.settings.longEdgeMaximumPixels)
+        XCTAssertNil(ExportPreset.print300dpi.settings.targetFileSizeBytes)
+    }
+
+    func testEmailPresetTargetsAOneMegabyteByteBudget() {
+        XCTAssertEqual(ExportPreset.email1MB.name, "Email 1MB")
+        XCTAssertEqual(ExportPreset.email1MB.settings.targetFileSizeBytes, 1_000_000)
+        XCTAssertEqual(ExportPreset.email1MB.settings.format, .jpeg)
     }
 
     func testSettingsClampJpegQualityToUnitRange() {
