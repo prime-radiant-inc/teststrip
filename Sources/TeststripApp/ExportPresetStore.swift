@@ -36,6 +36,13 @@ enum ExportPresetStore {
         guard let name = lastUsedPresetName(defaults: defaults) else { return nil }
         return presets.first { $0.name == name }
     }
+
+    /// Convenience for initial UI state: the remembered preset if it still
+    /// exists in the persisted list, otherwise the first loaded preset.
+    static func lastUsedPresetOrDefault(defaults: UserDefaults = .standard) -> ExportPreset {
+        let presets = loadPresets(defaults: defaults)
+        return lastUsedPreset(in: presets, defaults: defaults) ?? presets.first ?? ExportPreset.fullResolutionJPEG
+    }
 }
 
 /// Pure list-editing helpers behind the popover's "+ New Preset" and delete

@@ -54,6 +54,19 @@ final class ExportPresetStoreTests: XCTestCase {
         XCTAssertNil(ExportPresetStore.lastUsedPreset(in: [ExportPreset.fullResolutionJPEG], defaults: defaults))
     }
 
+    func testLastUsedPresetOrDefaultFallsBackToFirstLoadedPresetWhenNothingRemembered() throws {
+        let defaults = try makeDefaults()
+
+        XCTAssertEqual(ExportPresetStore.lastUsedPresetOrDefault(defaults: defaults), .fullResolutionJPEG)
+    }
+
+    func testLastUsedPresetOrDefaultReturnsTheRememberedPresetWhenItStillExists() throws {
+        let defaults = try makeDefaults()
+        ExportPresetStore.rememberLastUsedPreset(named: "Email 1MB", defaults: defaults)
+
+        XCTAssertEqual(ExportPresetStore.lastUsedPresetOrDefault(defaults: defaults), .email1MB)
+    }
+
     func testUpsertingAppendsANewlyNamedPreset() {
         let presets = [ExportPreset.fullResolutionJPEG, ExportPreset.web2048]
         let addition = ExportPreset(name: "Client delivery", settings: ExportSettings(jpegQuality: 0.92))
