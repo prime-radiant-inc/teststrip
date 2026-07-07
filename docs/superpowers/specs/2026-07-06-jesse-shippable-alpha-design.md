@@ -14,6 +14,7 @@ Jesse lives in Teststrip daily on his real photo library. "Shippable" means ship
 - Minimal resized-JPEG export is in scope: format/quality/resize to a destination, one or two presets. Exports optionally carry EXIF/IPTC from the originals via a checkbox at export time (later same-day decision).
 - Dogfooding starts with one large real subtree (a few thousand photos) imported in place, then graduates to the full library.
 - Breadth work is frozen until after the dogfood gate: Search/Copilot/Timeline/Smart Collections polish and new review queues. Later same-day decision narrowed the freeze: the full culling workflow with ML assist (smile detection, eyes open/closed, eyes-in-focus, focus and aesthetic scores surfaced in culling) and face recognition (automatic grouping with a confirm flow, extending the manual People workflow) are IN scope.
+- Evening decisions (Jesse, 2026-07-06): NL search/Copilot goes FULL AUTOPILOT (design 1b agents panel with review queue and undo-all; autonomy bounded by reviewable, undoable actions). Places is RE-OPENED in full (map browsing + reverse-geocoding pipeline). Culling gains an explicit, confirm-gated move-rejects-to-folder action (first feature that relocates originals). File renaming on import stays OUT.
 - Deep performance tuning is capped: fix what blocks a workflow, land it, stop iterating toward probe budgets ("let's not focus too much on perf right now").
 
 ## Why Re-Prioritize
