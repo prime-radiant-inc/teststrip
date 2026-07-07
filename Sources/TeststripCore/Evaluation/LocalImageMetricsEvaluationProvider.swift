@@ -3,17 +3,22 @@ import Foundation
 import ImageIO
 
 public struct LocalImageMetricsEvaluationProvider: EvaluationProvider {
-    public let name = "local-image-metrics"
+    public static let providerName = "local-image-metrics"
+
+    /// Version 2: focus-family scores (focus, motionBlur, and the focus
+    /// term inside aesthetics) are on the calibrated 0-1 scale rather than
+    /// the raw ~0.04-0.15 luminance-delta scale of version 1. Catalog reads
+    /// key on this to keep superseded raw-scale rows invisible.
+    public static let provenanceVersion = "2"
+
+    public let name = Self.providerName
 
     public init() {}
 
     public func evaluate(assetID: AssetID, previewURL: URL) throws -> [EvaluationSignal] {
         let metrics = try Self.previewMetrics(of: previewURL)
         let exposure = PreviewPixelMetrics.luminance(red: metrics.averageColor.red, green: metrics.averageColor.green, blue: metrics.averageColor.blue)
-        // Version 2: focus-family scores (focus, motionBlur, and the focus
-        // term inside aesthetics) are on the calibrated 0-1 scale rather than
-        // the raw ~0.04-0.15 luminance-delta scale of version 1.
-        let provenance = ProviderProvenance(provider: name, model: "preview-color-focus-metrics", version: "2", settingsHash: "default")
+        let provenance = ProviderProvenance(provider: name, model: "preview-color-focus-metrics", version: Self.provenanceVersion, settingsHash: "default")
         return [
             EvaluationSignal(
                 assetID: assetID,

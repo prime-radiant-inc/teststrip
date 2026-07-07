@@ -7263,7 +7263,7 @@ final class AppModelTests: XCTestCase {
             named: "potential-picks-queue",
             assets: [strong, weak]
         )
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: strong.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance),
             EvaluationSignal(assetID: weak.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance)
@@ -9517,7 +9517,7 @@ final class AppModelTests: XCTestCase {
             assets: [importedIssue, importedClean, outsideIssue],
             outputAssetIDs: [importedIssue.id, importedClean.id]
         )
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: importedIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance),
             EvaluationSignal(assetID: outsideIssue.id, kind: .focus, value: .score(0.29), confidence: 0.89, provenance: provenance)
@@ -9534,7 +9534,7 @@ final class AppModelTests: XCTestCase {
             assets: [firstIssue, secondIssue],
             outputAssetIDs: [firstIssue.id, secondIssue.id]
         )
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: firstIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance)
         ])
@@ -9565,7 +9565,7 @@ final class AppModelTests: XCTestCase {
             outputAssetIDs: [firstIssue.id, secondIssue.id],
             workerSupervisor: supervisor
         )
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: firstIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance)
         ])
@@ -9690,7 +9690,7 @@ final class AppModelTests: XCTestCase {
             assets: [importedIssue, importedClean, outsideIssue],
             outputAssetIDs: [importedIssue.id, importedClean.id]
         )
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: importedIssue.id, kind: .focus, value: .score(0.31), confidence: 0.88, provenance: provenance),
             EvaluationSignal(assetID: outsideIssue.id, kind: .focus, value: .score(0.29), confidence: 0.89, provenance: provenance)

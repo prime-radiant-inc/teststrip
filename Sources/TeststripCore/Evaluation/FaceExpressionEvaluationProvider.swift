@@ -42,7 +42,14 @@ public protocol FaceExpressionAnalyzing: Sendable {
 /// Per-photo smile and eye-state culling signals aggregated from per-face
 /// expression detection over the cached preview.
 public struct FaceExpressionEvaluationProvider: EvaluationProvider {
-    public let name = "core-image-faces"
+    public static let providerName = "core-image-faces"
+
+    /// Version 2: eyeSharpness is on the calibrated 0-1 focus scale rather
+    /// than the raw ~0.04-0.15 luminance-delta scale of version 1. Catalog
+    /// reads key on this to keep superseded raw-scale rows invisible.
+    public static let provenanceVersion = "2"
+
+    public let name = Self.providerName
 
     private let analyzer: any FaceExpressionAnalyzing
 
@@ -53,9 +60,7 @@ public struct FaceExpressionEvaluationProvider: EvaluationProvider {
     public func evaluate(assetID: AssetID, previewURL: URL) throws -> [EvaluationSignal] {
         let faces = try analyzer.detectFaces(previewURL: previewURL)
         guard !faces.isEmpty else { return [] }
-        // Version 2: eyeSharpness is on the calibrated 0-1 focus scale rather
-        // than the raw ~0.04-0.15 luminance-delta scale of version 1.
-        let provenance = ProviderProvenance(provider: name, model: "CIDetectorFace", version: "2", settingsHash: "default")
+        let provenance = ProviderProvenance(provider: name, model: "CIDetectorFace", version: Self.provenanceVersion, settingsHash: "default")
         let faceCount = Double(faces.count)
         let eyesOpenFraction = Double(faces.filter(\.hasBothEyesOpen).count) / faceCount
         let smileFraction = Double(faces.filter(\.hasSmile).count) / faceCount
