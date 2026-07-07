@@ -1689,7 +1689,11 @@ public final class CatalogRepository {
                 // defect at the calibrated p5 (raw 0.06 / 0.15 = 0.4); no
                 // motionBlur term (it is exactly 1 - focus, pure redundancy);
                 // eyesOpen only when 0.0 - fractional CIDetector reads are
-                // noise on tiny/occluded faces and rank rather than flag.
+                // noise on tiny/occluded faces and rank rather than flag;
+                // faceQuality defect at its own p5 (0.1) - below likelyPick's
+                // 0.45 strong anchor, so one value can never be both a strong
+                // read and a defect (the old 0.5 line flagged ~82% of face
+                // photos and sat above the strong anchor).
                 // Superseded raw-scale focus rows sit entirely below the
                 // calibrated defect anchor and must not count as defects.
                 clauses.append(
@@ -1714,7 +1718,7 @@ public final class CatalogRepository {
                             )
                             OR (
                                 kind = 'faceQuality'
-                                AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.5
+                                AND CAST(json_extract(value_json, '$.score._0') AS REAL) <= 0.1
                                 AND NOT EXISTS (
                                     SELECT 1
                                     FROM dismissed_face_assets

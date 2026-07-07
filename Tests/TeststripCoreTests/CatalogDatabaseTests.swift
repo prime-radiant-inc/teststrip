@@ -909,9 +909,9 @@ final class CatalogDatabaseTests: XCTestCase {
         try repository.upsert([dismissed, active])
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: dismissed.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
-            EvaluationSignal(assetID: dismissed.id, kind: .faceQuality, value: .score(0.3), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: dismissed.id, kind: .faceQuality, value: .score(0.08), confidence: 0.8, provenance: provenance),
             EvaluationSignal(assetID: active.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
-            EvaluationSignal(assetID: active.id, kind: .faceQuality, value: .score(0.3), confidence: 0.8, provenance: provenance)
+            EvaluationSignal(assetID: active.id, kind: .faceQuality, value: .score(0.08), confidence: 0.8, provenance: provenance)
         ])
 
         try repository.dismissFaceAssets([dismissed.id])
@@ -946,9 +946,9 @@ final class CatalogDatabaseTests: XCTestCase {
         try repository.upsert([assigned, unnamed])
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: assigned.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
-            EvaluationSignal(assetID: assigned.id, kind: .faceQuality, value: .score(0.3), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: assigned.id, kind: .faceQuality, value: .score(0.08), confidence: 0.8, provenance: provenance),
             EvaluationSignal(assetID: unnamed.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance),
-            EvaluationSignal(assetID: unnamed.id, kind: .faceQuality, value: .score(0.3), confidence: 0.8, provenance: provenance)
+            EvaluationSignal(assetID: unnamed.id, kind: .faceQuality, value: .score(0.08), confidence: 0.8, provenance: provenance)
         ])
 
         try repository.upsertPerson(id: "person-maya", name: "Maya")
@@ -1369,6 +1369,36 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(
             try repository.allAssets(matching: SetQuery(predicates: [.likelyPick]), limit: 10).map(\.id),
             [asset.id]
+        )
+    }
+
+    func testFaceQualityDefectAnchorSitsBelowStrongReadAnchor() throws {
+        // Calibration-study percentile anchors: strong faceQuality at p75
+        // (0.45), defect at p5 (0.1). The defect anchor must sit below the
+        // strong anchor so no value is simultaneously the strong read that
+        // makes an asset a Potential Pick and the defect that lists it under
+        // Likely Issues; the old 0.5 defect line covered ~82% of face photos
+        // and straddled the strong anchor.
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-face-quality-anchors")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let strongFace = Asset.testAsset(id: AssetID(rawValue: "strong-face"), path: "/Volumes/NAS/Job/strong-face.jpg", rating: 0)
+        let weakFace = Asset.testAsset(id: AssetID(rawValue: "weak-face"), path: "/Volumes/NAS/Job/weak-face.jpg", rating: 0)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.upsert([strongFace, weakFace])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: strongFace.id, kind: .faceQuality, value: .score(0.47), confidence: 0.5, provenance: provenance),
+            EvaluationSignal(assetID: weakFace.id, kind: .faceQuality, value: .score(0.08), confidence: 0.5, provenance: provenance)
+        ])
+
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.likelyPick]), limit: 10).map(\.id),
+            [strongFace.id]
+        )
+        XCTAssertEqual(
+            try repository.allAssets(matching: SetQuery(predicates: [.likelyIssue]), limit: 10).map(\.id),
+            [weakFace.id]
         )
     }
 
