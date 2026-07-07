@@ -217,6 +217,55 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.catalogGeneration(assetID: asset.id), 1)
     }
 
+    func testReupsertingLegacyUnsortedMetadataJSONKeepsCatalogGeneration() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-generation-legacy-key-order")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset.testAsset(path: "/Volumes/NAS/Job/frame.cr2", rating: 4)
+        try repository.upsert(asset)
+        // Catalogs written before the sorted-keys encoder hold metadata_json in
+        // per-process-random key order; re-upserting an unchanged asset must
+        // not read as a metadata edit just because today's canonical text
+        // differs from the legacy key order.
+        try database.execute(
+            "UPDATE assets SET metadata_json = ? WHERE id = ?",
+            bindings: [#"{"rating":4,"keywords":[]}"#, asset.id.rawValue]
+        )
+
+        let decoded = try repository.asset(id: asset.id)
+        try repository.upsert(decoded)
+
+        XCTAssertEqual(try repository.catalogGeneration(assetID: asset.id), 1)
+        let storedJSON = try XCTUnwrap(
+            try database.rows(
+                "SELECT metadata_json FROM assets WHERE id = ?",
+                bindings: [asset.id.rawValue]
+            ).first?["metadata_json"]
+        )
+        XCTAssertEqual(storedJSON, #"{"keywords":[],"rating":4}"#)
+    }
+
+    func testEditingAssetWithLegacyUnsortedMetadataJSONStillBumpsCatalogGeneration() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-generation-legacy-key-order-edit")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset.testAsset(path: "/Volumes/NAS/Job/frame.cr2", rating: 4)
+        try repository.upsert(asset)
+        try database.execute(
+            "UPDATE assets SET metadata_json = ? WHERE id = ?",
+            bindings: [#"{"rating":4,"keywords":[]}"#, asset.id.rawValue]
+        )
+
+        try repository.updateMetadata(assetID: asset.id) { metadata in
+            metadata.rating = 5
+        }
+
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.rating, 5)
+        XCTAssertEqual(try repository.catalogGeneration(assetID: asset.id), 2)
+    }
+
     func testNonMetadataAssetRefreshDoesNotIncrementCatalogGeneration() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-generation-refresh")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

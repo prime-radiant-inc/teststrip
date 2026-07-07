@@ -38,6 +38,7 @@ public final class CatalogRepository {
 
     public func upsert(_ asset: Asset) throws {
         let now = "\(Date().timeIntervalSince1970)"
+        let metadataJSON = try encode(asset.metadata)
         try database.execute(
             """
             INSERT INTO assets (id, original_path, volume_identifier, fingerprint_json, availability, metadata_json, technical_metadata_json, catalog_generation, created_at, updated_at)
@@ -50,7 +51,7 @@ public final class CatalogRepository {
                 metadata_json = excluded.metadata_json,
                 technical_metadata_json = excluded.technical_metadata_json,
                 catalog_generation = CASE
-                    WHEN assets.metadata_json = excluded.metadata_json THEN assets.catalog_generation
+                    WHEN assets.metadata_json = excluded.metadata_json OR ? = '1' THEN assets.catalog_generation
                     ELSE assets.catalog_generation + 1
                 END,
                 updated_at = excluded.updated_at
@@ -61,12 +62,39 @@ public final class CatalogRepository {
                 asset.volumeIdentifier ?? "",
                 try encode(asset.fingerprint),
                 asset.availability.rawValue,
-                try encode(asset.metadata),
+                metadataJSON,
                 try asset.technicalMetadata.map(encode) ?? "",
                 now,
-                now
+                now,
+                try storedMetadataMatchesSemantically(asset.metadata, encodedMetadata: metadataJSON, assetID: asset.id) ? "1" : "0"
             ]
         )
+    }
+
+    // Catalogs written before the sorted-keys encoder hold metadata_json in
+    // per-process-random key order, so the byte compare above would treat the
+    // first canonical re-encode of an unchanged asset as a metadata edit and
+    // spuriously bump the catalog generation (triggering machine-initiated XMP
+    // writes and false conflicts). When the stored text differs, compare the
+    // decoded values instead; the byte-equal SQL path stays the common case.
+    private func storedMetadataMatchesSemantically(
+        _ metadata: AssetMetadata,
+        encodedMetadata: String,
+        assetID: AssetID
+    ) throws -> Bool {
+        let rows = try database.rows(
+            "SELECT metadata_json FROM assets WHERE id = ?",
+            bindings: [assetID.rawValue]
+        )
+        guard let storedJSON = rows.first?["metadata_json"], storedJSON != encodedMetadata else {
+            // No stored row (plain insert) or byte-equal text; the SQL byte
+            // compare already keeps the generation for the byte-equal case.
+            return false
+        }
+        guard let storedMetadata = try? decoder.decode(AssetMetadata.self, from: Data(storedJSON.utf8)) else {
+            return false
+        }
+        return storedMetadata == metadata
     }
 
     public func upsert(_ assets: [Asset]) throws {
