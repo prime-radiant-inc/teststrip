@@ -11451,6 +11451,94 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testSecondImportCompletionKeepsPriorImportPendingEvaluations() async throws {
+        let directory = try makeTemporaryDirectory(named: "auto-eval-two-import-drain")
+        let firstFolder = directory.appendingPathComponent("photos-first", isDirectory: true)
+        let secondFolder = directory.appendingPathComponent("photos-second", isDirectory: true)
+        try FileManager.default.createDirectory(at: firstFolder, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondFolder, withIntermediateDirectories: true)
+        let firstImage = firstFolder.appendingPathComponent("one.png")
+        let secondImage = secondFolder.appendingPathComponent("two.png")
+        try writeTestPNG(to: firstImage)
+        try writeTestPNG(to: secondImage)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 8), transport: transport)
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(firstFolder)
+        let firstImportItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        let firstAsset = Asset(
+            id: AssetID(rawValue: "auto-eval-first-import"),
+            originalURL: firstImage,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(firstAsset)
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: firstImportItem.id,
+            message: "imported 1 photo from photos-first",
+            importedAssetIDs: [firstAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+        try await waitForSelectedAsset(firstAsset.id, in: model)
+        // No cached preview yet, so nothing queued at the first completion.
+        XCTAssertFalse(model.backgroundWorkQueue.items.contains { $0.kind == .recognition })
+
+        // A second import completes while the first import's previews still drain.
+        model.beginImportFolder(secondFolder)
+        let secondImportItem = try XCTUnwrap(model.backgroundWorkQueue.items.first { item in
+            item.kind == .ingest && item.id != firstImportItem.id
+        })
+        let secondAsset = Asset(
+            id: AssetID(rawValue: "auto-eval-second-import"),
+            originalURL: secondImage,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 20, modificationDate: Date(timeIntervalSince1970: 20)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(secondAsset)
+        // The first import's preview backlog beyond the active recovery batch is
+        // still pending in the repository, so the second import's completion
+        // enqueues it at the back of the queue -- behind its own ingest item.
+        try catalog.repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: firstAsset.id, level: .micro))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: secondImportItem.id,
+            message: "imported 1 photo from photos-second",
+            importedAssetIDs: [secondAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+        try await waitForSelectedAsset(secondAsset.id, in: model)
+
+        // The first import's micro preview finishes: its evaluation passes must
+        // still queue even though a second import completed in between.
+        try writePreviewPlaceholder(to: catalog.previewCache.url(for: PreviewCacheKey(assetID: firstAsset.id, level: .micro)))
+        let previewItemID = WorkSessionID(rawValue: "preview-\(firstAsset.id.rawValue)-micro")
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: previewItemID,
+            message: "generated micro preview"
+        )))
+        try await waitForRecognitionItemCount(AppModel.defaultEvaluationProviderNames.count, in: model)
+
+        let evaluationItemIDs = model.backgroundWorkQueue.items
+            .filter { $0.kind == .recognition }
+            .map(\.id.rawValue)
+        XCTAssertEqual(evaluationItemIDs.sorted(), AppModel.defaultEvaluationProviderNames.map { provider in
+            "evaluation-\(firstAsset.id.rawValue)-\(provider)"
+        }.sorted())
+    }
+
+    @MainActor
     func testDisabledEvaluateAfterImportQueuesNoEvaluations() async throws {
         let directory = try makeTemporaryDirectory(named: "auto-eval-disabled")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
@@ -11487,6 +11575,165 @@ final class AppModelTests: XCTestCase {
         try await waitForSelectedAsset(importedAsset.id, in: model)
 
         XCTAssertFalse(model.backgroundWorkQueue.items.contains { $0.kind == .recognition })
+    }
+
+    @MainActor
+    func testRejectedConcurrentFolderImportKeepsInFlightAutoEvaluationEnabled() async throws {
+        let directory = try makeTemporaryDirectory(named: "auto-eval-rejected-folder-import")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        let otherFolder = directory.appendingPathComponent("photos-other", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: otherFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 8), transport: transport)
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder, evaluateAfterImport: true)
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+
+        // A rejected concurrent import must not change the in-flight import's
+        // auto-evaluation setting.
+        model.beginImportFolder(otherFolder, evaluateAfterImport: false)
+        XCTAssertEqual(model.errorMessage, "Another import is already running")
+
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "auto-eval-rejected-folder"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        try writePreviewPlaceholder(to: catalog.previewCache.url(for: PreviewCacheKey(assetID: importedAsset.id, level: .grid)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+        try await waitForSelectedAsset(importedAsset.id, in: model)
+
+        let evaluationItemIDs = model.backgroundWorkQueue.items
+            .filter { $0.kind == .recognition }
+            .map(\.id.rawValue)
+        XCTAssertEqual(evaluationItemIDs.sorted(), AppModel.defaultEvaluationProviderNames.map { provider in
+            "evaluation-\(importedAsset.id.rawValue)-\(provider)"
+        }.sorted())
+    }
+
+    @MainActor
+    func testRejectedConcurrentCardImportKeepsInFlightAutoEvaluationEnabled() async throws {
+        let directory = try makeTemporaryDirectory(named: "auto-eval-rejected-card-import")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        let cardSource = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let cardDestination = directory.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: cardSource, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: cardDestination, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 8), transport: transport)
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder, evaluateAfterImport: true)
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+
+        // A rejected concurrent card import must not change the in-flight
+        // import's auto-evaluation setting.
+        model.beginImportCard(source: cardSource, destinationRoot: cardDestination, evaluateAfterImport: false)
+        XCTAssertEqual(model.errorMessage, "Another import is already running")
+
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "auto-eval-rejected-card"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        try writePreviewPlaceholder(to: catalog.previewCache.url(for: PreviewCacheKey(assetID: importedAsset.id, level: .grid)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+        try await waitForSelectedAsset(importedAsset.id, in: model)
+
+        let evaluationItemIDs = model.backgroundWorkQueue.items
+            .filter { $0.kind == .recognition }
+            .map(\.id.rawValue)
+        XCTAssertEqual(evaluationItemIDs.sorted(), AppModel.defaultEvaluationProviderNames.map { provider in
+            "evaluation-\(importedAsset.id.rawValue)-\(provider)"
+        }.sorted())
+    }
+
+    @MainActor
+    func testPreviewCompletionEnablesLatestImportEvaluateActionWhenAutoEvaluationDisabled() async throws {
+        let directory = try makeTemporaryDirectory(named: "latest-import-evaluate-gate-preview-drain")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 8), transport: transport)
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder, evaluateAfterImport: false)
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "evaluate-gate-deferred"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        try catalog.repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: importedAsset.id, level: .micro))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+        try await waitForSelectedAsset(importedAsset.id, in: model)
+        // The worker import deferred preview generation, so the evaluate action
+        // is still gated off. This access caches the presentation core.
+        XCTAssertFalse(model.canRequestLatestImportAssetEvaluations)
+
+        // The only preview finishes: with auto-evaluation off, no recognition
+        // completion will ever refresh the panel, so the preview transition
+        // itself must flip the evaluate gate.
+        try writePreviewPlaceholder(to: catalog.previewCache.url(for: PreviewCacheKey(assetID: importedAsset.id, level: .micro)))
+        let previewItemID = WorkSessionID(rawValue: "preview-\(importedAsset.id.rawValue)-micro")
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: previewItemID,
+            message: "generated micro preview"
+        )))
+        try await waitForCompletedBackgroundWorkItem(id: previewItemID, in: model)
+
+        XCTAssertTrue(model.canRequestLatestImportAssetEvaluations)
     }
 
     @MainActor
@@ -11684,6 +11931,39 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.errorMessage, "Another import is already running")
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder)])
+    }
+
+    @MainActor
+    func testBeginImportFolderRejectsDuplicateImportBeforeCoalescedQueuePublication() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-folder-import-duplicate-coalesced")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let scheduler = ManualBackgroundWorkPublicationScheduler()
+        let model = try AppModel.load(
+            catalog: catalog,
+            workerSupervisor: supervisor,
+            backgroundWorkPublicationInterval: 0.25,
+            backgroundWorkPublicationScheduler: scheduler
+        )
+
+        // The published queue still lags behind the supervisor queue: the guard
+        // must read the current queue, not the coalesced published copy.
+        model.beginImportFolder(photoFolder)
+        model.beginImportFolder(photoFolder)
+
+        XCTAssertEqual(model.errorMessage, "Another import is already running")
+
+        scheduler.fireScheduledActions()
+
+        XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind == .ingest }.count, 1)
         XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder)])
     }
 
@@ -14655,6 +14935,17 @@ final class AppModelTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTFail("timed out waiting for selected asset \(assetID.rawValue)")
+    }
+
+    @MainActor
+    private func waitForCompletedBackgroundWorkItem(id itemID: WorkSessionID, in model: AppModel) async throws {
+        for _ in 0..<100 {
+            if model.backgroundWorkQueue.item(id: itemID)?.status == .completed {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTFail("timed out waiting for completed work item \(itemID.rawValue)")
     }
 
     @MainActor

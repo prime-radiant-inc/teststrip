@@ -1702,8 +1702,11 @@ public final class AppModel {
             return true
         }
         guard !workerImportContextsByItemID.isEmpty else { return false }
+        // Read the always-current supervisor queue: the published copy can lag
+        // by a coalescing interval, which would let a second import slip past
+        // the "Another import is already running" guard.
         return workerImportContextsByItemID.keys.contains { itemID in
-            guard let item = backgroundWorkQueue.item(id: itemID), item.kind == .ingest else { return false }
+            guard let item = currentBackgroundWorkQueue.item(id: itemID), item.kind == .ingest else { return false }
             return Self.isActiveBackgroundWorkStatus(item.status)
         }
     }
@@ -1993,6 +1996,16 @@ public final class AppModel {
     /// presentation rebuild.
     private func refreshLatestImportPreviewStatus() {
         latestImportPreviewStatus = nil
+        // A newly cached preview can flip the cached core's evaluate gate; patch
+        // it in place instead of paying the full core rebuild per preview
+        // transition. The recheck short-circuits on the first cached preview.
+        if let core = latestImportPresentationCore,
+           !core.canRequestAssetEvaluations,
+           canRequestLatestImportAssetEvaluations(assetIDs: core.outputAssetIDs) {
+            var updatedCore = core
+            updatedCore.canRequestAssetEvaluations = true
+            latestImportPresentationCore = updatedCore
+        }
     }
 
     private func latestImportCoreRebuildingIfNeeded() -> LatestImportPresentationCore {
@@ -6071,7 +6084,11 @@ public final class AppModel {
         guard importAutoEvaluationEnabled, workerSupervisor != nil else { return }
         let importedAssetIDs = result.importedAssets.map(\.id)
         guard !importedAssetIDs.isEmpty else { return }
-        pendingImportEvaluationAssetIDs = Set(importedAssetIDs)
+        // Union, not assignment: a prior import's assets may still be awaiting
+        // their preview-completion evaluations while this import finishes.
+        // requestEvaluation dedups against the live queue, so this cannot
+        // double-enqueue.
+        pendingImportEvaluationAssetIDs.formUnion(importedAssetIDs)
         enqueueImportEvaluationsForCachedPreviews(assetIDs: importedAssetIDs)
     }
 
@@ -8472,7 +8489,6 @@ public final class AppModel {
 
     @MainActor
     public func beginImportFolder(_ folderURL: URL, evaluateAfterImport: Bool = true) {
-        importAutoEvaluationEnabled = evaluateAfterImport
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
             return
@@ -8481,6 +8497,9 @@ public final class AppModel {
             errorMessage = "Another import is already running"
             return
         }
+        // Set only after the concurrency guard so a rejected call cannot change
+        // the in-flight import's auto-evaluation outcome.
+        importAutoEvaluationEnabled = evaluateAfterImport
         if let blockingReason = ImportSourcePreflight.blockingReason(for: folderURL) {
             failImportBeforeStart(folderURL: folderURL, reason: blockingReason)
             return
@@ -8551,7 +8570,6 @@ public final class AppModel {
         secondCopyDestination: URL? = nil,
         evaluateAfterImport: Bool = true
     ) {
-        importAutoEvaluationEnabled = evaluateAfterImport
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
             return
@@ -8560,6 +8578,9 @@ public final class AppModel {
             errorMessage = "Another import is already running"
             return
         }
+        // Set only after the concurrency guard so a rejected call cannot change
+        // the in-flight import's auto-evaluation outcome.
+        importAutoEvaluationEnabled = evaluateAfterImport
         if let blockingReason = ImportSourcePreflight.blockingReason(for: source) {
             failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: blockingReason)
             return
