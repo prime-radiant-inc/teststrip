@@ -1643,6 +1643,21 @@ public final class CatalogRepository {
                     "EXISTS (SELECT 1 FROM json_each(metadata_json, '$.keywords') WHERE LOWER(value) = LOWER(?))"
                 )
                 bindings.append(trimmed)
+            case .person(let name):
+                let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                clauses.append(
+                    """
+                    EXISTS (
+                        SELECT 1
+                        FROM person_assets
+                        JOIN people ON people.id = person_assets.person_id
+                        WHERE person_assets.asset_id = assets.id
+                          AND people.name = ? COLLATE NOCASE
+                    )
+                    """
+                )
+                bindings.append(trimmed)
             case .missingKeywords:
                 clauses.append("NOT EXISTS (SELECT 1 FROM json_each(metadata_json, '$.keywords'))")
             case .availability(let availability):
