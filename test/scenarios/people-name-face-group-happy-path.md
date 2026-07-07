@@ -8,15 +8,20 @@ merely-suggested group leaves the catalog untouched).
 
 ## Pre-state
 - Fresh build against a corpus that actually contains faces. **Synthetic
-  `--isolated` seed has no detectable faces**, so grouping produces nothing —
-  use a real-face corpus:
+  `--isolated` seed has no detectable faces, and the `--sample-photos`
+  (WordPress) set has 0/12** (it is landscapes, statues, and animals — Vision
+  finds no human faces). Use the dedicated face corpus instead:
   ```bash
-  ./script/build_and_run.sh --sample-photos      # or --real-corpus, if it has people in it
+  ./script/build_and_run.sh --faces
   ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
   DB="$ISOLATED/Teststrip/catalog.sqlite"
   ```
-  If `--sample-photos` has no faces either, that is a fixture gap: report it and
-  recommend a face-bearing seed corpus, rather than passing the card vacuously.
+  `--faces` downloads `sample-data/faces.tsv` — 11 public-domain Wikimedia
+  Commons portraits (Vision-verified this many detected faces per file: John
+  Glenn ×4, Sally Ride ×4, Neil Armstrong ×2, Buzz Aldrin ×1). Glenn and Ride
+  each appear in four photos, so face grouping has same-person clusters to
+  form, not just isolated detections. The binaries are gitignored; the manifest
+  is checksum-verified on download.
 
 ## Steps
 1. **Record the baseline** (ground truth):

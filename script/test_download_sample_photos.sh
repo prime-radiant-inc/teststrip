@@ -54,4 +54,13 @@ if "$ROOT_DIR/script/download_sample_photos.sh" --manifest "$bad_manifest" --des
   exit 1
 fi
 
+# The committed manifests must be well formed: a header line plus data rows of
+# exactly five tab-separated non-empty fields, with unique filenames.
+for committed_manifest in "$ROOT_DIR/sample-data/wordpress-photo-directory.tsv" "$ROOT_DIR/sample-data/faces.tsv"; do
+  [[ -f "$committed_manifest" ]] || { echo "missing manifest: $committed_manifest" >&2; exit 1; }
+  [[ "$(head -1 "$committed_manifest")" == \#* ]] || { echo "manifest missing header: $committed_manifest" >&2; exit 1; }
+  awk -F'\t' 'NR==1{next} NF!=5{print "row "NR" has "NF" fields"; bad=1} {for(i=1;i<=NF;i++) if($i==""){print "row "NR" field "i" empty"; bad=1}} seen[$1]++{print "duplicate filename "$1; bad=1} END{exit bad?1:0}' "$committed_manifest" \
+    || { echo "malformed manifest: $committed_manifest" >&2; exit 1; }
+done
+
 echo "download_sample_photos tests passed"

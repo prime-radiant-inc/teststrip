@@ -113,7 +113,9 @@ while IFS=$'\t' read -r filename url expected_md5 expected_size source_url || [[
     kept=$((kept + 1))
   else
     temp_file="$(mktemp "$DESTINATION/.download.$filename.XXXXXX")"
-    if ! curl -fsSL --retry 3 --retry-delay 1 -o "$temp_file" "$url"; then
+    if ! curl -fsSL --retry 3 --retry-delay 1 --retry-all-errors \
+      -A "teststrip-sample-photos/1.0 (jesse@fsck.com)" \
+      -o "$temp_file" "$url"; then
       rm -f "$temp_file"
       echo "download failed: $url" >&2
       exit 1

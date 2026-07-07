@@ -40,7 +40,7 @@ APP_ENTITLEMENTS="$ROOT_DIR/config/macos/Teststrip.entitlements"
 WORKER_ENTITLEMENTS="$ROOT_DIR/config/macos/TeststripWorker.entitlements"
 
 usage() {
-  echo "usage: $0 [run|--build|--build-sandboxed|--sandboxed|--verify|--verify-sandboxed|--isolated|--verify-isolated|--smoke|--verify-smoke|--sample-photos|--verify-sample-photos|--real-corpus|--verify-real-corpus|--debug|--logs|--telemetry]" >&2
+  echo "usage: $0 [run|--build|--build-sandboxed|--sandboxed|--verify|--verify-sandboxed|--isolated|--verify-isolated|--smoke|--verify-smoke|--sample-photos|--verify-sample-photos|--faces|--verify-faces|--real-corpus|--verify-real-corpus|--debug|--logs|--telemetry]" >&2
 }
 
 stop_running_app() {
@@ -248,6 +248,20 @@ case "$MODE" in
     MODE="--verify"
     ISOLATED=1
     SAMPLE_PHOTOS=1
+    ;;
+  --faces|faces)
+    MODE="run"
+    ISOLATED=1
+    SAMPLE_PHOTOS=1
+    SAMPLE_PHOTOS_MANIFEST="$ROOT_DIR/sample-data/faces.tsv"
+    SAMPLE_PHOTOS_DIR="$ROOT_DIR/sample-data/photos/faces"
+    ;;
+  --verify-faces|verify-faces)
+    MODE="--verify"
+    ISOLATED=1
+    SAMPLE_PHOTOS=1
+    SAMPLE_PHOTOS_MANIFEST="$ROOT_DIR/sample-data/faces.tsv"
+    SAMPLE_PHOTOS_DIR="$ROOT_DIR/sample-data/photos/faces"
     ;;
   --real-corpus|real-corpus)
     MODE="run"
