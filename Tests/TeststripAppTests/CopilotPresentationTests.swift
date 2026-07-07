@@ -158,4 +158,44 @@ final class CopilotPresentationTests: XCTestCase {
             )
         ])
     }
+
+    func testAgentRowsProjectRealWorkAndProposalCounts() {
+        let presentation = CopilotPresentation(
+            totalAssetCount: 1000,
+            activeFilterChips: [],
+            visibleWorkActivities: [
+                AppWorkActivity(kind: .recognition, status: .running, title: "Evaluate photo", detail: "Running apple-vision", completedUnitCount: 0, totalUnitCount: 1, failureCount: 0)
+            ],
+            reviewQueueCounts: [:],
+            evaluationSummaries: [],
+            pendingMetadataSyncCount: 0,
+            metadataSyncConflictCount: 0,
+            canRequestVisibleAssetEvaluations: true,
+            pendingProposalPickCount: 340,
+            pendingProposalKeywordCount: 12,
+            detectedStackCount: 27,
+            faceSuggestionCount: 4,
+            runningRecognitionCount: 1
+        )
+
+        let rows = Dictionary(uniqueKeysWithValues: presentation.agentRows.map { ($0.id, $0) })
+        XCTAssertEqual(rows["culling"]?.reviewCount, 340)
+        XCTAssertEqual(rows["auto-keywording"]?.reviewCount, 12)
+        XCTAssertEqual(rows["near-duplicate-stacking"]?.reviewCount, 27)
+        XCTAssertEqual(rows["face-grouping"]?.reviewCount, 4)
+        XCTAssertEqual(rows["blur-eyes-closed"]?.isBusy, true) // recognition work running
+        XCTAssertEqual(rows["culling"]?.statusText, "340 proposed decisions to review")
+    }
+
+    func testAgentRowsReadIdleWhenNothingIsHappening() {
+        let presentation = CopilotPresentation(
+            totalAssetCount: 0, activeFilterChips: [], visibleWorkActivities: [],
+            reviewQueueCounts: [:], evaluationSummaries: [], pendingMetadataSyncCount: 0,
+            metadataSyncConflictCount: 0, canRequestVisibleAssetEvaluations: false,
+            pendingProposalPickCount: 0, pendingProposalKeywordCount: 0,
+            detectedStackCount: 0, faceSuggestionCount: 0, runningRecognitionCount: 0
+        )
+        XCTAssertTrue(presentation.agentRows.allSatisfy { !$0.isBusy && $0.reviewCount == 0 })
+        XCTAssertEqual(presentation.agentRows.first { $0.id == "culling" }?.statusText, "Idle")
+    }
 }

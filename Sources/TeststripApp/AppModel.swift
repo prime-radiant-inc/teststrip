@@ -6544,6 +6544,12 @@ public final class AppModel {
             .count
     }
 
+    /// Multi-frame near-duplicate stacks detected across the visible scope, for
+    /// the Agents panel's honest projection.
+    public var autopilotVisibleStackCount: Int {
+        autopilotStackCount(for: assets)
+    }
+
     private static func autopilotKeywordCandidates(
         from signals: [EvaluationSignal],
         existingKeywords: [String]

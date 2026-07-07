@@ -16,6 +16,11 @@ struct CopilotView: View {
             pendingMetadataSyncCount: model.pendingMetadataSyncCount,
             metadataSyncConflictCount: model.metadataSyncConflictCount,
             canRequestVisibleAssetEvaluations: model.canRequestVisibleAssetEvaluations,
+            pendingProposalPickCount: model.pendingAutopilotProposals.filter { $0.kind == .pick || $0.kind == .reject }.count,
+            pendingProposalKeywordCount: model.pendingAutopilotProposals.filter { $0.kind == .keyword }.count,
+            detectedStackCount: model.autopilotVisibleStackCount,
+            faceSuggestionCount: model.peopleFaceSuggestions.count,
+            runningRecognitionCount: model.visibleWorkActivities.filter { $0.kind == .recognition && $0.status == .running }.count,
             suggestedName: model.suggestedSavedSearchName,
             canSaveDynamicSet: model.canSaveCurrentLibraryQuery,
             canSaveSnapshotSet: model.canSaveCurrentAssetScopeSnapshot
@@ -27,6 +32,7 @@ struct CopilotView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 metricGrid
+                agentsPanel
                 if !presentation.scopeActions.isEmpty {
                     scopeActionsPanel
                 }
@@ -120,6 +126,73 @@ struct CopilotView: View {
                         .strokeBorder(Color.white.opacity(0.07))
                 }
             }
+        }
+    }
+
+    private var agentsPanel: some View {
+        panel(title: "Agents", placeholderText: nil) {
+            ForEach(presentation.agentRows) { row in
+                agentRowView(row)
+            }
+        }
+    }
+
+    private func agentRowView(_ row: AutopilotAgentRow) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: row.systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(row.isBusy ? Color.orange : Color.secondary)
+                .frame(width: 28, height: 28)
+                .background(Color.orange.opacity(row.isBusy ? 0.12 : 0.04), in: Circle())
+            VStack(alignment: .leading, spacing: 3) {
+                Text(row.title)
+                    .font(.caption.weight(.semibold))
+                Text(row.statusText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text("\(row.reviewCount)")
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(row.reviewCount > 0 ? .primary : .secondary)
+            if agentHasRoute(row) {
+                Button("Review") {
+                    reviewAgent(row)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.black.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(row.title): \(row.statusText)")
+    }
+
+    private func agentHasRoute(_ row: AutopilotAgentRow) -> Bool {
+        switch row.id {
+        case "culling", "auto-keywording", "face-grouping", "blur-eyes-closed":
+            return row.reviewCount > 0
+        default:
+            return false
+        }
+    }
+
+    private func reviewAgent(_ row: AutopilotAgentRow) {
+        do {
+            switch row.id {
+            case "culling", "auto-keywording":
+                try model.beginAutopilotReview()
+            case "face-grouping":
+                try model.selectSidebarTarget(.people)
+            case "blur-eyes-closed":
+                try model.selectSidebarTarget(.reviewQueue(.likelyIssues))
+            default:
+                break
+            }
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 
@@ -332,6 +405,15 @@ struct CopilotScopeActionPresentation: Equatable, Identifiable {
     }
 }
 
+struct AutopilotAgentRow: Equatable, Identifiable {
+    var id: String
+    var title: String
+    var statusText: String
+    var reviewCount: Int
+    var isBusy: Bool
+    var systemImage: String
+}
+
 struct CopilotPresentation: Equatable {
     var totalAssetCount: Int
     var activeFilterChips: [String]
@@ -341,6 +423,11 @@ struct CopilotPresentation: Equatable {
     var pendingMetadataSyncCount: Int
     var metadataSyncConflictCount: Int
     var canRequestVisibleAssetEvaluations: Bool
+    var pendingProposalPickCount: Int = 0
+    var pendingProposalKeywordCount: Int = 0
+    var detectedStackCount: Int = 0
+    var faceSuggestionCount: Int = 0
+    var runningRecognitionCount: Int = 0
     var suggestedName: String = "Current Scope"
     var canSaveDynamicSet: Bool = false
     var canSaveSnapshotSet: Bool = false
@@ -422,6 +509,66 @@ struct CopilotPresentation: Equatable {
                 target: .evaluationKind(kind)
             )
         }
+    }
+
+    // Honest projection of the named agents over REAL background state: pending
+    // proposal counts, detected stacks, face suggestions, and running
+    // recognition work. No theater — an idle agent reads "Idle" with a zero count.
+    var agentRows: [AutopilotAgentRow] {
+        let recognitionBusy = runningRecognitionCount > 0
+        let likelyIssuesCount = reviewQueueCounts[.likelyIssues] ?? 0
+        return [
+            AutopilotAgentRow(
+                id: "culling",
+                title: "Culling",
+                statusText: Self.agentStatusText(reviewCount: pendingProposalPickCount, reviewNoun: "proposed decisions to review", isBusy: recognitionBusy),
+                reviewCount: pendingProposalPickCount,
+                isBusy: recognitionBusy,
+                systemImage: "checkmark.seal"
+            ),
+            AutopilotAgentRow(
+                id: "auto-keywording",
+                title: "Auto-keywording",
+                statusText: Self.agentStatusText(reviewCount: pendingProposalKeywordCount, reviewNoun: "keyword suggestions to review", isBusy: recognitionBusy),
+                reviewCount: pendingProposalKeywordCount,
+                isBusy: recognitionBusy,
+                systemImage: "tag"
+            ),
+            AutopilotAgentRow(
+                id: "near-duplicate-stacking",
+                title: "Near-duplicate stacking",
+                statusText: Self.agentStatusText(reviewCount: detectedStackCount, reviewNoun: "stacks to review", isBusy: false),
+                reviewCount: detectedStackCount,
+                isBusy: false,
+                systemImage: "square.stack.3d.down.right"
+            ),
+            AutopilotAgentRow(
+                id: "face-grouping",
+                title: "Face grouping",
+                statusText: Self.agentStatusText(reviewCount: faceSuggestionCount, reviewNoun: "face groups to review", isBusy: false),
+                reviewCount: faceSuggestionCount,
+                isBusy: false,
+                systemImage: "person.2.crop.square.stack.fill"
+            ),
+            AutopilotAgentRow(
+                id: "blur-eyes-closed",
+                title: "Blur & eyes-closed scan",
+                statusText: Self.agentStatusText(reviewCount: likelyIssuesCount, reviewNoun: "flagged frames to review", isBusy: recognitionBusy),
+                reviewCount: likelyIssuesCount,
+                isBusy: recognitionBusy,
+                systemImage: "eye.trianglebadge.exclamationmark"
+            )
+        ]
+    }
+
+    private static func agentStatusText(reviewCount: Int, reviewNoun: String, isBusy: Bool) -> String {
+        if reviewCount > 0 {
+            return "\(reviewCount) \(reviewNoun)"
+        }
+        if isBusy {
+            return "Running…"
+        }
+        return "Idle"
     }
 
     var readChips: [String] {
