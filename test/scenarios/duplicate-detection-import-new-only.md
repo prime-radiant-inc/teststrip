@@ -1,0 +1,82 @@
+# duplicate-detection-import-new-only: Re-importing a card copies only new frames
+
+**What this covers**: content-hash duplicate detection merged at migration 15 —
+the `content_hash` column plus the **import-new-only** toggle. Re-importing a
+folder that overlaps an already-cataloged set must skip the byte-identical
+frames (narrow by hash, then exact byte-compare before skipping — no silent
+drops) and catalog only the genuinely new ones. The load-bearing assertion is
+the asset count: it grows by exactly the number of new frames, not by the whole
+folder, and never drops a distinct frame that merely shares a hash prefix.
+
+## Pre-state
+- Fresh build, isolated catalog:
+  ```bash
+  ./script/build_and_run.sh --isolated
+  ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
+  DB="$ISOLATED/catalog.sqlite"
+  ```
+- **Two fixture folders** (KNOWN FIXTURE GAP — no seed command builds these):
+  - `CARD1/`: N distinct JPEGs.
+  - `CARD2/`: the same N JPEGs **byte-identical** to CARD1, PLUS `M` brand-new
+    distinct JPEGs.
+  Build them with `cp` from a common source set so CARD1∩CARD2 are truly
+  byte-identical (a re-encode would change the content hash and defeat the test).
+  If you cannot produce byte-identical duplicates, say so and stop — a re-encoded
+  "duplicate" is a different test.
+
+## Steps
+1. **Import CARD1.** Launch already seeds synthetic photos; import CARD1 via the
+   card-import path using the typed-path route so no native panel is needed:
+   relaunch (or drive) with `TESTSTRIP_CARD_IMPORT_ROUTE=typed-path`, open the
+   card-import sheet, type `CARD1`'s path, and in the confirmation sheet leave
+   **import-new-only** (the "Skip files already in the catalog" checkbox) ON.
+   Start import; wait for completion.
+2. **Record the post-CARD1 count** (ground truth):
+   ```bash
+   sqlite3 "$DB" "SELECT count(*) FROM assets;"                 # call it A1
+   sqlite3 "$DB" "SELECT count(DISTINCT content_hash) FROM assets WHERE content_hash IS NOT NULL;"
+   ```
+3. **Import CARD2 with import-new-only ON.** Same route; type `CARD2`'s path;
+   confirm the toggle is ON; start; wait for completion. Note the completion
+   panel's "already-cataloged / matched" count.
+4. **Record the post-CARD2 count**:
+   ```bash
+   sqlite3 "$DB" "SELECT count(*) FROM assets;"                 # call it A2
+   ```
+5. **Re-import CARD2 with import-new-only OFF** (intentional duplicates kept):
+   same route, toggle OFF, start, wait.
+   ```bash
+   sqlite3 "$DB" "SELECT count(*) FROM assets;"                 # call it A3
+   ```
+
+## Expected
+- Step 4: `A2 == A1 + M` exactly — the N byte-identical frames were skipped, the
+  M new frames added. **Fails if** `A2 == A1 + N + M` (dedup did nothing) OR
+  `A2 < A1 + M` (a distinct new frame was wrongly skipped — the critical
+  silent-drop class; report immediately). Quote `A1`, `M`, `A2`.
+- Step 3 completion panel: reports N already-cataloged/matched. **Fails if** it
+  claims 0 matched while the count math says otherwise (UI/So disagree).
+- Step 5: `A3 == A2 + N` — with import-new-only OFF, the duplicates re-import as
+  intentional copies. **Fails if** they were still skipped (toggle ignored).
+
+## Cleanup
+```bash
+rm -rf CARD1 CARD2
+./script/reset_isolated_test_data.sh --delete
+```
+Quit the launched instance.
+
+## Sharp edges
+- **Byte-identical is the whole point.** Verify before importing:
+  `shasum CARD1/x.jpg CARD2/x.jpg` must match. `sips`/re-encode/EXIF-edit any
+  copy and the content hashes diverge, so the frames aren't duplicates and the
+  card proves nothing.
+- Confirm the `content_hash` column name and the toggle's live label against
+  `.schema assets` and the import confirmation sheet before trusting the queries.
+- The card-import typed-path route is `TESTSTRIP_CARD_IMPORT_ROUTE=typed-path`
+  (see `LibraryGridChromePolicy.primaryCardImportRoute`). The plain **Import
+  Folder** path also has a typed **Import Path** entry; either avoids the native
+  panel. Reject/export have no such hook — but import does, so use it.
+- KNOWN FIXTURE GAP mirrors the Places card: recommend a `seed-dup-fixtures`
+  helper that emits CARD1/CARD2 with a controlled overlap, so this card is
+  runnable without hand-built folders.
