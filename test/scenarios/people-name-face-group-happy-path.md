@@ -6,12 +6,19 @@ and its `person_assets` links; nothing is written until the explicit confirm.
 The positive path (a group gets named and persists) plus the invariant (a
 merely-suggested group leaves the catalog untouched).
 
+Grouping now uses the bundled ArcFace face-identity model (aligned 112×112
+crop → 512-d L2-normalized embedding), not the old whole-image feature print, so
+the surfaced suggestions should be **identity-coherent**: a suggested group
+should be one person's faces, not a visual-similarity grab-bag.
+
 ## Pre-state
 - Fresh build against a corpus that actually contains faces. **Synthetic
   `--isolated` seed has no detectable faces, and the `--sample-photos`
   (WordPress) set has 0/12** (it is landscapes, statues, and animals — Vision
-  finds no human faces). Use the dedicated face corpus instead:
+  finds no human faces). Use the dedicated face corpus instead, and download
+  the face-identity model first so identity embeddings are produced:
   ```bash
+  ./script/download_face_model.sh
   ./script/build_and_run.sh --faces
   ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
   DB="$ISOLATED/Teststrip/catalog.sqlite"

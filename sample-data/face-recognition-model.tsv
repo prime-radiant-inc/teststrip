@@ -1,0 +1,3 @@
+# filename	url	md5	size	source_url
+# TODO(host): upload arcface-w600k-r50.mlpackage.zip (produced by script/convert_face_model.py) to a stable URL and replace the placeholder below. md5/size are the real values of the locally converted artifact.
+arcface-w600k-r50.mlpackage.zip	https://REPLACE-ME.example.com/teststrip/arcface-w600k-r50.mlpackage.zip	4d80e11b17c7b872577c8c3c595d20cd	77943697	https://github.com/deepinsight/insightface

@@ -5,6 +5,13 @@ import Vision
 import XCTest
 @testable import TeststripCore
 
+private struct StubEmbeddingModel: FaceEmbeddingModel {
+    let provenance = ProviderProvenance(provider: "face-recognition", model: "stub", version: "1", settingsHash: "default")
+    func embedding(for alignedFace: CGImage) throws -> [Double] {
+        var v = [Double](repeating: 0, count: 512); v[0] = 1; return v
+    }
+}
+
 final class EvaluationProviderTests: XCTestCase {
     func testSignalStoresTypedValueAndProvenance() {
         let signal = EvaluationSignal(
@@ -445,50 +452,42 @@ final class EvaluationProviderTests: XCTestCase {
         ])
     }
 
-    func testAppleVisionProviderMapsFacesToCatalogObservations() throws {
-        let faces = [
-            AppleVisionFaceObservation(
-                boundingBox: FaceBoundingBox(x: 0.1, y: 0.2, width: 0.3, height: 0.4),
-                captureQuality: 0.8,
-                featurePrintVector: [0.1, 0.2]
-            ),
-            AppleVisionFaceObservation(
-                boundingBox: FaceBoundingBox(x: 0.6, y: 0.5, width: 0.2, height: 0.25),
-                captureQuality: nil,
-                featurePrintVector: [0.9, 0.8]
-            )
-        ]
-        let provider = AppleVisionEvaluationProvider(analyzer: FakeAppleVisionAnalyzer(analysis: AppleVisionAnalysis(
-            faceCount: 2,
-            faceQualityScores: [0.8],
-            recognizedText: [],
-            classificationLabels: [],
-            imageFeaturePrintVector: [],
-            faces: faces
-        )))
+    func testAppleVisionProviderMapsEmbeddedFacesToCatalogObservations() throws {
+        // Face observations now come from the ArcFace embedder over the real
+        // preview image, under the face-recognition provenance. A stub model
+        // makes the enumeration/provenance mapping deterministic; a real corpus
+        // image provides the faces Vision detects.
+        guard let previewURL = Bundle.faceCorpusImageURL() else { throw XCTSkip("face corpus not downloaded") }
+        let embedder = FaceRecognitionEmbedder(model: StubEmbeddingModel())
+        let provider = AppleVisionEvaluationProvider(
+            analyzer: AppleVisionAnalyzer(),
+            faceEmbedder: embedder
+        )
         let assetID = AssetID(rawValue: "asset-faces")
 
-        let outcome = try provider.evaluateWithFaces(assetID: assetID, previewURL: URL(fileURLWithPath: "/tmp/preview.jpg"))
+        let outcome = try provider.evaluateWithFaces(assetID: assetID, previewURL: previewURL)
 
-        XCTAssertEqual(outcome.signals, try provider.evaluate(assetID: assetID, previewURL: URL(fileURLWithPath: "/tmp/preview.jpg")))
-        XCTAssertEqual(outcome.faceObservations, [
-            CatalogFaceObservation(
-                assetID: assetID,
-                faceIndex: 0,
-                boundingBox: faces[0].boundingBox,
-                captureQuality: 0.8,
-                embedding: [0.1, 0.2],
-                provenance: AppleVisionEvaluationProvider.faceProvenance
-            ),
-            CatalogFaceObservation(
-                assetID: assetID,
-                faceIndex: 1,
-                boundingBox: faces[1].boundingBox,
-                captureQuality: nil,
-                embedding: [0.9, 0.8],
-                provenance: AppleVisionEvaluationProvider.faceProvenance
-            )
-        ])
+        XCTAssertGreaterThanOrEqual(outcome.faceObservations.count, 1)
+        for (index, observation) in outcome.faceObservations.enumerated() {
+            XCTAssertEqual(observation.assetID, assetID)
+            XCTAssertEqual(observation.faceIndex, index)
+            XCTAssertEqual(observation.embedding.count, 512)
+            XCTAssertEqual(observation.provenance, AppleVisionEvaluationProvider.faceProvenance)
+        }
+    }
+
+    func testAppleVisionProviderWithoutModelProducesNoFaceObservations() throws {
+        let previewURL = Bundle.faceCorpusImageURL()
+            ?? URL(fileURLWithPath: "/tmp/nonexistent-preview.jpg")
+        let provider = AppleVisionEvaluationProvider(
+            analyzer: AppleVisionAnalyzer(),
+            faceEmbedder: nil
+        )
+        let outcome = try provider.evaluateWithFaces(
+            assetID: AssetID(rawValue: "asset-no-model"),
+            previewURL: previewURL
+        )
+        XCTAssertTrue(outcome.faceObservations.isEmpty)
     }
 
     func testAppleVisionAnalyzerPinsFeaturePrintRevision() {
@@ -502,10 +501,10 @@ final class EvaluationProviderTests: XCTestCase {
         XCTAssertEqual(AppleVisionAnalyzer.featurePrintRevision, VNGenerateImageFeaturePrintRequestRevision2)
     }
 
-    func testFaceProvenanceEncodesFeaturePrintRevision() {
+    func testFaceProvenanceIsArcFaceIdentity() {
         XCTAssertEqual(
-            AppleVisionEvaluationProvider.faceProvenance.settingsHash,
-            "face-crop-pad-25-fp2"
+            AppleVisionEvaluationProvider.faceProvenance,
+            ProviderProvenance(provider: "face-recognition", model: "arcface-w600k-r50", version: "1", settingsHash: "default")
         )
     }
 

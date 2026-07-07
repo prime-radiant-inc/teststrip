@@ -72,6 +72,11 @@ build_app_bundle() {
     echo "warning: $APP_ICON_ICNS is missing; building without an app icon (run script/generate_app_icon.sh)" >&2
   fi
 
+  FACE_MODEL="$ROOT_DIR/sample-data/models/arcface-w600k-r50.mlpackage"
+  if [[ -d "$FACE_MODEL" ]]; then
+    /usr/bin/ditto "$FACE_MODEL" "$APP_RESOURCES/arcface-w600k-r50.mlpackage"
+  fi
+
   cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

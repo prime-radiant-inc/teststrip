@@ -4,6 +4,28 @@ import ImageIO
 import UniformTypeIdentifiers
 import TeststripCore
 
+extension Bundle {
+    /// The downloaded astronaut face corpus directory, or nil when it has not
+    /// been fetched (see script/build_and_run.sh --faces).
+    static func faceCorpusDirectory() -> URL? {
+        let dir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("sample-data/photos/faces")
+        return FileManager.default.fileExists(atPath: dir.path) ? dir : nil
+    }
+
+    /// The first jpg in the downloaded face corpus, or nil when absent.
+    static func faceCorpusImageURL() -> URL? {
+        guard let dir = faceCorpusDirectory(),
+              let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else {
+            return nil
+        }
+        return files.filter { $0.pathExtension == "jpg" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .first
+    }
+}
+
 enum TestDirectories {
     static func makeTemporaryDirectory(named name: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory

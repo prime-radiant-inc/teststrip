@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import Vision
 
 public struct AppleVisionLabel: Equatable, Sendable {
@@ -56,9 +57,19 @@ public struct AppleVisionEvaluationProvider: EvaluationProvider {
     public let name = "apple-vision"
 
     private let analyzer: any AppleVisionAnalyzing
+    private let faceEmbedder: FaceRecognitionEmbedder?
 
-    public init(analyzer: any AppleVisionAnalyzing = AppleVisionAnalyzer()) {
+    /// The bundled ArcFace embedder, compiled once per process. Nil when the
+    /// model has not been downloaded.
+    public static let sharedFaceEmbedder: FaceRecognitionEmbedder? =
+        ArcFaceCoreMLModel.bundled().map { FaceRecognitionEmbedder(model: $0) }
+
+    public init(
+        analyzer: any AppleVisionAnalyzing = AppleVisionAnalyzer(),
+        faceEmbedder: FaceRecognitionEmbedder? = AppleVisionEvaluationProvider.sharedFaceEmbedder
+    ) {
         self.analyzer = analyzer
+        self.faceEmbedder = faceEmbedder
     }
 
     public func evaluate(assetID: AssetID, previewURL: URL) throws -> [EvaluationSignal] {
@@ -179,14 +190,13 @@ public struct AppleVisionEvaluationProvider: EvaluationProvider {
 }
 
 extension AppleVisionEvaluationProvider: FaceObservationEvaluationProvider {
-    // The settings hash encodes the pinned feature-print revision so a
-    // deliberate revision bump self-segregates: embeddings of different
-    // dimensions can never mix under one provenance.
+    // Face observations now carry ArcFace identity embeddings; reads filter to
+    // this provenance so older feature-print observations are inert.
     public static let faceProvenance = ProviderProvenance(
-        provider: "apple-vision",
-        model: "Vision",
+        provider: "face-recognition",
+        model: "arcface-w600k-r50",
         version: "1",
-        settingsHash: "face-crop-pad-25-fp\(AppleVisionAnalyzer.featurePrintRevision)"
+        settingsHash: "default"
     )
 
     public var faceProvenance: ProviderProvenance {
@@ -197,17 +207,33 @@ extension AppleVisionEvaluationProvider: FaceObservationEvaluationProvider {
         let analysis = try analyzer.analyze(previewURL: previewURL)
         return FaceEvaluationOutcome(
             signals: Self.signals(assetID: assetID, analysis: analysis),
-            faceObservations: analysis.faces.enumerated().map { index, face in
-                CatalogFaceObservation(
-                    assetID: assetID,
-                    faceIndex: index,
-                    boundingBox: face.boundingBox,
-                    captureQuality: face.captureQuality,
-                    embedding: face.featurePrintVector,
-                    provenance: Self.faceProvenance
-                )
-            }
+            faceObservations: faceObservations(assetID: assetID, previewURL: previewURL)
         )
+    }
+
+    private func faceObservations(assetID: AssetID, previewURL: URL) -> [CatalogFaceObservation] {
+        guard let faceEmbedder else {
+            // Model absent: detection/quality/other signals continue; no
+            // identity embeddings are produced.
+            return []
+        }
+        guard let source = CGImageSourceCreateWithURL(previewURL as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            return []
+        }
+        guard let observations = try? faceEmbedder.faceObservations(in: image) else {
+            return []
+        }
+        return observations.enumerated().map { index, face in
+            CatalogFaceObservation(
+                assetID: assetID,
+                faceIndex: index,
+                boundingBox: face.boundingBox,
+                captureQuality: face.captureQuality,
+                embedding: face.featurePrintVector,
+                provenance: Self.faceProvenance
+            )
+        }
     }
 }
 
@@ -252,20 +278,10 @@ public struct AppleVisionAnalyzer: AppleVisionAnalyzing {
         try handler.perform([faceQualityRequest, textRequest, classificationRequest, imageFeaturePrintRequest])
 
         let faceResults = faceQualityRequest.results ?? []
-        let facePrintRequests = faceResults.map { observation -> VNGenerateImageFeaturePrintRequest in
-            let request = Self.makeFeaturePrintRequest()
-            request.regionOfInterest = Self.paddedRegionOfInterest(FaceBoundingBox(
-                x: Double(observation.boundingBox.origin.x),
-                y: Double(observation.boundingBox.origin.y),
-                width: Double(observation.boundingBox.width),
-                height: Double(observation.boundingBox.height)
-            ))
-            return request
-        }
-        if !facePrintRequests.isEmpty {
-            try handler.perform(facePrintRequests)
-        }
-        let faces = zip(faceResults, facePrintRequests).map { observation, request in
+        // Face identity embeddings come from the ArcFace embedder in
+        // evaluateWithFaces; the analyzer only reports detection geometry and
+        // capture quality here (no whole-image feature print per face).
+        let faces = faceResults.map { observation in
             AppleVisionFaceObservation(
                 boundingBox: FaceBoundingBox(
                     x: Double(observation.boundingBox.origin.x),
@@ -274,7 +290,7 @@ public struct AppleVisionAnalyzer: AppleVisionAnalyzing {
                     height: Double(observation.boundingBox.height)
                 ),
                 captureQuality: observation.faceCaptureQuality.map(Double.init),
-                featurePrintVector: Self.imageFeaturePrintVector(from: request.results?.first)
+                featurePrintVector: []
             )
         }
 
