@@ -11,6 +11,13 @@ threshold could separate identities from a general image descriptor.
 group, OR one person's faces split across multiple un-mergeable groups, OR the
 astronaut corpus still merges Aldrin into a Glenn group.
 
+**Automated driver**: `script/verify_people_clustering.sh` runs this whole card
+unattended — it launches the corpus, waits for the worker to embed faces while
+re-asserting frontmost each poll (so the accessibility tree never parks), opens
+People, asserts the grouping band + cards, names a group, and verifies a person
+is written (confirm-before-write checked). Exit 0 = pass. The steps below are
+the manual/verbatim version of what it drives.
+
 ## Pre-state
 - Download the face-identity model, then build against the face corpus:
   ```bash
