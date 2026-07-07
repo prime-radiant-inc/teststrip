@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import TeststripCore
 
-public enum LibraryViewMode: String, Sendable {
+public enum LibraryViewMode: String, Codable, Sendable {
     case grid
     case search
     case copilot
@@ -1201,11 +1201,14 @@ public final class AppModel {
     public var selectedView: LibraryViewMode {
         didSet {
             updateCompareSetAfterViewChange(from: oldValue)
+            persistSessionState()
         }
     }
     public var assets: [Asset]
     public var totalAssetCount: Int
-    public var selectedAssetID: AssetID?
+    public var selectedAssetID: AssetID? {
+        didSet { persistSessionState() }
+    }
     public private(set) var selectedBatchAssetIDs: Set<AssetID>
     private var selectedBatchAssetIDOrder: [AssetID]
     private var selectedBatchAssetSortKeys: [AssetID: Int]
@@ -1228,27 +1231,69 @@ public final class AppModel {
     public var metadataSyncConflictCount: Int
     public var previewGenerationQueueStates: [PreviewGenerationQueueState]
     public var backgroundWorkQueue: BackgroundWorkQueue
-    public var librarySearchText: String
-    public var keywordFilterText: String
-    public var folderFilterText: String
-    public var minimumRatingFilter: Int?
-    public private(set) var librarySortOption: LibrarySortOption
-    public var flagFilter: PickFlag?
-    public var colorLabelFilter: ColorLabel?
-    public var cameraFilterText: String
-    public var lensFilterText: String
-    public var minimumISOFilter: Int?
-    public var captureDateStartFilter: Date?
-    public var captureDateEndFilter: Date?
-    public var availabilityFilter: SourceAvailability?
-    public var evaluationKindFilter: EvaluationKind?
-    public var needsKeywordsFilter: Bool
-    public var needsEvaluationFilter: Bool
-    public var likelyIssuesFilter: Bool
-    public var potentialPicksFilter: Bool
-    public var providerFailuresFilter: Bool
-    public var metadataSyncPendingFilter: Bool
-    public var metadataSyncConflictFilter: Bool
+    public var librarySearchText: String {
+        didSet { persistSessionState() }
+    }
+    public var keywordFilterText: String {
+        didSet { persistSessionState() }
+    }
+    public var folderFilterText: String {
+        didSet { persistSessionState() }
+    }
+    public var minimumRatingFilter: Int? {
+        didSet { persistSessionState() }
+    }
+    public private(set) var librarySortOption: LibrarySortOption {
+        didSet { persistSessionState() }
+    }
+    public var flagFilter: PickFlag? {
+        didSet { persistSessionState() }
+    }
+    public var colorLabelFilter: ColorLabel? {
+        didSet { persistSessionState() }
+    }
+    public var cameraFilterText: String {
+        didSet { persistSessionState() }
+    }
+    public var lensFilterText: String {
+        didSet { persistSessionState() }
+    }
+    public var minimumISOFilter: Int? {
+        didSet { persistSessionState() }
+    }
+    public var captureDateStartFilter: Date? {
+        didSet { persistSessionState() }
+    }
+    public var captureDateEndFilter: Date? {
+        didSet { persistSessionState() }
+    }
+    public var availabilityFilter: SourceAvailability? {
+        didSet { persistSessionState() }
+    }
+    public var evaluationKindFilter: EvaluationKind? {
+        didSet { persistSessionState() }
+    }
+    public var needsKeywordsFilter: Bool {
+        didSet { persistSessionState() }
+    }
+    public var needsEvaluationFilter: Bool {
+        didSet { persistSessionState() }
+    }
+    public var likelyIssuesFilter: Bool {
+        didSet { persistSessionState() }
+    }
+    public var potentialPicksFilter: Bool {
+        didSet { persistSessionState() }
+    }
+    public var providerFailuresFilter: Bool {
+        didSet { persistSessionState() }
+    }
+    public var metadataSyncPendingFilter: Bool {
+        didSet { persistSessionState() }
+    }
+    public var metadataSyncConflictFilter: Bool {
+        didSet { persistSessionState() }
+    }
     private var detachedLibraryFilterPredicates: [SetQuery.Predicate]
     public var savedAssetSets: [AssetSet]
     public var assetSetCounts: [AssetSetID: Int]
@@ -1262,7 +1307,9 @@ public final class AppModel {
     public private(set) var peopleFaceSuggestions: [PeopleFaceSuggestion] = []
     public private(set) var peopleFaceObservationAssetCount = 0
     public var reviewQueueCounts: [ReviewQueue: Int]
-    public var selectedAssetSetID: AssetSetID?
+    public var selectedAssetSetID: AssetSetID? {
+        didSet { persistSessionState() }
+    }
     // Cached latest-import panel state so SwiftUI render passes never run catalog
     // queries; nil means the piece is rebuilt on the next getter access. Split in
     // two so per-preview queue transitions refresh only the cheap preview status,
@@ -1294,6 +1341,12 @@ public final class AppModel {
 
     @ObservationIgnored
     private var pendingPreviewGenerationQueueStatesRefresh: Bool
+
+    // Enables session restore and selects which UserDefaults it reads/writes; nil
+    // (the default for every initializer) disables it entirely, so constructing an
+    // AppModel never touches real app preferences unless a caller opts in.
+    @ObservationIgnored
+    private let sessionRestoreDefaults: UserDefaults?
 
     // Per-cell preview lookups hit the filesystem and scan the work queue; the grid
     // re-renders far more often than preview state can change, so both are memoized
@@ -2536,7 +2589,8 @@ public final class AppModel {
         resourceAccess: SecurityScopedResourceAccess = .permissive,
         workerImportsEnabled: Bool? = nil,
         backgroundWorkPublicationInterval: TimeInterval? = nil,
-        backgroundWorkPublicationScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler()
+        backgroundWorkPublicationScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler(),
+        sessionRestoreDefaults: UserDefaults? = nil
     ) {
         let resolvedWorkerImportsEnabled = workerImportsEnabled ?? (workerSupervisor != nil)
         let resolvedTotalAssetCount = totalAssetCount ?? assets.count
@@ -2622,6 +2676,7 @@ public final class AppModel {
         self.previewCacheGenerationsByAssetID = [:]
         self.backgroundWorkPublicationInterval = backgroundWorkPublicationInterval
         self.backgroundWorkPublicationScheduler = backgroundWorkPublicationScheduler
+        self.sessionRestoreDefaults = sessionRestoreDefaults
         self.backgroundWorkPublicationTimer = nil
         self.currentPreviewCacheGenerationsByAssetID = [:]
         self.lastProcessedBackgroundWorkQueue = nil
@@ -2820,7 +2875,8 @@ public final class AppModel {
         resourceAccess: SecurityScopedResourceAccess = .permissive,
         workerImportsEnabled: Bool? = nil,
         backgroundWorkPublicationInterval: TimeInterval? = nil,
-        backgroundWorkPublicationScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler()
+        backgroundWorkPublicationScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler(),
+        sessionRestoreDefaults: UserDefaults? = nil
     ) throws -> AppModel {
         try reconcileInterruptedIngestWorkSessions(repository: catalog.repository)
         let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
@@ -2893,10 +2949,12 @@ public final class AppModel {
             resourceAccess: resourceAccess,
             workerImportsEnabled: workerImportsEnabled,
             backgroundWorkPublicationInterval: backgroundWorkPublicationInterval,
-            backgroundWorkPublicationScheduler: backgroundWorkPublicationScheduler
+            backgroundWorkPublicationScheduler: backgroundWorkPublicationScheduler,
+            sessionRestoreDefaults: sessionRestoreDefaults
         )
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
+        try model.restoreSessionStateIfAvailable()
         return model
     }
 
@@ -7676,6 +7734,134 @@ public final class AppModel {
         metadataSyncPendingFilter = false
         metadataSyncConflictFilter = false
         detachedLibraryFilterPredicates = []
+    }
+
+    // MARK: - Session restore
+    //
+    // Persists the library-browsing surface (route, scope, filters, search text,
+    // selection, sort) so relaunching lands back where the user left off, the same
+    // way LibraryGridView.thumbnailWidth already persists via app preferences.
+    // Mid-culling-session state is out of scope on purpose: culling sessions already
+    // survive as work sessions and are reopened explicitly via Recent Work, so
+    // `.loupe`/`.compare` routes and in-progress work-stack asset sets are never
+    // written or restored here.
+
+    private func persistSessionState() {
+        guard let sessionRestoreDefaults, let catalog else { return }
+        SessionRestoreStore(defaults: sessionRestoreDefaults, catalogRoot: catalog.paths.root)
+            .save(currentSessionRestoreState())
+    }
+
+    private func currentSessionRestoreState() -> SessionRestoreState {
+        SessionRestoreState(
+            selectedView: selectedView,
+            selectedAssetSetID: selectedAssetSetID,
+            selectedAssetID: selectedAssetID,
+            sortOption: librarySortOption,
+            librarySearchText: librarySearchText,
+            keywordFilterText: keywordFilterText,
+            folderFilterText: folderFilterText,
+            minimumRatingFilter: minimumRatingFilter,
+            flagFilter: flagFilter,
+            colorLabelFilter: colorLabelFilter,
+            cameraFilterText: cameraFilterText,
+            lensFilterText: lensFilterText,
+            minimumISOFilter: minimumISOFilter,
+            captureDateStartFilter: captureDateStartFilter,
+            captureDateEndFilter: captureDateEndFilter,
+            availabilityFilter: availabilityFilter,
+            evaluationKindFilter: evaluationKindFilter,
+            needsKeywordsFilter: needsKeywordsFilter,
+            needsEvaluationFilter: needsEvaluationFilter,
+            likelyIssuesFilter: likelyIssuesFilter,
+            potentialPicksFilter: potentialPicksFilter,
+            providerFailuresFilter: providerFailuresFilter,
+            metadataSyncPendingFilter: metadataSyncPendingFilter,
+            metadataSyncConflictFilter: metadataSyncConflictFilter
+        )
+    }
+
+    private func restoreSessionStateIfAvailable() throws {
+        guard let sessionRestoreDefaults, let catalog else { return }
+        guard let state = SessionRestoreStore(defaults: sessionRestoreDefaults, catalogRoot: catalog.paths.root).load() else {
+            return
+        }
+        try applyRestoredSessionState(state, catalog: catalog)
+    }
+
+    // Applies a restored snapshot best-effort: references to sets or assets that no
+    // longer exist are silently dropped rather than surfaced as errors, and routes
+    // or scopes that belong to an in-progress culling session are never restored.
+    private func applyRestoredSessionState(_ state: SessionRestoreState, catalog: AppCatalog) throws {
+        librarySortOption = state.sortOption
+        librarySearchText = state.librarySearchText
+        keywordFilterText = state.keywordFilterText
+        folderFilterText = state.folderFilterText
+        minimumRatingFilter = state.minimumRatingFilter
+        flagFilter = state.flagFilter
+        colorLabelFilter = state.colorLabelFilter
+        cameraFilterText = state.cameraFilterText
+        lensFilterText = state.lensFilterText
+        minimumISOFilter = state.minimumISOFilter
+        captureDateStartFilter = state.captureDateStartFilter
+        captureDateEndFilter = state.captureDateEndFilter
+        availabilityFilter = state.availabilityFilter
+        evaluationKindFilter = state.evaluationKindFilter
+        needsKeywordsFilter = state.needsKeywordsFilter
+        needsEvaluationFilter = state.needsEvaluationFilter
+        likelyIssuesFilter = state.likelyIssuesFilter
+        potentialPicksFilter = state.potentialPicksFilter
+        providerFailuresFilter = state.providerFailuresFilter
+        metadataSyncPendingFilter = state.metadataSyncPendingFilter
+        metadataSyncConflictFilter = state.metadataSyncConflictFilter
+
+        if let assetSetID = state.selectedAssetSetID,
+           !Self.isWorkStackSetID(assetSetID),
+           savedAssetSets.contains(where: { $0.id == assetSetID }) {
+            selectedAssetSetID = assetSetID
+        }
+
+        selectedView = Self.isRestorableSessionRoute(state.selectedView) ? state.selectedView : .grid
+        selectedAssetID = state.selectedAssetID
+
+        try refreshWorkHistorySearchResults(repository: catalog.repository)
+        if let explicitAssetIDs = selectedExplicitAssetIDs {
+            let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, limit: Self.assetPageSize)
+            replaceAssets(loadedAssets, pageOffset: 0, preferredSelection: state.selectedAssetID)
+            totalAssetCount = try catalog.repository.assetCount(ids: explicitAssetIDs)
+        } else {
+            // A persisted selectedAssetID that no longer exists (deleted since last
+            // run) makes catalogPage's import-order offset lookup throw notFound;
+            // fall back to the unscoped first page rather than surfacing an error.
+            let page: (assets: [Asset], offset: Int, totalAssetCount: Int)
+            do {
+                page = try Self.catalogPage(
+                    containing: state.selectedAssetID,
+                    repository: catalog.repository,
+                    query: currentLibraryQuery(),
+                    sort: librarySortOption
+                )
+            } catch CatalogError.notFound {
+                page = try Self.catalogPage(
+                    containing: nil,
+                    repository: catalog.repository,
+                    query: currentLibraryQuery(),
+                    sort: librarySortOption
+                )
+            }
+            replaceAssets(page.assets, pageOffset: page.offset, preferredSelection: state.selectedAssetID)
+            totalAssetCount = page.totalAssetCount
+        }
+    }
+
+    // Routes that only ever exist mid-culling-session; never auto-restored.
+    private static func isRestorableSessionRoute(_ view: LibraryViewMode) -> Bool {
+        switch view {
+        case .grid, .search, .copilot, .timeline, .people, .map:
+            return true
+        case .loupe, .compare:
+            return false
+        }
     }
 
     private static func librarySearchText(residualText: String?, predicates: [SetQuery.Predicate]) -> String {

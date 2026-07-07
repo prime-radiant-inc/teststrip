@@ -16,7 +16,8 @@ struct TeststripApplication: App {
         do {
             _model = State(initialValue: try AppCatalog.loadModel(
                 paths: AppCatalog.defaultPaths(),
-                workerExecutableURL: AppCatalog.bundledWorkerExecutableURL()
+                workerExecutableURL: AppCatalog.bundledWorkerExecutableURL(),
+                sessionRestoreDefaults: .standard
             ))
         } catch {
             fatalError("Unable to open Teststrip catalog: \(error.localizedDescription)")
