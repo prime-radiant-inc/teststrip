@@ -298,6 +298,37 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.pendingGeocodeItems(limit: 10, maximumAttemptCount: 3).count, 1)
     }
 
+    func testTopLocationsAggregatesCachedPlaceNamesByCount() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-top-locations")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        func upsert(_ name: String, _ lat: Double, _ lon: Double) throws {
+            try repository.upsert(Asset.testAsset(
+                path: "/Volumes/NAS/\(name).cr2", rating: 0,
+                technicalMetadata: AssetTechnicalMetadata(
+                    pixelWidth: 1, pixelHeight: 1, latitude: lat, longitude: lon,
+                    provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+                )
+            ))
+        }
+        try upsert("paris1", 48.8584, 2.2945)
+        try upsert("paris2", 48.8600, 2.2950)   // same 2dp key as paris1
+        try upsert("nyc", 40.7484, -73.9857)
+
+        try repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: GeocodeCoordinateKey.key(latitude: 48.8584, longitude: 2.2945),
+            locality: "Paris", administrativeArea: nil, country: "France", displayName: "Paris · France"))
+        try repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: GeocodeCoordinateKey.key(latitude: 40.7484, longitude: -73.9857),
+            locality: "New York", administrativeArea: nil, country: "USA", displayName: "New York · USA"))
+
+        let top = try repository.topLocations(limit: 10)
+        XCTAssertEqual(top.map(\.displayName), ["Paris · France", "New York · USA"])
+        XCTAssertEqual(top.first?.assetCount, 2)
+    }
+
     // Proves the audit's no-migration claim: `technical_metadata_json` is a JSON blob
     // decoded into AssetTechnicalMetadata, and the new aperture/shutterSpeed/focalLength
     // fields are optional, so a row written before this change (missing those keys

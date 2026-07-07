@@ -571,6 +571,52 @@ public final class CatalogRepository {
         return count
     }
 
+    public func topLocations(limit: Int) throws -> [CatalogTopLocation] {
+        guard limit > 0 else { return [] }
+        let rows = try database.rows(
+            """
+            WITH located AS (
+                SELECT \(Self.latitudeExpressionSQL) AS lat,
+                       \(Self.longitudeExpressionSQL) AS lon
+                FROM assets
+                WHERE json_valid(technical_metadata_json)
+                  AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
+                  AND json_type(technical_metadata_json, '$.longitude') IN ('integer', 'real')
+            ),
+            keyed AS (
+                SELECT printf('%.2f,%.2f', ROUND(lat, 2), ROUND(lon, 2)) AS coordinate_key,
+                       lat, lon
+                FROM located
+            )
+            SELECT place_cache.display_name AS display_name,
+                   COUNT(*) AS asset_count,
+                   AVG(keyed.lat) AS lat_mean,
+                   AVG(keyed.lon) AS lon_mean
+            FROM keyed
+            JOIN place_cache ON place_cache.coordinate_key = keyed.coordinate_key
+            WHERE place_cache.display_name IS NOT NULL
+            GROUP BY place_cache.display_name
+            ORDER BY asset_count DESC, display_name ASC
+            LIMIT ?
+            """,
+            bindings: ["\(limit)"]
+        )
+        return try rows.map { row in
+            guard let displayName = row["display_name"],
+                  let assetCount = row["asset_count"].flatMap(Int.init),
+                  let latMean = row["lat_mean"].flatMap(Double.init),
+                  let lonMean = row["lon_mean"].flatMap(Double.init) else {
+                throw CatalogError.sqlite("top location row is missing required columns")
+            }
+            return CatalogTopLocation(
+                displayName: displayName,
+                assetCount: assetCount,
+                latitude: latMean,
+                longitude: lonMean
+            )
+        }
+    }
+
     public func recordSourceRoot(_ root: URL, securityScopedBookmarkData: Data? = nil) throws {
         let path = Self.normalizedDirectoryPath(root)
         let now = "\(Date().timeIntervalSince1970)"
