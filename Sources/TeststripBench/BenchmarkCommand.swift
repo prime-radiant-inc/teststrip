@@ -15,6 +15,7 @@ public enum BenchmarkCommand: Equatable {
     case previewRender(count: Int)
     case workerRecoverySmoke(count: Int)
     case realCorpusSmoke(photoDirectory: URL)
+    case seedGeoFixtures(directory: URL, count: Int)
     case samplePreviewRender(photoDirectory: URL)
     case seedAppCatalog(applicationSupportDirectory: URL, count: Int)
     case seedRealCorpusCatalog(applicationSupportDirectory: URL, photoDirectory: URL)
@@ -70,6 +71,11 @@ public enum BenchmarkCommand: Equatable {
         if firstArgument == "sample-preview-render" {
             let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
             return .samplePreviewRender(photoDirectory: URL(fileURLWithPath: directory))
+        }
+        if firstArgument == "seed-geo-fixtures" {
+            let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
+            let count = Int(userArguments.dropFirst(2).first ?? "12") ?? 12
+            return .seedGeoFixtures(directory: URL(fileURLWithPath: directory), count: count)
         }
         if firstArgument == "seed-app-catalog" {
             let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
