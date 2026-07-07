@@ -4231,6 +4231,65 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.statusMessage, "Undid: Applied metadata to 2 photos")
     }
 
+    func testBatchKeywordUndoRevertsAllAssetsInOneStep() throws {
+        let first = makeAsset(id: "undo-kw-a", path: "/Photos/Job/undo-kw-a.cr2", rating: 0)
+        let second = makeAsset(id: "undo-kw-b", path: "/Photos/Job/undo-kw-b.cr2", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(named: "undo-batch-keyword", assets: [first, second])
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: first.id, kind: .object, value: .label("mountain"), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: second.id, kind: .object, value: .label("mountain"), confidence: 0.7, provenance: provenance)
+        ])
+        try model.selectSidebarTarget(.allPhotographs)
+
+        let applied = try model.acceptVisibleBatchKeywordSuggestion("mountain")
+        XCTAssertEqual(applied, 2)
+        XCTAssertTrue(model.canUndoMetadataChange)
+        XCTAssertEqual(model.lastUndoableActionLabel, "Applied mountain to 2 photos")
+
+        try model.undoMetadataChange()
+
+        XCTAssertEqual(try repository.asset(id: first.id).metadata.keywords, [])
+        XCTAssertEqual(try repository.asset(id: second.id).metadata.keywords, [])
+        XCTAssertFalse(model.canUndoMetadataChange)
+        XCTAssertEqual(model.statusMessage, "Undid: Applied mountain to 2 photos")
+
+        try model.redoMetadataChange()
+
+        XCTAssertEqual(try repository.asset(id: first.id).metadata.keywords, ["mountain"])
+        XCTAssertEqual(try repository.asset(id: second.id).metadata.keywords, ["mountain"])
+        XCTAssertEqual(model.statusMessage, "Redid: Applied mountain to 2 photos")
+    }
+
+    func testCullingDecisionUndoRevertsAllContenderFlagsInOneStep() throws {
+        let assets = (0..<9).map { makeAsset(id: "undo-cull-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(named: "undo-culling-decision", assets: assets)
+        model.selectedView = .compare
+        model.select(assets[1].id)
+
+        try model.keepCompareAssetAndRejectAlternates(assetID: assets[3].id)
+
+        XCTAssertTrue(model.canUndoMetadataChange)
+        XCTAssertEqual(model.lastUndoableActionLabel, "Kept 1, rejected 7")
+        for asset in assets[0..<8] {
+            XCTAssertNotNil(try repository.asset(id: asset.id).metadata.flag)
+        }
+
+        try model.undoMetadataChange()
+
+        for asset in assets {
+            XCTAssertNil(try repository.asset(id: asset.id).metadata.flag)
+        }
+        XCTAssertFalse(model.canUndoMetadataChange)
+        XCTAssertEqual(model.statusMessage, "Undid: Kept 1, rejected 7")
+
+        try model.redoMetadataChange()
+
+        XCTAssertEqual(try repository.asset(id: assets[3].id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: assets[0].id).metadata.flag, .reject)
+        XCTAssertEqual(model.statusMessage, "Redid: Kept 1, rejected 7")
+    }
+
     func testSingleFlagEditRemainsAOneChangeGroup() throws {
         let asset = makeAsset(id: "undo-single", path: "/Photos/Job/undo-single.cr2", rating: 0)
         let (model, repository) = try makeModelWithCatalogAssets(named: "undo-single", assets: [asset])
