@@ -4293,7 +4293,10 @@ public final class AppModel {
             summary.changedCount += 1
         }
 
-        recordMetadataChangeGroup(label: "Culling decision", changes: changes)
+        recordMetadataChangeGroup(
+            label: Self.cullingDecisionLabel(picked: summary.pickedCount, rejected: summary.rejectedCount),
+            changes: changes
+        )
         if summary.changedCount > 0 {
             try updateActiveCullingSessionProgressAfterFlagChange()
         }
@@ -10144,6 +10147,10 @@ public final class AppModel {
 
     private static func photoCountDescription(_ count: Int) -> String {
         "\(count) \(count == 1 ? "photo" : "photos")"
+    }
+
+    private static func cullingDecisionLabel(picked: Int, rejected: Int) -> String {
+        "Kept \(picked), rejected \(rejected)"
     }
 
     private static func stackCountDescription(_ count: Int) -> String {
