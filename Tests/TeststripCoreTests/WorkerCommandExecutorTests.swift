@@ -1,5 +1,5 @@
 import XCTest
-import TeststripCore
+@testable import TeststripCore
 
 final class WorkerCommandExecutorTests: XCTestCase {
     func testGeneratePreviewCommandRendersRequestedPreviewFromCatalogAsset() throws {
@@ -872,6 +872,44 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata.rating, 4)
         XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: setup.sidecarURL)).metadata, sidecarMetadata)
         XCTAssertEqual(try setup.repository.metadataSyncConflictItems().map(\.assetID), [setup.asset.id])
+    }
+
+    func testUnreadableSidecarConflictGuardSkipsConflictWhenSnapshotIsStale() throws {
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-torn-sidecar-read", metadata: AssetMetadata(rating: 4))
+        // A Finder/SMB copy or non-atomic saver can be mid-write when the
+        // sync check snapshots the sidecar: the snapshot fails to parse, but
+        // the file on disk finishes and parses fine moments later. The guard
+        // must not record a durable conflict from the torn snapshot.
+        let tornSnapshot = Data("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf".utf8)
+        try XMPPacket(metadata: AssetMetadata(rating: 2)).xmlData().write(to: setup.sidecarURL)
+
+        let result = try setup.executor.recordConflictForUnreadableSidecar(
+            assetID: setup.asset.id,
+            assetName: "asset.raw",
+            sidecarURL: setup.sidecarURL,
+            sidecarData: tornSnapshot,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id)
+        )
+
+        XCTAssertNil(result)
+        XCTAssertEqual(try setup.repository.metadataSyncConflictItems(), [])
+    }
+
+    func testUnreadableSidecarConflictGuardSkipsConflictWhileSidecarIsStillChanging() throws {
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-changing-sidecar-read", metadata: AssetMetadata(rating: 4))
+        let tornSnapshot = Data("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf".utf8)
+        try Data("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xml".utf8).write(to: setup.sidecarURL)
+
+        let result = try setup.executor.recordConflictForUnreadableSidecar(
+            assetID: setup.asset.id,
+            assetName: "asset.raw",
+            sidecarURL: setup.sidecarURL,
+            sidecarData: tornSnapshot,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id)
+        )
+
+        XCTAssertNil(result)
+        XCTAssertEqual(try setup.repository.metadataSyncConflictItems(), [])
     }
 
     func testRunEvaluationPersistsSignalsFromNamedProviderUsingCachedPreview() throws {

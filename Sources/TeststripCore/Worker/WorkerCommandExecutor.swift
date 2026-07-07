@@ -444,7 +444,7 @@ public struct WorkerCommandExecutor {
     /// routes the asset into XMP Conflicts review, where the inspector surfaces the unreadable
     /// sidecar and offers Use Catalog to recreate it. Returns nil when the sidecar is absent or
     /// parses cleanly, so unrelated failures keep their current handling.
-    private func recordConflictForUnreadableSidecar(
+    func recordConflictForUnreadableSidecar(
         assetID: AssetID,
         assetName: String,
         sidecarURL: URL,
@@ -452,6 +452,15 @@ public struct WorkerCommandExecutor {
         catalogGeneration: Int
     ) throws -> WorkerCommandResult? {
         guard let sidecarData, (try? XMPPacket.parse(sidecarData)) == nil else {
+            return nil
+        }
+        // A file another tool is mid-way through writing (Finder/SMB copy,
+        // non-atomic saver) reads as torn bytes that fail to parse exactly
+        // like a genuinely corrupt sidecar. Only record a durable conflict
+        // when a fresh read returns the same still-unparsable bytes; otherwise
+        // let the original error fail the command so the next check sees the
+        // finished file.
+        guard let currentData = try? Data(contentsOf: sidecarURL), currentData == sidecarData else {
             return nil
         }
         try repository.recordMetadataSyncConflict(MetadataSyncItem(
