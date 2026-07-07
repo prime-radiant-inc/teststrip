@@ -2983,6 +2983,7 @@ public final class AppModel {
         )
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
+        try model.enqueuePendingGeocoding()
         try model.restoreSessionStateIfAvailable()
         return model
     }
@@ -5972,6 +5973,35 @@ public final class AppModel {
         schedulePreviewGenerationQueueStatesRefresh()
     }
 
+    // One geocoding activity at a time; a completed batch re-dispatches under the
+    // same ID until the queue drains (Task 7). Offline is graceful: no queued
+    // coordinates means no dispatch, and worker failures re-queue rather than
+    // erroring the UI.
+    static let geocodeWorkItemID = WorkSessionID(rawValue: "geocode-batch")
+    static let geocodeBatchSize = 50
+    static let geocodeEnqueueScanLimit = 500
+
+    func enqueuePendingGeocoding() throws {
+        guard let catalog, let workerSupervisor else { return }
+        _ = try catalog.repository.enqueueMissingGeocodeCoordinates(limit: Self.geocodeEnqueueScanLimit)
+        let queueDepth = try catalog.repository.geocodeQueueDepth()
+        guard queueDepth > 0 else { return }
+        if let existingItem = currentBackgroundWorkQueue.item(id: Self.geocodeWorkItemID),
+           Self.isActiveBackgroundWorkStatus(existingItem.status) {
+            return
+        }
+        let item = BackgroundWorkItem(
+            id: Self.geocodeWorkItemID,
+            kind: .geocoding,
+            title: "Geocoding",
+            detail: "Reading locations",
+            completedUnitCount: 0,
+            totalUnitCount: queueDepth
+        )
+        try workerSupervisor.enqueue(item, command: .reverseGeocodeBatch(limit: Self.geocodeBatchSize))
+        syncBackgroundWorkQueueFromSupervisor()
+    }
+
     private func enqueuePendingMetadataSync() throws {
         guard let catalog, workerSupervisor != nil else { return }
         var enqueuedCount = 0
@@ -6501,6 +6531,15 @@ public final class AppModel {
                let previewAssetID = Self.previewAssetID(from: itemID) {
                 enqueueImportEvaluationsForCachedPreviews(assetIDs: [previewAssetID])
             }
+            if itemID == Self.geocodeWorkItemID {
+                do {
+                    try enqueuePendingGeocoding()
+                    workerSupervisor?.pruneCompletedItems(kind: .geocoding, keepingLast: 1)
+                    syncBackgroundWorkQueueFromSupervisor()
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
         case .completedImport(
             let itemID,
             _,
@@ -6770,6 +6809,7 @@ public final class AppModel {
         do {
             try loadCatalogPage(preferredSelection: importedAssetIDs.first)
             try enqueuePendingPreviewGeneration()
+            try enqueuePendingGeocoding()
             let importedAssets = try catalog.repository.assets(ids: importedAssetIDs, limit: importedAssetIDs.count)
             let result = LibraryImportResult(
                 importedAssets: importedAssets,
@@ -10069,6 +10109,8 @@ public final class AppModel {
             return "Source scan"
         case .export:
             return "Export"
+        case .geocoding:
+            return "Geocoding"
         }
     }
 }
