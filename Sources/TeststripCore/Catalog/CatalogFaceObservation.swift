@@ -1,6 +1,6 @@
 import Foundation
 
-public struct FaceBoundingBox: Codable, Equatable, Sendable {
+public struct FaceBoundingBox: Codable, Hashable, Sendable {
     public var x: Double
     public var y: Double
     public var width: Double

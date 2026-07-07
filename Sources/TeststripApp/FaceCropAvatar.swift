@@ -31,12 +31,24 @@ enum FaceCropGeometry {
 }
 
 struct FaceCropAvatar: View {
+    // Suggestion refreshes can change the representative face while the asset
+    // (and therefore the preview URL) stays the same, so the reload key must
+    // cover the bounding box as well.
+    struct CropKey: Hashable {
+        var url: URL?
+        var box: FaceBoundingBox
+    }
+
     var previewURL: URL?
     var boundingBox: FaceBoundingBox
     var diameter: CGFloat = 52
 
     @State private var image: NSImage?
-    @State private var loadedURL: URL?
+    @State private var loadedKey: CropKey?
+
+    private var cropKey: CropKey {
+        CropKey(url: previewURL, box: boundingBox)
+    }
 
     var body: some View {
         content
@@ -46,7 +58,7 @@ struct FaceCropAvatar: View {
                 Circle()
                     .strokeBorder(Color.white.opacity(0.12))
             }
-            .task(id: previewURL) {
+            .task(id: cropKey) {
                 await loadFaceCrop()
             }
     }
@@ -67,11 +79,12 @@ struct FaceCropAvatar: View {
     private func loadFaceCrop() async {
         guard let previewURL else {
             image = nil
-            loadedURL = nil
+            loadedKey = nil
             return
         }
-        guard loadedURL != previewURL else { return }
-        loadedURL = previewURL
+        let key = cropKey
+        guard loadedKey != key else { return }
+        loadedKey = key
         let boundingBox = boundingBox
         guard let cropped = await Self.loadCroppedFace(previewURL: previewURL, boundingBox: boundingBox),
               !Task.isCancelled else {
