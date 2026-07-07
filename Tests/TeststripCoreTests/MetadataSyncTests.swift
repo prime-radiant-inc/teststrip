@@ -405,6 +405,96 @@ final class MetadataSyncTests: XCTestCase {
         XCTAssertLessThanOrEqual(lastSyncedAt.timeIntervalSince1970, afterSync.timeIntervalSince1970)
     }
 
+    func testRecordingPendingSyncPreservesLastSyncedGeneration() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "metadata-sync-pending-generation")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assetID = AssetID(rawValue: "asset-1")
+        let sidecarURL = URL(fileURLWithPath: "/Volumes/NAS/frame.cr2.xmp")
+
+        // A first sync completes: the sidecar content corresponds to generation 1.
+        try repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: assetID,
+            sidecarURL: sidecarURL,
+            catalogGeneration: 1,
+            lastSyncedFingerprint: nil
+        ))
+        try repository.markMetadataSynced(
+            assetID: assetID,
+            sidecarURL: sidecarURL,
+            catalogGeneration: 1,
+            fingerprint: "fp-generation-1"
+        )
+
+        // A later catalog edit bumps the asset to generation 2 and records a
+        // pending write. Recording the intent to sync must NOT advance the
+        // stored generation — that column tracks the generation the sidecar
+        // content currently reflects, which is still 1 until a write lands.
+        try repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: assetID,
+            sidecarURL: sidecarURL,
+            catalogGeneration: 2,
+            lastSyncedFingerprint: "fp-generation-1"
+        ))
+
+        let item = try XCTUnwrap(try repository.metadataSyncItem(assetID: assetID))
+        XCTAssertEqual(
+            item.catalogGeneration,
+            1,
+            "Pending write clobbered the last-synced generation; the worker will read it as 'no local change' and skip rewriting the sidecar."
+        )
+        XCTAssertEqual(item.lastSyncedFingerprint, "fp-generation-1")
+    }
+
+    func testWorkerRewritesSidecarAfterEditFollowingAPriorSync() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "metadata-sync-edit-after-sync")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assetID = AssetID(rawValue: "asset-1")
+        let sidecarURL = URL(fileURLWithPath: "/Volumes/NAS/frame.cr2.xmp")
+
+        // The sidecar on disk holds rating 0 (the state at the first sync).
+        let sidecarData = try XMPPacket(metadata: AssetMetadata(rating: 0)).xmlData()
+        let sidecarFingerprint = XMPSidecarStore.fingerprint(for: sidecarData)
+
+        try repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: assetID,
+            sidecarURL: sidecarURL,
+            catalogGeneration: 1,
+            lastSyncedFingerprint: nil
+        ))
+        try repository.markMetadataSynced(
+            assetID: assetID,
+            sidecarURL: sidecarURL,
+            catalogGeneration: 1,
+            fingerprint: sidecarFingerprint
+        )
+
+        // The user edits the rating to 5 (catalog now at generation 2) and the
+        // app records the pending write before the worker runs.
+        try repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: assetID,
+            sidecarURL: sidecarURL,
+            catalogGeneration: 2,
+            lastSyncedFingerprint: sidecarFingerprint
+        ))
+
+        // The worker's decision, computed against the current catalog state,
+        // must be to rewrite the sidecar — not to conclude it is up to date and
+        // leave the stale rating-0 file in place while marking it synced.
+        let syncItem = try XCTUnwrap(try repository.metadataSyncItem(assetID: assetID))
+        let decision = try MetadataSyncPlanner().decision(
+            catalogMetadata: AssetMetadata(rating: 5),
+            catalogGeneration: 2,
+            lastSynced: syncItem,
+            sidecarData: sidecarData,
+            sidecarModificationDate: nil
+        )
+        XCTAssertEqual(decision, .writeCatalog)
+    }
+
     func testPlannerImportsSidecarWhenOnlySidecarChanged() throws {
         let catalogMetadata = AssetMetadata(rating: 2)
         let sidecarMetadata = AssetMetadata(rating: 5, keywords: ["external"])

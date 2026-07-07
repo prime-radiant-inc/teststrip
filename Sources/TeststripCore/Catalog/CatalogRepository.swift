@@ -1676,7 +1676,50 @@ public final class CatalogRepository {
     }
 
     public func recordMetadataSyncPending(_ item: MetadataSyncItem) throws {
-        try upsertMetadataSyncState(item, status: "pending")
+        // Once a sidecar has been synced, catalog_generation and
+        // last_synced_fingerprint record the generation and content it reflects.
+        // Recording the intent to sync a newer edit must not advance them, or
+        // the worker's planner reads the pending target generation as "already
+        // synced," concludes nothing changed, and marks the row synced without
+        // ever rewriting the sidecar. Before any sync has landed (empty
+        // fingerprint) there is nothing to preserve, so a fresh pending write
+        // coalesces forward to the latest generation.
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT INTO metadata_sync_state (
+                asset_id,
+                sidecar_path,
+                catalog_generation,
+                last_synced_fingerprint,
+                status,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(asset_id) DO UPDATE SET
+                sidecar_path = excluded.sidecar_path,
+                catalog_generation = CASE
+                    WHEN metadata_sync_state.last_synced_fingerprint != ''
+                    THEN metadata_sync_state.catalog_generation
+                    ELSE excluded.catalog_generation
+                END,
+                last_synced_fingerprint = CASE
+                    WHEN metadata_sync_state.last_synced_fingerprint != ''
+                    THEN metadata_sync_state.last_synced_fingerprint
+                    ELSE excluded.last_synced_fingerprint
+                END,
+                status = excluded.status,
+                updated_at = excluded.updated_at
+            """,
+            bindings: [
+                item.assetID.rawValue,
+                item.sidecarURL.path,
+                "\(item.catalogGeneration)",
+                item.lastSyncedFingerprint ?? "",
+                "pending",
+                now
+            ]
+        )
     }
 
     public func pendingMetadataSyncItems(limit: Int? = nil) throws -> [MetadataSyncItem] {
