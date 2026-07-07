@@ -112,6 +112,7 @@ func label(_ e: AXUIElement) -> String? {
     str(e, kAXTitleAttribute) ?? str(e, kAXDescriptionAttribute) ?? str(e, kAXValueAttribute)
 }
 func help(_ e: AXUIElement) -> String? { str(e, kAXHelpAttribute) }
+func placeholder(_ e: AXUIElement) -> String? { str(e, kAXPlaceholderValueAttribute) }
 func children(_ e: AXUIElement) -> [AXUIElement] {
     (attr(e, kAXChildrenAttribute) as? [AXUIElement] ?? [])
         + (attr(e, "AXChildrenInNavigationOrder") as? [AXUIElement] ?? [])
@@ -145,7 +146,12 @@ func matches(_ e: AXUIElement) -> Bool {
     if !wantRole.isEmpty, role(e) != wantRole { return false }
     if !wantLabel.isEmpty, label(e) != wantLabel { return false }
     if !wantHelp.isEmpty, help(e) != wantHelp { return false }
-    if !wantContains.isEmpty, !(label(e)?.contains(wantContains) ?? false) { return false }
+    if !wantContains.isEmpty {
+        // Empty-but-placeholdered fields (a sheet Person name field) carry
+        // their meaning in the placeholder, not the value.
+        let hay = (label(e) ?? "") + " " + (placeholder(e) ?? "")
+        if !hay.contains(wantContains) { return false }
+    }
     let anyPredicate = !wantRole.isEmpty || !wantLabel.isEmpty || !wantHelp.isEmpty || !wantContains.isEmpty
     return anyPredicate
 }
