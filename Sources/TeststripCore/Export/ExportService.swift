@@ -2,15 +2,33 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
+public enum ExportFormat: String, Hashable, Sendable, Codable, CaseIterable {
+    case jpeg
+    case png
+}
+
 public struct ExportSettings: Hashable, Sendable {
+    public var format: ExportFormat
     public var jpegQuality: Double
     public var longEdgeMaximumPixels: Int?
     public var includeSourceMetadata: Bool
+    /// When set, JPEG exports iteratively reduce quality (never below the
+    /// requested `jpegQuality`) to fit this byte budget on a best-effort
+    /// basis. Ignored for PNG, which has no comparable quality knob.
+    public var targetFileSizeBytes: Int?
 
-    public init(jpegQuality: Double, longEdgeMaximumPixels: Int? = nil, includeSourceMetadata: Bool = true) {
+    public init(
+        jpegQuality: Double,
+        longEdgeMaximumPixels: Int? = nil,
+        includeSourceMetadata: Bool = true,
+        format: ExportFormat = .jpeg,
+        targetFileSizeBytes: Int? = nil
+    ) {
+        self.format = format
         self.jpegQuality = min(max(jpegQuality, 0), 1)
         self.longEdgeMaximumPixels = longEdgeMaximumPixels
         self.includeSourceMetadata = includeSourceMetadata
+        self.targetFileSizeBytes = targetFileSizeBytes
     }
 }
 
@@ -110,15 +128,18 @@ public struct ExportService: Sendable {
         let destinationURL = availableDestinationURL(
             for: sourceURL,
             destinationDirectory: destinationDirectory,
+            format: settings.format,
             claimedFilenames: &claimedFilenames
         )
-        guard let destination = CGImageDestinationCreateWithURL(destinationURL as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
+        guard let destination = CGImageDestinationCreateWithURL(destinationURL as CFURL, settings.format.utType.identifier as CFString, 1, nil) else {
             return .failed(message: "could not create \(destinationURL.lastPathComponent)")
         }
         var destinationProperties: [CFString: Any] = settings.includeSourceMetadata
             ? carriedSourceProperties(from: source)
             : [:]
-        destinationProperties[kCGImageDestinationLossyCompressionQuality] = settings.jpegQuality
+        if settings.format == .jpeg {
+            destinationProperties[kCGImageDestinationLossyCompressionQuality] = settings.jpegQuality
+        }
         CGImageDestinationAddImage(destination, image, destinationProperties as CFDictionary)
         guard CGImageDestinationFinalize(destination) else {
             return .failed(message: "could not write \(destinationURL.lastPathComponent)")
@@ -152,17 +173,35 @@ public struct ExportService: Sendable {
     private func availableDestinationURL(
         for sourceURL: URL,
         destinationDirectory: URL,
+        format: ExportFormat,
         claimedFilenames: inout Set<String>
     ) -> URL {
         let baseName = sourceURL.deletingPathExtension().lastPathComponent
-        var candidateName = "\(baseName).jpg"
+        let extensionSuffix = format.fileExtension
+        var candidateName = "\(baseName).\(extensionSuffix)"
         var suffix = 2
         while claimedFilenames.contains(candidateName.lowercased())
             || FileManager.default.fileExists(atPath: destinationDirectory.appendingPathComponent(candidateName).path) {
-            candidateName = "\(baseName)-\(suffix).jpg"
+            candidateName = "\(baseName)-\(suffix).\(extensionSuffix)"
             suffix += 1
         }
         claimedFilenames.insert(candidateName.lowercased())
         return destinationDirectory.appendingPathComponent(candidateName)
+    }
+}
+
+private extension ExportFormat {
+    var utType: UTType {
+        switch self {
+        case .jpeg: return .jpeg
+        case .png: return .png
+        }
+    }
+
+    var fileExtension: String {
+        switch self {
+        case .jpeg: return "jpg"
+        case .png: return "png"
+        }
     }
 }

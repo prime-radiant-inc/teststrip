@@ -21,6 +21,74 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(ExportSettings(jpegQuality: 0.8, longEdgeMaximumPixels: 2048).longEdgeMaximumPixels, 2048)
     }
 
+    func testSettingsDefaultToJpegFormatAndNoByteBudget() {
+        let settings = ExportSettings(jpegQuality: 0.8)
+        XCTAssertEqual(settings.format, .jpeg)
+        XCTAssertNil(settings.targetFileSizeBytes)
+    }
+
+    func testExportWritesPngWhenFormatIsPng() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-png-format")
+        let source = directory.appendingPathComponent("source.jpg")
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try TestDirectories.writeTestJPEG(to: source, width: 400, height: 300)
+
+        let results = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.9, format: .png),
+            destinationDirectory: destination
+        )
+
+        let exportedURL = destination.appendingPathComponent("source.png")
+        XCTAssertEqual(results, [ExportFileResult(sourceURL: source, outcome: .exported(destinationURL: exportedURL))])
+        let dimensions = try PreviewRenderer().dimensions(of: exportedURL)
+        XCTAssertEqual(dimensions, PreviewDimensions(width: 400, height: 300))
+        let readBackSource = try XCTUnwrap(CGImageSourceCreateWithURL(exportedURL as CFURL, nil))
+        XCTAssertEqual(CGImageSourceGetType(readBackSource) as String?, UTType.png.identifier)
+    }
+
+    func testExportResolvesPngFilenameCollisionsWithDeterministicSuffixAndExtension() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-png-collisions")
+        let firstFolder = directory.appendingPathComponent("a", isDirectory: true)
+        let secondFolder = directory.appendingPathComponent("b", isDirectory: true)
+        try FileManager.default.createDirectory(at: firstFolder, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondFolder, withIntermediateDirectories: true)
+        let firstSource = firstFolder.appendingPathComponent("photo.jpg")
+        let secondSource = secondFolder.appendingPathComponent("photo.jpg")
+        try TestDirectories.writeTestJPEG(to: firstSource, width: 100, height: 80)
+        try TestDirectories.writeTestJPEG(to: secondSource, width: 100, height: 80)
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+
+        let results = try ExportService().export(
+            originalURLs: [firstSource, secondSource],
+            settings: ExportSettings(jpegQuality: 0.9, format: .png),
+            destinationDirectory: destination
+        )
+
+        XCTAssertEqual(results, [
+            ExportFileResult(sourceURL: firstSource, outcome: .exported(destinationURL: destination.appendingPathComponent("photo.png"))),
+            ExportFileResult(sourceURL: secondSource, outcome: .exported(destinationURL: destination.appendingPathComponent("photo-2.png")))
+        ])
+    }
+
+    func testExportCarriesSourceMetadataForPngFormatToo() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-png-metadata")
+        let source = directory.appendingPathComponent("source.jpg")
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try writeMetadataFixtureJPEG(to: source, width: 400, height: 300)
+
+        _ = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.9, format: .png),
+            destinationDirectory: destination
+        )
+
+        let properties = try imageProperties(of: destination.appendingPathComponent("source.png"))
+        let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any]
+        XCTAssertEqual(exif?[kCGImagePropertyExifDateTimeOriginal] as? String, "2020:01:02 03:04:05")
+        XCTAssertEqual(properties[kCGImagePropertyOrientation] as? Int ?? 1, 1)
+    }
+
     func testExportWritesJpegBoundedByLongEdgeCap() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "export-resize")
         let source = directory.appendingPathComponent("source.jpg")
