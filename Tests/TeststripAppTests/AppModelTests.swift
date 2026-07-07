@@ -4210,6 +4210,41 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.canRedoMetadataChange)
     }
 
+    func testBatchMetadataUndoRevertsAllAssetsInOneStep() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let first = makeAsset(id: "undo-batch-a", path: "/Photos/Job/undo-batch-a.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let second = makeAsset(id: "undo-batch-b", path: "/Photos/Job/undo-batch-b.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "undo-batch-metadata", assets: [first, second])
+        try model.selectSidebarTarget(.allPhotographs)
+
+        let applied = try model.applyVisibleBatchMetadata(keywordText: "patagonia", caption: "", creator: "", copyright: "")
+        XCTAssertEqual(applied, 2)
+        XCTAssertTrue(model.canUndoMetadataChange)
+        XCTAssertEqual(model.lastUndoableActionLabel, "Applied metadata to 2 photos")
+
+        try model.undoMetadataChange()
+
+        XCTAssertEqual(try repository.asset(id: first.id).metadata.keywords, [])
+        XCTAssertEqual(try repository.asset(id: second.id).metadata.keywords, [])
+        XCTAssertFalse(model.canUndoMetadataChange)
+        XCTAssertTrue(model.canRedoMetadataChange)
+        XCTAssertEqual(model.statusMessage, "Undid: Applied metadata to 2 photos")
+    }
+
+    func testSingleFlagEditRemainsAOneChangeGroup() throws {
+        let asset = makeAsset(id: "undo-single", path: "/Photos/Job/undo-single.cr2", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(named: "undo-single", assets: [asset])
+        model.select(asset.id)
+
+        try model.setFlagForSelectedAsset(.pick)
+        XCTAssertEqual(model.lastUndoableActionLabel, "Flag")
+
+        try model.undoMetadataChange()
+        XCTAssertNil(try repository.asset(id: asset.id).metadata.flag)
+        try model.redoMetadataChange()
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .pick)
+    }
+
     func testLoadsAssetsFromCatalogRepository() throws {
         let directory = try makeTemporaryDirectory(named: "app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

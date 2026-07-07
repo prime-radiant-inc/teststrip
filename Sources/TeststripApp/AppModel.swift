@@ -1175,6 +1175,11 @@ private struct MetadataChange: Equatable {
     var after: AssetMetadata
 }
 
+private struct MetadataChangeGroup: Equatable {
+    var label: String
+    var changes: [MetadataChange]
+}
+
 public struct CullingMetadataDecisionFeedback: Equatable, Sendable {
     public var assetID: AssetID
     public var filename: String
@@ -1442,8 +1447,8 @@ public final class AppModel {
 
     private var previewCacheGenerationsByAssetID: [AssetID: Int]
     private var evaluationSignalGenerationsByAssetID: [AssetID: Int]
-    private var metadataUndoStack: [MetadataChange]
-    private var metadataRedoStack: [MetadataChange]
+    private var metadataUndoStack: [MetadataChangeGroup]
+    private var metadataRedoStack: [MetadataChangeGroup]
     private var assetPageOffset: Int
     private var compareAssetIDs: [AssetID]?
 
@@ -1661,6 +1666,10 @@ public final class AppModel {
 
     public var canRedoMetadataChange: Bool {
         !metadataRedoStack.isEmpty
+    }
+
+    public var lastUndoableActionLabel: String? {
+        metadataUndoStack.last?.label
     }
 
     public var visibleWorkActivity: AppWorkActivity? {
@@ -4050,6 +4059,7 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         var summary = CompareFlagChangeSummary()
+        var changes: [MetadataChange] = []
         for compareAsset in compareGroup {
             guard let targetFlag = flagsByAssetID[compareAsset.id] else { continue }
             switch targetFlag {
@@ -4063,7 +4073,7 @@ public final class AppModel {
             var updatedMetadata = originalAsset.metadata
             updatedMetadata.flag = targetFlag
             try applyMetadataSnapshot(assetID: compareAsset.id, metadata: updatedMetadata)
-            metadataUndoStack.append(MetadataChange(
+            changes.append(MetadataChange(
                 assetID: compareAsset.id,
                 before: originalAsset.metadata,
                 after: updatedMetadata
@@ -4071,8 +4081,8 @@ public final class AppModel {
             summary.changedCount += 1
         }
 
+        recordMetadataChangeGroup(label: "Culling decision", changes: changes)
         if summary.changedCount > 0 {
-            metadataRedoStack.removeAll()
             try updateActiveCullingSessionProgressAfterFlagChange()
         }
         return summary
@@ -4679,26 +4689,26 @@ public final class AppModel {
         guard (0...5).contains(rating) else {
             throw TeststripError.invalidState("rating must be between 0 and 5")
         }
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Rating") { metadata in
             metadata.rating = rating
         }
     }
 
     public func setFlagForSelectedAsset(_ flag: PickFlag?) throws {
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Flag") { metadata in
             metadata.flag = flag
         }
         try updateActiveCullingSessionProgressAfterFlagChange()
     }
 
     public func setColorLabelForSelectedAsset(_ colorLabel: ColorLabel?) throws {
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Color label") { metadata in
             metadata.colorLabel = colorLabel
         }
     }
 
     public func setKeywordTextForSelectedAsset(_ keywordText: String) throws {
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Keywords") { metadata in
             metadata.keywords = Self.keywords(from: keywordText)
         }
     }
@@ -4706,7 +4716,7 @@ public final class AppModel {
     public func removeKeywordFromSelectedAsset(_ keyword: String) throws {
         let key = Self.keywordKey(keyword)
         guard !key.isEmpty else { return }
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Keywords") { metadata in
             metadata.keywords.removeAll { Self.keywordKey($0) == key }
         }
     }
@@ -4714,7 +4724,7 @@ public final class AppModel {
     public func acceptSuggestedKeywordForSelectedAsset(_ keyword: String) throws {
         let cleanedKeyword = Self.cleanedKeyword(keyword)
         guard !cleanedKeyword.isEmpty else { return }
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Keywords") { metadata in
             guard !Self.keywordList(metadata.keywords, contains: cleanedKeyword) else { return }
             metadata.keywords.append(cleanedKeyword)
         }
@@ -4722,7 +4732,7 @@ public final class AppModel {
 
     public func acceptSuggestedCaptionForSelectedAsset(_ caption: String) throws {
         guard let portableCaption = Self.portableCaption(from: caption) else { return }
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Caption") { metadata in
             guard metadata.caption != portableCaption else { return }
             metadata.caption = portableCaption
         }
@@ -4746,6 +4756,7 @@ public final class AppModel {
         let cleanedKeyword = Self.cleanedKeyword(keyword)
         guard !cleanedKeyword.isEmpty else { return 0 }
         var appliedCount = 0
+        var changes: [MetadataChange] = []
 
         for assetID in assetIDs {
             guard try assetNeedsSuggestedKeyword(assetID: assetID, keyword: cleanedKeyword) else {
@@ -4759,7 +4770,7 @@ public final class AppModel {
             updatedMetadata.keywords.append(cleanedKeyword)
 
             try applyMetadataSnapshot(assetID: assetID, metadata: updatedMetadata)
-            metadataUndoStack.append(MetadataChange(
+            changes.append(MetadataChange(
                 assetID: assetID,
                 before: originalAsset.metadata,
                 after: updatedMetadata
@@ -4767,8 +4778,11 @@ public final class AppModel {
             appliedCount += 1
         }
 
+        recordMetadataChangeGroup(
+            label: "Applied \(cleanedKeyword) to \(Self.photoCountDescription(appliedCount))",
+            changes: changes
+        )
         if appliedCount > 0 {
-            metadataRedoStack.removeAll()
             statusMessage = "Applied \(cleanedKeyword) to \(Self.photoCountDescription(appliedCount))"
         }
         return appliedCount
@@ -4915,15 +4929,17 @@ public final class AppModel {
             guard let updatedAsset = updatedAssetsByID[assets[index].id] else { continue }
             assets[index] = updatedAsset
         }
-        for change in changes {
-            metadataUndoStack.append(MetadataChange(
-                assetID: change.updated.id,
-                before: change.original.metadata,
-                after: change.updated.metadata
-            ))
-        }
+        recordMetadataChangeGroup(
+            label: "Applied metadata to \(Self.photoCountDescription(changes.count))",
+            changes: changes.map { change in
+                MetadataChange(
+                    assetID: change.updated.id,
+                    before: change.original.metadata,
+                    after: change.updated.metadata
+                )
+            }
+        )
         try refreshCatalogSidebarCounts()
-        metadataRedoStack.removeAll()
         statusMessage = "Applied batch metadata to \(Self.photoCountDescription(changes.count))"
         return changes.count
     }
@@ -5006,19 +5022,19 @@ public final class AppModel {
     }
 
     public func setCaptionForSelectedAsset(_ caption: String) throws {
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Caption") { metadata in
             metadata.caption = Self.portableText(from: caption)
         }
     }
 
     public func setCreatorForSelectedAsset(_ creator: String) throws {
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Creator") { metadata in
             metadata.creator = Self.portableText(from: creator)
         }
     }
 
     public func setCopyrightForSelectedAsset(_ copyright: String) throws {
-        try updateSelectedAssetMetadata { metadata in
+        try updateSelectedAssetMetadata(label: "Copyright") { metadata in
             metadata.copyright = Self.portableText(from: copyright)
         }
     }
@@ -5094,19 +5110,35 @@ public final class AppModel {
         return queuedCount
     }
 
+    private func recordMetadataChangeGroup(label: String, changes: [MetadataChange]) {
+        let effectiveChanges = changes.filter { $0.before != $0.after }
+        guard !effectiveChanges.isEmpty else { return }
+        metadataUndoStack.append(MetadataChangeGroup(label: label, changes: effectiveChanges))
+        metadataRedoStack.removeAll()
+    }
+
     public func undoMetadataChange() throws {
-        guard let change = metadataUndoStack.popLast() else { return }
-        try applyMetadataSnapshot(assetID: change.assetID, metadata: change.before)
-        metadataRedoStack.append(change)
+        guard let group = metadataUndoStack.popLast() else { return }
+        for change in group.changes.reversed() {
+            try applyMetadataSnapshot(assetID: change.assetID, metadata: change.before)
+        }
+        metadataRedoStack.append(group)
+        statusMessage = "Undid: \(group.label)"
     }
 
     public func redoMetadataChange() throws {
-        guard let change = metadataRedoStack.popLast() else { return }
-        try applyMetadataSnapshot(assetID: change.assetID, metadata: change.after)
-        metadataUndoStack.append(change)
+        guard let group = metadataRedoStack.popLast() else { return }
+        for change in group.changes {
+            try applyMetadataSnapshot(assetID: change.assetID, metadata: change.after)
+        }
+        metadataUndoStack.append(group)
+        statusMessage = "Redid: \(group.label)"
     }
 
-    private func updateSelectedAssetMetadata(_ update: (inout AssetMetadata) throws -> Void) throws {
+    private func updateSelectedAssetMetadata(
+        label: String = "Edit",
+        _ update: (inout AssetMetadata) throws -> Void
+    ) throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -5119,12 +5151,11 @@ public final class AppModel {
         guard updatedMetadata != originalAsset.metadata else { return }
 
         try applyMetadataSnapshot(assetID: selectedAssetID, metadata: updatedMetadata)
-        metadataUndoStack.append(MetadataChange(
+        recordMetadataChangeGroup(label: label, changes: [MetadataChange(
             assetID: selectedAssetID,
             before: originalAsset.metadata,
             after: updatedMetadata
-        ))
-        metadataRedoStack.removeAll()
+        )])
     }
 
     private static func keywords(from keywordText: String) -> [String] {
@@ -5458,12 +5489,11 @@ public final class AppModel {
         }
         try refreshCatalogSidebarCounts()
         if originalAsset.metadata != sidecarMetadata {
-            metadataUndoStack.append(MetadataChange(
+            recordMetadataChangeGroup(label: "Resolved XMP conflict", changes: [MetadataChange(
                 assetID: assetID,
                 before: originalAsset.metadata,
                 after: sidecarMetadata
-            ))
-            metadataRedoStack.removeAll()
+            )])
         }
         clearMetadataSyncState(assetID: assetID)
         try refreshAfterMetadataConflictResolution()
@@ -5500,12 +5530,11 @@ public final class AppModel {
         }
         try refreshCatalogSidebarCounts()
         if originalAsset.metadata != mergedMetadata {
-            metadataUndoStack.append(MetadataChange(
+            recordMetadataChangeGroup(label: "Resolved XMP conflict", changes: [MetadataChange(
                 assetID: assetID,
                 before: originalAsset.metadata,
                 after: mergedMetadata
-            ))
-            metadataRedoStack.removeAll()
+            )])
         }
 
         do {
