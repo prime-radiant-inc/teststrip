@@ -4313,6 +4313,58 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
     }
 
+    func testCommitAllAutopilotProposalsWritesFlagsAndKeywordsAsOneUndoGroup() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "commit-lead", path: "/Photos/Job/commit-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "commit-alt", path: "/Photos/Job/commit-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "commit-autopilot", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+
+        let committed = try model.commitAllAutopilotProposals()
+
+        XCTAssertEqual(committed, 2)
+        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: lead.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 0)
+        XCTAssertEqual(model.lastUndoableActionLabel, "Autopilot")
+
+        // Exactly one undo group reverts the whole batch.
+        try model.undoMetadataChange()
+        XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
+        XCTAssertFalse(model.canUndoMetadataChange)
+    }
+
+    func testDismissAutopilotProposalsLeavesMetadataUntouched() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "dismiss-lead", path: "/Photos/Job/dismiss-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "dismiss-alt", path: "/Photos/Job/dismiss-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "dismiss-autopilot", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+
+        let dismissed = try model.dismissAutopilotProposals(assetIDs: [lead.id])
+
+        XCTAssertEqual(dismissed, 1)
+        XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
+        XCTAssertEqual(model.autopilotProposalDecision(for: lead.id), nil)
+        XCTAssertEqual(model.autopilotProposalDecision(for: alternate.id), .pick)
+        XCTAssertFalse(model.canUndoMetadataChange)
+    }
+
     func testLoadsAssetsFromCatalogRepository() throws {
         let directory = try makeTemporaryDirectory(named: "app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

@@ -1290,6 +1290,7 @@ public final class AppModel {
     public private(set) var autopilotRunSummary: AutopilotRunSummary?
     public private(set) var pendingAutopilotProposals: [AutopilotProposal] = []
     public private(set) var isAutopilotReviewActive = false
+    public private(set) var lastCommittedAutopilotRunID: AutopilotRunID?
     // Maps a scope's identity (sorted asset-id join) to the run that last
     // proposed for it, so re-running the same scope replaces its pending
     // proposals instead of stacking duplicates. In-memory only.
@@ -6396,21 +6397,85 @@ public final class AppModel {
         return orderedIDs
     }
 
-    // Commit/dismiss lifecycle is implemented by Task 8; these no-op-safe
-    // stubs let the review toolbar land now without writing any metadata.
+    /// Commits the pending proposals for the given assets by writing their
+    /// flags/keywords through the grouped-undo metadata path as ONE undo group
+    /// labeled "Autopilot", then marks those proposals `committed`. This is the
+    /// ONLY autopilot path that writes catalog metadata/XMP, and it happens
+    /// only on this explicit user gesture.
     @discardableResult
     public func commitAutopilotProposals(assetIDs: [AssetID]) throws -> Int {
-        0
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let targetAssetIDs = Set(assetIDs)
+        let targetProposals = pendingAutopilotProposals.filter { targetAssetIDs.contains($0.assetID) }
+        guard !targetProposals.isEmpty else { return 0 }
+
+        let proposalsByAsset = Dictionary(grouping: targetProposals, by: { $0.assetID })
+        var orderedTargetAssetIDs: [AssetID] = []
+        var seenAssets = Set<AssetID>()
+        for proposal in pendingAutopilotProposals where targetAssetIDs.contains(proposal.assetID) {
+            if seenAssets.insert(proposal.assetID).inserted {
+                orderedTargetAssetIDs.append(proposal.assetID)
+            }
+        }
+
+        var changes: [MetadataChange] = []
+        var committedProposalIDs: [AutopilotProposalID] = []
+        for assetID in orderedTargetAssetIDs {
+            guard let assetProposals = proposalsByAsset[assetID] else { continue }
+            let originalAsset = try catalog.repository.asset(id: assetID)
+            var updatedMetadata = originalAsset.metadata
+            for proposal in assetProposals {
+                switch proposal.kind {
+                case .pick:
+                    updatedMetadata.flag = .pick
+                case .reject:
+                    updatedMetadata.flag = .reject
+                case .keyword:
+                    if let keyword = proposal.keyword,
+                       !Self.keywordList(updatedMetadata.keywords, contains: keyword) {
+                        updatedMetadata.keywords.append(keyword)
+                    }
+                }
+                committedProposalIDs.append(proposal.id)
+            }
+            if updatedMetadata != originalAsset.metadata {
+                try applyMetadataSnapshot(assetID: assetID, metadata: updatedMetadata)
+                changes.append(MetadataChange(
+                    assetID: assetID,
+                    before: originalAsset.metadata,
+                    after: updatedMetadata
+                ))
+            }
+        }
+
+        recordMetadataChangeGroup(label: "Autopilot", changes: changes)
+        try catalog.repository.updateAutopilotProposalStatus(ids: committedProposalIDs, to: .committed)
+        lastCommittedAutopilotRunID = targetProposals.first?.runID
+        pendingAutopilotProposals = (try? catalog.repository.autopilotProposals(status: .pending)) ?? []
+        try refreshCatalogSidebarCounts()
+        statusMessage = "Committed \(committedProposalIDs.count) autopilot decisions"
+        return committedProposalIDs.count
     }
 
     @discardableResult
     public func commitAllAutopilotProposals() throws -> Int {
-        0
+        try commitAutopilotProposals(assetIDs: distinctPendingAutopilotProposalAssetIDs())
     }
 
     @discardableResult
     public func dismissAutopilotProposals(assetIDs: [AssetID]) throws -> Int {
-        0
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let targetAssetIDs = Set(assetIDs)
+        let targetProposals = pendingAutopilotProposals.filter { targetAssetIDs.contains($0.assetID) }
+        guard !targetProposals.isEmpty else { return 0 }
+        try catalog.repository.updateAutopilotProposalStatus(ids: targetProposals.map(\.id), to: .dismissed)
+        pendingAutopilotProposals = (try? catalog.repository.autopilotProposals(status: .pending)) ?? []
+        statusMessage = "Dismissed \(targetProposals.count) proposals"
+        return targetProposals.count
     }
 
     private func autopilotScopeAssets(_ scope: AutopilotScope, repository: CatalogRepository) throws -> [Asset] {
