@@ -1173,6 +1173,51 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.unassignedFaceObservations(provenance: provenance, limit: 10), [])
     }
 
+    func testAssignFacesToMissingPersonThrowsNotFound() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-assign-faces-missing-person")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "face-crop-pad-25")
+        let frame = Asset.testAsset(id: AssetID(rawValue: "frame"), path: "/Volumes/NAS/Job/frame.jpg", rating: 0)
+        try repository.upsert(frame)
+        try repository.replaceFaceObservations(assetID: frame.id, provenance: provenance, with: [
+            CatalogFaceObservation(
+                assetID: frame.id,
+                faceIndex: 0,
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                captureQuality: 0.5,
+                embedding: [1, 0, 0],
+                provenance: provenance
+            )
+        ])
+
+        XCTAssertThrowsError(try repository.assignFaces([FaceID(assetID: frame.id, faceIndex: 0)], toPersonID: "person-ghost")) { error in
+            XCTAssertEqual(error as? CatalogError, .notFound("person-ghost"))
+        }
+        XCTAssertEqual(try repository.assetIDs(personID: "person-ghost"), [])
+        XCTAssertEqual(
+            try repository.unassignedFaceObservations(provenance: provenance, limit: 10).map(\.faceID),
+            [FaceID(assetID: frame.id, faceIndex: 0)]
+        )
+    }
+
+    func testAssignAssetsToMissingPersonThrowsNotFound() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-assign-assets-missing-person")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let frame = Asset.testAsset(id: AssetID(rawValue: "frame"), path: "/Volumes/NAS/Job/frame.jpg", rating: 0)
+        try repository.upsert(frame)
+        try repository.dismissFaceAssets([frame.id])
+
+        XCTAssertThrowsError(try repository.assignAssets([frame.id], toPersonID: "person-ghost")) { error in
+            XCTAssertEqual(error as? CatalogError, .notFound("person-ghost"))
+        }
+        XCTAssertEqual(try repository.assetIDs(personID: "person-ghost"), [])
+        XCTAssertEqual(try repository.dismissedFaceAssetIDs(), [frame.id])
+    }
+
     func testMergePersonMovesConfirmedFacesAndDismissFaceAssetsClearsThem() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-face-merge-dismiss")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

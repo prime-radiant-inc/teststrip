@@ -468,6 +468,7 @@ public final class CatalogRepository {
         guard !assetIDs.isEmpty else { return }
         let now = "\(Date().timeIntervalSince1970)"
         try database.transaction {
+            try requirePerson(id: trimmedPersonID)
             for assetID in assetIDs {
                 try database.execute(
                     """
@@ -481,6 +482,15 @@ public final class CatalogRepository {
                     bindings: [assetID.rawValue]
                 )
             }
+        }
+    }
+
+    /// Fails writes that would link faces or assets to a person that no longer
+    /// exists, e.g. a stale suggestion confirmed after the person was merged away.
+    private func requirePerson(id: String) throws {
+        let rows = try database.rows("SELECT 1 FROM people WHERE id = ?", bindings: [id])
+        guard !rows.isEmpty else {
+            throw CatalogError.notFound(id)
         }
     }
 
@@ -757,6 +767,7 @@ public final class CatalogRepository {
         guard !faceIDs.isEmpty else { return }
         let now = "\(Date().timeIntervalSince1970)"
         try database.transaction {
+            try requirePerson(id: trimmedPersonID)
             for faceID in faceIDs {
                 try database.execute(
                     """

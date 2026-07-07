@@ -2332,6 +2332,7 @@ public final class AppModel {
         }
         try catalog.repository.mergePerson(sourceID: sourceID, into: targetID)
         catalogPeople = try catalog.repository.people()
+        refreshPeopleFaceSuggestions()
     }
 
     public func dismissSelectedFaceReviewAssets() throws {
