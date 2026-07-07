@@ -4496,6 +4496,31 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.librarySearchText, "")
     }
 
+    func testSavedSearchWithPersonPredicateFiltersAssetsWhenSelected() throws {
+        let annaPhoto = makeAsset(id: "anna-photo", path: "/Photos/Wedding/anna-photo.jpg", rating: 0)
+        let other = makeAsset(id: "other", path: "/Photos/Wedding/other.jpg", rating: 0)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "person-saved-search",
+            assets: [annaPhoto, other],
+            configureRepository: { repository in
+                try repository.upsertPerson(id: "person-anna", name: "Anna")
+                try repository.assignAssets([annaPhoto.id], toPersonID: "person-anna")
+            }
+        )
+
+        model.librarySearchText = "person:Anna"
+
+        let savedSet = try model.saveCurrentLibraryQuery(named: "Anna")
+
+        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [.person("Anna")])))
+        XCTAssertEqual(model.librarySearchText, "")
+
+        try model.selectSidebarTarget(.assetSet(savedSet.id))
+
+        XCTAssertEqual(model.assets.map(\.id), [annaPhoto.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
     func testApplyingLibraryFiltersUsesTechnicalMetadata() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-technical-filters")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -7004,6 +7029,69 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.librarySearchText, "ceremony rating:5")
         XCTAssertEqual(model.activeLibraryFilterChips, ["Search: ceremony", "Rating >= 5"])
         XCTAssertEqual(model.assets.map(\.id), [keeper.id, rejected.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
+    }
+
+    func testShowPersonPhotosScopesLibraryGridToConfirmedPerson() throws {
+        let annaRated = makeAsset(id: "anna-rated", path: "/Photos/Wedding/anna-rated.jpg", rating: 5)
+        let annaUnrated = makeAsset(id: "anna-unrated", path: "/Photos/Wedding/anna-unrated.jpg", rating: 0)
+        let unassigned = makeAsset(id: "unassigned", path: "/Photos/Wedding/unassigned.jpg", rating: 5)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "show-person-photos",
+            assets: [annaRated, annaUnrated, unassigned],
+            configureRepository: { repository in
+                try repository.upsertPerson(id: "person-anna", name: "Anna Lee")
+                try repository.assignAssets([annaRated.id, annaUnrated.id], toPersonID: "person-anna")
+            }
+        )
+        model.selectedView = .people
+        model.minimumRatingFilter = 3
+        try model.applyLibraryFilters()
+
+        try model.showPersonPhotos(named: "Anna Lee")
+
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.librarySearchText, "person:\"Anna Lee\"")
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Person: Anna Lee"])
+        XCTAssertEqual(model.assets.map(\.id), [annaRated.id, annaUnrated.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
+
+        model.minimumRatingFilter = 4
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Person: Anna Lee", "Rating >= 4"])
+        XCTAssertEqual(model.assets.map(\.id), [annaRated.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
+    func testRemovingPersonChipRewritesSearchTextAndReloads() throws {
+        let both = makeAsset(id: "both", path: "/Photos/Wedding/both.jpg", rating: 0)
+        let annaOnly = makeAsset(id: "anna-only", path: "/Photos/Wedding/anna-only.jpg", rating: 0)
+        let unassigned = makeAsset(id: "unassigned", path: "/Photos/Wedding/unassigned.jpg", rating: 0)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "remove-person-chip",
+            assets: [both, annaOnly, unassigned],
+            configureRepository: { repository in
+                try repository.upsertPerson(id: "person-anna", name: "Anna Lee")
+                try repository.upsertPerson(id: "person-ben", name: "Ben")
+                try repository.assignAssets([both.id, annaOnly.id], toPersonID: "person-anna")
+                try repository.assignAssets([both.id], toPersonID: "person-ben")
+            }
+        )
+
+        model.librarySearchText = "person:\"Anna Lee\" person:Ben"
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Person: Anna Lee", "Person: Ben"])
+        XCTAssertEqual(model.assets.map(\.id), [both.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+
+        let benRow = try XCTUnwrap(model.activeLibraryFilterRows.first { $0.title == "Person: Ben" })
+        try model.removeActiveLibraryFilter(benRow)
+
+        XCTAssertEqual(model.librarySearchText, "person:\"Anna Lee\"")
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Person: Anna Lee"])
+        XCTAssertEqual(model.assets.map(\.id), [both.id, annaOnly.id])
         XCTAssertEqual(model.totalAssetCount, 2)
     }
 

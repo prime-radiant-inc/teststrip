@@ -864,6 +864,92 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(matching: pendingQuery), 1)
     }
 
+    func testSearchesAssetsWithPersonPredicateCaseInsensitively() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-person-search")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let confirmed = Asset.testAsset(id: AssetID(rawValue: "confirmed"), path: "/Volumes/NAS/Job/confirmed.jpg", rating: 0)
+        let unconfirmedFace = Asset.testAsset(id: AssetID(rawValue: "unconfirmed-face"), path: "/Volumes/NAS/Job/unconfirmed-face.jpg", rating: 0)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.upsert([confirmed, unconfirmedFace])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: unconfirmedFace.id, kind: .faceCount, value: .count(1), confidence: 0.9, provenance: provenance)
+        ])
+        try repository.upsertPerson(id: "person-maya", name: "Maya")
+        try repository.assignAssets([confirmed.id], toPersonID: "person-maya")
+
+        let personQuery = SetQuery(predicates: [.person("maya")])
+        XCTAssertEqual(try repository.allAssets(matching: personQuery, limit: 10).map(\.id), [confirmed.id])
+        XCTAssertEqual(try repository.assetCount(matching: personQuery), 1)
+
+        let unknownQuery = SetQuery(predicates: [.person("Anna")])
+        XCTAssertEqual(try repository.allAssets(matching: unknownQuery, limit: 10).map(\.id), [])
+
+        let blankQuery = SetQuery(predicates: [.person("   ")])
+        XCTAssertEqual(try repository.assetCount(matching: blankQuery), 2)
+    }
+
+    func testPersonPredicatesIntersectAndComposeWithMetadataPredicates() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-person-intersection")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let bothPicked = Asset.testAsset(
+            id: AssetID(rawValue: "both-picked"),
+            path: "/Volumes/NAS/Job/both-picked.jpg",
+            metadata: AssetMetadata(rating: 5, flag: .pick)
+        )
+        let bothUnrated = Asset.testAsset(
+            id: AssetID(rawValue: "both-unrated"),
+            path: "/Volumes/NAS/Job/both-unrated.jpg",
+            metadata: AssetMetadata(rating: 0)
+        )
+        let annaOnly = Asset.testAsset(
+            id: AssetID(rawValue: "anna-only"),
+            path: "/Volumes/NAS/Job/anna-only.jpg",
+            metadata: AssetMetadata(rating: 5, flag: .pick)
+        )
+        try repository.upsert([bothPicked, bothUnrated, annaOnly])
+        try repository.upsertPerson(id: "person-anna", name: "Anna")
+        try repository.upsertPerson(id: "person-ben", name: "Ben")
+        try repository.assignAssets([bothPicked.id, bothUnrated.id, annaOnly.id], toPersonID: "person-anna")
+        try repository.assignAssets([bothPicked.id, bothUnrated.id], toPersonID: "person-ben")
+
+        let intersectionQuery = SetQuery(predicates: [.person("Anna"), .person("Ben")])
+        XCTAssertEqual(
+            try repository.allAssets(matching: intersectionQuery, limit: 10).map(\.id),
+            [bothPicked.id, bothUnrated.id]
+        )
+
+        let composedQuery = SetQuery(predicates: [.person("Anna"), .person("Ben"), .ratingAtLeast(4), .flag(.pick)])
+        XCTAssertEqual(try repository.allAssets(matching: composedQuery, limit: 10).map(\.id), [bothPicked.id])
+        XCTAssertEqual(try repository.assetCount(matching: composedQuery), 1)
+    }
+
+    func testDynamicSetWithPersonPredicatePersistsAndResolvesMembers() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-person-dynamic-set")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let confirmed = Asset.testAsset(id: AssetID(rawValue: "confirmed"), path: "/Volumes/NAS/Job/confirmed.jpg", rating: 0)
+        let other = Asset.testAsset(id: AssetID(rawValue: "other"), path: "/Volumes/NAS/Job/other.jpg", rating: 0)
+        try repository.upsert([confirmed, other])
+        try repository.upsertPerson(id: "person-maya", name: "Maya")
+        try repository.assignAssets([confirmed.id], toPersonID: "person-maya")
+
+        let set = AssetSet.dynamic(
+            id: AssetSetID(rawValue: "set-maya"),
+            name: "Maya",
+            query: SetQuery(predicates: [.person("Maya")])
+        )
+        try repository.upsert(set)
+
+        let loaded = try repository.assetSet(id: set.id)
+        XCTAssertEqual(loaded.membership, .dynamic(SetQuery(predicates: [.person("Maya")])))
+        XCTAssertEqual(try repository.assetIDs(matching: SetQuery(predicates: [.person("Maya")])), [confirmed.id])
+    }
+
     func testListsEvaluationKindSummariesWithDistinctAssetCounts() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-evaluation-kind-summary")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

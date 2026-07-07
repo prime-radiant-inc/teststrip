@@ -2444,6 +2444,14 @@ public final class AppModel {
         refreshPeopleFaceSuggestions()
     }
 
+    public func showPersonPhotos(named name: String) throws {
+        selectedAssetSetID = nil
+        clearLibraryQueryFilters()
+        librarySearchText = Self.librarySearchText(residualText: nil, predicates: [.person(name)])
+        selectedView = .grid
+        try reload()
+    }
+
     public func showPeopleFaceSuggestionPhotos(_ suggestion: PeopleFaceSuggestion) throws {
         try selectSidebarTarget(.allPhotographs)
         clearBatchSelection()
@@ -7256,6 +7264,8 @@ public final class AppModel {
             ActiveLibraryFilterRow(title: "\(label.rawValue.capitalized) Label")
         case .keyword(let keyword):
             ActiveLibraryFilterRow(title: "Keyword: \(keyword)")
+        case .person(let name):
+            ActiveLibraryFilterRow(title: "Person: \(name)")
         case .missingKeywords:
             ActiveLibraryFilterRow(title: "Needs Keywords", target: sidebarTarget(for: predicate))
         case .availability(let availability):
@@ -7685,6 +7695,8 @@ public final class AppModel {
             "color:\(label.rawValue)"
         case .keyword(let keyword):
             "keyword:\(searchFieldValue(keyword))"
+        case .person(let name):
+            "person:\(searchFieldValue(name))"
         case .missingKeywords:
             "needs keywords"
         case .availability(let availability):

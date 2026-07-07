@@ -7,6 +7,7 @@ public struct SetQuery: Codable, Equatable, Sendable {
         case flag(PickFlag)
         case colorLabel(ColorLabel)
         case keyword(String)
+        case person(String)
         case missingKeywords
         case availability(SourceAvailability)
         case folderPrefix(String)

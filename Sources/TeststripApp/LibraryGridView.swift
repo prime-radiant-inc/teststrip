@@ -381,6 +381,7 @@ struct LibraryGridView: View {
             .onSubmit {
                 applyLibraryFilters()
             }
+            .help(LibrarySearchIntent.searchFieldHelp)
             .accessibilityLabel("Top Search Catalog")
             Button {
                 applyLibraryFilters()
@@ -625,6 +626,7 @@ struct LibraryGridView: View {
             .onSubmit {
                 applyLibraryFilters()
             }
+            .help(LibrarySearchIntent.searchFieldHelp)
             .accessibilityLabel("Search catalog")
             Button {
                 applyLibraryFilters()
