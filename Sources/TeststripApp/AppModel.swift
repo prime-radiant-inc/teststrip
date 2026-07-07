@@ -6071,7 +6071,11 @@ public final class AppModel {
         guard importAutoEvaluationEnabled, workerSupervisor != nil else { return }
         let importedAssetIDs = result.importedAssets.map(\.id)
         guard !importedAssetIDs.isEmpty else { return }
-        pendingImportEvaluationAssetIDs = Set(importedAssetIDs)
+        // Union, not assignment: a prior import's assets may still be awaiting
+        // their preview-completion evaluations while this import finishes.
+        // requestEvaluation dedups against the live queue, so this cannot
+        // double-enqueue.
+        pendingImportEvaluationAssetIDs.formUnion(importedAssetIDs)
         enqueueImportEvaluationsForCachedPreviews(assetIDs: importedAssetIDs)
     }
 
