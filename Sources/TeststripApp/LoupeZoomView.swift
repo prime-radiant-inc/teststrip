@@ -1,4 +1,26 @@
 import CoreGraphics
+import TeststripCore
+
+/// Whether the loupe's 1:1 zoom is honestly sharp with what the preview
+/// cache holds right now, still waiting on an original-resolution render,
+/// or can never get one (original offline, render failed).
+public enum LoupeZoomFullResolutionStatus: Equatable, Sendable {
+    case satisfied
+    case loading
+    case unavailable
+}
+
+/// Decides when a 1:1 zoom needs an original-resolution render: whenever the
+/// best cached preview level cannot cover the asset's pixels, or the asset's
+/// pixel size is unknown so coverage cannot be proven.
+enum LoupeZoomRenderPolicy {
+    static func fullResolutionIsRequired(cachedLevel: PreviewLevel?, assetMaxPixelDimension: Int?) -> Bool {
+        guard let cachedLevel else { return true }
+        guard let cachedMaxPixelDimension = cachedLevel.maxPixelDimension else { return false }
+        guard let assetMaxPixelDimension else { return true }
+        return assetMaxPixelDimension > cachedMaxPixelDimension
+    }
+}
 
 /// Image-relative point (0...1 on each axis) the zoomed loupe viewport is
 /// centered on; (0.5, 0.5) is the image center. Nil zoom state means the
