@@ -26,6 +26,19 @@ final class FaceCropAvatarTests: XCTestCase {
         XCTAssertTrue(CGRect(x: 0, y: 0, width: 100, height: 100).contains(clamped))
     }
 
+    func testCropReloadKeyChangesWhenBoundingBoxChangesUnderSameURL() {
+        // Suggestion refreshes can promote a different face within the same
+        // representative asset: the preview URL stays identical while the
+        // bounding box moves, and the avatar must re-crop.
+        let url = URL(fileURLWithPath: "/tmp/preview.jpg")
+        let first = FaceCropAvatar.CropKey(url: url, box: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2))
+        let sameFace = FaceCropAvatar.CropKey(url: url, box: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2))
+        let movedFace = FaceCropAvatar.CropKey(url: url, box: FaceBoundingBox(x: 0.5, y: 0.5, width: 0.2, height: 0.2))
+
+        XCTAssertEqual(first, sameFace)
+        XCTAssertNotEqual(first, movedFace)
+    }
+
     func testDegenerateBoxFallsBackToFullImage() {
         XCTAssertEqual(
             FaceCropGeometry.pixelCropRect(

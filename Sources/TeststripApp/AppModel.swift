@@ -2332,6 +2332,7 @@ public final class AppModel {
         try catalog.repository.assignAssets(assetIDs, toPersonID: id)
         catalogPeople = try catalog.repository.people()
         refreshCatalogEvaluationKindSummaries()
+        refreshPeopleFaceSuggestions()
         try loadCatalogPage(preferredSelection: nil)
         guard let person = catalogPeople.first(where: { $0.id == id }) else {
             throw CatalogError.notFound(id)
@@ -2345,6 +2346,7 @@ public final class AppModel {
         }
         try catalog.repository.mergePerson(sourceID: sourceID, into: targetID)
         catalogPeople = try catalog.repository.people()
+        refreshPeopleFaceSuggestions()
     }
 
     public func dismissSelectedFaceReviewAssets() throws {
@@ -2358,6 +2360,7 @@ public final class AppModel {
         try catalog.repository.dismissFaceAssets(assetIDs)
         catalogPeople = try catalog.repository.people()
         refreshCatalogEvaluationKindSummaries()
+        refreshPeopleFaceSuggestions()
         try loadCatalogPage(preferredSelection: nil)
     }
 

@@ -5758,6 +5758,38 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
     }
 
+    func testMergePersonRefreshesFaceSuggestions() throws {
+        let (model, repository, incoming, _, _) = try makeFaceSuggestionModel(named: "app-model-merge-refreshes-suggestions")
+        try repository.upsertPerson(id: "person-robert", name: "Robert")
+        model.refreshPeopleFaceSuggestions()
+        XCTAssertNotNil(model.peopleFaceSuggestions.first { $0.id == "face-match-person-maya" })
+
+        try model.mergePerson(sourceID: "person-maya", into: "person-robert")
+
+        XCTAssertNil(model.peopleFaceSuggestions.first { $0.id == "face-match-person-maya" })
+        let refreshed = try XCTUnwrap(model.peopleFaceSuggestions.first { $0.id == "face-match-person-robert" })
+        XCTAssertEqual(refreshed.faceIDs, [FaceID(assetID: incoming.id, faceIndex: 0)])
+    }
+
+    func testConfirmingStaleSuggestionForMergedAwayPersonThrows() throws {
+        let (model, repository, _, _, _) = try makeFaceSuggestionModel(named: "app-model-merge-stale-confirm")
+        try repository.upsertPerson(id: "person-robert", name: "Robert")
+        model.refreshPeopleFaceSuggestions()
+        let stale = try XCTUnwrap(model.peopleFaceSuggestions.first { $0.id == "face-match-person-maya" })
+        try model.mergePerson(sourceID: "person-maya", into: "person-robert")
+
+        XCTAssertThrowsError(try model.confirmPeopleFaceSuggestion(stale)) { error in
+            XCTAssertEqual(error as? CatalogError, .notFound("person-maya"))
+        }
+        XCTAssertEqual(try repository.assetIDs(personID: "person-maya"), [])
+        XCTAssertNil(
+            try repository.confirmedFaceEmbeddingsByPerson(
+                provenance: AppleVisionEvaluationProvider.faceProvenance
+            )["person-maya"]
+        )
+        XCTAssertNotNil(model.peopleFaceSuggestions.first { $0.id == "face-match-person-robert" })
+    }
+
     func testDismissSuggestionRemovesItFromFutureSuggestions() throws {
         let (model, repository, _, _, _) = try makeFaceSuggestionModel(named: "app-model-face-dismiss")
         model.refreshPeopleFaceSuggestions()
@@ -5768,6 +5800,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
         XCTAssertEqual(try repository.people(), model.catalogPeople)
         XCTAssertEqual(try repository.assetIDs(personID: "person-lee"), [])
+    }
+
+    func testDismissSelectedFaceReviewAssetsRefreshesFaceSuggestions() throws {
+        let (model, _, incoming, _, _) = try makeFaceSuggestionModel(named: "app-model-dismiss-assets-refreshes-suggestions")
+        model.refreshPeopleFaceSuggestions()
+        XCTAssertNotNil(model.peopleFaceSuggestions.first { $0.id == "face-match-person-maya" })
+        model.selectedAssetID = incoming.id
+
+        try model.dismissSelectedFaceReviewAssets()
+
+        XCTAssertNil(model.peopleFaceSuggestions.first { $0.id == "face-match-person-maya" })
+        XCTAssertNotNil(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
+    }
+
+    func testConfirmSelectedAssetsAsPersonRefreshesFaceSuggestions() throws {
+        let (model, _, incoming, _, _) = try makeFaceSuggestionModel(named: "app-model-confirm-assets-refreshes-suggestions")
+        model.refreshPeopleFaceSuggestions()
+        XCTAssertNotNil(model.peopleFaceSuggestions.first { $0.id == "face-match-person-maya" })
+        model.selectedAssetID = incoming.id
+
+        try model.confirmSelectedAssetsAsPerson(named: "Ida", id: "person-ida")
+
+        XCTAssertNil(model.peopleFaceSuggestions.first { $0.id == "face-match-person-maya" })
+        XCTAssertNotNil(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
     }
 
     func testSelectingPeopleSidebarTargetRefreshesFaceSuggestions() throws {

@@ -1,6 +1,7 @@
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
+import Vision
 import XCTest
 @testable import TeststripCore
 
@@ -488,6 +489,24 @@ final class EvaluationProviderTests: XCTestCase {
                 provenance: AppleVisionEvaluationProvider.faceProvenance
             )
         ])
+    }
+
+    func testAppleVisionAnalyzerPinsFeaturePrintRevision() {
+        // Feature prints from different Vision revisions have different lengths
+        // and are not distance-comparable; an SDK default flip must never change
+        // the vectors stored under an unchanged provenance.
+        XCTAssertEqual(
+            AppleVisionAnalyzer.makeFeaturePrintRequest().revision,
+            VNGenerateImageFeaturePrintRequestRevision2
+        )
+        XCTAssertEqual(AppleVisionAnalyzer.featurePrintRevision, VNGenerateImageFeaturePrintRequestRevision2)
+    }
+
+    func testFaceProvenanceEncodesFeaturePrintRevision() {
+        XCTAssertEqual(
+            AppleVisionEvaluationProvider.faceProvenance.settingsHash,
+            "face-crop-pad-25-fp2"
+        )
     }
 
     func testAppleVisionAnalyzerProducesImageFeaturePrintVector() throws {

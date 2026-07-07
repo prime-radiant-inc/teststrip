@@ -179,11 +179,14 @@ public struct AppleVisionEvaluationProvider: EvaluationProvider {
 }
 
 extension AppleVisionEvaluationProvider: FaceObservationEvaluationProvider {
+    // The settings hash encodes the pinned feature-print revision so a
+    // deliberate revision bump self-segregates: embeddings of different
+    // dimensions can never mix under one provenance.
     public static let faceProvenance = ProviderProvenance(
         provider: "apple-vision",
         model: "Vision",
         version: "1",
-        settingsHash: "face-crop-pad-25"
+        settingsHash: "face-crop-pad-25-fp\(AppleVisionAnalyzer.featurePrintRevision)"
     )
 
     public var faceProvenance: ProviderProvenance {
@@ -211,6 +214,18 @@ extension AppleVisionEvaluationProvider: FaceObservationEvaluationProvider {
 public struct AppleVisionAnalyzer: AppleVisionAnalyzing {
     public static let faceCropPadding = 0.25
 
+    /// Pinned feature-print revision. Feature prints from different revisions
+    /// have different lengths and are not distance-comparable, so the revision
+    /// must never follow the SDK default: an Xcode/SDK update would otherwise
+    /// silently mix vector dimensions under one provenance.
+    public static let featurePrintRevision = VNGenerateImageFeaturePrintRequestRevision2
+
+    public static func makeFeaturePrintRequest() -> VNGenerateImageFeaturePrintRequest {
+        let request = VNGenerateImageFeaturePrintRequest()
+        request.revision = featurePrintRevision
+        return request
+    }
+
     public static func paddedRegionOfInterest(_ box: FaceBoundingBox, padding: Double = faceCropPadding) -> CGRect {
         guard box.width > 0, box.height > 0 else {
             return CGRect(x: 0, y: 0, width: 1, height: 1)
@@ -231,14 +246,14 @@ public struct AppleVisionAnalyzer: AppleVisionAnalyzing {
         textRequest.recognitionLevel = .fast
         textRequest.usesLanguageCorrection = false
         let classificationRequest = VNClassifyImageRequest()
-        let imageFeaturePrintRequest = VNGenerateImageFeaturePrintRequest()
+        let imageFeaturePrintRequest = Self.makeFeaturePrintRequest()
 
         let handler = VNImageRequestHandler(url: previewURL, options: [:])
         try handler.perform([faceQualityRequest, textRequest, classificationRequest, imageFeaturePrintRequest])
 
         let faceResults = faceQualityRequest.results ?? []
         let facePrintRequests = faceResults.map { observation -> VNGenerateImageFeaturePrintRequest in
-            let request = VNGenerateImageFeaturePrintRequest()
+            let request = Self.makeFeaturePrintRequest()
             request.regionOfInterest = Self.paddedRegionOfInterest(FaceBoundingBox(
                 x: Double(observation.boundingBox.origin.x),
                 y: Double(observation.boundingBox.origin.y),

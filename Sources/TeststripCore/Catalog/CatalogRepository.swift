@@ -496,6 +496,7 @@ public final class CatalogRepository {
         guard !assetIDs.isEmpty else { return }
         let now = "\(Date().timeIntervalSince1970)"
         try database.transaction {
+            try requirePerson(id: trimmedPersonID)
             for assetID in assetIDs {
                 try database.execute(
                     """
@@ -509,6 +510,15 @@ public final class CatalogRepository {
                     bindings: [assetID.rawValue]
                 )
             }
+        }
+    }
+
+    /// Fails writes that would link faces or assets to a person that no longer
+    /// exists, e.g. a stale suggestion confirmed after the person was merged away.
+    private func requirePerson(id: String) throws {
+        let rows = try database.rows("SELECT 1 FROM people WHERE id = ?", bindings: [id])
+        guard !rows.isEmpty else {
+            throw CatalogError.notFound(id)
         }
     }
 
@@ -601,6 +611,38 @@ public final class CatalogRepository {
     ) throws {
         let now = "\(Date().timeIntervalSince1970)"
         try database.transaction {
+            // person_faces/dismissed_faces reference faces by (asset_id, face_index) only,
+            // so a re-scan that changes the detected face set leaves them pointing at the
+            // wrong faces. Compare old and new detections and clear the asset's face links
+            // when they differ; the user re-confirms after the re-scan.
+            let previousRows = try database.rows(
+                """
+                SELECT face_index, face_json
+                FROM face_observations
+                WHERE asset_id = ? AND provider = ? AND model = ? AND version = ? AND settings_hash = ?
+                """,
+                bindings: [
+                    assetID.rawValue,
+                    provenance.provider,
+                    provenance.model,
+                    provenance.version,
+                    provenance.settingsHash
+                ]
+            )
+            var previousBoxes: [Int: FaceBoundingBox] = [:]
+            for row in previousRows {
+                guard let indexValue = row["face_index"],
+                      let index = Int(indexValue),
+                      let faceJSON = row["face_json"] else {
+                    throw CatalogError.sqlite("face observation row is missing required columns")
+                }
+                previousBoxes[index] = try decode(FaceObservationPayload.self, from: faceJSON).boundingBox
+            }
+            let newBoxes = Dictionary(uniqueKeysWithValues: observations.map { ($0.faceIndex, $0.boundingBox) })
+            if previousBoxes != newBoxes {
+                try database.execute("DELETE FROM person_faces WHERE asset_id = ?", bindings: [assetID.rawValue])
+                try database.execute("DELETE FROM dismissed_faces WHERE asset_id = ?", bindings: [assetID.rawValue])
+            }
             try database.execute(
                 """
                 DELETE FROM face_observations
@@ -753,6 +795,7 @@ public final class CatalogRepository {
         guard !faceIDs.isEmpty else { return }
         let now = "\(Date().timeIntervalSince1970)"
         try database.transaction {
+            try requirePerson(id: trimmedPersonID)
             for faceID in faceIDs {
                 try database.execute(
                     """

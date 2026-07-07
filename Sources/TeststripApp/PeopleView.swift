@@ -474,7 +474,7 @@ struct PeoplePresentation: Equatable {
         self.faceSignalKind = faceCountSignals > 0 ? .faceCount : (faceQualitySignals > 0 ? .faceQuality : nil)
         self.scanAction = canRequestCurrentScopeFaceScan ? PeopleScanAction(
             title: "Scan current scope",
-            detail: "Runs local Apple Vision on cached previews for the current catalog or search scope.",
+            detail: "Runs local Apple Vision on cached previews for the current catalog or search scope. If a photo's detected faces change, its confirmed and dismissed faces are cleared for re-review.",
             systemImage: "viewfinder"
         ) : nil
         self.faceSuggestions = faceSuggestions
