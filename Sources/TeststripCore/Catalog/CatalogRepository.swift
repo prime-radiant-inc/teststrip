@@ -366,6 +366,73 @@ public final class CatalogRepository {
         }
     }
 
+    public func placeClusters(bounds: GeoBounds?, cellSize: Double) throws -> [CatalogPlaceCluster] {
+        precondition(cellSize > 0, "cellSize must be positive")
+        var boundsClause = ""
+        var bindings: [String] = []
+        if let bounds {
+            boundsClause = """
+                AND \(Self.latitudeExpressionSQL) BETWEEN ? AND ?
+                AND \(Self.longitudeExpressionSQL) BETWEEN ? AND ?
+            """
+            bindings = [
+                "\(bounds.minLatitude)", "\(bounds.maxLatitude)",
+                "\(bounds.minLongitude)", "\(bounds.maxLongitude)"
+            ]
+        }
+        let cell = "\(cellSize)"
+        let rows = try database.rows(
+            """
+            WITH located AS (
+                SELECT \(Self.latitudeExpressionSQL) AS lat,
+                       \(Self.longitudeExpressionSQL) AS lon
+                FROM assets
+                WHERE json_valid(technical_metadata_json)
+                  AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
+                  AND json_type(technical_metadata_json, '$.longitude') IN ('integer', 'real')
+                  \(boundsClause)
+            )
+            SELECT
+                CAST(FLOOR(lat / \(cell)) AS INTEGER) AS lat_cell,
+                CAST(FLOOR(lon / \(cell)) AS INTEGER) AS lon_cell,
+                AVG(lat) AS lat_mean,
+                AVG(lon) AS lon_mean,
+                COUNT(*) AS asset_count
+            FROM located
+            GROUP BY lat_cell, lon_cell
+            """,
+            bindings: bindings
+        )
+        return try rows.map { row in
+            guard let latMean = row["lat_mean"].flatMap(Double.init),
+                  let lonMean = row["lon_mean"].flatMap(Double.init),
+                  let count = row["asset_count"].flatMap(Int.init) else {
+                throw CatalogError.sqlite("place cluster row is missing required columns")
+            }
+            return CatalogPlaceCluster(latitude: latMean, longitude: lonMean, assetCount: count)
+        }
+    }
+
+    public func geotaggedCoverage() throws -> CatalogGeotaggedCoverage {
+        let rows = try database.rows(
+            """
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE
+                    WHEN json_valid(technical_metadata_json)
+                     AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
+                    THEN 1 ELSE 0 END) AS geotagged
+            FROM assets
+            """
+        )
+        guard let row = rows.first,
+              let total = row["total"].flatMap(Int.init) else {
+            throw CatalogError.sqlite("coverage row is missing required columns")
+        }
+        let geotagged = row["geotagged"].flatMap(Int.init) ?? 0
+        return CatalogGeotaggedCoverage(geotaggedCount: geotagged, totalCount: total)
+    }
+
     public func recordSourceRoot(_ root: URL, securityScopedBookmarkData: Data? = nil) throws {
         let path = Self.normalizedDirectoryPath(root)
         let now = "\(Date().timeIntervalSince1970)"

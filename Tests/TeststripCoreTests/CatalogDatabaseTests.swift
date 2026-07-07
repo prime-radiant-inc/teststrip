@@ -169,6 +169,57 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertTrue(detail.contains("idx_assets_gps"), "expected the geo expression index, got: \(detail)")
     }
 
+    func testPlaceClustersBucketsCoordinatesByCell() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-place-clusters")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        func upsert(_ name: String, _ lat: Double, _ lon: Double) throws {
+            try repository.upsert(Asset.testAsset(
+                path: "/Volumes/NAS/\(name).cr2", rating: 0,
+                technicalMetadata: AssetTechnicalMetadata(
+                    pixelWidth: 1, pixelHeight: 1, latitude: lat, longitude: lon,
+                    provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+                )
+            ))
+        }
+        // Two frames in one 10-degree cell, one far away.
+        try upsert("a", 37.1, -122.1)
+        try upsert("b", 37.9, -122.9)
+        try upsert("c", -33.8, 151.2)
+        try repository.upsert(Asset.testAsset(path: "/Volumes/NAS/no-gps.cr2", rating: 0))
+
+        let clusters = try repository.placeClusters(bounds: nil, cellSize: 10.0)
+            .sorted { $0.assetCount > $1.assetCount }
+
+        XCTAssertEqual(clusters.count, 2)
+        XCTAssertEqual(clusters[0].assetCount, 2)
+        XCTAssertEqual(clusters[0].latitude, 37.5, accuracy: 0.001)   // mean of 37.1, 37.9
+        XCTAssertEqual(clusters[0].longitude, -122.5, accuracy: 0.001)
+        XCTAssertEqual(clusters[1].assetCount, 1)
+    }
+
+    func testGeotaggedCoverageCountsCoordinateBearingAssets() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-coverage")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        try repository.upsert(Asset.testAsset(
+            path: "/Volumes/NAS/geo.cr2", rating: 0,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 1, pixelHeight: 1, latitude: 1.0, longitude: 2.0,
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        ))
+        try repository.upsert(Asset.testAsset(path: "/Volumes/NAS/plain.cr2", rating: 0))
+
+        let coverage = try repository.geotaggedCoverage()
+        XCTAssertEqual(coverage.geotaggedCount, 1)
+        XCTAssertEqual(coverage.totalCount, 2)
+    }
+
     // Proves the audit's no-migration claim: `technical_metadata_json` is a JSON blob
     // decoded into AssetTechnicalMetadata, and the new aperture/shutterSpeed/focalLength
     // fields are optional, so a row written before this change (missing those keys
