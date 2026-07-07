@@ -129,21 +129,27 @@ final class LibraryGridChromeTests: XCTestCase {
             "Import Order",
             "Capture Time",
             "Capture Time",
+            "Rating",
+            "Rating",
             "Filename"
         ])
         XCTAssertEqual(options.map(\.subtitle), [
             "Oldest import first",
             "Newest first",
             "Oldest first",
+            "Highest first",
+            "Lowest first",
             "A to Z"
         ])
         XCTAssertEqual(options.map(\.option), [
             .importOrder,
             .captureTimeNewestFirst,
             .captureTimeOldestFirst,
+            .ratingHighestFirst,
+            .ratingLowestFirst,
             .filename
         ])
-        XCTAssertEqual(options.map(\.isSelected), [false, true, false, false])
+        XCTAssertEqual(options.map(\.isSelected), [false, true, false, false, false, false])
     }
 
     func testMetadataSyncFilterOptionMapsPendingAndConflictFlags() {

@@ -7784,6 +7784,8 @@ struct LibrarySortOptionPresentation: Equatable {
             return "Import Order"
         case .captureTimeNewestFirst, .captureTimeOldestFirst:
             return "Capture Time"
+        case .ratingHighestFirst, .ratingLowestFirst:
+            return "Rating"
         case .filename:
             return "Filename"
         }
@@ -7797,6 +7799,10 @@ struct LibrarySortOptionPresentation: Equatable {
             return "Newest first"
         case .captureTimeOldestFirst:
             return "Oldest first"
+        case .ratingHighestFirst:
+            return "Highest first"
+        case .ratingLowestFirst:
+            return "Lowest first"
         case .filename:
             return "A to Z"
         }

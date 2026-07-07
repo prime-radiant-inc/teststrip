@@ -231,6 +231,15 @@ public final class CatalogRepository {
         END
         """
 
+        let ratingSQL = """
+        CASE
+            WHEN json_valid(metadata_json)
+                AND json_type(metadata_json, '$.rating') IN ('integer', 'real')
+            THEN CAST(json_extract(metadata_json, '$.rating') AS INTEGER)
+            ELSE 0
+        END
+        """
+
         switch sort {
         case .importOrder:
             return "rowid ASC"
@@ -238,6 +247,10 @@ public final class CatalogRepository {
             return "\(validCapturedAtSQL) ASC, \(capturedAtSQL) DESC, LOWER(original_path) ASC, rowid ASC"
         case .captureTimeOldestFirst:
             return "\(validCapturedAtSQL) ASC, \(capturedAtSQL) ASC, LOWER(original_path) ASC, rowid ASC"
+        case .ratingHighestFirst:
+            return "\(ratingSQL) DESC, LOWER(original_path) ASC, rowid ASC"
+        case .ratingLowestFirst:
+            return "\(ratingSQL) ASC, LOWER(original_path) ASC, rowid ASC"
         case .filename:
             return "LOWER(original_path) ASC, rowid ASC"
         }

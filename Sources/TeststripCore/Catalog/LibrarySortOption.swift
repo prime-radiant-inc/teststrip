@@ -4,5 +4,7 @@ public enum LibrarySortOption: String, CaseIterable, Codable, Equatable, Sendabl
     case importOrder
     case captureTimeNewestFirst
     case captureTimeOldestFirst
+    case ratingHighestFirst
+    case ratingLowestFirst
     case filename
 }

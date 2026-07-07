@@ -650,6 +650,50 @@ final class CatalogDatabaseTests: XCTestCase {
         ])
     }
 
+    func testFetchesAllAssetsSortedByHighestRatingWithUnratedLast() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-rating-sort")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let topRatedLaterPath = Asset.testAsset(
+            id: AssetID(rawValue: "top-later-path"),
+            path: "/Volumes/NAS/Job/c.cr2",
+            rating: 5
+        )
+        let topRatedEarlierPath = Asset.testAsset(
+            id: AssetID(rawValue: "top-earlier-path"),
+            path: "/Volumes/NAS/Job/a.cr2",
+            rating: 5
+        )
+        let midRated = Asset.testAsset(
+            id: AssetID(rawValue: "mid"),
+            path: "/Volumes/NAS/Job/b.cr2",
+            rating: 3
+        )
+        let unrated = Asset.testAsset(
+            id: AssetID(rawValue: "unrated"),
+            path: "/Volumes/NAS/Job/z.cr2",
+            rating: 0
+        )
+        try repository.upsert([topRatedLaterPath, topRatedEarlierPath, midRated, unrated])
+
+        let highestFirst = try repository.allAssets(limit: 100, sort: .ratingHighestFirst)
+        XCTAssertEqual(highestFirst.map(\.id), [
+            topRatedEarlierPath.id,
+            topRatedLaterPath.id,
+            midRated.id,
+            unrated.id
+        ])
+
+        let lowestFirst = try repository.allAssets(limit: 100, sort: .ratingLowestFirst)
+        XCTAssertEqual(lowestFirst.map(\.id), [
+            unrated.id,
+            midRated.id,
+            topRatedEarlierPath.id,
+            topRatedLaterPath.id
+        ])
+    }
+
     func testFetchesFilteredAssetsUsingSelectedSortOrder() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-filtered-sort")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
