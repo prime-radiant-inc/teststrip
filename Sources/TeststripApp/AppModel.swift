@@ -6016,6 +6016,33 @@ public final class AppModel {
         syncBackgroundWorkQueueFromSupervisor()
     }
 
+    // Backfills coordinates for catalogs imported before GPS extraction shipped.
+    // Bounded and resumable: each batch re-reads only online originals still
+    // missing a latitude, and a completed batch re-dispatches until none remain,
+    // then hands the newly-read coordinates to the geocoding pipeline.
+    static let coordinateBackfillWorkItemID = WorkSessionID(rawValue: "coordinate-backfill")
+    static let coordinateBackfillBatchSize = 200
+
+    public func beginCoordinateBackfill() throws {
+        guard let catalog, let workerSupervisor else { return }
+        let assetIDs = try catalog.repository.assetsMissingCoordinates(limit: Self.coordinateBackfillBatchSize)
+        guard !assetIDs.isEmpty else { return }
+        if let existingItem = currentBackgroundWorkQueue.item(id: Self.coordinateBackfillWorkItemID),
+           Self.isActiveBackgroundWorkStatus(existingItem.status) {
+            return
+        }
+        let item = BackgroundWorkItem(
+            id: Self.coordinateBackfillWorkItemID,
+            kind: .locationBackfill,
+            title: "Reading locations",
+            detail: "Reading locations for existing photos",
+            completedUnitCount: 0,
+            totalUnitCount: assetIDs.count
+        )
+        try workerSupervisor.enqueue(item, command: .backfillCoordinates(assetIDs: assetIDs))
+        syncBackgroundWorkQueueFromSupervisor()
+    }
+
     private func enqueuePendingMetadataSync() throws {
         guard let catalog, workerSupervisor != nil else { return }
         var enqueuedCount = 0
@@ -6553,6 +6580,17 @@ public final class AppModel {
                     if selectedView == .map {
                         try refreshPlaceData()
                     }
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+            if itemID == Self.coordinateBackfillWorkItemID {
+                do {
+                    try loadCatalogPage(preferredSelection: selectedAssetID)
+                    try beginCoordinateBackfill()
+                    try enqueuePendingGeocoding()
+                    workerSupervisor?.pruneCompletedItems(kind: .locationBackfill, keepingLast: 1)
+                    syncBackgroundWorkQueueFromSupervisor()
                 } catch {
                     errorMessage = error.localizedDescription
                 }
@@ -10166,6 +10204,8 @@ public final class AppModel {
             return "Export"
         case .geocoding:
             return "Geocoding"
+        case .locationBackfill:
+            return "Reading locations"
         }
     }
 }

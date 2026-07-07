@@ -238,6 +238,8 @@ public struct WorkerCommandExecutor {
             return try runEvaluation(assetID: assetID, providerName: provider)
         case .reverseGeocodeBatch(let limit):
             return try reverseGeocodeBatch(limit: limit, progress: progress)
+        case .backfillCoordinates(let assetIDs):
+            return try backfillCoordinates(assetIDs: assetIDs, progress: progress)
         case .pause:
             return .accepted("pause")
         case .resume:
@@ -352,6 +354,39 @@ public struct WorkerCommandExecutor {
             ))
         }
         return .completed("reverse-geocoded \(resolvedCount) \(resolvedCount == 1 ? "location" : "locations")")
+    }
+
+    private func backfillCoordinates(
+        assetIDs: [AssetID],
+        progress: LibraryImportProgressHandler?
+    ) throws -> WorkerCommandResult {
+        var updatedCount = 0
+        for (index, assetID) in assetIDs.enumerated() {
+            try Task.checkCancellation()
+            // A missing asset, unavailable original, or decode failure is skipped
+            // (not fatal), matching refreshAvailabilityBatch's per-item resilience.
+            if var asset = try? repository.asset(id: assetID),
+               let reRead = importService.ingestService.reReadTechnicalMetadata(for: asset.originalURL),
+               let latitude = reRead.latitude {
+                if var technicalMetadata = asset.technicalMetadata {
+                    technicalMetadata.latitude = latitude
+                    technicalMetadata.longitude = reRead.longitude
+                    technicalMetadata.altitude = reRead.altitude
+                    asset.technicalMetadata = technicalMetadata
+                } else {
+                    asset.technicalMetadata = reRead
+                }
+                try repository.upsert(asset)
+                updatedCount += 1
+            }
+            let completedCount = index + 1
+            progress?(LibraryImportProgress(
+                completedUnitCount: completedCount,
+                totalUnitCount: assetIDs.count,
+                detail: "Read locations for \(completedCount) of \(assetIDs.count) photos"
+            ))
+        }
+        return .completed("read locations for \(updatedCount) \(updatedCount == 1 ? "photo" : "photos")")
     }
 
     private func runEvaluation(assetID: AssetID, providerName: String) throws -> WorkerCommandResult {

@@ -148,6 +148,18 @@ public enum WorkerProtocolEncoder {
                 itemID: itemID?.rawValue,
                 limit: limit
             )
+        case .backfillCoordinates(let assetIDs):
+            envelope = WorkerCommandEnvelope(
+                command: "backfillCoordinates",
+                assetID: nil,
+                level: nil,
+                provider: nil,
+                rootURL: nil,
+                sourceURL: nil,
+                destinationRootURL: nil,
+                itemID: itemID?.rawValue,
+                assetIDs: assetIDs.map(\.rawValue)
+            )
         case .pause:
             envelope = WorkerCommandEnvelope(command: "pause", assetID: nil, level: nil, provider: nil, rootURL: nil, sourceURL: nil, destinationRootURL: nil, itemID: itemID?.rawValue)
         case .resume:
@@ -266,6 +278,8 @@ public enum WorkerProtocolEncoder {
             command = .runEvaluation(assetID: assetID, provider: provider)
         case "reverseGeocodeBatch":
             command = .reverseGeocodeBatch(limit: try envelope.requiredLimit())
+        case "backfillCoordinates":
+            command = .backfillCoordinates(assetIDs: try envelope.requiredAssetIDs())
         case "pause":
             command = .pause
         case "resume":

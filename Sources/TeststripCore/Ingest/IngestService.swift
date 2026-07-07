@@ -446,6 +446,14 @@ public struct IngestService: Sendable {
         }
         return metadata.assetTechnicalMetadata
     }
+
+    /// Re-reads technical metadata (including GPS coordinates) from an online
+    /// original for the Task-10 backfill. Read-only; returns nil when the file
+    /// is unavailable or the decode fails, so a per-asset miss is skippable
+    /// rather than fatal.
+    public func reReadTechnicalMetadata(for url: URL) -> AssetTechnicalMetadata? {
+        technicalMetadata(for: url)
+    }
 }
 
 private struct ImportedSidecarSync {

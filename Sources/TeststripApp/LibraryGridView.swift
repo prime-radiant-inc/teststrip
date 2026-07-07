@@ -6707,6 +6707,13 @@ private struct PlacesWorkspaceView: View {
             Text(presentation.summaryText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if model.geotaggedCoverage.totalCount > model.geotaggedCoverage.geotaggedCount {
+                Button("Read locations for existing photos") {
+                    try? model.beginCoordinateBackfill()
+                }
+                .font(.caption)
+                .buttonStyle(.link)
+            }
             Text("TOP LOCATIONS")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)

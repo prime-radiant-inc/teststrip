@@ -329,6 +329,28 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(top.first?.assetCount, 2)
     }
 
+    func testAssetsMissingCoordinatesReturnsOnlineUngeotaggedAssets() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-missing-coords")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        let needs = Asset.testAsset(path: "/Volumes/NAS/needs.cr2", rating: 0)  // online, no coords
+        try repository.upsert(needs)
+        try repository.upsert(Asset.testAsset(
+            path: "/Volumes/NAS/has.cr2", rating: 0,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 1, pixelHeight: 1, latitude: 1, longitude: 2,
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )))  // already geotagged
+        var offline = Asset.testAsset(path: "/Volumes/CARD/off.cr2", rating: 0)
+        offline.availability = .offline
+        try repository.upsert(offline)
+
+        let ids = try repository.assetsMissingCoordinates(limit: 10)
+        XCTAssertEqual(ids, [needs.id])  // exactly the online, ungeotagged asset
+    }
+
     // Proves the audit's no-migration claim: `technical_metadata_json` is a JSON blob
     // decoded into AssetTechnicalMetadata, and the new aperture/shutterSpeed/focalLength
     // fields are optional, so a row written before this change (missing those keys

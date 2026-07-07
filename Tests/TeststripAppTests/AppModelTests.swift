@@ -15817,6 +15817,21 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(try transport.commands().filter(\.isReverseGeocodeBatch).isEmpty)
     }
 
+    func testBeginCoordinateBackfillDispatchesBackfillForOnlineUngeotaggedAssets() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-coordinate-backfill")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(geocodingPlainAsset(id: "needs"))  // online, no coordinates
+        try repository.upsert(geocodingLocatedAsset(id: "has", latitude: 1, longitude: 2))
+        let (model, transport) = makeGeocodingModel(directory: directory, repository: repository)
+
+        try model.beginCoordinateBackfill()
+
+        let backfillCommands = try transport.commands().filter(\.isBackfillCoordinates)
+        XCTAssertEqual(backfillCommands.count, 1)
+    }
+
     func testSelectingPlacesTargetEntersMapView() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-places-target")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -15905,6 +15920,11 @@ final class AppModelTests: XCTestCase {
 private extension WorkerCommand {
     var isReverseGeocodeBatch: Bool {
         if case .reverseGeocodeBatch = self { return true }
+        return false
+    }
+
+    var isBackfillCoordinates: Bool {
+        if case .backfillCoordinates = self { return true }
         return false
     }
 }

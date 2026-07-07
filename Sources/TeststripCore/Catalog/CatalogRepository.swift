@@ -571,6 +571,30 @@ public final class CatalogRepository {
         return count
     }
 
+    public func assetsMissingCoordinates(limit: Int) throws -> [AssetID] {
+        guard limit > 0 else { return [] }
+        let rows = try database.rows(
+            """
+            SELECT id
+            FROM assets
+            WHERE availability = ?
+              AND NOT (
+                json_valid(technical_metadata_json)
+                AND COALESCE(json_type(technical_metadata_json, '$.latitude'), 'null') IN ('integer', 'real')
+              )
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            bindings: [SourceAvailability.online.rawValue, "\(limit)"]
+        )
+        return try rows.map { row in
+            guard let id = row["id"] else {
+                throw CatalogError.sqlite("missing-coordinates row is missing id")
+            }
+            return AssetID(rawValue: id)
+        }
+    }
+
     public func topLocations(limit: Int) throws -> [CatalogTopLocation] {
         guard limit > 0 else { return [] }
         let rows = try database.rows(
