@@ -128,7 +128,7 @@ final class WorkerSupervisorTests: XCTestCase {
         var completedEvents: [WorkerEvent] = []
         supervisor.onCommandCompleted = { completedEvents.append($0) }
         let item = BackgroundWorkItem.testItem(id: "import")
-        let command = WorkerCommand.importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true))
+        let command = WorkerCommand.importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true), duplicateHandling: .importAll)
         let event = WorkerEvent.completedImport(
             itemID: item.id,
             message: "imported 1 photo from Photos",
@@ -162,7 +162,7 @@ final class WorkerSupervisorTests: XCTestCase {
             completedUnitCount: 0,
             totalUnitCount: nil
         )
-        try supervisor.enqueue(item, command: .importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true)))
+        try supervisor.enqueue(item, command: .importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true), duplicateHandling: .importAll))
 
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
             itemID: item.id,
@@ -197,7 +197,7 @@ final class WorkerSupervisorTests: XCTestCase {
             completedUnitCount: 0,
             totalUnitCount: nil
         )
-        try supervisor.enqueue(item, command: .importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true)))
+        try supervisor.enqueue(item, command: .importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true), duplicateHandling: .importAll))
 
         transport.emitOutputLine(try WorkerProtocolEncoder.encode(.progress(
             itemID: item.id,
@@ -507,7 +507,7 @@ final class WorkerSupervisorTests: XCTestCase {
         )
         let importItem = BackgroundWorkItem.testItem(id: "import")
         let previewItem = BackgroundWorkItem.testItem(id: "preview")
-        let importCommand = WorkerCommand.importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true))
+        let importCommand = WorkerCommand.importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true), duplicateHandling: .importAll)
         let previewCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
         try supervisor.enqueue(importItem, command: importCommand)
         try supervisor.enqueue(previewItem, command: previewCommand)
@@ -531,7 +531,7 @@ final class WorkerSupervisorTests: XCTestCase {
         let importItem = BackgroundWorkItem.testItem(id: "import")
         let previewItem = BackgroundWorkItem.testItem(id: "preview")
         let queuedItem = BackgroundWorkItem.testItem(id: "queued")
-        let importCommand = WorkerCommand.importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true))
+        let importCommand = WorkerCommand.importFolder(root: URL(fileURLWithPath: "/Photos", isDirectory: true), duplicateHandling: .importAll)
         let previewCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
         let queuedCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .grid)
         try supervisor.enqueue(importItem, command: importCommand)

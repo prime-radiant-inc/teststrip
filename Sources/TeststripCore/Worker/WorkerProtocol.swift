@@ -56,7 +56,7 @@ public enum WorkerProtocolEncoder {
         let envelope: WorkerCommandEnvelope
 
         switch command {
-        case .importFolder(let root):
+        case .importFolder(let root, let duplicateHandling):
             envelope = WorkerCommandEnvelope(
                 command: "importFolder",
                 assetID: nil,
@@ -65,9 +65,10 @@ public enum WorkerProtocolEncoder {
                 rootURL: root.path,
                 sourceURL: nil,
                 destinationRootURL: nil,
-                itemID: itemID?.rawValue
+                itemID: itemID?.rawValue,
+                duplicateHandling: duplicateHandling.rawValue
             )
-        case .importCard(let source, let destinationRoot, let destinationPolicy, let secondCopyDestination):
+        case .importCard(let source, let destinationRoot, let destinationPolicy, let secondCopyDestination, let duplicateHandling):
             envelope = WorkerCommandEnvelope(
                 command: "importCard",
                 assetID: nil,
@@ -78,7 +79,8 @@ public enum WorkerProtocolEncoder {
                 destinationRootURL: destinationRoot.path,
                 itemID: itemID?.rawValue,
                 destinationPolicy: destinationPolicy.rawValue,
-                secondCopyDestinationRootURL: secondCopyDestination?.path
+                secondCopyDestinationRootURL: secondCopyDestination?.path,
+                duplicateHandling: duplicateHandling.rawValue
             )
         case .generatePreview(let assetID, let level):
             envelope = WorkerCommandEnvelope(
@@ -230,13 +232,17 @@ public enum WorkerProtocolEncoder {
 
         switch envelope.command {
         case "importFolder":
-            command = .importFolder(root: try envelope.requiredRootURL())
+            command = .importFolder(
+                root: try envelope.requiredRootURL(),
+                duplicateHandling: try envelope.duplicateHandlingValue()
+            )
         case "importCard":
             command = .importCard(
                 source: try envelope.requiredSourceURL(),
                 destinationRoot: try envelope.requiredDestinationRootURL(),
                 destinationPolicy: try envelope.importDestinationPolicy(),
-                secondCopyDestination: envelope.secondCopyDestinationURL()
+                secondCopyDestination: envelope.secondCopyDestinationURL(),
+                duplicateHandling: try envelope.duplicateHandlingValue()
             )
         case "generatePreview":
             let assetID = try envelope.requiredAssetID()
@@ -322,6 +328,7 @@ public enum WorkerProtocolEncoder {
         var destinationPolicy: String? = nil
         var secondCopyDestinationRootURL: String? = nil
         var assetIDs: [String]? = nil
+        var duplicateHandling: String? = nil
 
         func requiredAssetID() throws -> AssetID {
             AssetID(rawValue: try requiredField(assetID, key: .assetID))
@@ -377,6 +384,23 @@ public enum WorkerProtocolEncoder {
 
         func secondCopyDestinationURL() -> URL? {
             secondCopyDestinationRootURL.map { URL(fileURLWithPath: $0, isDirectory: true) }
+        }
+
+        // Commands queued before dedup existed carry no handling; they predate
+        // content hashing, so import-all preserves their original behavior.
+        func duplicateHandlingValue() throws -> DuplicateHandling {
+            guard let duplicateHandling else {
+                return .importAll
+            }
+            guard let handling = DuplicateHandling(rawValue: duplicateHandling) else {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.duplicateHandling],
+                        debugDescription: "Unknown duplicate handling: \(duplicateHandling)"
+                    )
+                )
+            }
+            return handling
         }
 
         private func requiredField(_ value: String?, key: CodingKeys) throws -> String {

@@ -11876,7 +11876,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(importItem.kind, .ingest)
         XCTAssertEqual(importItem.title, "Import photos")
         XCTAssertEqual(importItem.detail, "Importing from photos")
-        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder)])
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)])
 
         let importedAsset = Asset(
             id: AssetID(rawValue: "worker-imported"),
@@ -11908,7 +11908,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(activity.status, .completed)
         XCTAssertEqual(activity.detail, "Imported 1 photo from photos")
         XCTAssertEqual(try transport.commands(), [
-            .importFolder(root: photoFolder),
+            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent),
             .generatePreview(assetID: importedAsset.id, level: .micro)
         ])
     }
@@ -12468,7 +12468,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.errorMessage, "Another import is already running")
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
-        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder)])
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)])
     }
 
     @MainActor
@@ -12494,7 +12494,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.errorMessage, "Another import is already running")
         XCTAssertEqual(model.backgroundWorkQueue.runningItems.count, 1)
-        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder)])
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)])
     }
 
     @MainActor
@@ -12527,7 +12527,7 @@ final class AppModelTests: XCTestCase {
         scheduler.fireScheduledActions()
 
         XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind == .ingest }.count, 1)
-        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder)])
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)])
     }
 
     @MainActor
@@ -12565,7 +12565,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, _ in
+            importTaskFactory: { _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -12599,7 +12599,7 @@ final class AppModelTests: XCTestCase {
         let importTask = RecordingCall()
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, _ in
+            importTaskFactory: { _, _, _, _ in
                 importTask.call()
                 return Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -12726,7 +12726,7 @@ final class AppModelTests: XCTestCase {
         let importTask = RecordingCall()
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, _ in
+            importTaskFactory: { _, _, _, _ in
                 importTask.call()
                 return Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -12770,7 +12770,7 @@ final class AppModelTests: XCTestCase {
         let importTask = RecordingCall()
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _, _ in
                 importTask.call()
                 return Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -13035,7 +13035,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -13096,7 +13096,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -13133,7 +13133,7 @@ final class AppModelTests: XCTestCase {
         let recorder = CardImportRequestRecorder()
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, destinationPolicy, secondCopyDestination, _ in
+            cardImportTaskFactory: { _, _, _, destinationPolicy, secondCopyDestination, _, _ in
                 recorder.record(destinationPolicy: destinationPolicy, secondCopyDestination: secondCopyDestination)
                 return Task {
                     AppImportOutput(
@@ -13185,7 +13185,8 @@ final class AppModelTests: XCTestCase {
             source: source,
             destinationRoot: destinationRoot,
             destinationPolicy: .capturedDate,
-            secondCopyDestination: secondCopy
+            secondCopyDestination: secondCopy,
+            duplicateHandling: .skipCatalogedContent
         )])
     }
 
@@ -13202,7 +13203,7 @@ final class AppModelTests: XCTestCase {
         let importTask = RecordingCall()
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _, _ in
                 importTask.call()
                 return Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -13242,7 +13243,7 @@ final class AppModelTests: XCTestCase {
         let importTask = RecordingCall()
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _, _ in
                 importTask.call()
                 return Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
@@ -13306,7 +13307,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -13645,7 +13646,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.items.first?.status, .cancelled)
         XCTAssertEqual(model.statusMessage, "Cancelled import")
         XCTAssertEqual(try transport.commands(), [
-            .importFolder(root: photoFolder),
+            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent),
             .cancelAll
         ])
 
@@ -13687,7 +13688,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.backgroundWorkQueue.item(id: previewItem.id)?.status, .running)
         XCTAssertEqual(model.statusMessage, "Cancelled import")
         XCTAssertEqual(try transport.commands(), [
-            .importFolder(root: photoFolder),
+            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent),
             .cancelAll,
             previewCommand
         ])
@@ -13724,7 +13725,8 @@ final class AppModelTests: XCTestCase {
             source: source,
             destinationRoot: destinationRoot,
             destinationPolicy: .flat,
-            secondCopyDestination: nil
+            secondCopyDestination: nil,
+            duplicateHandling: .skipCatalogedContent
         )])
 
         let destinationImage = destinationRoot.appendingPathComponent("one.png")
@@ -13820,7 +13822,7 @@ final class AppModelTests: XCTestCase {
         )
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { paths, _, _ in
+            importTaskFactory: { paths, _, _, _ in
                 Task.detached {
                     let backgroundCatalog = try AppCatalog.open(paths: paths)
                     try backgroundCatalog.repository.upsert(importedAsset)
@@ -13873,7 +13875,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, _ in
+            importTaskFactory: { _, _, _, _ in
                 Task {
                     AppImportOutput(
                         result: LibraryImportResult(
@@ -14511,7 +14513,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, _ in
+            importTaskFactory: { _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -14545,7 +14547,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, _ in
+            importTaskFactory: { _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -14583,7 +14585,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            cardImportTaskFactory: { _, _, _, _, _, _ in
+            cardImportTaskFactory: { _, _, _, _, _, _, _ in
                 Task {
                     try await Task.sleep(nanoseconds: 5_000_000_000)
                     return AppImportOutput(
@@ -14617,7 +14619,7 @@ final class AppModelTests: XCTestCase {
         let catalog = try AppCatalog.open(paths: paths)
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { _, _, progress in
+            importTaskFactory: { _, _, _, progress in
                 Task {
                     progress(LibraryImportProgress(
                         completedUnitCount: 1,
@@ -14665,7 +14667,7 @@ final class AppModelTests: XCTestCase {
         )
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { paths, _, progress in
+            importTaskFactory: { paths, _, _, progress in
                 Task.detached {
                     let backgroundCatalog = try AppCatalog.open(paths: paths)
                     try backgroundCatalog.repository.upsert(importedAsset)
@@ -14725,7 +14727,7 @@ final class AppModelTests: XCTestCase {
         )
         let model = try AppModel.load(
             catalog: catalog,
-            importTaskFactory: { paths, _, progress in
+            importTaskFactory: { paths, _, _, progress in
                 Task.detached {
                     let backgroundCatalog = try AppCatalog.open(paths: paths)
                     try backgroundCatalog.repository.upsert(firstAsset)

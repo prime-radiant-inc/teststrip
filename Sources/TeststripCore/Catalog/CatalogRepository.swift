@@ -41,8 +41,8 @@ public final class CatalogRepository {
         let metadataJSON = try encode(asset.metadata)
         try database.execute(
             """
-            INSERT INTO assets (id, original_path, volume_identifier, fingerprint_json, availability, metadata_json, technical_metadata_json, catalog_generation, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+            INSERT INTO assets (id, original_path, volume_identifier, fingerprint_json, availability, metadata_json, technical_metadata_json, content_hash, catalog_generation, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 original_path = excluded.original_path,
                 volume_identifier = excluded.volume_identifier,
@@ -50,6 +50,7 @@ public final class CatalogRepository {
                 availability = excluded.availability,
                 metadata_json = excluded.metadata_json,
                 technical_metadata_json = excluded.technical_metadata_json,
+                content_hash = excluded.content_hash,
                 catalog_generation = CASE
                     WHEN assets.metadata_json = excluded.metadata_json OR ? = '1' THEN assets.catalog_generation
                     ELSE assets.catalog_generation + 1
@@ -64,6 +65,7 @@ public final class CatalogRepository {
                 asset.availability.rawValue,
                 metadataJSON,
                 try asset.technicalMetadata.map(encode) ?? "",
+                asset.fingerprint.contentHash ?? "",
                 now,
                 now,
                 try storedMetadataMatchesSemantically(asset.metadata, encodedMetadata: metadataJSON, assetID: asset.id) ? "1" : "0"
@@ -120,6 +122,33 @@ public final class CatalogRepository {
             bindings: [originalURL.path]
         )
         return try rows.first.map(decodeAsset)
+    }
+
+    /// The first cataloged asset whose content matches `contentHash`, regardless
+    /// of where it lives — the basis for recognizing a photo already in the
+    /// library when it arrives again under a different name or folder. An empty
+    /// hash means "no identity recorded" and never matches.
+    public func asset(contentHash: String) throws -> Asset? {
+        guard !contentHash.isEmpty else { return nil }
+        let rows = try database.rows(
+            "SELECT * FROM assets WHERE content_hash = ? LIMIT 1",
+            bindings: [contentHash]
+        )
+        return try rows.first.map(decodeAsset)
+    }
+
+    /// The subset of `hashes` that already exist in the catalog, for counting
+    /// how many source files an import would recognize as already present
+    /// without decoding each candidate asset.
+    public func containedContentHashes(_ hashes: Set<String>) throws -> Set<String> {
+        let queryHashes = hashes.filter { !$0.isEmpty }
+        guard !queryHashes.isEmpty else { return [] }
+        let placeholders = Array(repeating: "?", count: queryHashes.count).joined(separator: ", ")
+        let rows = try database.rows(
+            "SELECT DISTINCT content_hash FROM assets WHERE content_hash IN (\(placeholders))",
+            bindings: Array(queryHashes)
+        )
+        return Set(rows.compactMap { $0["content_hash"] }.filter { !$0.isEmpty })
     }
 
     public func allAssets(limit: Int, offset: Int = 0, sort: LibrarySortOption = .importOrder) throws -> [Asset] {

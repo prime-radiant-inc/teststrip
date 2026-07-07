@@ -304,7 +304,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
 
-        let result = try executor.execute(.importFolder(root: sourceRoot))
+        let result = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll))
 
         let imported = try repository.allAssets(limit: 10)
         let asset = try XCTUnwrap(imported.first)
@@ -336,7 +336,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
 
-        let result = try executor.execute(.importFolder(root: sourceRoot))
+        let result = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll))
 
         let imported = try repository.allAssets(limit: 10)
         let asset = try XCTUnwrap(imported.first)
@@ -363,13 +363,13 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let repository = CatalogRepository(database: database)
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
-        let firstResult = try executor.execute(.importFolder(root: sourceRoot))
+        let firstResult = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll))
         guard case .completedImport(_, let importedAssetIDs, 1, 0, 0, []) = firstResult else {
             XCTFail("expected first import to report one new asset")
             return
         }
 
-        let secondResult = try executor.execute(.importFolder(root: sourceRoot))
+        let secondResult = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll))
 
         XCTAssertEqual(secondResult, .completedImport(
             "imported 1 photo from photos",
@@ -395,7 +395,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
 
-        let result = try executor.execute(.importFolder(root: sourceRoot)) { progress in
+        let result = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll)) { progress in
             if progress.detail == "Cataloging 2 photos" {
                 try? FileManager.default.removeItem(at: disappearing)
             }
@@ -432,7 +432,7 @@ final class WorkerCommandExecutorTests: XCTestCase {
         let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
         let recorder = ImportProgressRecorder()
 
-        _ = try executor.execute(.importFolder(root: sourceRoot), progress: recorder.append)
+        _ = try executor.execute(.importFolder(root: sourceRoot, duplicateHandling: .importAll), progress: recorder.append)
 
         let updates = recorder.values()
         XCTAssertTrue(updates.contains(LibraryImportProgress(
@@ -470,7 +470,8 @@ final class WorkerCommandExecutorTests: XCTestCase {
             source: sourceRoot,
             destinationRoot: destinationRoot,
             destinationPolicy: .flat,
-            secondCopyDestination: nil
+            secondCopyDestination: nil,
+            duplicateHandling: .importAll
         ))
 
         let destination = destinationRoot.appendingPathComponent("source.jpg")
@@ -525,7 +526,8 @@ final class WorkerCommandExecutorTests: XCTestCase {
             source: sourceRoot,
             destinationRoot: destinationRoot,
             destinationPolicy: .capturedDate,
-            secondCopyDestination: secondCopyRoot
+            secondCopyDestination: secondCopyRoot,
+            duplicateHandling: .importAll
         ))
 
         let destination = destinationRoot
