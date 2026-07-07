@@ -122,17 +122,62 @@ public struct ExportService: Sendable {
         return results
     }
 
+    /// Returns the byte count of what exporting `sourceURL` at `settings`
+    /// would produce, without writing anything to disk. Used by
+    /// `ExportSizeEstimator` to sample a few representative assets and
+    /// extrapolate a total-size estimate before the user commits to export.
+    public func estimatedEncodedByteCount(for sourceURL: URL, settings: ExportSettings) -> Int64? {
+        guard case .ready(let image, let destinationProperties) = decodeThumbnail(from: sourceURL, settings: settings) else {
+            return nil
+        }
+        return encodedData(image: image, settings: settings, destinationProperties: destinationProperties).map { Int64($0.count) }
+    }
+
     private func exportOutcome(
         sourceURL: URL,
         settings: ExportSettings,
         destinationDirectory: URL,
         claimedFilenames: inout Set<String>
     ) -> ExportOutcome {
-        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+        switch decodeThumbnail(from: sourceURL, settings: settings) {
+        case .unavailable:
             return .skippedUnavailable
+        case .unreadable:
+            return .failed(message: "could not read \(sourceURL.lastPathComponent)")
+        case .undecodable:
+            return .failed(message: "could not decode \(sourceURL.lastPathComponent)")
+        case .ready(let image, let destinationProperties):
+            let destinationURL = availableDestinationURL(
+                for: sourceURL,
+                destinationDirectory: destinationDirectory,
+                format: settings.format,
+                claimedFilenames: &claimedFilenames
+            )
+            guard let data = encodedData(image: image, settings: settings, destinationProperties: destinationProperties) else {
+                return .failed(message: "could not create \(destinationURL.lastPathComponent)")
+            }
+            do {
+                try data.write(to: destinationURL)
+            } catch {
+                return .failed(message: "could not write \(destinationURL.lastPathComponent): \(error.localizedDescription)")
+            }
+            return .exported(destinationURL: destinationURL)
+        }
+    }
+
+    private enum DecodedThumbnail {
+        case unavailable
+        case unreadable
+        case undecodable
+        case ready(image: CGImage, destinationProperties: [CFString: Any])
+    }
+
+    private func decodeThumbnail(from sourceURL: URL, settings: ExportSettings) -> DecodedThumbnail {
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+            return .unavailable
         }
         guard let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil) else {
-            return .failed(message: "could not read \(sourceURL.lastPathComponent)")
+            return .unreadable
         }
         var thumbnailOptions: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -142,37 +187,33 @@ public struct ExportService: Sendable {
             thumbnailOptions[kCGImageSourceThumbnailMaxPixelSize] = longEdgeMaximumPixels
         }
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary) else {
-            return .failed(message: "could not decode \(sourceURL.lastPathComponent)")
+            return .undecodable
         }
-        let destinationURL = availableDestinationURL(
-            for: sourceURL,
-            destinationDirectory: destinationDirectory,
-            format: settings.format,
-            claimedFilenames: &claimedFilenames
-        )
         let destinationProperties: [CFString: Any] = settings.includeSourceMetadata
             ? carriedSourceProperties(from: source)
             : [:]
+        return .ready(image: image, destinationProperties: destinationProperties)
+    }
+
+    private func encodedData(image: CGImage, settings: ExportSettings, destinationProperties: [CFString: Any]) -> Data? {
         switch settings.format {
         case .jpeg:
-            guard let data = jpegData(for: image, settings: settings, destinationProperties: destinationProperties) else {
-                return .failed(message: "could not write \(destinationURL.lastPathComponent)")
-            }
-            do {
-                try data.write(to: destinationURL)
-            } catch {
-                return .failed(message: "could not write \(destinationURL.lastPathComponent): \(error.localizedDescription)")
-            }
+            return jpegData(for: image, settings: settings, destinationProperties: destinationProperties)
         case .png:
-            guard let destination = CGImageDestinationCreateWithURL(destinationURL as CFURL, ExportFormat.png.utType.identifier as CFString, 1, nil) else {
-                return .failed(message: "could not create \(destinationURL.lastPathComponent)")
-            }
-            CGImageDestinationAddImage(destination, image, destinationProperties as CFDictionary)
-            guard CGImageDestinationFinalize(destination) else {
-                return .failed(message: "could not write \(destinationURL.lastPathComponent)")
-            }
+            return encodedPNGData(image: image, properties: destinationProperties)
         }
-        return .exported(destinationURL: destinationURL)
+    }
+
+    private func encodedPNGData(image: CGImage, properties: [CFString: Any]) -> Data? {
+        let mutableData = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(mutableData, ExportFormat.png.utType.identifier as CFString, 1, nil) else {
+            return nil
+        }
+        CGImageDestinationAddImage(destination, image, properties as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else {
+            return nil
+        }
+        return mutableData as Data
     }
 
     /// Encodes a JPEG at `settings.jpegQuality`, then — only when
