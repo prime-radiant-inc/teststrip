@@ -105,21 +105,38 @@ public struct IngestService: Sendable {
                         catalogGeneration = 1
                         lastSynced = nil
                     }
-                    let decision = try MetadataSyncPlanner().decision(
-                        catalogMetadata: metadata,
-                        catalogGeneration: catalogGeneration,
-                        lastSynced: lastSynced,
-                        sidecarData: sidecarData,
-                        sidecarModificationDate: sidecarModificationDate
-                    )
-                    if case .importSidecar(let sidecarMetadata) = decision {
-                        metadata = sidecarMetadata
-                        importedSidecars.append(ImportedSidecarSync(
-                            assetID: assetID,
-                            sidecarURL: sidecarURL,
-                            sidecarData: sidecarData
-                        ))
-                    } else if case .conflict = decision {
+                    do {
+                        let decision = try MetadataSyncPlanner().decision(
+                            catalogMetadata: metadata,
+                            catalogGeneration: catalogGeneration,
+                            lastSynced: lastSynced,
+                            sidecarData: sidecarData,
+                            sidecarModificationDate: sidecarModificationDate
+                        )
+                        if case .importSidecar(let sidecarMetadata) = decision {
+                            metadata = sidecarMetadata
+                            importedSidecars.append(ImportedSidecarSync(
+                                assetID: assetID,
+                                sidecarURL: sidecarURL,
+                                sidecarData: sidecarData
+                            ))
+                        } else if case .conflict = decision {
+                            sidecarConflicts.append(SidecarSyncConflict(
+                                assetID: assetID,
+                                sidecarURL: sidecarURL,
+                                catalogGeneration: catalogGeneration,
+                                lastSyncedFingerprint: try repository.lastMetadataSyncFingerprint(assetID: assetID)
+                            ))
+                        }
+                    } catch {
+                        // An unparsable sidecar must not abort the whole
+                        // import: catalog the asset with its catalog metadata
+                        // and route the sidecar into XMP Conflicts review,
+                        // mirroring the worker sync path. Unrelated failures
+                        // keep their current handling.
+                        guard (try? XMPPacket.parse(sidecarData)) == nil else {
+                            throw error
+                        }
                         sidecarConflicts.append(SidecarSyncConflict(
                             assetID: assetID,
                             sidecarURL: sidecarURL,

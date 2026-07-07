@@ -1,5 +1,5 @@
 import XCTest
-import TeststripCore
+@testable import TeststripCore
 
 final class WorkerCommandExecutorTests: XCTestCase {
     func testGeneratePreviewCommandRendersRequestedPreviewFromCatalogAsset() throws {
@@ -805,6 +805,111 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata, catalogMetadata)
         XCTAssertEqual(try Data(contentsOf: setup.sidecarURL), foreignSidecarData)
         XCTAssertEqual(try setup.repository.metadataSyncConflictItems().map(\.assetID), [setup.asset.id])
+    }
+
+    func testSyncMetadataCommandPreservesConflictWhenUnreadableSidecarBecomesParsable() throws {
+        let catalogMetadata = AssetMetadata(rating: 4, keywords: ["catalog"])
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-conflict-sidecar-becomes-parsable", metadata: catalogMetadata)
+        let foreignSidecarData = Data("""
+        <xmpmeta xmlns="https://teststrip.app/xmp">
+          <rating>2</rating>
+        </xmpmeta>
+        """.utf8)
+        try foreignSidecarData.write(to: setup.sidecarURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 100)],
+            ofItemAtPath: setup.sidecarURL.path
+        )
+        try setup.repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: setup.asset.id,
+            sidecarURL: setup.sidecarURL,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id),
+            lastSyncedFingerprint: nil
+        ))
+        XCTAssertEqual(
+            try setup.executor.execute(.syncMetadata(assetID: setup.asset.id)),
+            .completed("metadata conflict for asset.raw")
+        )
+        // An external tool later re-saves the sidecar as valid XMP carrying its
+        // stale metadata; a routine sync check must not import it over the
+        // user's pending catalog edit without offering the conflict choice.
+        try XMPPacket(metadata: AssetMetadata(rating: 2)).xmlData().write(to: setup.sidecarURL)
+
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("metadata conflict for asset.raw"))
+        XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata, catalogMetadata)
+        XCTAssertEqual(try setup.repository.metadataSyncConflictItems().map(\.assetID), [setup.asset.id])
+        XCTAssertNil(try setup.repository.lastMetadataSyncFingerprint(assetID: setup.asset.id))
+    }
+
+    func testSyncMetadataCommandPreservesRecordedConflictAcrossSubsequentSyncChecks() throws {
+        let initialMetadata = AssetMetadata(rating: 2)
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-conflict-repeat-check", metadata: initialMetadata)
+        let initialWrite = try XMPSidecarStore().write(metadata: initialMetadata, forOriginalAt: setup.asset.originalURL)
+        try setup.repository.markMetadataSynced(
+            assetID: setup.asset.id,
+            sidecarURL: initialWrite.sidecarURL,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id),
+            fingerprint: initialWrite.fingerprint
+        )
+        try setup.repository.updateMetadata(assetID: setup.asset.id) { metadata in
+            metadata.rating = 4
+        }
+        let sidecarMetadata = AssetMetadata(rating: 5)
+        try XMPPacket(metadata: sidecarMetadata).xmlData().write(to: setup.sidecarURL)
+        XCTAssertEqual(
+            try setup.executor.execute(.syncMetadata(assetID: setup.asset.id)),
+            .completed("metadata conflict for asset.raw")
+        )
+
+        // Selecting the photo again re-runs the sync check; the recorded
+        // conflict must survive instead of being auto-resolved by importing
+        // the sidecar over the user's catalog edit.
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("metadata conflict for asset.raw"))
+        XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata.rating, 4)
+        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: setup.sidecarURL)).metadata, sidecarMetadata)
+        XCTAssertEqual(try setup.repository.metadataSyncConflictItems().map(\.assetID), [setup.asset.id])
+    }
+
+    func testUnreadableSidecarConflictGuardSkipsConflictWhenSnapshotIsStale() throws {
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-torn-sidecar-read", metadata: AssetMetadata(rating: 4))
+        // A Finder/SMB copy or non-atomic saver can be mid-write when the
+        // sync check snapshots the sidecar: the snapshot fails to parse, but
+        // the file on disk finishes and parses fine moments later. The guard
+        // must not record a durable conflict from the torn snapshot.
+        let tornSnapshot = Data("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf".utf8)
+        try XMPPacket(metadata: AssetMetadata(rating: 2)).xmlData().write(to: setup.sidecarURL)
+
+        let result = try setup.executor.recordConflictForUnreadableSidecar(
+            assetID: setup.asset.id,
+            assetName: "asset.raw",
+            sidecarURL: setup.sidecarURL,
+            sidecarData: tornSnapshot,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id)
+        )
+
+        XCTAssertNil(result)
+        XCTAssertEqual(try setup.repository.metadataSyncConflictItems(), [])
+    }
+
+    func testUnreadableSidecarConflictGuardSkipsConflictWhileSidecarIsStillChanging() throws {
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-changing-sidecar-read", metadata: AssetMetadata(rating: 4))
+        let tornSnapshot = Data("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf".utf8)
+        try Data("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xml".utf8).write(to: setup.sidecarURL)
+
+        let result = try setup.executor.recordConflictForUnreadableSidecar(
+            assetID: setup.asset.id,
+            assetName: "asset.raw",
+            sidecarURL: setup.sidecarURL,
+            sidecarData: tornSnapshot,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id)
+        )
+
+        XCTAssertNil(result)
+        XCTAssertEqual(try setup.repository.metadataSyncConflictItems(), [])
     }
 
     func testRunEvaluationPersistsSignalsFromNamedProviderUsingCachedPreview() throws {
