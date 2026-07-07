@@ -1002,6 +1002,36 @@ public struct RejectRelocationPreflight: Equatable, Sendable {
     }
 }
 
+public struct RejectRelocationSummary: Equatable, Identifiable, Sendable {
+    public var sessionID: WorkSessionID
+    public var movedCount: Int
+    public var sidecarCount: Int
+    public var skippedCount: Int
+    public var destinationFolder: URL
+
+    public init(
+        sessionID: WorkSessionID,
+        movedCount: Int,
+        sidecarCount: Int,
+        skippedCount: Int,
+        destinationFolder: URL
+    ) {
+        self.sessionID = sessionID
+        self.movedCount = movedCount
+        self.sidecarCount = sidecarCount
+        self.skippedCount = skippedCount
+        self.destinationFolder = destinationFolder
+    }
+
+    public var id: String { sessionID.rawValue }
+
+    public var detailText: String {
+        let movedText = "Moved \(movedCount) reject \(movedCount == 1 ? "photo" : "photos") to \(destinationFolder.lastPathComponent)"
+        guard skippedCount > 0 else { return movedText }
+        return "\(movedText) · \(skippedCount) skipped"
+    }
+}
+
 public struct KeywordSuggestion: Identifiable, Equatable, Sendable {
     public var keyword: String
     public var sourceKind: EvaluationKind
@@ -1310,6 +1340,9 @@ public final class AppModel {
     public var workHistorySearchResults: [AppWorkActivity]
     public var lastCullingMetadataDecision: CullingMetadataDecisionFeedback?
     public private(set) var cullingSessionCompletion: CullingSessionCompletionSummary?
+    public private(set) var rejectRelocationSummary: RejectRelocationSummary?
+    public private(set) var isRelocatingRejects = false
+    private var rejectRelocationAbortRequested = false
     // Tracks which stack-cull sessions came from beginStackCullingFromLatestImportCompletion()
     // and which import they scoped, so completion can offer to cull the
     // import's unstacked singles afterward. In-memory only; not persisted.
@@ -8193,6 +8226,125 @@ public final class AppModel {
     private static func fileByteCount(at url: URL) -> Int64 {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return 0 }
         return (attributes[.size] as? NSNumber)?.int64Value ?? 0
+    }
+
+    @discardableResult
+    public func moveRejectsToFolder(_ preflight: RejectRelocationPreflight) throws -> RejectRelocationSummary {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard !isRelocatingRejects else {
+            throw TeststripError.invalidState("a relocation is already running")
+        }
+        isRelocatingRejects = true
+        rejectRelocationAbortRequested = false
+        defer { isRelocatingRejects = false }
+
+        let sessionID = WorkSessionID(rawValue: "relocation-\(UUID().uuidString)")
+        let service = RejectRelocationService()
+        // Persist a running session before the loop so a crash still leaves an
+        // Activity row and a partial, reversible manifest.
+        try catalog.repository.save(Self.relocationWorkSession(
+            id: sessionID,
+            status: .running,
+            destinationFolder: preflight.destinationFolder,
+            movedCount: 0,
+            skippedCount: 0,
+            issues: []
+        ))
+
+        var movedCount = 0
+        var sidecarCount = 0
+        var issues: [WorkSessionIssue] = []
+        // Per-file loop: move file N's bytes (original + sidecar), then rewrite
+        // file N's catalog row, then record file N's manifest entry, then advance.
+        // The abort flag is checked at the top of each iteration so whatever
+        // already moved stays truthful and reversible.
+        for (assetID, plan) in zip(preflight.assetIDs, preflight.plans) {
+            if rejectRelocationAbortRequested { break }
+            do {
+                let result = try service.move(originalFrom: plan.originalFrom, originalTo: plan.originalTo)
+                try catalog.repository.relocateOriginal(assetID: assetID, to: result.originalTo)
+                try catalog.repository.saveRelocationManifestEntry(
+                    RelocationManifestEntry(
+                        assetID: assetID,
+                        originalFrom: result.originalFrom,
+                        originalTo: result.originalTo,
+                        sidecarFrom: result.sidecarFrom,
+                        sidecarTo: result.sidecarTo
+                    ),
+                    sessionID: sessionID
+                )
+                movedCount += 1
+                if result.sidecarTo != nil { sidecarCount += 1 }
+            } catch {
+                // Skip-with-issue: a file that can't move is recorded and the
+                // loop continues; its catalog row is left untouched.
+                issues.append(WorkSessionIssue(
+                    kind: .skippedSourceFile,
+                    sourceURL: plan.originalFrom,
+                    message: error.localizedDescription
+                ))
+            }
+        }
+
+        let finalStatus: WorkSessionStatus = rejectRelocationAbortRequested ? .cancelled : .completed
+        let session = Self.relocationWorkSession(
+            id: sessionID,
+            status: finalStatus,
+            destinationFolder: preflight.destinationFolder,
+            movedCount: movedCount,
+            skippedCount: issues.count,
+            issues: issues
+        )
+        try catalog.repository.save(session)
+        recordRecentActivity(AppWorkActivity(workSession: session))
+        try reload()
+
+        let summary = RejectRelocationSummary(
+            sessionID: sessionID,
+            movedCount: movedCount,
+            sidecarCount: sidecarCount,
+            skippedCount: issues.count,
+            destinationFolder: preflight.destinationFolder
+        )
+        rejectRelocationSummary = summary
+        statusMessage = summary.detailText
+        return summary
+    }
+
+    public func abortRejectRelocation() {
+        rejectRelocationAbortRequested = true
+    }
+
+    public func dismissRejectRelocationSummary() {
+        rejectRelocationSummary = nil
+    }
+
+    private static func relocationWorkSession(
+        id: WorkSessionID,
+        status: WorkSessionStatus,
+        destinationFolder: URL,
+        movedCount: Int,
+        skippedCount: Int,
+        issues: [WorkSessionIssue]
+    ) -> WorkSession {
+        WorkSession(
+            id: id,
+            kind: .relocation,
+            intent: "move-rejects-to-folder",
+            title: "Move rejects to \(destinationFolder.lastPathComponent)",
+            detail: "Moved \(movedCount) · skipped \(skippedCount)",
+            status: status,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: movedCount,
+            totalUnitCount: movedCount + skippedCount,
+            failureCount: skippedCount,
+            issues: issues,
+            createdAt: Date(),
+            updatedAt: Date()
+        )
     }
 
     private func currentAssetScopeIDs(repository: CatalogRepository) throws -> [AssetID] {
