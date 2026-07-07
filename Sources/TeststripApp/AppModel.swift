@@ -1650,6 +1650,9 @@ public final class AppModel {
         if selectedView == .people {
             return "People"
         }
+        if selectedView == .map {
+            return "Places"
+        }
         if let selectedAssetSet {
             return selectedAssetSet.name
         }
