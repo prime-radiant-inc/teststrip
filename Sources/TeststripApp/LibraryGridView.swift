@@ -1,4 +1,6 @@
 import AppKit
+import CoreLocation
+import MapKit
 import SwiftUI
 import TeststripCore
 
@@ -88,6 +90,8 @@ struct LibraryGridView: View {
                 ) { assetID in
                     selectAssetFromGrid(assetID)
                 }
+            } else if model.selectedView == .map {
+                PlacesWorkspaceView(model: model)
             } else if model.assets.isEmpty {
                 ScrollView {
                     emptyLibraryView
@@ -4327,11 +4331,12 @@ struct LibraryTopBarPresentation: Equatable {
         LibraryTopBarModeItem(title: "Timeline", systemImage: "calendar", mode: .timeline, liveMockupPlaceholder: .timelineLibrary),
         LibraryTopBarModeItem(title: "Loupe", systemImage: "rectangle.inset.filled", mode: .loupe),
         LibraryTopBarModeItem(title: "Compare", systemImage: "rectangle.grid.2x2", mode: .compare, liveMockupPlaceholder: .compareSurvey),
-        LibraryTopBarModeItem(title: "People", systemImage: "person.2", mode: .people, liveMockupPlaceholder: .peopleSidebar)
+        LibraryTopBarModeItem(title: "People", systemImage: "person.2", mode: .people, liveMockupPlaceholder: .peopleSidebar),
+        LibraryTopBarModeItem(title: "Places", systemImage: "map", mode: .map, liveMockupPlaceholder: .placesMap)
     ]
 
     private static func breadcrumbItems(scopeTitle: String, selectedView: LibraryViewMode) -> [String] {
-        if selectedView == .search || selectedView == .copilot || selectedView == .timeline || selectedView == .people {
+        if selectedView == .search || selectedView == .copilot || selectedView == .timeline || selectedView == .people || selectedView == .map {
             return ["Library", scopeTitle]
         }
         if scopeTitle == "All Photographs" {
@@ -7022,6 +7027,149 @@ private struct SearchWorkspaceView: View {
                 .font(.headline)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+// Places browse route (design 5b): a MapKit map of cluster bubbles sized by
+// photo count, a TOP LOCATIONS list, and a coverage badge. A thin shell over the
+// tested PlacesPresentation — no snapshot tests. Region changes re-query bounded
+// SQL cluster counts; a bubble or top-location tap drills the grid via the
+// indexed geo predicate.
+private struct PlacesWorkspaceView: View {
+    var model: AppModel
+    @State private var cameraPosition: MapCameraPosition = .automatic
+    @State private var lastCellSize: Double = AppModel.defaultPlaceClusterCellSize
+
+    private var presentation: PlacesPresentation {
+        PlacesPresentation(
+            clusters: model.catalogPlaceClusters,
+            topLocations: model.catalogTopLocations,
+            coverage: model.geotaggedCoverage
+        )
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            mapSurface
+            placesSidebar
+                .frame(width: 300)
+        }
+        .background(Color.black.opacity(0.18))
+        .liveMockupPlaceholder(.placesMap)
+        .onAppear {
+            try? model.refreshPlaceData()
+        }
+    }
+
+    private var mapSurface: some View {
+        Map(position: $cameraPosition) {
+            ForEach(presentation.bubbles) { bubble in
+                Annotation(
+                    "",
+                    coordinate: CLLocationCoordinate2D(latitude: bubble.latitude, longitude: bubble.longitude)
+                ) {
+                    bubbleMarker(bubble)
+                }
+            }
+        }
+        .onMapCameraChange(frequency: .onEnd) { context in
+            handleRegionChange(context.region)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func bubbleMarker(_ bubble: PlaceBubblePresentation) -> some View {
+        Button {
+            drill(latitude: bubble.latitude, longitude: bubble.longitude, half: max(lastCellSize / 2, 0.01))
+        } label: {
+            Text(bubble.labelText)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: bubble.radius, height: bubble.radius)
+                .background(Color.orange.opacity(0.82), in: Circle())
+                .overlay(Circle().stroke(Color.white.opacity(0.7), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help("\(bubble.labelText) photographs")
+    }
+
+    private var placesSidebar: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(presentation.coverageText, systemImage: "mappin.and.ellipse")
+                .font(.caption)
+                .foregroundStyle(.orange)
+            Text(presentation.summaryText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if model.geotaggedCoverage.totalCount > model.geotaggedCoverage.geotaggedCount {
+                Button("Read locations for existing photos") {
+                    try? model.beginCoordinateBackfill()
+                }
+                .font(.caption)
+                .buttonStyle(.link)
+            }
+            Text("TOP LOCATIONS")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if presentation.topLocations.isEmpty {
+                Text("Locations appear here as geocoding finishes.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(presentation.topLocations) { location in
+                            topLocationRow(location)
+                        }
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.bar)
+    }
+
+    private func topLocationRow(_ location: PlaceRowPresentation) -> some View {
+        Button {
+            drill(latitude: location.latitude, longitude: location.longitude, half: 0.05)
+        } label: {
+            HStack(spacing: 8) {
+                Text(location.title)
+                    .font(.callout)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text(location.countText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func handleRegionChange(_ region: MKCoordinateRegion) {
+        let cellSize = max(region.span.latitudeDelta / 8, 0.0005)
+        lastCellSize = cellSize
+        let bounds = GeoBounds(
+            minLatitude: region.center.latitude - region.span.latitudeDelta / 2,
+            maxLatitude: region.center.latitude + region.span.latitudeDelta / 2,
+            minLongitude: region.center.longitude - region.span.longitudeDelta / 2,
+            maxLongitude: region.center.longitude + region.span.longitudeDelta / 2
+        )
+        try? model.refreshPlaceData(bounds: bounds, cellSize: cellSize)
+    }
+
+    private func drill(latitude: Double, longitude: Double, half: Double) {
+        let bounds = GeoBounds(
+            minLatitude: latitude - half,
+            maxLatitude: latitude + half,
+            minLongitude: longitude - half,
+            maxLongitude: longitude + half
+        )
+        try? model.selectPlaceBounds(bounds)
     }
 }
 

@@ -1,5 +1,5 @@
 enum CatalogMigrations {
-    static let version = 17
+    static let version = 19
 
     static let statements = [
         """
@@ -207,6 +207,40 @@ enum CatalogMigrations {
         )
         """,
         "CREATE INDEX IF NOT EXISTS idx_autopilot_proposals_run ON autopilot_proposals(run_id)",
-        "CREATE INDEX IF NOT EXISTS idx_autopilot_proposals_status ON autopilot_proposals(status)"
+        "CREATE INDEX IF NOT EXISTS idx_autopilot_proposals_status ON autopilot_proposals(status)",
+        """
+        CREATE TABLE IF NOT EXISTS place_cache (
+            coordinate_key TEXT PRIMARY KEY NOT NULL,
+            locality TEXT,
+            administrative_area TEXT,
+            country TEXT,
+            display_name TEXT,
+            updated_at REAL NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS geocode_queue (
+            coordinate_key TEXT PRIMARY KEY NOT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            last_attempted_at REAL,
+            updated_at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_geocode_queue_updated_at ON geocode_queue(updated_at)"
     ]
+
+    // Runs after `technical_metadata_json` is ensured on legacy catalogs (the
+    // `statements` above run before that column is patched in). Partial on
+    // `json_valid(...)` so the expression is never evaluated on the empty-string
+    // JSON that no-metadata assets store (a bare `json_extract('', ...)` errors).
+    static let coordinateIndexStatement =
+        """
+        CREATE INDEX IF NOT EXISTS idx_assets_gps ON assets(
+            CAST(json_extract(technical_metadata_json, '$.latitude') AS REAL),
+            CAST(json_extract(technical_metadata_json, '$.longitude') AS REAL)
+        ) WHERE json_valid(technical_metadata_json)
+        """
 }

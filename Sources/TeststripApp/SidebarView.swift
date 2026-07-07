@@ -344,6 +344,8 @@ struct SidebarView: View {
             return "calendar"
         case .people:
             return "person.2"
+        case .places:
+            return "map"
         case .reviewQueue(let queue):
             return reviewQueueIconName(queue)
         case .folder:

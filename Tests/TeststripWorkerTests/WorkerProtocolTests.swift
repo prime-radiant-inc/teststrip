@@ -34,6 +34,32 @@ final class WorkerProtocolTests: XCTestCase {
         XCTAssertEqual(json["provider"] as? String, "local")
     }
 
+    func testReverseGeocodeBatchCommandRoundTripsThroughJSONLine() throws {
+        let command = WorkerCommand.reverseGeocodeBatch(limit: 50)
+
+        let line = try WorkerProtocolEncoder.encode(command)
+        let decoded = try WorkerProtocolEncoder.decode(line)
+
+        XCTAssertEqual(decoded, command)
+        let body = String(line.dropLast())
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
+        XCTAssertEqual(json["command"] as? String, "reverseGeocodeBatch")
+        XCTAssertEqual(json["limit"] as? Int, 50)
+    }
+
+    func testBackfillCoordinatesCommandRoundTripsThroughJSONLine() throws {
+        let command = WorkerCommand.backfillCoordinates(assetIDs: [AssetID(rawValue: "a"), AssetID(rawValue: "b")])
+
+        let line = try WorkerProtocolEncoder.encode(command)
+        let decoded = try WorkerProtocolEncoder.decode(line)
+
+        XCTAssertEqual(decoded, command)
+        let body = String(line.dropLast())
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
+        XCTAssertEqual(json["command"] as? String, "backfillCoordinates")
+        XCTAssertEqual(json["assetIDs"] as? [String], ["a", "b"])
+    }
+
     func testImportFolderCommandRoundTripsThroughJSONLine() throws {
         let root = URL(fileURLWithPath: "/Volumes/Card/DCIM", isDirectory: true)
         let command = WorkerCommand.importFolder(root: root, duplicateHandling: .skipCatalogedContent)

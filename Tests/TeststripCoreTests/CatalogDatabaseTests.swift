@@ -145,6 +145,258 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(fetched.technicalMetadata, technicalMetadata)
     }
 
+    func testPersistsGPSCoordinatesThroughExistingTechnicalMetadataStorage() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-metadata-gps")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let technicalMetadata = AssetTechnicalMetadata(
+            pixelWidth: 6000,
+            pixelHeight: 4000,
+            latitude: 37.8199,
+            longitude: -122.4783,
+            altitude: 67.5,
+            provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+        )
+        let asset = Asset.testAsset(path: "/Volumes/NAS/Job/frame.cr2", rating: 3, technicalMetadata: technicalMetadata)
+
+        try repository.upsert(asset)
+
+        let fetched = try repository.asset(id: asset.id)
+        XCTAssertEqual(fetched.technicalMetadata?.latitude, 37.8199)
+        XCTAssertEqual(fetched.technicalMetadata?.longitude, -122.4783)
+        XCTAssertEqual(fetched.technicalMetadata?.altitude, 67.5)
+        XCTAssertEqual(fetched.technicalMetadata, technicalMetadata)
+    }
+
+    func testWithinGeoBoundsPredicateFiltersByCoordinate() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-geo-bounds")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        func asset(_ name: String, latitude: Double, longitude: Double) -> Asset {
+            Asset.testAsset(
+                path: "/Volumes/NAS/\(name).cr2",
+                rating: 0,
+                technicalMetadata: AssetTechnicalMetadata(
+                    pixelWidth: 100, pixelHeight: 100,
+                    latitude: latitude, longitude: longitude,
+                    provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+                )
+            )
+        }
+        try repository.upsert(asset("sf", latitude: 37.77, longitude: -122.42))
+        try repository.upsert(asset("oakland", latitude: 37.80, longitude: -122.27))
+        try repository.upsert(asset("sydney", latitude: -33.87, longitude: 151.21))
+        try repository.upsert(Asset.testAsset(path: "/Volumes/NAS/no-gps.cr2", rating: 0))
+
+        let bayArea = GeoBounds(minLatitude: 37.5, maxLatitude: 38.0, minLongitude: -122.6, maxLongitude: -122.2)
+        let count = try repository.assetCount(matching: SetQuery(predicates: [.withinGeoBounds(bayArea)]))
+
+        XCTAssertEqual(count, 2)
+    }
+
+    func testGeoBoundsQueryUsesCoordinateExpressionIndex() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-geo-index")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+
+        let plan = try database.rows(
+            """
+            EXPLAIN QUERY PLAN
+            SELECT COUNT(*) FROM assets
+            WHERE json_valid(technical_metadata_json)
+              AND \(CatalogRepository.latitudeExpressionSQL) BETWEEN -1 AND 1
+              AND \(CatalogRepository.longitudeExpressionSQL) BETWEEN -1 AND 1
+            """
+        )
+        let detail = plan.compactMap { $0["detail"] }.joined(separator: " ")
+        XCTAssertTrue(detail.contains("idx_assets_gps"), "expected the geo expression index, got: \(detail)")
+    }
+
+    func testPlaceClustersBucketsCoordinatesByCell() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-place-clusters")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        func upsert(_ name: String, _ lat: Double, _ lon: Double) throws {
+            try repository.upsert(Asset.testAsset(
+                path: "/Volumes/NAS/\(name).cr2", rating: 0,
+                technicalMetadata: AssetTechnicalMetadata(
+                    pixelWidth: 1, pixelHeight: 1, latitude: lat, longitude: lon,
+                    provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+                )
+            ))
+        }
+        // Two frames in one 10-degree cell, one far away.
+        try upsert("a", 37.1, -122.1)
+        try upsert("b", 37.9, -122.9)
+        try upsert("c", -33.8, 151.2)
+        try repository.upsert(Asset.testAsset(path: "/Volumes/NAS/no-gps.cr2", rating: 0))
+
+        let clusters = try repository.placeClusters(bounds: nil, cellSize: 10.0)
+            .sorted { $0.assetCount > $1.assetCount }
+
+        XCTAssertEqual(clusters.count, 2)
+        XCTAssertEqual(clusters[0].assetCount, 2)
+        XCTAssertEqual(clusters[0].latitude, 37.5, accuracy: 0.001)   // mean of 37.1, 37.9
+        XCTAssertEqual(clusters[0].longitude, -122.5, accuracy: 0.001)
+        XCTAssertEqual(clusters[1].assetCount, 1)
+    }
+
+    func testGeotaggedCoverageCountsCoordinateBearingAssets() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-coverage")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        try repository.upsert(Asset.testAsset(
+            path: "/Volumes/NAS/geo.cr2", rating: 0,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 1, pixelHeight: 1, latitude: 1.0, longitude: 2.0,
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        ))
+        try repository.upsert(Asset.testAsset(path: "/Volumes/NAS/plain.cr2", rating: 0))
+
+        let coverage = try repository.geotaggedCoverage()
+        XCTAssertEqual(coverage.geotaggedCount, 1)
+        XCTAssertEqual(coverage.totalCount, 2)
+    }
+
+    func testEnqueueMissingGeocodeCoordinatesDeduplicatesByRoundedKey() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-geocode-enqueue")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        func upsert(_ name: String, _ lat: Double, _ lon: Double) throws {
+            try repository.upsert(Asset.testAsset(
+                path: "/Volumes/NAS/\(name).cr2", rating: 0,
+                technicalMetadata: AssetTechnicalMetadata(
+                    pixelWidth: 1, pixelHeight: 1, latitude: lat, longitude: lon,
+                    provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+                )
+            ))
+        }
+        // Two frames round to the same 2dp key; a third is distinct.
+        try upsert("a", 37.8199, -122.4783)
+        try upsert("b", 37.8203, -122.4791)
+        try upsert("c", 48.8584, 2.2945)
+
+        let enqueued = try repository.enqueueMissingGeocodeCoordinates(limit: 100)
+        XCTAssertEqual(enqueued, 2)
+
+        // Re-running enqueues nothing new (both keys are already queued).
+        XCTAssertEqual(try repository.enqueueMissingGeocodeCoordinates(limit: 100), 0)
+        XCTAssertEqual(try repository.geocodeQueueDepth(), 2)
+    }
+
+    func testRecordPlaceNameCachesAndClearsQueue() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-geocode-record")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        try repository.upsert(Asset.testAsset(
+            path: "/Volumes/NAS/eiffel.cr2", rating: 0,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 1, pixelHeight: 1, latitude: 48.8584, longitude: 2.2945,
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        ))
+        _ = try repository.enqueueMissingGeocodeCoordinates(limit: 10)
+        let key = GeocodeCoordinateKey.key(latitude: 48.8584, longitude: 2.2945)
+
+        try repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: key, locality: "Paris", administrativeArea: "Île-de-France",
+            country: "France", displayName: "Paris · France"
+        ))
+
+        XCTAssertEqual(try repository.placeName(coordinateKey: key)?.displayName, "Paris · France")
+        XCTAssertEqual(try repository.geocodeQueueDepth(), 0)
+        // An already-cached coordinate is never re-enqueued.
+        XCTAssertEqual(try repository.enqueueMissingGeocodeCoordinates(limit: 10), 0)
+    }
+
+    func testRecordGeocodeFailureIncrementsAttemptCount() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-geocode-failure")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        try repository.upsert(Asset.testAsset(
+            path: "/Volumes/NAS/x.cr2", rating: 0,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 1, pixelHeight: 1, latitude: 10.0, longitude: 10.0,
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        ))
+        _ = try repository.enqueueMissingGeocodeCoordinates(limit: 10)
+        let key = GeocodeCoordinateKey.key(latitude: 10.0, longitude: 10.0)
+
+        try repository.recordGeocodeFailure(coordinateKey: key, errorMessage: "network down")
+        try repository.recordGeocodeFailure(coordinateKey: key, errorMessage: "network down")
+
+        XCTAssertEqual(try repository.pendingGeocodeItems(limit: 10, maximumAttemptCount: 2).count, 0)
+        XCTAssertEqual(try repository.pendingGeocodeItems(limit: 10, maximumAttemptCount: 3).count, 1)
+    }
+
+    func testTopLocationsAggregatesCachedPlaceNamesByCount() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-top-locations")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        func upsert(_ name: String, _ lat: Double, _ lon: Double) throws {
+            try repository.upsert(Asset.testAsset(
+                path: "/Volumes/NAS/\(name).cr2", rating: 0,
+                technicalMetadata: AssetTechnicalMetadata(
+                    pixelWidth: 1, pixelHeight: 1, latitude: lat, longitude: lon,
+                    provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+                )
+            ))
+        }
+        try upsert("paris1", 48.8584, 2.2945)
+        try upsert("paris2", 48.8600, 2.2950)   // same 2dp key as paris1
+        try upsert("nyc", 40.7484, -73.9857)
+
+        try repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: GeocodeCoordinateKey.key(latitude: 48.8584, longitude: 2.2945),
+            locality: "Paris", administrativeArea: nil, country: "France", displayName: "Paris · France"))
+        try repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: GeocodeCoordinateKey.key(latitude: 40.7484, longitude: -73.9857),
+            locality: "New York", administrativeArea: nil, country: "USA", displayName: "New York · USA"))
+
+        let top = try repository.topLocations(limit: 10)
+        XCTAssertEqual(top.map(\.displayName), ["Paris · France", "New York · USA"])
+        XCTAssertEqual(top.first?.assetCount, 2)
+    }
+
+    func testAssetsMissingCoordinatesReturnsOnlineUngeotaggedAssets() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-missing-coords")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        let needs = Asset.testAsset(path: "/Volumes/NAS/needs.cr2", rating: 0)  // online, no coords
+        try repository.upsert(needs)
+        try repository.upsert(Asset.testAsset(
+            path: "/Volumes/NAS/has.cr2", rating: 0,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 1, pixelHeight: 1, latitude: 1, longitude: 2,
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )))  // already geotagged
+        var offline = Asset.testAsset(path: "/Volumes/CARD/off.cr2", rating: 0)
+        offline.availability = .offline
+        try repository.upsert(offline)
+
+        let ids = try repository.assetsMissingCoordinates(limit: 10)
+        XCTAssertEqual(ids, [needs.id])  // exactly the online, ungeotagged asset
+    }
+
     // Proves the audit's no-migration claim: `technical_metadata_json` is a JSON blob
     // decoded into AssetTechnicalMetadata, and the new aperture/shutterSpeed/focalLength
     // fields are optional, so a row written before this change (missing those keys

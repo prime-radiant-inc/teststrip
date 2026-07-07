@@ -16262,6 +16262,146 @@ final class AppModelTests: XCTestCase {
         }
         XCTFail("timed out waiting for evaluation signal generation \(generation)")
     }
+
+    func testEnqueuePendingGeocodingPopulatesQueueForGeotaggedAssets() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-geocoding-populate")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(geocodingLocatedAsset(id: "a", latitude: 48.8584, longitude: 2.2945))
+        try repository.upsert(geocodingPlainAsset(id: "plain"))
+        let (model, transport) = makeGeocodingModel(directory: directory, repository: repository)
+
+        try model.enqueuePendingGeocoding()
+
+        XCTAssertEqual(try repository.geocodeQueueDepth(), 1)
+        XCTAssertEqual(try transport.commands().filter(\.isReverseGeocodeBatch).count, 1)
+    }
+
+    func testEnqueuePendingGeocodingIsNoOpWhenNoCoordinates() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-geocoding-noop")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(geocodingPlainAsset(id: "plain"))
+        let (model, transport) = makeGeocodingModel(directory: directory, repository: repository)
+
+        try model.enqueuePendingGeocoding()
+
+        XCTAssertEqual(try repository.geocodeQueueDepth(), 0)
+        XCTAssertTrue(try transport.commands().filter(\.isReverseGeocodeBatch).isEmpty)
+    }
+
+    func testBeginCoordinateBackfillDispatchesBackfillForOnlineUngeotaggedAssets() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-coordinate-backfill")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(geocodingPlainAsset(id: "needs"))  // online, no coordinates
+        try repository.upsert(geocodingLocatedAsset(id: "has", latitude: 1, longitude: 2))
+        let (model, transport) = makeGeocodingModel(directory: directory, repository: repository)
+
+        try model.beginCoordinateBackfill()
+
+        let backfillCommands = try transport.commands().filter(\.isBackfillCoordinates)
+        XCTAssertEqual(backfillCommands.count, 1)
+    }
+
+    func testSelectingPlacesTargetEntersMapView() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-places-target")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let (model, _) = makeGeocodingModel(directory: directory, repository: repository)
+
+        try model.selectSidebarTarget(.places)
+
+        XCTAssertEqual(model.selectedView, .map)
+    }
+
+    func testSelectPlaceBoundsAppliesGeoFilterAndReturnsToGrid() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-places-bounds")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(geocodingLocatedAsset(id: "paris", latitude: 48.8584, longitude: 2.2945))
+        try repository.upsert(geocodingLocatedAsset(id: "sydney", latitude: -33.87, longitude: 151.21))
+        let (model, _) = makeGeocodingModel(directory: directory, repository: repository)
+        try model.reload()
+
+        try model.selectPlaceBounds(GeoBounds(minLatitude: 48, maxLatitude: 49, minLongitude: 2, maxLongitude: 3))
+
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.assets.map { $0.originalURL.lastPathComponent }, ["paris.cr2"])
+    }
+
+    private func makeGeocodingModel(
+        directory: URL,
+        repository: CatalogRepository
+    ) -> (AppModel, RecordingWorkerTransport) {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: [],
+            totalAssetCount: 0,
+            catalog: catalog,
+            workerSupervisor: supervisor
+        )
+        return (model, transport)
+    }
+
+    private func geocodingLocatedAsset(id: String, latitude: Double, longitude: Double) -> Asset {
+        Asset(
+            id: AssetID(rawValue: id),
+            originalURL: URL(fileURLWithPath: "/Volumes/NAS/\(id).cr2"),
+            volumeIdentifier: "NAS",
+            fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
+            availability: .online,
+            metadata: AssetMetadata(),
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 1, pixelHeight: 1, latitude: latitude, longitude: longitude,
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        )
+    }
+
+    private func geocodingPlainAsset(id: String) -> Asset {
+        Asset(
+            id: AssetID(rawValue: id),
+            originalURL: URL(fileURLWithPath: "/Volumes/NAS/\(id).cr2"),
+            volumeIdentifier: "NAS",
+            fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+    }
+}
+
+private extension WorkerCommand {
+    var isReverseGeocodeBatch: Bool {
+        if case .reverseGeocodeBatch = self { return true }
+        return false
+    }
+
+    var isBackfillCoordinates: Bool {
+        if case .backfillCoordinates = self { return true }
+        return false
+    }
 }
 
 private extension BackgroundWorkItem {

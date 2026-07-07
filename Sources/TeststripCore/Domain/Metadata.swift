@@ -96,6 +96,9 @@ public struct AssetTechnicalMetadata: Codable, Equatable, Sendable {
     public var aperture: Double?
     public var shutterSpeed: Double?
     public var focalLength: Double?
+    public var latitude: Double?
+    public var longitude: Double?
+    public var altitude: Double?
     public var capturedAt: Date?
     public var provenance: ProviderProvenance
 
@@ -109,6 +112,9 @@ public struct AssetTechnicalMetadata: Codable, Equatable, Sendable {
         aperture: Double? = nil,
         shutterSpeed: Double? = nil,
         focalLength: Double? = nil,
+        latitude: Double? = nil,
+        longitude: Double? = nil,
+        altitude: Double? = nil,
         capturedAt: Date? = nil,
         provenance: ProviderProvenance
     ) {
@@ -121,6 +127,9 @@ public struct AssetTechnicalMetadata: Codable, Equatable, Sendable {
         self.aperture = aperture
         self.shutterSpeed = shutterSpeed
         self.focalLength = focalLength
+        self.latitude = latitude
+        self.longitude = longitude
+        self.altitude = altitude
         self.capturedAt = capturedAt
         self.provenance = provenance
     }

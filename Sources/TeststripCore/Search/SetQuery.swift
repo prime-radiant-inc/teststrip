@@ -1,5 +1,19 @@
 import Foundation
 
+public struct GeoBounds: Codable, Equatable, Sendable {
+    public var minLatitude: Double
+    public var maxLatitude: Double
+    public var minLongitude: Double
+    public var maxLongitude: Double
+
+    public init(minLatitude: Double, maxLatitude: Double, minLongitude: Double, maxLongitude: Double) {
+        self.minLatitude = minLatitude
+        self.maxLatitude = maxLatitude
+        self.minLongitude = minLongitude
+        self.maxLongitude = maxLongitude
+    }
+}
+
 public struct SetQuery: Codable, Equatable, Sendable {
     public enum Predicate: Codable, Equatable, Sendable {
         case text(String)
@@ -16,6 +30,7 @@ public struct SetQuery: Codable, Equatable, Sendable {
         case isoAtLeast(Int)
         case capturedAtOrAfter(Date)
         case capturedBefore(Date)
+        case withinGeoBounds(GeoBounds)
         case evaluationKind(EvaluationKind)
         case unevaluated
         case likelyIssue

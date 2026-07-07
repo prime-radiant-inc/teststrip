@@ -138,6 +138,30 @@ public enum WorkerProtocolEncoder {
                 destinationRootURL: nil,
                 itemID: itemID?.rawValue
             )
+        case .reverseGeocodeBatch(let limit):
+            envelope = WorkerCommandEnvelope(
+                command: "reverseGeocodeBatch",
+                assetID: nil,
+                level: nil,
+                provider: nil,
+                rootURL: nil,
+                sourceURL: nil,
+                destinationRootURL: nil,
+                itemID: itemID?.rawValue,
+                limit: limit
+            )
+        case .backfillCoordinates(let assetIDs):
+            envelope = WorkerCommandEnvelope(
+                command: "backfillCoordinates",
+                assetID: nil,
+                level: nil,
+                provider: nil,
+                rootURL: nil,
+                sourceURL: nil,
+                destinationRootURL: nil,
+                itemID: itemID?.rawValue,
+                assetIDs: assetIDs.map(\.rawValue)
+            )
         case .pause:
             envelope = WorkerCommandEnvelope(command: "pause", assetID: nil, level: nil, provider: nil, rootURL: nil, sourceURL: nil, destinationRootURL: nil, itemID: itemID?.rawValue)
         case .resume:
@@ -258,6 +282,10 @@ public enum WorkerProtocolEncoder {
             let assetID = try envelope.requiredAssetID()
             let provider = try envelope.requiredProvider()
             command = .runEvaluation(assetID: assetID, provider: provider)
+        case "reverseGeocodeBatch":
+            command = .reverseGeocodeBatch(limit: try envelope.requiredLimit())
+        case "backfillCoordinates":
+            command = .backfillCoordinates(assetIDs: try envelope.requiredAssetIDs())
         case "pause":
             command = .pause
         case "resume":
@@ -329,6 +357,7 @@ public enum WorkerProtocolEncoder {
         var secondCopyDestinationRootURL: String? = nil
         var assetIDs: [String]? = nil
         var duplicateHandling: String? = nil
+        var limit: Int? = nil
 
         func requiredAssetID() throws -> AssetID {
             AssetID(rawValue: try requiredField(assetID, key: .assetID))
@@ -336,6 +365,16 @@ public enum WorkerProtocolEncoder {
 
         func requiredAssetIDs() throws -> [AssetID] {
             try requiredField(assetIDs, key: .assetIDs).map(AssetID.init(rawValue:))
+        }
+
+        func requiredLimit() throws -> Int {
+            guard let limit else {
+                throw DecodingError.keyNotFound(
+                    CodingKeys.limit,
+                    DecodingError.Context(codingPath: [CodingKeys.limit], debugDescription: "Missing required field: limit")
+                )
+            }
+            return limit
         }
 
         func requiredPreviewLevel() throws -> PreviewLevel {

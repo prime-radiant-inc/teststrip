@@ -89,7 +89,7 @@ public enum LiveMockupPlaceholders {
         id: "places.map",
         title: "Places map",
         intendedBehavior: "Browse geotagged frames on a map with clusters, reverse-geocoded locations, and region drill-down.",
-        currentFallback: "Out of scope for go-to-market; no map route is exposed."
+        currentFallback: "Catalog-backed Places route: GPS coordinates read at import ride technical metadata, a MapKit map plots cluster bubbles sized by photo count from bounded SQL aggregation, a worker-side throttled CLGeocoder pipeline fills a shared place-name cache surfaced as TOP LOCATIONS, a coverage badge shows geotagged-on-import counts, and a bubble or top-location tap drills the grid through an indexed geo-bounds predicate. Coordinates-only browsing works offline; custom basemap styling, region search, and draw-a-region selection are later."
     )
 
     public static let agenticSearch = LiveMockupPlaceholder(

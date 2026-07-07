@@ -39,6 +39,46 @@ enum TestDirectories {
         }
     }
 
+    /// Writes a JPEG carrying GPS EXIF for the given coordinate, so backfill /
+    /// GPS-extraction tests can re-read real coordinates from a real file.
+    static func writeTestJPEGWithGPS(
+        to url: URL,
+        width: Int = 8,
+        height: Int = 8,
+        latitude: Double,
+        longitude: Double
+    ) throws {
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            throw TeststripError.io("could not create GPS test bitmap context")
+        }
+        context.setFillColor(CGColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1.0))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        guard let image = context.makeImage(),
+              let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
+            throw TeststripError.io("could not create GPS test jpeg")
+        }
+        let gps: [CFString: Any] = [
+            kCGImagePropertyGPSLatitude: abs(latitude),
+            kCGImagePropertyGPSLatitudeRef: latitude >= 0 ? "N" : "S",
+            kCGImagePropertyGPSLongitude: abs(longitude),
+            kCGImagePropertyGPSLongitudeRef: longitude >= 0 ? "E" : "W"
+        ]
+        let properties: [CFString: Any] = [kCGImagePropertyGPSDictionary: gps]
+        CGImageDestinationAddImage(destination, image, properties as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else {
+            throw TeststripError.io("could not write GPS test jpeg")
+        }
+    }
+
     /// Writes a JPEG filled with deterministic pseudo-random noise instead of
     /// a flat color. Flat-color JPEGs barely shrink across quality settings
     /// (a solid fill compresses to nearly nothing regardless of quality), so

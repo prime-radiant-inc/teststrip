@@ -431,6 +431,7 @@ public enum SidebarRowTarget: Equatable, Sendable {
     case copilot
     case timeline
     case people
+    case places
     case placeholder
     case reviewQueue(ReviewQueue)
     case folder(String)
@@ -1472,6 +1473,11 @@ public final class AppModel {
     public var metadataSyncConflictFilter: Bool {
         didSet { persistSessionState() }
     }
+    /// The visible map region a cluster or top-location tap drilled into. Set
+    /// from the map, applied through `.withinGeoBounds` in `currentLibraryQuery`,
+    /// and cleared by `clearLibraryQueryFilters`. In-memory only — not part of
+    /// session restore.
+    public var geoBoundsFilter: GeoBounds?
     private var detachedLibraryFilterPredicates: [SetQuery.Predicate]
     public var savedAssetSets: [AssetSet]
     public var assetSetCounts: [AssetSetID: Int]
@@ -1482,6 +1488,9 @@ public final class AppModel {
     /// persisted across launches.
     public private(set) var expandedFolderPaths: Set<String>
     public var catalogTimelineDays: [CatalogTimelineDay]
+    public private(set) var catalogPlaceClusters: [CatalogPlaceCluster] = []
+    public private(set) var catalogTopLocations: [CatalogTopLocation] = []
+    public private(set) var geotaggedCoverage = CatalogGeotaggedCoverage(geotaggedCount: 0, totalCount: 0)
     public var sourceRoots: [CatalogSourceRoot]
     public var sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary]
     public var catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary]
@@ -1812,6 +1821,9 @@ public final class AppModel {
         }
         if selectedView == .people {
             return "People"
+        }
+        if selectedView == .map {
+            return "Places"
         }
         if let selectedAssetSet {
             return selectedAssetSet.name
@@ -3161,6 +3173,7 @@ public final class AppModel {
         )
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
+        try model.enqueuePendingGeocoding()
         try model.restoreSessionStateIfAvailable()
         try model.reconstructAutopilotStateAfterLoad()
         if let sessionRestoreDefaults {
@@ -3394,6 +3407,11 @@ public final class AppModel {
             clearLibraryQueryFilters()
             selectedView = .people
             refreshPeopleFaceSuggestions()
+        case .places:
+            selectedAssetSetID = nil
+            clearLibraryQueryFilters()
+            selectedView = .map
+            try refreshPlaceData()
         case .reviewQueue(let queue):
             try applyReviewQueue(queue)
         case .folder(let path):
@@ -6195,6 +6213,62 @@ public final class AppModel {
         schedulePreviewGenerationQueueStatesRefresh()
     }
 
+    // One geocoding activity at a time; a completed batch re-dispatches under the
+    // same ID until the queue drains (Task 7). Offline is graceful: no queued
+    // coordinates means no dispatch, and worker failures re-queue rather than
+    // erroring the UI.
+    static let geocodeWorkItemID = WorkSessionID(rawValue: "geocode-batch")
+    static let geocodeBatchSize = 50
+    static let geocodeEnqueueScanLimit = 500
+
+    func enqueuePendingGeocoding() throws {
+        guard let catalog, let workerSupervisor else { return }
+        _ = try catalog.repository.enqueueMissingGeocodeCoordinates(limit: Self.geocodeEnqueueScanLimit)
+        let queueDepth = try catalog.repository.geocodeQueueDepth()
+        guard queueDepth > 0 else { return }
+        if let existingItem = currentBackgroundWorkQueue.item(id: Self.geocodeWorkItemID),
+           Self.isActiveBackgroundWorkStatus(existingItem.status) {
+            return
+        }
+        let item = BackgroundWorkItem(
+            id: Self.geocodeWorkItemID,
+            kind: .geocoding,
+            title: "Geocoding",
+            detail: "Reading locations",
+            completedUnitCount: 0,
+            totalUnitCount: queueDepth
+        )
+        try workerSupervisor.enqueue(item, command: .reverseGeocodeBatch(limit: Self.geocodeBatchSize))
+        syncBackgroundWorkQueueFromSupervisor()
+    }
+
+    // Backfills coordinates for catalogs imported before GPS extraction shipped.
+    // Bounded and resumable: each batch re-reads only online originals still
+    // missing a latitude, and a completed batch re-dispatches until none remain,
+    // then hands the newly-read coordinates to the geocoding pipeline.
+    static let coordinateBackfillWorkItemID = WorkSessionID(rawValue: "coordinate-backfill")
+    static let coordinateBackfillBatchSize = 200
+
+    public func beginCoordinateBackfill() throws {
+        guard let catalog, let workerSupervisor else { return }
+        let assetIDs = try catalog.repository.assetsMissingCoordinates(limit: Self.coordinateBackfillBatchSize)
+        guard !assetIDs.isEmpty else { return }
+        if let existingItem = currentBackgroundWorkQueue.item(id: Self.coordinateBackfillWorkItemID),
+           Self.isActiveBackgroundWorkStatus(existingItem.status) {
+            return
+        }
+        let item = BackgroundWorkItem(
+            id: Self.coordinateBackfillWorkItemID,
+            kind: .locationBackfill,
+            title: "Reading locations",
+            detail: "Reading locations for existing photos",
+            completedUnitCount: 0,
+            totalUnitCount: assetIDs.count
+        )
+        try workerSupervisor.enqueue(item, command: .backfillCoordinates(assetIDs: assetIDs))
+        syncBackgroundWorkQueueFromSupervisor()
+    }
+
     private func enqueuePendingMetadataSync() throws {
         guard let catalog, workerSupervisor != nil else { return }
         var enqueuedCount = 0
@@ -7014,6 +7088,29 @@ public final class AppModel {
                 enqueueImportEvaluationsForCachedPreviews(assetIDs: [previewAssetID])
             }
             runImportAutopilotIfArmedAndResolved()
+            if itemID == Self.geocodeWorkItemID {
+                do {
+                    try enqueuePendingGeocoding()
+                    workerSupervisor?.pruneCompletedItems(kind: .geocoding, keepingLast: 1)
+                    syncBackgroundWorkQueueFromSupervisor()
+                    if selectedView == .map {
+                        try refreshPlaceData()
+                    }
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+            if itemID == Self.coordinateBackfillWorkItemID {
+                do {
+                    try loadCatalogPage(preferredSelection: selectedAssetID)
+                    try beginCoordinateBackfill()
+                    try enqueuePendingGeocoding()
+                    workerSupervisor?.pruneCompletedItems(kind: .locationBackfill, keepingLast: 1)
+                    syncBackgroundWorkQueueFromSupervisor()
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
         case .completedImport(
             let itemID,
             _,
@@ -7283,6 +7380,7 @@ public final class AppModel {
         do {
             try loadCatalogPage(preferredSelection: importedAssetIDs.first)
             try enqueuePendingPreviewGeneration()
+            try enqueuePendingGeocoding()
             let importedAssets = try catalog.repository.assets(ids: importedAssetIDs, limit: importedAssetIDs.count)
             let result = LibraryImportResult(
                 importedAssets: importedAssets,
@@ -7601,6 +7699,30 @@ public final class AppModel {
         selectedView = .timeline
         try reload()
     }
+
+    public func selectPlaceBounds(_ bounds: GeoBounds) throws {
+        selectedAssetSetID = nil
+        geoBoundsFilter = bounds
+        selectedView = .grid
+        try reload()
+    }
+
+    /// Fills the place-data properties the map surface reads. Bounded: cluster
+    /// counts come from SQL aggregation, top locations from a LIMIT-ed cache
+    /// join, and coverage from a COUNT — no task loads all assets. Called on
+    /// route entry and on map region change; nil bounds fits the whole world.
+    func refreshPlaceData(
+        bounds: GeoBounds? = nil,
+        cellSize: Double = AppModel.defaultPlaceClusterCellSize
+    ) throws {
+        guard let catalog else { return }
+        catalogPlaceClusters = try catalog.repository.placeClusters(bounds: bounds, cellSize: cellSize)
+        catalogTopLocations = try catalog.repository.topLocations(limit: Self.topLocationsDisplayLimit)
+        geotaggedCoverage = try catalog.repository.geotaggedCoverage()
+    }
+
+    static let defaultPlaceClusterCellSize = 10.0
+    static let topLocationsDisplayLimit = 12
 
     private func applyEvaluationKindFilter(_ kind: EvaluationKind) throws {
         selectedAssetSetID = nil
@@ -7981,6 +8103,8 @@ public final class AppModel {
             ActiveLibraryFilterRow(title: "From \(date.formatted(date: .abbreviated, time: .omitted))")
         case .capturedBefore(let date):
             ActiveLibraryFilterRow(title: "Before \(date.formatted(date: .abbreviated, time: .omitted))")
+        case .withinGeoBounds:
+            ActiveLibraryFilterRow(title: "Location")
         case .evaluationKind(let kind):
             activeLibraryFilterRow(forEvaluationKind: kind)
         case .unevaluated:
@@ -8323,6 +8447,9 @@ public final class AppModel {
         if let captureDateEndFilter {
             Self.append(.capturedBefore(captureDateEndFilter), to: &predicates)
         }
+        if let geoBoundsFilter {
+            Self.append(.withinGeoBounds(geoBoundsFilter), to: &predicates)
+        }
         if let availabilityFilter {
             Self.append(.availability(availabilityFilter), to: &predicates)
         }
@@ -8365,6 +8492,7 @@ public final class AppModel {
         minimumISOFilter = nil
         captureDateStartFilter = nil
         captureDateEndFilter = nil
+        geoBoundsFilter = nil
         availabilityFilter = nil
         evaluationKindFilter = nil
         needsKeywordsFilter = false
@@ -8540,6 +8668,8 @@ public final class AppModel {
             "from:\(searchDateString(for: date))"
         case .capturedBefore(let date):
             "before:\(searchDateString(for: date))"
+        case .withinGeoBounds:
+            nil
         case .evaluationKind(let kind):
             "signal:\(kind.rawValue)"
         case .unevaluated:
@@ -10356,6 +10486,16 @@ public final class AppModel {
                 liveMockupPlaceholder: .peopleSidebar
             )
         )
+        libraryRows.append(
+            SidebarRow(
+                id: "library-places",
+                title: "Places",
+                detailText: "On the map",
+                tone: .accent,
+                target: .places,
+                liveMockupPlaceholder: .placesMap
+            )
+        )
         var sections = [SidebarSection(title: "Library", rows: libraryRows)]
         let reviewRows = reviewQueueSidebarRows(reviewQueueCounts: reviewQueueCounts)
         if !reviewRows.isEmpty {
@@ -10820,6 +10960,10 @@ public final class AppModel {
             return "Export"
         case .relocation:
             return "Move rejects"
+        case .geocoding:
+            return "Geocoding"
+        case .locationBackfill:
+            return "Reading locations"
         }
     }
 }

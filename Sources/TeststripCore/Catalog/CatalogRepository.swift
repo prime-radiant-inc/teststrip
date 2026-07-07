@@ -24,6 +24,13 @@ public final class CatalogRepository {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
+    // Single source of truth for the coordinate expressions. The SQLite planner
+    // only uses `idx_assets_gps` when the predicate expression is byte-identical
+    // to the indexed expression, so the geo predicate, the cluster aggregation,
+    // and the migration's index must all reference these exact strings.
+    static let latitudeExpressionSQL = "CAST(json_extract(technical_metadata_json, '$.latitude') AS REAL)"
+    static let longitudeExpressionSQL = "CAST(json_extract(technical_metadata_json, '$.longitude') AS REAL)"
+
     public init(database: CatalogDatabase) {
         self.database = database
         encoder.dateEncodingStrategy = .secondsSince1970
@@ -385,6 +392,281 @@ public final class CatalogRepository {
                 throw CatalogError.sqlite("timeline day row is missing required columns")
             }
             return CatalogTimelineDay(year: year, month: month, day: day, assetCount: assetCount)
+        }
+    }
+
+    public func placeClusters(bounds: GeoBounds?, cellSize: Double) throws -> [CatalogPlaceCluster] {
+        precondition(cellSize > 0, "cellSize must be positive")
+        var boundsClause = ""
+        var bindings: [String] = []
+        if let bounds {
+            boundsClause = """
+                AND \(Self.latitudeExpressionSQL) BETWEEN ? AND ?
+                AND \(Self.longitudeExpressionSQL) BETWEEN ? AND ?
+            """
+            bindings = [
+                "\(bounds.minLatitude)", "\(bounds.maxLatitude)",
+                "\(bounds.minLongitude)", "\(bounds.maxLongitude)"
+            ]
+        }
+        let cell = "\(cellSize)"
+        let rows = try database.rows(
+            """
+            WITH located AS (
+                SELECT \(Self.latitudeExpressionSQL) AS lat,
+                       \(Self.longitudeExpressionSQL) AS lon
+                FROM assets
+                WHERE json_valid(technical_metadata_json)
+                  AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
+                  AND json_type(technical_metadata_json, '$.longitude') IN ('integer', 'real')
+                  \(boundsClause)
+            )
+            SELECT
+                CAST(FLOOR(lat / \(cell)) AS INTEGER) AS lat_cell,
+                CAST(FLOOR(lon / \(cell)) AS INTEGER) AS lon_cell,
+                AVG(lat) AS lat_mean,
+                AVG(lon) AS lon_mean,
+                COUNT(*) AS asset_count
+            FROM located
+            GROUP BY lat_cell, lon_cell
+            """,
+            bindings: bindings
+        )
+        return try rows.map { row in
+            guard let latMean = row["lat_mean"].flatMap(Double.init),
+                  let lonMean = row["lon_mean"].flatMap(Double.init),
+                  let count = row["asset_count"].flatMap(Int.init) else {
+                throw CatalogError.sqlite("place cluster row is missing required columns")
+            }
+            return CatalogPlaceCluster(latitude: latMean, longitude: lonMean, assetCount: count)
+        }
+    }
+
+    public func geotaggedCoverage() throws -> CatalogGeotaggedCoverage {
+        let rows = try database.rows(
+            """
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE
+                    WHEN json_valid(technical_metadata_json)
+                     AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
+                    THEN 1 ELSE 0 END) AS geotagged
+            FROM assets
+            """
+        )
+        guard let row = rows.first,
+              let total = row["total"].flatMap(Int.init) else {
+            throw CatalogError.sqlite("coverage row is missing required columns")
+        }
+        let geotagged = row["geotagged"].flatMap(Int.init) ?? 0
+        return CatalogGeotaggedCoverage(geotaggedCount: geotagged, totalCount: total)
+    }
+
+    public func enqueueMissingGeocodeCoordinates(limit: Int) throws -> Int {
+        guard limit > 0 else { return 0 }
+        let now = "\(Date().timeIntervalSince1970)"
+        let rows = try database.rows(
+            """
+            WITH located AS (
+                SELECT \(Self.latitudeExpressionSQL) AS lat,
+                       \(Self.longitudeExpressionSQL) AS lon
+                FROM assets
+                WHERE json_valid(technical_metadata_json)
+                  AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
+                  AND json_type(technical_metadata_json, '$.longitude') IN ('integer', 'real')
+            ),
+            keyed AS (
+                SELECT printf('%.2f,%.2f', ROUND(lat, 2), ROUND(lon, 2)) AS coordinate_key,
+                       AVG(lat) AS lat, AVG(lon) AS lon
+                FROM located
+                GROUP BY coordinate_key
+            )
+            SELECT coordinate_key, lat, lon
+            FROM keyed
+            WHERE coordinate_key NOT IN (SELECT coordinate_key FROM place_cache)
+              AND coordinate_key NOT IN (SELECT coordinate_key FROM geocode_queue)
+            LIMIT ?
+            """,
+            bindings: ["\(limit)"]
+        )
+        try database.transaction {
+            for row in rows {
+                guard let key = row["coordinate_key"],
+                      let lat = row["lat"], let lon = row["lon"] else { continue }
+                try database.execute(
+                    """
+                    INSERT OR IGNORE INTO geocode_queue (coordinate_key, latitude, longitude, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    bindings: [key, lat, lon, now]
+                )
+            }
+        }
+        return rows.count
+    }
+
+    public func pendingGeocodeItems(limit: Int, maximumAttemptCount: Int) throws -> [GeocodeQueueItem] {
+        guard limit > 0, maximumAttemptCount > 0 else { return [] }
+        let rows = try database.rows(
+            """
+            SELECT coordinate_key, latitude, longitude
+            FROM geocode_queue
+            WHERE attempt_count < ?
+            ORDER BY updated_at ASC
+            LIMIT ?
+            """,
+            bindings: ["\(maximumAttemptCount)", "\(limit)"]
+        )
+        return try rows.map { row in
+            guard let key = row["coordinate_key"],
+                  let latitude = row["latitude"].flatMap(Double.init),
+                  let longitude = row["longitude"].flatMap(Double.init) else {
+                throw CatalogError.sqlite("geocode queue row is missing required columns")
+            }
+            return GeocodeQueueItem(coordinateKey: key, latitude: latitude, longitude: longitude)
+        }
+    }
+
+    public func recordGeocodeFailure(coordinateKey: String, errorMessage: String) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            UPDATE geocode_queue
+            SET attempt_count = attempt_count + 1,
+                last_error = ?,
+                last_attempted_at = ?,
+                updated_at = ?
+            WHERE coordinate_key = ?
+            """,
+            bindings: [errorMessage, now, now, coordinateKey]
+        )
+    }
+
+    public func recordPlaceName(_ placeName: CatalogPlaceName) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.transaction {
+            try database.execute(
+                """
+                INSERT INTO place_cache (coordinate_key, locality, administrative_area, country, display_name, updated_at)
+                VALUES (?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?)
+                ON CONFLICT(coordinate_key) DO UPDATE SET
+                    locality = excluded.locality,
+                    administrative_area = excluded.administrative_area,
+                    country = excluded.country,
+                    display_name = excluded.display_name,
+                    updated_at = excluded.updated_at
+                """,
+                bindings: [
+                    placeName.coordinateKey,
+                    placeName.locality ?? "",
+                    placeName.administrativeArea ?? "",
+                    placeName.country ?? "",
+                    placeName.displayName ?? "",
+                    now
+                ]
+            )
+            try database.execute(
+                "DELETE FROM geocode_queue WHERE coordinate_key = ?",
+                bindings: [placeName.coordinateKey]
+            )
+        }
+    }
+
+    public func placeName(coordinateKey: String) throws -> CatalogPlaceName? {
+        let rows = try database.rows(
+            """
+            SELECT coordinate_key, locality, administrative_area, country, display_name
+            FROM place_cache
+            WHERE coordinate_key = ?
+            LIMIT 1
+            """,
+            bindings: [coordinateKey]
+        )
+        guard let row = rows.first, let key = row["coordinate_key"] else { return nil }
+        return CatalogPlaceName(
+            coordinateKey: key,
+            locality: row["locality"],
+            administrativeArea: row["administrative_area"],
+            country: row["country"],
+            displayName: row["display_name"]
+        )
+    }
+
+    public func geocodeQueueDepth() throws -> Int {
+        let rows = try database.rows("SELECT COUNT(*) AS count FROM geocode_queue")
+        guard let count = rows.first?["count"].flatMap(Int.init) else {
+            throw CatalogError.sqlite("geocode queue depth query returned no count")
+        }
+        return count
+    }
+
+    public func assetsMissingCoordinates(limit: Int) throws -> [AssetID] {
+        guard limit > 0 else { return [] }
+        let rows = try database.rows(
+            """
+            SELECT id
+            FROM assets
+            WHERE availability = ?
+              AND NOT (
+                json_valid(technical_metadata_json)
+                AND COALESCE(json_type(technical_metadata_json, '$.latitude'), 'null') IN ('integer', 'real')
+              )
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            bindings: [SourceAvailability.online.rawValue, "\(limit)"]
+        )
+        return try rows.map { row in
+            guard let id = row["id"] else {
+                throw CatalogError.sqlite("missing-coordinates row is missing id")
+            }
+            return AssetID(rawValue: id)
+        }
+    }
+
+    public func topLocations(limit: Int) throws -> [CatalogTopLocation] {
+        guard limit > 0 else { return [] }
+        let rows = try database.rows(
+            """
+            WITH located AS (
+                SELECT \(Self.latitudeExpressionSQL) AS lat,
+                       \(Self.longitudeExpressionSQL) AS lon
+                FROM assets
+                WHERE json_valid(technical_metadata_json)
+                  AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
+                  AND json_type(technical_metadata_json, '$.longitude') IN ('integer', 'real')
+            ),
+            keyed AS (
+                SELECT printf('%.2f,%.2f', ROUND(lat, 2), ROUND(lon, 2)) AS coordinate_key,
+                       lat, lon
+                FROM located
+            )
+            SELECT place_cache.display_name AS display_name,
+                   COUNT(*) AS asset_count,
+                   AVG(keyed.lat) AS lat_mean,
+                   AVG(keyed.lon) AS lon_mean
+            FROM keyed
+            JOIN place_cache ON place_cache.coordinate_key = keyed.coordinate_key
+            WHERE place_cache.display_name IS NOT NULL
+            GROUP BY place_cache.display_name
+            ORDER BY asset_count DESC, display_name ASC
+            LIMIT ?
+            """,
+            bindings: ["\(limit)"]
+        )
+        return try rows.map { row in
+            guard let displayName = row["display_name"],
+                  let assetCount = row["asset_count"].flatMap(Int.init),
+                  let latMean = row["lat_mean"].flatMap(Double.init),
+                  let lonMean = row["lon_mean"].flatMap(Double.init) else {
+                throw CatalogError.sqlite("top location row is missing required columns")
+            }
+            return CatalogTopLocation(
+                displayName: displayName,
+                assetCount: assetCount,
+                latitude: latMean,
+                longitude: lonMean
+            )
         }
     }
 
@@ -1981,6 +2263,18 @@ public final class CatalogRepository {
                     "(json_valid(technical_metadata_json) AND CAST(json_extract(technical_metadata_json, '$.capturedAt') AS REAL) < ?)"
                 )
                 bindings.append("\(date.timeIntervalSince1970)")
+            case .withinGeoBounds(let bounds):
+                clauses.append(
+                    """
+                    (json_valid(technical_metadata_json)
+                     AND \(Self.latitudeExpressionSQL) BETWEEN ? AND ?
+                     AND \(Self.longitudeExpressionSQL) BETWEEN ? AND ?)
+                    """
+                )
+                bindings.append(contentsOf: [
+                    "\(bounds.minLatitude)", "\(bounds.maxLatitude)",
+                    "\(bounds.minLongitude)", "\(bounds.maxLongitude)"
+                ])
             case .evaluationKind(let kind):
                 if kind == .faceCount || kind == .faceQuality {
                     clauses.append(

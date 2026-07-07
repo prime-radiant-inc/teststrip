@@ -20,6 +20,8 @@ public enum WorkSessionKind: String, Codable, Hashable, Sendable {
     case sourceScan
     case export
     case relocation
+    case geocoding
+    case locationBackfill
 }
 
 public enum WorkSessionStatus: String, Codable, Hashable, Sendable {

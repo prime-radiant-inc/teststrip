@@ -48,6 +48,7 @@ public final class CatalogDatabase: @unchecked Sendable {
         )
         try addColumnIfMissing(table: "preview_generation_queue", column: "last_error", definition: "TEXT")
         try addColumnIfMissing(table: "preview_generation_queue", column: "last_attempted_at", definition: "REAL")
+        try execute(CatalogMigrations.coordinateIndexStatement)
         try execute(
             "INSERT OR REPLACE INTO catalog_meta (key, value) VALUES ('schema_version', ?)",
             bindings: ["\(CatalogMigrations.version)"]
