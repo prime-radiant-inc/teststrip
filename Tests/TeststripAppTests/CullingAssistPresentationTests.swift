@@ -243,6 +243,24 @@ final class CullingAssistPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.tone, .positive)
     }
 
+    func testFaceQualityToneUsesCalibratedStrongAnchor() {
+        // Vision faceCaptureQuality maxes out at 0.703 on the study corpus,
+        // so the shared 0.7 positive line rendered virtually every face
+        // read as caution. Face quality tones at the calibrated strong
+        // anchor (p75, 0.45), matching the Potential Picks queue.
+        let strong = CullingAssistPresentation.presentation(for: [
+            signal(kind: .faceQuality, value: .score(0.6), confidence: 0.7)
+        ])
+        let weak = CullingAssistPresentation.presentation(for: [
+            signal(kind: .faceQuality, value: .score(0.4), confidence: 0.7)
+        ])
+
+        XCTAssertEqual(strong.title, "Face quality 60%")
+        XCTAssertEqual(strong.tone, .positive)
+        XCTAssertEqual(weak.title, "Face quality 40%")
+        XCTAssertEqual(weak.tone, .caution)
+    }
+
     func testVerdictRequiresAtLeastTwoScoredQualityKinds() {
         let single = CullingAssistPresentation.presentation(for: [
             signal(kind: .focus, value: .score(0.96), confidence: 1.0)

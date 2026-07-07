@@ -551,6 +551,33 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(metrics.map(\.tone), [.positive])
     }
 
+    func testFaceQualityLaneUsesCalibratedStrongAnchor() {
+        // Vision faceCaptureQuality maxes out at 0.703 on the study corpus,
+        // so the shared 0.7 positive line rendered virtually every face
+        // lane as caution. The lane tones at the calibrated strong anchor
+        // (p75, 0.45) - the same line that admits an asset to Potential
+        // Picks - so the queue and the lane cannot contradict each other.
+        let assetID = AssetID(rawValue: "face-frame")
+        let provenance = ProviderProvenance(
+            provider: "apple-vision",
+            model: "Vision",
+            version: "1",
+            settingsHash: "default"
+        )
+
+        let strong = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .faceQuality, value: .score(0.6), confidence: 0.7, provenance: provenance)
+        ])
+        let weak = CompareFocusMetricPresentation.metrics(for: [
+            EvaluationSignal(assetID: assetID, kind: .faceQuality, value: .score(0.4), confidence: 0.7, provenance: provenance)
+        ])
+
+        XCTAssertEqual(strong.map(\.value), ["60%"])
+        XCTAssertEqual(strong.map(\.tone), [.positive])
+        XCTAssertEqual(weak.map(\.value), ["40%"])
+        XCTAssertEqual(weak.map(\.tone), [.caution])
+    }
+
     func testSignalBadgesFlagBestEyesClosedAndSoftFrames() {
         let best = makeAsset(id: "best")
         let blink = makeAsset(id: "blink")
