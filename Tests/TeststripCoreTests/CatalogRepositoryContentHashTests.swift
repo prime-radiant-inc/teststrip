@@ -20,8 +20,17 @@ final class CatalogRepositoryContentHashTests: XCTestCase {
         )
     }
 
-    func testMigrationVersionIsFifteen() {
-        XCTAssertEqual(CatalogMigrations.version, 15)
+    func testMigrationVersionCoversContentHashColumn() {
+        // content_hash landed at schema 15; later migrations only raise the
+        // version, so assert the floor rather than pinning a literal that every
+        // future migration would break.
+        XCTAssertGreaterThanOrEqual(CatalogMigrations.version, 15)
+    }
+
+    func testUpsertedContentHashIsQueryableAfterMigration() throws {
+        let repository = try makeRepository(named: "content-hash-column")
+        try repository.upsert(asset(path: "/Photos/2025/one.cr2", contentHash: "col-check"))
+        XCTAssertNotNil(try repository.asset(contentHash: "col-check"))
     }
 
     func testAssetLookupByContentHashFindsUpsertedAsset() throws {
