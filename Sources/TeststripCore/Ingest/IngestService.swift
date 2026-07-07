@@ -295,7 +295,12 @@ public struct IngestService: Sendable {
         case .addInPlace:
             return
         case .copyToDestination:
-            if existingAsset != nil, FileManager.default.fileExists(atPath: originalURL.path) {
+            // A cataloged destination only counts as already imported when the
+            // bytes match the source; a distinct file colliding with it must
+            // surface as a conflict, never a silent drop.
+            if existingAsset != nil,
+               FileManager.default.fileExists(atPath: originalURL.path),
+               FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: originalURL.path) {
                 return
             }
             try copyOriginalFile(from: sourceFile, to: originalURL)

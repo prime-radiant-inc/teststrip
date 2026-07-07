@@ -742,6 +742,52 @@ final class FolderImportTests: XCTestCase {
         }
     }
 
+    func testCapturedDateCardCopyThrowsWhenCatalogedDestinationHoldsDifferentBytes() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-dated-cataloged-conflict")
+        let firstCard = root.appendingPathComponent("CardA", isDirectory: true)
+        let secondCard = root.appendingPathComponent("CardB", isDirectory: true)
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: firstCard, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondCard, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let firstCardFile = firstCard.appendingPathComponent("DSC00001.jpg")
+        let secondCardFile = secondCard.appendingPathComponent("DSC00001.jpg")
+        try Data("card A".utf8).write(to: firstCardFile)
+        try Data("card B".utf8).write(to: secondCardFile)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(
+            scanner: FolderScanner(supportedExtensions: ["jpg"]),
+            decodeRegistry: DecodeRegistry(providers: [FakeDecodeProvider(
+                technicalMetadata: Self.fakeTechnicalMetadata(capturedAt: Self.utcDate(2025, 1, 3, 10, 30, 0))
+            )])
+        )
+        let catalogedDestination = destination
+            .appendingPathComponent("2025", isDirectory: true)
+            .appendingPathComponent("2025-01-03", isDirectory: true)
+            .appendingPathComponent("DSC00001.jpg")
+        let firstImport = try service.ingest(
+            plan: IngestPlanner.copyFromCard(source: firstCard, destinationRoot: destination, destinationPolicy: .capturedDate),
+            repository: repository
+        )
+        XCTAssertEqual(firstImport.map(\.originalURL), [catalogedDestination])
+
+        XCTAssertThrowsError(
+            try service.ingest(
+                plan: IngestPlanner.copyFromCard(source: secondCard, destinationRoot: destination, destinationPolicy: .capturedDate),
+                repository: repository
+            ),
+            "distinct bytes colliding with a cataloged destination must never be silently dropped"
+        ) { error in
+            guard case TeststripError.io = error else {
+                return XCTFail("expected IO error, got \(error)")
+            }
+        }
+        XCTAssertEqual(try String(contentsOf: catalogedDestination, encoding: .utf8), "card A")
+        XCTAssertEqual(try String(contentsOf: secondCardFile, encoding: .utf8), "card B")
+    }
+
     func testSecondCopyMirrorsOriginalsAndSidecarsUnderSecondCopyRoot() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-second")
         let source = root.appendingPathComponent("DCIM", isDirectory: true)
