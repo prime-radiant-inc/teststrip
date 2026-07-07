@@ -127,10 +127,11 @@ public struct LibraryImportService: Sendable {
         _ root: URL,
         repository: CatalogRepository,
         previewPolicy: LibraryImportPreviewPolicy,
+        duplicateHandling: DuplicateHandling = .importAll,
         progress: LibraryImportProgressHandler? = nil
     ) throws -> LibraryImportResult {
         try importAssets(
-            plan: IngestPlanner.addFolder(root),
+            plan: IngestPlanner.addFolder(root, duplicateHandling: duplicateHandling),
             scanRootName: root.lastPathComponent,
             catalogingDetail: { "Cataloging \(Self.photoCountDescription($0))" },
             perFileDetail: { completed, total in "Cataloging \(completed) of \(total) photos" },
@@ -148,6 +149,7 @@ public struct LibraryImportService: Sendable {
         secondCopyDestination: URL? = nil,
         repository: CatalogRepository,
         previewPolicy: LibraryImportPreviewPolicy,
+        duplicateHandling: DuplicateHandling = .importAll,
         progress: LibraryImportProgressHandler? = nil
     ) throws -> LibraryImportResult {
         try importAssets(
@@ -155,7 +157,8 @@ public struct LibraryImportService: Sendable {
                 source: source,
                 destinationRoot: destinationRoot,
                 destinationPolicy: destinationPolicy,
-                secondCopyDestination: secondCopyDestination
+                secondCopyDestination: secondCopyDestination,
+                duplicateHandling: duplicateHandling
             ),
             scanRootName: source.lastPathComponent,
             catalogingDetail: { "Copying \(Self.photoCountDescription($0)) to \(destinationRoot.lastPathComponent)" },
@@ -249,12 +252,17 @@ public struct LibraryImportService: Sendable {
                 kind: .backupFailed
             ))
         } : nil
+        // Content already in the catalog is a normal dedup outcome, not a
+        // problem, so it feeds the "already in catalog" count rather than the
+        // skipped-file list.
+        var alreadyInCatalogCount = 0
         let assets = try ingestService.ingest(
             files: sourceFiles,
             plan: plan,
             repository: repository,
             skippedSourceFile: skippedSourceFileHandler,
             secondCopyFailure: secondCopyFailureHandler,
+            alreadyInCatalog: { _ in alreadyInCatalogCount += 1 },
             progress: { ingestProgress in
                 if ingestProgressCoalescer.shouldReport(
                     completedCount: ingestProgress.completedUnitCount,
@@ -272,8 +280,12 @@ public struct LibraryImportService: Sendable {
         if !assets.isEmpty {
             try repository.recordSourceRoot(Self.catalogSourceRoot(for: plan))
         }
-        let existingAssetCount = assets.filter { existingPreviewStates[$0.id] != nil }.count
-        let newAssetCount = assets.count - existingAssetCount
+        // A returned asset that already sat at its path (an unchanged or changed
+        // same-path re-import) is existing; a content duplicate skipped before
+        // copy is existing too. New is whatever is left.
+        let existingReturnedCount = assets.filter { existingPreviewStates[$0.id] != nil }.count
+        let existingAssetCount = existingReturnedCount + alreadyInCatalogCount
+        let newAssetCount = assets.count - existingReturnedCount
         let previewItems: [PreviewGenerationItem] = assets.flatMap { asset -> [PreviewGenerationItem] in
             guard shouldGenerateGridPreview(for: asset, existingState: existingPreviewStates[asset.id]) else {
                 return []
