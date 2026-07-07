@@ -12176,6 +12176,68 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testAutopilotArmedImportPublishesRunSummaryAfterEvaluationsComplete() async throws {
+        let directory = try makeTemporaryDirectory(named: "autopilot-armed-import")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 8), transport: transport)
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+        model.autopilotEnabled = true
+
+        model.beginImportFolder(photoFolder, autopilotAfterImport: true)
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "autopilot-armed-imported"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try catalog.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: importedAsset.id, kind: .focus, value: .score(0.8), confidence: 0.9, provenance: provenance)
+        ])
+        // Preview already cached so evaluations queue at import completion.
+        try writePreviewPlaceholder(to: catalog.previewCache.url(for: PreviewCacheKey(assetID: importedAsset.id, level: .grid)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+        try await waitForRecognitionItemCount(AppModel.defaultEvaluationProviderNames.count, in: model)
+
+        // Provisional-only until evaluations resolve: no run summary yet.
+        XCTAssertNil(model.autopilotRunSummary)
+
+        // Complete each provider's evaluation; the last one resolves the armed set.
+        for provider in AppModel.defaultEvaluationProviderNames {
+            transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+                itemID: WorkSessionID(rawValue: "evaluation-\(importedAsset.id.rawValue)-\(provider)"),
+                message: "evaluated"
+            )))
+        }
+
+        for _ in 0..<200 {
+            if model.autopilotRunSummary != nil { break }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertNotNil(model.autopilotRunSummary)
+        // Provisional only: import autopilot never writes catalog metadata.
+        XCTAssertNil(try catalog.repository.asset(id: importedAsset.id).metadata.flag)
+    }
+
+    @MainActor
     func testPreviewCompletionQueuesEvaluationsForPendingImportedAsset() async throws {
         let directory = try makeTemporaryDirectory(named: "auto-eval-preview-drain")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)

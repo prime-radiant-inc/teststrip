@@ -183,6 +183,7 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     private(set) var secondCopyUnavailableReason: String?
     var sourceSummary: ImportSourceSummary
     var evaluateAfterImport = true
+    var autopilotAfterImport = false
 
     var id: String {
         [
@@ -305,7 +306,13 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
                 secondCopyName: secondCopyName
             )
         }
-        guard evaluateAfterImport else { return baseSteps }
-        return baseSteps + [ImportPlanSteps.autoEvaluation]
+        var steps = baseSteps
+        if evaluateAfterImport {
+            steps.append(ImportPlanSteps.autoEvaluation)
+        }
+        if autopilotAfterImport {
+            steps.append(ImportPlanSteps.autopilot)
+        }
+        return steps
     }
 }

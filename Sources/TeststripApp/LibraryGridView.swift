@@ -107,6 +107,15 @@ struct LibraryGridView: View {
         }
         .navigationTitle(model.libraryTitle)
         .toolbar {
+            Toggle(isOn: Binding(
+                get: { model.autopilotEnabled },
+                set: { model.autopilotEnabled = $0 }
+            )) {
+                Label("Autopilot", systemImage: "wand.and.stars")
+            }
+            .toggleStyle(.button)
+            .help("When on, a finished import proposes keeps and cuts for review once its reads finish. Nothing is written until you commit.")
+
             Button {
                 showStartCullingPopover()
             } label: {
@@ -1668,6 +1677,17 @@ struct LibraryGridView: View {
             .toggleStyle(.checkbox)
             .font(.caption)
             .help("Queues the standard evaluation passes over the imported set's cached previews as previews complete. Reads stay provisional; nothing is written without your action.")
+            Toggle(
+                "Autopilot cull after reading",
+                isOn: Binding(
+                    get: { importConfirmationDraft?.autopilotAfterImport ?? false },
+                    set: { importConfirmationDraft?.autopilotAfterImport = $0 }
+                )
+            )
+            .toggleStyle(.checkbox)
+            .font(.caption)
+            .disabled(!(importConfirmationDraft?.evaluateAfterImport ?? true))
+            .help("Once the imported reads finish, Autopilot proposes keeps and cuts for review. Proposals stay provisional; nothing is written until you commit.")
             HStack {
                 Spacer()
                 Button("Cancel") {
@@ -2426,7 +2446,15 @@ struct LibraryGridView: View {
 
     private func showImportFolderPanel() {
         guard let folderURL = FolderSelectionPanel.chooseImportFolder() else { return }
-        importConfirmationDraft = .folder(folderURL)
+        presentImportConfirmation(.folder(folderURL))
+    }
+
+    // Seeds the draft's Autopilot-after-import toggle from the persisted app
+    // setting so the sheet reflects the standing "Autopilot on" preference.
+    private func presentImportConfirmation(_ draft: ImportConfirmationDraft) {
+        var draft = draft
+        draft.autopilotAfterImport = model.autopilotEnabled
+        importConfirmationDraft = draft
     }
 
     private func showImportPathSheet() {
@@ -2460,7 +2488,7 @@ struct LibraryGridView: View {
     private func showImportCardPanel() {
         guard let source = FolderSelectionPanel.chooseCardSourceFolder() else { return }
         guard let destinationRoot = FolderSelectionPanel.chooseCardDestinationFolder() else { return }
-        importConfirmationDraft = .card(source: source, destinationRoot: destinationRoot)
+        presentImportConfirmation(.card(source: source, destinationRoot: destinationRoot))
     }
 
     private func importFolderPath() {
@@ -2478,7 +2506,7 @@ struct LibraryGridView: View {
                     importPathReviewID = nil
                     isReviewingImportPath = false
                     isShowingImportPathSheet = false
-                    importConfirmationDraft = confirmationDraft
+                    presentImportConfirmation(confirmationDraft)
                 }
             }
         } catch {
@@ -2509,7 +2537,7 @@ struct LibraryGridView: View {
                     importCardPathReviewID = nil
                     isReviewingImportCardPath = false
                     isShowingImportCardPathSheet = false
-                    importConfirmationDraft = confirmationDraft
+                    presentImportConfirmation(confirmationDraft)
                 }
             }
         } catch {
@@ -2524,7 +2552,11 @@ struct LibraryGridView: View {
         switch draft.mode {
         case .folder:
             FolderSelectionPanel.rememberImportFolder(draft.sourceURL)
-            importFolder(draft.sourceURL, evaluateAfterImport: draft.evaluateAfterImport)
+            importFolder(
+                draft.sourceURL,
+                evaluateAfterImport: draft.evaluateAfterImport,
+                autopilotAfterImport: draft.autopilotAfterImport
+            )
         case .card:
             guard let destinationRootURL = draft.destinationRootURL else {
                 model.errorMessage = "Card import destination is missing"
@@ -2535,7 +2567,8 @@ struct LibraryGridView: View {
                 destinationRoot: destinationRootURL,
                 destinationPolicy: draft.destinationPolicy,
                 secondCopyDestination: draft.secondCopyRootURL,
-                evaluateAfterImport: draft.evaluateAfterImport
+                evaluateAfterImport: draft.evaluateAfterImport,
+                autopilotAfterImport: draft.autopilotAfterImport
             )
         }
     }
@@ -2556,8 +2589,16 @@ struct LibraryGridView: View {
         }
     }
 
-    private func importFolder(_ folderURL: URL, evaluateAfterImport: Bool = true) {
-        model.beginImportFolder(folderURL, evaluateAfterImport: evaluateAfterImport)
+    private func importFolder(
+        _ folderURL: URL,
+        evaluateAfterImport: Bool = true,
+        autopilotAfterImport: Bool = false
+    ) {
+        model.beginImportFolder(
+            folderURL,
+            evaluateAfterImport: evaluateAfterImport,
+            autopilotAfterImport: autopilotAfterImport
+        )
     }
 
     private func importCard(
@@ -2565,14 +2606,16 @@ struct LibraryGridView: View {
         destinationRoot: URL,
         destinationPolicy: ImportDestinationPolicy,
         secondCopyDestination: URL?,
-        evaluateAfterImport: Bool = true
+        evaluateAfterImport: Bool = true,
+        autopilotAfterImport: Bool = false
     ) {
         model.beginImportCard(
             source: source,
             destinationRoot: destinationRoot,
             destinationPolicy: destinationPolicy,
             secondCopyDestination: secondCopyDestination,
-            evaluateAfterImport: evaluateAfterImport
+            evaluateAfterImport: evaluateAfterImport,
+            autopilotAfterImport: autopilotAfterImport
         )
     }
 

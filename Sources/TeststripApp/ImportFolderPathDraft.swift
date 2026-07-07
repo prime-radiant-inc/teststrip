@@ -100,6 +100,12 @@ enum ImportPlanSteps {
         detail: "Focus, exposure, and face reads queue over cached previews as they finish; reads stay provisional until you act.",
         stage: .followUpSetup
     )
+
+    static let autopilot = ImportPlanStep(
+        title: "Autopilot cull",
+        detail: "After reads finish, Autopilot proposes keeps and cuts for review — nothing is written until you commit.",
+        stage: .followUpSetup
+    )
 }
 
 struct ImportFolderPathDraft: Equatable {

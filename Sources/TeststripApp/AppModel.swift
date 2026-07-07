@@ -1472,6 +1472,24 @@ public final class AppModel {
     @ObservationIgnored
     private var importAutoEvaluationEnabled = true
 
+    // Persisted "Autopilot on" toggle. When on, a finished import runs
+    // runAutopilot over the imported set once its evaluations resolve. On-demand
+    // runAutopilot is always available regardless of this toggle.
+    public var autopilotEnabled = false {
+        didSet {
+            sessionRestoreDefaults?.set(autopilotEnabled, forKey: Self.autopilotEnabledDefaultsKey)
+        }
+    }
+    static let autopilotEnabledDefaultsKey = "AppModel.autopilotEnabled"
+
+    // Set at import start from the import's autopilotAfterImport decision; the
+    // imported asset IDs land in armedAutopilotImportAssetIDs once the import
+    // completes, and autopilot runs once their evaluations all resolve.
+    @ObservationIgnored
+    private var autopilotArmedForActiveImport = false
+    @ObservationIgnored
+    private var armedAutopilotImportAssetIDs: Set<AssetID>?
+
     @ObservationIgnored
     private var pendingImportEvaluationAssetIDs: Set<AssetID> = []
 
@@ -3042,6 +3060,9 @@ public final class AppModel {
         try model.enqueuePendingMetadataSync()
         try model.restoreSessionStateIfAvailable()
         try model.reconstructAutopilotStateAfterLoad()
+        if let sessionRestoreDefaults {
+            model.autopilotEnabled = sessionRestoreDefaults.bool(forKey: autopilotEnabledDefaultsKey)
+        }
         return model
     }
 
@@ -6647,7 +6668,33 @@ public final class AppModel {
         // requestEvaluation dedups against the live queue, so this cannot
         // double-enqueue.
         pendingImportEvaluationAssetIDs.formUnion(importedAssetIDs)
+        if autopilotArmedForActiveImport {
+            armedAutopilotImportAssetIDs = (armedAutopilotImportAssetIDs ?? []).union(importedAssetIDs)
+        }
         enqueueImportEvaluationsForCachedPreviews(assetIDs: importedAssetIDs)
+        runImportAutopilotIfArmedAndResolved()
+    }
+
+    // Runs autopilot over the armed import set once every armed asset's
+    // evaluations have resolved (nothing queued waiting on a preview, nothing
+    // in-flight in the worker). Runs at most once per armed import, then disarms.
+    private func runImportAutopilotIfArmedAndResolved() {
+        guard let armed = armedAutopilotImportAssetIDs, !armed.isEmpty else { return }
+        if armed.contains(where: { pendingImportEvaluationAssetIDs.contains($0) }) { return }
+        let inFlightEvaluationAssetIDs = Set(evaluationAssetIDsByItemID.values)
+        if armed.contains(where: { inFlightEvaluationAssetIDs.contains($0) }) { return }
+        armedAutopilotImportAssetIDs = nil
+        autopilotArmedForActiveImport = false
+        runImportAutopilotIfEnabled(importedAssetIDs: Array(armed))
+    }
+
+    private func runImportAutopilotIfEnabled(importedAssetIDs: [AssetID]) {
+        guard autopilotEnabled else { return }
+        do {
+            _ = try runAutopilot(scope: .assetIDs(importedAssetIDs))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func enqueueImportEvaluationsForCachedPreviews(assetIDs: [AssetID]) {
@@ -6863,6 +6910,7 @@ public final class AppModel {
                let previewAssetID = Self.previewAssetID(from: itemID) {
                 enqueueImportEvaluationsForCachedPreviews(assetIDs: [previewAssetID])
             }
+            runImportAutopilotIfArmedAndResolved()
         case .completedImport(
             let itemID,
             _,
@@ -9180,7 +9228,11 @@ public final class AppModel {
     }
 
     @MainActor
-    public func beginImportFolder(_ folderURL: URL, evaluateAfterImport: Bool = true) {
+    public func beginImportFolder(
+        _ folderURL: URL,
+        evaluateAfterImport: Bool = true,
+        autopilotAfterImport: Bool = false
+    ) {
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
             return
@@ -9192,6 +9244,7 @@ public final class AppModel {
         // Set only after the concurrency guard so a rejected call cannot change
         // the in-flight import's auto-evaluation outcome.
         importAutoEvaluationEnabled = evaluateAfterImport
+        autopilotArmedForActiveImport = autopilotAfterImport
         if let blockingReason = ImportSourcePreflight.blockingReason(for: folderURL) {
             failImportBeforeStart(folderURL: folderURL, reason: blockingReason)
             return
@@ -9260,7 +9313,8 @@ public final class AppModel {
         destinationRoot: URL,
         destinationPolicy: ImportDestinationPolicy = .flat,
         secondCopyDestination: URL? = nil,
-        evaluateAfterImport: Bool = true
+        evaluateAfterImport: Bool = true,
+        autopilotAfterImport: Bool = false
     ) {
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
@@ -9273,6 +9327,7 @@ public final class AppModel {
         // Set only after the concurrency guard so a rejected call cannot change
         // the in-flight import's auto-evaluation outcome.
         importAutoEvaluationEnabled = evaluateAfterImport
+        autopilotArmedForActiveImport = autopilotAfterImport
         if let blockingReason = ImportSourcePreflight.blockingReason(for: source) {
             failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: blockingReason)
             return
