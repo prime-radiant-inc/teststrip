@@ -7,7 +7,7 @@ public enum ExportFormat: String, Hashable, Sendable, Codable, CaseIterable {
     case png
 }
 
-public struct ExportSettings: Hashable, Sendable {
+public struct ExportSettings: Hashable, Sendable, Codable {
     public var format: ExportFormat
     public var jpegQuality: Double
     public var longEdgeMaximumPixels: Int?
@@ -32,7 +32,7 @@ public struct ExportSettings: Hashable, Sendable {
     }
 }
 
-public struct ExportPreset: Hashable, Sendable {
+public struct ExportPreset: Hashable, Sendable, Codable {
     public var name: String
     public var settings: ExportSettings
 

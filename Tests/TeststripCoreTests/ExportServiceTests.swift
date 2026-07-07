@@ -46,6 +46,22 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(ExportPreset.email1MB.settings.format, .jpeg)
     }
 
+    func testPresetsRoundTripThroughJSONForPersistence() throws {
+        let custom = ExportPreset(
+            name: "Client delivery",
+            settings: ExportSettings(
+                jpegQuality: 0.92,
+                longEdgeMaximumPixels: 3600,
+                includeSourceMetadata: false,
+                format: .png,
+                targetFileSizeBytes: 2_500_000
+            )
+        )
+        let data = try JSONEncoder().encode([custom, ExportPreset.email1MB])
+        let decoded = try JSONDecoder().decode([ExportPreset].self, from: data)
+        XCTAssertEqual(decoded, [custom, .email1MB])
+    }
+
     func testSettingsClampJpegQualityToUnitRange() {
         XCTAssertEqual(ExportSettings(jpegQuality: 1.5).jpegQuality, 1.0)
         XCTAssertEqual(ExportSettings(jpegQuality: -0.2).jpegQuality, 0.0)
