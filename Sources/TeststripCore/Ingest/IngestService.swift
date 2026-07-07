@@ -39,10 +39,16 @@ public struct IngestService: Sendable {
 
     public var scanner: FolderScanner
     public var decodeRegistry: DecodeRegistry?
+    public var contentHasher: @Sendable (URL) throws -> String
 
-    public init(scanner: FolderScanner, decodeRegistry: DecodeRegistry? = nil) {
+    public init(
+        scanner: FolderScanner,
+        decodeRegistry: DecodeRegistry? = nil,
+        contentHasher: @escaping @Sendable (URL) throws -> String = { try ContentHash.compute(forFileAt: $0) }
+    ) {
         self.scanner = scanner
         self.decodeRegistry = decodeRegistry
+        self.contentHasher = contentHasher
     }
 
     public func files(
@@ -66,6 +72,7 @@ public struct IngestService: Sendable {
         repository: CatalogRepository,
         skippedSourceFile: IngestSkippedSourceFileHandler? = nil,
         secondCopyFailure: IngestSkippedSourceFileHandler? = nil,
+        alreadyInCatalog: IngestSkippedSourceFileHandler? = nil,
         progress: IngestProgressHandler? = nil
     ) throws -> [Asset] {
         try validate(plan: plan)
@@ -79,11 +86,40 @@ public struct IngestService: Sendable {
         // one destination path must reuse the pending asset ID or the flush
         // violates the unique original_path index.
         var assetIDsByClaimedPath: [String: AssetID] = [:]
+        // Content already accepted earlier in this same batch, keyed by content
+        // hash to the source file that carried it, so a shot appearing twice on
+        // one card collapses even before the first copy is flushed to catalog.
+        var acceptedContentSources: [String: URL] = [:]
         let sidecarStore = XMPSidecarStore()
         for (sourceIndex, sourceFile) in sourceFiles.enumerated() {
             try Task.checkCancellation()
             do {
                 let originalURL = try originalURL(for: sourceFile, plan: plan)
+                // Dedup must decide before any copy, so it hashes the source
+                // itself. Import-all needs no such decision and lets the
+                // fingerprint hash the finished original instead.
+                var sourceContentHash: String?
+                if plan.duplicateHandling == .skipCatalogedContent {
+                    let hash = try contentHash(for: sourceFile)
+                    sourceContentHash = hash
+                    if try isAlreadyInCatalog(
+                        sourceFile: sourceFile,
+                        contentHash: hash,
+                        acceptedContentSources: acceptedContentSources,
+                        repository: repository
+                    ) {
+                        alreadyInCatalog?(IngestSkippedSourceFile(
+                            sourceURL: sourceFile,
+                            message: "already in catalog"
+                        ))
+                        progress?(IngestProgress(
+                            completedUnitCount: sourceIndex + 1,
+                            totalUnitCount: sourceFiles.count,
+                            originalURL: sourceFile
+                        ))
+                        continue
+                    }
+                }
                 let existingAsset = try repository.asset(originalURL: originalURL)
                 let assetID = existingAsset?.id ?? assetIDsByClaimedPath[originalURL.path] ?? .new()
                 if plan.mode == .copyToDestination,
@@ -96,7 +132,7 @@ public struct IngestService: Sendable {
                 if let secondCopyIssue = secondCopyIssue(for: sourceFile, plan: plan) {
                     secondCopyFailure?(secondCopyIssue)
                 }
-                let fingerprint = try fingerprint(for: originalURL)
+                let fingerprint = try fingerprint(for: originalURL, precomputedContentHash: sourceContentHash)
                 var metadata = existingAsset?.metadata ?? AssetMetadata()
                 let sidecarURL = sidecarStore.sidecarURL(forOriginalAt: originalURL)
                 if FileManager.default.fileExists(atPath: sidecarURL.path) {
@@ -162,6 +198,9 @@ public struct IngestService: Sendable {
                 )
                 assets.append(asset)
                 pendingCatalogAssets.append(asset)
+                if let sourceContentHash {
+                    acceptedContentSources[sourceContentHash] = sourceFile
+                }
                 let catalogedAssetIDs = try flushCatalogAssetsIfNeeded(
                     pendingCatalogAssets: &pendingCatalogAssets,
                     importedAssetCount: assets.count,
@@ -410,7 +449,11 @@ public struct IngestService: Sendable {
         return String(sourceFilePath.dropFirst(sourceRootPrefix.count))
     }
 
-    private func fingerprint(for url: URL) throws -> FileFingerprint {
+    // Reads attributes before hashing so a file that vanished mid-import is
+    // reported as a fingerprint failure, not a hash failure. When the dedup
+    // pass already hashed the source, that hash is reused; copy imports produce
+    // byte-identical originals, so the source and destination hashes match.
+    private func fingerprint(for url: URL, precomputedContentHash: String?) throws -> FileFingerprint {
         let attributes: [FileAttributeKey: Any]
         do {
             attributes = try FileManager.default.attributesOfItem(atPath: url.path)
@@ -419,7 +462,46 @@ public struct IngestService: Sendable {
         }
         let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
         let modificationDate = attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0)
-        return FileFingerprint(size: size, modificationDate: modificationDate)
+        let contentHash = try precomputedContentHash ?? contentHash(for: url)
+        return FileFingerprint(size: size, modificationDate: modificationDate, contentHash: contentHash)
+    }
+
+    private func contentHash(for url: URL) throws -> String {
+        do {
+            return try contentHasher(url)
+        } catch let error as TeststripError {
+            throw error
+        } catch {
+            throw TeststripError.io("could not hash \(url.path): \(error.localizedDescription)")
+        }
+    }
+
+    // A source file is already in the catalog when its content matches either a
+    // file accepted earlier in this same batch or a previously cataloged asset.
+    // The bounded content hash narrows the candidate; an exact byte comparison
+    // confirms it before any copy is skipped, so a partial-hash collision can
+    // never silently drop a distinct file. When the matched cataloged original
+    // is unreachable (an offline drive) the byte comparison is impossible, so
+    // the content hash is trusted — re-inserting a card still skips.
+    private func isAlreadyInCatalog(
+        sourceFile: URL,
+        contentHash: String,
+        acceptedContentSources: [String: URL],
+        repository: CatalogRepository
+    ) throws -> Bool {
+        guard !contentHash.isEmpty else { return false }
+        if let batchTwin = acceptedContentSources[contentHash],
+           FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: batchTwin.path) {
+            return true
+        }
+        guard let catalogedTwin = try repository.asset(contentHash: contentHash) else {
+            return false
+        }
+        let catalogedPath = catalogedTwin.originalURL.path
+        guard FileManager.default.fileExists(atPath: catalogedPath) else {
+            return true
+        }
+        return FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: catalogedPath)
     }
 
     private func volumeIdentifier(for url: URL) -> String? {
