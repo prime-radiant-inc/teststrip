@@ -896,6 +896,69 @@ public final class CatalogRepository {
         )
     }
 
+    public func saveRelocationManifestEntry(_ entry: RelocationManifestEntry, sessionID: WorkSessionID) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT INTO relocation_manifest_entries (
+                session_id, sequence, asset_id,
+                original_from_path, original_to_path,
+                sidecar_from_path, sidecar_to_path, created_at
+            )
+            VALUES (
+                ?,
+                (SELECT COALESCE(MAX(sequence), -1) + 1 FROM relocation_manifest_entries WHERE session_id = ?),
+                ?, ?, ?, ?, ?, ?
+            )
+            ON CONFLICT(session_id, asset_id) DO UPDATE SET
+                original_from_path = excluded.original_from_path,
+                original_to_path = excluded.original_to_path,
+                sidecar_from_path = excluded.sidecar_from_path,
+                sidecar_to_path = excluded.sidecar_to_path
+            """,
+            bindings: [
+                sessionID.rawValue,
+                sessionID.rawValue,
+                entry.assetID.rawValue,
+                entry.originalFrom.path,
+                entry.originalTo.path,
+                entry.sidecarFrom?.path ?? "",
+                entry.sidecarTo?.path ?? "",
+                now
+            ]
+        )
+    }
+
+    public func relocationManifestEntries(sessionID: WorkSessionID) throws -> [RelocationManifestEntry] {
+        let rows = try database.rows(
+            "SELECT * FROM relocation_manifest_entries WHERE session_id = ? ORDER BY sequence ASC",
+            bindings: [sessionID.rawValue]
+        )
+        return try rows.map(decodeRelocationManifestEntry)
+    }
+
+    public func deleteRelocationManifest(sessionID: WorkSessionID) throws {
+        try database.execute(
+            "DELETE FROM relocation_manifest_entries WHERE session_id = ?",
+            bindings: [sessionID.rawValue]
+        )
+    }
+
+    private func decodeRelocationManifestEntry(_ row: [String: String]) throws -> RelocationManifestEntry {
+        guard let assetID = row["asset_id"],
+              let originalFrom = row["original_from_path"],
+              let originalTo = row["original_to_path"] else {
+            throw CatalogError.sqlite("relocation manifest row is missing required columns")
+        }
+        return RelocationManifestEntry(
+            assetID: AssetID(rawValue: assetID),
+            originalFrom: URL(fileURLWithPath: originalFrom),
+            originalTo: URL(fileURLWithPath: originalTo),
+            sidecarFrom: row["sidecar_from_path"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) },
+            sidecarTo: row["sidecar_to_path"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+        )
+    }
+
     public func session(id: WorkSessionID) throws -> WorkSession {
         let rows = try database.rows("SELECT * FROM work_sessions WHERE id = ?", bindings: [id.rawValue])
         guard let row = rows.first else {

@@ -1,5 +1,5 @@
 enum CatalogMigrations {
-    static let version = 14
+    static let version = 16
 
     static let statements = [
         """
@@ -176,6 +176,20 @@ enum CatalogMigrations {
             created_at REAL NOT NULL,
             PRIMARY KEY (asset_id, face_index)
         )
+        """,
         """
+        CREATE TABLE IF NOT EXISTS relocation_manifest_entries (
+            session_id TEXT NOT NULL,
+            sequence INTEGER NOT NULL,
+            asset_id TEXT NOT NULL,
+            original_from_path TEXT NOT NULL,
+            original_to_path TEXT NOT NULL,
+            sidecar_from_path TEXT,
+            sidecar_to_path TEXT,
+            created_at REAL NOT NULL,
+            PRIMARY KEY (session_id, asset_id)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_relocation_manifest_session ON relocation_manifest_entries(session_id, sequence)"
     ]
 }

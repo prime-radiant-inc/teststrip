@@ -10065,6 +10065,8 @@ public final class AppModel {
             return "Source scan"
         case .export:
             return "Export"
+        case .relocation:
+            return "Move rejects"
         }
     }
 }

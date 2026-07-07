@@ -2402,6 +2402,87 @@ final class CatalogDatabaseTests: XCTestCase {
             }
         }
     }
+
+    func testPersistsRelocationManifestEntriesInInsertionOrder() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "relocation-manifest")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let sessionID = WorkSessionID(rawValue: "relocation-1")
+        let first = RelocationManifestEntry(
+            assetID: AssetID(rawValue: "a1"),
+            originalFrom: URL(fileURLWithPath: "/Shoot/Day1/a1.cr2"),
+            originalTo: URL(fileURLWithPath: "/Rejects/Day1/a1.cr2"),
+            sidecarFrom: URL(fileURLWithPath: "/Shoot/Day1/a1.cr2.xmp"),
+            sidecarTo: URL(fileURLWithPath: "/Rejects/Day1/a1.cr2.xmp")
+        )
+        let second = RelocationManifestEntry(
+            assetID: AssetID(rawValue: "a2"),
+            originalFrom: URL(fileURLWithPath: "/Shoot/Day2/a2.cr2"),
+            originalTo: URL(fileURLWithPath: "/Rejects/Day2/a2.cr2"),
+            sidecarFrom: nil,
+            sidecarTo: nil
+        )
+
+        try repository.saveRelocationManifestEntry(first, sessionID: sessionID)
+        try repository.saveRelocationManifestEntry(second, sessionID: sessionID)
+
+        XCTAssertEqual(try repository.relocationManifestEntries(sessionID: sessionID), [first, second])
+        XCTAssertEqual(try repository.relocationManifestEntries(sessionID: WorkSessionID(rawValue: "other")), [])
+    }
+
+    func testDeleteRelocationManifestRemovesOnlyThatSession() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "relocation-manifest-delete")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let kept = WorkSessionID(rawValue: "keep")
+        let removed = WorkSessionID(rawValue: "remove")
+        let keptEntry = RelocationManifestEntry(
+            assetID: AssetID(rawValue: "k"),
+            originalFrom: URL(fileURLWithPath: "/a/k.cr2"),
+            originalTo: URL(fileURLWithPath: "/b/k.cr2"),
+            sidecarFrom: nil,
+            sidecarTo: nil
+        )
+        try repository.saveRelocationManifestEntry(keptEntry, sessionID: kept)
+        try repository.saveRelocationManifestEntry(
+            RelocationManifestEntry(
+                assetID: AssetID(rawValue: "r"),
+                originalFrom: URL(fileURLWithPath: "/a/r.cr2"),
+                originalTo: URL(fileURLWithPath: "/b/r.cr2"),
+                sidecarFrom: nil,
+                sidecarTo: nil
+            ),
+            sessionID: removed
+        )
+
+        try repository.deleteRelocationManifest(sessionID: removed)
+
+        XCTAssertEqual(try repository.relocationManifestEntries(sessionID: removed), [])
+        XCTAssertEqual(try repository.relocationManifestEntries(sessionID: kept), [keptEntry])
+    }
+
+    func testRelocationWorkSessionKindRoundTrips() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "relocation-session-kind")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let session = WorkSession(
+            id: WorkSessionID(rawValue: "relocation-session"),
+            kind: .relocation,
+            intent: "move-rejects",
+            title: "Move rejects",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1),
+            updatedAt: Date(timeIntervalSince1970: 2)
+        )
+        try repository.save(session)
+
+        XCTAssertEqual(try repository.session(id: session.id).kind, .relocation)
+    }
 }
 
 private extension Asset {
