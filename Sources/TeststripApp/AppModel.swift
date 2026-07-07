@@ -1993,6 +1993,16 @@ public final class AppModel {
     /// presentation rebuild.
     private func refreshLatestImportPreviewStatus() {
         latestImportPreviewStatus = nil
+        // A newly cached preview can flip the cached core's evaluate gate; patch
+        // it in place instead of paying the full core rebuild per preview
+        // transition. The recheck short-circuits on the first cached preview.
+        if let core = latestImportPresentationCore,
+           !core.canRequestAssetEvaluations,
+           canRequestLatestImportAssetEvaluations(assetIDs: core.outputAssetIDs) {
+            var updatedCore = core
+            updatedCore.canRequestAssetEvaluations = true
+            latestImportPresentationCore = updatedCore
+        }
     }
 
     private func latestImportCoreRebuildingIfNeeded() -> LatestImportPresentationCore {

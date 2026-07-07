@@ -11578,6 +11578,59 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testPreviewCompletionEnablesLatestImportEvaluateActionWhenAutoEvaluationDisabled() async throws {
+        let directory = try makeTemporaryDirectory(named: "latest-import-evaluate-gate-preview-drain")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 8), transport: transport)
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        model.beginImportFolder(photoFolder, evaluateAfterImport: false)
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "evaluate-gate-deferred"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        try catalog.repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: importedAsset.id, level: .micro))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+        try await waitForSelectedAsset(importedAsset.id, in: model)
+        // The worker import deferred preview generation, so the evaluate action
+        // is still gated off. This access caches the presentation core.
+        XCTAssertFalse(model.canRequestLatestImportAssetEvaluations)
+
+        // The only preview finishes: with auto-evaluation off, no recognition
+        // completion will ever refresh the panel, so the preview transition
+        // itself must flip the evaluate gate.
+        try writePreviewPlaceholder(to: catalog.previewCache.url(for: PreviewCacheKey(assetID: importedAsset.id, level: .micro)))
+        let previewItemID = WorkSessionID(rawValue: "preview-\(importedAsset.id.rawValue)-micro")
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: previewItemID,
+            message: "generated micro preview"
+        )))
+        try await waitForCompletedBackgroundWorkItem(id: previewItemID, in: model)
+
+        XCTAssertTrue(model.canRequestLatestImportAssetEvaluations)
+    }
+
+    @MainActor
     func testLatestImportCompletionSummarySurfacesDeferredPreviewFailuresForWorkerImport() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-preview-failure-summary")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
@@ -14743,6 +14796,17 @@ final class AppModelTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTFail("timed out waiting for selected asset \(assetID.rawValue)")
+    }
+
+    @MainActor
+    private func waitForCompletedBackgroundWorkItem(id itemID: WorkSessionID, in model: AppModel) async throws {
+        for _ in 0..<100 {
+            if model.backgroundWorkQueue.item(id: itemID)?.status == .completed {
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTFail("timed out waiting for completed work item \(itemID.rawValue)")
     }
 
     @MainActor
