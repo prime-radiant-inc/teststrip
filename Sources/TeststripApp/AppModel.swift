@@ -484,6 +484,12 @@ public struct SidebarRow: Identifiable, Equatable, Sendable {
     public var tone: SidebarRowTone
     public var target: SidebarRowTarget
     public var liveMockupPlaceholder: LiveMockupPlaceholder?
+    /// Indentation level for tree-shaped sections (currently only Folders).
+    /// Zero for every other section's flat rows.
+    public var depth: Int
+    /// Expand/collapse affordance for tree-shaped rows. `.none` for rows
+    /// that aren't part of a tree, or that are but have no children.
+    public var disclosure: SidebarRowDisclosure
 
     public init(
         id: String,
@@ -492,7 +498,9 @@ public struct SidebarRow: Identifiable, Equatable, Sendable {
         countText: String? = nil,
         tone: SidebarRowTone = .neutral,
         target: SidebarRowTarget = .placeholder,
-        liveMockupPlaceholder: LiveMockupPlaceholder? = nil
+        liveMockupPlaceholder: LiveMockupPlaceholder? = nil,
+        depth: Int = 0,
+        disclosure: SidebarRowDisclosure = .none
     ) {
         self.id = id
         self.title = title
@@ -501,11 +509,19 @@ public struct SidebarRow: Identifiable, Equatable, Sendable {
         self.tone = tone
         self.target = target
         self.liveMockupPlaceholder = liveMockupPlaceholder
+        self.depth = depth
+        self.disclosure = disclosure
     }
 
     public var isSelectable: Bool {
         target != .placeholder
     }
+}
+
+public enum SidebarRowDisclosure: Equatable, Sendable {
+    case none
+    case collapsed
+    case expanded
 }
 
 public struct ActiveLibraryFilterRow: Identifiable, Equatable, Sendable {
@@ -1299,6 +1315,10 @@ public final class AppModel {
     public var assetSetCounts: [AssetSetID: Int]
     public var workSessionScopeCounts: [WorkSessionID: Int]
     public var catalogFolders: [CatalogFolder]
+    /// Folder-tree rows the user has expanded in the Folders sidebar
+    /// section, keyed by the row's full folder path. In-memory only; not
+    /// persisted across launches.
+    public private(set) var expandedFolderPaths: Set<String>
     public var catalogTimelineDays: [CatalogTimelineDay]
     public var sourceRoots: [CatalogSourceRoot]
     public var sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary]
@@ -2659,6 +2679,7 @@ public final class AppModel {
         self.assetSetCounts = assetSetCounts
         self.workSessionScopeCounts = workSessionScopeCounts
         self.catalogFolders = catalogFolders
+        self.expandedFolderPaths = []
         self.catalogTimelineDays = catalogTimelineDays
         self.sourceRoots = sourceRoots
         self.sourceAvailabilitySummaries = sourceAvailabilitySummaries
@@ -3146,6 +3167,18 @@ public final class AppModel {
 
     public func selectSidebarRow(_ row: SidebarRow) throws {
         try selectSidebarTarget(row.target)
+    }
+
+    /// Expands or collapses a Folders-sidebar tree row without changing the
+    /// current library scope/selection - purely a rendering concern, so it
+    /// never calls `reload()`.
+    public func toggleFolderExpansion(path: String) {
+        if expandedFolderPaths.contains(path) {
+            expandedFolderPaths.remove(path)
+        } else {
+            expandedFolderPaths.insert(path)
+        }
+        rebuildSidebarSections()
     }
 
     public func selectSidebarTarget(_ target: SidebarRowTarget) throws {
@@ -8529,6 +8562,7 @@ public final class AppModel {
             assetSetCounts: assetSetCounts,
             workSessionScopeCounts: workSessionScopeCounts,
             catalogFolders: catalogFolders,
+            expandedFolderPaths: expandedFolderPaths,
             catalogTimelineDays: catalogTimelineDays,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
@@ -9396,6 +9430,7 @@ public final class AppModel {
         assetSetCounts: [AssetSetID: Int] = [:],
         workSessionScopeCounts: [WorkSessionID: Int] = [:],
         catalogFolders: [CatalogFolder] = [],
+        expandedFolderPaths: Set<String> = [],
         catalogTimelineDays: [CatalogTimelineDay] = [],
         sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary] = [],
         catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
@@ -9467,14 +9502,10 @@ public final class AppModel {
             sections.append(SidebarSection(title: "Review", rows: reviewRows))
         }
         if !catalogFolders.isEmpty {
-            sections.append(SidebarSection(title: "Folders", rows: catalogFolders.prefix(20).map { folder in
-                SidebarRow(
-                    id: "folder-\(folder.path)",
-                    title: folder.name,
-                    detailText: folder.path,
-                    target: .folder(folder.path)
-                )
-            }))
+            sections.append(SidebarSection(
+                title: "Folders",
+                rows: folderTreeSidebarRows(catalogFolders: catalogFolders, expandedFolderPaths: expandedFolderPaths)
+            ))
         }
         let sourceRows = sourceAvailabilitySidebarRows(
             sourceAvailabilitySummaries,
@@ -9541,6 +9572,43 @@ public final class AppModel {
             sections.append(SidebarSection(title: "Starred Work", rows: starredWorkRows))
         }
         return sections
+    }
+
+    /// Flattens the folder tree into sidebar rows, only descending into a
+    /// node's children when its full path is in `expandedFolderPaths` -
+    /// expand-on-demand, so a deep or wide tree never renders more than the
+    /// rows the user has actually opened.
+    private static func folderTreeSidebarRows(
+        catalogFolders: [CatalogFolder],
+        expandedFolderPaths: Set<String>
+    ) -> [SidebarRow] {
+        FolderTreePresentation.build(from: catalogFolders).flatMap { node in
+            folderTreeSidebarRows(for: node, depth: 0, expandedFolderPaths: expandedFolderPaths)
+        }
+    }
+
+    private static func folderTreeSidebarRows(
+        for node: FolderTreeNode,
+        depth: Int,
+        expandedFolderPaths: Set<String>
+    ) -> [SidebarRow] {
+        let isExpanded = expandedFolderPaths.contains(node.fullPath)
+        let disclosure: SidebarRowDisclosure = node.hasChildren ? (isExpanded ? .expanded : .collapsed) : .none
+        let row = SidebarRow(
+            id: "folder-\(node.fullPath)",
+            title: node.title,
+            detailText: node.fullPath,
+            countText: sidebarCountText(node.assetCount),
+            target: .folder(node.fullPath),
+            depth: depth,
+            disclosure: disclosure
+        )
+        guard isExpanded else {
+            return [row]
+        }
+        return [row] + node.children.flatMap { child in
+            folderTreeSidebarRows(for: child, depth: depth + 1, expandedFolderPaths: expandedFolderPaths)
+        }
     }
 
     private static func reviewQueueSidebarRows(reviewQueueCounts: [ReviewQueue: Int]) -> [SidebarRow] {

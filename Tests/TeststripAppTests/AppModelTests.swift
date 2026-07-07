@@ -5579,7 +5579,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(modelWithoutCatalog.canToggleAssetSetStarred(libraryRow))
     }
 
-    func testLoadExposesCatalogFoldersInSidebarAndSelectingFolderAppliesFilter() throws {
+    func testFolderSidebarTreeCollapsesSharedRootToOneRowByDefault() throws {
         let ceremony = makeAsset(id: "ceremony", path: "/Volumes/NAS/Wedding/Ceremony/frame-1.cr2", rating: 4)
         let portraits = makeAsset(id: "portraits", path: "/Volumes/NAS/Wedding/Portraits/frame-2.cr2", rating: 5)
         let travel = makeAsset(id: "travel", path: "/Volumes/NAS/Travel/frame-3.cr2", rating: 5)
@@ -5589,8 +5589,66 @@ final class AppModelTests: XCTestCase {
         )
 
         let folderSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Folders" })
-        XCTAssertEqual(folderSection.rowTitles, ["Travel", "Ceremony", "Portraits"])
+
+        // "/Volumes/NAS" holds no photos of its own and has no sibling
+        // directories, so it reads as one collapsed root row rather than
+        // two meaningless expand clicks through "Volumes" then "NAS".
+        XCTAssertEqual(folderSection.rowTitles, ["NAS"])
+        let rootRow = folderSection.rows[0]
+        XCTAssertEqual(rootRow.depth, 0)
+        XCTAssertEqual(rootRow.disclosure, .collapsed)
+        XCTAssertEqual(rootRow.countText, "3")
+        XCTAssertEqual(rootRow.detailText, "/Volumes/NAS/")
+        XCTAssertEqual(rootRow.target, .folder("/Volumes/NAS/"))
+    }
+
+    func testExpandingFolderRowRevealsChildrenAndTogglingAgainCollapsesThem() throws {
+        let ceremony = makeAsset(id: "ceremony", path: "/Volumes/NAS/Wedding/Ceremony/frame-1.cr2", rating: 4)
+        let portraits = makeAsset(id: "portraits", path: "/Volumes/NAS/Wedding/Portraits/frame-2.cr2", rating: 5)
+        let travel = makeAsset(id: "travel", path: "/Volumes/NAS/Travel/frame-3.cr2", rating: 5)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-folder-sidebar-expand",
+            assets: [ceremony, portraits, travel]
+        )
+
+        model.toggleFolderExpansion(path: "/Volumes/NAS/")
+
+        var folderSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Folders" })
+        XCTAssertEqual(folderSection.rowTitles, ["NAS", "Travel", "Wedding"])
+        XCTAssertEqual(folderSection.rows[0].disclosure, .expanded)
+        let travelRow = folderSection.rows[1]
+        let weddingRow = folderSection.rows[2]
+        XCTAssertEqual(travelRow.depth, 1)
+        XCTAssertEqual(travelRow.disclosure, .none)
+        XCTAssertEqual(travelRow.countText, "1")
+        XCTAssertEqual(weddingRow.depth, 1)
+        XCTAssertEqual(weddingRow.disclosure, .collapsed)
+        XCTAssertEqual(weddingRow.countText, "2")
+
+        model.toggleFolderExpansion(path: "/Volumes/NAS/")
+
+        folderSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Folders" })
+        XCTAssertEqual(folderSection.rowTitles, ["NAS"])
+        XCTAssertEqual(folderSection.rows[0].disclosure, .collapsed)
+    }
+
+    func testExpandingNestedFolderRowRevealsGrandchildrenAndSelectingALeafAppliesFilter() throws {
+        let ceremony = makeAsset(id: "ceremony", path: "/Volumes/NAS/Wedding/Ceremony/frame-1.cr2", rating: 4)
+        let portraits = makeAsset(id: "portraits", path: "/Volumes/NAS/Wedding/Portraits/frame-2.cr2", rating: 5)
+        let travel = makeAsset(id: "travel", path: "/Volumes/NAS/Travel/frame-3.cr2", rating: 5)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-folder-sidebar-nested",
+            assets: [ceremony, portraits, travel]
+        )
+
+        model.toggleFolderExpansion(path: "/Volumes/NAS/")
+        model.toggleFolderExpansion(path: "/Volumes/NAS/Wedding/")
+
+        let folderSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Folders" })
+        XCTAssertEqual(folderSection.rowTitles, ["NAS", "Travel", "Wedding", "Ceremony", "Portraits"])
         let ceremonyRow = try XCTUnwrap(folderSection.rows.first { $0.title == "Ceremony" })
+        XCTAssertEqual(ceremonyRow.depth, 2)
+        XCTAssertEqual(ceremonyRow.disclosure, .none)
 
         try model.selectSidebarRow(ceremonyRow)
 
@@ -5598,6 +5656,26 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.folderFilterText, "/Volumes/NAS/Wedding/Ceremony/")
         XCTAssertEqual(model.assets.map(\.id), [ceremony.id])
         XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
+    func testSelectingABranchFolderRowScopesToAllOfItsDescendants() throws {
+        let ceremony = makeAsset(id: "ceremony", path: "/Volumes/NAS/Wedding/Ceremony/frame-1.cr2", rating: 4)
+        let portraits = makeAsset(id: "portraits", path: "/Volumes/NAS/Wedding/Portraits/frame-2.cr2", rating: 5)
+        let travel = makeAsset(id: "travel", path: "/Volumes/NAS/Travel/frame-3.cr2", rating: 5)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-folder-sidebar-branch-select",
+            assets: [ceremony, portraits, travel]
+        )
+
+        model.toggleFolderExpansion(path: "/Volumes/NAS/")
+        let folderSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Folders" })
+        let weddingRow = try XCTUnwrap(folderSection.rows.first { $0.title == "Wedding" })
+
+        try model.selectSidebarRow(weddingRow)
+
+        XCTAssertEqual(model.folderFilterText, "/Volumes/NAS/Wedding/")
+        XCTAssertEqual(Set(model.assets.map(\.id)), Set([ceremony.id, portraits.id]))
+        XCTAssertEqual(model.totalAssetCount, 2)
     }
 
     func testLoadExposesCatalogPeople() throws {
@@ -6048,6 +6126,13 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(reconnectedSourceRow.countText, "1")
         XCTAssertEqual(reconnectedSourceRow.target, .folder("\(newRoot.path)/"))
         XCTAssertEqual(model.statusMessage, "Reconnected 1 source")
+
+        // The Folders tree is rebuilt from the reconnected asset's new path,
+        // not the stale offline one.
+        let reconnectedFolderSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Folders" })
+        XCTAssertEqual(reconnectedFolderSection.rowTitles, ["Job"])
+        XCTAssertEqual(reconnectedFolderSection.rows[0].countText, "1")
+        XCTAssertEqual(reconnectedFolderSection.rows[0].target, .folder("\(newRoot.path)/Job/"))
     }
 
     func testReconnectSourceRootThrowsHelpfulErrorWhenNoCatalogAssetsMatchOldRoot() throws {

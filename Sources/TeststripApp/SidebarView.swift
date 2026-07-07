@@ -21,20 +21,11 @@ struct SidebarView: View {
             ForEach(model.sidebarSections) { section in
                 Section(section.title) {
                     ForEach(section.rows) { row in
-                        Button {
-                            select(row)
-                        } label: {
-                            SidebarRowView(
-                                row: row,
-                                systemImage: iconName(for: row.target)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!row.isSelectable)
-                        .contextMenu {
-                            sidebarContextMenu(for: row)
-                        }
-                        .liveMockupPlaceholder(row.liveMockupPlaceholder)
+                        sidebarRowContent(row)
+                            .contextMenu {
+                                sidebarContextMenu(for: row)
+                            }
+                            .liveMockupPlaceholder(row.liveMockupPlaceholder)
                     }
                 }
             }
@@ -147,6 +138,65 @@ struct SidebarView: View {
             try model.selectSidebarRow(row)
         } catch {
             model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func toggleFolderExpansion(_ row: SidebarRow) {
+        guard case .folder(let path) = row.target else { return }
+        model.toggleFolderExpansion(path: path)
+    }
+
+    // Folders-sidebar tree rows need an expand/collapse control that's
+    // independent of the row's own selection tap target, so the disclosure
+    // triangle is a sibling button rather than nested inside the selection
+    // Button - nesting an interactive control inside a Button's label
+    // doesn't produce two separately tappable areas. Every other section's
+    // rows (depth 0, no disclosure) render exactly as before: a single plain
+    // Button with no extra wrapper, so this introduces no layout change
+    // outside the Folders section.
+    @ViewBuilder
+    private func sidebarRowContent(_ row: SidebarRow) -> some View {
+        if row.depth == 0, row.disclosure == .none {
+            sidebarRowButton(row)
+        } else {
+            HStack(spacing: 4) {
+                folderDisclosureControl(for: row)
+                sidebarRowButton(row)
+            }
+            .padding(.leading, CGFloat(row.depth) * 14)
+        }
+    }
+
+    private func sidebarRowButton(_ row: SidebarRow) -> some View {
+        Button {
+            select(row)
+        } label: {
+            SidebarRowView(
+                row: row,
+                systemImage: iconName(for: row.target)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!row.isSelectable)
+    }
+
+    @ViewBuilder
+    private func folderDisclosureControl(for row: SidebarRow) -> some View {
+        switch row.disclosure {
+        case .none:
+            Color.clear.frame(width: 12, height: 12)
+        case .collapsed, .expanded:
+            Button {
+                toggleFolderExpansion(row)
+            } label: {
+                Image(systemName: row.disclosure == .expanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 12, height: 12)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(row.disclosure == .expanded ? "Collapse \(row.title)" : "Expand \(row.title)")
         }
     }
 

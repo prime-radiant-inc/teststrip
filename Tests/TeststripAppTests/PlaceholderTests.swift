@@ -270,8 +270,9 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "sidebar.folders-empty" })
 
         XCTAssertFalse(librarySection.rows.contains { $0.id == "library-folders" })
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("folders"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("not rendered until folders exist"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("hierarchical tree"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("expand on demand"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("hidden entirely when the catalog has no folders yet"))
     }
 
     func testSearchSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {

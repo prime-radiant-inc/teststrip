@@ -80,9 +80,9 @@ public enum LiveMockupPlaceholders {
 
     public static let foldersEmpty = LiveMockupPlaceholder(
         id: "sidebar.folders-empty",
-        title: "Empty folders navigation",
-        intendedBehavior: "Show imported/cataloged source folders in the Library sidebar once folder roots exist.",
-        currentFallback: "Folder navigation is tracked here but not rendered until folders exist in the catalog."
+        title: "Folders navigation",
+        intendedBehavior: "Show imported/cataloged source folders as a hierarchical, expandable tree in the Library sidebar, with per-folder asset counts and a folder scoping the grid to itself and its subfolders on selection.",
+        currentFallback: "Folders section renders a real hierarchical tree built in memory from the catalog's cached folder listing: chains of directories with no photos of their own and a single child (e.g. a shared volume-mount prefix) collapse into one row, each row shows an aggregate asset count, rows with children expand on demand rather than rendering the whole tree eagerly, and selecting any row (leaf or branch) scopes the grid through the existing folder-prefix predicate. The tree refreshes after imports and source reconnects. The section is hidden entirely when the catalog has no folders yet."
     )
 
     public static let placesMap = LiveMockupPlaceholder(
