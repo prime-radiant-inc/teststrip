@@ -4540,7 +4540,7 @@ struct CullingNavLegendPresentation: Equatable {
     var legendText: String
 
     init(isStackActive: Bool) {
-        var segments = ["← → navigate", "Space advances"]
+        var segments = ["← → navigate", "Space advances", "Z 1:1"]
         if isStackActive {
             segments.append("↑↓ stacks")
             segments.append("↵ accept best")

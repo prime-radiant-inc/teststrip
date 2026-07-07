@@ -109,6 +109,7 @@ public enum CullingShortcut: Equatable, Sendable {
     case reject
     case clearFlag
     case acceptStackSelection
+    case toggleZoom
 
     public init?(key: CullingShortcutKey) {
         switch key {
@@ -140,6 +141,7 @@ public enum CullingShortcut: Equatable, Sendable {
             case "p": self = .pick
             case "x": self = .reject
             case "u": self = .clearFlag
+            case "z": self = .toggleZoom
             default: return nil
             }
         }
@@ -210,6 +212,9 @@ public enum CullingCommandMenuPresentation {
             CullingCommandMenuItem(title: "Pick", shortcut: .pick, key: .character("p")),
             CullingCommandMenuItem(title: "Reject", shortcut: .reject, key: .character("x")),
             CullingCommandMenuItem(title: "Clear Flag", shortcut: .clearFlag, key: .character("u"))
+        ]),
+        CullingCommandMenuSection(title: "Loupe", items: [
+            CullingCommandMenuItem(title: "Toggle 1:1 Zoom", shortcut: .toggleZoom, key: .character("z"))
         ])
     ]
 }
@@ -1206,6 +1211,9 @@ public final class AppModel {
     public var assets: [Asset]
     public var totalAssetCount: Int
     public var selectedAssetID: AssetID?
+    // Loupe 1:1 zoom state: nil shows the fitted frame. Reset whenever the
+    // selection moves so every new frame starts fitted.
+    public private(set) var loupeZoomFocus: LoupeZoomFocus?
     public private(set) var selectedBatchAssetIDs: Set<AssetID>
     private var selectedBatchAssetIDOrder: [AssetID]
     private var selectedBatchAssetSortKeys: [AssetID: Int]
@@ -3018,6 +3026,9 @@ public final class AppModel {
     }
 
     private func selectAssetID(_ assetID: AssetID?) {
+        if assetID != selectedAssetID {
+            resetLoupeZoom()
+        }
         selectedAssetID = assetID
         updateCompareSetAfterSelectionChange(to: assetID)
         guard let assetID else { return }
@@ -4192,7 +4203,21 @@ public final class AppModel {
         case .acceptStackSelection:
             clearCullingMetadataDecisionFeedback()
             try acceptSelectedStackSelectionForCulling()
+        case .toggleZoom:
+            toggleLoupeZoom()
         }
+    }
+
+    public func toggleLoupeZoom() {
+        loupeZoomFocus = loupeZoomFocus == nil ? .center : nil
+    }
+
+    public func zoomLoupe(to focus: LoupeZoomFocus) {
+        loupeZoomFocus = focus
+    }
+
+    public func resetLoupeZoom() {
+        loupeZoomFocus = nil
     }
 
     private func applyCullingCommandAndAdvance(_ command: CullingCommand) throws {

@@ -3005,6 +3005,66 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAsset?.id, first.id)
     }
 
+    func testToggleZoomCullingShortcutTogglesBetweenFitAndCenteredActualSize() throws {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom", size: 1)])
+
+        XCTAssertNil(model.loupeZoomFocus)
+
+        try model.applyCullingShortcut(.toggleZoom)
+        XCTAssertEqual(model.loupeZoomFocus, .center)
+
+        try model.applyCullingShortcut(.toggleZoom)
+        XCTAssertNil(model.loupeZoomFocus)
+    }
+
+    func testZoomLoupeSetsFocusPoint() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "zoom-focus", size: 1)])
+
+        model.zoomLoupe(to: LoupeZoomFocus(x: 0.25, y: 0.75))
+
+        XCTAssertEqual(model.loupeZoomFocus, LoupeZoomFocus(x: 0.25, y: 0.75))
+    }
+
+    func testFrameAdvanceResetsLoupeZoom() throws {
+        let first = makeAsset(id: "first", size: 1)
+        let second = makeAsset(id: "second", size: 2)
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [first, second])
+        model.zoomLoupe(to: .center)
+
+        try model.applyCullingShortcut(.nextPhoto)
+
+        XCTAssertEqual(model.selectedAssetID, second.id)
+        XCTAssertNil(model.loupeZoomFocus)
+    }
+
+    func testReselectingSameAssetKeepsLoupeZoom() {
+        let first = makeAsset(id: "first", size: 1)
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [first])
+        model.zoomLoupe(to: .center)
+
+        model.select(first.id)
+
+        XCTAssertEqual(model.loupeZoomFocus, .center)
+    }
+
+    func testToggleZoomKeepsSelectionAndMetadataDecisionFeedback() throws {
+        let first = makeAsset(id: "first", size: 1)
+        let second = makeAsset(id: "second", size: 2)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "toggle-zoom-keeps-feedback",
+            assets: [first, second]
+        )
+
+        try model.applyCullingShortcut(.pick)
+        XCTAssertNotNil(model.lastCullingMetadataDecision)
+        let selectionAfterPick = model.selectedAssetID
+
+        try model.applyCullingShortcut(.toggleZoom)
+
+        XCTAssertEqual(model.selectedAssetID, selectionAfterPick)
+        XCTAssertNotNil(model.lastCullingMetadataDecision)
+    }
+
     func testCullingShortcutAppliesMetadataToSelectedAsset() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "shortcut-metadata")
 

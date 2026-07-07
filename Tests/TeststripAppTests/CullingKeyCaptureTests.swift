@@ -53,6 +53,14 @@ final class CullingKeyCaptureTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(event: keypadEnter), .acceptStackSelection)
     }
 
+    func testCullingShortcutMapsZoomToggleKeyEvent() throws {
+        let lowercase = try makeKeyEvent(characters: "z", charactersIgnoringModifiers: "z")
+        let uppercase = try makeKeyEvent(characters: "Z", charactersIgnoringModifiers: "z", modifierFlags: .shift)
+
+        XCTAssertEqual(CullingShortcut(event: lowercase), .toggleZoom)
+        XCTAssertEqual(CullingShortcut(event: uppercase), .toggleZoom)
+    }
+
     func testCullingShortcutIgnoresCommandModifiedKeyEvents() throws {
         let event = try makeKeyEvent(characters: "5", charactersIgnoringModifiers: "5", modifierFlags: .command)
 
