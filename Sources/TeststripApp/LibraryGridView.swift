@@ -138,6 +138,15 @@ struct LibraryGridView: View {
             .help("When on, a finished import proposes keeps and cuts for review once its reads finish. Nothing is written until you commit.")
 
             Button {
+                runAutopilotOnCurrentScope()
+            } label: {
+                Label("Run Autopilot", systemImage: "wand.and.stars.inverse")
+            }
+            .disabled(isImporting || model.assets.isEmpty)
+            .accessibilityLabel("Run Autopilot")
+            .help("Propose keeps and cuts for the photos in view from their evaluations. Nothing is written until you commit.")
+
+            Button {
                 showStartCullingPopover()
             } label: {
                 Label("Cull", systemImage: "checkmark.seal")
@@ -3212,6 +3221,14 @@ struct LibraryGridView: View {
     private func evaluateSelectedAsset() {
         do {
             try model.requestSelectedAssetEvaluations()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func runAutopilotOnCurrentScope() {
+        do {
+            try model.runAutopilotOnCurrentScope()
         } catch {
             model.errorMessage = error.localizedDescription
         }

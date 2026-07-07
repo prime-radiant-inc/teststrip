@@ -1583,8 +1583,9 @@ public final class AppModel {
     private var importAutoEvaluationEnabled = true
 
     // Persisted "Autopilot on" toggle. When on, a finished import runs
-    // runAutopilot over the imported set once its evaluations resolve. On-demand
-    // runAutopilot is always available regardless of this toggle.
+    // runAutopilot over the imported set once its evaluations resolve. This
+    // toggle only arms post-import runs; an on-demand run over the current
+    // library scope is available separately via runAutopilotOnCurrentScope().
     public var autopilotEnabled = false {
         didSet {
             sessionRestoreDefaults?.set(autopilotEnabled, forKey: Self.autopilotEnabledDefaultsKey)
@@ -6618,6 +6619,30 @@ public final class AppModel {
         pendingAutopilotProposals = (try? catalog.repository.autopilotProposals(status: .pending)) ?? []
         statusMessage = "Autopilot: \(summary.bannerText)"
         return summary
+    }
+
+    /// On-demand autopilot entry point for the assets currently loaded in the
+    /// library grid. This is a new *entry point* into `runAutopilot(scope:)`:
+    /// it reuses the same run→banner→review→commit/undo machinery as the
+    /// post-import path, but is triggered by an explicit user gesture on a
+    /// static catalog rather than by an armed import finishing. Autopilot
+    /// proposes only from evaluation signals, so if none of the visible frames
+    /// carry evaluations there is nothing to propose from; in that case it
+    /// surfaces a status message rather than creating an empty run. Provisional
+    /// only: nothing is written to catalog metadata until the user commits.
+    @discardableResult
+    public func runAutopilotOnCurrentScope() throws -> AutopilotRunSummary? {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let hasEvaluations = assets.contains { asset in
+            !((try? catalog.repository.evaluationSignals(assetID: asset.id)) ?? []).isEmpty
+        }
+        guard hasEvaluations else {
+            statusMessage = "Autopilot: no evaluated photos in view to run on"
+            return nil
+        }
+        return try runAutopilot(scope: .visible)
     }
 
     public func autopilotProposalDecision(for assetID: AssetID) -> AutopilotProposalKind? {

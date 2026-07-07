@@ -4331,6 +4331,47 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
     }
 
+    func testRunAutopilotOnCurrentScopeProducesProposalsWithoutWritingMetadata() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "ondemand-lead", path: "/Photos/Job/ondemand-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "ondemand-alt", path: "/Photos/Job/ondemand-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "run-autopilot-ondemand", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.30), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        let leadGenerationBefore = try repository.catalogGeneration(assetID: lead.id)
+        let alternateGenerationBefore = try repository.catalogGeneration(assetID: alternate.id)
+
+        let summary = try model.runAutopilotOnCurrentScope()
+
+        XCTAssertEqual(summary?.keeperCount, 1)
+        XCTAssertEqual(summary?.rejectCount, 1)
+        XCTAssertNotNil(model.autopilotRunSummary)
+        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
+        // Provisional only: nothing written, so no catalog generation bump.
+        XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
+        XCTAssertEqual(try repository.catalogGeneration(assetID: lead.id), leadGenerationBefore)
+        XCTAssertEqual(try repository.catalogGeneration(assetID: alternate.id), alternateGenerationBefore)
+    }
+
+    func testRunAutopilotOnCurrentScopeWithoutEvaluationsSetsStatusMessage() throws {
+        let unevaluated = makeAsset(id: "noeval", path: "/Photos/Job/noeval.cr2", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(named: "run-autopilot-noeval", assets: [unevaluated])
+        try model.selectSidebarTarget(.allPhotographs)
+
+        let summary = try model.runAutopilotOnCurrentScope()
+
+        XCTAssertNil(summary)
+        XCTAssertNil(model.autopilotRunSummary)
+        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 0)
+        XCTAssertEqual(model.statusMessage, "Autopilot: no evaluated photos in view to run on")
+    }
+
     func testBeginAutopilotReviewLoadsProposedAssets() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let lead = makeAsset(id: "rev-lead", path: "/Photos/Job/rev-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))

@@ -45,6 +45,7 @@ struct TeststripApplication: App {
         )
         .commands {
             MetadataHistoryCommands(model: model)
+            AutopilotCommands(model: model)
             CullingCommands(model: model)
             SupportCommands(model: model)
         }
@@ -81,6 +82,27 @@ private struct MetadataHistoryCommands: Commands {
     private func redo() {
         do {
             try model.redoMetadataChange()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct AutopilotCommands: Commands {
+    var model: AppModel
+
+    var body: some Commands {
+        CommandMenu("Autopilot") {
+            Button("Run Autopilot") {
+                runAutopilot()
+            }
+            .disabled(model.isImporting || model.assets.isEmpty)
+        }
+    }
+
+    private func runAutopilot() {
+        do {
+            try model.runAutopilotOnCurrentScope()
         } catch {
             model.errorMessage = error.localizedDescription
         }
