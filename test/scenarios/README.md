@@ -25,19 +25,35 @@ keyboard cull, evaluate, import, card-import) is already driven live by
    `Teststrip/` subdir; the top-level `catalog.sqlite` is a zero-byte stub).
    Confirm the running instance is the freshly built one, not a process left up
    from a prior run.
-2. **Drive via accessibility, not pixels.** The pattern the `verify_*.sh`
-   scripts use: `script/activate_app.sh Teststrip` to bring it frontmost
-   (raw `NSRunningApplication.activate` is refused when another app holds
-   focus — see `script/activate_app.sh`), then an inline `swift -e` AX walker
-   that finds an element by role + accessible label, `AXPerformAction`s it,
-   and `waitFor`s a predicate on the re-dumped tree. Match on the labels the
-   card quotes (button titles, `accessibilityLabel`s), never brittle indices.
-   Three hard-won realities of driving this app, learned running these cards:
-   - **AX content is only vended while the app is genuinely key.** A separate
-     `swift` process that starts after focus has slipped back to the terminal
-     sees an empty window subtree (menu bar only). Call `app.activate` *inside*
-     the driving process and retry the dump in a short loop until the window's
-     children appear before acting.
+2. **Drive via accessibility, not pixels — with `script/ax_drive.sh`.** This
+   reusable helper is the recommended driver; it folds in the reliability fixes
+   below so cards don't hand-roll a walker that flakes. Verbs:
+   - `ax_drive.sh wait-vended` — block until the app is frontmost and its window
+     subtree is actually drivable (run this first).
+   - `ax_drive.sh find --role AXButton --label "Export"` — exit 0 if it exists.
+   - `ax_drive.sh wait --role AXStaticText --contains "Reviewing"` — wait for
+     something to appear (assert a transition).
+   - `ax_drive.sh press --role AXButton --help "Rate 5"` — AXPress the first
+     match. Match by `--label` (title/description/value), `--help` (AXHelp, for
+     icon-only controls), or `--contains` (substring).
+
+   It re-asserts frontmost through **System Events** on every poll iteration —
+   the primitive macOS permits when another app holds focus. (The older
+   `verify_*.sh` scripts inline their own walker and call `activate_app.sh`
+   once; that works in the headless gate, which drives immediately after launch,
+   but flakes in an interactive session.) Three realities `ax_drive.sh` handles
+   for you, but that still bound what's possible:
+   - **AX content is only vended while the app is genuinely key.** A driver that
+     grabs focus once and then dumps sees an empty window subtree (menu bar
+     only) the moment focus slips. `ax_drive.sh` re-asserts frontmost via System
+     Events every poll iteration; if you must hand-roll, do the same — never
+     rely on `NSRunningApplication.activate`, which macOS refuses when another
+     app holds focus.
+   - **A long-idle instance can wedge its own AX tree.** If `wait-vended` times
+     out on an app that has sat unused for minutes (window present, but its
+     subtree won't traverse and even `capture_app_window.sh` fails), relaunch
+     the instance rather than fighting it — a fresh `--smoke` launch vends
+     immediately. Drive shortly after launch.
    - **The grid is lazily virtualized.** Off-screen thumbnails are not in the
      AX tree at all — scroll the target into view before matching its filename,
      or you will get a false "not found." Present-but-not-visible ≠ absent.
