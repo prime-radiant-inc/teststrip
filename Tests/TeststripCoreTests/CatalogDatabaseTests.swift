@@ -2483,6 +2483,88 @@ final class CatalogDatabaseTests: XCTestCase {
 
         XCTAssertEqual(try repository.session(id: session.id).kind, .relocation)
     }
+
+    func testRelocateOriginalRewritesPathFingerprintAndAvailability() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "relocate-original")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let fromURL = directory.appendingPathComponent("from.cr2")
+        let toURL = directory.appendingPathComponent("moved/to.cr2")
+        try FileManager.default.createDirectory(at: toURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("photo-bytes".utf8).write(to: toURL)
+        let asset = Asset(
+            id: AssetID(rawValue: "relocate-me"),
+            originalURL: fromURL,
+            volumeIdentifier: "Old",
+            fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
+            availability: .missing,
+            metadata: AssetMetadata(rating: 3, flag: .reject)
+        )
+        try repository.upsert(asset)
+
+        try repository.relocateOriginal(assetID: asset.id, to: toURL)
+
+        let updated = try repository.asset(id: asset.id)
+        XCTAssertEqual(updated.originalURL, toURL)
+        XCTAssertEqual(updated.availability, .online)
+        XCTAssertEqual(updated.metadata.flag, .reject, "the move must not disturb the reject flag or rating")
+        XCTAssertEqual(updated.metadata.rating, 3)
+        let attributes = try FileManager.default.attributesOfItem(atPath: toURL.path)
+        XCTAssertEqual(updated.fingerprint.size, (attributes[.size] as? NSNumber)?.int64Value)
+    }
+
+    func testRelocateOriginalUpdatesPendingSidecarSyncPath() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "relocate-sidecar-path")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let fromURL = directory.appendingPathComponent("from.cr2")
+        let toURL = directory.appendingPathComponent("moved/to.cr2")
+        try FileManager.default.createDirectory(at: toURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("photo-bytes".utf8).write(to: toURL)
+        let asset = Asset(
+            id: AssetID(rawValue: "relocate-sidecar"),
+            originalURL: fromURL,
+            volumeIdentifier: "Old",
+            fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: XMPSidecarStore().sidecarURL(forOriginalAt: fromURL),
+            catalogGeneration: 1,
+            lastSyncedFingerprint: ""
+        ))
+
+        try repository.relocateOriginal(assetID: asset.id, to: toURL)
+
+        let pending = try XCTUnwrap(repository.pendingMetadataSyncItem(assetID: asset.id))
+        XCTAssertEqual(pending.sidecarURL, XMPSidecarStore().sidecarURL(forOriginalAt: toURL))
+    }
+
+    func testRelocateOriginalThrowsWhenDestinationMissing() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "relocate-missing-dest")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "relocate-missing"),
+            originalURL: directory.appendingPathComponent("from.cr2"),
+            volumeIdentifier: nil,
+            fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+
+        XCTAssertThrowsError(try repository.relocateOriginal(
+            assetID: asset.id,
+            to: directory.appendingPathComponent("does-not-exist.cr2")
+        ))
+    }
 }
 
 private extension Asset {

@@ -1210,6 +1210,30 @@ public final class CatalogRepository {
         return result
     }
 
+    /// Rewrites one asset's path after Teststrip itself has moved the file's
+    /// bytes to `newOriginalURL`. Adopts the destination's fingerprint (rather
+    /// than requiring a match) because this is a deliberate, catalog-authored
+    /// move, and updates the sidecar sync path so a pending XMP write follows
+    /// the file. One transaction: the row and its sync state move together.
+    public func relocateOriginal(assetID: AssetID, to newOriginalURL: URL) throws {
+        let asset = try asset(id: assetID)
+        guard let destinationFingerprint = Self.fingerprint(for: newOriginalURL) else {
+            throw TeststripError.io("relocation destination is unreadable \(newOriginalURL.path)")
+        }
+        try database.transaction {
+            var relocatedAsset = asset
+            relocatedAsset.originalURL = newOriginalURL
+            relocatedAsset.volumeIdentifier = Self.volumeIdentifier(for: newOriginalURL)
+            relocatedAsset.fingerprint = destinationFingerprint
+            relocatedAsset.availability = .online
+            try upsert(relocatedAsset)
+            try updateMetadataSyncSidecarPathIfPresent(
+                assetID: assetID,
+                sidecarURL: XMPSidecarStore().sidecarURL(forOriginalAt: newOriginalURL)
+            )
+        }
+    }
+
     public func catalogGeneration(assetID: AssetID) throws -> Int {
         let rows = try database.rows("SELECT catalog_generation FROM assets WHERE id = ?", bindings: [assetID.rawValue])
         guard let value = rows.first?["catalog_generation"], let intValue = Int(value) else {
