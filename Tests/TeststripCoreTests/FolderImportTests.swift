@@ -615,8 +615,10 @@ final class FolderImportTests: XCTestCase {
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let sourceFile = source.appendingPathComponent("IMG_0001.jpg")
         try Data("jpg".utf8).write(to: sourceFile)
+        // Local midday keeps the expected folder name timezone-independent:
+        // modification dates file under the local calendar day.
         try FileManager.default.setAttributes(
-            [.modificationDate: Self.utcDate(2024, 12, 31, 23, 59, 0)],
+            [.modificationDate: try XCTUnwrap(Self.localDate(2024, 12, 31, 12, 0, 0))],
             ofItemAtPath: sourceFile.path
         )
         let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
@@ -639,6 +641,49 @@ final class FolderImportTests: XCTestCase {
             .appendingPathComponent("2024-12-31", isDirectory: true)
             .appendingPathComponent("IMG_0001.jpg")
         XCTAssertEqual(imported.map(\.originalURL), [expectedDestination])
+    }
+
+    func testCapturedDateCardCopyFallbackFilesModificationDateUnderLocalCalendarDay() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "card-copy-dated-fallback-local-day")
+        let source = root.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = root.appendingPathComponent("Photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let sourceFile = source.appendingPathComponent("IMG_0001.jpg")
+        try Data("jpg".utf8).write(to: sourceFile)
+        // Pick a local wall-clock time whose UTC calendar day differs whenever
+        // the local offset is nonzero: late evening west of Greenwich, just
+        // after midnight east of it.
+        let localHour = TimeZone.current.secondsFromGMT() < 0 ? 23 : 0
+        let modificationDate = try XCTUnwrap(Self.localDate(2024, 12, 31, localHour, 30, 0))
+        try FileManager.default.setAttributes(
+            [.modificationDate: modificationDate],
+            ofItemAtPath: sourceFile.path
+        )
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(
+            scanner: FolderScanner(supportedExtensions: ["jpg"]),
+            decodeRegistry: DecodeRegistry(providers: [FakeDecodeProvider(
+                technicalMetadata: Self.fakeTechnicalMetadata(capturedAt: nil)
+            )])
+        )
+
+        let imported = try service.ingest(
+            plan: IngestPlanner.copyFromCard(source: source, destinationRoot: destination, destinationPolicy: .capturedDate),
+            repository: repository
+        )
+
+        let expectedDestination = destination
+            .appendingPathComponent("2024", isDirectory: true)
+            .appendingPathComponent("2024-12-31", isDirectory: true)
+            .appendingPathComponent("IMG_0001.jpg")
+        XCTAssertEqual(
+            imported.map(\.originalURL),
+            [expectedDestination],
+            "a modification date is a real instant, so it must file under the user's local calendar day"
+        )
     }
 
     func testCapturedDateCardCopyThrowsWhenDatedDestinationFileAlreadyExists() throws {
@@ -1059,6 +1104,19 @@ final class FolderImportTests: XCTestCase {
         components.minute = minute
         components.second = second
         return components.date ?? Date(timeIntervalSince1970: 0)
+    }
+
+    static func localDate(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int, _ second: Int) -> Date? {
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = .current
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = hour
+        components.minute = minute
+        components.second = second
+        return components.date
     }
 
     func testCopyFromCardThrowsWhenDestinationFileAlreadyExists() throws {

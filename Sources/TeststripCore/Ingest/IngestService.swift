@@ -248,7 +248,8 @@ public struct IngestService: Sendable {
             return try flatDestinationURL(for: sourceFile, sourceRoot: plan.sourceRoot, destinationRoot: destinationRoot)
         case .capturedDate:
             try validateSourceFileInsideRoot(sourceFile, sourceRoot: plan.sourceRoot)
-            let folderNames = Self.capturedDateFolderNames(for: try destinationDate(for: sourceFile))
+            let destinationDate = try destinationDate(for: sourceFile)
+            let folderNames = Self.capturedDateFolderNames(for: destinationDate.date, in: destinationDate.timeZone)
             return destinationRoot
                 .appendingPathComponent(folderNames.year, isDirectory: true)
                 .appendingPathComponent(folderNames.day, isDirectory: true)
@@ -259,13 +260,17 @@ public struct IngestService: Sendable {
     // Prefers the capture date from the existing decode metadata path (EXIF
     // DateTimeOriginal, falling back to TIFF DateTime inside the provider) and
     // falls back to the file modification date when no capture date is readable,
-    // matching the fingerprint's modification-date handling.
-    private func destinationDate(for sourceFile: URL) throws -> Date {
+    // matching the fingerprint's modification-date handling. Each date carries
+    // the time zone that recovers its wall-clock day: EXIF strings have no
+    // timezone and are parsed as GMT, so GMT round-trips the camera's own date
+    // string; a modification date is a real instant, so the user's local zone
+    // yields the day they saw when the file was made.
+    private func destinationDate(for sourceFile: URL) throws -> (date: Date, timeZone: TimeZone) {
         if let decodeRegistry,
            let provider = try? decodeRegistry.provider(for: sourceFile),
            let metadata = try? provider.metadata(for: sourceFile),
            let capturedAt = metadata.capturedAt {
-            return capturedAt
+            return (capturedAt, TimeZone(secondsFromGMT: 0) ?? .current)
         }
         let attributes: [FileAttributeKey: Any]
         do {
@@ -273,14 +278,12 @@ public struct IngestService: Sendable {
         } catch {
             throw TeststripError.io("could not read modification date for \(sourceFile.path): \(error.localizedDescription)")
         }
-        return attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0)
+        return (attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0), .current)
     }
 
-    // Capture dates are parsed and grouped in UTC across the catalog (EXIF has
-    // no timezone), so dated folders use UTC to match the camera's date string.
-    static func capturedDateFolderNames(for date: Date) -> (year: String, day: String) {
+    static func capturedDateFolderNames(for date: Date, in timeZone: TimeZone) -> (year: String, day: String) {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
+        calendar.timeZone = timeZone
         let components = calendar.dateComponents([.year, .month, .day], from: date)
         let year = components.year ?? 1970
         let month = components.month ?? 1

@@ -455,8 +455,10 @@ final class LibraryImportServiceTests: XCTestCase {
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let sourceFile = source.appendingPathComponent("IMG_0001.jpg")
         try TestDirectories.writeTestJPEG(to: sourceFile, width: 1200, height: 800)
+        // Local midday keeps the expected folder name timezone-independent:
+        // modification dates file under the local calendar day.
         try FileManager.default.setAttributes(
-            [.modificationDate: FolderImportTests.utcDate(2025, 1, 3, 10, 30, 0)],
+            [.modificationDate: try XCTUnwrap(FolderImportTests.localDate(2025, 1, 3, 12, 0, 0))],
             ofItemAtPath: sourceFile.path
         )
         let repository = try makeRepository(in: root)
