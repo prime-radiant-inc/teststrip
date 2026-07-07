@@ -431,6 +431,7 @@ public enum SidebarRowTarget: Equatable, Sendable {
     case copilot
     case timeline
     case people
+    case places
     case placeholder
     case reviewQueue(ReviewQueue)
     case folder(String)
@@ -1318,6 +1319,11 @@ public final class AppModel {
     public var metadataSyncConflictFilter: Bool {
         didSet { persistSessionState() }
     }
+    /// The visible map region a cluster or top-location tap drilled into. Set
+    /// from the map, applied through `.withinGeoBounds` in `currentLibraryQuery`,
+    /// and cleared by `clearLibraryQueryFilters`. In-memory only — not part of
+    /// session restore.
+    public var geoBoundsFilter: GeoBounds?
     private var detachedLibraryFilterPredicates: [SetQuery.Predicate]
     public var savedAssetSets: [AssetSet]
     public var assetSetCounts: [AssetSetID: Int]
@@ -1328,6 +1334,9 @@ public final class AppModel {
     /// persisted across launches.
     public private(set) var expandedFolderPaths: Set<String>
     public var catalogTimelineDays: [CatalogTimelineDay]
+    public private(set) var catalogPlaceClusters: [CatalogPlaceCluster] = []
+    public private(set) var catalogTopLocations: [CatalogTopLocation] = []
+    public private(set) var geotaggedCoverage = CatalogGeotaggedCoverage(geotaggedCount: 0, totalCount: 0)
     public var sourceRoots: [CatalogSourceRoot]
     public var sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary]
     public var catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary]
@@ -3213,6 +3222,11 @@ public final class AppModel {
             clearLibraryQueryFilters()
             selectedView = .people
             refreshPeopleFaceSuggestions()
+        case .places:
+            selectedAssetSetID = nil
+            clearLibraryQueryFilters()
+            selectedView = .map
+            try refreshPlaceData()
         case .reviewQueue(let queue):
             try applyReviewQueue(queue)
         case .folder(let path):
@@ -6536,6 +6550,9 @@ public final class AppModel {
                     try enqueuePendingGeocoding()
                     workerSupervisor?.pruneCompletedItems(kind: .geocoding, keepingLast: 1)
                     syncBackgroundWorkQueueFromSupervisor()
+                    if selectedView == .map {
+                        try refreshPlaceData()
+                    }
                 } catch {
                     errorMessage = error.localizedDescription
                 }
@@ -7127,6 +7144,30 @@ public final class AppModel {
         selectedView = .timeline
         try reload()
     }
+
+    public func selectPlaceBounds(_ bounds: GeoBounds) throws {
+        selectedAssetSetID = nil
+        geoBoundsFilter = bounds
+        selectedView = .grid
+        try reload()
+    }
+
+    /// Fills the place-data properties the map surface reads. Bounded: cluster
+    /// counts come from SQL aggregation, top locations from a LIMIT-ed cache
+    /// join, and coverage from a COUNT — no task loads all assets. Called on
+    /// route entry and on map region change; nil bounds fits the whole world.
+    func refreshPlaceData(
+        bounds: GeoBounds? = nil,
+        cellSize: Double = AppModel.defaultPlaceClusterCellSize
+    ) throws {
+        guard let catalog else { return }
+        catalogPlaceClusters = try catalog.repository.placeClusters(bounds: bounds, cellSize: cellSize)
+        catalogTopLocations = try catalog.repository.topLocations(limit: Self.topLocationsDisplayLimit)
+        geotaggedCoverage = try catalog.repository.geotaggedCoverage()
+    }
+
+    static let defaultPlaceClusterCellSize = 10.0
+    static let topLocationsDisplayLimit = 12
 
     private func applyEvaluationKindFilter(_ kind: EvaluationKind) throws {
         selectedAssetSetID = nil
@@ -7851,6 +7892,9 @@ public final class AppModel {
         if let captureDateEndFilter {
             Self.append(.capturedBefore(captureDateEndFilter), to: &predicates)
         }
+        if let geoBoundsFilter {
+            Self.append(.withinGeoBounds(geoBoundsFilter), to: &predicates)
+        }
         if let availabilityFilter {
             Self.append(.availability(availabilityFilter), to: &predicates)
         }
@@ -7893,6 +7937,7 @@ public final class AppModel {
         minimumISOFilter = nil
         captureDateStartFilter = nil
         captureDateEndFilter = nil
+        geoBoundsFilter = nil
         availabilityFilter = nil
         evaluationKindFilter = nil
         needsKeywordsFilter = false
@@ -9645,6 +9690,16 @@ public final class AppModel {
                 tone: .accent,
                 target: .people,
                 liveMockupPlaceholder: .peopleSidebar
+            )
+        )
+        libraryRows.append(
+            SidebarRow(
+                id: "library-places",
+                title: "Places",
+                detailText: "On the map",
+                tone: .accent,
+                target: .places,
+                liveMockupPlaceholder: .placesMap
             )
         )
         var sections = [SidebarSection(title: "Library", rows: libraryRows)]

@@ -15817,6 +15817,34 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(try transport.commands().filter(\.isReverseGeocodeBatch).isEmpty)
     }
 
+    func testSelectingPlacesTargetEntersMapView() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-places-target")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let (model, _) = makeGeocodingModel(directory: directory, repository: repository)
+
+        try model.selectSidebarTarget(.places)
+
+        XCTAssertEqual(model.selectedView, .map)
+    }
+
+    func testSelectPlaceBoundsAppliesGeoFilterAndReturnsToGrid() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-places-bounds")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(geocodingLocatedAsset(id: "paris", latitude: 48.8584, longitude: 2.2945))
+        try repository.upsert(geocodingLocatedAsset(id: "sydney", latitude: -33.87, longitude: 151.21))
+        let (model, _) = makeGeocodingModel(directory: directory, repository: repository)
+        try model.reload()
+
+        try model.selectPlaceBounds(GeoBounds(minLatitude: 48, maxLatitude: 49, minLongitude: 2, maxLongitude: 3))
+
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.assets.map { $0.originalURL.lastPathComponent }, ["paris.cr2"])
+    }
+
     private func makeGeocodingModel(
         directory: URL,
         repository: CatalogRepository
