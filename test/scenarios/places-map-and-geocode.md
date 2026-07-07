@@ -19,13 +19,18 @@ a human place name, cross-checked against the `place_cache` table.
   ```bash
   ./script/verify_reverse_geocode_smoke.sh    # expect "PASS <locality>"; SKIP means offline → this card can't assert names
   ```
-- **GPS-tagged fixtures in the catalog.** THIS IS A KNOWN FIXTURE GAP: no seed
-  command (`--isolated`/`--sample-photos`) is known to produce GPS-tagged
-  originals. The unit tests build them with
-  `TeststripCoreTests` `writeTestJPEGWithGPS(...)`, but there is no live-import
-  fixture generator. Until one exists, this card cannot reach its pre-state
-  cleanly — see Sharp edges. Do not fake coordinates directly into the DB and
-  call it an end-to-end pass.
+- **GPS-tagged fixtures on disk to import.** Generate a fixture folder with the
+  bench seeder — half the JPEGs carry GPS EXIF at the Eiffel Tower (48.8584,
+  2.2945, matching `verify_reverse_geocode_smoke.sh`), the rest carry none:
+  ```bash
+  GEO_FIXTURES=$(mktemp -d)/geo
+  swift run TeststripBench seed-geo-fixtures "$GEO_FIXTURES" 8
+  ```
+  Then import `$GEO_FIXTURES` through the app's Import flow (drive the import
+  with `TESTSTRIP_CARD_IMPORT_ROUTE=typed-path` and type `$GEO_FIXTURES`, or use
+  the folder-import panel). The GPS-bearing subset produces map clusters; the
+  rest do not. Do not fake coordinates directly into the DB and call it an
+  end-to-end pass.
 
 ## Steps
 1. **Confirm GPS coordinates were ingested** (ground truth, after importing the
@@ -65,12 +70,11 @@ a human place name, cross-checked against the `place_cache` table.
 Quit the launched instance.
 
 ## Sharp edges
-- **Fixture gap is the headline finding until closed.** The honest first
-  deliverable of running this card is: "cannot reach pre-state — no GPS
-  live-import fixture." Recommend adding a `seed-geo-catalog` bench subcommand
-  (reusing `writeTestJPEGWithGPS`) or a fixture folder of GPS JPEGs the Import
-  flow can consume, mirroring how `--sample-photos` seeds a folder. Only then is
-  this card runnable end to end.
+- **The GPS fixture folder comes from `TeststripBench seed-geo-fixtures`**
+  (see Pre-state). It writes `<count>` JPEGs into the target dir, `count/2` of
+  them tagged with Eiffel-Tower GPS EXIF (round-trip-verified through
+  `ImageIODecodeProvider` in `GeoFixtureSeederTests`), the rest untagged. Import
+  that folder through the live Import flow — do not seed coordinates into the DB.
 - Reverse geocoding is throttled and coordinate-rounded; give step 4 a generous
   `waitFor` (≥ 30s) and don't conclude "no name" until the geocode queue drains
   (watch Activity). A `SKIP no network` from the smoke means names can't be

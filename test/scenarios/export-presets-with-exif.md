@@ -15,6 +15,14 @@ unchecked strips it.
   ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
   ```
 - Scratch export destination: `OUT=$(mktemp -d)/export` (let the app create it).
+  Launch with the typed-path destination override so the native folder panel is
+  bypassed deterministically:
+  ```bash
+  OUT=$(mktemp -d)/export
+  TESTSTRIP_EXPORT_DESTINATION_DIR="$OUT" ./script/build_and_run.sh --smoke
+  ```
+  For the second (metadata-OFF) export to a distinct `OUT2`, relaunch with
+  `TESTSTRIP_EXPORT_DESTINATION_DIR="$OUT2"`, or drive the native panel via AX.
 - At least one photo visible in the grid.
 
 ## Steps
@@ -62,9 +70,10 @@ rm -rf "$(dirname "$OUT")" "$(dirname "$OUT2")"
 Quit the launched instance.
 
 ## Sharp edges
-- The destination is a native `NSOpenPanel` (`exportDestinationParent`); drive
-  it via Cmd+Shift+G as in the reject card. No typed-path hook exists — if AX
-  can't reach the panel, report the driveability gap.
+- The destination is a native `NSOpenPanel` (`exportDestinationParent`),
+  bypassed here by the `TESTSTRIP_EXPORT_DESTINATION_DIR` env override set in
+  Pre-state: with it set, the export confirm writes straight to that directory.
+  Without the override, drive the panel via Cmd+Shift+G as in the reject card.
 - Synthetic `--isolated` fixtures may carry little/no EXIF, which would make the
   step-4 "metadata present" assertion vacuous. Confirm the seeded originals
   actually have EXIF (`mdls` a source original first); if they don't, run this

@@ -3002,8 +3002,24 @@ struct LibraryGridView: View {
         }
     }
 
+    private func resolvedDestinationFolder(override: URL?, panel: () -> URL?) -> URL? {
+        guard let override else { return panel() }
+        do {
+            try FileManager.default.createDirectory(at: override, withIntermediateDirectories: true)
+        } catch {
+            model.errorMessage = error.localizedDescription
+            return nil
+        }
+        return override
+    }
+
     private func chooseExportDestinationAndExport() {
-        guard let destination = FolderSelectionPanel.chooseExportDestinationFolder() else { return }
+        guard let destination = resolvedDestinationFolder(
+            override: LibraryGridChromePolicy.exportDestinationDirectoryOverride(
+                environment: ProcessInfo.processInfo.environment
+            ),
+            panel: { FolderSelectionPanel.chooseExportDestinationFolder() }
+        ) else { return }
         let settings = exportSettings
         let scope = exportScope
         ExportPresetStore.rememberLastUsedPreset(named: selectedExportPresetName)
@@ -3026,7 +3042,12 @@ struct LibraryGridView: View {
     }
 
     private func beginRejectRelocation() {
-        guard let destination = FolderSelectionPanel.chooseRejectDestinationFolder() else { return }
+        guard let destination = resolvedDestinationFolder(
+            override: LibraryGridChromePolicy.rejectDestinationDirectoryOverride(
+                environment: ProcessInfo.processInfo.environment
+            ),
+            panel: { FolderSelectionPanel.chooseRejectDestinationFolder() }
+        ) else { return }
         isRejectRelocationConfirmed = false
         do {
             rejectRelocationPreflight = try model.rejectRelocationPreflight(destinationFolder: destination)
@@ -7638,6 +7659,23 @@ enum LibraryGridChromePolicy {
         default:
             return .userGrantedPanel
         }
+    }
+
+    static func rejectDestinationDirectoryOverride(environment: [String: String]) -> URL? {
+        destinationDirectoryOverride(environment: environment, key: "TESTSTRIP_REJECT_DESTINATION_DIR")
+    }
+
+    static func exportDestinationDirectoryOverride(environment: [String: String]) -> URL? {
+        destinationDirectoryOverride(environment: environment, key: "TESTSTRIP_EXPORT_DESTINATION_DIR")
+    }
+
+    private static func destinationDirectoryOverride(environment: [String: String], key: String) -> URL? {
+        guard let path = environment[key],
+              !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        let expandedPath = (path as NSString).expandingTildeInPath
+        return URL(fileURLWithPath: expandedPath, isDirectory: true)
     }
 
     static func shouldShowImportProgressBanner(isImporting: Bool, visibleAssetCount _: Int) -> Bool {

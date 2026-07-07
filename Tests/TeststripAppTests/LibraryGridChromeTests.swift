@@ -97,6 +97,31 @@ final class LibraryGridChromeTests: XCTestCase {
         )
     }
 
+    func testRejectDestinationOverrideUsesEnvironmentPathWhenSet() {
+        let override = LibraryGridChromePolicy.rejectDestinationDirectoryOverride(environment: [
+            "TESTSTRIP_REJECT_DESTINATION_DIR": "/tmp/reject-target"
+        ])
+        XCTAssertEqual(override?.path, "/tmp/reject-target")
+    }
+
+    func testRejectDestinationOverrideIsNilWhenEnvironmentUnset() {
+        XCTAssertNil(LibraryGridChromePolicy.rejectDestinationDirectoryOverride(environment: [:]))
+        XCTAssertNil(LibraryGridChromePolicy.rejectDestinationDirectoryOverride(environment: [
+            "TESTSTRIP_REJECT_DESTINATION_DIR": "   "
+        ]))
+    }
+
+    func testExportDestinationOverrideUsesEnvironmentPathWhenSet() {
+        let override = LibraryGridChromePolicy.exportDestinationDirectoryOverride(environment: [
+            "TESTSTRIP_EXPORT_DESTINATION_DIR": "/tmp/export-target"
+        ])
+        XCTAssertEqual(override?.path, "/tmp/export-target")
+    }
+
+    func testExportDestinationOverrideIsNilWhenEnvironmentUnset() {
+        XCTAssertNil(LibraryGridChromePolicy.exportDestinationDirectoryOverride(environment: [:]))
+    }
+
     func testLibrarySortPresentationExposesImportCaptureTimeAndFilenameOptions() {
         let options = LibrarySortOptionPresentation.options(selected: .captureTimeNewestFirst)
 

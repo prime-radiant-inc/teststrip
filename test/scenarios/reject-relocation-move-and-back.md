@@ -17,6 +17,14 @@ exact same path on Move back — per-file atomic, nothing orphaned.
   ```
 - A scratch destination folder that does NOT already exist inside any source
   root: `REJECTS=$(mktemp -d)/rejects` (do not `mkdir` it; let the app create it).
+  Launch with the typed-path destination override so the native folder panel is
+  bypassed deterministically:
+  ```bash
+  REJECTS=$(mktemp -d)/rejects
+  TESTSTRIP_REJECT_DESTINATION_DIR="$REJECTS" ./script/build_and_run.sh --smoke
+  ```
+  The confirmation sheet before the move still appears (only the folder picker
+  is bypassed); AX-confirm it as in Step 4.
 - At least one seeded photo visible in the grid.
 
 ## Steps
@@ -36,9 +44,10 @@ exact same path on Move back — per-file atomic, nothing orphaned.
    ```
    Expect ≥ 1. (Verify the real column via `.schema assets` first.)
 4. **Move Rejects.** AX-press the toolbar button labeled **"Move Rejects"**.
-   A confirmation appears, then the native folder panel. In the panel, navigate
-   to `$REJECTS` (Cmd+Shift+G, type the path, Enter) and confirm. `waitFor` an
-   `AXStaticText` **"Reject relocation complete"**.
+   With `TESTSTRIP_REJECT_DESTINATION_DIR` set the folder panel is skipped and
+   the destination is `$REJECTS`; a confirmation sheet still appears — AX-confirm
+   it. `waitFor` an `AXStaticText` **"Reject relocation complete"**. (Without the
+   override, navigate the native panel to `$REJECTS` via Cmd+Shift+G first.)
 5. **Assert the original physically moved**:
    ```bash
    test ! -f "$SRC" && echo "left source: OK"        # original gone from source path
@@ -71,13 +80,12 @@ rm -rf "$(dirname "$REJECTS")"
 Quit the launched instance.
 
 ## Sharp edges
-- **The destination is a native `NSOpenPanel`** — there is no typed-path test
-  hook for reject relocation (only card import has `TESTSTRIP_CARD_IMPORT_ROUTE`).
-  Drive it via AX: focus the panel, Cmd+Shift+G, type `$REJECTS`, Enter, then
-  press the panel's default button. If AX cannot reach the panel, that is a
-  reportable driveability gap — note it and recommend adding a
-  `rejectDestinationParent` test override mirroring the card-import route, rather
-  than faking the move.
+- **The destination is a native `NSOpenPanel`**, bypassed here by the
+  `TESTSTRIP_REJECT_DESTINATION_DIR` env override (set in Pre-state). With that
+  var set, Step 4 skips the folder panel entirely and moves to `$REJECTS`
+  directly — the confirmation sheet still appears and must be confirmed. If you
+  run without the override, drive the panel via AX: focus it, Cmd+Shift+G, type
+  `$REJECTS`, Enter, press the default button.
 - Assert on the **filesystem**, not the grid. The grid may keep showing a cached
   preview for a moved-away original (previews are cached independently of the
   original's availability). The `test -f` on the real path is authoritative.
