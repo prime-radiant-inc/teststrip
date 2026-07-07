@@ -110,7 +110,8 @@ public struct AppCatalog {
     public static func loadModel(
         paths: AppCatalogPaths,
         workerExecutableURL: URL? = nil,
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        sessionRestoreDefaults: UserDefaults? = nil
     ) throws -> AppModel {
         let runtimePolicy = runtimePolicy(environment: environment)
         let workerSupervisor: WorkerSupervisor? = workerExecutableURL.flatMap { executableURL -> WorkerSupervisor? in
@@ -131,7 +132,8 @@ public struct AppCatalog {
             workerExecutableURL: workerExecutableURL,
             resourceAccess: runtimePolicy.requiresSuccessfulSecurityScopedImportAccess ? .required : .permissive,
             workerImportsEnabled: runtimePolicy.workerImportsEnabled,
-            backgroundWorkPublicationInterval: backgroundWorkPublicationCoalescingInterval
+            backgroundWorkPublicationInterval: backgroundWorkPublicationCoalescingInterval,
+            sessionRestoreDefaults: sessionRestoreDefaults
         )
     }
 
