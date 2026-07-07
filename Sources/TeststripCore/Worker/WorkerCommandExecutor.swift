@@ -333,6 +333,21 @@ public struct WorkerCommandExecutor {
             sidecarModificationDate = nil
         }
         let catalogGeneration = try repository.catalogGeneration(assetID: assetID)
+        // A recorded conflict is the user's decision point: a routine sync
+        // check must never auto-resolve it, or a later-parsable or externally
+        // updated sidecar would be imported over the user's catalog edit with
+        // no choice ever offered. Refresh the row and wait for an explicit
+        // resolution (Use Catalog / Use Sidecar / merge), each of which
+        // transitions the row out of "conflict" itself.
+        if try repository.metadataSyncConflictItem(assetID: assetID) != nil {
+            try repository.recordMetadataSyncConflict(MetadataSyncItem(
+                assetID: assetID,
+                sidecarURL: sidecarURL,
+                catalogGeneration: catalogGeneration,
+                lastSyncedFingerprint: try repository.lastMetadataSyncFingerprint(assetID: assetID)
+            ))
+            return .completed("metadata conflict for \(assetName)")
+        }
         let syncItem = try repository.metadataSyncItem(assetID: assetID)
         let decision: MetadataSyncDecision
         do {

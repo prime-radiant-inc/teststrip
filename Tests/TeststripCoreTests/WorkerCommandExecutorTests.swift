@@ -807,6 +807,73 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try setup.repository.metadataSyncConflictItems().map(\.assetID), [setup.asset.id])
     }
 
+    func testSyncMetadataCommandPreservesConflictWhenUnreadableSidecarBecomesParsable() throws {
+        let catalogMetadata = AssetMetadata(rating: 4, keywords: ["catalog"])
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-conflict-sidecar-becomes-parsable", metadata: catalogMetadata)
+        let foreignSidecarData = Data("""
+        <xmpmeta xmlns="https://teststrip.app/xmp">
+          <rating>2</rating>
+        </xmpmeta>
+        """.utf8)
+        try foreignSidecarData.write(to: setup.sidecarURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 100)],
+            ofItemAtPath: setup.sidecarURL.path
+        )
+        try setup.repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: setup.asset.id,
+            sidecarURL: setup.sidecarURL,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id),
+            lastSyncedFingerprint: nil
+        ))
+        XCTAssertEqual(
+            try setup.executor.execute(.syncMetadata(assetID: setup.asset.id)),
+            .completed("metadata conflict for asset.raw")
+        )
+        // An external tool later re-saves the sidecar as valid XMP carrying its
+        // stale metadata; a routine sync check must not import it over the
+        // user's pending catalog edit without offering the conflict choice.
+        try XMPPacket(metadata: AssetMetadata(rating: 2)).xmlData().write(to: setup.sidecarURL)
+
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("metadata conflict for asset.raw"))
+        XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata, catalogMetadata)
+        XCTAssertEqual(try setup.repository.metadataSyncConflictItems().map(\.assetID), [setup.asset.id])
+        XCTAssertNil(try setup.repository.lastMetadataSyncFingerprint(assetID: setup.asset.id))
+    }
+
+    func testSyncMetadataCommandPreservesRecordedConflictAcrossSubsequentSyncChecks() throws {
+        let initialMetadata = AssetMetadata(rating: 2)
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-conflict-repeat-check", metadata: initialMetadata)
+        let initialWrite = try XMPSidecarStore().write(metadata: initialMetadata, forOriginalAt: setup.asset.originalURL)
+        try setup.repository.markMetadataSynced(
+            assetID: setup.asset.id,
+            sidecarURL: initialWrite.sidecarURL,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id),
+            fingerprint: initialWrite.fingerprint
+        )
+        try setup.repository.updateMetadata(assetID: setup.asset.id) { metadata in
+            metadata.rating = 4
+        }
+        let sidecarMetadata = AssetMetadata(rating: 5)
+        try XMPPacket(metadata: sidecarMetadata).xmlData().write(to: setup.sidecarURL)
+        XCTAssertEqual(
+            try setup.executor.execute(.syncMetadata(assetID: setup.asset.id)),
+            .completed("metadata conflict for asset.raw")
+        )
+
+        // Selecting the photo again re-runs the sync check; the recorded
+        // conflict must survive instead of being auto-resolved by importing
+        // the sidecar over the user's catalog edit.
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("metadata conflict for asset.raw"))
+        XCTAssertEqual(try setup.repository.asset(id: setup.asset.id).metadata.rating, 4)
+        XCTAssertEqual(try XMPPacket.parse(Data(contentsOf: setup.sidecarURL)).metadata, sidecarMetadata)
+        XCTAssertEqual(try setup.repository.metadataSyncConflictItems().map(\.assetID), [setup.asset.id])
+    }
+
     func testRunEvaluationPersistsSignalsFromNamedProviderUsingCachedPreview() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-evaluation")
         let source = root.appendingPathComponent("source.jpg")
