@@ -1192,6 +1192,43 @@ public struct CullingMetadataDecisionFeedback: Equatable, Sendable {
     }
 }
 
+public enum AutopilotScope: Equatable, Sendable {
+    case visible
+    case assetIDs([AssetID])
+}
+
+public struct AutopilotRunSummary: Equatable, Identifiable, Sendable {
+    public var runID: AutopilotRunID
+    public var keeperCount: Int
+    public var rejectCount: Int
+    public var keywordCount: Int
+    public var stackCount: Int
+
+    public init(
+        runID: AutopilotRunID,
+        keeperCount: Int,
+        rejectCount: Int,
+        keywordCount: Int,
+        stackCount: Int
+    ) {
+        self.runID = runID
+        self.keeperCount = keeperCount
+        self.rejectCount = rejectCount
+        self.keywordCount = keywordCount
+        self.stackCount = stackCount
+    }
+
+    public var id: String { runID.rawValue }
+
+    public var bannerText: String {
+        var text = "\(keeperCount) keepers · \(rejectCount) rejects"
+        if stackCount > 0 {
+            text += " · dupes→stacks"
+        }
+        return text
+    }
+}
+
 private struct CompareFlagChangeSummary {
     var changedCount = 0
     var pickedCount = 0
@@ -1250,6 +1287,12 @@ public final class AppModel {
     public var workHistorySearchResults: [AppWorkActivity]
     public var lastCullingMetadataDecision: CullingMetadataDecisionFeedback?
     public private(set) var cullingSessionCompletion: CullingSessionCompletionSummary?
+    public private(set) var autopilotRunSummary: AutopilotRunSummary?
+    public private(set) var pendingAutopilotProposals: [AutopilotProposal] = []
+    // Maps a scope's identity (sorted asset-id join) to the run that last
+    // proposed for it, so re-running the same scope replaces its pending
+    // proposals instead of stacking duplicates. In-memory only.
+    private var lastAutopilotRunIDByScopeKey: [String: AutopilotRunID] = [:]
     // Tracks which stack-cull sessions came from beginStackCullingFromLatestImportCompletion()
     // and which import they scoped, so completion can offer to cull the
     // import's unstacked singles afterward. In-memory only; not persisted.
@@ -2993,6 +3036,7 @@ public final class AppModel {
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
         try model.restoreSessionStateIfAvailable()
+        try model.reconstructAutopilotStateAfterLoad()
         return model
     }
 
@@ -6253,6 +6297,127 @@ public final class AppModel {
                 try requestEvaluation(assetID: asset.id, provider: provider)
             }
         }
+    }
+
+    /// Runs autopilot over a scope: gathers already-computed signals, plans
+    /// provisional pick/reject/keyword proposals with the pure planner,
+    /// replaces any prior pending proposals for the identical scope, and
+    /// persists the new set. NOTHING is written to catalog metadata or XMP —
+    /// only `pending` proposal rows. Committing (a separate explicit gesture)
+    /// is the only path that writes metadata.
+    @discardableResult
+    public func runAutopilot(scope: AutopilotScope = .visible) throws -> AutopilotRunSummary {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let scopeAssets = try autopilotScopeAssets(scope, repository: catalog.repository)
+
+        var signalsByAssetID: [AssetID: [EvaluationSignal]] = [:]
+        var keywordCandidatesByAssetID: [AssetID: [String]] = [:]
+        for asset in scopeAssets {
+            let signals = (try? catalog.repository.evaluationSignals(assetID: asset.id)) ?? []
+            signalsByAssetID[asset.id] = signals
+            let candidates = Self.autopilotKeywordCandidates(
+                from: signals,
+                existingKeywords: asset.metadata.keywords
+            )
+            if !candidates.isEmpty {
+                keywordCandidatesByAssetID[asset.id] = candidates
+            }
+        }
+
+        let scopeKey = scopeAssets.map(\.id.rawValue).sorted().joined(separator: ",")
+        if let priorRunID = lastAutopilotRunIDByScopeKey[scopeKey] {
+            try catalog.repository.deleteAutopilotProposals(runID: priorRunID)
+        }
+
+        let runID = AutopilotRunID.new()
+        let planner = AutopilotProposalPlanner(stackBuilder: stackBuilder())
+        let input = AutopilotPlanInput(
+            assets: scopeAssets,
+            signalsByAssetID: signalsByAssetID,
+            keywordCandidatesByAssetID: keywordCandidatesByAssetID
+        )
+        let proposals = planner.proposals(for: input, runID: runID, now: Date())
+        try catalog.repository.save(proposals)
+        lastAutopilotRunIDByScopeKey[scopeKey] = runID
+
+        let summary = AutopilotRunSummary(
+            runID: runID,
+            keeperCount: proposals.filter { $0.kind == .pick }.count,
+            rejectCount: proposals.filter { $0.kind == .reject }.count,
+            keywordCount: proposals.filter { $0.kind == .keyword }.count,
+            stackCount: autopilotStackCount(for: scopeAssets)
+        )
+        autopilotRunSummary = summary
+        pendingAutopilotProposals = (try? catalog.repository.autopilotProposals(status: .pending)) ?? []
+        statusMessage = "Autopilot: \(summary.bannerText)"
+        return summary
+    }
+
+    public func autopilotProposalDecision(for assetID: AssetID) -> AutopilotProposalKind? {
+        pendingAutopilotProposals.first {
+            $0.assetID == assetID && ($0.kind == .pick || $0.kind == .reject)
+        }?.kind
+    }
+
+    public func dismissAutopilotRunSummary() {
+        autopilotRunSummary = nil
+    }
+
+    private func autopilotScopeAssets(_ scope: AutopilotScope, repository: CatalogRepository) throws -> [Asset] {
+        switch scope {
+        case .visible:
+            return assets
+        case .assetIDs(let ids):
+            guard !ids.isEmpty else { return [] }
+            return try repository.assets(ids: ids, limit: ids.count)
+        }
+    }
+
+    private func autopilotStackCount(for scopeAssets: [Asset]) -> Int {
+        stackBuilder()
+            .stacks(from: scopeAssets, visualSimilarityVectorsByAssetID: [:])
+            .filter { $0.assetIDs.count > 1 }
+            .count
+    }
+
+    private static func autopilotKeywordCandidates(
+        from signals: [EvaluationSignal],
+        existingKeywords: [String]
+    ) -> [String] {
+        var seen = Set(existingKeywords.map(keywordKey).filter { !$0.isEmpty })
+        var candidates: [String] = []
+        for signal in signals {
+            for label in objectLabels(from: signal) {
+                let keyword = cleanedKeyword(label)
+                let key = keywordKey(keyword)
+                guard !key.isEmpty, seen.insert(key).inserted else { continue }
+                candidates.append(keyword)
+            }
+        }
+        return candidates
+    }
+
+    /// Rebuilds provisional-proposal state after a session restore so KEEP/CUT
+    /// badges and the auto-cull banner survive relaunch. Reads only persisted
+    /// `pending` proposals; never writes.
+    private func reconstructAutopilotStateAfterLoad() throws {
+        guard let catalog else { return }
+        let pending = try catalog.repository.autopilotProposals(status: .pending)
+        pendingAutopilotProposals = pending
+        guard let latestRunID = pending.max(by: { $0.createdAt < $1.createdAt })?.runID else {
+            return
+        }
+        let latestRunProposals = pending.filter { $0.runID == latestRunID }
+        let keeperCount = latestRunProposals.filter { $0.kind == .pick }.count
+        autopilotRunSummary = AutopilotRunSummary(
+            runID: latestRunID,
+            keeperCount: keeperCount,
+            rejectCount: latestRunProposals.filter { $0.kind == .reject }.count,
+            keywordCount: latestRunProposals.filter { $0.kind == .keyword }.count,
+            stackCount: keeperCount
+        )
     }
 
     public func requestCurrentScopeAssetEvaluations(providers: [String] = AppModel.defaultEvaluationProviderNames) throws {

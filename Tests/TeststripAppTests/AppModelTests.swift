@@ -4245,6 +4245,52 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .pick)
     }
 
+    func testRunAutopilotProducesPendingProposalsWithoutWritingMetadata() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "ap-lead", path: "/Photos/Job/ap-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "ap-alt", path: "/Photos/Job/ap-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "run-autopilot", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.30), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+
+        let summary = try model.runAutopilot(scope: .visible)
+
+        XCTAssertEqual(summary.keeperCount, 1)
+        XCTAssertEqual(summary.rejectCount, 1)
+        XCTAssertEqual(summary.stackCount, 1)
+        XCTAssertEqual(summary.bannerText, "1 keepers · 1 rejects · dupes→stacks")
+        XCTAssertEqual(model.autopilotProposalDecision(for: alternate.id), .pick)
+        XCTAssertEqual(model.autopilotProposalDecision(for: lead.id), .reject)
+        // Provisional only: nothing written.
+        XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
+        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
+    }
+
+    func testRunAutopilotIsIdempotentForTheSameScope() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "ap2-lead", path: "/Photos/Job/ap2-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "ap2-alt", path: "/Photos/Job/ap2-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "run-autopilot-idem", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.30), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+
+        _ = try model.runAutopilot(scope: .visible)
+        _ = try model.runAutopilot(scope: .visible)
+
+        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
+    }
+
     func testLoadsAssetsFromCatalogRepository() throws {
         let directory = try makeTemporaryDirectory(named: "app-model")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
