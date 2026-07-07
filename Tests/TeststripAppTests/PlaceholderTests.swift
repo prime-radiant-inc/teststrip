@@ -43,12 +43,27 @@ final class LiveMockupPlaceholderTests: XCTestCase {
 
     func testDeferredDesignSurfacesDoNotReopenScopedOutProductFeatures() throws {
         let places = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5b" })
-        let export = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5f" })
 
         XCTAssertEqual(places.status, .deferred)
-        XCTAssertEqual(export.status, .deferred)
         XCTAssertTrue(places.currentImplementation.localizedCaseInsensitiveContains("out of scope"))
-        XCTAssertTrue(export.currentImplementation.localizedCaseInsensitiveContains("out of scope"))
+    }
+
+    func testExportLedgerTracksPresetsFormatQualityLongEdgeMetadataAndSizeEstimate() throws {
+        let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "export.workflow" })
+        let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "5f" })
+
+        XCTAssertEqual(surface.status, .partial)
+        XCTAssertFalse(placeholder.currentFallback.localizedCaseInsensitiveContains("out of scope"))
+        XCTAssertFalse(surface.currentImplementation.localizedCaseInsensitiveContains("out of scope"))
+        for text in [placeholder.currentFallback, surface.currentImplementation] {
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("user-editable named presets"))
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("remember the last one used"))
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("Instagram 1080² long-edge cap — never a crop"))
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("Email 1MB byte-budget quality stepping"))
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("JPEG/PNG format"))
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("sample-based estimated output size"))
+            XCTAssertTrue(text.localizedCaseInsensitiveContains("sharpening, color space controls, watermarking, filename templates, and export history"))
+        }
     }
 
     func testStudioLedgerTracksRecentlyAddedLibraryRoute() throws {

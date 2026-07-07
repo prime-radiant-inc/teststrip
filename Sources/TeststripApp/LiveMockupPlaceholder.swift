@@ -124,7 +124,7 @@ public enum LiveMockupPlaceholders {
         id: "export.workflow",
         title: "Export workflow",
         intendedBehavior: "Export selected photos through presets for sizing, sharpening, color space, metadata, and watermarking.",
-        currentFallback: "Out of scope for the no-editing v1; no export route is exposed."
+        currentFallback: "Export popover offers selected/visible/current-scope batches through five starting presets (Full-res JPEG, Web 2048px, Instagram 1080² long-edge cap — never a crop, Print 300dpi, Email 1MB byte-budget quality stepping) plus user-editable named presets that persist across launches and remember the last one used; a settings panel exposes JPEG/PNG format, quality, long-edge resize, and EXIF/IPTC metadata with a sample-based estimated output size. Output sharpening, color space controls, watermarking, filename templates, and export history/queue UI remain unbuilt."
     )
 
     public static let importPlan = LiveMockupPlaceholder(
@@ -330,9 +330,9 @@ public enum LiveMockupDesignSurfaces {
         LiveMockupDesignSurface(
             designID: "5f",
             title: "Export",
-            status: .deferred,
+            status: .partial,
             placeholder: .exportWorkflow,
-            currentImplementation: "Out of scope for the no-editing v1; no export preset/settings route is exposed."
+            currentImplementation: "Export popover offers selected/visible/current-scope batches through five starting presets (Full-res JPEG, Web 2048px, Instagram 1080² long-edge cap — never a crop, Print 300dpi, Email 1MB byte-budget quality stepping) plus user-editable named presets that persist across launches and remember the last one used; a settings panel exposes JPEG/PNG format, quality, long-edge resize, and EXIF/IPTC metadata with a sample-based estimated output size. Output sharpening, color space controls, watermarking, filename templates, and export history/queue UI remain unbuilt."
         )
     ]
 }
