@@ -4496,6 +4496,31 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.librarySearchText, "")
     }
 
+    func testSavedSearchWithPersonPredicateFiltersAssetsWhenSelected() throws {
+        let annaPhoto = makeAsset(id: "anna-photo", path: "/Photos/Wedding/anna-photo.jpg", rating: 0)
+        let other = makeAsset(id: "other", path: "/Photos/Wedding/other.jpg", rating: 0)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "person-saved-search",
+            assets: [annaPhoto, other],
+            configureRepository: { repository in
+                try repository.upsertPerson(id: "person-anna", name: "Anna")
+                try repository.assignAssets([annaPhoto.id], toPersonID: "person-anna")
+            }
+        )
+
+        model.librarySearchText = "person:Anna"
+
+        let savedSet = try model.saveCurrentLibraryQuery(named: "Anna")
+
+        XCTAssertEqual(savedSet.membership, .dynamic(SetQuery(predicates: [.person("Anna")])))
+        XCTAssertEqual(model.librarySearchText, "")
+
+        try model.selectSidebarTarget(.assetSet(savedSet.id))
+
+        XCTAssertEqual(model.assets.map(\.id), [annaPhoto.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
     func testApplyingLibraryFiltersUsesTechnicalMetadata() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-technical-filters")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
