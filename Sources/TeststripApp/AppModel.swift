@@ -8486,7 +8486,6 @@ public final class AppModel {
 
     @MainActor
     public func beginImportFolder(_ folderURL: URL, evaluateAfterImport: Bool = true) {
-        importAutoEvaluationEnabled = evaluateAfterImport
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
             return
@@ -8495,6 +8494,9 @@ public final class AppModel {
             errorMessage = "Another import is already running"
             return
         }
+        // Set only after the concurrency guard so a rejected call cannot change
+        // the in-flight import's auto-evaluation outcome.
+        importAutoEvaluationEnabled = evaluateAfterImport
         if let blockingReason = ImportSourcePreflight.blockingReason(for: folderURL) {
             failImportBeforeStart(folderURL: folderURL, reason: blockingReason)
             return
@@ -8565,7 +8567,6 @@ public final class AppModel {
         secondCopyDestination: URL? = nil,
         evaluateAfterImport: Bool = true
     ) {
-        importAutoEvaluationEnabled = evaluateAfterImport
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
             return
@@ -8574,6 +8575,9 @@ public final class AppModel {
             errorMessage = "Another import is already running"
             return
         }
+        // Set only after the concurrency guard so a rejected call cannot change
+        // the in-flight import's auto-evaluation outcome.
+        importAutoEvaluationEnabled = evaluateAfterImport
         if let blockingReason = ImportSourcePreflight.blockingReason(for: source) {
             failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: blockingReason)
             return
