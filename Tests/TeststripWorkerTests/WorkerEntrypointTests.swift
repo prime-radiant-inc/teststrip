@@ -27,7 +27,7 @@ final class WorkerEntrypointTests: XCTestCase {
         process.standardError = errorPipe
 
         try process.run()
-        inputPipe.fileHandleForWriting.write(Data(try WorkerProtocolEncoder.encode(.importFolder(root: photoRoot)).utf8))
+        inputPipe.fileHandleForWriting.write(Data(try WorkerProtocolEncoder.encode(.importFolder(root: photoRoot, duplicateHandling: .importAll)).utf8))
         inputPipe.fileHandleForWriting.closeFile()
         process.waitUntilExit()
 
@@ -81,7 +81,7 @@ final class WorkerEntrypointTests: XCTestCase {
         let itemID = WorkSessionID(rawValue: "import-work")
 
         try process.run()
-        inputPipe.fileHandleForWriting.write(Data(try WorkerProtocolEncoder.encode(.importFolder(root: photoRoot), itemID: itemID).utf8))
+        inputPipe.fileHandleForWriting.write(Data(try WorkerProtocolEncoder.encode(.importFolder(root: photoRoot, duplicateHandling: .importAll), itemID: itemID).utf8))
         inputPipe.fileHandleForWriting.closeFile()
         process.waitUntilExit()
 

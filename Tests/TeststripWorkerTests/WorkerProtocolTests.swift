@@ -36,7 +36,7 @@ final class WorkerProtocolTests: XCTestCase {
 
     func testImportFolderCommandRoundTripsThroughJSONLine() throws {
         let root = URL(fileURLWithPath: "/Volumes/Card/DCIM", isDirectory: true)
-        let command = WorkerCommand.importFolder(root: root)
+        let command = WorkerCommand.importFolder(root: root, duplicateHandling: .skipCatalogedContent)
 
         let line = try WorkerProtocolEncoder.encode(command)
         let decoded = try WorkerProtocolEncoder.decode(line)
@@ -46,6 +46,7 @@ final class WorkerProtocolTests: XCTestCase {
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
         XCTAssertEqual(json["command"] as? String, "importFolder")
         XCTAssertEqual(json["rootURL"] as? String, root.path)
+        XCTAssertEqual(json["duplicateHandling"] as? String, "skipCatalogedContent")
     }
 
     func testImportCardCommandRoundTripsThroughJSONLine() throws {
@@ -55,7 +56,8 @@ final class WorkerProtocolTests: XCTestCase {
             source: source,
             destinationRoot: destinationRoot,
             destinationPolicy: .flat,
-            secondCopyDestination: nil
+            secondCopyDestination: nil,
+            duplicateHandling: .importAll
         )
 
         let line = try WorkerProtocolEncoder.encode(command)
@@ -69,6 +71,7 @@ final class WorkerProtocolTests: XCTestCase {
         XCTAssertEqual(json["destinationRootURL"] as? String, destinationRoot.path)
         XCTAssertEqual(json["destinationPolicy"] as? String, "flat")
         XCTAssertNil(json["secondCopyDestinationRootURL"])
+        XCTAssertEqual(json["duplicateHandling"] as? String, "importAll")
     }
 
     func testImportCardCommandRoundTripsDatedPolicyAndSecondCopyThroughJSONLine() throws {
@@ -79,7 +82,8 @@ final class WorkerProtocolTests: XCTestCase {
             source: source,
             destinationRoot: destinationRoot,
             destinationPolicy: .capturedDate,
-            secondCopyDestination: secondCopyDestination
+            secondCopyDestination: secondCopyDestination,
+            duplicateHandling: .skipCatalogedContent
         )
 
         let line = try WorkerProtocolEncoder.encode(command)
@@ -90,6 +94,7 @@ final class WorkerProtocolTests: XCTestCase {
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
         XCTAssertEqual(json["destinationPolicy"] as? String, "capturedDate")
         XCTAssertEqual(json["secondCopyDestinationRootURL"] as? String, secondCopyDestination.path)
+        XCTAssertEqual(json["duplicateHandling"] as? String, "skipCatalogedContent")
     }
 
     func testImportCardCommandDecodeDefaultsToFlatPolicyWithoutOptionalFields() throws {
@@ -104,7 +109,8 @@ final class WorkerProtocolTests: XCTestCase {
             source: URL(fileURLWithPath: "/Volumes/Card/DCIM", isDirectory: true),
             destinationRoot: URL(fileURLWithPath: "/Photos/Ingested", isDirectory: true),
             destinationPolicy: .flat,
-            secondCopyDestination: nil
+            secondCopyDestination: nil,
+            duplicateHandling: .importAll
         ))
     }
 

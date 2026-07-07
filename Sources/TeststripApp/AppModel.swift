@@ -1085,6 +1085,7 @@ public struct AppImportOutput: Sendable {
 public typealias AppImportTaskFactory = @Sendable (
     AppCatalogPaths,
     URL,
+    DuplicateHandling,
     @escaping LibraryImportProgressHandler
 ) -> Task<AppImportOutput, Error>
 
@@ -1094,6 +1095,7 @@ public typealias AppCardImportTaskFactory = @Sendable (
     URL,
     ImportDestinationPolicy,
     URL?,
+    DuplicateHandling,
     @escaping LibraryImportProgressHandler
 ) -> Task<AppImportOutput, Error>
 
@@ -2721,15 +2723,16 @@ public final class AppModel {
         // User-selected file grants are process-scoped, so local imports must render
         // their first previews before releasing a required security-scoped folder.
         let importPreviewPolicy: LibraryImportPreviewPolicy = workerSupervisor == nil || !resolvedWorkerImportsEnabled ? .generateImmediately : .deferGeneration
-        self.importTaskFactory = importTaskFactory ?? { paths, folderURL, progress in
+        self.importTaskFactory = importTaskFactory ?? { paths, folderURL, duplicateHandling, progress in
             Self.defaultImportTask(
                 paths: paths,
                 folderURL: folderURL,
                 previewPolicy: importPreviewPolicy,
+                duplicateHandling: duplicateHandling,
                 progress: progress
             )
         }
-        self.cardImportTaskFactory = cardImportTaskFactory ?? { paths, source, destinationRoot, destinationPolicy, secondCopyDestination, progress in
+        self.cardImportTaskFactory = cardImportTaskFactory ?? { paths, source, destinationRoot, destinationPolicy, secondCopyDestination, duplicateHandling, progress in
             Self.defaultCardImportTask(
                 paths: paths,
                 source: source,
@@ -2737,6 +2740,7 @@ public final class AppModel {
                 destinationPolicy: destinationPolicy,
                 secondCopyDestination: secondCopyDestination,
                 previewPolicy: importPreviewPolicy,
+                duplicateHandling: duplicateHandling,
                 progress: progress
             )
         }
@@ -8734,7 +8738,7 @@ public final class AppModel {
 
     @discardableResult
     @MainActor
-    public func importFolderInBackground(_ folderURL: URL) async throws -> LibraryImportResult {
+    public func importFolderInBackground(_ folderURL: URL, importNewOnly: Bool = true) async throws -> LibraryImportResult {
         importAutoEvaluationEnabled = true
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
@@ -8750,6 +8754,7 @@ public final class AppModel {
             let output = try await importTaskFactory(
                 paths,
                 folderURL,
+                importNewOnly ? .skipCatalogedContent : .importAll,
                 importProgressHandler(activityID: activityID)
             ).value
             replaceAssets(
@@ -8776,7 +8781,8 @@ public final class AppModel {
         source: URL,
         destinationRoot: URL,
         destinationPolicy: ImportDestinationPolicy = .flat,
-        secondCopyDestination: URL? = nil
+        secondCopyDestination: URL? = nil,
+        importNewOnly: Bool = true
     ) async throws -> LibraryImportResult {
         importAutoEvaluationEnabled = true
         guard let catalog else {
@@ -8796,6 +8802,7 @@ public final class AppModel {
                 destinationRoot,
                 destinationPolicy,
                 secondCopyDestination,
+                importNewOnly ? .skipCatalogedContent : .importAll,
                 importProgressHandler(activityID: activityID)
             ).value
             replaceAssets(
@@ -8817,7 +8824,7 @@ public final class AppModel {
     }
 
     @MainActor
-    public func beginImportFolder(_ folderURL: URL, evaluateAfterImport: Bool = true) {
+    public func beginImportFolder(_ folderURL: URL, evaluateAfterImport: Bool = true, importNewOnly: Bool = true) {
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
             return
@@ -8829,6 +8836,7 @@ public final class AppModel {
         // Set only after the concurrency guard so a rejected call cannot change
         // the in-flight import's auto-evaluation outcome.
         importAutoEvaluationEnabled = evaluateAfterImport
+        let duplicateHandling: DuplicateHandling = importNewOnly ? .skipCatalogedContent : .importAll
         if let blockingReason = ImportSourcePreflight.blockingReason(for: folderURL) {
             failImportBeforeStart(folderURL: folderURL, reason: blockingReason)
             return
@@ -8836,7 +8844,11 @@ public final class AppModel {
         errorMessage = nil
         statusMessage = "Importing \(folderURL.lastPathComponent)..."
         if workerSupervisor != nil && workerImportsEnabled {
-            enqueueWorkerImport(source: folderURL, destinationRoot: nil, command: .importFolder(root: folderURL))
+            enqueueWorkerImport(
+                source: folderURL,
+                destinationRoot: nil,
+                command: .importFolder(root: folderURL, duplicateHandling: duplicateHandling)
+            )
             return
         }
         let didAccess: Bool
@@ -8855,6 +8867,7 @@ public final class AppModel {
         let task = importTaskFactory(
             catalog.paths,
             folderURL,
+            duplicateHandling,
             importProgressHandler(activityID: activityID)
         )
         activeImportTask = task
@@ -8897,7 +8910,8 @@ public final class AppModel {
         destinationRoot: URL,
         destinationPolicy: ImportDestinationPolicy = .flat,
         secondCopyDestination: URL? = nil,
-        evaluateAfterImport: Bool = true
+        evaluateAfterImport: Bool = true,
+        importNewOnly: Bool = true
     ) {
         guard let catalog else {
             errorMessage = TeststripError.invalidState("app model has no catalog").localizedDescription
@@ -8910,6 +8924,7 @@ public final class AppModel {
         // Set only after the concurrency guard so a rejected call cannot change
         // the in-flight import's auto-evaluation outcome.
         importAutoEvaluationEnabled = evaluateAfterImport
+        let duplicateHandling: DuplicateHandling = importNewOnly ? .skipCatalogedContent : .importAll
         if let blockingReason = ImportSourcePreflight.blockingReason(for: source) {
             failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: blockingReason)
             return
@@ -8938,7 +8953,8 @@ public final class AppModel {
                     source: source,
                     destinationRoot: destinationRoot,
                     destinationPolicy: destinationPolicy,
-                    secondCopyDestination: secondCopyDestination
+                    secondCopyDestination: secondCopyDestination,
+                    duplicateHandling: duplicateHandling
                 )
             )
             return
@@ -8981,6 +8997,7 @@ public final class AppModel {
             destinationRoot,
             destinationPolicy,
             secondCopyDestination,
+            duplicateHandling,
             importProgressHandler(activityID: activityID)
         )
         activeImportTask = task
@@ -9352,6 +9369,7 @@ public final class AppModel {
         paths: AppCatalogPaths,
         folderURL: URL,
         previewPolicy: LibraryImportPreviewPolicy,
+        duplicateHandling: DuplicateHandling,
         progress: @escaping LibraryImportProgressHandler
     ) -> Task<AppImportOutput, Error> {
         Task.detached(priority: .userInitiated) {
@@ -9361,6 +9379,7 @@ public final class AppModel {
                 folderURL,
                 repository: backgroundCatalog.repository,
                 previewPolicy: previewPolicy,
+                duplicateHandling: duplicateHandling,
                 progress: progress
             )
             try Task.checkCancellation()
@@ -9385,6 +9404,7 @@ public final class AppModel {
         destinationPolicy: ImportDestinationPolicy,
         secondCopyDestination: URL?,
         previewPolicy: LibraryImportPreviewPolicy,
+        duplicateHandling: DuplicateHandling,
         progress: @escaping LibraryImportProgressHandler
     ) -> Task<AppImportOutput, Error> {
         Task.detached(priority: .userInitiated) {
@@ -9397,6 +9417,7 @@ public final class AppModel {
                 secondCopyDestination: secondCopyDestination,
                 repository: backgroundCatalog.repository,
                 previewPolicy: previewPolicy,
+                duplicateHandling: duplicateHandling,
                 progress: progress
             )
             try Task.checkCancellation()
