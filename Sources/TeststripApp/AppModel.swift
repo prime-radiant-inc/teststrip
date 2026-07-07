@@ -937,7 +937,8 @@ public struct ExportCompletionSummary: Equatable, Sendable {
     }
 }
 
-public struct RejectRelocationPreflight: Equatable, Sendable {
+public struct RejectRelocationPreflight: Equatable, Identifiable, Sendable {
+    public var id: String { destinationFolder.path }
     public var assetIDs: [AssetID]
     public var originalURLs: [URL]
     public var plans: [RejectRelocationPlan]
