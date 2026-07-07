@@ -1702,8 +1702,11 @@ public final class AppModel {
             return true
         }
         guard !workerImportContextsByItemID.isEmpty else { return false }
+        // Read the always-current supervisor queue: the published copy can lag
+        // by a coalescing interval, which would let a second import slip past
+        // the "Another import is already running" guard.
         return workerImportContextsByItemID.keys.contains { itemID in
-            guard let item = backgroundWorkQueue.item(id: itemID), item.kind == .ingest else { return false }
+            guard let item = currentBackgroundWorkQueue.item(id: itemID), item.kind == .ingest else { return false }
             return Self.isActiveBackgroundWorkStatus(item.status)
         }
     }

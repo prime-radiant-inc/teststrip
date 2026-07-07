@@ -11935,6 +11935,39 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBeginImportFolderRejectsDuplicateImportBeforeCoalescedQueuePublication() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-worker-folder-import-duplicate-coalesced")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let scheduler = ManualBackgroundWorkPublicationScheduler()
+        let model = try AppModel.load(
+            catalog: catalog,
+            workerSupervisor: supervisor,
+            backgroundWorkPublicationInterval: 0.25,
+            backgroundWorkPublicationScheduler: scheduler
+        )
+
+        // The published queue still lags behind the supervisor queue: the guard
+        // must read the current queue, not the coalesced published copy.
+        model.beginImportFolder(photoFolder)
+        model.beginImportFolder(photoFolder)
+
+        XCTAssertEqual(model.errorMessage, "Another import is already running")
+
+        scheduler.fireScheduledActions()
+
+        XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind == .ingest }.count, 1)
+        XCTAssertEqual(try transport.commands(), [.importFolder(root: photoFolder)])
+    }
+
+    @MainActor
     func testBeginImportFolderWithWorkerRejectsMissingSourceWithoutEnqueueing() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-missing-source")
         let missingFolder = directory.appendingPathComponent("missing-photos", isDirectory: true)
