@@ -902,6 +902,7 @@ public final class CatalogRepository {
             SELECT asset_id, kind, value_json, confidence, provenance_json
             FROM evaluation_signals
             WHERE asset_id = ?
+              AND \(Self.currentScaleSignalSQL)
             ORDER BY rowid ASC
             """,
             bindings: [assetID.rawValue]

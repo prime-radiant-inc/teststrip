@@ -853,6 +853,59 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.recommendationText, "Top signal: frame 3 — sharpest, eyes open")
     }
 
+    func testCatalogReadsHideRawScaleFocusRowsFromBadgesAndVerdicts() throws {
+        // An asset whose only focus row is a superseded raw-scale read
+        // (version 1, capped at ~0.148 on the study corpus) must not earn a
+        // destructive SOFT badge, and a calibrated leader must not claim a
+        // percentage sharpness delta against it across incompatible scales.
+        let directory = try makeTemporaryDirectory(named: "compare-raw-scale-signals")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let stale = makeAsset(id: "stale-raw-scale")
+        let fresh = makeAsset(id: "fresh-calibrated")
+        try repository.upsert([stale, fresh])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(
+                assetID: stale.id,
+                kind: .focus,
+                value: .score(0.14),
+                confidence: 1.0,
+                provenance: ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "1", settingsHash: "default")
+            ),
+            EvaluationSignal(
+                assetID: fresh.id,
+                kind: .focus,
+                value: .score(0.93),
+                confidence: 1.0,
+                provenance: ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "2", settingsHash: "default")
+            )
+        ])
+        let signalsByAssetID: [AssetID: [EvaluationSignal]] = [
+            stale.id: try repository.evaluationSignals(assetID: stale.id),
+            fresh.id: try repository.evaluationSignals(assetID: fresh.id)
+        ]
+
+        XCTAssertEqual(CompareSurveyPresentation.flawBadges(for: signalsByAssetID[stale.id] ?? []), [])
+        XCTAssertEqual(
+            CullingStackRecommendation.comparativeQualifiers(
+                leader: fresh.id,
+                runnerUp: stale.id,
+                evaluationSignalsByAssetID: signalsByAssetID
+            ),
+            []
+        )
+    }
+
+    private func makeTemporaryDirectory(named name: String) throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("teststrip-compare-survey-tests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
     private func makeAsset(
         id: String,
         metadata: AssetMetadata = AssetMetadata()

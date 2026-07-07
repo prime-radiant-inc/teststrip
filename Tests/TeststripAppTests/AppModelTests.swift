@@ -623,7 +623,7 @@ final class AppModelTests: XCTestCase {
             named: "compare-contenders-action",
             assets: assets
         )
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: assets[0].id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance),
             EvaluationSignal(assetID: assets[3].id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance),
@@ -651,7 +651,7 @@ final class AppModelTests: XCTestCase {
             named: "compare-contenders-few-action",
             assets: assets
         )
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: assets[0].id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance),
             EvaluationSignal(assetID: assets[3].id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance)
@@ -668,7 +668,7 @@ final class AppModelTests: XCTestCase {
             named: "compare-contenders-invalid-action",
             assets: assets
         )
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: assets[0].id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance),
             EvaluationSignal(assetID: assets[3].id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance),
@@ -696,7 +696,7 @@ final class AppModelTests: XCTestCase {
         try model.refreshSavedAssetSets()
         try model.applyAssetSet(id: inputSet.id)
         let startedSession = try model.beginCullingSession(named: "Compare Contenders Progress")
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: assets[0].id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance),
             EvaluationSignal(assetID: assets[3].id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance),
@@ -3520,7 +3520,7 @@ final class AppModelTests: XCTestCase {
             named: "stack-list-jump",
             sessionID: "stack-list-jump-session"
         )
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
         try fixture.repository.recordEvaluationSignals([
             EvaluationSignal(assetID: fixture.secondAlternate.id, kind: .focus, value: .score(0.9), confidence: 0.9, provenance: provenance)
         ])
@@ -3701,7 +3701,7 @@ final class AppModelTests: XCTestCase {
         let provenance = ProviderProvenance(
             provider: "local-image-metrics",
             model: "sharpness",
-            version: "1",
+            version: "2",
             settingsHash: "default"
         )
         let leadSignal = EvaluationSignal(
@@ -3781,7 +3781,7 @@ final class AppModelTests: XCTestCase {
             kind: .focus,
             value: .score(0.91),
             confidence: 0.88,
-            provenance: ProviderProvenance(provider: "local-image-metrics", model: "sharpness", version: "1", settingsHash: "default")
+            provenance: ProviderProvenance(provider: "local-image-metrics", model: "sharpness", version: "2", settingsHash: "default")
         )
         try repository.recordEvaluationSignals([firstAlternateSignal])
         try model.applyAssetSet(id: firstSet.id)
@@ -3829,7 +3829,7 @@ final class AppModelTests: XCTestCase {
             named: "stack-entry-recommended",
             sessionID: "stack-entry-recommended-session"
         )
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
         try fixture.repository.recordEvaluationSignals([
             EvaluationSignal(assetID: fixture.secondLead.id, kind: .focus, value: .score(0.4), confidence: 0.9, provenance: provenance),
             EvaluationSignal(assetID: fixture.secondAlternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
@@ -3877,7 +3877,7 @@ final class AppModelTests: XCTestCase {
             assets: [stackFirst, stackSecond],
             outputAssetIDs: [stackFirst.id, stackSecond.id]
         )
-        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "1", settingsHash: "default")
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
         try repository.recordEvaluationSignals([
             EvaluationSignal(assetID: stackSecond.id, kind: .focus, value: .score(0.92), confidence: 0.9, provenance: provenance)
         ])
@@ -9878,7 +9878,7 @@ final class AppModelTests: XCTestCase {
             kind: .focus,
             value: .score(0.91),
             confidence: 0.88,
-            provenance: ProviderProvenance(provider: "local-image-metrics", model: "sharpness", version: "1", settingsHash: "default")
+            provenance: ProviderProvenance(provider: "local-image-metrics", model: "sharpness", version: "2", settingsHash: "default")
         )
         try repository.recordEvaluationSignals([signal])
 

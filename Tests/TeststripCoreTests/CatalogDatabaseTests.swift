@@ -1372,6 +1372,63 @@ final class CatalogDatabaseTests: XCTestCase {
         )
     }
 
+    func testEvaluationSignalsHideRawScaleFocusFamilyRows() throws {
+        // Focus-family rows from the recalibrated providers are readable
+        // only at each provider's current version: raw-scale rows must not
+        // feed badges, rankings, or verdicts. Non-focus-family rows and
+        // focus rows from other providers stay visible, and an asset left
+        // with only raw-scale focus-family rows honestly has no such read.
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-hide-raw-scale-signals")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let neverReEvaluated = Asset.testAsset(id: AssetID(rawValue: "never-re-evaluated"), path: "/Volumes/NAS/Job/never-re-evaluated.jpg", rating: 0)
+        let mixed = Asset.testAsset(id: AssetID(rawValue: "mixed-versions"), path: "/Volumes/NAS/Job/mixed-versions.jpg", rating: 0)
+        let rawMetricsProvenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "1", settingsHash: "default")
+        let rawFacesProvenance = ProviderProvenance(provider: "core-image-faces", model: "CIDetectorFace", version: "1", settingsHash: "default")
+        let httpProvenance = ProviderProvenance(provider: "local-http-model", model: "llava", version: "1", settingsHash: "default")
+        let calibratedProvenance = ProviderProvenance(provider: "local-image-metrics", model: "preview-color-focus-metrics", version: "2", settingsHash: "default")
+        try repository.upsert([neverReEvaluated, mixed])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: neverReEvaluated.id, kind: .focus, value: .score(0.14), confidence: 1.0, provenance: rawMetricsProvenance),
+            EvaluationSignal(assetID: neverReEvaluated.id, kind: .motionBlur, value: .score(0.86), confidence: 0.7, provenance: rawMetricsProvenance),
+            EvaluationSignal(assetID: neverReEvaluated.id, kind: .exposure, value: .score(0.5), confidence: 1.0, provenance: rawMetricsProvenance),
+            EvaluationSignal(assetID: neverReEvaluated.id, kind: .eyeSharpness, value: .score(0.05), confidence: 0.6, provenance: rawFacesProvenance),
+            EvaluationSignal(assetID: neverReEvaluated.id, kind: .focus, value: .score(0.9), confidence: 0.8, provenance: httpProvenance)
+        ])
+
+        let visible = try repository.evaluationSignals(assetID: neverReEvaluated.id)
+
+        XCTAssertEqual(visible.map(\.kind), [.exposure, .focus])
+        XCTAssertEqual(visible.map(\.provenance.provider), ["local-image-metrics", "local-http-model"])
+
+        // Catalogs evaluated across the calibration hold version-1 rows
+        // beside version-2 rows (nothing pruned them at write time back
+        // then); only the calibrated row may be read.
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: mixed.id, kind: .focus, value: .score(0.93), confidence: 1.0, provenance: calibratedProvenance)
+        ])
+        try database.execute(
+            """
+            INSERT INTO evaluation_signals (
+                asset_id, kind, value_json, confidence, provenance_json,
+                provider, model, version, settings_hash, created_at, updated_at
+            )
+            VALUES (
+                ?, 'focus', '{"score":{"_0":0.14}}', 1.0,
+                '{"provider":"local-image-metrics","model":"preview-color-focus-metrics","version":"1","settingsHash":"default"}',
+                'local-image-metrics', 'preview-color-focus-metrics', '1', 'default', 0, 0
+            )
+            """,
+            bindings: [mixed.id.rawValue]
+        )
+
+        let mixedSignals = try repository.evaluationSignals(assetID: mixed.id)
+
+        XCTAssertEqual(mixedSignals.map(\.kind), [.focus])
+        XCTAssertEqual(mixedSignals.map(\.value), [.score(0.93)])
+    }
+
     func testSearchesAssetsWithTechnicalMetadataPredicates() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-technical-search")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
