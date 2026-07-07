@@ -38,4 +38,43 @@ enum TestDirectories {
             throw TeststripError.io("could not write test jpeg")
         }
     }
+
+    /// Writes a JPEG filled with deterministic pseudo-random noise instead of
+    /// a flat color. Flat-color JPEGs barely shrink across quality settings
+    /// (a solid fill compresses to nearly nothing regardless of quality), so
+    /// byte-budget quality-stepping tests need this noisier fixture to see a
+    /// real, reproducible size difference between quality levels.
+    static func writeNoisyTestJPEG(to url: URL, width: Int, height: Int, seed: UInt64 = 1) throws {
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ), let buffer = context.data else {
+            throw TeststripError.io("could not create noisy test bitmap context")
+        }
+        var state: UInt64 = seed == 0 ? 0x9E37_79B9_7F4A_7C15 : seed
+        let byteCount = context.bytesPerRow * height
+        let pointer = buffer.bindMemory(to: UInt8.self, capacity: byteCount)
+        for index in 0..<byteCount {
+            // xorshift64* — a small, deterministic PRNG so noisy fixtures are reproducible across runs.
+            state ^= state >> 12
+            state ^= state << 25
+            state ^= state >> 27
+            let scrambled = state &* 0x2545_F491_4F6C_DD1D
+            pointer[index] = UInt8(truncatingIfNeeded: scrambled >> 24)
+        }
+        guard let image = context.makeImage(),
+              let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
+            throw TeststripError.io("could not create noisy test jpeg")
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else {
+            throw TeststripError.io("could not write noisy test jpeg")
+        }
+    }
 }

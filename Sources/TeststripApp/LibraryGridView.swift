@@ -24,9 +24,13 @@ struct LibraryGridView: View {
     @State private var isAllCatalogBatchMetadataConfirmed = false
     @State private var isReviewingExport = false
     @State private var exportScope: BatchScopeMode = .visible
-    @State private var exportPreset: ExportPreset = .fullResolutionJPEG
+    @State private var exportPresets: [ExportPreset] = ExportPresetStore.loadPresets()
+    @State private var selectedExportPresetName = ExportPresetStore.lastUsedPresetOrDefault().name
+    @State private var exportSettings = ExportPresetStore.lastUsedPresetOrDefault().settings
     @State private var isAllCatalogExportConfirmed = false
-    @State private var includeSourceMetadataInExport = true
+    @State private var isNamingNewExportPreset = false
+    @State private var newExportPresetName = ""
+    @State private var exportSizeEstimateText: String?
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
     @State private var isShowingImportCardPathSheet = false
@@ -191,7 +195,7 @@ struct LibraryGridView: View {
                 Label("Export", systemImage: "square.and.arrow.up")
             }
             .disabled(isImporting || model.assets.isEmpty || model.isExporting)
-            .help("Export JPEG copies to a folder")
+            .help("Export photo copies to a folder")
             .popover(isPresented: $isReviewingExport) {
                 exportPopover
             }
@@ -972,7 +976,7 @@ struct LibraryGridView: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Export JPEGs")
+                    Text("Export Photos")
                         .font(.headline)
                     Text(presentation.countText)
                         .font(.caption)
@@ -994,16 +998,17 @@ struct LibraryGridView: View {
                 isAllCatalogExportConfirmed = false
             }
 
-            Picker("Export preset", selection: $exportPreset) {
-                ForEach(ExportPreset.all, id: \.name) { preset in
-                    Text(preset.name).tag(preset)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            exportPresetPickerRow
 
-            Toggle("Include EXIF/IPTC metadata", isOn: $includeSourceMetadataInExport)
-                .font(.caption)
+            Divider()
+
+            exportSettingsPanel
+
+            if let exportSizeEstimateText {
+                Text(exportSizeEstimateText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             if let confirmationText = presentation.confirmationText {
                 Toggle(confirmationText, isOn: $isAllCatalogExportConfirmed)
@@ -1023,7 +1028,129 @@ struct LibraryGridView: View {
             }
         }
         .padding(14)
-        .frame(width: 360)
+        .frame(width: 380)
+        .task(id: exportSizeEstimateTrigger) {
+            await updateExportSizeEstimate()
+        }
+    }
+
+    private var exportPresetPickerRow: some View {
+        HStack(spacing: 6) {
+            Picker("Preset", selection: $selectedExportPresetName) {
+                ForEach(exportPresets, id: \.name) { preset in
+                    Text(preset.name).tag(preset.name)
+                }
+            }
+            .labelsHidden()
+            .onChange(of: selectedExportPresetName) { _, newName in
+                if let preset = exportPresets.first(where: { $0.name == newName }) {
+                    exportSettings = preset.settings
+                }
+            }
+
+            Button {
+                newExportPresetName = ""
+                isNamingNewExportPreset = true
+            } label: {
+                Image(systemName: "plus.circle")
+            }
+            .buttonStyle(.borderless)
+            .help("Save current settings as a new preset")
+
+            Button {
+                deleteSelectedExportPreset()
+            } label: {
+                Image(systemName: "minus.circle")
+            }
+            .buttonStyle(.borderless)
+            .disabled(exportPresets.count <= 1)
+            .help("Delete this preset")
+        }
+        .popover(isPresented: $isNamingNewExportPreset) {
+            newExportPresetPopover
+        }
+    }
+
+    private var newExportPresetPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("New Preset")
+                .font(.headline)
+            TextField("Preset name", text: $newExportPresetName)
+                .textFieldStyle(.roundedBorder)
+            HStack {
+                Button("Cancel") {
+                    isNamingNewExportPreset = false
+                }
+                Spacer()
+                Button("Save") {
+                    saveNewExportPreset()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(newExportPresetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(14)
+        .frame(width: 240)
+    }
+
+    private var exportSettingsPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Format", selection: $exportSettings.format) {
+                ForEach(ExportFormat.allCases, id: \.self) { format in
+                    Text(format.rawValue.uppercased()).tag(format)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Quality")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(Int((exportSettings.jpegQuality * 100).rounded()))")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                Slider(value: $exportSettings.jpegQuality, in: 0...1)
+            }
+            .disabled(exportSettings.format == .png)
+            .opacity(exportSettings.format == .png ? 0.4 : 1)
+
+            HStack {
+                Text("Long edge")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                TextField("No cap", text: exportLongEdgeFieldBinding)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 90)
+                    .multilineTextAlignment(.trailing)
+            }
+
+            Toggle("Include EXIF/IPTC metadata", isOn: $exportSettings.includeSourceMetadata)
+                .font(.caption)
+        }
+    }
+
+    private var exportLongEdgeFieldBinding: Binding<String> {
+        Binding(
+            get: { exportSettings.longEdgeMaximumPixels.map(String.init) ?? "" },
+            set: { newValue in
+                let trimmed = newValue.trimmingCharacters(in: .whitespaces)
+                exportSettings.longEdgeMaximumPixels = trimmed.isEmpty ? nil : Int(trimmed)
+            }
+        )
+    }
+
+    private var exportSizeEstimateTrigger: ExportSizeEstimateTrigger {
+        ExportSizeEstimateTrigger(
+            settings: exportSettings,
+            scope: exportScope,
+            visibleAssetCount: model.assets.count,
+            selectedAssetCount: model.selectedBatchAssetCount,
+            totalAssetCount: model.totalAssetCount
+        )
     }
 
     private var importProgressBanner: some View {
@@ -2687,9 +2814,9 @@ struct LibraryGridView: View {
 
     private func chooseExportDestinationAndExport() {
         guard let destination = FolderSelectionPanel.chooseExportDestinationFolder() else { return }
-        var settings = exportPreset.settings
-        settings.includeSourceMetadata = includeSourceMetadataInExport
+        let settings = exportSettings
         let scope = exportScope
+        ExportPresetStore.rememberLastUsedPreset(named: selectedExportPresetName)
         isReviewingExport = false
         isAllCatalogExportConfirmed = false
         Task { @MainActor in
@@ -2706,6 +2833,61 @@ struct LibraryGridView: View {
                 model.errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func saveNewExportPreset() {
+        let trimmedName = newExportPresetName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+        let preset = ExportPreset(name: trimmedName, settings: exportSettings)
+        exportPresets = ExportPresetListEditing.upserting(preset, into: exportPresets)
+        ExportPresetStore.savePresets(exportPresets)
+        selectedExportPresetName = trimmedName
+        isNamingNewExportPreset = false
+    }
+
+    private func deleteSelectedExportPreset() {
+        exportPresets = ExportPresetListEditing.removing(named: selectedExportPresetName, from: exportPresets)
+        ExportPresetStore.savePresets(exportPresets)
+        if let firstRemaining = exportPresets.first, firstRemaining.name != selectedExportPresetName {
+            selectedExportPresetName = firstRemaining.name
+            exportSettings = firstRemaining.settings
+        }
+    }
+
+    private func updateExportSizeEstimate() async {
+        let scope = exportScope
+        let settings = exportSettings
+        let sampleURLs: [URL]
+        let totalAssetCount: Int
+        switch scope {
+        case .selected:
+            sampleURLs = model.assets.filter { model.isBatchSelected($0.id) }.map(\.originalURL)
+            totalAssetCount = model.selectedBatchAssetCount
+        case .visible:
+            sampleURLs = model.assets.map(\.originalURL)
+            totalAssetCount = model.assets.count
+        case .currentScope:
+            // The full current-scope asset list may extend past the loaded
+            // page; sampling from what's loaded is an approximation the
+            // "estimated" framing already accounts for.
+            sampleURLs = model.assets.map(\.originalURL)
+            totalAssetCount = model.totalAssetCount
+        }
+        guard !sampleURLs.isEmpty, totalAssetCount > 0 else {
+            exportSizeEstimateText = nil
+            return
+        }
+        let estimate = await Task.detached(priority: .utility) {
+            ExportSizeEstimator().estimate(sampleURLs: sampleURLs, settings: settings, totalAssetCount: totalAssetCount)
+        }.value
+        guard !Task.isCancelled else { return }
+        exportSizeEstimateText = estimate.map(Self.formattedExportSizeEstimateText)
+    }
+
+    private static func formattedExportSizeEstimateText(_ estimate: ExportSizeEstimate) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return "≈ \(formatter.string(fromByteCount: estimate.estimatedTotalBytes)) estimated"
     }
 
     private func evaluateSelectedAsset() {
@@ -3933,6 +4115,17 @@ struct ExportReviewPresentation: Equatable {
             exportTitle = "Export current scope"
         }
     }
+}
+
+/// Drives the export popover's `.task(id:)` size-estimate recompute: any
+/// change re-triggers sampling (and SwiftUI auto-cancels the in-flight
+/// estimate for the stale inputs).
+struct ExportSizeEstimateTrigger: Equatable {
+    var settings: ExportSettings
+    var scope: BatchScopeMode
+    var visibleAssetCount: Int
+    var selectedAssetCount: Int
+    var totalAssetCount: Int
 }
 
 struct CompareSurveyPresentation: Equatable {

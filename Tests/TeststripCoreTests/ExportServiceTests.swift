@@ -12,13 +12,241 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(ExportPreset.web2048.name, "Web 2048px")
         XCTAssertEqual(ExportPreset.web2048.settings.jpegQuality, 0.8)
         XCTAssertEqual(ExportPreset.web2048.settings.longEdgeMaximumPixels, 2048)
-        XCTAssertEqual(ExportPreset.all, [.fullResolutionJPEG, .web2048])
+        XCTAssertEqual(ExportPreset.all, [
+            .fullResolutionJPEG,
+            .web2048,
+            .instagramSquareCapped,
+            .print300dpi,
+            .email1MB
+        ])
+    }
+
+    func testInstagramPresetCapsLongEdgeInsteadOfCroppingSquare() {
+        // The design mock implies a square crop ("Instagram 1080²"), but
+        // Teststrip never crops on export — that would silently discard
+        // pixels the user didn't ask to lose. This preset instead caps the
+        // long edge at 1080, which is honest about what actually happens.
+        XCTAssertEqual(ExportPreset.instagramSquareCapped.name, "Instagram 1080²")
+        XCTAssertEqual(ExportPreset.instagramSquareCapped.settings.longEdgeMaximumPixels, 1080)
+        XCTAssertEqual(ExportPreset.instagramSquareCapped.settings.jpegQuality, 0.85)
+        XCTAssertEqual(ExportPreset.instagramSquareCapped.settings.format, .jpeg)
+        XCTAssertNil(ExportPreset.instagramSquareCapped.settings.targetFileSizeBytes)
+    }
+
+    func testPrintPresetIsFullResolutionAtHighQuality() {
+        XCTAssertEqual(ExportPreset.print300dpi.name, "Print 300dpi")
+        XCTAssertEqual(ExportPreset.print300dpi.settings.jpegQuality, 0.95)
+        XCTAssertNil(ExportPreset.print300dpi.settings.longEdgeMaximumPixels)
+        XCTAssertNil(ExportPreset.print300dpi.settings.targetFileSizeBytes)
+    }
+
+    func testEmailPresetTargetsAOneMegabyteByteBudget() {
+        XCTAssertEqual(ExportPreset.email1MB.name, "Email 1MB")
+        XCTAssertEqual(ExportPreset.email1MB.settings.targetFileSizeBytes, 1_000_000)
+        XCTAssertEqual(ExportPreset.email1MB.settings.format, .jpeg)
+    }
+
+    func testPresetsRoundTripThroughJSONForPersistence() throws {
+        let custom = ExportPreset(
+            name: "Client delivery",
+            settings: ExportSettings(
+                jpegQuality: 0.92,
+                longEdgeMaximumPixels: 3600,
+                includeSourceMetadata: false,
+                format: .png,
+                targetFileSizeBytes: 2_500_000
+            )
+        )
+        let data = try JSONEncoder().encode([custom, ExportPreset.email1MB])
+        let decoded = try JSONDecoder().decode([ExportPreset].self, from: data)
+        XCTAssertEqual(decoded, [custom, .email1MB])
     }
 
     func testSettingsClampJpegQualityToUnitRange() {
         XCTAssertEqual(ExportSettings(jpegQuality: 1.5).jpegQuality, 1.0)
         XCTAssertEqual(ExportSettings(jpegQuality: -0.2).jpegQuality, 0.0)
         XCTAssertEqual(ExportSettings(jpegQuality: 0.8, longEdgeMaximumPixels: 2048).longEdgeMaximumPixels, 2048)
+    }
+
+    func testSettingsDefaultToJpegFormatAndNoByteBudget() {
+        let settings = ExportSettings(jpegQuality: 0.8)
+        XCTAssertEqual(settings.format, .jpeg)
+        XCTAssertNil(settings.targetFileSizeBytes)
+    }
+
+    func testExportWritesPngWhenFormatIsPng() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-png-format")
+        let source = directory.appendingPathComponent("source.jpg")
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try TestDirectories.writeTestJPEG(to: source, width: 400, height: 300)
+
+        let results = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.9, format: .png),
+            destinationDirectory: destination
+        )
+
+        let exportedURL = destination.appendingPathComponent("source.png")
+        XCTAssertEqual(results, [ExportFileResult(sourceURL: source, outcome: .exported(destinationURL: exportedURL))])
+        let dimensions = try PreviewRenderer().dimensions(of: exportedURL)
+        XCTAssertEqual(dimensions, PreviewDimensions(width: 400, height: 300))
+        let readBackSource = try XCTUnwrap(CGImageSourceCreateWithURL(exportedURL as CFURL, nil))
+        XCTAssertEqual(CGImageSourceGetType(readBackSource) as String?, UTType.png.identifier)
+    }
+
+    func testExportResolvesPngFilenameCollisionsWithDeterministicSuffixAndExtension() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-png-collisions")
+        let firstFolder = directory.appendingPathComponent("a", isDirectory: true)
+        let secondFolder = directory.appendingPathComponent("b", isDirectory: true)
+        try FileManager.default.createDirectory(at: firstFolder, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondFolder, withIntermediateDirectories: true)
+        let firstSource = firstFolder.appendingPathComponent("photo.jpg")
+        let secondSource = secondFolder.appendingPathComponent("photo.jpg")
+        try TestDirectories.writeTestJPEG(to: firstSource, width: 100, height: 80)
+        try TestDirectories.writeTestJPEG(to: secondSource, width: 100, height: 80)
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+
+        let results = try ExportService().export(
+            originalURLs: [firstSource, secondSource],
+            settings: ExportSettings(jpegQuality: 0.9, format: .png),
+            destinationDirectory: destination
+        )
+
+        XCTAssertEqual(results, [
+            ExportFileResult(sourceURL: firstSource, outcome: .exported(destinationURL: destination.appendingPathComponent("photo.png"))),
+            ExportFileResult(sourceURL: secondSource, outcome: .exported(destinationURL: destination.appendingPathComponent("photo-2.png")))
+        ])
+    }
+
+    func testExportCarriesSourceMetadataForPngFormatToo() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-png-metadata")
+        let source = directory.appendingPathComponent("source.jpg")
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try writeMetadataFixtureJPEG(to: source, width: 400, height: 300)
+
+        _ = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.9, format: .png),
+            destinationDirectory: destination
+        )
+
+        let properties = try imageProperties(of: destination.appendingPathComponent("source.png"))
+        let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any]
+        XCTAssertEqual(exif?[kCGImagePropertyExifDateTimeOriginal] as? String, "2020:01:02 03:04:05")
+        XCTAssertEqual(properties[kCGImagePropertyOrientation] as? Int ?? 1, 1)
+    }
+
+    func testExportStepsDownJpegQualityToFitByteBudget() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-byte-budget")
+        let source = directory.appendingPathComponent("source.jpg")
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try TestDirectories.writeNoisyTestJPEG(to: source, width: 400, height: 300)
+        let budget = 50_000
+
+        let results = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.9, targetFileSizeBytes: budget),
+            destinationDirectory: destination
+        )
+
+        let exportedURL = destination.appendingPathComponent("source.jpg")
+        XCTAssertEqual(results, [ExportFileResult(sourceURL: source, outcome: .exported(destinationURL: exportedURL))])
+        let exportedSize = try XCTUnwrap(FileManager.default.attributesOfItem(atPath: exportedURL.path)[.size] as? Int64)
+        XCTAssertLessThanOrEqual(exportedSize, Int64(budget))
+
+        // Confirm stepping actually kicked in: an unconstrained export at the
+        // same starting quality is comfortably larger than the budget.
+        let unconstrainedDestination = directory.appendingPathComponent("unconstrained", isDirectory: true)
+        _ = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.9),
+            destinationDirectory: unconstrainedDestination
+        )
+        let unconstrainedSize = try XCTUnwrap(
+            FileManager.default.attributesOfItem(atPath: unconstrainedDestination.appendingPathComponent("source.jpg").path)[.size] as? Int64
+        )
+        XCTAssertGreaterThan(unconstrainedSize, Int64(budget))
+    }
+
+    func testExportSkipsSteppingWhenInitialQualityAlreadyFitsBudget() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-byte-budget-already-fits")
+        let source = directory.appendingPathComponent("source.jpg")
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try TestDirectories.writeNoisyTestJPEG(to: source, width: 400, height: 300)
+
+        let stepped = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.1, targetFileSizeBytes: 1_000_000),
+            destinationDirectory: destination
+        )
+        let unconstrainedDestination = directory.appendingPathComponent("unconstrained", isDirectory: true)
+        let unconstrained = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.1),
+            destinationDirectory: unconstrainedDestination
+        )
+
+        guard case .exported(let steppedURL) = stepped[0].outcome, case .exported(let unconstrainedURL) = unconstrained[0].outcome else {
+            XCTFail("expected both exports to succeed")
+            return
+        }
+        // A budget that already fits at the requested quality should produce
+        // byte-identical output to a plain export at that quality.
+        XCTAssertEqual(try Data(contentsOf: steppedURL), try Data(contentsOf: unconstrainedURL))
+    }
+
+    func testExportBestEffortWhenByteBudgetIsUnreachable() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-byte-budget-unreachable")
+        let source = directory.appendingPathComponent("source.jpg")
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try TestDirectories.writeNoisyTestJPEG(to: source, width: 400, height: 300)
+
+        let results = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.9, targetFileSizeBytes: 1),
+            destinationDirectory: destination
+        )
+
+        let exportedURL = destination.appendingPathComponent("source.jpg")
+        guard case .exported = try XCTUnwrap(results.first?.outcome) else {
+            XCTFail("expected best-effort export to still succeed even though the budget is unreachable")
+            return
+        }
+        let floorDestination = directory.appendingPathComponent("floor", isDirectory: true)
+        _ = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.0),
+            destinationDirectory: floorDestination
+        )
+        // Best effort should land on the same bytes as the lowest quality the
+        // encoder can produce — the export never fails just because the
+        // budget can't be hit.
+        XCTAssertEqual(try Data(contentsOf: exportedURL), try Data(contentsOf: floorDestination.appendingPathComponent("source.jpg")))
+    }
+
+    func testExportPngIgnoresByteBudget() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-png-ignores-budget")
+        let source = directory.appendingPathComponent("source.jpg")
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try TestDirectories.writeNoisyTestJPEG(to: source, width: 400, height: 300)
+
+        let budgeted = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.9, format: .png, targetFileSizeBytes: 1),
+            destinationDirectory: destination
+        )
+        let unconstrainedDestination = directory.appendingPathComponent("unconstrained", isDirectory: true)
+        let unconstrained = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.9, format: .png),
+            destinationDirectory: unconstrainedDestination
+        )
+
+        guard case .exported(let budgetedURL) = budgeted[0].outcome, case .exported(let unconstrainedURL) = unconstrained[0].outcome else {
+            XCTFail("expected both PNG exports to succeed")
+            return
+        }
+        XCTAssertEqual(try Data(contentsOf: budgetedURL), try Data(contentsOf: unconstrainedURL))
     }
 
     func testExportWritesJpegBoundedByLongEdgeCap() throws {
