@@ -32,6 +32,29 @@ public enum CardImportDestinationPreflight {
         return nil
     }
 
+    // The second copy exists to survive a primary-disk failure, so beyond the
+    // source-relative checks it must also be a different folder than the
+    // primary destination; equal roots would make every backup copy a no-op.
+    public static func secondCopyBlockingReason(
+        source: URL,
+        destinationRoot: URL,
+        secondCopyDestination: URL,
+        fileManager: FileManager = .default
+    ) -> String? {
+        if let blockingReason = blockingReason(
+            source: source,
+            destinationRoot: secondCopyDestination,
+            destinationLabel: "Second copy destination",
+            fileManager: fileManager
+        ) {
+            return blockingReason
+        }
+        if normalizedDirectoryPath(secondCopyDestination) == normalizedDirectoryPath(destinationRoot) {
+            return "Second copy destination must be different from the primary destination"
+        }
+        return nil
+    }
+
     private static func normalizedDirectoryPath(_ url: URL) -> String {
         var path = url.standardizedFileURL.resolvingSymlinksInPath().path
         if path == "/" { return path }

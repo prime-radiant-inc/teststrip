@@ -227,6 +227,7 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
             secondCopyRootURL: secondCopyRootURL,
             secondCopyUnavailableReason: Self.secondCopyBlockingReason(
                 source: sourceURL,
+                destinationRoot: destinationRootURL,
                 secondCopyRootURL: secondCopyRootURL
             ),
             sourceSummary: ImportSourceSummary.scan(sourceURL: sourceURL, supportedExtensions: supportedExtensions)
@@ -237,16 +238,24 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
         self.secondCopyRootURL = secondCopyRootURL
         secondCopyUnavailableReason = Self.secondCopyBlockingReason(
             source: sourceURL,
+            destinationRoot: destinationRootURL,
             secondCopyRootURL: secondCopyRootURL
         )
     }
 
-    private static func secondCopyBlockingReason(source: URL, secondCopyRootURL: URL?) -> String? {
+    private static func secondCopyBlockingReason(source: URL, destinationRoot: URL?, secondCopyRootURL: URL?) -> String? {
         guard let secondCopyRootURL else { return nil }
-        return CardImportDestinationPreflight.blockingReason(
+        guard let destinationRoot else {
+            return CardImportDestinationPreflight.blockingReason(
+                source: source,
+                destinationRoot: secondCopyRootURL,
+                destinationLabel: "Second copy destination"
+            )
+        }
+        return CardImportDestinationPreflight.secondCopyBlockingReason(
             source: source,
-            destinationRoot: secondCopyRootURL,
-            destinationLabel: "Second copy destination"
+            destinationRoot: destinationRoot,
+            secondCopyDestination: secondCopyRootURL
         )
     }
 

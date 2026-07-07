@@ -181,6 +181,22 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(draft.secondCopyUnavailableReason, "Second copy destination must be different from the card source")
     }
 
+    func testCardDraftBlocksStartWhenSecondCopyDestinationIsPrimaryDestination() throws {
+        let source = try makeTemporaryDirectory(named: "import-card-draft-second-copy-matching-primary-source")
+        let destination = try makeTemporaryDirectory(named: "import-card-draft-second-copy-matching-primary-destination")
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
+
+        let draft = ImportConfirmationDraft.card(
+            source: source,
+            destinationRoot: destination,
+            secondCopyRootURL: destination,
+            supportedExtensions: ["jpg"]
+        )
+
+        XCTAssertFalse(draft.canStartImport)
+        XCTAssertEqual(draft.secondCopyUnavailableReason, "Second copy destination must be different from the primary destination")
+    }
+
     func testSourceSummaryCountsRecognizedPhotoFilesAndBytes() throws {
         let directory = try makeTemporaryDirectory(named: "import-source-summary")
         let nested = directory.appendingPathComponent("Nested", isDirectory: true)

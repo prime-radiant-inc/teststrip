@@ -8593,10 +8593,10 @@ public final class AppModel {
             return
         }
         if let secondCopyDestination,
-           let blockingReason = CardImportDestinationPreflight.blockingReason(
+           let blockingReason = CardImportDestinationPreflight.secondCopyBlockingReason(
                source: source,
-               destinationRoot: secondCopyDestination,
-               destinationLabel: "Second copy destination"
+               destinationRoot: destinationRoot,
+               secondCopyDestination: secondCopyDestination
            ) {
             failImportBeforeStart(folderURL: source, destinationRoot: destinationRoot, reason: blockingReason)
             return
@@ -8735,6 +8735,10 @@ public final class AppModel {
         if result.skippedSourceFileCount > 0 {
             let fileLabel = result.skippedSourceFileCount == 1 ? "file" : "files"
             warnings.append("\(result.skippedSourceFileCount) \(fileLabel) skipped")
+        }
+        if result.backupFailureCount > 0 {
+            let copyLabel = result.backupFailureCount == 1 ? "backup copy" : "backup copies"
+            warnings.append("\(result.backupFailureCount) \(copyLabel) failed")
         }
         if !result.previewFailures.isEmpty {
             let previewLabel = result.previewFailures.count == 1 ? "preview failure" : "preview failures"

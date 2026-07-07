@@ -74,18 +74,24 @@ public struct IngestService: Sendable {
         var importedSidecars: [ImportedSidecarSync] = []
         var sidecarConflicts: [SidecarSyncConflict] = []
         var claimedDestinationPaths: Set<String> = []
+        // Assets can sit unflushed past the eager persistence limit, so a
+        // catalog lookup alone misses in-run claims; identical duplicates of
+        // one destination path must reuse the pending asset ID or the flush
+        // violates the unique original_path index.
+        var assetIDsByClaimedPath: [String: AssetID] = [:]
         let sidecarStore = XMPSidecarStore()
         for (sourceIndex, sourceFile) in sourceFiles.enumerated() {
             try Task.checkCancellation()
             do {
                 let originalURL = try originalURL(for: sourceFile, plan: plan)
                 let existingAsset = try repository.asset(originalURL: originalURL)
-                let assetID = existingAsset?.id ?? .new()
+                let assetID = existingAsset?.id ?? assetIDsByClaimedPath[originalURL.path] ?? .new()
                 if plan.mode == .copyToDestination,
                    !claimedDestinationPaths.insert(originalURL.path).inserted,
                    !FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: originalURL.path) {
                     throw TeststripError.io("ingest destination already exists \(originalURL.path)")
                 }
+                assetIDsByClaimedPath[originalURL.path] = assetID
                 try prepareOriginalFile(sourceFile: sourceFile, originalURL: originalURL, plan: plan, existingAsset: existingAsset)
                 if let secondCopyIssue = secondCopyIssue(for: sourceFile, plan: plan) {
                     secondCopyFailure?(secondCopyIssue)
@@ -207,10 +213,10 @@ public struct IngestService: Sendable {
             throw TeststripError.invalidState(blockingReason)
         }
         if let secondCopyDestination = plan.secondCopyDestination,
-           let blockingReason = CardImportDestinationPreflight.blockingReason(
+           let blockingReason = CardImportDestinationPreflight.secondCopyBlockingReason(
                source: plan.sourceRoot,
-               destinationRoot: secondCopyDestination,
-               destinationLabel: "Second copy destination"
+               destinationRoot: destinationRoot,
+               secondCopyDestination: secondCopyDestination
            ) {
             throw TeststripError.invalidState(blockingReason)
         }
@@ -259,7 +265,8 @@ public struct IngestService: Sendable {
             return try flatDestinationURL(for: sourceFile, sourceRoot: plan.sourceRoot, destinationRoot: destinationRoot)
         case .capturedDate:
             try validateSourceFileInsideRoot(sourceFile, sourceRoot: plan.sourceRoot)
-            let folderNames = Self.capturedDateFolderNames(for: try destinationDate(for: sourceFile))
+            let destinationDate = try destinationDate(for: sourceFile)
+            let folderNames = Self.capturedDateFolderNames(for: destinationDate.date, in: destinationDate.timeZone)
             return destinationRoot
                 .appendingPathComponent(folderNames.year, isDirectory: true)
                 .appendingPathComponent(folderNames.day, isDirectory: true)
@@ -270,13 +277,17 @@ public struct IngestService: Sendable {
     // Prefers the capture date from the existing decode metadata path (EXIF
     // DateTimeOriginal, falling back to TIFF DateTime inside the provider) and
     // falls back to the file modification date when no capture date is readable,
-    // matching the fingerprint's modification-date handling.
-    private func destinationDate(for sourceFile: URL) throws -> Date {
+    // matching the fingerprint's modification-date handling. Each date carries
+    // the time zone that recovers its wall-clock day: EXIF strings have no
+    // timezone and are parsed as GMT, so GMT round-trips the camera's own date
+    // string; a modification date is a real instant, so the user's local zone
+    // yields the day they saw when the file was made.
+    private func destinationDate(for sourceFile: URL) throws -> (date: Date, timeZone: TimeZone) {
         if let decodeRegistry,
            let provider = try? decodeRegistry.provider(for: sourceFile),
            let metadata = try? provider.metadata(for: sourceFile),
            let capturedAt = metadata.capturedAt {
-            return capturedAt
+            return (capturedAt, TimeZone(secondsFromGMT: 0) ?? .current)
         }
         let attributes: [FileAttributeKey: Any]
         do {
@@ -284,14 +295,12 @@ public struct IngestService: Sendable {
         } catch {
             throw TeststripError.io("could not read modification date for \(sourceFile.path): \(error.localizedDescription)")
         }
-        return attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0)
+        return (attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0), .current)
     }
 
-    // Capture dates are parsed and grouped in UTC across the catalog (EXIF has
-    // no timezone), so dated folders use UTC to match the camera's date string.
-    static func capturedDateFolderNames(for date: Date) -> (year: String, day: String) {
+    static func capturedDateFolderNames(for date: Date, in timeZone: TimeZone) -> (year: String, day: String) {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
+        calendar.timeZone = timeZone
         let components = calendar.dateComponents([.year, .month, .day], from: date)
         let year = components.year ?? 1970
         let month = components.month ?? 1
@@ -312,7 +321,12 @@ public struct IngestService: Sendable {
         case .addInPlace:
             return
         case .copyToDestination:
-            if existingAsset != nil, FileManager.default.fileExists(atPath: originalURL.path) {
+            // A cataloged destination only counts as already imported when the
+            // bytes match the source; a distinct file colliding with it must
+            // surface as a conflict, never a silent drop.
+            if existingAsset != nil,
+               FileManager.default.fileExists(atPath: originalURL.path),
+               FileManager.default.contentsEqual(atPath: sourceFile.path, andPath: originalURL.path) {
                 return
             }
             try copyOriginalFile(from: sourceFile, to: originalURL)

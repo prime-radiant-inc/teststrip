@@ -480,8 +480,10 @@ final class WorkerCommandExecutorTests: XCTestCase {
         try Data("existing".utf8).write(to: conflictingBackup)
         let source = sourceRoot.appendingPathComponent("source.jpg")
         try TestDirectories.writeTestJPEG(to: source, width: 1600, height: 1000)
+        // Local midday keeps the expected folder name timezone-independent:
+        // modification dates file under the local calendar day.
         try FileManager.default.setAttributes(
-            [.modificationDate: FolderImportTests.utcDate(2025, 1, 3, 10, 30, 0)],
+            [.modificationDate: try XCTUnwrap(FolderImportTests.localDate(2025, 1, 3, 12, 0, 0))],
             ofItemAtPath: source.path
         )
         let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
@@ -505,8 +507,9 @@ final class WorkerCommandExecutorTests: XCTestCase {
         guard case .completedImport(_, _, _, _, let skippedSourceFileCount, let skippedSourceFiles) = result else {
             return XCTFail("expected completedImport result, got \(result)")
         }
-        XCTAssertEqual(skippedSourceFileCount, 1)
+        XCTAssertEqual(skippedSourceFileCount, 0, "a photo imported with a failed backup is not a skipped file")
         XCTAssertEqual(skippedSourceFiles.map(\.sourceURL), [source])
+        XCTAssertEqual(skippedSourceFiles.map(\.kind), [.backupFailed])
         let message = try XCTUnwrap(skippedSourceFiles.first?.message)
         XCTAssertTrue(
             message.hasPrefix("backup copy failed: "),

@@ -12724,6 +12724,46 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testBeginImportCardRejectsSecondCopyDestinationMatchingPrimaryWithoutStartingLocalImport() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-local-card-second-copy-matching-primary")
+        let source = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let destinationRoot = directory.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let importTask = RecordingCall()
+        let model = try AppModel.load(
+            catalog: catalog,
+            cardImportTaskFactory: { _, _, _, _, _, _ in
+                importTask.call()
+                return Task {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    return AppImportOutput(
+                        result: LibraryImportResult(importedAssets: [], previewFailures: []),
+                        assets: [],
+                        totalAssetCount: 0
+                    )
+                }
+            }
+        )
+
+        model.beginImportCard(
+            source: source,
+            destinationRoot: destinationRoot,
+            secondCopyDestination: destinationRoot
+        )
+
+        XCTAssertFalse(importTask.wasCalled)
+        XCTAssertFalse(model.isImporting)
+        XCTAssertNil(model.activeWork)
+        XCTAssertEqual(model.errorMessage, "Second copy destination must be different from the primary destination")
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.status, .failed)
+        XCTAssertEqual(activity.detail, "Import failed from DCIM to Library: Second copy destination must be different from the primary destination")
+    }
+
+    @MainActor
     func testBeginImportCardWithWorkerRejectsDestinationMatchingSourceWithoutEnqueueing() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-card-matching-destination")
         let source = directory.appendingPathComponent("DCIM", isDirectory: true)
@@ -13428,6 +13468,48 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(activity.kind, .ingest)
         XCTAssertEqual(activity.status, .completed)
         XCTAssertEqual(activity.detail, "Imported 1 photo from DCIM to Library")
+    }
+
+    @MainActor
+    func testBackgroundCardImportReportsBackupFailuresAsFailedBackupsNotSkippedFiles() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-card-import-backup-failure")
+        let source = directory.appendingPathComponent("DCIM", isDirectory: true)
+        let destination = directory.appendingPathComponent("Library", isDirectory: true)
+        let secondCopy = directory.appendingPathComponent("Backup", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondCopy, withIntermediateDirectories: true)
+        let image = source.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let conflictingBackup = secondCopy.appendingPathComponent("one.png")
+        try Data("existing".utf8).write(to: conflictingBackup)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(catalog: catalog)
+
+        let result = try await model.importCardInBackground(
+            source: source,
+            destinationRoot: destination,
+            secondCopyDestination: secondCopy
+        )
+
+        XCTAssertEqual(result.importedAssets.map(\.originalURL), [destination.appendingPathComponent("one.png")])
+        XCTAssertEqual(
+            model.statusMessage,
+            "Imported 1 photo (1 backup copy failed)",
+            "a fully imported photo whose backup failed must not be reported as skipped"
+        )
+        let activity = try XCTUnwrap(model.recentWork.first)
+        XCTAssertEqual(activity.detail, "Imported 1 photo from DCIM to Library (1 backup copy failed)")
+        XCTAssertEqual(activity.issues.count, 1)
+        let issue = try XCTUnwrap(activity.issues.first)
+        XCTAssertEqual(issue.kind, .skippedSourceFile)
+        XCTAssertEqual(issue.sourceURL, image)
+        XCTAssertTrue(
+            issue.message.hasPrefix("backup copy failed: "),
+            "expected honest backup failure message, got \(issue.message)"
+        )
+        XCTAssertEqual(try String(contentsOf: conflictingBackup, encoding: .utf8), "existing")
     }
 
     @MainActor
