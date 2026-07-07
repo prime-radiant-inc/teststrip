@@ -14,8 +14,18 @@ public struct FaceRecognitionEmbedder: Sendable {
     }
 
     public func faceObservations(in image: CGImage) throws -> [AppleVisionFaceObservation] {
-        let landmarksRequest = VNDetectFaceLandmarksRequest()
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
+
+        // VNDetectFaceLandmarksRequest's built-in detector is weaker than the
+        // dedicated rectangle detector and misses hard faces (helmets, extreme
+        // angles). Detect rectangles first and seed the landmarks request with
+        // them so every detected face gets landmarks.
+        let rectanglesRequest = VNDetectFaceRectanglesRequest()
+        try handler.perform([rectanglesRequest])
+        let landmarksRequest = VNDetectFaceLandmarksRequest()
+        if let detected = rectanglesRequest.results, !detected.isEmpty {
+            landmarksRequest.inputFaceObservations = detected
+        }
         try handler.perform([landmarksRequest])
         let faces = landmarksRequest.results ?? []
 
