@@ -39,13 +39,14 @@ public struct FaceSuggestions: Equatable, Sendable {
 }
 
 public struct FaceSuggestionBuilder: Sendable {
-    // Calibrated to L2-normalized VNGenerateImageFeaturePrint (revision 2)
-    // face-crop distances. Measured on the astronaut corpus, two crops of the
-    // same person land ~0.7-0.9 apart while distinct people spread ~1.0+; the
-    // earlier 0.3-scale thresholds were tuned for a different embedding and
-    // never grouped real repeated individuals, so no suggestions ever formed.
-    public static let defaultMaximumMatchDistance = 0.9
-    public static let defaultMaximumClusterDistance = 0.85
+    // Calibrated to L2-normalized ArcFace (w600k_r50) identity embeddings.
+    // For unit vectors, Euclidean distance d relates to cosine similarity s by
+    // d = √(2 − 2s): same-person ArcFace cosine ≳ 0.4 → d ≲ 1.10, while
+    // different people sit at cosine ≲ 0.2 → d ≳ 1.26. 1.10 is the tightest
+    // value that keeps same-person faces together without merging distinct
+    // identities; re-derived from the astronaut corpus (FaceCorpusGroupingTests).
+    public static let defaultMaximumMatchDistance = 1.10
+    public static let defaultMaximumClusterDistance = 1.10
     public static let defaultMinimumClusterFaceCount = 2
 
     public var maximumMatchDistance: Double
