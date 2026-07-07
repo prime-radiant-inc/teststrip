@@ -39,8 +39,13 @@ public struct FaceSuggestions: Equatable, Sendable {
 }
 
 public struct FaceSuggestionBuilder: Sendable {
-    public static let defaultMaximumMatchDistance = 0.35
-    public static let defaultMaximumClusterDistance = 0.3
+    // Calibrated to L2-normalized VNGenerateImageFeaturePrint (revision 2)
+    // face-crop distances. Measured on the astronaut corpus, two crops of the
+    // same person land ~0.7-0.9 apart while distinct people spread ~1.0+; the
+    // earlier 0.3-scale thresholds were tuned for a different embedding and
+    // never grouped real repeated individuals, so no suggestions ever formed.
+    public static let defaultMaximumMatchDistance = 0.9
+    public static let defaultMaximumClusterDistance = 0.85
     public static let defaultMinimumClusterFaceCount = 2
 
     public var maximumMatchDistance: Double

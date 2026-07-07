@@ -55,6 +55,31 @@ final class FaceSuggestionBuilderTests: XCTestCase {
         ])
     }
 
+    // Two faces of the same person, embedded with VNGenerateImageFeaturePrint,
+    // land ~0.7-0.9 apart in L2-normalized space (measured on the astronaut
+    // corpus). The default cluster threshold must be calibrated to that scale,
+    // otherwise real repeated individuals never group and no suggestions appear.
+    func testGroupsSamePersonAtImageFeaturePrintScale() {
+        // Unit vectors whose mutual distance is ~0.75, matching same-person
+        // feature-print pairs; a distinct person sits ~1.4 away.
+        let personA1: [Double] = [1, 0, 0]
+        let personA2: [Double] = [0.719, 0.695, 0]
+        let personB: [Double] = [0, 0, 1]
+
+        let suggestions = FaceSuggestionBuilder().suggestions(
+            unassignedFaces: [
+                FaceEmbedding(faceID: faceID("a1"), vector: personA1),
+                FaceEmbedding(faceID: faceID("a2"), vector: personA2),
+                FaceEmbedding(faceID: faceID("b"), vector: personB)
+            ],
+            confirmedFacesByPerson: [:]
+        )
+
+        XCTAssertEqual(suggestions.clusters, [
+            FaceClusterSuggestion(faceIDs: [faceID("a1"), faceID("a2")])
+        ])
+    }
+
     func testLargerClustersSortFirst() {
         let suggestions = FaceSuggestionBuilder().suggestions(
             unassignedFaces: [
