@@ -2444,6 +2444,14 @@ public final class AppModel {
         refreshPeopleFaceSuggestions()
     }
 
+    public func showPersonPhotos(named name: String) throws {
+        selectedAssetSetID = nil
+        clearLibraryQueryFilters()
+        librarySearchText = Self.librarySearchText(residualText: nil, predicates: [.person(name)])
+        selectedView = .grid
+        try reload()
+    }
+
     public func showPeopleFaceSuggestionPhotos(_ suggestion: PeopleFaceSuggestion) throws {
         try selectSidebarTarget(.allPhotographs)
         clearBatchSelection()

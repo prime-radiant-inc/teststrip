@@ -7007,6 +7007,38 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 2)
     }
 
+    func testShowPersonPhotosScopesLibraryGridToConfirmedPerson() throws {
+        let annaRated = makeAsset(id: "anna-rated", path: "/Photos/Wedding/anna-rated.jpg", rating: 5)
+        let annaUnrated = makeAsset(id: "anna-unrated", path: "/Photos/Wedding/anna-unrated.jpg", rating: 0)
+        let unassigned = makeAsset(id: "unassigned", path: "/Photos/Wedding/unassigned.jpg", rating: 5)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "show-person-photos",
+            assets: [annaRated, annaUnrated, unassigned],
+            configureRepository: { repository in
+                try repository.upsertPerson(id: "person-anna", name: "Anna Lee")
+                try repository.assignAssets([annaRated.id, annaUnrated.id], toPersonID: "person-anna")
+            }
+        )
+        model.selectedView = .people
+        model.minimumRatingFilter = 3
+        try model.applyLibraryFilters()
+
+        try model.showPersonPhotos(named: "Anna Lee")
+
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.librarySearchText, "person:\"Anna Lee\"")
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Person: Anna Lee"])
+        XCTAssertEqual(model.assets.map(\.id), [annaRated.id, annaUnrated.id])
+        XCTAssertEqual(model.totalAssetCount, 2)
+
+        model.minimumRatingFilter = 4
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Person: Anna Lee", "Rating >= 4"])
+        XCTAssertEqual(model.assets.map(\.id), [annaRated.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
     func testRemovingPersonChipRewritesSearchTextAndReloads() throws {
         let both = makeAsset(id: "both", path: "/Photos/Wedding/both.jpg", rating: 0)
         let annaOnly = makeAsset(id: "anna-only", path: "/Photos/Wedding/anna-only.jpg", rating: 0)

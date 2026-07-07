@@ -358,6 +358,19 @@ struct PeopleView: View {
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(Color.white.opacity(0.07))
         }
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture {
+            showPersonPhotos(person)
+        }
+        .help("Show \(person.name)'s confirmed photos in the library grid")
+    }
+
+    private func showPersonPhotos(_ person: NamedPersonPresentation) {
+        do {
+            try model.showPersonPhotos(named: person.name)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     private func peopleReviewCard(_ card: PeopleReviewCard) -> some View {
