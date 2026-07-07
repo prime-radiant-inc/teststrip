@@ -249,6 +249,44 @@ final class FolderImportTests: XCTestCase {
         ])
     }
 
+    func testIngestContinuesPastUnparsableSidecarAndRecordsConflict() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "ingest-unparsable-sidecar")
+        let first = root.appendingPathComponent("one.jpg")
+        let second = root.appendingPathComponent("two.jpg")
+        try Data("jpg one".utf8).write(to: first)
+        try Data("jpg two".utf8).write(to: second)
+        let sidecarURL = first.appendingPathExtension("xmp")
+        let legacySidecarData = Data("""
+        <xmpmeta xmlns="https://teststrip.app/xmp">
+          <rating>2</rating>
+        </xmpmeta>
+        """.utf8)
+        try legacySidecarData.write(to: sidecarURL)
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let service = IngestService(scanner: FolderScanner(supportedExtensions: ["jpg"]))
+
+        // One legacy or corrupt sidecar must not abort the whole folder
+        // import; the asset keeps its catalog metadata and the sidecar lands
+        // in XMP Conflicts review instead.
+        let imported = try service.ingest(plan: IngestPlanner.addFolder(root), repository: repository)
+
+        XCTAssertEqual(imported.map(\.originalURL), [first, second])
+        let firstAsset = try XCTUnwrap(try repository.asset(originalURL: first))
+        XCTAssertEqual(firstAsset.metadata, AssetMetadata())
+        XCTAssertNotNil(try repository.asset(originalURL: second))
+        XCTAssertEqual(try Data(contentsOf: sidecarURL), legacySidecarData)
+        XCTAssertEqual(try repository.metadataSyncConflictItems(), [
+            MetadataSyncItem(
+                assetID: firstAsset.id,
+                sidecarURL: sidecarURL,
+                catalogGeneration: 1,
+                lastSyncedFingerprint: nil
+            )
+        ])
+    }
+
     func testReingestingFolderPreservesAssetIdentityAndMetadata() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "ingest-idempotent")
         let image = root.appendingPathComponent("one.jpg")
