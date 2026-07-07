@@ -2207,7 +2207,8 @@ struct LibraryGridView: View {
                         previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
                         previewStatus: model.gridPreviewStatus(for: asset.id),
                         isSelected: model.selectedAssetID == asset.id,
-                        isBatchSelected: model.isBatchSelected(asset.id)
+                        isBatchSelected: model.isBatchSelected(asset.id),
+                        autopilotDecision: model.autopilotProposalDecision(for: asset.id)
                     )
                     .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
                         selectAssetFromGrid(assetID)
@@ -2941,6 +2942,21 @@ struct LibraryGridView: View {
             try model.applyCullingShortcut(shortcut)
         } catch {
             model.errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct AutopilotBadgePresentation: Equatable {
+    // Maps a pending proposal's decision to the grid cell's KEEP/CUT badge.
+    // Keyword proposals and undecided cells carry no keep/cut badge.
+    static func badge(for kind: AutopilotProposalKind?) -> (text: String, isKeep: Bool)? {
+        switch kind {
+        case .pick:
+            return (text: "KEEP", isKeep: true)
+        case .reject:
+            return (text: "CUT", isKeep: false)
+        case .keyword, nil:
+            return nil
         }
     }
 }
@@ -6990,7 +7006,8 @@ private struct TimelineWorkspaceView: View {
                             previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
                             previewStatus: model.gridPreviewStatus(for: asset.id),
                             isSelected: model.selectedAssetID == asset.id,
-                            isBatchSelected: model.isBatchSelected(asset.id)
+                            isBatchSelected: model.isBatchSelected(asset.id),
+                            autopilotDecision: model.autopilotProposalDecision(for: asset.id)
                         )
                         .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
                             selectAsset(assetID)
@@ -8418,6 +8435,7 @@ private struct AssetGridCell: View {
     var previewStatus: AssetGridPreviewStatusPresentation?
     var isSelected: Bool
     var isBatchSelected = false
+    var autopilotDecision: AutopilotProposalKind? = nil
 
     var body: some View {
         GeometryReader { geometry in
@@ -8449,10 +8467,15 @@ private struct AssetGridCell: View {
                 }
             }
             .overlay(alignment: .topLeading) {
-                if isBatchSelected {
-                    batchSelectionBadge
-                        .padding(6)
+                HStack(spacing: 4) {
+                    if isBatchSelected {
+                        batchSelectionBadge
+                    }
+                    if let badge = AutopilotBadgePresentation.badge(for: autopilotDecision) {
+                        autopilotBadge(badge)
+                    }
                 }
+                .padding(6)
             }
             .background(
                 RoundedRectangle(cornerRadius: 5)
@@ -8508,6 +8531,16 @@ private struct AssetGridCell: View {
             .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(.black.opacity(0.82), Color.orange)
             .accessibilityLabel("Batch selected")
+    }
+
+    private func autopilotBadge(_ badge: (text: String, isKeep: Bool)) -> some View {
+        Text(badge.text)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(badge.isKeep ? Color.green : Color.red)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(.black.opacity(0.55), in: Capsule())
+            .accessibilityLabel(badge.isKeep ? "Proposed keep" : "Proposed cut")
     }
 
     private var metadataOverlay: some View {
