@@ -34,6 +34,8 @@ case .realCorpusSmoke(let photoDirectory):
     try runRealCorpusSmoke(photoDirectory: photoDirectory, root: root)
 case .seedGeoFixtures(let directory, let count):
     try runSeedGeoFixtures(directory: directory, count: count)
+case .seedDupFixtures(let directory):
+    try runSeedDupFixtures(directory: directory)
 case .samplePreviewRender(let photoDirectory):
     try runSamplePreviewRenderBenchmark(photoDirectory: photoDirectory, root: root)
 case .seedAppCatalog(let applicationSupportDirectory, let count):
@@ -341,6 +343,18 @@ private func runSeedGeoFixtures(directory: URL, count: Int) throws {
     print("gps-bearing fixtures: \(result.gpsBearingCount)")
     print("gps latitude: \(result.latitude)")
     print("gps longitude: \(result.longitude)")
+}
+
+private func runSeedDupFixtures(directory: URL) throws {
+    print("TeststripBench seed dup fixtures")
+    print("directory: \(directory.path)")
+    let result = try DuplicateFixtureSeeder(directory: directory).run()
+    print("card1: \(directory.appendingPathComponent("card1").path)")
+    print("card2: \(directory.appendingPathComponent("card2").path)")
+    print("card1 frames: \(result.card1FrameCount)")
+    print("card2 shared frames: \(result.sharedFrameCount)")
+    print("card2 new frames: \(result.card2NewFrameCount)")
+    print("card2 frames: \(result.card2FrameCount)")
 }
 
 private func runSeedAppCatalog(applicationSupportDirectory: URL, count: Int) throws {
