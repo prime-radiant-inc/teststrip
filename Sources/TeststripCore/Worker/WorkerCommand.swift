@@ -19,6 +19,7 @@ public enum WorkerCommand: Equatable, Sendable {
     case refreshAvailability(assetID: AssetID)
     case refreshAvailabilityBatch(assetIDs: [AssetID])
     case runEvaluation(assetID: AssetID, provider: String)
+    case reverseGeocodeBatch(limit: Int)
     case pause
     case resume
     case cancelAll
@@ -28,7 +29,7 @@ public enum WorkerCommand: Equatable, Sendable {
         case .pause: return .pause
         case .resume: return .resume
         case .cancelAll: return .cancelAll
-        case .importFolder, .importCard, .generatePreview, .syncMetadata, .refreshAvailability, .refreshAvailabilityBatch, .runEvaluation: return nil
+        case .importFolder, .importCard, .generatePreview, .syncMetadata, .refreshAvailability, .refreshAvailabilityBatch, .runEvaluation, .reverseGeocodeBatch: return nil
         }
     }
 
@@ -48,6 +49,8 @@ public enum WorkerCommand: Equatable, Sendable {
             return "refresh \(assetIDs.count) sources"
         case .runEvaluation(let assetID, let provider):
             return "run \(provider) evaluation for \(assetID.rawValue)"
+        case .reverseGeocodeBatch(let limit):
+            return "reverse-geocode up to \(limit) locations"
         case .pause:
             return "pause worker"
         case .resume:

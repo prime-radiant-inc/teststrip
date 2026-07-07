@@ -1295,6 +1295,81 @@ final class WorkerCommandExecutorTests: XCTestCase {
             sidecarURL: originalURL.appendingPathExtension("xmp")
         )
     }
+
+    func testReverseGeocodeBatchWritesPlaceNamesAndClearsQueue() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-reverse-geocode-writes")
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(locatedAsset(id: "eiffel", latitude: 48.8584, longitude: 2.2945))
+        _ = try repository.enqueueMissingGeocodeCoordinates(limit: 10)
+
+        let geocoder = FakeReverseGeocoder(results: [
+            GeocodeCoordinateKey.key(latitude: 48.8584, longitude: 2.2945):
+                ReverseGeocodeResult(locality: "Paris", administrativeArea: "Île-de-France", country: "France")
+        ])
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(
+            repository: repository, previewCache: previewCache,
+            reverseGeocoder: geocoder, reverseGeocodeRequestInterval: 0
+        )
+
+        let result = try executor.execute(.reverseGeocodeBatch(limit: 10))
+
+        XCTAssertEqual(try repository.placeName(
+            coordinateKey: GeocodeCoordinateKey.key(latitude: 48.8584, longitude: 2.2945))?.displayName,
+            "Paris · France")
+        XCTAssertEqual(try repository.geocodeQueueDepth(), 0)
+        if case .completed(let message) = result { XCTAssertTrue(message.contains("1")) } else { XCTFail() }
+    }
+
+    func testReverseGeocodeBatchRecordsFailureAndLeavesCoordinateQueued() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-reverse-geocode-failure")
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(locatedAsset(id: "x", latitude: 10.0, longitude: 10.0))
+        _ = try repository.enqueueMissingGeocodeCoordinates(limit: 10)
+        let geocoder = FakeReverseGeocoder(throwingKeys: [GeocodeCoordinateKey.key(latitude: 10.0, longitude: 10.0)])
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(
+            repository: repository, previewCache: previewCache,
+            reverseGeocoder: geocoder, reverseGeocodeRequestInterval: 0
+        )
+
+        _ = try executor.execute(.reverseGeocodeBatch(limit: 10))
+
+        XCTAssertNil(try repository.placeName(coordinateKey: GeocodeCoordinateKey.key(latitude: 10.0, longitude: 10.0)))
+        XCTAssertEqual(try repository.pendingGeocodeItems(limit: 10, maximumAttemptCount: 5).count, 1)
+    }
+
+    private func locatedAsset(id: String, latitude: Double, longitude: Double) -> Asset {
+        Asset(
+            id: AssetID(rawValue: id),
+            originalURL: URL(fileURLWithPath: "/Volumes/NAS/\(id).cr2"),
+            volumeIdentifier: "NAS",
+            fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1), contentHash: "hash"),
+            availability: .online,
+            metadata: AssetMetadata(),
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 1, pixelHeight: 1, latitude: latitude, longitude: longitude,
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        )
+    }
+}
+
+private struct FakeReverseGeocoder: ReverseGeocoder {
+    var results: [String: ReverseGeocodeResult] = [:]
+    var throwingKeys: Set<String> = []
+
+    func reverseGeocode(latitude: Double, longitude: Double) throws -> ReverseGeocodeResult? {
+        let key = GeocodeCoordinateKey.key(latitude: latitude, longitude: longitude)
+        if throwingKeys.contains(key) {
+            throw TeststripError.io("geocode failed for \(key)")
+        }
+        return results[key]
+    }
 }
 
 private struct PreviewPathEvaluationProvider: EvaluationProvider {

@@ -107,23 +107,36 @@ public struct WorkerRuntimeConfiguration: Equatable, Sendable {
 }
 
 public struct WorkerCommandExecutor {
+    // A conservative read of CLGeocoder's undocumented throttle: 50 requests per
+    // minute, one every 1.2 s. Failures re-queue (Task 6), so an over-eager
+    // budget self-corrects, but this errs slow. Tunable.
+    public static let reverseGeocodeRequestsPerMinuteBudget = 50
+    public static let reverseGeocodeMinimumRequestInterval = 60.0 / Double(reverseGeocodeRequestsPerMinuteBudget)
+    static let reverseGeocodeMaximumAttemptCount = 5
+
     private let repository: CatalogRepository
     private let previewCache: PreviewCache
     private let renderer: PreviewRenderer
     private let importService: LibraryImportService
     private let evaluationProviders: [String: any EvaluationProvider]
+    private let reverseGeocoder: (any ReverseGeocoder)?
+    private let reverseGeocodeRequestInterval: TimeInterval
 
     public init(
         repository: CatalogRepository,
         previewCache: PreviewCache,
         renderer: PreviewRenderer = PreviewRenderer(),
         evaluationProviders: [any EvaluationProvider] = [],
-        importService: LibraryImportService? = nil
+        importService: LibraryImportService? = nil,
+        reverseGeocoder: (any ReverseGeocoder)? = nil,
+        reverseGeocodeRequestInterval: TimeInterval? = nil
     ) {
         self.repository = repository
         self.previewCache = previewCache
         self.renderer = renderer
         self.importService = importService ?? Self.defaultImportService(previewCache: previewCache)
+        self.reverseGeocoder = reverseGeocoder
+        self.reverseGeocodeRequestInterval = reverseGeocodeRequestInterval ?? Self.reverseGeocodeMinimumRequestInterval
         var providersByName: [String: any EvaluationProvider] = [:]
         for provider in evaluationProviders {
             providersByName[provider.name] = provider
@@ -151,7 +164,8 @@ public struct WorkerCommandExecutor {
         self.init(
             repository: CatalogRepository(database: database),
             previewCache: PreviewCache(root: configuration.previewCacheRoot),
-            evaluationProviders: evaluationProviders
+            evaluationProviders: evaluationProviders,
+            reverseGeocoder: CLGeocoderReverseGeocoder()
         )
     }
 
@@ -222,6 +236,8 @@ public struct WorkerCommandExecutor {
             return try refreshAvailabilityBatch(assetIDs: assetIDs, progress: progress)
         case .runEvaluation(let assetID, let provider):
             return try runEvaluation(assetID: assetID, providerName: provider)
+        case .reverseGeocodeBatch(let limit):
+            return try reverseGeocodeBatch(limit: limit, progress: progress)
         case .pause:
             return .accepted("pause")
         case .resume:
@@ -286,6 +302,56 @@ public struct WorkerCommandExecutor {
             ))
         }
         return .completed("checked \(assetIDs.count) sources")
+    }
+
+    private func reverseGeocodeBatch(
+        limit: Int,
+        progress: LibraryImportProgressHandler?
+    ) throws -> WorkerCommandResult {
+        guard let reverseGeocoder else {
+            throw TeststripError.invalidState("worker has no reverse geocoder configured")
+        }
+        let items = try repository.pendingGeocodeItems(
+            limit: limit,
+            maximumAttemptCount: Self.reverseGeocodeMaximumAttemptCount
+        )
+        var resolvedCount = 0
+        for (index, item) in items.enumerated() {
+            try Task.checkCancellation()
+            if index > 0, reverseGeocodeRequestInterval > 0 {
+                Thread.sleep(forTimeInterval: reverseGeocodeRequestInterval)
+            }
+            do {
+                // A nil result (no place found) is still cached with all-nil
+                // components so the coordinate leaves the queue and is never
+                // retried forever.
+                let geocoded = try reverseGeocoder.reverseGeocode(latitude: item.latitude, longitude: item.longitude)
+                try repository.recordPlaceName(CatalogPlaceName(
+                    coordinateKey: item.coordinateKey,
+                    locality: geocoded?.locality,
+                    administrativeArea: geocoded?.administrativeArea,
+                    country: geocoded?.country,
+                    displayName: CatalogPlaceName.displayName(
+                        locality: geocoded?.locality,
+                        administrativeArea: geocoded?.administrativeArea,
+                        country: geocoded?.country
+                    )
+                ))
+                resolvedCount += 1
+            } catch {
+                try repository.recordGeocodeFailure(
+                    coordinateKey: item.coordinateKey,
+                    errorMessage: error.localizedDescription
+                )
+            }
+            let completedCount = index + 1
+            progress?(LibraryImportProgress(
+                completedUnitCount: completedCount,
+                totalUnitCount: items.count,
+                detail: "Read \(completedCount) of \(items.count) locations"
+            ))
+        }
+        return .completed("reverse-geocoded \(resolvedCount) \(resolvedCount == 1 ? "location" : "locations")")
     }
 
     private func runEvaluation(assetID: AssetID, providerName: String) throws -> WorkerCommandResult {
