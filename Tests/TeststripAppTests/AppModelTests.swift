@@ -5565,6 +5565,34 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 
+    func testFindBestShotsRoutesToPicksWhenTheUserAlreadyHasThem() throws {
+        let pick = makeAsset(id: "fbs-pick", path: "/Photos/Job/fbs-pick.jpg", rating: 4, flag: .pick, keywords: ["tagged"])
+        let plain = makeAsset(id: "fbs-plain", path: "/Photos/Job/fbs-plain.jpg", rating: 3, keywords: ["tagged"])
+        let (model, _) = try makeModelWithCatalogAssets(named: "find-best-shots-picks", assets: [pick, plain])
+
+        XCTAssertTrue(model.canFindBestShots)
+        let plan = try model.findBestShots()
+
+        XCTAssertEqual(plan.route, .reviewQueue(.picks))
+        XCTAssertEqual(model.flagFilter, .pick)
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.assets.map(\.id), [pick.id])
+    }
+
+    func testFindBestShotsNeverDeadEndsOnAnUnrankableScope() throws {
+        // No picks, nothing likely-picks, and no worker to evaluate with: the
+        // action must surface plain language, not route to an empty queue and
+        // never a bare "0".
+        let plain = makeAsset(id: "fbs-distinct", path: "/Photos/Job/fbs-distinct.jpg", rating: 3, keywords: ["tagged"])
+        let (model, _) = try makeModelWithCatalogAssets(named: "find-best-shots-empty", assets: [plain])
+
+        let plan = try model.findBestShots()
+
+        XCTAssertEqual(plan.route, .nothingRanked(message: FindBestShotsRouter.nothingRankedMessage))
+        XCTAssertEqual(model.statusMessage, FindBestShotsRouter.nothingRankedMessage)
+        XCTAssertFalse((model.statusMessage ?? "").contains("0 keepers"))
+    }
+
     func testReviewSidebarShowsOnlyQueuesWithCatalogBackedCounts() throws {
         let pick = makeAsset(id: "single-review-pick", path: "/Photos/Job/single-review-pick.jpg", rating: 4, flag: .pick, keywords: ["tagged"])
         let plain = makeAsset(id: "single-review-plain", path: "/Photos/Job/single-review-plain.jpg", rating: 3, keywords: ["tagged"])
