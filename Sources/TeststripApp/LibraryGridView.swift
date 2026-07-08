@@ -228,30 +228,28 @@ struct LibraryGridView: View {
                     Label("Auto-cull after import", systemImage: "wand.and.stars")
                 }
 
-                Menu {
-                    Button {
-                        evaluateSelectedAsset()
-                    } label: {
-                        Label("Evaluate", systemImage: "sparkles")
-                    }
-                    .disabled(isImporting || !model.canRequestSelectedAssetEvaluation)
+                Divider()
 
-                    Button {
-                        evaluateVisibleAssets()
-                    } label: {
-                        Label("Evaluate Visible", systemImage: "sparkles")
-                    }
-                    .disabled(isImporting || !model.canRequestVisibleAssetEvaluations)
-
-                    Button {
-                        evaluateCurrentScopeAssets()
-                    } label: {
-                        Label("Evaluate Scope", systemImage: "sparkles.rectangle.stack")
-                    }
-                    .disabled(isImporting || !model.canRequestCurrentScopeAssetEvaluations)
+                Button {
+                    evaluateSelectedAsset()
                 } label: {
-                    Label("Analyze", systemImage: "sparkles")
+                    Label("Evaluate Photo", systemImage: "sparkles")
                 }
+                .disabled(isImporting || !model.canRequestSelectedAssetEvaluation)
+
+                Button {
+                    evaluateVisibleAssets()
+                } label: {
+                    Label("Evaluate Visible", systemImage: "sparkles")
+                }
+                .disabled(isImporting || !model.canRequestVisibleAssetEvaluations)
+
+                Button {
+                    evaluateCurrentScopeAssets()
+                } label: {
+                    Label("Evaluate Scope", systemImage: "sparkles.rectangle.stack")
+                }
+                .disabled(isImporting || !model.canRequestCurrentScopeAssetEvaluations)
             } label: {
                 Label("More", systemImage: "ellipsis.circle")
             }

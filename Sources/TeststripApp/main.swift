@@ -99,6 +99,14 @@ private struct AutopilotCommands: Commands {
             .keyboardShortcut("b", modifiers: [.command, .shift])
             .disabled(model.isImporting || !model.canFindBestShots)
 
+            // A keyboard-reachable Evaluate for power users; the toolbar entry
+            // (More ▸ Evaluate…) is one level deep, no longer buried under Analyze.
+            Button("Evaluate Photos") {
+                evaluateVisiblePhotos()
+            }
+            .keyboardShortcut("e", modifiers: [.command, .shift])
+            .disabled(model.isImporting || !model.canRequestVisibleAssetEvaluations)
+
             Divider()
 
             // Power-user entry into the same run→review machinery; a newcomer
@@ -107,6 +115,14 @@ private struct AutopilotCommands: Commands {
                 runAutopilot()
             }
             .disabled(model.isImporting || model.assets.isEmpty)
+        }
+    }
+
+    private func evaluateVisiblePhotos() {
+        do {
+            try model.requestVisibleAssetEvaluations()
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 
