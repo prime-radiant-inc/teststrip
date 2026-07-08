@@ -107,17 +107,20 @@ EXIF carry. This is a legibility pass over working machinery, not a rework.
 
 ---
 
-## Open decisions for Jesse
+## Decisions (locked with Jesse, 2026-07-08)
 
-1. **Naming:** "Find Best Shots" vs "Auto-cull" vs keep "Autopilot"? "Review"
-   vs "To Do" for the Copilot rename?
-2. **Scope of the first pass:** do all 7, or start with the 3 highest-impact
-   (core path #1, toolbar #2, Copilot→Review #3) and iterate?
-3. **Autopilot toggle fate:** demote to a setting, or keep visible?
+1. **Core action name: "Find Best Shots."**
+2. **"Copilot" → "Review."**
+3. **Scope: all 7 in one sweep.**
+4. Autopilot toggle demotes to a setting (folded under ⋯/Preferences); the
+   visible action is "Find Best Shots."
 
-## Suggested sequencing (if approved)
+## Execution note
 
-Wave 1 (highest impact, matches both personas' top-3): #1 core path, #2 toolbar
-collapse, #3 Copilot→Review. Wave 2: #4 de-jargon, #5 empty state. Wave 3: #6
-nav de-dup, #7 filter density. Each wave is independently shippable and
-verifiable with an automated persona-style scenario.
+This sweep touches `LibraryGridView.swift` (toolbar, filter bar), `main.swift`
+(menu commands), `AppModel.swift`, the Copilot/Review view, and the sidebar —
+the same files as the two in-flight bug fixes (arrow-nav double-step;
+autopilot "0 keepers"). Execute the sweep **after** those two land and merge,
+to avoid conflicts on the shared surfaces. Verify each item with an automated
+persona-style scenario, and close with a fresh first-time-user + photographer
+persona pass to confirm the friction is gone.
