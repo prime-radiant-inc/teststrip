@@ -128,23 +128,34 @@ struct LibraryGridView: View {
         }
         .navigationTitle(model.libraryTitle)
         .toolbar {
-            Toggle(isOn: Binding(
-                get: { model.autopilotEnabled },
-                set: { model.autopilotEnabled = $0 }
-            )) {
-                Label("Autopilot", systemImage: "wand.and.stars")
+            Menu {
+                Button {
+                    showImportFolderPanel()
+                } label: {
+                    Label("Folder…", systemImage: "square.and.arrow.down")
+                }
+                .disabled(isImporting)
+
+                Button {
+                    showPrimaryCardImportRoute()
+                } label: {
+                    Label("From Card…", systemImage: "externaldrive.badge.plus")
+                }
+                .disabled(isImporting)
+            } label: {
+                Label("Import", systemImage: "square.and.arrow.down")
             }
-            .toggleStyle(.button)
-            .help("When on, a finished import proposes keeps and cuts for review once its reads finish. Nothing is written until you commit.")
+            .disabled(isImporting)
+            .help("Import photos from a folder or a memory card")
 
             Button {
-                runAutopilotOnCurrentScope()
+                findBestShots()
             } label: {
-                Label("Run Autopilot", systemImage: "wand.and.stars.inverse")
+                Label("Find Best Shots", systemImage: "wand.and.stars")
             }
-            .disabled(isImporting || model.assets.isEmpty)
-            .accessibilityLabel("Run Autopilot")
-            .help("Propose keeps and cuts for the photos in view from their evaluations. Nothing is written until you commit.")
+            .disabled(isImporting || !model.canFindBestShots)
+            .accessibilityLabel("Find Best Shots")
+            .help("Evaluate the photos in view and land on your ranked best shots. Nothing is written until you commit.")
 
             Button {
                 showStartCullingPopover()
@@ -156,75 +167,6 @@ struct LibraryGridView: View {
             .popover(isPresented: $isStartingCullingSession) {
                 cullingSessionPopover
             }
-
-            Button {
-                showImportFolderPanel()
-            } label: {
-                Label("Import Folder", systemImage: "square.and.arrow.down")
-            }
-            .disabled(isImporting)
-
-            Button {
-                showImportPathSheet()
-            } label: {
-                Label("Import Path", systemImage: "folder.badge.plus")
-            }
-            .disabled(isImporting)
-            .help("Import a folder by path")
-
-            Button {
-                showPrimaryCardImportRoute()
-            } label: {
-                Label("Import Card", systemImage: "externaldrive.badge.plus")
-            }
-            .disabled(isImporting)
-
-            Button {
-                showSourceReconnectSheet()
-            } label: {
-                Label("Reconnect Sources", systemImage: "externaldrive")
-            }
-            .disabled(isImporting || !model.canReconnectSourceRoot)
-            .help("Reconnect moved or mounted source roots")
-
-            Button {
-                evaluateSelectedAsset()
-            } label: {
-                Label("Evaluate", systemImage: "sparkles")
-            }
-            .disabled(isImporting || !model.canRequestSelectedAssetEvaluation)
-            .help("Evaluate selected photo")
-
-            Button {
-                evaluateVisibleAssets()
-            } label: {
-                Label("Evaluate Visible", systemImage: "sparkles")
-            }
-            .disabled(isImporting || !model.canRequestVisibleAssetEvaluations)
-            .help("Evaluate visible photos")
-
-            Button {
-                evaluateCurrentScopeAssets()
-            } label: {
-                Label("Evaluate Scope", systemImage: "sparkles.rectangle.stack")
-            }
-            .disabled(isImporting || !model.canRequestCurrentScopeAssetEvaluations)
-            .help("Evaluate cached photos in the current search, set, or filter scope")
-
-            Button {
-                batchMetadataDraft = BatchMetadataDraft()
-                batchMetadataScope = model.selectedBatchAssetCount > 0 ? .selected : .visible
-                isAllCatalogBatchMetadataConfirmed = false
-                isReviewingBatchMetadata = true
-            } label: {
-                Label("Batch Metadata", systemImage: "tag")
-            }
-            .disabled(isImporting || model.assets.isEmpty)
-            .help("Review visible batch metadata")
-            .popover(isPresented: $isReviewingBatchMetadata) {
-                batchMetadataPopover
-            }
-            .liveMockupPlaceholder(.keywordingBatch)
 
             Button {
                 exportScope = model.selectedBatchAssetCount > 0 ? .selected : .visible
@@ -239,13 +181,71 @@ struct LibraryGridView: View {
                 exportPopover
             }
 
-            Button {
-                beginRejectRelocation()
+            Menu {
+                Button {
+                    beginRejectRelocation()
+                } label: {
+                    Label("Move Rejects…", systemImage: "tray.and.arrow.down")
+                }
+                .disabled(isImporting || model.assets.isEmpty || model.isRelocatingRejects)
+
+                Button {
+                    showSourceReconnectSheet()
+                } label: {
+                    Label("Reconnect Sources…", systemImage: "externaldrive")
+                }
+                .disabled(isImporting || !model.canReconnectSourceRoot)
+
+                Button {
+                    batchMetadataDraft = BatchMetadataDraft()
+                    batchMetadataScope = model.selectedBatchAssetCount > 0 ? .selected : .visible
+                    isAllCatalogBatchMetadataConfirmed = false
+                    isReviewingBatchMetadata = true
+                } label: {
+                    Label("Batch Metadata…", systemImage: "tag")
+                }
+                .disabled(isImporting || model.assets.isEmpty)
+
+                Divider()
+
+                Toggle(isOn: Binding(
+                    get: { model.autopilotEnabled },
+                    set: { model.autopilotEnabled = $0 }
+                )) {
+                    Label("Auto-cull after import", systemImage: "wand.and.stars")
+                }
+
+                Menu {
+                    Button {
+                        evaluateSelectedAsset()
+                    } label: {
+                        Label("Evaluate", systemImage: "sparkles")
+                    }
+                    .disabled(isImporting || !model.canRequestSelectedAssetEvaluation)
+
+                    Button {
+                        evaluateVisibleAssets()
+                    } label: {
+                        Label("Evaluate Visible", systemImage: "sparkles")
+                    }
+                    .disabled(isImporting || !model.canRequestVisibleAssetEvaluations)
+
+                    Button {
+                        evaluateCurrentScopeAssets()
+                    } label: {
+                        Label("Evaluate Scope", systemImage: "sparkles.rectangle.stack")
+                    }
+                    .disabled(isImporting || !model.canRequestCurrentScopeAssetEvaluations)
+                } label: {
+                    Label("Analyze", systemImage: "sparkles")
+                }
             } label: {
-                Label("Move Rejects", systemImage: "tray.and.arrow.down")
+                Label("More", systemImage: "ellipsis.circle")
             }
-            .disabled(isImporting || model.assets.isEmpty || model.isRelocatingRejects)
-            .help("Move reject-flagged photos in the current view to a folder")
+            .popover(isPresented: $isReviewingBatchMetadata) {
+                batchMetadataPopover
+            }
+            .help("More actions")
         }
         .safeAreaInset(edge: .top) {
             topInsetContent
@@ -3234,6 +3234,14 @@ struct LibraryGridView: View {
         }
     }
 
+    private func findBestShots() {
+        do {
+            try model.findBestShots()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
     private func evaluateVisibleAssets() {
         do {
             try model.requestVisibleAssetEvaluations()
@@ -4406,15 +4414,13 @@ struct LibraryTopBarPresentation: Equatable {
         Self.modeItems
     }
 
+    // The top switcher controls only *how* you view the current set. Which set
+    // you're looking at (Search, Review, Timeline, People, Places) lives in the
+    // sidebar, so those routes are deliberately absent here.
     private static let modeItems = [
         LibraryTopBarModeItem(title: "Grid", systemImage: "square.grid.3x3.fill", mode: .grid),
-        LibraryTopBarModeItem(title: "Search", systemImage: "magnifyingglass", mode: .search, liveMockupPlaceholder: .agenticSearch),
-        LibraryTopBarModeItem(title: "Copilot", systemImage: "wand.and.stars", mode: .copilot, liveMockupPlaceholder: .copilotLibrary),
-        LibraryTopBarModeItem(title: "Timeline", systemImage: "calendar", mode: .timeline, liveMockupPlaceholder: .timelineLibrary),
         LibraryTopBarModeItem(title: "Loupe", systemImage: "rectangle.inset.filled", mode: .loupe),
-        LibraryTopBarModeItem(title: "Compare", systemImage: "rectangle.grid.2x2", mode: .compare, liveMockupPlaceholder: .compareSurvey),
-        LibraryTopBarModeItem(title: "People", systemImage: "person.2", mode: .people, liveMockupPlaceholder: .peopleSidebar),
-        LibraryTopBarModeItem(title: "Places", systemImage: "map", mode: .map, liveMockupPlaceholder: .placesMap)
+        LibraryTopBarModeItem(title: "Compare", systemImage: "rectangle.grid.2x2", mode: .compare, liveMockupPlaceholder: .compareSurvey)
     ]
 
     private static func breadcrumbItems(scopeTitle: String, selectedView: LibraryViewMode) -> [String] {
