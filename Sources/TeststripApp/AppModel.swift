@@ -1320,6 +1320,19 @@ public struct AutopilotRunSummary: Equatable, Identifiable, Sendable {
     public var id: String { runID.rawValue }
 
     public var bannerText: String {
+        // When the marquee keep/cut path honestly produces no verdicts (e.g. a
+        // flat library of distinct singletons with no bursts to rank), never
+        // report a bare "0 keepers · 0 rejects" after the user asked for keeps
+        // and cuts — say what actually happened.
+        if keeperCount == 0 && rejectCount == 0 {
+            guard keywordCount > 0 else {
+                return "These look too distinct to auto-rank — rate a few to rank"
+            }
+            let suggestions = keywordCount == 1
+                ? "1 keyword suggestion"
+                : "\(keywordCount) keyword suggestions"
+            return "No clear cuts to propose — \(suggestions) ready to review"
+        }
         var text = "\(keeperCount) keepers · \(rejectCount) rejects"
         if stackCount > 0 {
             text += " · dupes→stacks"

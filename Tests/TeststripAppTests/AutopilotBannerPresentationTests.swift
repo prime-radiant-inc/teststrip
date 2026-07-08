@@ -21,4 +21,35 @@ final class AutopilotBannerPresentationTests: XCTestCase {
         )
         XCTAssertEqual(AutopilotBannerPresentation(summary: summary).detailText, "5 keepers · 2 rejects")
     }
+
+    func testBannerNamesKeywordSuggestionsWhenNoKeepCutVerdicts() {
+        let summary = AutopilotRunSummary(
+            runID: AutopilotRunID(rawValue: "r"),
+            keeperCount: 0, rejectCount: 0, keywordCount: 95, stackCount: 0
+        )
+        let detail = AutopilotBannerPresentation(summary: summary).detailText
+        XCTAssertEqual(detail, "No clear cuts to propose — 95 keyword suggestions ready to review")
+        XCTAssertFalse(detail.contains("0 keepers"))
+    }
+
+    func testBannerSingularKeywordSuggestion() {
+        let summary = AutopilotRunSummary(
+            runID: AutopilotRunID(rawValue: "r"),
+            keeperCount: 0, rejectCount: 0, keywordCount: 1, stackCount: 0
+        )
+        XCTAssertEqual(
+            AutopilotBannerPresentation(summary: summary).detailText,
+            "No clear cuts to propose — 1 keyword suggestion ready to review"
+        )
+    }
+
+    func testBannerReportsTooDistinctWhenNothingToPropose() {
+        let summary = AutopilotRunSummary(
+            runID: AutopilotRunID(rawValue: "r"),
+            keeperCount: 0, rejectCount: 0, keywordCount: 0, stackCount: 0
+        )
+        let detail = AutopilotBannerPresentation(summary: summary).detailText
+        XCTAssertEqual(detail, "These look too distinct to auto-rank — rate a few to rank")
+        XCTAssertFalse(detail.contains("0 keepers"))
+    }
 }
