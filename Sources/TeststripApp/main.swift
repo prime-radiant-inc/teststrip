@@ -92,11 +92,29 @@ private struct AutopilotCommands: Commands {
     var model: AppModel
 
     var body: some Commands {
-        CommandMenu("Autopilot") {
+        CommandMenu("Find") {
+            Button("Find Best Shots") {
+                findBestShots()
+            }
+            .keyboardShortcut("b", modifiers: [.command, .shift])
+            .disabled(model.isImporting || !model.canFindBestShots)
+
+            Divider()
+
+            // Power-user entry into the same run→review machinery; a newcomer
+            // never needs it — Find Best Shots subsumes it.
             Button("Run Autopilot") {
                 runAutopilot()
             }
             .disabled(model.isImporting || model.assets.isEmpty)
+        }
+    }
+
+    private func findBestShots() {
+        do {
+            try model.findBestShots()
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 

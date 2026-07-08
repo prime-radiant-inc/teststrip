@@ -5,6 +5,7 @@ struct CopilotView: View {
     var model: AppModel
     var saveDynamicSet: () -> Void = {}
     var saveSnapshotSet: () -> Void = {}
+    @State private var isAdvancedExpanded = false
 
     private var presentation: CopilotPresentation {
         CopilotPresentation(
@@ -31,16 +32,27 @@ struct CopilotView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
-                metricGrid
-                agentsPanel
-                if !presentation.scopeActions.isEmpty {
-                    scopeActionsPanel
+                topPicksPanel
+                needsEyesPanel
+                DisclosureGroup(isExpanded: $isAdvancedExpanded) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        metricGrid
+                        agentsPanel
+                        if !presentation.scopeActions.isEmpty {
+                            scopeActionsPanel
+                        }
+                        HStack(alignment: .top, spacing: 14) {
+                            reviewPanel
+                            signalPanel
+                        }
+                        activityPanel
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    Text("Advanced / Diagnostics")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
-                HStack(alignment: .top, spacing: 14) {
-                    reviewPanel
-                    signalPanel
-                }
-                activityPanel
             }
             .padding(22)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -193,6 +205,22 @@ struct CopilotView: View {
             }
         } catch {
             model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private var topPicksPanel: some View {
+        panel(title: "Top Picks", placeholderText: nil) {
+            ForEach(presentation.topPickRows) { row in
+                actionRow(row)
+            }
+        }
+    }
+
+    private var needsEyesPanel: some View {
+        panel(title: "Needs your eyes", placeholderText: nil) {
+            ForEach(presentation.needsEyesRows) { row in
+                actionRow(row)
+            }
         }
     }
 
@@ -433,7 +461,7 @@ struct CopilotPresentation: Equatable {
     var canSaveSnapshotSet: Bool = false
 
     var statusTitle: String {
-        "TESTSTRIP COPILOT"
+        "REVIEW"
     }
 
     var statusDetail: String {
@@ -485,13 +513,28 @@ struct CopilotPresentation: Equatable {
         ]
     }
 
+    // The output the photographer came for: their best shots, led with.
+    var topPickRows: [CopilotActionRow] {
+        [
+            reviewRow(queue: .picks, detail: "Your flagged keepers"),
+            reviewRow(queue: .potentialPicks, detail: "Ranked likely picks")
+        ]
+    }
+
+    // Frames that still want a human look.
+    var needsEyesRows: [CopilotActionRow] {
+        [
+            reviewRow(queue: .likelyIssues, detail: "Quality or source warnings"),
+            reviewRow(queue: .needsEvaluation, detail: "Not analyzed yet")
+        ]
+    }
+
+    // Diagnostics-flavored queues, kept behind the Advanced disclosure.
     var reviewRows: [CopilotActionRow] {
         [
             reviewRow(queue: .needsKeywords, detail: "Missing keyword metadata"),
-            reviewRow(queue: .needsEvaluation, detail: "No persisted local signals"),
             reviewRow(queue: .facesFound, detail: "Face-count signals ready to review"),
             reviewRow(queue: .ocrFound, detail: "OCR text signals ready to review"),
-            reviewRow(queue: .likelyIssues, detail: "Quality or source warnings"),
             reviewRow(queue: .providerFailures, detail: "Evaluation jobs needing attention")
         ]
     }

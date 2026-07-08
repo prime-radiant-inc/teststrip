@@ -41,7 +41,7 @@ final class AppModelTests: XCTestCase {
                 "Rejects",
                 "5 Stars",
                 "Needs Keywords",
-                "Needs Evaluation",
+                "Not analyzed yet",
                 "Faces Found",
                 "OCR Found",
                 "Likely Issues",
@@ -5473,7 +5473,7 @@ final class AppModelTests: XCTestCase {
             "Rejects",
             "5 Stars",
             "Needs Keywords",
-            "Needs Evaluation",
+            "Not analyzed yet",
             "Faces Found",
             "OCR Found",
             "Likely Issues",
@@ -5483,7 +5483,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(reviewQueueCount("Rejects", in: model), "1")
         XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "1")
         XCTAssertEqual(reviewQueueCount("Needs Keywords", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("Needs Evaluation", in: model), "2")
+        XCTAssertEqual(reviewQueueCount("Not analyzed yet", in: model), "2")
         XCTAssertEqual(reviewQueueCount("Faces Found", in: model), "1")
         XCTAssertEqual(reviewQueueCount("OCR Found", in: model), "1")
         XCTAssertEqual(reviewQueueCount("Likely Issues", in: model), "1")
@@ -5523,7 +5523,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        let needsEvaluationRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Needs Evaluation" })
+        let needsEvaluationRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Not analyzed yet" })
         try model.selectSidebarRow(needsEvaluationRow)
 
         XCTAssertNil(model.flagFilter)
@@ -5565,6 +5565,34 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 
+    func testFindBestShotsRoutesToPicksWhenTheUserAlreadyHasThem() throws {
+        let pick = makeAsset(id: "fbs-pick", path: "/Photos/Job/fbs-pick.jpg", rating: 4, flag: .pick, keywords: ["tagged"])
+        let plain = makeAsset(id: "fbs-plain", path: "/Photos/Job/fbs-plain.jpg", rating: 3, keywords: ["tagged"])
+        let (model, _) = try makeModelWithCatalogAssets(named: "find-best-shots-picks", assets: [pick, plain])
+
+        XCTAssertTrue(model.canFindBestShots)
+        let plan = try model.findBestShots()
+
+        XCTAssertEqual(plan.route, .reviewQueue(.picks))
+        XCTAssertEqual(model.flagFilter, .pick)
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.assets.map(\.id), [pick.id])
+    }
+
+    func testFindBestShotsNeverDeadEndsOnAnUnrankableScope() throws {
+        // No picks, nothing likely-picks, and no worker to evaluate with: the
+        // action must surface plain language, not route to an empty queue and
+        // never a bare "0".
+        let plain = makeAsset(id: "fbs-distinct", path: "/Photos/Job/fbs-distinct.jpg", rating: 3, keywords: ["tagged"])
+        let (model, _) = try makeModelWithCatalogAssets(named: "find-best-shots-empty", assets: [plain])
+
+        let plan = try model.findBestShots()
+
+        XCTAssertEqual(plan.route, .nothingRanked(message: FindBestShotsRouter.nothingRankedMessage))
+        XCTAssertEqual(model.statusMessage, FindBestShotsRouter.nothingRankedMessage)
+        XCTAssertFalse((model.statusMessage ?? "").contains("0 keepers"))
+    }
+
     func testReviewSidebarShowsOnlyQueuesWithCatalogBackedCounts() throws {
         let pick = makeAsset(id: "single-review-pick", path: "/Photos/Job/single-review-pick.jpg", rating: 4, flag: .pick, keywords: ["tagged"])
         let plain = makeAsset(id: "single-review-plain", path: "/Photos/Job/single-review-plain.jpg", rating: 3, keywords: ["tagged"])
@@ -5580,9 +5608,9 @@ final class AppModelTests: XCTestCase {
         try model.reload()
 
         let reviewSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Review" })
-        XCTAssertEqual(reviewSection.rowTitles, ["Picks", "Needs Evaluation"])
+        XCTAssertEqual(reviewSection.rowTitles, ["Picks", "Not analyzed yet"])
         XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("Needs Evaluation", in: model), "2")
+        XCTAssertEqual(reviewQueueCount("Not analyzed yet", in: model), "2")
     }
 
     func testSelectingAllPhotographsSidebarRowReturnsToGridAndClearsFilters() throws {
@@ -5653,7 +5681,7 @@ final class AppModelTests: XCTestCase {
             provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
         )
 
-        XCTAssertEqual(reviewQueueCount("Needs Evaluation", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("Not analyzed yet", in: model), "1")
 
         try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
         try model.requestEvaluation(assetID: asset.id, provider: "apple-vision")
@@ -5664,7 +5692,7 @@ final class AppModelTests: XCTestCase {
         )))
 
         try await waitForEvaluationSignalGeneration(1, for: asset.id, in: model)
-        XCTAssertNil(reviewQueueCount("Needs Evaluation", in: model))
+        XCTAssertNil(reviewQueueCount("Not analyzed yet", in: model))
     }
 
     func testTechnicalFiltersCountAsActiveLibraryFiltersAndClear() throws {

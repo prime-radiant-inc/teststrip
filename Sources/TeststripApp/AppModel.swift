@@ -271,7 +271,7 @@ public extension ReviewQueue {
         case .needsKeywords:
             return ReviewQueuePresentation(title: "Needs Keywords", systemImage: "tag")
         case .needsEvaluation:
-            return ReviewQueuePresentation(title: "Needs Evaluation", systemImage: "wand.and.stars")
+            return ReviewQueuePresentation(title: "Not analyzed yet", systemImage: "wand.and.stars")
         case .facesFound:
             return ReviewQueuePresentation(title: "Faces Found", systemImage: "person.2")
         case .ocrFound:
@@ -281,6 +281,56 @@ public extension ReviewQueue {
         case .providerFailures:
             return ReviewQueuePresentation(title: "Provider Failures", systemImage: "bolt.horizontal.circle")
         }
+    }
+}
+
+/// The plan the "Find Best Shots" marquee action follows: whether to kick off
+/// evaluation over the current scope, and where to land the user. It never
+/// dead-ends — when nothing ranks and there is nothing left to evaluate it
+/// carries a plain-language message (reusing the autopilot "0 keepers"
+/// avoidance) instead of routing to an empty queue.
+public struct FindBestShotsPlan: Equatable, Sendable {
+    public enum Route: Equatable, Sendable {
+        case reviewQueue(ReviewQueue)
+        case nothingRanked(message: String)
+    }
+
+    public var shouldTriggerEvaluation: Bool
+    public var route: Route
+
+    public init(shouldTriggerEvaluation: Bool, route: Route) {
+        self.shouldTriggerEvaluation = shouldTriggerEvaluation
+        self.route = route
+    }
+}
+
+public enum FindBestShotsRouter {
+    /// The plain-language result shown when the scope is fully evaluated but
+    /// nothing rises to a pick — mirrors `AutopilotRunSummary.bannerText` so the
+    /// user never sees a bare "0 keepers".
+    public static let nothingRankedMessage = "These look too distinct to auto-rank — rate a few to rank"
+
+    public static func plan(
+        pickCount: Int,
+        potentialPickCount: Int,
+        canEvaluateScope: Bool,
+        needsEvaluationCount: Int
+    ) -> FindBestShotsPlan {
+        let shouldEvaluate = canEvaluateScope && needsEvaluationCount > 0
+
+        if potentialPickCount > 0 {
+            return FindBestShotsPlan(shouldTriggerEvaluation: shouldEvaluate, route: .reviewQueue(.potentialPicks))
+        }
+        if pickCount > 0 {
+            return FindBestShotsPlan(shouldTriggerEvaluation: shouldEvaluate, route: .reviewQueue(.picks))
+        }
+        // Nothing ranks yet. If there are still-unevaluated frames we can read,
+        // trigger evaluation and land on Potential Picks so it fills in as the
+        // worker reports; otherwise say what actually happened, never zero.
+        if shouldEvaluate {
+            return FindBestShotsPlan(shouldTriggerEvaluation: true, route: .reviewQueue(.potentialPicks))
+        }
+        return FindBestShotsPlan(shouldTriggerEvaluation: false, route: .nothingRanked(message: nothingRankedMessage))
     }
 }
 
@@ -1828,7 +1878,7 @@ public final class AppModel {
             return "Search"
         }
         if selectedView == .copilot {
-            return "Copilot"
+            return "Review"
         }
         if selectedView == .timeline {
             return "Timeline"
@@ -6658,6 +6708,37 @@ public final class AppModel {
         return try runAutopilot(scope: .visible)
     }
 
+    /// The marquee "Find Best Shots" action. It ensures the current scope has
+    /// been evaluated (triggering a read pass if frames still need one), then
+    /// lands the user on their ranked best shots — Potential Picks if the
+    /// likely-pick queue has anything, else their committed Picks. When the
+    /// scope is fully evaluated and nothing ranks, it surfaces a plain-language
+    /// status instead of routing to an empty queue, so the user is never
+    /// dead-ended on a bare zero. Reads only; writes nothing.
+    @discardableResult
+    public func findBestShots() throws -> FindBestShotsPlan {
+        let plan = FindBestShotsRouter.plan(
+            pickCount: reviewQueueCounts[.picks] ?? 0,
+            potentialPickCount: reviewQueueCounts[.potentialPicks] ?? 0,
+            canEvaluateScope: canRequestCurrentScopeAssetEvaluations,
+            needsEvaluationCount: reviewQueueCounts[.needsEvaluation] ?? 0
+        )
+        if plan.shouldTriggerEvaluation {
+            try? requestCurrentScopeAssetEvaluations()
+        }
+        switch plan.route {
+        case .reviewQueue(let queue):
+            try selectSidebarTarget(.reviewQueue(queue))
+        case .nothingRanked(let message):
+            statusMessage = message
+        }
+        return plan
+    }
+
+    public var canFindBestShots: Bool {
+        catalog != nil && !assets.isEmpty
+    }
+
     public func autopilotProposalDecision(for assetID: AssetID) -> AutopilotProposalKind? {
         pendingAutopilotProposals.first {
             $0.assetID == assetID && ($0.kind == .pick || $0.kind == .reject)
@@ -10541,8 +10622,8 @@ public final class AppModel {
         libraryRows.append(
             SidebarRow(
                 id: "library-copilot",
-                title: "Copilot",
-                detailText: "Review work",
+                title: "Review",
+                detailText: "Top picks and to-dos",
                 tone: .accent,
                 target: .copilot,
                 liveMockupPlaceholder: .copilotLibrary
