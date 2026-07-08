@@ -11,6 +11,7 @@ struct LibraryGridView: View {
     @State private var isSavingSnapshotSet = false
     @State private var isStartingCullingSession = false
     @State private var isReviewingBatchMetadata = false
+    @State private var isShowingMoreFilters = false
     @State private var isShowingSourceReconnectSheet = false
     @State private var savedSearchName = ""
     @State private var savedSearchStarred = false
@@ -147,6 +148,18 @@ struct LibraryGridView: View {
             }
             .disabled(isImporting)
             .help("Import photos from a folder or a memory card")
+
+            if LibraryGridChromePolicy.shouldExposeImportPathControl(
+                environment: ProcessInfo.processInfo.environment
+            ) {
+                Button {
+                    showImportPathSheet()
+                } label: {
+                    Label("Import Path", systemImage: "folder.badge.plus")
+                }
+                .disabled(isImporting)
+                .help("Import a folder by typed path (dev/automation)")
+            }
 
             Button {
                 findBestShots()
@@ -546,6 +559,10 @@ struct LibraryGridView: View {
 
                     librarySortPicker
 
+                    ratingFilterPicker
+
+                    flagFilterPicker
+
                     filterTextField(
                         "Keyword",
                         text: Binding(
@@ -555,63 +572,73 @@ struct LibraryGridView: View {
                         width: 96
                     )
 
-                    filterTextField(
-                        "Folder",
-                        text: Binding(
-                            get: { model.folderFilterText },
-                            set: { model.folderFilterText = $0 }
-                        ),
-                        width: 128
-                    )
+                    Button {
+                        isShowingMoreFilters.toggle()
+                    } label: {
+                        Label(
+                            "More filters",
+                            systemImage: isShowingMoreFilters ? "chevron.down" : "chevron.right"
+                        )
+                        .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Show camera, lens, ISO, source, AI score, and metadata-sync filters")
 
-                    filterTextField(
-                        "Camera",
-                        text: Binding(
-                            get: { model.cameraFilterText },
-                            set: { model.cameraFilterText = $0 }
-                        ),
-                        width: 96
-                    )
+                    if isShowingMoreFilters {
+                        filterTextField(
+                            "Folder",
+                            text: Binding(
+                                get: { model.folderFilterText },
+                                set: { model.folderFilterText = $0 }
+                            ),
+                            width: 128
+                        )
 
-                    filterTextField(
-                        "Lens",
-                        text: Binding(
-                            get: { model.lensFilterText },
-                            set: { model.lensFilterText = $0 }
-                        ),
-                        width: 96
-                    )
+                        filterTextField(
+                            "Camera",
+                            text: Binding(
+                                get: { model.cameraFilterText },
+                                set: { model.cameraFilterText = $0 }
+                            ),
+                            width: 96
+                        )
 
-                    filterTextField("ISO+", text: minimumISOTextBinding, width: 48)
+                        filterTextField(
+                            "Lens",
+                            text: Binding(
+                                get: { model.lensFilterText },
+                                set: { model.lensFilterText = $0 }
+                            ),
+                            width: 96
+                        )
 
-                    dateFilterButton
+                        filterTextField("ISO+", text: minimumISOTextBinding, width: 48)
 
-                    ratingFilterPicker
+                        dateFilterButton
 
-                    flagFilterPicker
+                        colorLabelFilterPicker
 
-                    colorLabelFilterPicker
+                        sourceFilterPicker
 
-                    sourceFilterPicker
+                        signalFilterPicker
 
-                    signalFilterPicker
+                        metadataSyncFilterPicker
 
-                    metadataSyncFilterPicker
-
-                    if LibraryGridChromePolicy.shouldShowPendingMetadataSyncRetryAction(
-                        isPendingFilterActive: model.metadataSyncPendingFilter
-                    ) {
-                        Button {
-                            retryPendingMetadataSync()
-                        } label: {
-                            Image(systemName: "arrow.triangle.2.circlepath")
+                        if LibraryGridChromePolicy.shouldShowPendingMetadataSyncRetryAction(
+                            isPendingFilterActive: model.metadataSyncPendingFilter
+                        ) {
+                            Button {
+                                retryPendingMetadataSync()
+                            } label: {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(LibraryGridChromePolicy.isPendingMetadataSyncRetryActionDisabled(
+                                isImporting: isImporting,
+                                canRetry: model.canRetryPendingMetadataSyncInCurrentScope
+                            ))
+                            .help("Retry pending metadata sync in current results")
                         }
-                        .buttonStyle(.borderless)
-                        .disabled(LibraryGridChromePolicy.isPendingMetadataSyncRetryActionDisabled(
-                            isImporting: isImporting,
-                            canRetry: model.canRetryPendingMetadataSyncInCurrentScope
-                        ))
-                        .help("Retry pending XMP sync in current results")
                     }
 
                     Button {
@@ -809,23 +836,23 @@ struct LibraryGridView: View {
     }
 
     private var signalFilterPicker: some View {
-        Picker("Signal", selection: evaluationKindFilterBinding) {
-            Text("Any Signal").tag("")
+        Picker("AI score", selection: evaluationKindFilterBinding) {
+            Text("Any AI score").tag("")
             ForEach(evaluationKindFilterOptions, id: \.rawValue) { kind in
                 Text(kind.displayName).tag(kind.rawValue)
             }
         }
-        .frame(width: 130)
+        .frame(width: 150)
         .controlSize(.small)
     }
 
     private var metadataSyncFilterPicker: some View {
-        Picker("XMP", selection: metadataSyncFilterBinding) {
-            Text("Any XMP").tag(MetadataSyncFilterOption.any.rawValue)
+        Picker("Metadata sync", selection: metadataSyncFilterBinding) {
+            Text("Any metadata sync").tag(MetadataSyncFilterOption.any.rawValue)
             Text("Pending").tag(MetadataSyncFilterOption.pending.rawValue)
             Text("Conflicts").tag(MetadataSyncFilterOption.conflicts.rawValue)
         }
-        .frame(width: 112)
+        .frame(width: 150)
         .controlSize(.small)
     }
 
@@ -2424,23 +2451,32 @@ struct LibraryGridView: View {
                     Label("Cancel Import", systemImage: "xmark.circle")
                 }
             } else {
-                Text("No photographs in this catalog")
+                Text("No photos yet")
                     .font(.headline)
-                Button {
-                    showImportFolderPanel()
+                Text("Bring in a folder or memory card to get started.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Menu {
+                    Button {
+                        showImportFolderPanel()
+                    } label: {
+                        Label("Folder…", systemImage: "square.and.arrow.down")
+                    }
+                    Button {
+                        showPrimaryCardImportRoute()
+                    } label: {
+                        Label("From Card…", systemImage: "externaldrive.badge.plus")
+                    }
                 } label: {
-                    Label("Import Folder", systemImage: "square.and.arrow.down")
+                    Label("Import photos to get started", systemImage: "square.and.arrow.down")
                 }
-                Button {
-                    showImportPathSheet()
-                } label: {
-                    Label("Import Path", systemImage: "folder.badge.plus")
-                }
-                Button {
-                    showPrimaryCardImportRoute()
-                } label: {
-                    Label("Import Card", systemImage: "externaldrive.badge.plus")
-                }
+                .menuStyle(.borderlessButton)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(.orange)
+                .fixedSize()
+                .help("Import photos from a folder or a memory card")
             }
         }
         .frame(maxWidth: .infinity, minHeight: 360)
@@ -4369,6 +4405,34 @@ private struct LoupeView: View {
         case .purple: .purple
         }
     }
+}
+
+/// Which filter controls stay on the always-visible primary row versus which
+/// tuck behind "More filters ▾". The primary row is deliberately the four a
+/// photographer reaches for constantly; everything technical lives behind the
+/// disclosure.
+enum LibraryFilterControl: String, CaseIterable, Equatable {
+    case sort
+    case rating
+    case flag
+    case keyword
+    case folder
+    case camera
+    case lens
+    case iso
+    case date
+    case colorLabel
+    case source
+    case aiScore
+    case metadataSync
+}
+
+enum LibraryFilterBarLayout {
+    static let defaultControls: [LibraryFilterControl] = [.sort, .rating, .flag, .keyword]
+
+    static let moreControls: [LibraryFilterControl] = [
+        .folder, .camera, .lens, .iso, .date, .colorLabel, .source, .aiScore, .metadataSync
+    ]
 }
 
 struct LibraryTopBarModeItem: Equatable, Identifiable {
@@ -7726,6 +7790,16 @@ enum LibraryGridChromePolicy {
         default:
             return .userGrantedPanel
         }
+    }
+
+    /// The typed-path "Import Path" control is a dev/automation entry, not part
+    /// of the primary bar a photographer sees. It surfaces only when the app is
+    /// launched against an isolated automation catalog (every `build_and_run.sh
+    /// --isolated/--smoke` launch sets this), so the scenario seeders that drive
+    /// the typed-path sheet keep working while real users only see Import ▾.
+    static func shouldExposeImportPathControl(environment: [String: String]) -> Bool {
+        guard let path = environment["TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY"] else { return false }
+        return !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     static func rejectDestinationDirectoryOverride(environment: [String: String]) -> URL? {
