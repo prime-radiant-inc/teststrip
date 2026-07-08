@@ -282,6 +282,8 @@ struct CopilotView: View {
     @ViewBuilder
     private func actionRow(_ row: CopilotActionRow) -> some View {
         if row.isActionEnabled {
+            // Keep the button trait; a clean explicit label avoids the combined
+            // "title, detail, count" readout without converting the row to a group.
             Button {
                 select(row)
             } label: {
@@ -289,12 +291,13 @@ struct CopilotView: View {
             }
             .buttonStyle(.plain)
             .help("Open \(row.title)")
-            .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(row.title), \(row.countText)")
             .accessibilityHint("Open \(row.title)")
         } else {
+            // A non-interactive row: collapse to one element with a single hint,
+            // so the status phrase is not emitted once per child view (the old
+            // ".help on a .combine element" bug repeated it four times).
             actionRowContent(row)
-                .help(row.statusText ?? row.detail)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(row.title), \(row.countText)")
                 .accessibilityHint(row.statusText ?? row.detail)
