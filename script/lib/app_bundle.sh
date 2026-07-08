@@ -24,7 +24,7 @@ TESTSTRIP_BUNDLE_VERSION="${TESTSTRIP_BUNDLE_VERSION:-1}"
 # Relative path of the bundled ArcFace Core ML model within the repo. Absent in
 # a fresh checkout; script/download_face_model.sh fetches it. Assembly skips it
 # (with a warning) when missing so the bundle can still be built and signed.
-TESTSTRIP_FACE_MODEL_REL="sample-data/models/arcface-w600k-r50.mlpackage"
+TESTSTRIP_FACE_MODEL_REL="sample-data/models/auraface-v1.mlpackage"
 
 # Build the app + worker products.
 # Usage: teststrip_build_products <root_dir> [extra swift build args...]
@@ -70,7 +70,7 @@ teststrip_assemble_bundle() {
   fi
 
   if [[ -d "$face_model" ]]; then
-    /usr/bin/ditto "$face_model" "$app_resources/arcface-w600k-r50.mlpackage"
+    /usr/bin/ditto "$face_model" "$app_resources/auraface-v1.mlpackage"
   else
     echo "warning: face model $face_model is missing; bundle will ship without on-device face embedding (run script/download_face_model.sh)" >&2
   fi
