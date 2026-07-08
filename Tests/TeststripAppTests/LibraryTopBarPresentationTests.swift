@@ -55,12 +55,12 @@ final class LibraryTopBarPresentationTests: XCTestCase {
         XCTAssertEqual(
             LibraryTopBarPresentation(
                 catalogTitle: "Wedding Archive",
-                libraryTitle: "Copilot",
+                libraryTitle: "Review",
                 libraryCountText: "12 photographs",
                 selectedView: .copilot,
                 activeFilterChips: []
             ).breadcrumbItems,
-            ["Library", "Copilot"]
+            ["Library", "Review"]
         )
         XCTAssertEqual(
             LibraryTopBarPresentation(
@@ -83,8 +83,8 @@ final class LibraryTopBarPresentationTests: XCTestCase {
             activeFilterChips: []
         )
 
-        XCTAssertEqual(presentation.modeItems.map(\.mode), [.grid, .search, .copilot, .timeline, .loupe, .compare, .people, .map])
-        XCTAssertEqual(presentation.modeItems.map(\.title), ["Grid", "Search", "Copilot", "Timeline", "Loupe", "Compare", "People", "Places"])
+        XCTAssertEqual(presentation.modeItems.map(\.mode), [.grid, .loupe, .compare])
+        XCTAssertEqual(presentation.modeItems.map(\.title), ["Grid", "Loupe", "Compare"])
     }
 
     func testPartialTopBarRoutesCarryLiveMockupPlaceholders() {
@@ -98,11 +98,11 @@ final class LibraryTopBarPresentationTests: XCTestCase {
 
         XCTAssertEqual(
             presentation.modeItems.map(\.mode),
-            [.grid, .search, .copilot, .timeline, .loupe, .compare, .people, .map]
+            [.grid, .loupe, .compare]
         )
         XCTAssertEqual(
             presentation.modeItems.map { $0.liveMockupPlaceholder?.id },
-            [nil, "search.agentic", "library.copilot", "library.timeline", nil, "compare.survey", "sidebar.people", "places.map"]
+            [nil, nil, "compare.survey"]
         )
     }
 }

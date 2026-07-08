@@ -38,17 +38,19 @@ final class CopilotPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.metricRows.map(\.title), ["Scope", "Filters", "Work", "XMP"])
         XCTAssertEqual(presentation.metricRows.map(\.value), ["1204", "2", "1", "4"])
-        XCTAssertEqual(presentation.reviewRows.map(\.title), ["Needs Keywords", "Needs Evaluation", "Faces Found", "OCR Found", "Likely Issues", "Provider Failures"])
-        XCTAssertEqual(presentation.reviewRows.map(\.countText), ["9", "81", "14", "11", "5", "2"])
+        XCTAssertEqual(presentation.reviewRows.map(\.title), ["Needs Keywords", "Faces Found", "OCR Found", "Provider Failures"])
+        XCTAssertEqual(presentation.reviewRows.map(\.countText), ["9", "14", "11", "2"])
         XCTAssertEqual(presentation.reviewRows.map(\.target), [
             .reviewQueue(.needsKeywords),
-            .reviewQueue(.needsEvaluation),
             .reviewQueue(.facesFound),
             .reviewQueue(.ocrFound),
-            .reviewQueue(.likelyIssues),
             .reviewQueue(.providerFailures)
         ])
         XCTAssertTrue(presentation.reviewRows.allSatisfy(\.isActionEnabled))
+        // Output-first panels lead with picks and the frames that need eyes.
+        XCTAssertEqual(presentation.topPickRows.map(\.title), ["Picks", "Potential Picks"])
+        XCTAssertEqual(presentation.needsEyesRows.map(\.title), ["Likely Issues", "Not analyzed yet"])
+        XCTAssertEqual(presentation.needsEyesRows.map(\.countText), ["5", "81"])
         XCTAssertEqual(presentation.signalRows.map(\.title), ["Objects", "Focus", "Text"])
         XCTAssertEqual(presentation.signalRows.map(\.countText), ["77", "52", "11"])
         XCTAssertEqual(presentation.signalRows.map(\.target), [
@@ -73,16 +75,14 @@ final class CopilotPresentationTests: XCTestCase {
             canRequestVisibleAssetEvaluations: false
         )
 
-        XCTAssertEqual(presentation.statusTitle, "TESTSTRIP COPILOT")
+        XCTAssertEqual(presentation.statusTitle, "REVIEW")
         XCTAssertEqual(presentation.statusDetail, "Local evaluation, review queues, and background work are idle.")
         XCTAssertEqual(presentation.metricRows.map(\.value), ["42", "0", "0", "0"])
-        XCTAssertEqual(presentation.reviewRows.map(\.isActionEnabled), [false, false, false, false, false, false])
+        XCTAssertEqual(presentation.reviewRows.map(\.isActionEnabled), [false, false, false, false])
         XCTAssertEqual(presentation.reviewRows.map(\.statusText), [
             "No photos missing keywords",
-            "All catalog photos have local signals",
             "No face signals recorded",
             "No OCR text signals recorded",
-            "No likely issues found",
             "No provider failures recorded"
         ])
         XCTAssertEqual(presentation.signalRows, [])
