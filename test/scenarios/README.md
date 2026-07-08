@@ -115,6 +115,7 @@ are the point; do not weaken them to make a card pass.
 | `duplicate-detection-import-new-only.md` | Content-hash dedup on re-import (import-new-only) |
 | `places-map-and-geocode.md` | GPS ingest → Places map clustering → reverse-geocoded names |
 | `export-presets-with-exif.md` | Export presets + optional EXIF/IPTC carry checkbox |
+| `ux-simplification-chrome.md` | Find Best Shots + collapsed toolbar + Copilot→Review chrome |
 
 ## Fixture status
 
