@@ -42,7 +42,8 @@ fi
 if "$AX" find "$APP_NAME" --contains "Copilot" >/dev/null 2>&1; then
   fail "'Copilot' label still present in the UI"
 fi
-"$AX" find "$APP_NAME" --role AXStaticText --contains "Review" >/dev/null \
+# The sidebar row renders as an AXButton (a SwiftUI List row), not static text.
+"$AX" find "$APP_NAME" --role AXButton --label "Review" >/dev/null \
   || fail "'Review' sidebar row not present"
 
 echo "PASS: UX-simplification chrome present (Find Best Shots, Import ▾, Review; three-Imports/Copilot gone)"
