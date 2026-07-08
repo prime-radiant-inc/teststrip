@@ -59,10 +59,10 @@ public struct AppleVisionEvaluationProvider: EvaluationProvider {
     private let analyzer: any AppleVisionAnalyzing
     private let faceEmbedder: FaceRecognitionEmbedder?
 
-    /// The bundled ArcFace embedder, compiled once per process. Nil when the
-    /// model has not been downloaded.
+    /// The bundled face-identity embedder (AuraFace-v1, Apache-2.0), compiled
+    /// once per process. Nil when the model has not been downloaded.
     public static let sharedFaceEmbedder: FaceRecognitionEmbedder? =
-        ArcFaceCoreMLModel.bundled().map { FaceRecognitionEmbedder(model: $0) }
+        CoreMLFaceEmbeddingModel.auraFace().map { FaceRecognitionEmbedder(model: $0) }
 
     public init(
         analyzer: any AppleVisionAnalyzing = AppleVisionAnalyzer(),
@@ -190,11 +190,11 @@ public struct AppleVisionEvaluationProvider: EvaluationProvider {
 }
 
 extension AppleVisionEvaluationProvider: FaceObservationEvaluationProvider {
-    // Face observations now carry ArcFace identity embeddings; reads filter to
+    // Face observations carry AuraFace-v1 identity embeddings; reads filter to
     // this provenance so older feature-print observations are inert.
     public static let faceProvenance = ProviderProvenance(
         provider: "face-recognition",
-        model: "arcface-w600k-r50",
+        model: "auraface-v1",
         version: "1",
         settingsHash: "default"
     )

@@ -1,51 +1,53 @@
 #!/usr/bin/env python3
-"""Convert InsightFace w600k_r50 ArcFace ONNX to Core ML.
+"""Convert AuraFace-v1 (glint-r100 ArcFace) ONNX to Core ML.
 
 When to use: one-time, to (re)generate the bundled face-recognition model at
-sample-data/models/arcface-w600k-r50.mlpackage. Run again only when you want a
-fresh conversion (e.g. new coremltools) or to re-derive the manifest md5/size.
+sample-data/models/auraface-v1.mlpackage. Run again only when you want a fresh
+conversion (e.g. new coremltools) or to re-derive the manifest md5/size.
+
+Why AuraFace: it is a glint-r100 ArcFace whose weights ship under Apache-2.0
+(https://huggingface.co/fal/AuraFace-v1), so the converted model is
+redistributable in a commercial product — unlike InsightFace's w600k_r50
+weights, which are research/non-commercial only.
 
 Requires (in a venv):
-    pip install insightface onnx coremltools onnxruntime onnx2torch torch
+    pip install torch coremltools numpy onnx onnx2torch
 
 coremltools 9 dropped direct ONNX conversion, so this routes the ONNX graph
 through PyTorch (onnx2torch) and traces it before converting to Core ML.
 
-The buffalo_l pack ships w600k_r50.onnx (input 1x3x112x112, BGR, normalized
-(x-127.5)/128, output 1x512). This emits an mlpackage with a 112x112 RGB image
-input; the ImageType `channel_first` + BGR color layout + scale/bias reproduce
-the ONNX preprocessing so the Core ML model consumes an ordinary CGImage.
+AuraFace's glintr100.onnx takes input `data` (1x3x112x112, BGR, normalized
+(x-127.5)/128) and outputs a 1x512 embedding. This emits an mlpackage with a
+112x112 RGB image input; the ImageType `channel_first` + BGR color layout +
+scale/bias reproduce the ONNX preprocessing so the Core ML model consumes an
+ordinary CGImage.
 
 The script prints the md5 and byte size of the zipped artifact for the download
 manifest (sample-data/face-recognition-model.tsv).
 """
 import hashlib
-import os
 import shutil
-import subprocess
-import sys
+import urllib.request
 import zipfile
 from pathlib import Path
 
 import coremltools as ct
-import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent
 OUT_DIR = REPO / "sample-data" / "models"
-OUT_MODEL = OUT_DIR / "arcface-w600k-r50.mlpackage"
+OUT_MODEL = OUT_DIR / "auraface-v1.mlpackage"
+
+ONNX_URL = "https://huggingface.co/fal/AuraFace-v1/resolve/main/glintr100.onnx"
 
 
 def find_onnx() -> Path:
-    """Locate w600k_r50.onnx, downloading the buffalo_l pack if needed."""
-    from insightface.utils import storage
-
-    root = Path.home() / ".insightface" / "models" / "buffalo_l"
-    onnx = root / "w600k_r50.onnx"
+    """Locate AuraFace's glintr100.onnx, downloading it if needed."""
+    cache = Path.home() / ".cache" / "auraface"
+    cache.mkdir(parents=True, exist_ok=True)
+    onnx = cache / "glintr100.onnx"
     if not onnx.exists():
-        # Downloads and unzips buffalo_l under ~/.insightface/models.
-        storage.ensure_available("models", "buffalo_l", root=str(Path.home() / ".insightface"))
-    if not onnx.exists():
-        raise SystemExit(f"w600k_r50.onnx not found under {root} after download")
+        print(f"downloading {ONNX_URL}")
+        urllib.request.urlretrieve(ONNX_URL, onnx)
     return onnx
 
 
@@ -65,7 +67,7 @@ def convert(onnx_path: Path) -> None:
     # ArcFace preprocessing: BGR, (x - 127.5) / 128.  Core ML applies
     # scale*x + bias per channel, so scale = 1/128, bias = -127.5/128.
     image_input = ct.ImageType(
-        name="input",
+        name="data",
         shape=(1, 3, 112, 112),
         scale=1.0 / 128.0,
         bias=[-127.5 / 128.0] * 3,
@@ -82,7 +84,7 @@ def convert(onnx_path: Path) -> None:
 
 
 def zip_and_hash() -> None:
-    zip_path = OUT_DIR / "arcface-w600k-r50.mlpackage.zip"
+    zip_path = OUT_DIR / "auraface-v1.mlpackage.zip"
     if zip_path.exists():
         zip_path.unlink()
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:

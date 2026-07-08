@@ -34,29 +34,39 @@ view and its confirm/dismiss/name flow, and the confirm-before-write invariant.
 
 ## Decisions (settled during brainstorming)
 
-- **Model:** InsightFace `w600k_r50` ArcFace (ResNet50, 512-d, L2-normalized) —
-  the "best model" option. Converted to Core ML.
+- **Model:** AuraFace-v1 (fal.ai), a glint-r100 ArcFace (512-d, L2-normalized).
+  Converted to Core ML. InsightFace `w600k_r50` remains available behind the
+  `FaceEmbeddingModel` protocol (`CoreMLFaceEmbeddingModel.arcFace()`) for
+  evaluation, but is not the shipped default because its weights are
+  research/non-commercial only.
 - **Delivery:** the `.mlpackage` is fetched by a checksum-verified download
   manifest + script into the app bundle at build time (mirrors the
   `sample-data` photo-manifest pattern). NOT committed to git.
 - **Swappability:** the embedder sits behind a `FaceEmbeddingModel` protocol so
   a smaller/permissive model (e.g. MobileFaceNet) can drop in later without
   downstream rework.
-- **License:** the InsightFace weights are research/non-commercial. Acceptable
-  for the current personal alpha (not distributed). This is a **pre-release
-  blocker** to resolve before any public distribution — recorded, not solved
-  here.
+- **License:** the shipped default is **AuraFace-v1 under Apache-2.0**
+  (https://huggingface.co/fal/AuraFace-v1), which permits commercial
+  redistribution — this resolves the earlier InsightFace research/non-commercial
+  distribution blocker. Honest caveat: AuraFace's training data is described by
+  fal.ai only as "a commercial dataset comprising face images from various
+  sources" and is not disclosed, so its clean-provenance claim is
+  **vendor-asserted, not independently verifiable**. If a legal bar requires
+  *verifiable* provenance, the fallback is Idiap **HyperFace** (MIT, trained on
+  synthetic faces — LFW ~98.7% vs AuraFace ~99.7%), which drops into the same
+  `CoreMLFaceEmbeddingModel` type. InsightFace w600k_r50 (research/non-commercial)
+  must NOT be shipped.
 
 ## Architecture
 
 Swap the embedding source; keep everything downstream. The unit boundaries:
 
-### 1. `FaceEmbeddingModel` (protocol) + `ArcFaceCoreMLModel` (implementation)
+### 1. `FaceEmbeddingModel` (protocol) + `CoreMLFaceEmbeddingModel` (implementation)
 - **Does:** takes an aligned 112×112 face image, returns a 512-d L2-normalized
   identity embedding.
 - **Interface:** `func embedding(for alignedFace: CGImage) throws -> [Float]`
   plus a `provenance: ProviderProvenance` describing the model
-  (`provider: "face-recognition", model: "arcface-w600k-r50", version: "1"`).
+  (`provider: "face-recognition", model: "auraface-v1", version: "1"`).
 - **Depends on:** Core ML (`MLModel`), the bundled `.mlpackage`. First use in
   the codebase — no existing Core ML usage to follow.
 - **Failure:** model-load failure and inference failure are typed errors; a
@@ -103,7 +113,7 @@ Swap the embedding source; keep everything downstream. The unit boundaries:
 ```
 image → VNDetectFaceRectangles (have) → per face:
   VNDetectFaceLandmarks → FaceAligner (112×112) →
-  ArcFaceCoreMLModel → 512-d L2-normalized embedding →
+  CoreMLFaceEmbeddingModel → 512-d L2-normalized embedding →
   face_observations row (new provenance) →
   FaceSuggestionBuilder (retuned) → PeopleFaceSuggestion → People UI (confirm)
 ```

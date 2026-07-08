@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# Downloads the bundled ArcFace face-recognition Core ML model from the
+# Downloads the bundled AuraFace face-recognition Core ML model from the
 # checksum-verified manifest and unzips the .mlpackage in place, ready for
 # script/build_and_run.sh to copy into the app bundle.
 #
@@ -18,8 +18,8 @@ usage() {
   cat <<EOF
 Usage: $0
 
-Downloads and unpacks the ArcFace face-recognition model into
-$DESTINATION/arcface-w600k-r50.mlpackage. The download is md5+size verified by
+Downloads and unpacks the AuraFace face-recognition model into
+$DESTINATION/auraface-v1.mlpackage. The download is md5+size verified by
 script/download_sample_photos.sh; this wrapper unzips the .mlpackage.zip.
 EOF
 }
@@ -31,8 +31,8 @@ fi
 
 "$ROOT_DIR/script/download_sample_photos.sh" --manifest "$MANIFEST" --destination "$DESTINATION"
 
-ZIP="$DESTINATION/arcface-w600k-r50.mlpackage.zip"
-MODEL="$DESTINATION/arcface-w600k-r50.mlpackage"
+ZIP="$DESTINATION/auraface-v1.mlpackage.zip"
+MODEL="$DESTINATION/auraface-v1.mlpackage"
 
 if [[ ! -f "$ZIP" ]]; then
   echo "expected $ZIP after download" >&2

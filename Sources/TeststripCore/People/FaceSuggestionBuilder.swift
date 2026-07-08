@@ -39,14 +39,15 @@ public struct FaceSuggestions: Equatable, Sendable {
 }
 
 public struct FaceSuggestionBuilder: Sendable {
-    // Calibrated to L2-normalized ArcFace (w600k_r50) identity embeddings.
-    // For unit vectors, Euclidean distance d relates to cosine similarity s by
-    // d = √(2 − 2s): same-person ArcFace cosine ≳ 0.4 → d ≲ 1.10, while
-    // different people sit at cosine ≲ 0.2 → d ≳ 1.26. 1.10 is the tightest
-    // value that keeps same-person faces together without merging distinct
-    // identities; re-derived from the astronaut corpus (FaceCorpusGroupingTests).
-    public static let defaultMaximumMatchDistance = 1.10
-    public static let defaultMaximumClusterDistance = 1.10
+    // Calibrated to L2-normalized AuraFace-v1 identity embeddings (Apache-2.0;
+    // a glint-r100 ArcFace architecture). For unit vectors, Euclidean distance d
+    // relates to cosine similarity s by d = √(2 − 2s). Measured on the astronaut
+    // corpus (FaceCorpusGroupingTests), same-person distances top out at 1.178
+    // while the nearest different-person pair sits at 1.284 — a clean gap. 1.23
+    // is the midpoint: it keeps every same-person face together without merging
+    // distinct identities.
+    public static let defaultMaximumMatchDistance = 1.23
+    public static let defaultMaximumClusterDistance = 1.23
     public static let defaultMinimumClusterFaceCount = 2
 
     public var maximumMatchDistance: Double

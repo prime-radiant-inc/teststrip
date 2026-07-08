@@ -1,3 +1,7 @@
 # filename	url	md5	size	source_url
-# TODO(host): upload arcface-w600k-r50.mlpackage.zip (produced by script/convert_face_model.py) to a stable URL and replace the placeholder below. md5/size are the real values of the locally converted artifact.
-arcface-w600k-r50.mlpackage.zip	https://REPLACE-ME.example.com/teststrip/arcface-w600k-r50.mlpackage.zip	4d80e11b17c7b872577c8c3c595d20cd	77943697	https://github.com/deepinsight/insightface
+# AuraFace-v1 (fal.ai, Apache-2.0) glint-r100 ArcFace, converted to Core ML by
+# script/convert_face_model.py. Distributable: the Apache-2.0 license permits
+# commercial redistribution (unlike InsightFace's research-only weights).
+# TODO(host): upload auraface-v1.mlpackage.zip to a stable URL and replace the
+# placeholder below. md5/size are the real values of the locally converted artifact.
+auraface-v1.mlpackage.zip	https://REPLACE-ME.example.com/teststrip/auraface-v1.mlpackage.zip	54595ccaae2402a581e70d4694cc82d0	120414232	https://huggingface.co/fal/AuraFace-v1

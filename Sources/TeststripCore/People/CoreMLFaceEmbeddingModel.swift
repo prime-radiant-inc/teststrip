@@ -3,15 +3,34 @@ import CoreML
 import CoreVideo
 import Foundation
 
-/// InsightFace `w600k_r50` ArcFace (ResNet50, 512-d) run on-device via Core ML.
-/// Takes an aligned 112×112 face image and returns a 512-d L2-normalized
-/// identity embedding.
-public final class ArcFaceCoreMLModel: FaceEmbeddingModel, @unchecked Sendable {
-    public static let modelFileName = "arcface-w600k-r50.mlpackage"
-
-    public var provenance: ProviderProvenance {
-        ProviderProvenance(provider: "face-recognition", model: "arcface-w600k-r50", version: "1", settingsHash: "default")
+/// A Core ML face-identity model: an aligned 112×112 face image in, a 512-d
+/// L2-normalized identity embedding out. Parameterized by the bundled model's
+/// base name and provenance so a different weight set can drop in without
+/// downstream rework.
+///
+/// The default `.auraFace()` weights are AuraFace-v1 (fal.ai, Apache-2.0) — a
+/// glint-r100 ArcFace architecture whose license permits commercial
+/// redistribution, unlike InsightFace's research-only `.arcFace()` weights,
+/// which remain available behind this same type.
+public final class CoreMLFaceEmbeddingModel: FaceEmbeddingModel, @unchecked Sendable {
+    /// AuraFace-v1 (Apache-2.0), the distributable default embedder.
+    public static func auraFace() -> CoreMLFaceEmbeddingModel? {
+        bundled(
+            baseName: "auraface-v1",
+            provenance: ProviderProvenance(provider: "face-recognition", model: "auraface-v1", version: "1", settingsHash: "default")
+        )
     }
+
+    /// InsightFace w600k_r50 (research/non-commercial weights), kept for
+    /// evaluation but not shipped as the default.
+    public static func arcFace() -> CoreMLFaceEmbeddingModel? {
+        bundled(
+            baseName: "arcface-w600k-r50",
+            provenance: ProviderProvenance(provider: "face-recognition", model: "arcface-w600k-r50", version: "1", settingsHash: "default")
+        )
+    }
+
+    public let provenance: ProviderProvenance
 
     private let model: MLModel
     private let inputName: String
@@ -21,9 +40,10 @@ public final class ArcFaceCoreMLModel: FaceEmbeddingModel, @unchecked Sendable {
     /// Loads the model at `modelURL`. Returns nil when the model cannot be
     /// compiled or loaded (e.g. a corrupt or missing artifact), so evaluation
     /// can continue without face embeddings.
-    public init?(modelURL: URL) {
+    public init?(modelURL: URL, provenance: ProviderProvenance) {
         guard let loaded = Self.loadModel(at: modelURL) else { return nil }
         self.model = loaded
+        self.provenance = provenance
         guard let (name, description) = loaded.modelDescription.inputDescriptionsByName
             .first(where: { $0.value.type == .image }),
             let image = description.imageConstraint else {
@@ -34,25 +54,27 @@ public final class ArcFaceCoreMLModel: FaceEmbeddingModel, @unchecked Sendable {
         self.inputHeight = image.pixelsHigh
     }
 
-    /// Finds the bundled model: an explicit `TESTSTRIP_FACE_MODEL_PATH`
-    /// override (tests), then `Bundle.main`, then the repo dev path
-    /// `sample-data/models/arcface-w600k-r50.mlpackage` (so `swift test` from
-    /// the package root exercises the real model). Returns nil when absent.
-    public static func bundled() -> ArcFaceCoreMLModel? {
-        for url in candidateURLs() where FileManager.default.fileExists(atPath: url.path) {
-            if let model = ArcFaceCoreMLModel(modelURL: url) {
+    /// Finds the bundled model `<baseName>.mlpackage`: an explicit
+    /// `TESTSTRIP_FACE_MODEL_PATH` override (tests), then `Bundle.main`, then the
+    /// enclosing `.app/Contents/Resources`, then the repo dev path
+    /// `sample-data/models/<baseName>.mlpackage` (so `swift test` from the
+    /// package root exercises the real model). Returns nil when absent.
+    public static func bundled(baseName: String, provenance: ProviderProvenance) -> CoreMLFaceEmbeddingModel? {
+        for url in candidateURLs(baseName: baseName) where FileManager.default.fileExists(atPath: url.path) {
+            if let model = CoreMLFaceEmbeddingModel(modelURL: url, provenance: provenance) {
                 return model
             }
         }
         return nil
     }
 
-    private static func candidateURLs() -> [URL] {
+    private static func candidateURLs(baseName: String) -> [URL] {
+        let fileName = "\(baseName).mlpackage"
         var urls: [URL] = []
         if let override = ProcessInfo.processInfo.environment["TESTSTRIP_FACE_MODEL_PATH"] {
             urls.append(URL(fileURLWithPath: override))
         }
-        if let bundled = Bundle.main.url(forResource: "arcface-w600k-r50", withExtension: "mlpackage") {
+        if let bundled = Bundle.main.url(forResource: baseName, withExtension: "mlpackage") {
             urls.append(bundled)
         }
         // Face embedding runs in the out-of-process worker, whose Bundle.main is
@@ -64,11 +86,11 @@ public final class ArcFaceCoreMLModel: FaceEmbeddingModel, @unchecked Sendable {
             let contentsResources = executable
                 .deletingLastPathComponent()   // .../Contents/{MacOS,Helpers}
                 .deletingLastPathComponent()   // .../Contents
-                .appendingPathComponent("Resources/\(modelFileName)")
+                .appendingPathComponent("Resources/\(fileName)")
             urls.append(contentsResources)
         }
         let devPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            .appendingPathComponent("sample-data/models/\(modelFileName)")
+            .appendingPathComponent("sample-data/models/\(fileName)")
         urls.append(devPath)
         return urls
     }

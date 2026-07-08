@@ -501,10 +501,10 @@ final class EvaluationProviderTests: XCTestCase {
         XCTAssertEqual(AppleVisionAnalyzer.featurePrintRevision, VNGenerateImageFeaturePrintRequestRevision2)
     }
 
-    func testFaceProvenanceIsArcFaceIdentity() {
+    func testFaceProvenanceIsAuraFaceIdentity() {
         XCTAssertEqual(
             AppleVisionEvaluationProvider.faceProvenance,
-            ProviderProvenance(provider: "face-recognition", model: "arcface-w600k-r50", version: "1", settingsHash: "default")
+            ProviderProvenance(provider: "face-recognition", model: "auraface-v1", version: "1", settingsHash: "default")
         )
     }
 

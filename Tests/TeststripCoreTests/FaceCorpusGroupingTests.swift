@@ -48,7 +48,7 @@ final class FaceCorpusGroupingTests: XCTestCase {
     }
 
     func testAstronautCorpusClustersByIdentity() throws {
-        guard let model = ArcFaceCoreMLModel.bundled() else { throw XCTSkip("face model not downloaded") }
+        guard let model = CoreMLFaceEmbeddingModel.auraFace() else { throw XCTSkip("face model not downloaded") }
         guard let dir = Bundle.faceCorpusDirectory() else { throw XCTSkip("face corpus not downloaded") }
         let embedder = FaceRecognitionEmbedder(model: model)
         var faces: [FaceEmbedding] = []

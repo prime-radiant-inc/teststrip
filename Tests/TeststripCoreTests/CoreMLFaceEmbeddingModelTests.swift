@@ -2,9 +2,9 @@ import XCTest
 import CoreGraphics
 @testable import TeststripCore
 
-final class ArcFaceCoreMLModelTests: XCTestCase {
-    private func model() throws -> ArcFaceCoreMLModel {
-        guard let m = ArcFaceCoreMLModel.bundled() else {
+final class CoreMLFaceEmbeddingModelTests: XCTestCase {
+    private func model() throws -> CoreMLFaceEmbeddingModel {
+        guard let m = CoreMLFaceEmbeddingModel.auraFace() else {
             throw XCTSkip("Face model not downloaded (run script/download_face_model.sh)")
         }
         return m
@@ -25,6 +25,6 @@ final class ArcFaceCoreMLModelTests: XCTestCase {
 
     func testProvenanceIsFaceRecognition() throws {
         let m = try model()
-        XCTAssertEqual(m.provenance, ProviderProvenance(provider: "face-recognition", model: "arcface-w600k-r50", version: "1", settingsHash: "default"))
+        XCTAssertEqual(m.provenance, ProviderProvenance(provider: "face-recognition", model: "auraface-v1", version: "1", settingsHash: "default"))
     }
 }
