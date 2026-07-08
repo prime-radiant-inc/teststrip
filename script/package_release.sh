@@ -124,19 +124,17 @@ build_and_assemble() {
 }
 
 # --- Step 3: sign inside-out --------------------------------------------------
-# Inner binaries/helpers and the Core ML model are signed before the outer .app
-# so the outer seal covers already-signed contents.
+# Sign the inner worker executable first, then the outer .app so its seal covers
+# already-signed code. The bundled Core ML model is a DATA resource (.mlpackage:
+# weights + Manifest, no executable code), so it is NOT signed separately —
+# codesign rejects it ("bundle format unrecognized") and it is instead sealed by
+# the app's CodeResources signature like any other resource.
 sign_developer_id() {
   local identity="$1"
   local common=(codesign --force --timestamp --options runtime --sign "$identity")
 
   log "Signing worker helper"
   "${common[@]}" --entitlements "$WORKER_ENTITLEMENTS" "$WORKER_BINARY"
-
-  if [[ -d "$FACE_MODEL_BUNDLED" ]]; then
-    log "Signing bundled Core ML model"
-    "${common[@]}" "$FACE_MODEL_BUNDLED"
-  fi
 
   log "Signing outer app bundle"
   "${common[@]}" --entitlements "$APP_ENTITLEMENTS" "$APP_BUNDLE"
@@ -145,10 +143,6 @@ sign_developer_id() {
 sign_ad_hoc() {
   log "Ad-hoc signing worker helper (dry run)"
   codesign --force --sign - --entitlements "$WORKER_ENTITLEMENTS" "$WORKER_BINARY"
-  if [[ -d "$FACE_MODEL_BUNDLED" ]]; then
-    log "Ad-hoc signing bundled Core ML model (dry run)"
-    codesign --force --sign - "$FACE_MODEL_BUNDLED"
-  fi
   log "Ad-hoc signing outer app bundle (dry run)"
   codesign --force --sign - --entitlements "$APP_ENTITLEMENTS" "$APP_BUNDLE"
 }
