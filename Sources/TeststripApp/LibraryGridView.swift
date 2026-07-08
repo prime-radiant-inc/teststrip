@@ -3262,14 +3262,6 @@ struct LibraryGridView: View {
         }
     }
 
-    private func runAutopilotOnCurrentScope() {
-        do {
-            try model.runAutopilotOnCurrentScope()
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
     private func findBestShots() {
         do {
             try model.findBestShots()
