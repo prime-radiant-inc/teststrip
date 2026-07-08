@@ -58,7 +58,18 @@ keyboard cull, evaluate, import, card-import) is already driven live by
      out on an app that has sat unused for minutes (window present, but its
      subtree won't traverse and even `capture_app_window.sh` fails), relaunch
      the instance rather than fighting it — a fresh `--smoke` launch vends
-     immediately. Drive shortly after launch.
+     immediately. Drive shortly after launch, and keep it warm during long
+     worker waits (re-assert frontmost each poll — the `verify_people_clustering.sh`
+     pattern).
+   - **A locked macOS console launches GUI apps windowless.** While the screen
+     is locked (Jesse away), a newly launched app runs with **zero windows** —
+     `count of windows = 0`, the process idles healthily, the catalog
+     initializes, nothing errors. It looks exactly like a launch regression and
+     can burn a whole bisect. Check first:
+     `ioreg -n Root -d1 -a | grep -A1 IOConsoleLocked`. If locked, all
+     foreground/AX/window verification is impossible until unlock — queue it and
+     re-validate the known-good baseline before trusting any bisect verdict that
+     spans an absence.
    - **The grid is lazily virtualized.** Off-screen thumbnails are not in the
      AX tree at all — scroll the target into view before matching its filename,
      or you will get a false "not found." Present-but-not-visible ≠ absent.
