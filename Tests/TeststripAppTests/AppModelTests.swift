@@ -4359,6 +4359,38 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.catalogGeneration(assetID: alternate.id), alternateGenerationBefore)
     }
 
+    func testRunAutopilotOnFlatDistinctLibrarySurfacesKeywordOutcomeNotBareZero() throws {
+        // A normal flat library: distinct singletons, no bursts. The marquee
+        // keep/cut path honestly yields nothing to rank, but the run still
+        // produces keyword suggestions. The banner must name that outcome
+        // rather than the demoralizing bare "0 keepers · 0 rejects".
+        let first = makeAsset(id: "flat-1", path: "/Photos/Trip/flat-1.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: Date(timeIntervalSince1970: 100)))
+        let second = makeAsset(id: "flat-2", path: "/Photos/Trip/flat-2.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: Date(timeIntervalSince1970: 100_000)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "run-autopilot-flat", assets: [first, second]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "objects", version: "1", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: first.id, kind: .object, value: .label("beach"), confidence: 0.8, provenance: provenance),
+                EvaluationSignal(assetID: second.id, kind: .object, value: .label("mountain"), confidence: 0.8, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+
+        let summary = try model.runAutopilot(scope: .visible)
+
+        XCTAssertEqual(summary.keeperCount, 0)
+        XCTAssertEqual(summary.rejectCount, 0)
+        XCTAssertEqual(summary.stackCount, 0)
+        XCTAssertEqual(summary.keywordCount, 2)
+        XCTAssertEqual(summary.bannerText, "No clear cuts to propose — 2 keyword suggestions ready to review")
+        XCTAssertEqual(model.statusMessage?.contains("0 keepers"), false)
+        XCTAssertEqual(model.statusMessage, "Autopilot: No clear cuts to propose — 2 keyword suggestions ready to review")
+        // Confirm-before-write: nothing committed to metadata by the run itself.
+        XCTAssertNil(try repository.asset(id: first.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: second.id).metadata.flag)
+        XCTAssertTrue(try repository.asset(id: first.id).metadata.keywords.isEmpty)
+        XCTAssertTrue(try repository.asset(id: second.id).metadata.keywords.isEmpty)
+    }
+
     func testRunAutopilotOnCurrentScopeWithoutEvaluationsSetsStatusMessage() throws {
         let unevaluated = makeAsset(id: "noeval", path: "/Photos/Job/noeval.cr2", rating: 0)
         let (model, repository) = try makeModelWithCatalogAssets(named: "run-autopilot-noeval", assets: [unevaluated])
