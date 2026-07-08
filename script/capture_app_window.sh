@@ -39,4 +39,15 @@ if [[ -z "$window_id" ]]; then
 fi
 
 /usr/sbin/screencapture -x -l "$window_id" "$OUTPUT_PATH"
+
+# screencapture "succeeds" (exit 0) but writes nothing when the driving process
+# lacks the Screen Recording (TCC) permission — a silent gap that leaves an
+# agent "reading the screenshot" dead in the water. Detect it and advise.
+if [[ ! -s "$OUTPUT_PATH" ]]; then
+  echo "screencapture produced no image for $APP_NAME (window $window_id)." >&2
+  echo "Most likely the Screen Recording permission is missing for the process driving this script." >&2
+  echo "Grant it in System Settings > Privacy & Security > Screen Recording (add the terminal/driver), then retry." >&2
+  echo "Until then, read the UI from the accessibility tree instead of screenshots (see test/scenarios/README.md)." >&2
+  exit 1
+fi
 echo "$OUTPUT_PATH"
