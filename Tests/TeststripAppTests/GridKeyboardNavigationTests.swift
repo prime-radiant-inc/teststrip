@@ -45,6 +45,36 @@ final class GridKeyboardNavigationTests: XCTestCase {
         XCTAssertEqual(GridSelectionMovement.nextIndex(from: 5, direction: .end, count: 10, columns: 4), 9)
     }
 
+    func testWalkingRightReachesEveryAssetInOnePressEach() {
+        // A straight-line rightward walk must visit every asset exactly once,
+        // with no skipping (the double-step regression skipped every other one).
+        let count = 24
+        let columns = 5
+        var index = 0
+        var visited = [0]
+        for _ in 0..<(count - 1) {
+            index = GridSelectionMovement.nextIndex(
+                from: index,
+                direction: .right,
+                count: count,
+                columns: columns
+            )!
+            visited.append(index)
+        }
+        XCTAssertEqual(visited, Array(0..<count))
+        XCTAssertEqual(Set(visited).count, count)
+    }
+
+    func testUpThenDownReturnsToSameAssetByColumnCount() {
+        let count = 24
+        let columns = 5
+        let start = 12
+        let down = GridSelectionMovement.nextIndex(from: start, direction: .down, count: count, columns: columns)!
+        XCTAssertEqual(down, start + columns)
+        let up = GridSelectionMovement.nextIndex(from: down, direction: .up, count: count, columns: columns)!
+        XCTAssertEqual(up, start)
+    }
+
     func testMovementReturnsNilForEmptyGrid() {
         XCTAssertNil(GridSelectionMovement.nextIndex(from: 0, direction: .right, count: 0, columns: 4))
     }

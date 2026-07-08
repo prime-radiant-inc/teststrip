@@ -42,14 +42,6 @@ final class CullingKeyCaptureNSView: NSView {
         }
     }
 
-    override func keyDown(with event: NSEvent) {
-        guard isActive, let shortcut = CullingShortcut(event: event) else {
-            super.keyDown(with: event)
-            return
-        }
-        onShortcut?(shortcut)
-    }
-
     func handleLocalKeyDown(_ event: NSEvent) -> NSEvent? {
         guard let window else { return event }
         return handleLocalKeyDown(

@@ -160,14 +160,6 @@ final class GridKeyCaptureNSView: NSView {
         }
     }
 
-    override func keyDown(with event: NSEvent) {
-        guard let command = command(for: event) else {
-            super.keyDown(with: event)
-            return
-        }
-        onCommand?(command)
-    }
-
     func handleLocalKeyDown(_ event: NSEvent) -> NSEvent? {
         guard let window else { return event }
         return handleLocalKeyDown(

@@ -119,7 +119,7 @@ private struct CullingCommands: Commands {
                     Button(item.title) {
                         applyShortcut(item.shortcut)
                     }
-                    .keyboardShortcut(item.key.keyEquivalent, modifiers: [])
+                    .keyboardShortcut(item.key.menuKeyboardShortcut)
                 }
                 if index < CullingCommandMenuPresentation.sections.count - 1 {
                     Divider()
@@ -138,20 +138,19 @@ private struct CullingCommands: Commands {
 }
 
 private extension CullingShortcutKey {
-    var keyEquivalent: KeyEquivalent {
+    // The arrow and Return keys are owned by the in-view key captures
+    // (GridKeyCaptureView in the grid, CullingKeyCaptureView in loupe/culling),
+    // which handle them through an app-wide key monitor. Binding those same keys
+    // as bare menu equivalents makes AppKit fire the shortcut a second time per
+    // press — the double-step regression. Only character keys, which AppKit does
+    // not honour as bare (modifier-less) menu equivalents, get a shortcut here so
+    // the menu still displays them for discoverability.
+    var menuKeyboardShortcut: KeyboardShortcut? {
         switch self {
-        case .leftArrow:
-            .leftArrow
-        case .rightArrow:
-            .rightArrow
-        case .upArrow:
-            .upArrow
-        case .downArrow:
-            .downArrow
-        case .returnKey:
-            .return
+        case .leftArrow, .rightArrow, .upArrow, .downArrow, .returnKey:
+            return nil
         case .character(let character):
-            KeyEquivalent(Character(character))
+            return KeyboardShortcut(KeyEquivalent(Character(character)), modifiers: [])
         }
     }
 }
