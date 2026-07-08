@@ -26,6 +26,8 @@ REAL_CORPUS_DIR="${TESTSTRIP_REAL_CORPUS_DIR:-}"
 BACKGROUND_OPEN=0
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/app_bundle.sh
+source "$ROOT_DIR/script/lib/app_bundle.sh"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
@@ -50,61 +52,10 @@ stop_running_app() {
 }
 
 build_app_bundle() {
-  cd "$ROOT_DIR"
-  swift build --product "$PRODUCT_NAME"
-  swift build --product "$WORKER_PRODUCT_NAME"
-
+  teststrip_build_products "$ROOT_DIR"
   local build_dir
-  build_dir="$(swift build --show-bin-path)"
-  local build_binary="$build_dir/$PRODUCT_NAME"
-  local build_worker_binary="$build_dir/$WORKER_PRODUCT_NAME"
-
-  rm -rf "$APP_BUNDLE"
-  mkdir -p "$APP_MACOS" "$APP_HELPERS" "$APP_RESOURCES"
-  cp "$build_binary" "$APP_BINARY"
-  cp "$build_worker_binary" "$WORKER_BINARY"
-  chmod +x "$APP_BINARY"
-  chmod +x "$WORKER_BINARY"
-
-  if [[ -f "$APP_ICON_ICNS" ]]; then
-    cp "$APP_ICON_ICNS" "$APP_RESOURCES/AppIcon.icns"
-  else
-    echo "warning: $APP_ICON_ICNS is missing; building without an app icon (run script/generate_app_icon.sh)" >&2
-  fi
-
-  FACE_MODEL="$ROOT_DIR/sample-data/models/arcface-w600k-r50.mlpackage"
-  if [[ -d "$FACE_MODEL" ]]; then
-    /usr/bin/ditto "$FACE_MODEL" "$APP_RESOURCES/arcface-w600k-r50.mlpackage"
-  fi
-
-  cat >"$INFO_PLIST" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleExecutable</key>
-  <string>$APP_NAME</string>
-  <key>CFBundleIconFile</key>
-  <string>AppIcon</string>
-  <key>CFBundleIdentifier</key>
-  <string>$BUNDLE_ID</string>
-  <key>CFBundleName</key>
-  <string>$APP_NAME</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
-  <key>CFBundleVersion</key>
-  <string>1</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>$MIN_SYSTEM_VERSION</string>
-  <key>NSHighResolutionCapable</key>
-  <true/>
-  <key>NSPrincipalClass</key>
-  <string>NSApplication</string>
-</dict>
-</plist>
-PLIST
+  build_dir="$(teststrip_build_bin_path "$ROOT_DIR")"
+  teststrip_assemble_bundle "$ROOT_DIR" "$build_dir" "$APP_BUNDLE"
 
   local worker_codesign=(codesign --force --sign -)
   local app_codesign=(codesign --force --sign -)
