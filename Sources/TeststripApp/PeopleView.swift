@@ -91,7 +91,7 @@ struct PeopleView: View {
             }
 
             if presentation.reviewCards.isEmpty {
-                Text(presentation.namedPeopleEmptyText)
+                Text(presentation.faceReviewEmptyPrompt)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(12)
@@ -628,7 +628,17 @@ struct PeoplePresentation: Equatable {
         if photosWithFaceSignals > 0 {
             return "No confirmed people yet. Review face queues, select photos, then name the selection."
         }
-        return "Run evaluation to find faces before naming people."
+        return "Once Teststrip finds faces, name them here."
+    }
+
+    /// The prompt shown beside the Scan control when no face review queues exist
+    /// yet. Deliberately distinct from `namedPeopleEmptyText` so the same
+    /// sentence never renders twice on the People screen.
+    var faceReviewEmptyPrompt: String {
+        if photosWithFaceSignals > 0 {
+            return "Review the face queues above, then name people here."
+        }
+        return "Scan to find faces in these photos."
     }
 
     var signalRows: [PeopleSignalRow] {

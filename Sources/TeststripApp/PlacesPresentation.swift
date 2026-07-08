@@ -32,6 +32,12 @@ struct PlacesPresentation: Equatable {
     var topLocations: [PlaceRowPresentation]
     var coverageText: String
     var summaryText: String
+    /// True once any photo carries coordinates. When false the workspace shows
+    /// an invitation instead of a world map — otherwise MapKit's own basemap
+    /// place labels (oceans, latitude bands, cities) read as app content.
+    var hasGeotaggedPhotos: Bool
+    /// The invitation shown when nothing is geotagged yet.
+    var emptyStateText: String
 
     static let minimumBubbleRadius = 6.0
     static let maximumBubbleRadius = 60.0
@@ -64,6 +70,10 @@ struct PlacesPresentation: Equatable {
         }
         self.coverageText = Self.coverageText(coverage)
         self.summaryText = Self.summaryText(locationCount: topLocations.count, coverage: coverage)
+        self.hasGeotaggedPhotos = coverage.geotaggedCount > 0
+        self.emptyStateText = coverage.totalCount > 0
+            ? "None of these photos have location data yet. Photos taken with GPS on — or after you read locations — appear here on the map."
+            : "Import photos taken with location services on to see where they were taken."
     }
 
     static func radius(for count: Int) -> Double {

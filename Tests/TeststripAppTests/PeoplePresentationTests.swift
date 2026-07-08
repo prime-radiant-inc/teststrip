@@ -70,7 +70,11 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.signalRows.map(\.countText), ["0", "0"])
         XCTAssertEqual(presentation.signalRows.map(\.filterKind), [nil, nil])
         XCTAssertEqual(presentation.signalRows.map(\.isActionEnabled), [false, false])
-        XCTAssertEqual(presentation.namedPeopleEmptyText, "Run evaluation to find faces before naming people.")
+        // The scan prompt and the named-people empty state must not render the
+        // identical sentence twice on one screen.
+        XCTAssertEqual(presentation.namedPeopleEmptyText, "Once Teststrip finds faces, name them here.")
+        XCTAssertEqual(presentation.faceReviewEmptyPrompt, "Scan to find faces in these photos.")
+        XCTAssertNotEqual(presentation.faceReviewEmptyPrompt, presentation.namedPeopleEmptyText)
         XCTAssertNil(presentation.scanAction)
     }
 

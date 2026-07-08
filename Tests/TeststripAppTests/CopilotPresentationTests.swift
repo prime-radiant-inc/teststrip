@@ -51,6 +51,10 @@ final class CopilotPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.topPickRows.map(\.title), ["Picks", "Potential Picks"])
         XCTAssertEqual(presentation.needsEyesRows.map(\.title), ["Likely Issues", "Not analyzed yet"])
         XCTAssertEqual(presentation.needsEyesRows.map(\.countText), ["5", "81"])
+        // A row's subtitle must not merely repeat its title (the "Not analyzed
+        // yet, Not analyzed yet" doubling); it should say what to do next.
+        let notAnalyzed = presentation.needsEyesRows.first { $0.title == "Not analyzed yet" }
+        XCTAssertNotEqual(notAnalyzed?.detail, notAnalyzed?.title)
         XCTAssertEqual(presentation.signalRows.map(\.title), ["Objects", "Focus", "Text"])
         XCTAssertEqual(presentation.signalRows.map(\.countText), ["77", "52", "11"])
         XCTAssertEqual(presentation.signalRows.map(\.target), [

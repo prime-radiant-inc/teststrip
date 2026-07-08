@@ -289,10 +289,15 @@ struct CopilotView: View {
             }
             .buttonStyle(.plain)
             .help("Open \(row.title)")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(row.title), \(row.countText)")
+            .accessibilityHint("Open \(row.title)")
         } else {
             actionRowContent(row)
                 .help(row.statusText ?? row.detail)
-                .accessibilityElement(children: .combine)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(row.title), \(row.countText)")
+                .accessibilityHint(row.statusText ?? row.detail)
         }
     }
 
@@ -525,7 +530,7 @@ struct CopilotPresentation: Equatable {
     var needsEyesRows: [CopilotActionRow] {
         [
             reviewRow(queue: .likelyIssues, detail: "Quality or source warnings"),
-            reviewRow(queue: .needsEvaluation, detail: "Not analyzed yet")
+            reviewRow(queue: .needsEvaluation, detail: "Run Find Best Shots to analyze")
         ]
     }
 

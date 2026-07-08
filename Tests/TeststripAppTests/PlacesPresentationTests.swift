@@ -20,6 +20,7 @@ final class PlacesPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.bubbles[0].labelText, "1.2k")
         XCTAssertEqual(presentation.topLocations.first?.title, "Paris · France")
         XCTAssertEqual(presentation.coverageText, "Geotagged on import — 412,000 of 486,000")
+        XCTAssertTrue(presentation.hasGeotaggedPhotos)
     }
 
     func testPresentationHandlesNoCoverageGracefully() {
@@ -29,5 +30,12 @@ final class PlacesPresentationTests: XCTestCase {
         )
         XCTAssertTrue(presentation.bubbles.isEmpty)
         XCTAssertEqual(presentation.coverageText, "No geotagged frames yet")
+        // With photos present but none geotagged, the workspace must show the
+        // invitation, not a world map full of MapKit's own basemap labels.
+        XCTAssertFalse(presentation.hasGeotaggedPhotos)
+        XCTAssertEqual(
+            presentation.emptyStateText,
+            "None of these photos have location data yet. Photos taken with GPS on — or after you read locations — appear here on the map."
+        )
     }
 }

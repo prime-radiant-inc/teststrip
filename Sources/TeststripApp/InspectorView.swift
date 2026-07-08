@@ -656,6 +656,7 @@ struct InspectorView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Rate \(rating)")
+                .accessibilityLabel("Rate \(rating)")
             }
             Button {
                 apply { try model.setRatingForSelectedAsset(0) }
@@ -666,6 +667,7 @@ struct InspectorView: View {
             }
             .buttonStyle(.plain)
             .help("Clear rating")
+            .accessibilityLabel("Clear rating")
         }
     }
 
@@ -679,6 +681,7 @@ struct InspectorView: View {
             }
             .buttonStyle(.plain)
             .help("Pick")
+            .accessibilityLabel("Pick")
             Button {
                 apply { try model.setFlagForSelectedAsset(.reject) }
             } label: {
@@ -687,6 +690,7 @@ struct InspectorView: View {
             }
             .buttonStyle(.plain)
             .help("Reject")
+            .accessibilityLabel("Reject")
             Button {
                 apply { try model.setFlagForSelectedAsset(nil) }
             } label: {
@@ -695,6 +699,7 @@ struct InspectorView: View {
             }
             .buttonStyle(.plain)
             .help("Clear flag")
+            .accessibilityLabel("Clear flag")
         }
     }
 
@@ -711,6 +716,7 @@ struct InspectorView: View {
             }
             .buttonStyle(.plain)
             .help("Clear label")
+            .accessibilityLabel("Clear label")
             ForEach(ColorLabel.allCases, id: \.self) { label in
                 Button {
                     apply { try model.setColorLabelForSelectedAsset(label) }
@@ -727,6 +733,7 @@ struct InspectorView: View {
                 }
                 .buttonStyle(.plain)
                 .help(label.rawValue.capitalized)
+                .accessibilityLabel("\(label.rawValue.capitalized) label")
             }
         }
     }
@@ -904,6 +911,7 @@ struct InspectorView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Apply \(title.lowercased())")
+                .accessibilityLabel("Apply \(title)")
             }
         }
     }

@@ -168,7 +168,7 @@ struct LibraryGridView: View {
             }
             .disabled(isImporting || !model.canFindBestShots)
             .accessibilityLabel("Find Best Shots")
-            .help("Evaluate the photos in view and land on your ranked best shots. Nothing is written until you commit.")
+            .help("Evaluate the photos in view and show you your best shots, ranked. Nothing is saved until you keep them.")
 
             Button {
                 showStartCullingPopover()
@@ -668,6 +668,7 @@ struct LibraryGridView: View {
                     .buttonStyle(.borderless)
                     .disabled(!model.canSaveCurrentLibraryQuery)
                     .help("Save search")
+                    .accessibilityLabel("Save search")
                     .popover(isPresented: $isSavingSearch) {
                         saveSearchPopover
                     }
@@ -681,6 +682,7 @@ struct LibraryGridView: View {
                     .buttonStyle(.borderless)
                     .disabled(!model.canSaveCurrentAssetScopeSnapshot)
                     .help("Save current results as snapshot")
+                    .accessibilityLabel("Save current results as snapshot")
                     .popover(isPresented: $isSavingSnapshotSet) {
                         saveSnapshotSetPopover
                     }
@@ -695,6 +697,7 @@ struct LibraryGridView: View {
                     .buttonStyle(.borderless)
                     .disabled(!model.canSaveSelectedAssetAsManualSet)
                     .help("Save selected photos as set")
+                    .accessibilityLabel("Save as Set")
                     .popover(isPresented: $isSavingManualSet) {
                         saveManualSetPopover
                     }
@@ -7194,7 +7197,11 @@ private struct PlacesWorkspaceView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            mapSurface
+            if presentation.hasGeotaggedPhotos {
+                mapSurface
+            } else {
+                placesEmptyState
+            }
             placesSidebar
                 .frame(width: 300)
         }
@@ -7203,6 +7210,23 @@ private struct PlacesWorkspaceView: View {
         .onAppear {
             try? model.refreshPlaceData()
         }
+    }
+
+    private var placesEmptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "mappin.slash")
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(.secondary)
+            Text("No places yet")
+                .font(.title3.weight(.semibold))
+            Text(presentation.emptyStateText)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(24)
     }
 
     private var mapSurface: some View {
