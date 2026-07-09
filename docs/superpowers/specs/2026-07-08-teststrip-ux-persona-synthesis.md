@@ -12,11 +12,16 @@ headers, A5 People/Places empty states, A6 flattened Evaluate + ⇧⌘E, A7 sear
 placeholder + tips popover. Tier B: batch pick/reject/rate across a selection,
 default byline preference (Settings ⌘,), "Saved to sidecar" confirmation, Batch
 Metadata command ⌥⌘M, search-field dedup, Cull/Find-Best-Shots differentiated
-(NOT merged, per recommendation). Deferred with rationale: the wide
-"photographs→photos"/"Needs Evaluation" rename (matcher-entangled) and the
-People all-caps eyebrows (coherent tested pattern). A4's rendered verdicts are
-unit-verified but were not visually confirmed live (no worker signals this
-session).
+(NOT merged, per recommendation). A4's rendered verdicts are unit-verified but were not visually confirmed live
+(no worker signals this session).
+
+**Follow-up terminology renames (2026-07-08, approved): done.** "photograph(s)"
+→ "photo(s)" and "Needs Evaluation" → "Not analyzed yet" (both renamed atomically
+across display + matcher sites); de-jargoned the "local signals" cluster; and
+retired the branded "TESTSTRIP · …" People status titles ("No faces found yet",
+"N photos need face review", "N faces need a name"). Generic section eyebrows
+(ALL PEOPLE, TOP PICKS, NEEDS YOUR EYES) kept as a consistent style tier.
+Verified live: no photograph/Needs-Evaluation/TESTSTRIP· leaks; full suite green.
 
 ## Method
 
