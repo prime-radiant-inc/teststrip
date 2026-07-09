@@ -72,8 +72,16 @@ public struct AutopilotProposalPlanner {
         // Nothing to rank honestly if no member carries a rankable signal.
         guard !ranked.isEmpty else { return [] }
 
+        let isRawByAssetID = Dictionary(
+            input.assets.map { ($0.id, $0.isRawOriginal) },
+            uniquingKeysWith: { first, _ in first }
+        )
         let sorted = ranked.sorted { lhs, rhs in
             if lhs.score != rhs.score { return lhs.score > rhs.score }
+            // Equal quality (e.g. a RAW+JPEG pair of the same shot): keep the RAW.
+            let lhsRaw = isRawByAssetID[lhs.assetID] ?? false
+            let rhsRaw = isRawByAssetID[rhs.assetID] ?? false
+            if lhsRaw != rhsRaw { return lhsRaw }
             return lhs.assetID.rawValue < rhs.assetID.rawValue
         }
         guard let winner = sorted.first else { return [] }

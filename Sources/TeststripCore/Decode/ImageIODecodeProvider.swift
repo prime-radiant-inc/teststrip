@@ -16,6 +16,11 @@ public struct ImageIODecodeProvider: DecodeProvider {
         "x3f"
     ]
 
+    /// Every file extension Teststrip treats as a camera RAW original,
+    /// whether or not ImageIO can decode it.
+    public static let rawExtensions: Set<String> = bestEffortRawExtensions
+        .union(knownUnsupportedRawExtensions)
+
     public static let supportedExtensions: Set<String> = [
         workingStillExtensions,
         bestEffortRawExtensions

@@ -34,4 +34,11 @@ public struct Asset: Codable, Equatable, Sendable {
         self.metadata = metadata
         self.technicalMetadata = technicalMetadata
     }
+
+    /// True when the original file is a camera RAW rather than a rendered
+    /// still (JPEG/HEIC/etc). Used to prefer the RAW when culling between
+    /// otherwise-identical frames of the same shot.
+    public var isRawOriginal: Bool {
+        ImageIODecodeProvider.rawExtensions.contains(originalURL.pathExtension.lowercased())
+    }
 }

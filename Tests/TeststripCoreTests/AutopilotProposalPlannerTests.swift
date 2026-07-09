@@ -51,10 +51,32 @@ final class AutopilotProposalPlannerTests: XCTestCase {
         XCTAssertEqual(Set(proposals.filter { $0.kind == .keyword }.compactMap(\.keyword)), ["dog", "beach"])
     }
 
-    private func asset(id: String, capturedAt: Date) -> Asset {
+    func testPrefersRawOverJpegWhenIdenticalFramesScoreEqually() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        // The JPEG's id sorts before the RAW's, so the old alphabetical
+        // tiebreak would pick the JPEG. RAW must win on equal quality.
+        let jpeg = asset(id: "a-jpeg", ext: "jpg", capturedAt: capturedAt)
+        let raw = asset(id: "b-raw", ext: "cr2", capturedAt: capturedAt.addingTimeInterval(1))
+        let planner = AutopilotProposalPlanner(stackBuilder: AssetStackBuilder(maximumCaptureGap: 2))
+        let input = AutopilotPlanInput(
+            assets: [jpeg, raw],
+            signalsByAssetID: [
+                jpeg.id: [signal(jpeg.id, .focus, 0.80)],
+                raw.id: [signal(raw.id, .focus, 0.80)]
+            ],
+            keywordCandidatesByAssetID: [:]
+        )
+
+        let proposals = planner.proposals(for: input, runID: AutopilotRunID(rawValue: "r"), now: capturedAt)
+
+        XCTAssertEqual(proposals.first { $0.assetID == raw.id }?.kind, .pick)
+        XCTAssertEqual(proposals.first { $0.assetID == jpeg.id }?.kind, .reject)
+    }
+
+    private func asset(id: String, ext: String = "cr2", capturedAt: Date) -> Asset {
         Asset(
             id: AssetID(rawValue: id),
-            originalURL: URL(fileURLWithPath: "/Photos/\(id).cr2"),
+            originalURL: URL(fileURLWithPath: "/Photos/\(id).\(ext)"),
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: 1, modificationDate: capturedAt),
             availability: .online,
