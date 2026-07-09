@@ -22,6 +22,7 @@ struct LibraryGridView: View {
     @State private var snapshotSetStarred = false
     @State private var cullingSessionName = ""
     @State private var cullingSessionIntent = ""
+    @State private var isShowingSearchTips = false
     @State private var batchMetadataDraft = BatchMetadataDraft()
     @State private var batchMetadataScope: BatchScopeMode = .visible
     @State private var isAllCatalogBatchMetadataConfirmed = false
@@ -176,7 +177,7 @@ struct LibraryGridView: View {
                 Label("Cull", systemImage: "checkmark.seal")
             }
             .disabled(isImporting || !model.canBeginCullingSession)
-            .help("Start culling session")
+            .help("Review photos one at a time to rate, pick, and reject by hand with the keyboard. (Find Best Shots ranks them for you.)")
             .popover(isPresented: $isStartingCullingSession) {
                 cullingSessionPopover
             }
@@ -463,7 +464,7 @@ struct LibraryGridView: View {
             Image(systemName: "sparkles")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.orange)
-            TextField("Ask Teststrip or search...", text: Binding(
+            TextField("Search photos, people, places…", text: Binding(
                 get: { model.librarySearchText },
                 set: { model.librarySearchText = $0 }
             ))
@@ -471,8 +472,20 @@ struct LibraryGridView: View {
             .onSubmit {
                 applyLibraryFilters()
             }
-            .help(LibrarySearchIntent.searchFieldHelp)
-            .accessibilityLabel("Top Search Catalog")
+            .help("Search your library. Click the info button for filter tokens.")
+            .accessibilityLabel("Search Catalog")
+            Button {
+                isShowingSearchTips = true
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .help("Search tips and filter tokens")
+            .accessibilityLabel("Search tips")
+            .popover(isPresented: $isShowingSearchTips, arrowEdge: .bottom) {
+                searchTipsPopover
+            }
             Button {
                 applyLibraryFilters()
             } label: {
@@ -481,6 +494,7 @@ struct LibraryGridView: View {
             }
             .buttonStyle(.plain)
             .help("Search")
+            .accessibilityLabel("Search")
         }
         .padding(.horizontal, 10)
         .frame(width: 262, height: 31)
@@ -491,6 +505,46 @@ struct LibraryGridView: View {
         }
         .liveMockupPlaceholder(.agenticSearch)
     }
+
+    private var searchTipsPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Search tips")
+                .font(.headline)
+            Text("Type anything for a plain text search, or use filter tokens:")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Self.searchTokenTips, id: \.token) { tip in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(tip.token)
+                            .font(.caption.monospaced().weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .frame(width: 96, alignment: .leading)
+                        Text(tip.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Text("Repeat person: to require every name, e.g. person:\"Anna\" person:\"Ben\".")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(width: 360)
+    }
+
+    private static let searchTokenTips: [(token: String, detail: String)] = [
+        ("person:\"Name\"", "Photos of a confirmed person"),
+        ("keyword:", "A keyword you've applied"),
+        ("folder:", "Photos in a folder"),
+        ("camera: / lens:", "By camera body or lens"),
+        ("iso:", "By ISO speed"),
+        ("rating: / color:", "By star rating or color label"),
+        ("from: / before: / date:", "By capture date"),
+        ("source: / signal: / xmp:", "By availability, AI signal, or sync state")
+    ]
 
     private func topBarViewSwitcher(_ presentation: LibraryTopBarPresentation) -> some View {
         HStack(spacing: 2) {
@@ -556,8 +610,6 @@ struct LibraryGridView: View {
         VStack(alignment: .leading, spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    searchControl
-
                     librarySortPicker
 
                     ratingFilterPicker
@@ -717,41 +769,6 @@ struct LibraryGridView: View {
         .padding(.bottom, 7)
         .background(.bar)
         .liveMockupPlaceholder(.searchRefine)
-    }
-
-    private var searchControl: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.orange)
-            TextField("Ask Teststrip or search...", text: Binding(
-                get: { model.librarySearchText },
-                set: { model.librarySearchText = $0 }
-            ))
-            .textFieldStyle(.plain)
-            .frame(width: 210)
-            .onSubmit {
-                applyLibraryFilters()
-            }
-            .help(LibrarySearchIntent.searchFieldHelp)
-            .accessibilityLabel("Search catalog")
-            Button {
-                applyLibraryFilters()
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            .buttonStyle(.borderless)
-            .help("Search")
-        }
-        .padding(.horizontal, 10)
-        .frame(height: 30)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Color.orange.opacity(0.25))
-        }
-        .liveMockupPlaceholder(.agenticSearch)
     }
 
     private var librarySortPicker: some View {
