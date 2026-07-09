@@ -199,6 +199,7 @@ final class AppDiagnosticsTests: XCTestCase {
 private final class AppDiagnosticsRecordingWorkerTransport: WorkerTransport {
     var outputHandler: ((String) -> Void)?
     var errorHandler: ((String) -> Void)?
+    var terminationHandler: (() -> Void)?
     private(set) var isRunning = false
 
     func launch() throws {

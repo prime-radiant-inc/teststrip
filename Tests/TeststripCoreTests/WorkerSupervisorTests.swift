@@ -555,6 +555,139 @@ final class WorkerSupervisorTests: XCTestCase {
         XCTAssertEqual(try transport.commands(), [importCommand, previewCommand, .cancelAll, queuedCommand])
     }
 
+    func testUnexpectedWorkerTerminationRetriesInFlightItemOnce() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let second = BackgroundWorkItem.testItem(id: "second")
+        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
+        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        try supervisor.enqueue(first, command: firstCommand)
+        try supervisor.enqueue(second, command: secondCommand)
+
+        transport.simulateUnexpectedTermination()
+
+        XCTAssertTrue(waitUntil {
+            supervisor.queue.item(id: first.id)?.status == .running &&
+                supervisor.queue.item(id: second.id)?.status == .queued &&
+                transport.launchCount == 2
+        })
+        XCTAssertEqual(try transport.commands(), [firstCommand, firstCommand])
+        XCTAssertTrue(supervisor.isCommandDispatched(for: first.id))
+    }
+
+    func testSecondUnexpectedWorkerTerminationFailsItemAndStartsNextQueuedWork() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let second = BackgroundWorkItem.testItem(id: "second")
+        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
+        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        try supervisor.enqueue(first, command: firstCommand)
+        try supervisor.enqueue(second, command: secondCommand)
+
+        transport.simulateUnexpectedTermination()
+        XCTAssertTrue(waitUntil { supervisor.queue.item(id: first.id)?.status == .running && transport.launchCount == 2 })
+
+        transport.simulateUnexpectedTermination()
+
+        XCTAssertTrue(waitUntil {
+            supervisor.queue.item(id: first.id)?.status == .failed &&
+                supervisor.queue.item(id: second.id)?.status == .running
+        })
+        XCTAssertEqual(
+            supervisor.queue.item(id: first.id)?.detail,
+            "Worker exited unexpectedly: generate grid preview for asset-1"
+        )
+        XCTAssertEqual(try transport.commands(), [firstCommand, firstCommand, secondCommand])
+    }
+
+    func testWorkerTerminationRetryBudgetResetsAfterItemCompletes() throws {
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let first = BackgroundWorkItem.testItem(id: "first")
+        let firstCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-1"), level: .grid)
+        try supervisor.enqueue(first, command: firstCommand)
+
+        transport.simulateUnexpectedTermination()
+        XCTAssertTrue(waitUntil { supervisor.queue.item(id: first.id)?.status == .running && transport.launchCount == 2 })
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(itemID: first.id, message: "done")))
+        XCTAssertTrue(waitUntil { supervisor.queue.item(id: first.id)?.status == .completed })
+
+        let second = BackgroundWorkItem.testItem(id: "second")
+        let secondCommand = WorkerCommand.generatePreview(assetID: AssetID(rawValue: "asset-2"), level: .large)
+        try supervisor.enqueue(second, command: secondCommand)
+
+        // A fresh item that dies once must still get its own retry, not inherit
+        // the first item's spent budget.
+        transport.simulateUnexpectedTermination()
+        XCTAssertTrue(waitUntil {
+            supervisor.queue.item(id: second.id)?.status == .running
+        })
+        XCTAssertTrue(supervisor.isCommandDispatched(for: second.id))
+    }
+
+    func testFoundationTransportReportsUnexpectedWorkerTermination() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-transport-death")
+        let scriptURL = root.appendingPathComponent("dying-worker.sh")
+        let script = """
+        #!/bin/sh
+        IFS= read -r line
+        exit 1
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        chmod(scriptURL.path, 0o755)
+        let transport = FoundationWorkerTransport(executableURL: scriptURL)
+        var terminationCount = 0
+        transport.terminationHandler = { terminationCount += 1 }
+
+        try transport.launch()
+        try transport.writeLine("do something\n")
+
+        XCTAssertTrue(
+            waitUntil(timeout: workerTransportTimeout) { terminationCount == 1 },
+            "worker process exit did not fire the transport termination handler"
+        )
+        XCTAssertFalse(transport.isRunning)
+    }
+
+    func testFoundationTransportDoesNotReportIntentionalTermination() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-transport-intentional")
+        let scriptURL = root.appendingPathComponent("idle-worker.sh")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          :
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        chmod(scriptURL.path, 0o755)
+        let transport = FoundationWorkerTransport(executableURL: scriptURL)
+        var terminationCount = 0
+        transport.terminationHandler = { terminationCount += 1 }
+
+        try transport.launch()
+        XCTAssertTrue(transport.isRunning)
+        transport.terminate()
+
+        XCTAssertTrue(
+            waitUntil(timeout: workerTransportTimeout) { !transport.isRunning },
+            "worker process did not stop after intentional termination"
+        )
+        // Give any stray termination callback a chance to (wrongly) fire.
+        _ = waitUntil(timeout: 0.5) { terminationCount > 0 }
+        XCTAssertEqual(terminationCount, 0, "intentional termination must not be reported as an unexpected exit")
+    }
+
     func testFoundationTransportLaunchesWritesAndTerminatesProcess() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-transport")
         let scriptURL = root.appendingPathComponent("record-worker.sh")
@@ -664,6 +797,7 @@ final class WorkerSupervisorTests: XCTestCase {
 private final class RecordingWorkerTransport: WorkerTransport {
     var outputHandler: ((String) -> Void)?
     var errorHandler: ((String) -> Void)?
+    var terminationHandler: (() -> Void)?
 
     private(set) var launchCount = 0
     private(set) var terminateCount = 0
@@ -682,6 +816,11 @@ private final class RecordingWorkerTransport: WorkerTransport {
     func terminate() {
         terminateCount += 1
         isRunning = false
+    }
+
+    func simulateUnexpectedTermination() {
+        isRunning = false
+        terminationHandler?()
     }
 
     func commands() throws -> [WorkerCommand] {

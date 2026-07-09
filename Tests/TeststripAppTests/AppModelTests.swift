@@ -16745,6 +16745,7 @@ private final class RecordingSecurityScopedResourceAccess: @unchecked Sendable {
 private final class RecordingWorkerTransport: WorkerTransport {
     var outputHandler: ((String) -> Void)?
     var errorHandler: ((String) -> Void)?
+    var terminationHandler: (() -> Void)?
 
     private(set) var lines: [String] = []
     private(set) var terminateCount = 0

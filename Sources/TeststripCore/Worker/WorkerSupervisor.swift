@@ -45,6 +45,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
     private var commandsByItemID: [WorkSessionID: WorkerCommand]
     private var dispatchedItemIDs: [WorkSessionID]
     private var timeoutsByItemID: [WorkSessionID: any WorkerTimeoutCancellation]
+    private var terminationRetriedItemIDs: Set<WorkSessionID>
 
     public init(
         queue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
@@ -62,6 +63,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         self.commandsByItemID = [:]
         self.dispatchedItemIDs = []
         self.timeoutsByItemID = [:]
+        self.terminationRetriedItemIDs = []
         self.transport.outputHandler = { [weak self] line in
             DispatchQueue.main.async { [weak self] in
                 self?.handleOutputLine(line)
@@ -70,6 +72,11 @@ public final class WorkerSupervisor: @unchecked Sendable {
         self.transport.errorHandler = { [weak self] line in
             DispatchQueue.main.async { [weak self] in
                 self?.handleErrorLine(line)
+            }
+        }
+        self.transport.terminationHandler = { [weak self] in
+            DispatchQueue.main.async { [weak self] in
+                self?.handleWorkerTermination()
             }
         }
     }
@@ -132,6 +139,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
     public func markCompleted(id: WorkSessionID) throws {
         commandsByItemID[id] = nil
         dispatchedItemIDs.removeAll { $0 == id }
+        terminationRetriedItemIDs.remove(id)
         cancelTimeout(for: id)
         queue.markCompleted(id: id)
         try dispatchRunnableItems()
@@ -173,6 +181,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         queue.cancelAll()
         commandsByItemID.removeAll()
         dispatchedItemIDs.removeAll()
+        terminationRetriedItemIDs.removeAll()
         cancelAllTimeouts()
         notifyQueueChanged()
         if let sendError {
@@ -200,8 +209,10 @@ public final class WorkerSupervisor: @unchecked Sendable {
         }
 
         commandsByItemID[itemID] = nil
+        terminationRetriedItemIDs.remove(itemID)
         for stoppedItemID in stoppedDispatchedItemIDs {
             cancelTimeout(for: stoppedItemID)
+            terminationRetriedItemIDs.remove(stoppedItemID)
             guard stoppedItemID != itemID else { continue }
             let command = commandsByItemID[stoppedItemID]
             commandsByItemID[stoppedItemID] = nil
@@ -288,6 +299,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         guard dispatchedItemIDs.contains(itemID) else { return }
         dispatchedItemIDs.removeAll { $0 == itemID }
         commandsByItemID[itemID] = nil
+        terminationRetriedItemIDs.remove(itemID)
         cancelTimeout(for: itemID)
         queue.markCompleted(id: itemID, detail: detail)
         try? dispatchRunnableItems()
@@ -299,8 +311,31 @@ public final class WorkerSupervisor: @unchecked Sendable {
         guard dispatchedItemIDs.contains(itemID) else { return }
         dispatchedItemIDs.removeAll { $0 == itemID }
         commandsByItemID[itemID] = nil
+        terminationRetriedItemIDs.remove(itemID)
         cancelTimeout(for: itemID)
         queue.markFailed(id: itemID, detail: detail)
+        try? dispatchRunnableItems()
+        notifyQueueChanged()
+    }
+
+    /// The worker process exited on its own (crash / OOM / OS reap). Retry each
+    /// in-flight item once on a fresh worker; if it dies a second time, fail it
+    /// and move on so a single poison item can't wedge the queue forever.
+    private func handleWorkerTermination() {
+        guard !dispatchedItemIDs.isEmpty else { return }
+        let affectedItemIDs = dispatchedItemIDs
+        dispatchedItemIDs.removeAll()
+        cancelAllTimeouts()
+        for itemID in affectedItemIDs {
+            if terminationRetriedItemIDs.contains(itemID) {
+                terminationRetriedItemIDs.remove(itemID)
+                let command = commandsByItemID[itemID]
+                commandsByItemID[itemID] = nil
+                queue.markFailed(id: itemID, detail: Self.workerExitedUnexpectedlyDetail(command: command))
+            } else {
+                terminationRetriedItemIDs.insert(itemID)
+            }
+        }
         try? dispatchRunnableItems()
         notifyQueueChanged()
     }
@@ -311,6 +346,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         }
         let itemID = dispatchedItemIDs.removeFirst()
         commandsByItemID[itemID] = nil
+        terminationRetriedItemIDs.remove(itemID)
         cancelTimeout(for: itemID)
         queue.markFailed(id: itemID, detail: line)
         try? dispatchRunnableItems()
@@ -352,6 +388,9 @@ public final class WorkerSupervisor: @unchecked Sendable {
         guard dispatchedItemIDs.contains(itemID) else { return }
         let timedOutItemIDs = dispatchedItemIDs
         dispatchedItemIDs.removeAll()
+        for timedOutItemID in timedOutItemIDs {
+            terminationRetriedItemIDs.remove(timedOutItemID)
+        }
         cancelAllTimeouts()
         transport.terminate()
         for timedOutItemID in timedOutItemIDs {
@@ -374,6 +413,12 @@ public final class WorkerSupervisor: @unchecked Sendable {
 
     private static func stoppedBecauseAnotherCommandTimedOutDetail(command: WorkerCommand?) -> String {
         let detail = "Worker stopped because another command timed out"
+        guard let command else { return detail }
+        return "\(detail): \(command.operationDescription)"
+    }
+
+    private static func workerExitedUnexpectedlyDetail(command: WorkerCommand?) -> String {
+        let detail = "Worker exited unexpectedly"
         guard let command else { return detail }
         return "\(detail): \(command.operationDescription)"
     }

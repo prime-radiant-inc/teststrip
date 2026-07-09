@@ -89,6 +89,7 @@ public struct WorkerRecoverySmoke {
 private final class RecordingWorkerTransport: WorkerTransport {
     var outputHandler: ((String) -> Void)?
     var errorHandler: ((String) -> Void)?
+    var terminationHandler: (() -> Void)?
 
     private(set) var lines: [String] = []
     private(set) var isRunning = false
