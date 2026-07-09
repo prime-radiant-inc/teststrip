@@ -45,6 +45,7 @@ struct TeststripApplication: App {
         )
         .commands {
             MetadataHistoryCommands(model: model)
+            MetadataActionCommands(model: model)
             AutopilotCommands(model: model)
             CullingCommands(model: model)
             SupportCommands(model: model)
@@ -88,6 +89,20 @@ private struct MetadataHistoryCommands: Commands {
             try model.redoMetadataChange()
         } catch {
             model.errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct MetadataActionCommands: Commands {
+    var model: AppModel
+
+    var body: some Commands {
+        CommandMenu("Metadata") {
+            Button("Batch Metadata…") {
+                model.requestBatchMetadataSheet()
+            }
+            .keyboardShortcut("m", modifiers: [.command, .option])
+            .disabled(model.isImporting || model.assets.isEmpty)
         }
     }
 }

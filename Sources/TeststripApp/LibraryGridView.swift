@@ -129,6 +129,9 @@ struct LibraryGridView: View {
             }
         }
         .navigationTitle(model.libraryTitle)
+        .onChange(of: model.batchMetadataRequestToken) { _, _ in
+            openBatchMetadataSheet()
+        }
         .toolbar {
             Menu {
                 Button {
@@ -211,13 +214,7 @@ struct LibraryGridView: View {
                 .disabled(isImporting || !model.canReconnectSourceRoot)
 
                 Button {
-                    batchMetadataDraft = BatchMetadataDraft(
-                        creator: model.defaultCreator,
-                        copyright: model.defaultCopyright
-                    )
-                    batchMetadataScope = model.selectedBatchAssetCount > 0 ? .selected : .visible
-                    isAllCatalogBatchMetadataConfirmed = false
-                    isReviewingBatchMetadata = true
+                    openBatchMetadataSheet()
                 } label: {
                     Label("Batch Metadata…", systemImage: "tag")
                 }
@@ -3061,6 +3058,16 @@ struct LibraryGridView: View {
         case .currentScope:
             return model.currentScopeBatchKeywordSuggestions
         }
+    }
+
+    private func openBatchMetadataSheet() {
+        batchMetadataDraft = BatchMetadataDraft(
+            creator: model.defaultCreator,
+            copyright: model.defaultCopyright
+        )
+        batchMetadataScope = model.selectedBatchAssetCount > 0 ? .selected : .visible
+        isAllCatalogBatchMetadataConfirmed = false
+        isReviewingBatchMetadata = true
     }
 
     private func applyVisibleBatchMetadataDraft() {

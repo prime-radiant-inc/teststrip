@@ -1372,6 +1372,25 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testRequestBatchMetadataSheetBumpsTokenForTheView() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-batch-meta-token")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: CatalogRepository(database: database),
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews2", isDirectory: true))
+            )
+        ))
+        let before = model.batchMetadataRequestToken
+        model.requestBatchMetadataSheet()
+        XCTAssertEqual(model.batchMetadataRequestToken, before + 1)
+    }
+
+    @MainActor
     func testBatchRatingFallsBackToFocusedAssetWithoutAMultiSelection() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-batch-rating-single")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)

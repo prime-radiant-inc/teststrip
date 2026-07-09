@@ -1672,6 +1672,14 @@ public final class AppModel {
     static let defaultCreatorDefaultsKey = "AppModel.defaultCreator"
     static let defaultCopyrightDefaultsKey = "AppModel.defaultCopyright"
 
+    // Bumped by the Metadata ▸ Batch Metadata… menu command so the library view
+    // can open the batch-metadata sheet from the keyboard without the action
+    // having to live as a top-level toolbar button.
+    public private(set) var batchMetadataRequestToken = 0
+    public func requestBatchMetadataSheet() {
+        batchMetadataRequestToken += 1
+    }
+
     // Set at import start from the import's autopilotAfterImport decision; the
     // imported asset IDs land in armedAutopilotImportAssetIDs once the import
     // completes, and autopilot runs once their evaluations all resolve.
