@@ -210,7 +210,10 @@ struct LibraryGridView: View {
                 .disabled(isImporting || !model.canReconnectSourceRoot)
 
                 Button {
-                    batchMetadataDraft = BatchMetadataDraft()
+                    batchMetadataDraft = BatchMetadataDraft(
+                        creator: model.defaultCreator,
+                        copyright: model.defaultCopyright
+                    )
                     batchMetadataScope = model.selectedBatchAssetCount > 0 ? .selected : .visible
                     isAllCatalogBatchMetadataConfirmed = false
                     isReviewingBatchMetadata = true

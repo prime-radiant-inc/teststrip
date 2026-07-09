@@ -25,6 +25,22 @@ final class AppModelSessionRestoreTests: XCTestCase {
         XCTAssertEqual(modelB.flagFilter, .pick)
     }
 
+    func testRestoresDefaultByline() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-byline")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        modelA.defaultCreator = "Jesse Vincent"
+        modelA.defaultCopyright = "© 2026 Jesse Vincent"
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(modelB.defaultCreator, "Jesse Vincent")
+        XCTAssertEqual(modelB.defaultCopyright, "© 2026 Jesse Vincent")
+    }
+
     func testRestoresSelectedAssetSetScope() throws {
         let directory = try makeTemporaryDirectory(named: "restore-scope")
         let defaults = try makeIsolatedDefaults()

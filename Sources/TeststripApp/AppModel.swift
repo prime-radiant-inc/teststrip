@@ -1656,6 +1656,22 @@ public final class AppModel {
     }
     static let autopilotEnabledDefaultsKey = "AppModel.autopilotEnabled"
 
+    // A photographer's byline is the same on every frame. These persist across
+    // sessions and pre-fill (never auto-write) the Creator/Copyright fields so a
+    // wire shooter types them once, not every take.
+    public var defaultCreator = "" {
+        didSet {
+            sessionRestoreDefaults?.set(defaultCreator, forKey: Self.defaultCreatorDefaultsKey)
+        }
+    }
+    public var defaultCopyright = "" {
+        didSet {
+            sessionRestoreDefaults?.set(defaultCopyright, forKey: Self.defaultCopyrightDefaultsKey)
+        }
+    }
+    static let defaultCreatorDefaultsKey = "AppModel.defaultCreator"
+    static let defaultCopyrightDefaultsKey = "AppModel.defaultCopyright"
+
     // Set at import start from the import's autopilotAfterImport decision; the
     // imported asset IDs land in armedAutopilotImportAssetIDs once the import
     // completes, and autopilot runs once their evaluations all resolve.
@@ -3242,6 +3258,8 @@ public final class AppModel {
         try model.reconstructAutopilotStateAfterLoad()
         if let sessionRestoreDefaults {
             model.autopilotEnabled = sessionRestoreDefaults.bool(forKey: autopilotEnabledDefaultsKey)
+            model.defaultCreator = sessionRestoreDefaults.string(forKey: defaultCreatorDefaultsKey) ?? ""
+            model.defaultCopyright = sessionRestoreDefaults.string(forKey: defaultCopyrightDefaultsKey) ?? ""
         }
         return model
     }

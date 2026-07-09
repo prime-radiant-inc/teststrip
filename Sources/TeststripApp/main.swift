@@ -49,6 +49,10 @@ struct TeststripApplication: App {
             CullingCommands(model: model)
             SupportCommands(model: model)
         }
+
+        Settings {
+            PreferencesView(model: model)
+        }
     }
 }
 
