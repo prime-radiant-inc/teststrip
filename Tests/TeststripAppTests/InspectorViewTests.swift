@@ -131,6 +131,31 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(groups[4].rows.map(\.value), ["tight crop", "0.12, 0.34, 0.56"])
     }
 
+    func testEvaluationRowsLeadWithPlainVerdictForScoredSignals() {
+        let sharp = InspectorEvaluationSignalGroup.groups(for: [
+            evaluationSignal(kind: .focus, value: .score(0.92))
+        ]).first?.rows.first
+        XCTAssertEqual(sharp?.verdict, "Sharp")
+        XCTAssertEqual(sharp?.value, "0.92")  // raw float stays available for Advanced
+
+        let blurred = InspectorEvaluationSignalGroup.groups(for: [
+            evaluationSignal(kind: .motionBlur, value: .score(0.84))
+        ]).first?.rows.first
+        XCTAssertEqual(blurred?.verdict, "Motion blur")
+
+        let exposed = InspectorEvaluationSignalGroup.groups(for: [
+            evaluationSignal(kind: .exposure, value: .score(0.5))
+        ]).first?.rows.first
+        XCTAssertEqual(exposed?.verdict, "Well exposed")
+
+        // A label-valued signal (already human) carries no verdict.
+        let object = InspectorEvaluationSignalGroup.groups(for: [
+            evaluationSignal(kind: .object, value: .label("dog"))
+        ]).first?.rows.first
+        XCTAssertNil(object?.verdict)
+        XCTAssertEqual(object?.value, "dog")
+    }
+
     func testEvaluationRowsKeepConfidenceAndProviderProvenance() {
         let signal = evaluationSignal(
             kind: .aesthetics,
@@ -158,7 +183,7 @@ final class InspectorViewTests: XCTestCase {
         let presentation = InspectorCaptionSuggestionPresentation(suggestions: [suggestion])
 
         XCTAssertTrue(presentation.isVisible)
-        XCTAssertEqual(presentation.title, "TESTSTRIP READS")
+        XCTAssertEqual(presentation.title, "Text found")
         XCTAssertEqual(presentation.actionLabel(for: suggestion), "Accept OCR caption")
         XCTAssertEqual(presentation.detailText(for: suggestion), "92% - apple-vision/Vision-OCR")
         XCTAssertEqual(presentation.helpText(for: suggestion), "Accept OCR caption: Invoice 123 Client ABC")

@@ -883,7 +883,7 @@ struct LibraryGridView: View {
                 Image(systemName: "sparkles")
                     .font(.caption)
                     .foregroundStyle(.orange)
-                Text("TESTSTRIP READS")
+                Text("Text found")
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.orange)
                 ForEach(model.activeLibraryFilterRows) { row in
@@ -934,7 +934,7 @@ struct LibraryGridView: View {
                     Image(systemName: "tag")
                         .font(.caption)
                         .foregroundStyle(.orange)
-                    Text("TESTSTRIP SUGGESTS")
+                    Text("Suggestions")
                         .font(.caption2.monospaced().weight(.semibold))
                         .foregroundStyle(.orange)
                     ForEach(rows) { row in
@@ -1007,7 +1007,7 @@ struct LibraryGridView: View {
 
             if !presentation.suggestionRows.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("TESTSTRIP SUGGESTS")
+                    Text("Suggestions")
                         .font(.caption2.monospaced().weight(.semibold))
                         .foregroundStyle(.orange)
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -3799,7 +3799,7 @@ private struct LoupeView: View {
                 .foregroundStyle(color)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
-                    Text("TESTSTRIP READS")
+                    Text("Text found")
                         .font(.caption2.monospaced().weight(.semibold))
                         .foregroundStyle(color)
                         .lineLimit(1)

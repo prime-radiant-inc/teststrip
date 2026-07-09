@@ -51,7 +51,7 @@ struct InspectorCaptionSuggestionPresentation: Equatable {
     }
 
     var title: String {
-        "TESTSTRIP READS"
+        "Text found"
     }
 
     func actionLabel(for suggestion: CaptionSuggestion) -> String {
@@ -130,6 +130,55 @@ struct InspectorEvaluationSignalRow: Equatable, Identifiable {
     var title: String
     var value: String
     var detail: String
+    /// A plain-English read of the score ("Sharp", "Motion blur", "Well
+    /// exposed"). nil for kinds whose value is already human (an object label,
+    /// OCR text, a face count). The raw float lives in `value` (Advanced only).
+    var verdict: String?
+}
+
+/// Turns a raw signal score into a photographer-facing verdict. Thresholds
+/// follow the same score direction the culling ranker uses (see
+/// CullingQualityScore): higher focus/aesthetics/framing/face scores are
+/// better, higher motion-blur is worse, and exposure is luminance centered on
+/// a well-exposed midtone. Tuned for legibility, not ranking — adjust freely.
+enum SignalVerdict {
+    static func text(for kind: EvaluationKind, score: Double) -> String? {
+        let value = min(max(score, 0), 1)
+        switch kind {
+        case .focus:
+            return band(value, high: "Sharp", mid: "Slightly soft", low: "Soft")
+        case .eyeSharpness:
+            return band(value, high: "Sharp eyes", mid: "Soft eyes", low: "Blurred eyes")
+        case .motionBlur:
+            // Higher score = more blur (defect).
+            return band(value, high: "Motion blur", mid: "Slight motion", low: "Steady")
+        case .exposure:
+            // Luminance: a well-exposed frame sits near the midtones.
+            if value < 0.38 { return "Dark" }
+            if value > 0.66 { return "Bright" }
+            return "Well exposed"
+        case .aesthetics:
+            return band(value, high: "Strong", mid: "Decent", low: "Weak")
+        case .framing:
+            return band(value, high: "Well framed", mid: "OK framing", low: "Loose framing")
+        case .faceQuality:
+            return band(value, high: "Clear face", mid: "Soft face", low: "Poor face")
+        case .eyesOpen:
+            return value >= 0.6 ? "Eyes open" : "Eyes closed"
+        case .smile:
+            return value >= 0.6 ? "Smiling" : "Neutral"
+        case .novelty:
+            return band(value, high: "Distinct", mid: "Similar", low: "Near-duplicate")
+        case .object, .ocrText, .faceCount, .colorPalette, .visualSimilarity:
+            return nil
+        }
+    }
+
+    private static func band(_ value: Double, high: String, mid: String, low: String) -> String {
+        if value >= 0.66 { return high }
+        if value >= 0.4 { return mid }
+        return low
+    }
 }
 
 struct InspectorEvaluationSignalGroup: Equatable, Identifiable {
@@ -174,11 +223,18 @@ struct InspectorEvaluationSignalGroup: Equatable, Identifiable {
     }
 
     private static func row(for signal: EvaluationSignal, index: Int) -> InspectorEvaluationSignalRow {
-        InspectorEvaluationSignalRow(
+        let verdict: String?
+        if case .score(let score) = signal.value {
+            verdict = SignalVerdict.text(for: signal.kind, score: score)
+        } else {
+            verdict = nil
+        }
+        return InspectorEvaluationSignalRow(
             id: "\(index)-\(signal.kind.rawValue)-\(signal.provenance.provider)-\(signal.provenance.model)",
             title: title(for: signal.kind),
             value: valueText(for: signal.value),
-            detail: "\(confidenceText(signal.confidence)) - \(signal.provenance.provider)/\(signal.provenance.model)"
+            detail: "\(confidenceText(signal.confidence)) - \(signal.provenance.provider)/\(signal.provenance.model)",
+            verdict: verdict
         )
     }
 
@@ -394,6 +450,7 @@ struct InspectorMetadataSyncStatus: Equatable {
 struct InspectorView: View {
     var model: AppModel
     @State private var metadataDraft = InspectorMetadataDraft()
+    @State private var isShowingSignalDetails = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -841,7 +898,7 @@ struct InspectorView: View {
                 Image(systemName: "sparkles")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.orange)
-                Text("TESTSTRIP SUGGESTS")
+                Text("Suggestions")
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.orange)
             }
@@ -991,8 +1048,8 @@ struct InspectorView: View {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
                     .foregroundStyle(.orange)
-                Text("TESTSTRIP SIGNALS")
-                    .font(.caption2.monospaced().weight(.semibold))
+                Text("What Teststrip sees")
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.orange)
             }
             ForEach(groups) { group in
@@ -1001,17 +1058,35 @@ struct InspectorView: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                     ForEach(group.rows) { row in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(row.title): \(row.value)")
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(row.title)
                                 .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer(minLength: 8)
+                            Text(row.verdict ?? row.value)
+                                .font(.caption.weight(.medium))
                                 .lineLimit(1)
-                            Text(row.detail)
-                                .font(.caption2)
+                        }
+                    }
+                }
+            }
+
+            DisclosureGroup(isExpanded: $isShowingSignalDetails) {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(groups) { group in
+                        ForEach(group.rows) { row in
+                            Text("\(row.title): \(row.value) · \(row.detail)")
+                                .font(.caption2.monospaced())
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
                     }
                 }
+                .padding(.top, 4)
+            } label: {
+                Text("Technical details")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(10)
