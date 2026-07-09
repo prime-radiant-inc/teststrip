@@ -31,7 +31,7 @@ final class PeoplePresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.headerSummary, "0 people · 44 photos with face signals")
-        XCTAssertEqual(presentation.reviewStripTitle, "TESTSTRIP · 3 PHOTOS NEED FACE REVIEW")
+        XCTAssertEqual(presentation.reviewStripTitle, "3 photos need face review")
         XCTAssertEqual(presentation.reviewStripStatusText, "2 queues")
         XCTAssertEqual(presentation.reviewStripDetail, "44 photos have face-quality signals; review queues can be named from selected photos.")
         XCTAssertEqual(presentation.reviewCards.map(\.title), ["Unnamed faces", "Face quality checks"])
@@ -62,10 +62,10 @@ final class PeoplePresentationTests: XCTestCase {
         let presentation = PeoplePresentation(totalAssetCount: 42, evaluationSummaries: [])
 
         XCTAssertEqual(presentation.headerSummary, "0 people · 42 photos")
-        XCTAssertEqual(presentation.reviewStripTitle, "TESTSTRIP · NO FACE REVIEW SIGNALS")
+        XCTAssertEqual(presentation.reviewStripTitle, "No faces found yet")
         XCTAssertEqual(presentation.reviewStripStatusText, "0 queues")
-        XCTAssertEqual(presentation.statusTitle, "TESTSTRIP · NO FACE REVIEW SIGNALS")
-        XCTAssertEqual(presentation.statusDetail, "Run evaluation on catalog photos to populate local face review queues.")
+        XCTAssertEqual(presentation.statusTitle, "No faces found yet")
+        XCTAssertEqual(presentation.statusDetail, "Scan these photos to find faces to review.")
         XCTAssertEqual(presentation.reviewCards, [])
         XCTAssertEqual(presentation.signalRows.map(\.countText), ["0", "0"])
         XCTAssertEqual(presentation.signalRows.map(\.filterKind), [nil, nil])
@@ -100,7 +100,7 @@ final class PeoplePresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.headerSummary, "0 people · 5 photos with face signals")
-        XCTAssertEqual(presentation.reviewStripTitle, "TESTSTRIP · 5 PHOTOS NEED FACE REVIEW")
+        XCTAssertEqual(presentation.reviewStripTitle, "5 photos need face review")
         XCTAssertEqual(presentation.signalRows.map(\.title), ["Unnamed faces", "Face quality review"])
         XCTAssertEqual(presentation.signalRows.map(\.countText), ["5", "5"])
         XCTAssertEqual(presentation.signalRows.map(\.filterKind), [.faceQuality, .faceQuality])
@@ -179,7 +179,7 @@ final class PeoplePresentationTests: XCTestCase {
             faceObservationAssetCount: 4
         )
 
-        XCTAssertEqual(presentation.reviewStripTitle, "TESTSTRIP · 3 FACES NEED A NAME")
+        XCTAssertEqual(presentation.reviewStripTitle, "3 faces need a name")
         XCTAssertEqual(presentation.reviewStripStatusText, "1 group matches confirmed people")
         XCTAssertEqual(
             presentation.reviewStripDetail,

@@ -505,27 +505,27 @@ struct PeoplePresentation: Equatable {
     }
 
     var statusTitle: String {
-        photosWithFaceSignals > 0 ? "TESTSTRIP · FACE REVIEW QUEUE" : "TESTSTRIP · NO FACE REVIEW SIGNALS"
+        photosWithFaceSignals > 0 ? "Faces to review" : "No faces found yet"
     }
 
     var statusDetail: String {
         if photosWithFaceSignals > 0 {
             return "Review \(photosWithFaceSignals) photos with unnamed face signals. Select photos, then name the selection."
         }
-        return "Run evaluation on catalog photos to populate local face review queues."
+        return "Scan these photos to find faces to review."
     }
 
     var reviewStripTitle: String {
         if !faceSuggestions.isEmpty {
             let totalFaces = faceSuggestions.reduce(0) { $0 + $1.faceIDs.count }
             return totalFaces == 1
-                ? "TESTSTRIP · 1 FACE NEEDS A NAME"
-                : "TESTSTRIP · \(totalFaces) FACES NEED A NAME"
+                ? "1 face needs a name"
+                : "\(totalFaces) faces need a name"
         }
         guard photosWithFaceSignals > 0 else {
-            return "TESTSTRIP · NO FACE REVIEW SIGNALS"
+            return "No faces found yet"
         }
-        return "TESTSTRIP · \(Self.photoCountDescription(photosWithDetectedFaces).uppercased()) NEED FACE REVIEW"
+        return "\(Self.photoCountDescription(photosWithDetectedFaces)) need face review"
     }
 
     var reviewStripStatusText: String {
