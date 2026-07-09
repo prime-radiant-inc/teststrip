@@ -4521,13 +4521,13 @@ public final class AppModel {
         case .move(let direction):
             moveGridSelection(direction, columns: columns)
         case .rating(let rating):
-            try setRatingForSelectedAsset(rating)
+            try setRatingForSelectedAssets(rating)
         case .pick:
-            try setFlagForSelectedAsset(.pick)
+            try setFlagForSelectedAssets(.pick)
         case .reject:
-            try setFlagForSelectedAsset(.reject)
+            try setFlagForSelectedAssets(.reject)
         case .clearFlag:
-            try setFlagForSelectedAsset(nil)
+            try setFlagForSelectedAssets(nil)
         case .openLoupe:
             guard let selectedAssetID else { return }
             openAssetInLoupe(selectedAssetID)
@@ -5024,6 +5024,31 @@ public final class AppModel {
         }
     }
 
+    /// Batch rating/flag/color across the whole grid multi-selection when one is
+    /// active, otherwise the single focused asset. One undo group covers every
+    /// changed photo, so "select 12 near-dupes, reject 11" is a single gesture.
+    public func setRatingForSelectedAssets(_ rating: Int) throws {
+        guard (0...5).contains(rating) else {
+            throw TeststripError.invalidState("rating must be between 0 and 5")
+        }
+        try updateSelectedAssetsMetadata(label: "Rating") { metadata in
+            metadata.rating = rating
+        }
+    }
+
+    public func setFlagForSelectedAssets(_ flag: PickFlag?) throws {
+        try updateSelectedAssetsMetadata(label: "Flag") { metadata in
+            metadata.flag = flag
+        }
+        try updateActiveCullingSessionProgressAfterFlagChange()
+    }
+
+    public func setColorLabelForSelectedAssets(_ colorLabel: ColorLabel?) throws {
+        try updateSelectedAssetsMetadata(label: "Color label") { metadata in
+            metadata.colorLabel = colorLabel
+        }
+    }
+
     public func setKeywordTextForSelectedAsset(_ keywordText: String) throws {
         try updateSelectedAssetMetadata(label: "Keywords") { metadata in
             metadata.keywords = Self.keywords(from: keywordText)
@@ -5473,6 +5498,37 @@ public final class AppModel {
             before: originalAsset.metadata,
             after: updatedMetadata
         )])
+    }
+
+    private func updateSelectedAssetsMetadata(
+        label: String,
+        _ update: (inout AssetMetadata) throws -> Void
+    ) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let assetIDs = currentManualSelectionAssetIDs
+        guard !assetIDs.isEmpty else {
+            throw TeststripError.invalidState("no selected asset")
+        }
+        var changes: [MetadataChange] = []
+        for assetID in assetIDs {
+            let originalAsset = try catalog.repository.asset(id: assetID)
+            var updatedMetadata = originalAsset.metadata
+            try update(&updatedMetadata)
+            guard updatedMetadata != originalAsset.metadata else { continue }
+            try applyMetadataSnapshot(assetID: assetID, metadata: updatedMetadata)
+            changes.append(MetadataChange(
+                assetID: assetID,
+                before: originalAsset.metadata,
+                after: updatedMetadata
+            ))
+        }
+        guard !changes.isEmpty else { return }
+        let scopedLabel = changes.count > 1
+            ? "\(label) · \(Self.photoCountDescription(changes.count))"
+            : label
+        recordMetadataChangeGroup(label: scopedLabel, changes: changes)
     }
 
     private static func keywords(from keywordText: String) -> [String] {

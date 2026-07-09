@@ -641,6 +641,12 @@ struct InspectorView: View {
             }
 
             labelButtons(for: asset)
+
+            if model.selectedBatchAssetCount > 1 {
+                Text("Rating, flag, and label apply to all \(model.selectedBatchAssetCount) selected photos")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -648,7 +654,7 @@ struct InspectorView: View {
         HStack(spacing: 2) {
             ForEach(Array(1...5), id: \.self) { rating in
                 Button {
-                    apply { try model.setRatingForSelectedAsset(rating) }
+                    apply { try model.setRatingForSelectedAssets(rating) }
                 } label: {
                     Image(systemName: "star.fill")
                         .font(.system(size: 13, weight: .semibold))
@@ -659,7 +665,7 @@ struct InspectorView: View {
                 .accessibilityLabel("Rate \(rating)")
             }
             Button {
-                apply { try model.setRatingForSelectedAsset(0) }
+                apply { try model.setRatingForSelectedAssets(0) }
             } label: {
                 Text("0")
                     .font(.caption2.monospaced().weight(.semibold))
@@ -674,7 +680,7 @@ struct InspectorView: View {
     private func flagButtons(for asset: Asset) -> some View {
         HStack(spacing: 6) {
             Button {
-                apply { try model.setFlagForSelectedAsset(.pick) }
+                apply { try model.setFlagForSelectedAssets(.pick) }
             } label: {
                 Image(systemName: "flag.fill")
                     .foregroundStyle(asset.metadata.flag == .pick ? .green : .secondary)
@@ -683,7 +689,7 @@ struct InspectorView: View {
             .help("Pick")
             .accessibilityLabel("Pick")
             Button {
-                apply { try model.setFlagForSelectedAsset(.reject) }
+                apply { try model.setFlagForSelectedAssets(.reject) }
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(asset.metadata.flag == .reject ? .red : .secondary)
@@ -692,7 +698,7 @@ struct InspectorView: View {
             .help("Reject")
             .accessibilityLabel("Reject")
             Button {
-                apply { try model.setFlagForSelectedAsset(nil) }
+                apply { try model.setFlagForSelectedAssets(nil) }
             } label: {
                 Image(systemName: "minus.circle")
                     .foregroundStyle(asset.metadata.flag == nil ? .primary : .secondary)
@@ -709,7 +715,7 @@ struct InspectorView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Button {
-                apply { try model.setColorLabelForSelectedAsset(nil) }
+                apply { try model.setColorLabelForSelectedAssets(nil) }
             } label: {
                 Image(systemName: "slash.circle")
                     .foregroundStyle(asset.metadata.colorLabel == nil ? .primary : .secondary)
@@ -719,7 +725,7 @@ struct InspectorView: View {
             .accessibilityLabel("Clear label")
             ForEach(ColorLabel.allCases, id: \.self) { label in
                 Button {
-                    apply { try model.setColorLabelForSelectedAsset(label) }
+                    apply { try model.setColorLabelForSelectedAssets(label) }
                 } label: {
                     Circle()
                         .fill(color(for: label))

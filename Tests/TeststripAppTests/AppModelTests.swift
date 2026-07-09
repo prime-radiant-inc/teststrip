@@ -1332,6 +1332,77 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: outsideURL), Data("outside original raw bytes".utf8))
     }
 
+    @MainActor
+    func testBatchFlagAppliesToWholeSelectionInOneUndoGroup() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-batch-flag")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assets = try (0..<3).map { index -> Asset in
+            let url = photosDirectory.appendingPathComponent("photo-\(index).png")
+            try writeTestPNG(to: url)
+            return makeAsset(id: "batch-flag-\(index)", path: url.path, rating: 0)
+        }
+        try repository.upsert(assets)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        model.setBatchSelection(assets[0].id, isSelected: true)
+        model.setBatchSelection(assets[2].id, isSelected: true)
+
+        try model.setFlagForSelectedAssets(.reject)
+
+        // Both selected photos are rejected; the unselected one is untouched.
+        XCTAssertEqual(try repository.asset(id: assets[0].id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: assets[2].id).metadata.flag, .reject)
+        XCTAssertNil(try repository.asset(id: assets[1].id).metadata.flag)
+
+        // A single undo reverts the whole selection at once (one change group).
+        try model.undoMetadataChange()
+        XCTAssertNil(try repository.asset(id: assets[0].id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: assets[2].id).metadata.flag)
+    }
+
+    @MainActor
+    func testBatchRatingFallsBackToFocusedAssetWithoutAMultiSelection() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-batch-rating-single")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assets = try (0..<2).map { index -> Asset in
+            let url = photosDirectory.appendingPathComponent("solo-\(index).png")
+            try writeTestPNG(to: url)
+            return makeAsset(id: "batch-rating-\(index)", path: url.path, rating: 0)
+        }
+        try repository.upsert(assets)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        model.select(assets[1].id)
+
+        try model.setRatingForSelectedAssets(5)
+
+        // With no batch selection, only the focused asset is rated.
+        XCTAssertEqual(try repository.asset(id: assets[1].id).metadata.rating, 5)
+        XCTAssertEqual(try repository.asset(id: assets[0].id).metadata.rating, 0)
+    }
+
     func testWorkerBackedBatchMetadataRefreshesXmpStateOnceForBatch() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-batch-metadata")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
