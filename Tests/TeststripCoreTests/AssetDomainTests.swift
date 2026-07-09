@@ -29,6 +29,16 @@ final class AssetDomainTests: XCTestCase {
         XCTAssertEqual(try AssetMetadata.validated(rating: 5, colorLabel: nil, flag: nil, keywords: []).rating, 5)
     }
 
+    func testHasWrittenPortableMetadataReflectsUserWrites() {
+        XCTAssertFalse(AssetMetadata().hasWrittenPortableMetadata)
+        XCTAssertTrue(AssetMetadata(rating: 1).hasWrittenPortableMetadata)
+        XCTAssertTrue(AssetMetadata(flag: .reject).hasWrittenPortableMetadata)
+        XCTAssertTrue(AssetMetadata(keywords: ["beach"]).hasWrittenPortableMetadata)
+        XCTAssertTrue(AssetMetadata(creator: "Jesse").hasWrittenPortableMetadata)
+        // Empty strings are not writes.
+        XCTAssertFalse(AssetMetadata(caption: "", creator: "").hasWrittenPortableMetadata)
+    }
+
     func testMetadataDecodingRejectsInvalidRating() {
         let data = """
         {

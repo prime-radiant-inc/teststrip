@@ -29,6 +29,20 @@ public struct AssetMetadata: Codable, Equatable, Sendable {
     private static let validRatingRange = 0...5
     private static let invalidRatingMessage = "rating must be between 0 and 5"
 
+    /// True once the user has set any portable field that mirrors to an XMP
+    /// sidecar. A sidecar is written only after such a set (non-destructive), so
+    /// this doubles as "a sidecar exists for this asset" — used to show a
+    /// positive "Saved to sidecar" confirmation when nothing is pending.
+    public var hasWrittenPortableMetadata: Bool {
+        rating > 0
+            || flag != nil
+            || colorLabel != nil
+            || !keywords.isEmpty
+            || !(caption ?? "").isEmpty
+            || !(creator ?? "").isEmpty
+            || !(copyright ?? "").isEmpty
+    }
+
     public init(
         rating: Int = 0,
         colorLabel: ColorLabel? = nil,

@@ -225,6 +225,28 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertEqual(status.catalogGenerationText, "Catalog generation 7")
     }
 
+    func testMetadataSyncStatusConfirmsSavedSidecarWhenCleanAndWritten() throws {
+        // Portable metadata set, nothing pending or in conflict → positive
+        // "Saved to sidecar" confirmation (the wire shooter's proof of the write).
+        let asset = makeAsset(id: "saved", metadata: AssetMetadata(rating: 5, creator: "Jesse"))
+
+        let status = try XCTUnwrap(InspectorMetadataSyncStatus(
+            asset: asset,
+            pendingItems: [],
+            conflictItems: []
+        ))
+
+        XCTAssertEqual(status.kind, .synced)
+        XCTAssertEqual(status.title, "Saved to sidecar")
+        XCTAssertEqual(status.sidecarFilename, "saved.jpg.xmp")
+    }
+
+    func testMetadataSyncStatusIsAbsentWhenNothingWrittenYet() throws {
+        // An untouched asset has no sidecar and nothing to confirm.
+        let asset = makeAsset(id: "untouched", metadata: AssetMetadata())
+        XCTAssertNil(InspectorMetadataSyncStatus(asset: asset, pendingItems: [], conflictItems: []))
+    }
+
     func testMetadataSyncStatusPresentationPrefersConflictOverPending() throws {
         let asset = makeAsset(id: "conflict", metadata: AssetMetadata(rating: 4))
         let pending = MetadataSyncItem(

@@ -228,6 +228,7 @@ struct InspectorMetadataSyncStatus: Equatable {
     enum Kind: Equatable {
         case pending
         case conflict
+        case synced
     }
 
     enum ConflictSidecarMetadataState: Equatable {
@@ -311,7 +312,25 @@ struct InspectorMetadataSyncStatus: Equatable {
             )
             return
         }
+        // Positive confirmation: the user has written portable metadata and
+        // there's nothing pending or in conflict, so the XMP sidecar is on disk
+        // and current. Otherwise there is nothing to confirm.
+        if asset.metadata.hasWrittenPortableMetadata {
+            self.init(syncedSidecarFilename: asset.originalURL.appendingPathExtension("xmp").lastPathComponent)
+            return
+        }
         return nil
+    }
+
+    private init(syncedSidecarFilename: String) {
+        self.kind = .synced
+        self.title = "Saved to sidecar"
+        self.detail = ""
+        self.sidecarFilename = syncedSidecarFilename
+        self.sidecarPath = ""
+        self.catalogGenerationText = ""
+        self.conflictRows = []
+        self.conflictActions = []
     }
 
     private init(
@@ -548,7 +567,20 @@ struct InspectorView: View {
         }
     }
 
+    @ViewBuilder
     private func metadataSyncStatus(_ status: InspectorMetadataSyncStatus) -> some View {
+        if status.kind == .synced {
+            // A calm, human confirmation — not the pending/conflict diagnostics.
+            Label("\(status.title) · \(status.sidecarFilename)", systemImage: "checkmark.seal.fill")
+                .font(.caption)
+                .foregroundStyle(.green)
+                .lineLimit(1)
+        } else {
+            metadataSyncDiagnostics(status)
+        }
+    }
+
+    private func metadataSyncDiagnostics(_ status: InspectorMetadataSyncStatus) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(status.title, systemImage: status.kind == .conflict ? "exclamationmark.triangle.fill" : "arrow.triangle.2.circlepath")
                 .font(.caption)
@@ -601,6 +633,8 @@ struct InspectorView: View {
                 .disabled(!model.canRetrySelectedMetadataSync)
             case .conflict:
                 metadataConflictControls(status.conflictActions)
+            case .synced:
+                EmptyView()
             }
         }
     }
