@@ -5,6 +5,19 @@
 Tier A = implement now (defects + legibility, aligned with the approved
 "simpler & clearer" direction). Tier B = product decisions held for Jesse.
 
+**Implementation status (2026-07-08): all of Tier A and Tier B landed on `main`.**
+Tier A: A1 Review-row a11y, A2 icon labels, A3 (safe subset — "keep" not
+"commit", de-doubled subtitle), A4 signal verdicts + "What Teststrip sees"
+headers, A5 People/Places empty states, A6 flattened Evaluate + ⇧⌘E, A7 search
+placeholder + tips popover. Tier B: batch pick/reject/rate across a selection,
+default byline preference (Settings ⌘,), "Saved to sidecar" confirmation, Batch
+Metadata command ⌥⌘M, search-field dedup, Cull/Find-Best-Shots differentiated
+(NOT merged, per recommendation). Deferred with rationale: the wide
+"photographs→photos"/"Needs Evaluation" rename (matcher-entangled) and the
+People all-caps eyebrows (coherent tested pattern). A4's rendered verdicts are
+unit-verified but were not visually confirmed live (no worker signals this
+session).
+
 ## Method
 
 Six persona subagents (first-timer, event/wedding photographer, family
