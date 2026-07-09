@@ -262,6 +262,56 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
     }
 
+    func testNavigateBackAndForwardMovesThroughSidebarViewHistory() throws {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        XCTAssertFalse(model.canNavigateBack)
+        XCTAssertFalse(model.canNavigateForward)
+
+        try model.selectSidebarTarget(.copilot)
+        try model.selectSidebarTarget(.timeline)
+        try model.selectSidebarTarget(.search)
+        XCTAssertEqual(model.selectedView, .search)
+        XCTAssertTrue(model.canNavigateBack)
+        XCTAssertFalse(model.canNavigateForward)
+
+        try model.navigateBack()
+        XCTAssertEqual(model.selectedView, .timeline)
+        XCTAssertTrue(model.canNavigateForward)
+
+        try model.navigateBack()
+        XCTAssertEqual(model.selectedView, .copilot)
+        XCTAssertFalse(model.canNavigateBack)
+
+        try model.navigateForward()
+        XCTAssertEqual(model.selectedView, .timeline)
+        try model.navigateForward()
+        XCTAssertEqual(model.selectedView, .search)
+        XCTAssertFalse(model.canNavigateForward)
+    }
+
+    func testNavigatingToANewViewAfterGoingBackClearsForwardHistory() throws {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        try model.selectSidebarTarget(.copilot)
+        try model.selectSidebarTarget(.timeline)
+
+        try model.navigateBack()
+        XCTAssertEqual(model.selectedView, .copilot)
+        XCTAssertTrue(model.canNavigateForward)
+
+        try model.selectSidebarTarget(.search)
+        XCTAssertFalse(model.canNavigateForward)
+
+        try model.navigateBack()
+        XCTAssertEqual(model.selectedView, .copilot)
+    }
+
+    func testRepeatingTheCurrentViewDoesNotGrowNavigationHistory() throws {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        try model.selectSidebarTarget(.copilot)
+        try model.selectSidebarTarget(.copilot)
+        XCTAssertFalse(model.canNavigateBack)
+    }
+
     func testSelectNextAssetMovesSelectionForwardThroughLoadedAssets() {
         let first = makeAsset(id: "first", size: 1)
         let second = makeAsset(id: "second", size: 2)

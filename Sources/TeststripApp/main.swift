@@ -45,6 +45,7 @@ struct TeststripApplication: App {
         )
         .commands {
             MetadataHistoryCommands(model: model)
+            NavigationCommands(model: model)
             MetadataActionCommands(model: model)
             AutopilotCommands(model: model)
             CullingCommands(model: model)
@@ -87,6 +88,42 @@ private struct MetadataHistoryCommands: Commands {
     private func redo() {
         do {
             try model.redoMetadataChange()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct NavigationCommands: Commands {
+    var model: AppModel
+
+    var body: some Commands {
+        CommandMenu("Go") {
+            Button("Back") {
+                navigateBack()
+            }
+            .keyboardShortcut("[", modifiers: [.command, .shift])
+            .disabled(!model.canNavigateBack)
+
+            Button("Forward") {
+                navigateForward()
+            }
+            .keyboardShortcut("]", modifiers: [.command, .shift])
+            .disabled(!model.canNavigateForward)
+        }
+    }
+
+    private func navigateBack() {
+        do {
+            try model.navigateBack()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func navigateForward() {
+        do {
+            try model.navigateForward()
         } catch {
             model.errorMessage = error.localizedDescription
         }

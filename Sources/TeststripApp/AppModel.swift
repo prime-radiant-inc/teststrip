@@ -1431,6 +1431,12 @@ public final class AppModel {
     }
     public var assets: [Asset]
     public var totalAssetCount: Int
+    // Global view history so ⌘⇧[ / ⌘⇧] step back and forth through the
+    // sidebar destinations the user has visited this session.
+    private var navigationBackStack: [SidebarRowTarget] = []
+    private var navigationForwardStack: [SidebarRowTarget] = []
+    private var currentNavigationTarget: SidebarRowTarget?
+    private var isRestoringNavigation = false
     public var selectedAssetID: AssetID? {
         didSet { persistSessionState() }
     }
@@ -3478,6 +3484,51 @@ public final class AppModel {
     }
 
     public func selectSidebarTarget(_ target: SidebarRowTarget) throws {
+        try applySidebarTarget(target)
+        recordNavigation(to: target)
+    }
+
+    /// True when there is an earlier view to return to via `navigateBack()`.
+    public var canNavigateBack: Bool { !navigationBackStack.isEmpty }
+
+    /// True when a `navigateBack()` can be undone via `navigateForward()`.
+    public var canNavigateForward: Bool { !navigationForwardStack.isEmpty }
+
+    public func navigateBack() throws {
+        guard let previous = navigationBackStack.last else { return }
+        navigationBackStack.removeLast()
+        if let current = currentNavigationTarget {
+            navigationForwardStack.append(current)
+        }
+        try restoreNavigation(to: previous)
+    }
+
+    public func navigateForward() throws {
+        guard let next = navigationForwardStack.last else { return }
+        navigationForwardStack.removeLast()
+        if let current = currentNavigationTarget {
+            navigationBackStack.append(current)
+        }
+        try restoreNavigation(to: next)
+    }
+
+    private func recordNavigation(to target: SidebarRowTarget) {
+        guard !isRestoringNavigation else { return }
+        if let current = currentNavigationTarget, current != target {
+            navigationBackStack.append(current)
+            navigationForwardStack.removeAll()
+        }
+        currentNavigationTarget = target
+    }
+
+    private func restoreNavigation(to target: SidebarRowTarget) throws {
+        isRestoringNavigation = true
+        defer { isRestoringNavigation = false }
+        try applySidebarTarget(target)
+        currentNavigationTarget = target
+    }
+
+    private func applySidebarTarget(_ target: SidebarRowTarget) throws {
         switch target {
         case .allPhotographs:
             selectedAssetSetID = nil
