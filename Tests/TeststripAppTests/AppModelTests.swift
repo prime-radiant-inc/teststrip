@@ -891,7 +891,7 @@ final class AppModelTests: XCTestCase {
         )
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [asset], totalAssetCount: 3)
 
-        XCTAssertEqual(model.libraryCountText, "Showing 1 of 3 photographs")
+        XCTAssertEqual(model.libraryCountText, "Showing 1 of 3 photos")
     }
 
     func testLibraryTitleReflectsSelectedCatalogScope() {
@@ -4690,7 +4690,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.assets.count, 120)
         XCTAssertEqual(model.totalAssetCount, 501)
-        XCTAssertEqual(model.libraryCountText, "Showing 120 of 501 photographs")
+        XCTAssertEqual(model.libraryCountText, "Showing 120 of 501 photos")
     }
 
     func testLoadMoreAssetsAppendsNextCatalogPage() throws {
@@ -4728,7 +4728,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.last?.id, AssetID(rawValue: "asset-239"))
         XCTAssertEqual(model.totalAssetCount, 501)
         XCTAssertTrue(model.hasMoreAssets)
-        XCTAssertEqual(model.libraryCountText, "Showing 240 of 501 photographs")
+        XCTAssertEqual(model.libraryCountText, "Showing 240 of 501 photos")
     }
 
     func testPagingSynthetic100kCatalogKeepsLoadedAssetWindowBounded() throws {
@@ -4761,7 +4761,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 100_000)
         XCTAssertTrue(model.hasPreviousAssets)
         XCTAssertTrue(model.hasMoreAssets)
-        XCTAssertEqual(model.libraryCountText, "Showing 2281-2520 of 100000 photographs")
+        XCTAssertEqual(model.libraryCountText, "Showing 2281-2520 of 100000 photos")
     }
 
     func testLoadingSynthetic100kCatalogDoesNotReadEveryFolderPath() throws {
@@ -4823,7 +4823,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 600)
         XCTAssertTrue(model.hasPreviousAssets)
         XCTAssertTrue(model.hasMoreAssets)
-        XCTAssertEqual(model.libraryCountText, "Showing 121-360 of 600 photographs")
+        XCTAssertEqual(model.libraryCountText, "Showing 121-360 of 600 photos")
     }
 
     func testApplyingLibraryFiltersLoadsMatchingCatalogAssets() throws {
@@ -4877,7 +4877,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [AssetID(rawValue: "keeper")])
         XCTAssertEqual(model.selectedAssetID, AssetID(rawValue: "keeper"))
         XCTAssertEqual(model.totalAssetCount, 1)
-        XCTAssertEqual(model.libraryCountText, "1 photograph")
+        XCTAssertEqual(model.libraryCountText, "1 photo")
     }
 
     func testApplyingLibraryFiltersUsesFolderPrefix() throws {
@@ -5208,7 +5208,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.activeLibraryFilterRows, [
             ActiveLibraryFilterRow(title: "Pick", target: .reviewQueue(.picks)),
             ActiveLibraryFilterRow(title: "Rating >= 5", target: .reviewQueue(.fiveStars)),
-            ActiveLibraryFilterRow(title: "Needs Evaluation", target: .reviewQueue(.needsEvaluation)),
+            ActiveLibraryFilterRow(title: "Not analyzed yet", target: .reviewQueue(.needsEvaluation)),
             ActiveLibraryFilterRow(title: "Session: cull-42", target: .workSession(WorkSessionID(rawValue: "cull-42"))),
             ActiveLibraryFilterRow(title: "Import: import-7", target: .workSession(WorkSessionID(rawValue: "import-7"))),
             ActiveLibraryFilterRow(title: "Source: Missing", target: .sourceAvailability(.missing)),
@@ -5707,7 +5707,7 @@ final class AppModelTests: XCTestCase {
         let filtered = makeAsset(id: "filtered", path: "/Photos/Job/filtered.jpg", rating: 5, keywords: ["selected"])
         let unfiltered = makeAsset(id: "unfiltered", path: "/Photos/Job/unfiltered.jpg", rating: 2)
         let (model, _) = try makeModelWithCatalogAssets(
-            named: "app-model-all-photographs-sidebar",
+            named: "app-model-all-photos-sidebar",
             assets: [filtered, unfiltered]
         )
         model.selectedView = .copilot
@@ -8810,7 +8810,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, importedAsset.id)
         XCTAssertEqual(importedAsset.originalURL, image)
         XCTAssertEqual(model.totalAssetCount, 121)
-        XCTAssertEqual(model.libraryCountText, "Showing 121-121 of 121 photographs")
+        XCTAssertEqual(model.libraryCountText, "Showing 121-121 of 121 photos")
         XCTAssertTrue(model.hasPreviousAssets)
 
         try model.loadPreviousAssets()
@@ -14113,7 +14113,7 @@ final class AppModelTests: XCTestCase {
         try await waitForSelectedAsset(importedAsset.id, in: model)
         XCTAssertEqual(model.assets.map(\.id), [importedAsset.id])
         XCTAssertEqual(model.totalAssetCount, 121)
-        XCTAssertEqual(model.libraryCountText, "Showing 121-121 of 121 photographs")
+        XCTAssertEqual(model.libraryCountText, "Showing 121-121 of 121 photos")
         XCTAssertTrue(model.isImporting)
     }
 

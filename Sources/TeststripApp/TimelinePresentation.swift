@@ -46,13 +46,13 @@ struct TimelinePresentation: Equatable {
         )
         let dayCount = timelineDays.count
         if dayCount == 0, loadedAssets.isEmpty {
-            self.summaryText = "No dated photographs"
+            self.summaryText = "No dated photos"
         } else if dayCount == 0 {
-            self.summaryText = "\(totalAssetCount) \(totalAssetCount == 1 ? "photograph" : "photographs") without capture dates"
+            self.summaryText = "\(totalAssetCount) \(totalAssetCount == 1 ? "photo" : "photos") without capture dates"
         } else if totalAssetCount > loadedAssets.count {
-            self.summaryText = "Showing \(loadedAssets.count) loaded of \(totalAssetCount) photographs across \(dayCount) \(dayCount == 1 ? "day" : "days")"
+            self.summaryText = "Showing \(loadedAssets.count) loaded of \(totalAssetCount) photos across \(dayCount) \(dayCount == 1 ? "day" : "days")"
         } else {
-            self.summaryText = "\(totalAssetCount) \(totalAssetCount == 1 ? "photograph" : "photographs") across \(dayCount) \(dayCount == 1 ? "day" : "days")"
+            self.summaryText = "\(totalAssetCount) \(totalAssetCount == 1 ? "photo" : "photos") across \(dayCount) \(dayCount == 1 ? "day" : "days")"
         }
     }
 
@@ -134,7 +134,7 @@ struct TimelinePresentation: Equatable {
         }
         guard let firstYear = countsByYear.keys.min(),
               let lastYear = countsByYear.keys.max() else {
-            return TimelineYearRibbonPresentation(years: [], rangeText: "No dates", summaryText: "No dated photographs", focusText: nil)
+            return TimelineYearRibbonPresentation(years: [], rangeText: "No dates", summaryText: "No dated photos", focusText: nil)
         }
 
         let focusedYear = loadedAssets.compactMap { asset -> Int? in
@@ -153,7 +153,7 @@ struct TimelinePresentation: Equatable {
             )
         }
         let yearCount = years.count
-        let summaryText = "\(totalAssetCount.formatted()) \(totalAssetCount == 1 ? "photograph" : "photographs") - \(yearCount) \(yearCount == 1 ? "year" : "years")"
+        let summaryText = "\(totalAssetCount.formatted()) \(totalAssetCount == 1 ? "photo" : "photos") - \(yearCount) \(yearCount == 1 ? "year" : "years")"
         let focusCount = countsByYear[focusedYear, default: 0]
         let focusText = "\(focusedYear) - \(focusCount.formatted())"
         return TimelineYearRibbonPresentation(
@@ -366,7 +366,7 @@ struct TimelineMonthPresentation: Identifiable, Equatable {
         self.days = days
         self.assetCount = days.reduce(0) { $0 + $1.assetCount }
         self.dayCount = days.count
-        self.subtitle = "\(assetCount) \(assetCount == 1 ? "photograph" : "photographs") across \(dayCount) \(dayCount == 1 ? "day" : "days")"
+        self.subtitle = "\(assetCount) \(assetCount == 1 ? "photo" : "photos") across \(dayCount) \(dayCount == 1 ? "day" : "days")"
     }
 }
 

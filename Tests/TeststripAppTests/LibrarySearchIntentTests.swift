@@ -45,7 +45,7 @@ final class LibrarySearchIntentTests: XCTestCase {
     func testParsesReviewQueueTerms() {
         let needsEvaluation = LibrarySearchIntent.parse("unevaluated rejects")
         XCTAssertEqual(needsEvaluation.predicates, [.unevaluated, .flag(.reject)])
-        XCTAssertEqual(needsEvaluation.chips, ["Needs Evaluation", "Reject"])
+        XCTAssertEqual(needsEvaluation.chips, ["Not analyzed yet", "Reject"])
 
         let noKeywords = LibrarySearchIntent.parse("no keywords")
         XCTAssertEqual(noKeywords.predicates, [.missingKeywords])

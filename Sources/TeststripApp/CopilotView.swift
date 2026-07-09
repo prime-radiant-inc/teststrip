@@ -623,7 +623,7 @@ struct CopilotPresentation: Equatable {
     }
 
     var readChips: [String] {
-        activeFilterChips.isEmpty ? ["All photographs"] : activeFilterChips
+        activeFilterChips.isEmpty ? ["All photos"] : activeFilterChips
     }
 
     var scopeActions: [CopilotScopeActionPresentation] {
@@ -685,8 +685,8 @@ struct CopilotPresentation: Equatable {
         if (reviewQueueCounts[.needsEvaluation] ?? 0) > 0 {
             let count = reviewQueueCounts[.needsEvaluation] ?? 0
             return CopilotPrimaryActionPresentation(
-                title: "Review Needs Evaluation",
-                detail: "\(count) \(count == 1 ? "photo" : "photos") without local signals",
+                title: "Review not-analyzed photos",
+                detail: "\(count) \(count == 1 ? "photo" : "photos") not analyzed yet",
                 systemImage: "wand.and.stars",
                 action: .open(.reviewQueue(.needsEvaluation))
             )
@@ -725,7 +725,7 @@ struct CopilotPresentation: Equatable {
         case .needsKeywords:
             return "No photos missing keywords"
         case .needsEvaluation:
-            return "All catalog photos have local signals"
+            return "All photos analyzed"
         case .facesFound:
             return "No face signals recorded"
         case .ocrFound:

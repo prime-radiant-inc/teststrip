@@ -6,13 +6,13 @@ final class LibraryTopBarPresentationTests: XCTestCase {
         let presentation = LibraryTopBarPresentation(
             catalogTitle: "Wedding Archive",
             libraryTitle: "All Photographs",
-            libraryCountText: "486,204 photographs",
+            libraryCountText: "486,204 photos",
             selectedView: .grid,
             activeFilterChips: []
         )
 
         XCTAssertEqual(presentation.catalogTitle, "Wedding Archive")
-        XCTAssertEqual(presentation.catalogSubtitle, "486,204 photographs")
+        XCTAssertEqual(presentation.catalogSubtitle, "486,204 photos")
         XCTAssertEqual(presentation.scopeTitle, "All Photographs")
         XCTAssertEqual(presentation.breadcrumbItems, ["Library", "All Photographs"])
         XCTAssertNil(presentation.filterSummaryText)
@@ -22,7 +22,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
         let presentation = LibraryTopBarPresentation(
             catalogTitle: "Wedding Archive",
             libraryTitle: "Patagonia Picks",
-            libraryCountText: "Showing 84 of 486,204 photographs",
+            libraryCountText: "Showing 84 of 486,204 photos",
             selectedView: .grid,
             activeFilterChips: ["Rating >= 3", "Pick"]
         )
@@ -36,7 +36,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
             LibraryTopBarPresentation(
                 catalogTitle: "Wedding Archive",
                 libraryTitle: "Search",
-                libraryCountText: "12 photographs",
+                libraryCountText: "12 photos",
                 selectedView: .search,
                 activeFilterChips: ["Search: ceremony"]
             ).breadcrumbItems,
@@ -46,7 +46,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
             LibraryTopBarPresentation(
                 catalogTitle: "Wedding Archive",
                 libraryTitle: "Timeline",
-                libraryCountText: "12 photographs",
+                libraryCountText: "12 photos",
                 selectedView: .timeline,
                 activeFilterChips: []
             ).breadcrumbItems,
@@ -56,7 +56,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
             LibraryTopBarPresentation(
                 catalogTitle: "Wedding Archive",
                 libraryTitle: "Review",
-                libraryCountText: "12 photographs",
+                libraryCountText: "12 photos",
                 selectedView: .copilot,
                 activeFilterChips: []
             ).breadcrumbItems,
@@ -66,7 +66,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
             LibraryTopBarPresentation(
                 catalogTitle: "Wedding Archive",
                 libraryTitle: "People",
-                libraryCountText: "12 photographs",
+                libraryCountText: "12 photos",
                 selectedView: .people,
                 activeFilterChips: []
             ).breadcrumbItems,
@@ -78,7 +78,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
         let presentation = LibraryTopBarPresentation(
             catalogTitle: "Wedding Archive",
             libraryTitle: "All Photographs",
-            libraryCountText: "1 photograph",
+            libraryCountText: "1 photo",
             selectedView: .compare,
             activeFilterChips: []
         )
@@ -91,7 +91,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
         let presentation = LibraryTopBarPresentation(
             catalogTitle: "Wedding Archive",
             libraryTitle: "All Photographs",
-            libraryCountText: "1 photograph",
+            libraryCountText: "1 photo",
             selectedView: .grid,
             activeFilterChips: []
         )

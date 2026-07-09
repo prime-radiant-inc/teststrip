@@ -16,7 +16,7 @@ final class CopilotPresentationTests: XCTestCase {
         )
         let presentation = CopilotPresentation(
             totalAssetCount: 1204,
-            activeFilterChips: ["Pick", "Needs Evaluation"],
+            activeFilterChips: ["Pick", "Not analyzed yet"],
             visibleWorkActivities: [runningWork],
             reviewQueueCounts: [
                 .needsKeywords: 9,
@@ -62,7 +62,7 @@ final class CopilotPresentationTests: XCTestCase {
             .evaluationKind(.focus),
             .evaluationKind(.ocrText)
         ])
-        XCTAssertEqual(presentation.readChips, ["Pick", "Needs Evaluation"])
+        XCTAssertEqual(presentation.readChips, ["Pick", "Not analyzed yet"])
         XCTAssertEqual(presentation.primaryAction?.title, "Review XMP Conflicts")
         XCTAssertEqual(presentation.primaryAction?.action, .open(.metadataSyncConflicts))
     }
@@ -90,7 +90,7 @@ final class CopilotPresentationTests: XCTestCase {
             "No provider failures recorded"
         ])
         XCTAssertEqual(presentation.signalRows, [])
-        XCTAssertEqual(presentation.readChips, ["All photographs"])
+        XCTAssertEqual(presentation.readChips, ["All photos"])
         XCTAssertNil(presentation.primaryAction)
     }
 
@@ -118,7 +118,7 @@ final class CopilotPresentationTests: XCTestCase {
     func testPresentationOffersLoadedSignalRunWhenNoReviewWorkExists() {
         let presentation = CopilotPresentation(
             totalAssetCount: 90,
-            activeFilterChips: ["Needs Evaluation"],
+            activeFilterChips: ["Not analyzed yet"],
             visibleWorkActivities: [],
             reviewQueueCounts: [:],
             evaluationSummaries: [],

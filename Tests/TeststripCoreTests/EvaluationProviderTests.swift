@@ -288,7 +288,7 @@ final class EvaluationProviderTests: XCTestCase {
         // 2x2 gray samples: three pixels at 102/255 luminance, one at 140/255.
         // Of the four neighbor comparisons, two see a delta of 38/255, so the
         // raw mean neighbor delta is 19/255 ~= 0.075 - squarely inside the
-        // 0.04-0.15 band the calibration study measured on real photographs.
+        // 0.04-0.15 band the calibration study measured on real photos.
         // The calibrated score stretches that band over 0-1 by dividing by
         // the 0.15 empirical ceiling.
         var pixels = [UInt8](repeating: 255, count: 2 * 2 * 4)

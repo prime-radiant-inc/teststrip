@@ -16,9 +16,9 @@ final class TimelinePresentationTests: XCTestCase {
             calendar: calendar
         )
 
-        XCTAssertEqual(presentation.summaryText, "Showing 4 loaded of 10 photographs across 2 days")
+        XCTAssertEqual(presentation.summaryText, "Showing 4 loaded of 10 photos across 2 days")
         XCTAssertEqual(presentation.months.map(\.title), ["February 2026", "January 2026", "No Capture Date"])
-        XCTAssertEqual(presentation.months[0].subtitle, "2 photographs across 1 day")
+        XCTAssertEqual(presentation.months[0].subtitle, "2 photos across 1 day")
         XCTAssertEqual(presentation.months[0].days.map(\.title), ["February 4"])
         XCTAssertEqual(presentation.months[0].days[0].countText, "2 frames")
         XCTAssertEqual(presentation.months[0].days[0].assets.map(\.id), [newest.id, sameDay.id])
@@ -31,7 +31,7 @@ final class TimelinePresentationTests: XCTestCase {
 
         let presentation = TimelinePresentation(assets: [asset], totalAssetCount: 1, calendar: Self.gregorianUTC)
 
-        XCTAssertEqual(presentation.summaryText, "1 photograph without capture dates")
+        XCTAssertEqual(presentation.summaryText, "1 photo without capture dates")
     }
 
     func testUsesCatalogTimelineDayCountsAndLoadedAssetsSeparately() {
@@ -47,11 +47,11 @@ final class TimelinePresentationTests: XCTestCase {
             calendar: calendar
         )
 
-        XCTAssertEqual(presentation.summaryText, "Showing 1 loaded of 11 photographs across 2 days")
+        XCTAssertEqual(presentation.summaryText, "Showing 1 loaded of 11 photos across 2 days")
         XCTAssertEqual(presentation.months.map(\.title), ["February 2026"])
         XCTAssertEqual(presentation.months[0].year, 2026)
         XCTAssertEqual(presentation.months[0].month, 2)
-        XCTAssertEqual(presentation.months[0].subtitle, "11 photographs across 2 days")
+        XCTAssertEqual(presentation.months[0].subtitle, "11 photos across 2 days")
         XCTAssertEqual(presentation.months[0].days.map(\.title), ["February 5", "February 4"])
         XCTAssertEqual(presentation.months[0].days.map(\.countText), ["8 frames", "3 frames"])
         XCTAssertEqual(presentation.months[0].days[0].assets, [])
@@ -73,7 +73,7 @@ final class TimelinePresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.yearRibbon.rangeText, "2020 - 2022")
-        XCTAssertEqual(presentation.yearRibbon.summaryText, "40 photographs - 3 years")
+        XCTAssertEqual(presentation.yearRibbon.summaryText, "40 photos - 3 years")
         XCTAssertEqual(presentation.yearRibbon.years.map(\.year), [2020, 2021, 2022])
         XCTAssertEqual(presentation.yearRibbon.years.map(\.assetCount), [10, 0, 30])
         XCTAssertEqual(presentation.yearRibbon.years.map(\.tickText), ["2020", "", ""])

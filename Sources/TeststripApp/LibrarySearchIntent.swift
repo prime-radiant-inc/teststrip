@@ -319,7 +319,7 @@ public struct LibrarySearchIntent: Equatable, Sendable {
         let current = normalizedToken(tokens[index])
 
         if current == "unevaluated" || current == "unanalyzed" {
-            return (.unevaluated, "Needs Evaluation", "Needs Evaluation", 1)
+            return (.unevaluated, "Not analyzed yet", "Not analyzed yet", 1)
         }
 
         guard tokens.indices.contains(index + 1) else {
@@ -333,7 +333,7 @@ public struct LibrarySearchIntent: Equatable, Sendable {
             return (.missingKeywords, "Needs Keywords", "Needs Keywords", 2)
         case ("needs", "evaluation"), ("need", "evaluation"), ("not", "evaluated"), ("needs", "analysis"), ("need", "analysis"),
              ("needs", "ai"), ("need", "ai"):
-            return (.unevaluated, "Needs Evaluation", "Needs Evaluation", 2)
+            return (.unevaluated, "Not analyzed yet", "Not analyzed yet", 2)
         case ("faces", "found"), ("people", "found"):
             return (.evaluationKind(.faceCount), "Faces Found", "Faces Found", 2)
         case ("ocr", "found"), ("text", "found"):

@@ -239,7 +239,7 @@ final class SearchWorkspacePresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.refineRows, [
-            SearchWorkspaceRefineRow(title: "All photographs", value: "current scope", target: .allPhotographs)
+            SearchWorkspaceRefineRow(title: "All photos", value: "current scope", target: .allPhotographs)
         ])
     }
 

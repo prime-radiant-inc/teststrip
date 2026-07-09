@@ -1856,14 +1856,14 @@ public final class AppModel {
 
     public var libraryCountText: String {
         if assetPageOffset == 0, totalAssetCount > assets.count {
-            return "Showing \(assets.count) of \(totalAssetCount) photographs"
+            return "Showing \(assets.count) of \(totalAssetCount) photos"
         }
         if assetPageOffset > 0 {
             let start = assetPageOffset + 1
             let end = assetPageOffset + assets.count
-            return "Showing \(start)-\(end) of \(totalAssetCount) photographs"
+            return "Showing \(start)-\(end) of \(totalAssetCount) photos"
         }
-        return "\(assets.count) \(assets.count == 1 ? "photograph" : "photographs")"
+        return "\(assets.count) \(assets.count == 1 ? "photo" : "photos")"
     }
 
     public var libraryStatusText: String? {
@@ -2297,7 +2297,7 @@ public final class AppModel {
             Self.append(ActiveLibraryFilterRow(title: "Needs Keywords", target: .reviewQueue(.needsKeywords)), to: &rows)
         }
         if needsEvaluationFilter {
-            Self.append(ActiveLibraryFilterRow(title: "Needs Evaluation", target: .reviewQueue(.needsEvaluation)), to: &rows)
+            Self.append(ActiveLibraryFilterRow(title: "Not analyzed yet", target: .reviewQueue(.needsEvaluation)), to: &rows)
         }
         if likelyIssuesFilter {
             Self.append(ActiveLibraryFilterRow(title: "Likely Issues", target: .reviewQueue(.likelyIssues)), to: &rows)
@@ -2587,7 +2587,7 @@ public final class AppModel {
             Self.append("Needs Keywords", to: &parts)
         }
         if needsEvaluationFilter {
-            Self.append("Needs Evaluation", to: &parts)
+            Self.append("Not analyzed yet", to: &parts)
         }
         if likelyIssuesFilter {
             Self.append("Likely Issues", to: &parts)
@@ -8350,7 +8350,7 @@ public final class AppModel {
         case .evaluationKind(let kind):
             activeLibraryFilterRow(forEvaluationKind: kind)
         case .unevaluated:
-            ActiveLibraryFilterRow(title: "Needs Evaluation", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Not analyzed yet", target: sidebarTarget(for: predicate))
         case .likelyIssue:
             ActiveLibraryFilterRow(title: "Likely Issues", target: sidebarTarget(for: predicate))
         case .likelyPick:

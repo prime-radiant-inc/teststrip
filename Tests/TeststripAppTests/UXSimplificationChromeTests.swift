@@ -89,7 +89,7 @@ final class UXSimplificationChromeTests: XCTestCase {
         let presentation = LibraryTopBarPresentation(
             catalogTitle: "Wedding Archive",
             libraryTitle: "All Photographs",
-            libraryCountText: "1 photograph",
+            libraryCountText: "1 photo",
             selectedView: .grid,
             activeFilterChips: []
         )

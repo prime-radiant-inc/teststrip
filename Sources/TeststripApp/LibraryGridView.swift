@@ -6414,7 +6414,7 @@ struct SearchWorkspacePresentation: Equatable {
         starredSetCountText = "\(starredSetCount)"
         let rows = activeFilterRows ?? activeFilterChips.map { ActiveLibraryFilterRow(title: $0) }
         if rows.isEmpty {
-            refineRows = [SearchWorkspaceRefineRow(title: "All photographs", value: "current scope", target: .allPhotographs)]
+            refineRows = [SearchWorkspaceRefineRow(title: "All photos", value: "current scope", target: .allPhotographs)]
         } else {
             refineRows = rows.map { SearchWorkspaceRefineRow(title: $0.title, value: "active", target: $0.target) }
         }
@@ -6453,7 +6453,7 @@ struct SearchWorkspacePresentation: Equatable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !queryText.isEmpty else { return nil }
         let hasParsedFilters = rows.contains { row in
-            !row.title.hasPrefix("Search:") && row.title != "All photographs"
+            !row.title.hasPrefix("Search:") && row.title != "All photos"
         }
         return SearchWorkspaceAskInterpretation(
             queryText: queryText,
@@ -6485,7 +6485,7 @@ struct SearchWorkspacePresentation: Equatable {
     }
 
     private static func groupTitle(for rowTitle: String) -> String {
-        if rowTitle == "All photographs" {
+        if rowTitle == "All photos" {
             return "Scope"
         }
         if rowTitle.hasPrefix("Session:")
@@ -6509,7 +6509,7 @@ struct SearchWorkspacePresentation: Equatable {
             return "Metadata"
         }
         if rowTitle == "Needs Keywords"
-            || rowTitle == "Needs Evaluation"
+            || rowTitle == "Not analyzed yet"
             || rowTitle == "Likely Issues"
             || rowTitle == "Provider Failures" {
             return "Review Queues"
@@ -6703,7 +6703,7 @@ struct SearchWorkspacePresentation: Equatable {
             case .needsKeywords:
                 return row.target == .reviewQueue(.needsKeywords) || row.title == "Needs Keywords"
             case .needsEvaluation:
-                return row.target == .reviewQueue(.needsEvaluation) || row.title == "Needs Evaluation"
+                return row.target == .reviewQueue(.needsEvaluation) || row.title == "Not analyzed yet"
             case .onlineSources:
                 return row.target == .sourceAvailability(.online) || row.title == "Source: Online"
             case .offlineSources:
@@ -6882,8 +6882,8 @@ private struct SearchWorkspaceView: View {
                 searchMetric(title: "Starred", value: presentation.starredSetCountText)
             }
             if presentation.refineRows.count == 1,
-               presentation.refineRows.first?.title == "All photographs" {
-                Text("All photographs")
+               presentation.refineRows.first?.title == "All photos" {
+                Text("All photos")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -7283,7 +7283,7 @@ private struct PlacesWorkspaceView: View {
                 .overlay(Circle().stroke(Color.white.opacity(0.7), lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .help("\(bubble.labelText) photographs")
+        .help("\(bubble.labelText) photos")
     }
 
     private var placesSidebar: some View {
@@ -7603,7 +7603,7 @@ private struct TimelineWorkspaceView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .accessibilityLabel("\(year.year), \(year.assetCount) photographs")
+        .accessibilityLabel("\(year.year), \(year.assetCount) photos")
     }
 
     private func monthSection(_ month: TimelineMonthPresentation) -> some View {
@@ -8122,7 +8122,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
             case .needsKeywords:
                 return chip == "Needs Keywords"
             case .needsEvaluation:
-                return chip == "Needs Evaluation"
+                return chip == "Not analyzed yet"
             case .onlineSources:
                 return chip == "Source: Online"
             case .offlineSources:
