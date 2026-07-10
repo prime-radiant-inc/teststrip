@@ -4,7 +4,7 @@ import SwiftUI
 // A People-queue keyboard command, decoded from a key press. Monitor-only:
 // none of these have menu equivalents, mirroring CullingKeyCaptureView's
 // arrow/Return handling in the culling loupe.
-public enum PeopleQueueCommand: Equatable, Sendable {
+enum PeopleQueueCommand: Equatable, Sendable {
     case moveFocus(PeopleQueueFocusDirection)
     case confirmFocused
     case dismissFocused

@@ -779,55 +779,26 @@ struct NamedPersonPresentation: Equatable, Identifiable {
     }
 }
 
-public struct PeopleFaceSuggestionCard: Equatable, Identifiable {
-    public var id: String
-    public var title: String
-    public var countText: String
-    public var confirmActionTitle: String
-    public var isOneTapConfirm: Bool
-    public var suggestion: PeopleFaceSuggestion
-
-    public init(id: String, title: String, countText: String, confirmActionTitle: String, isOneTapConfirm: Bool, suggestion: PeopleFaceSuggestion) {
-        self.id = id
-        self.title = title
-        self.countText = countText
-        self.confirmActionTitle = confirmActionTitle
-        self.isOneTapConfirm = isOneTapConfirm
-        self.suggestion = suggestion
-    }
+struct PeopleFaceSuggestionCard: Equatable, Identifiable {
+    var id: String
+    var title: String
+    var countText: String
+    var confirmActionTitle: String
+    var isOneTapConfirm: Bool
+    var suggestion: PeopleFaceSuggestion
 }
 
-public struct PeopleReviewCard: Equatable, Identifiable {
-    public var id: String
-    public var title: String
-    public var countText: String
-    public var suggestedActionTitle: String
-    public var filterKind: EvaluationKind?
-    public var target: SidebarRowTarget?
-    public var showsUnbuiltFaceActionLock = false
-    public var gradientColors: [Color]
+struct PeopleReviewCard: Equatable, Identifiable {
+    var id: String
+    var title: String
+    var countText: String
+    var suggestedActionTitle: String
+    var filterKind: EvaluationKind?
+    var target: SidebarRowTarget?
+    var showsUnbuiltFaceActionLock = false
+    var gradientColors: [Color]
 
-    public init(
-        id: String,
-        title: String,
-        countText: String,
-        suggestedActionTitle: String,
-        filterKind: EvaluationKind?,
-        target: SidebarRowTarget?,
-        showsUnbuiltFaceActionLock: Bool = false,
-        gradientColors: [Color]
-    ) {
-        self.id = id
-        self.title = title
-        self.countText = countText
-        self.suggestedActionTitle = suggestedActionTitle
-        self.filterKind = filterKind
-        self.target = target
-        self.showsUnbuiltFaceActionLock = showsUnbuiltFaceActionLock
-        self.gradientColors = gradientColors
-    }
-
-    public var isActionEnabled: Bool {
+    var isActionEnabled: Bool {
         target != nil
     }
 }

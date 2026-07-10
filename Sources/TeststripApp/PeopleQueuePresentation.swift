@@ -5,22 +5,22 @@ import TeststripCore
 /// "Face quality"). Folding both into one queue lets a single keyboard
 /// flow (←/→ focus, Return confirm, Esc dismiss) drive the whole People
 /// screen instead of requiring separate mouse interactions per section.
-public enum PeopleQueueCardKind: Equatable {
+enum PeopleQueueCardKind: Equatable {
     case suggestion(PeopleFaceSuggestionCard)
     case review(PeopleReviewCard)
 }
 
-public struct PeopleQueueCard: Equatable, Identifiable {
-    public var id: String
-    public var kind: PeopleQueueCardKind
+struct PeopleQueueCard: Equatable, Identifiable {
+    var id: String
+    var kind: PeopleQueueCardKind
 
-    public init(id: String, kind: PeopleQueueCardKind) {
+    init(id: String, kind: PeopleQueueCardKind) {
         self.id = id
         self.kind = kind
     }
 }
 
-public enum PeopleQueueFocusDirection: Equatable, Sendable {
+enum PeopleQueueFocusDirection: Equatable, Sendable {
     case next
     case previous
 }
@@ -29,11 +29,11 @@ public enum PeopleQueueFocusDirection: Equatable, Sendable {
 /// wrapping; Return is the explicit write gesture that confirms only the
 /// focused card (never any other card, and never on Space); Esc dismisses
 /// the focused card when dismissal is possible, otherwise it is a no-op.
-public struct PeopleQueuePresentation: Equatable {
-    public var cards: [PeopleQueueCard]
-    public var focusedIndex: Int
+struct PeopleQueuePresentation: Equatable {
+    var cards: [PeopleQueueCard]
+    var focusedIndex: Int
 
-    public init(
+    init(
         suggestionCards: [PeopleFaceSuggestionCard],
         reviewCards: [PeopleReviewCard],
         focusedIndex: Int = 0
@@ -44,12 +44,12 @@ public struct PeopleQueuePresentation: Equatable {
         self.focusedIndex = cards.isEmpty ? 0 : min(max(focusedIndex, 0), cards.count - 1)
     }
 
-    public var focusedCard: PeopleQueueCard? {
+    var focusedCard: PeopleQueueCard? {
         guard cards.indices.contains(focusedIndex) else { return nil }
         return cards[focusedIndex]
     }
 
-    public func movingFocus(_ direction: PeopleQueueFocusDirection) -> PeopleQueuePresentation {
+    func movingFocus(_ direction: PeopleQueueFocusDirection) -> PeopleQueuePresentation {
         guard !cards.isEmpty else { return self }
         var copy = self
         switch direction {
@@ -65,7 +65,7 @@ public struct PeopleQueuePresentation: Equatable {
     /// card — the explicit write gesture. One-tap suggestions confirm
     /// directly; suggestions that need a name route to the naming sheet
     /// instead of writing immediately; review cards route to their queue.
-    public func confirmAction() -> PeopleQueueConfirmAction {
+    func confirmAction() -> PeopleQueueConfirmAction {
         guard let focusedCard else { return .none }
         switch focusedCard.kind {
         case .suggestion(let card):
@@ -78,7 +78,7 @@ public struct PeopleQueuePresentation: Equatable {
 
     /// What Esc should do to the focused card: dismiss it when dismissal is
     /// possible (suggestion cards), otherwise nothing — Esc never writes.
-    public func dismissAction() -> PeopleQueueDismissAction {
+    func dismissAction() -> PeopleQueueDismissAction {
         guard let focusedCard else { return .none }
         switch focusedCard.kind {
         case .suggestion(let card):
@@ -89,14 +89,14 @@ public struct PeopleQueuePresentation: Equatable {
     }
 }
 
-public enum PeopleQueueConfirmAction: Equatable {
+enum PeopleQueueConfirmAction: Equatable {
     case confirmSuggestion(PeopleFaceSuggestion)
     case nameSuggestion(PeopleFaceSuggestion)
     case selectReview(SidebarRowTarget)
     case none
 }
 
-public enum PeopleQueueDismissAction: Equatable {
+enum PeopleQueueDismissAction: Equatable {
     case dismissSuggestion(PeopleFaceSuggestion)
     case none
 }
