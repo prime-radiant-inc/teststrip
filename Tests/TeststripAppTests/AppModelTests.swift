@@ -623,6 +623,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(assetIDs(in: try repository.assetSet(id: outputSetID)), [assets[1].id])
     }
 
+    func testKeepABFramePicksOneAndRejectsOnlyTheOther() throws {
+        let assets = (0..<4).map { makeAsset(id: "ab-keep-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(named: "ab-keep-group", assets: assets)
+        model.selectedView = .abCompare
+        model.select(assets[0].id)
+
+        try model.keepABFrame(keeping: assets[0].id, over: assets[1].id)
+
+        XCTAssertEqual(try repository.asset(id: assets[0].id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: assets[1].id).metadata.flag, .reject)
+        XCTAssertNil(try repository.asset(id: assets[2].id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: assets[3].id).metadata.flag)
+    }
+
     func testKeepRecommendedCompareAssetRejectsCurrentCompareAlternatesOnly() throws {
         let assets = (0..<9).map { makeAsset(id: "compare-recommended-action-\($0)", size: Int64($0 + 1)) }
         let (model, repository) = try makeModelWithCatalogAssets(

@@ -8,6 +8,7 @@ public enum LibraryViewMode: String, Codable, Sendable {
     case copilot
     case loupe
     case compare
+    case abCompare
     case timeline
     case map
     case people
@@ -1438,7 +1439,12 @@ public final class AppModel {
     private var currentNavigationTarget: SidebarRowTarget?
     private var isRestoringNavigation = false
     public var selectedAssetID: AssetID? {
-        didSet { persistSessionState() }
+        didSet {
+            if oldValue != selectedAssetID {
+                abContenderAssetID = nil
+            }
+            persistSessionState()
+        }
     }
     // Loupe 1:1 zoom state: nil shows the fitted frame. Reset whenever the
     // selection moves so every new frame starts fitted.
@@ -1721,6 +1727,10 @@ public final class AppModel {
     private var metadataRedoStack: [MetadataChangeGroup]
     private var assetPageOffset: Int
     private var compareAssetIDs: [AssetID]?
+    /// The frame the user explicitly pinned as contender B in the A/B
+    /// comparator. Nil means B follows the recommendation or the anchor's
+    /// neighbor. Cleared whenever the anchor selection moves.
+    public private(set) var abContenderAssetID: AssetID?
 
     public static let defaultEvaluationProviderName = "local-image-metrics"
     public static let defaultEvaluationProviderNames = [defaultEvaluationProviderName, "apple-vision", "core-image-faces"]
@@ -4305,6 +4315,16 @@ public final class AppModel {
         return candidateStackIDs == nil ? .nearbyFrames : .candidateStack
     }
 
+    /// Pins a specific frame as the A/B comparator's contender (B). Passing the
+    /// current anchor's id clears the override so B follows the recommendation.
+    public func selectABContender(_ assetID: AssetID?) {
+        if let assetID, assetID == selectedAssetID {
+            abContenderAssetID = nil
+        } else {
+            abContenderAssetID = assetID
+        }
+    }
+
     public var canKeepComparePrimaryAndRejectAlternates: Bool {
         catalog != nil && !compareAssets().isEmpty
     }
@@ -4326,6 +4346,21 @@ public final class AppModel {
         }
         let compareGroup = compareAssets()
         try keepCompareAssetAndRejectAlternates(assetID: assetID, compareGroup: compareGroup)
+    }
+
+    /// A/B comparator decision: keep one of the two side-by-side frames and
+    /// reject the other, leaving every other loaded frame untouched.
+    public func keepABFrame(keeping keptID: AssetID, over rejectedID: AssetID) throws {
+        guard catalog != nil else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let group = [keptID, rejectedID].compactMap { id in assets.first { $0.id == id } }
+        guard group.count == 2 else {
+            throw TeststripError.invalidState("A/B compare needs two loaded frames")
+        }
+        _ = try applyCompareFlags([keptID: .pick, rejectedID: .reject], to: group)
+        let keptName = group.first { $0.id == keptID }?.originalURL.lastPathComponent ?? "frame"
+        statusMessage = "Kept \(keptName); rejected the alternate"
     }
 
     private func keepCompareAssetAndRejectAlternates(assetID: AssetID, compareGroup: [Asset]) throws {
@@ -8921,7 +8956,7 @@ public final class AppModel {
         switch view {
         case .grid, .search, .copilot, .timeline, .people, .map:
             return true
-        case .loupe, .compare:
+        case .loupe, .compare, .abCompare:
             return false
         }
     }

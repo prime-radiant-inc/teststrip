@@ -107,6 +107,8 @@ struct LibraryGridView: View {
                 LoupeView(model: model)
             } else if model.selectedView == .compare {
                 CompareView(model: model, focusCullingSurface: focusCullingSurface)
+            } else if model.selectedView == .abCompare {
+                ABCompareView(model: model)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -4504,7 +4506,8 @@ struct LibraryTopBarPresentation: Equatable {
     private static let modeItems = [
         LibraryTopBarModeItem(title: "Grid", systemImage: "square.grid.3x3.fill", mode: .grid),
         LibraryTopBarModeItem(title: "Loupe", systemImage: "rectangle.inset.filled", mode: .loupe),
-        LibraryTopBarModeItem(title: "Compare", systemImage: "rectangle.grid.2x2", mode: .compare, liveMockupPlaceholder: .compareSurvey)
+        LibraryTopBarModeItem(title: "Compare", systemImage: "rectangle.grid.2x2", mode: .compare, liveMockupPlaceholder: .compareSurvey),
+        LibraryTopBarModeItem(title: "A/B", systemImage: "rectangle.split.2x1", mode: .abCompare, liveMockupPlaceholder: .focusCompare)
     ]
 
     private static func breadcrumbItems(scopeTitle: String, selectedView: LibraryViewMode) -> [String] {
@@ -5415,6 +5418,74 @@ struct CullingFilmstripPresentation: Equatable {
     }
 }
 
+/// Pairs the anchor frame (A) with a single contender (B) for the A/B
+/// side-by-side comparator. The contender is chosen by priority: an explicit
+/// override (the user clicked another frame in the filmstrip), else the
+/// recommended frame, else the next neighbor of the anchor.
+struct ABComparePresentation: Equatable {
+    var primaryAsset: Asset?
+    var contenderAsset: Asset?
+
+    var canCompare: Bool { primaryAsset != nil && contenderAsset != nil }
+
+    init(
+        assets: [Asset],
+        selectedAssetID: AssetID?,
+        recommendedAssetID: AssetID? = nil,
+        contenderOverrideID: AssetID? = nil
+    ) {
+        let primary = selectedAssetID.flatMap { id in assets.first { $0.id == id } } ?? assets.first
+        primaryAsset = primary
+
+        guard let primary, assets.count > 1 else {
+            contenderAsset = nil
+            return
+        }
+
+        contenderAsset = Self.resolveContender(
+            assets: assets,
+            primary: primary,
+            recommendedAssetID: recommendedAssetID,
+            contenderOverrideID: contenderOverrideID
+        )
+    }
+
+    private static func resolveContender(
+        assets: [Asset],
+        primary: Asset,
+        recommendedAssetID: AssetID?,
+        contenderOverrideID: AssetID?
+    ) -> Asset? {
+        if let overrideID = contenderOverrideID,
+           overrideID != primary.id,
+           let override = assets.first(where: { $0.id == overrideID }) {
+            return override
+        }
+        if let recommendedAssetID,
+           recommendedAssetID != primary.id,
+           let recommended = assets.first(where: { $0.id == recommendedAssetID }) {
+            return recommended
+        }
+        guard let anchorIndex = assets.firstIndex(where: { $0.id == primary.id }) else {
+            return nil
+        }
+        let neighborIndex = anchorIndex + 1 < assets.count ? anchorIndex + 1 : anchorIndex - 1
+        guard assets.indices.contains(neighborIndex) else { return nil }
+        return assets[neighborIndex]
+    }
+
+    var positionText: String {
+        guard let primaryAsset, let contenderAsset else {
+            return "Need two frames to compare"
+        }
+        return "Comparing \(Self.shortName(primaryAsset)) vs \(Self.shortName(contenderAsset))"
+    }
+
+    private static func shortName(_ asset: Asset) -> String {
+        asset.originalURL.deletingPathExtension().lastPathComponent
+    }
+}
+
 struct CullingStackRailPresentation: Equatable {
     struct Item: Equatable {
         var assetID: AssetID
@@ -5763,6 +5834,238 @@ struct CullingStackRecommendation: Equatable {
             qualifiers.append("eyes open")
         }
         return qualifiers
+    }
+}
+
+private struct ABCompareView: View {
+    var model: AppModel
+
+    private var recommendedAssetID: AssetID? {
+        CullingStackRailPresentation(
+            assets: model.assets,
+            selectedAssetID: model.selectedAssetID,
+            evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals(),
+            explicitStackScope: model.selectedCullingStackScope
+        ).recommendedAssetID
+    }
+
+    var body: some View {
+        let presentation = ABComparePresentation(
+            assets: model.assets,
+            selectedAssetID: model.selectedAssetID,
+            recommendedAssetID: recommendedAssetID,
+            contenderOverrideID: model.abContenderAssetID
+        )
+        return VStack(spacing: 0) {
+            header(presentation)
+            if let primary = presentation.primaryAsset, let contender = presentation.contenderAsset {
+                HStack(spacing: 2) {
+                    pane(asset: primary, label: "A", isAnchor: true)
+                    pane(asset: contender, label: "B", isAnchor: false)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                keepActionBar(primary: primary, contender: contender)
+            } else {
+                singleFrameNotice
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            abFilmstrip(primaryID: presentation.primaryAsset?.id)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(0.34))
+        .task(id: abPreviewTaskID(presentation)) {
+            requestPreviews(for: [presentation.primaryAsset, presentation.contenderAsset].compactMap { $0 })
+        }
+        .liveMockupPlaceholder(.focusCompare)
+    }
+
+    private func header(_ presentation: ABComparePresentation) -> some View {
+        HStack(spacing: 8) {
+            Text("A/B")
+                .font(.caption2.monospaced().weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(presentation.positionText)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button {
+                model.toggleLoupeZoom()
+            } label: {
+                Label(model.loupeZoomFocus == nil ? "Zoom 1:1" : "Fit", systemImage: "arrow.up.left.and.arrow.down.right")
+            }
+            .help("Zoom both frames to the same region (synced)")
+            .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.18))
+    }
+
+    private func pane(asset: Asset, label: String, isAnchor: Bool) -> some View {
+        ZStack(alignment: .topLeading) {
+            Color.black.opacity(0.22)
+            if model.loupePreviewURL(for: asset.id) != nil {
+                LoupeZoomStageView(model: model, asset: asset)
+                    .padding(16)
+            } else {
+                unavailablePane
+            }
+            paneLabel(label, asset: asset, isAnchor: isAnchor)
+                .padding(14)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(
+            Rectangle()
+                .strokeBorder(isAnchor ? Color.accentColor.opacity(0.8) : Color.white.opacity(0.18), lineWidth: isAnchor ? 2 : 1)
+        )
+    }
+
+    private func paneLabel(_ label: String, asset: Asset, isAnchor: Bool) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.caption.monospaced().weight(.bold))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(isAnchor ? Color.accentColor.opacity(0.85) : Color.black.opacity(0.55), in: Capsule())
+            Text(asset.originalURL.lastPathComponent)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.white.opacity(0.85))
+            if asset.isRawOriginal {
+                Text("RAW")
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.black.opacity(0.4), in: Capsule())
+    }
+
+    private var unavailablePane: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "photo.badge.exclamationmark")
+                .font(.system(size: 28))
+                .foregroundStyle(.secondary)
+            Text("No cached preview")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func keepActionBar(primary: Asset, contender: Asset) -> some View {
+        HStack(spacing: 10) {
+            Button {
+                keep(primary.id, over: contender.id)
+            } label: {
+                Label("Keep A · Reject B", systemImage: "checkmark.circle")
+            }
+            Button {
+                keep(contender.id, over: primary.id)
+            } label: {
+                Label("Keep B · Reject A", systemImage: "checkmark.circle")
+            }
+            Spacer(minLength: 0)
+        }
+        .buttonStyle(.bordered)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.18))
+    }
+
+    private var singleFrameNotice: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "rectangle.split.2x1")
+                .font(.system(size: 34))
+                .foregroundStyle(.secondary)
+            Text("Load at least two frames to compare A/B")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func abFilmstrip(primaryID: AssetID?) -> some View {
+        let presentation = CullingFilmstripPresentation(
+            assets: model.assets,
+            selectedAssetID: model.selectedAssetID
+        )
+        return VStack(spacing: 6) {
+            HStack {
+                Text("Click a frame to set B")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 7) {
+                ForEach(presentation.visibleAssets, id: \.id.rawValue) { asset in
+                    abFilmstripTile(asset: asset, isAnchor: asset.id == primaryID)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .frame(height: 86)
+        .background(Color.black.opacity(0.18))
+        .task(id: presentation.requestID) {
+            requestPreviews(for: presentation.visibleAssets)
+        }
+    }
+
+    private func abFilmstripTile(asset: Asset, isAnchor: Bool) -> some View {
+        let isContender = asset.id == model.abContenderAssetID
+        return Button {
+            if isAnchor {
+                model.selectABContender(nil)
+            } else {
+                model.selectABContender(asset.id)
+            }
+        } label: {
+            Group {
+                if let url = model.loupePreviewURL(for: asset.id), let image = NSImage(contentsOf: url) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    Color.black.opacity(0.3)
+                }
+            }
+            .frame(width: 92, height: 62)
+            .clipped()
+            .overlay(
+                Rectangle().strokeBorder(
+                    isAnchor ? Color.accentColor : (isContender ? Color.white.opacity(0.9) : Color.clear),
+                    lineWidth: 2
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .help(isAnchor ? "Anchor (A)" : "Set as contender (B)")
+    }
+
+    private func abPreviewTaskID(_ presentation: ABComparePresentation) -> String {
+        [presentation.primaryAsset?.id.rawValue, presentation.contenderAsset?.id.rawValue]
+            .map { $0 ?? "none" }
+            .joined(separator: "|")
+    }
+
+    private func requestPreviews(for assets: [Asset]) {
+        do {
+            for asset in assets {
+                try model.requestVisibleGridPreview(assetID: asset.id)
+            }
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func keep(_ keptID: AssetID, over rejectedID: AssetID) {
+        do {
+            try model.keepABFrame(keeping: keptID, over: rejectedID)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 }
 

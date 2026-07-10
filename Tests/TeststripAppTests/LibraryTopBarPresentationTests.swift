@@ -83,8 +83,8 @@ final class LibraryTopBarPresentationTests: XCTestCase {
             activeFilterChips: []
         )
 
-        XCTAssertEqual(presentation.modeItems.map(\.mode), [.grid, .loupe, .compare])
-        XCTAssertEqual(presentation.modeItems.map(\.title), ["Grid", "Loupe", "Compare"])
+        XCTAssertEqual(presentation.modeItems.map(\.mode), [.grid, .loupe, .compare, .abCompare])
+        XCTAssertEqual(presentation.modeItems.map(\.title), ["Grid", "Loupe", "Compare", "A/B"])
     }
 
     func testPartialTopBarRoutesCarryLiveMockupPlaceholders() {
@@ -98,11 +98,11 @@ final class LibraryTopBarPresentationTests: XCTestCase {
 
         XCTAssertEqual(
             presentation.modeItems.map(\.mode),
-            [.grid, .loupe, .compare]
+            [.grid, .loupe, .compare, .abCompare]
         )
         XCTAssertEqual(
             presentation.modeItems.map { $0.liveMockupPlaceholder?.id },
-            [nil, nil, "compare.survey"]
+            [nil, nil, "compare.survey", "compare.focus"]
         )
     }
 }

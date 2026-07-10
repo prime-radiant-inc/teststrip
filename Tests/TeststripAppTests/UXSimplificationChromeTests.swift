@@ -85,7 +85,7 @@ final class UXSimplificationChromeTests: XCTestCase {
 
     // MARK: View switcher de-duplication
 
-    func testViewSwitcherExposesOnlyGridLoupeCompare() {
+    func testViewSwitcherExposesOnlyHowToViewModes() {
         let presentation = LibraryTopBarPresentation(
             catalogTitle: "Wedding Archive",
             libraryTitle: "All Photographs",
@@ -93,7 +93,7 @@ final class UXSimplificationChromeTests: XCTestCase {
             selectedView: .grid,
             activeFilterChips: []
         )
-        XCTAssertEqual(presentation.modeItems.map(\.mode), [.grid, .loupe, .compare])
+        XCTAssertEqual(presentation.modeItems.map(\.mode), [.grid, .loupe, .compare, .abCompare])
         XCTAssertFalse(presentation.modeItems.map(\.mode).contains(.copilot))
         XCTAssertFalse(presentation.modeItems.map(\.mode).contains(.search))
     }
