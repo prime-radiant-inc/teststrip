@@ -111,4 +111,4 @@ Status flow: Spec'd → Tested-Pass | Tested-Fail → Fixed → Verified.
 | dev-009-bench-seeds | dev-009-bench-seeds.md | Spec'd | — | — | — |  |
 | dev-010-bench-benchmarks | dev-010-bench-benchmarks.md | Spec'd | — | — | — |  |
 | dev-011-release-ci | dev-011-release-ci.md | Spec'd | — | — | — | needs tag + 7 secrets; static-only cap; needs tag + 7 secrets; static-only cap. 3 secrets currently missing (cert b64/password, app-specific pw) — next v* tag will fail |
-| dev-012-verifier-gates | dev-012-verifier-gates.md | Spec'd | — | — | — | KNOWN-STALE: verify_evaluation, verify_card_import_path; KNOWN-STALE gui verifiers; ALSO live swift-test failure seen under concurrent-agent contention (WorkerEntrypointTests truncated worker JSON) — re-run solo before logging Functional |
+| dev-012-verifier-gates | dev-012-verifier-gates.md | Spec'd | — | — | — | Jesse decision: delete-or-keep stale gui verifiers? KNOWN-STALE: verify_evaluation, verify_card_import_path; KNOWN-STALE gui verifiers; ALSO live swift-test failure seen under concurrent-agent contention (WorkerEntrypointTests truncated worker JSON) — re-run solo before logging Functional |
