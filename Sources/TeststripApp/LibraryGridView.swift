@@ -809,10 +809,11 @@ struct LibraryGridView: View {
     /// AppModel's 13 filter properties are one system. Chips the bridge
     /// doesn't cover — selected asset set, dynamic set rules, detached
     /// predicates, and `librarySearchText`'s own chips/residual — still come
-    /// from `activeLibraryFilterRows`, deduplicated by title.
+    /// from `activeLibraryFilterRows`, deduplicated by filter identity via
+    /// `LibraryQueryToken.legacyRows(_:notCoveredBy:)`.
     private var activeFilterChips: some View {
         let tokens = LibraryQueryToken.tokens(from: model)
-        let tokenTitles = Set(tokens.map(\.display))
+        let legacyRows = LibraryQueryToken.legacyRows(model.activeLibraryFilterRows, notCoveredBy: tokens)
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
@@ -827,7 +828,7 @@ struct LibraryGridView: View {
                         applyLibraryFilters()
                     }
                 }
-                ForEach(model.activeLibraryFilterRows.filter { !tokenTitles.contains($0.title) }) { row in
+                ForEach(legacyRows) { row in
                     filterChip(title: row.title, isPlainSearchFallback: row.isPlainSearchFallback) {
                         removeActiveLibraryFilter(row)
                     }

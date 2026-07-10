@@ -295,6 +295,38 @@ final class LibraryQueryTokenTests: XCTestCase {
         XCTAssertEqual(model.keywordFilterText, "portfolio")
     }
 
+    // MARK: - Legacy chip rows deduplicate against tokens by filter identity
+
+    /// `.faceCount`/`.ocrText` legacy rows carry the review-queue title
+    /// ("Faces Found"/"Text Found"), not the token's "Signal: …" display, so
+    /// a title-only dedupe would render two chips for one filter.
+    func testEvaluationKindFilterRendersExactlyOneChip() {
+        for kind in [EvaluationKind.faceCount, .ocrText, .focus] {
+            let model = makeModel()
+            model.evaluationKindFilter = kind
+
+            let tokens = LibraryQueryToken.tokens(from: model)
+            XCTAssertEqual(tokens.map(\.field), [.signal])
+
+            let legacyRows = LibraryQueryToken.legacyRows(model.activeLibraryFilterRows, notCoveredBy: tokens)
+            XCTAssertTrue(
+                legacyRows.isEmpty,
+                "expected no leftover legacy rows for \(kind), got \(legacyRows.map(\.title))"
+            )
+        }
+    }
+
+    func testLegacyRowsNotBackedByTokensSurvive() {
+        let model = makeModel()
+        model.evaluationKindFilter = .focus
+        model.librarySearchText = "golden hour"
+
+        let tokens = LibraryQueryToken.tokens(from: model)
+        let legacyRows = LibraryQueryToken.legacyRows(model.activeLibraryFilterRows, notCoveredBy: tokens)
+
+        XCTAssertEqual(legacyRows.map(\.title), ["Search: golden hour"])
+    }
+
     // MARK: - Mixed free text parse
 
     func testMixedFreeTextParsesToTwoTokensAndResidual() {

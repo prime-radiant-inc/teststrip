@@ -335,6 +335,54 @@ public struct LibraryQueryToken: Equatable, Identifiable {
         }
     }
 
+    // MARK: - Deduplicating legacy chip rows against tokens
+
+    /// Filters `activeLibraryFilterRows` down to rows not already rendered
+    /// as a structured token chip. Dedupe is by filter identity, not just
+    /// title: `.faceCount`/`.ocrText` legacy rows carry review-queue titles
+    /// ("Faces Found"/"Text Found") that never match the token's
+    /// "Signal: …" display, so title-only matching would double-render.
+    public static func legacyRows(
+        _ rows: [ActiveLibraryFilterRow],
+        notCoveredBy tokens: [LibraryQueryToken]
+    ) -> [ActiveLibraryFilterRow] {
+        let tokenTitles = Set(tokens.map(\.display))
+        let tokenTargets = tokens.flatMap(sidebarTargets(for:))
+        return rows.filter { row in
+            if tokenTitles.contains(row.title) { return false }
+            if let target = row.target, tokenTargets.contains(target) { return false }
+            return true
+        }
+    }
+
+    /// Every `SidebarRowTarget` a legacy row for this token's filter could
+    /// carry (mirrors `AppModel.activeLibraryFilterRows`'s target choices).
+    private static func sidebarTargets(for token: LibraryQueryToken) -> [SidebarRowTarget] {
+        switch (token.field, token.value) {
+        case (.rating, .int(let rating)):
+            return rating == 5 ? [.reviewQueue(.fiveStars)] : []
+        case (.flag, .flag(let flag)):
+            return [.reviewQueue(flag == .pick ? .picks : .rejects)]
+        case (.source, .source(let source)):
+            return [.sourceAvailability(source)]
+        case (.signal, .signal(let kind)):
+            switch kind {
+            case .faceCount:
+                return [.evaluationKind(kind), .reviewQueue(.facesFound)]
+            case .ocrText:
+                return [.evaluationKind(kind), .reviewQueue(.ocrFound)]
+            default:
+                return [.evaluationKind(kind)]
+            }
+        case (.xmpPending, _):
+            return [.metadataSyncPending]
+        case (.xmpConflict, _):
+            return [.metadataSyncConflicts]
+        default:
+            return []
+        }
+    }
+
     // MARK: - Autocomplete option lists (parity with the deleted pickers)
 
     public static let ratingOptions = Array(1...5)
