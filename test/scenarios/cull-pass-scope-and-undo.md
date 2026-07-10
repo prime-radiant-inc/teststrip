@@ -1,9 +1,14 @@
-# cull-pass-scope-and-undo: P/X/S/Return in the Cull workspace, and ⌘Z reverts the whole pass
+# cull-pass-scope-and-undo: P/X/S/Return in the Cull workspace, and ⌘Z reverts one gesture at a time
 
 **What this covers**: the Cull workspace's keyboard loop — pick (`P`) and
 reject (`X`) a few frames, cycle scope with `S` to Picks and confirm the
 sidebar/HUD reflect it, then Return on a stack writes pick+sibling-rejects as
-one gesture, and ⌘Z reverts everything from the pass in one step.
+one gesture. Undo is scoped per gesture, not per pass: a single ⌘Z reverts
+the *stack promote* gesture's flags (pick + all sibling rejects) as one unit,
+while each standalone `P`/`X` keystroke is its own separate undo step (per
+spec/plan Task 16: "single undo group: one ⌘Z reverts the whole gesture" —
+the gesture is the Return promote action, not the whole multi-keystroke
+pass).
 
 ## Pre-state
 ```bash
@@ -47,10 +52,16 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    `reject`. (Query shape verified against a seeded `--smoke` catalog
    2026-07-10; if the set was stored as a snapshot, use `$.snapshot._0` —
    the two paths mirror `CatalogRepository.workSessionAssetMembershipSelector`.)
-6. Press ⌘Z. Assert every flag set in steps 3 and 5 is cleared in one undo —
-   the flagged count returns to `BASELINE` and the specific ids from steps
-   3/5 read NULL again — a single ⌘Z reverts the whole pass, not just the
-   last stack decision.
+6. Note the flagged count after step 5 (`AFTER_STACK`). Press ⌘Z once.
+   Assert **only** the stack promote gesture from step 5 is reverted: the
+   flagged count returns to `AFTER_STACK` minus that stack's members (i.e.
+   back to its pre-step-5 value), the Return target and every sibling from
+   step 5 read NULL again, but the standalone `P`/`X` flags from step 3 are
+   still set (not yet touched by this ⌘Z).
+7. Press ⌘Z twice more (once per step-3 keystroke). Assert the flagged count
+   now returns to `BASELINE` and the step-3 ids read NULL — each standalone
+   `P`/`X` keystroke was its own separate undo step, not grouped with the
+   others or with the stack gesture.
 
 ## Expected
 - Step 3: exactly the picked/rejected frames show the matching flag.
@@ -58,8 +69,13 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 - Step 5: stack Return is one atomic gesture — pick the Return target,
   reject every sibling, in the same transaction. **Fails if** siblings need a
   separate action, or if some siblings are left undecided.
-- Step 6: ⌘Z clears all flags from the pass in one keystroke. **Fails if** it
-  only reverts the most recent stack decision, requiring repeated ⌘Z.
+- Step 6: a single ⌘Z reverts exactly the step-5 stack gesture's flags (pick +
+  all siblings) as one unit, and nothing else. **Fails if** it reverts only
+  one sibling at a time (gesture isn't grouped), or if it also reverts the
+  unrelated step-3 flags (undo grouping is too coarse, spanning gestures).
+- Step 7: the two step-3 keystrokes each undo separately (two more ⌘Z to
+  clear both). **Fails if** they were already grouped together, or if they
+  got grouped with the step-5 gesture.
 - Preload-ahead check (spec §3): confirm Space/advance never blocks waiting
   on a preview — if it does, STOP and flag to Jesse per CLAUDE.md's
   perf-restraint rule rather than investigating further.

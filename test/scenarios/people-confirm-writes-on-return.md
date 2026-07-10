@@ -22,16 +22,33 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    already focused at index 0).
 5. **Before** pressing Return, re-assert `person_assets` count is still 0 —
    arrowing to focus a card must not write anything.
-6. Press Return on the focused (one-tap-confirm, not name-routing) card.
-7. Assert `person_assets` now has exactly one new row for that card's asset,
-   and no other suggestion card was confirmed as a side effect.
+6. Press Return on the focused card. Two card kinds are possible and both are
+   in scope (a fresh `--faces` launch only ever produces name-routing
+   "Who is this?" cards on the first pass — a one-tap "Is this X?" card can
+   only exist once a person has already been named, per
+   `PeopleView.suggestionCards`/`isOneTapConfirm`
+   (`Sources/TeststripApp/PeopleView.swift:637-663`) — so don't assume one
+   kind is reachable; branch on what's actually focused):
+   - **Name-routing card** ("Who is this?"): Return opens the naming sheet.
+     Assert `person_assets` is *still* 0 here — opening the sheet is routing,
+     not writing. Type a name into the sheet's field and press Return again
+     (confirms via the sheet, per `people-naming-sheet-return-routing.md`).
+   - **One-tap-confirm card** ("Is this X?"): Return confirms directly.
+7. Assert `person_assets` now has exactly one new `people` row and the
+   expected new `person_assets` rows for that card's group only (matching its
+   "N faces · N photos" count), and no other suggestion card was confirmed as
+   a side effect (their rows are still absent).
 
 ## Expected
 - Step 3 and 5: 0 rows. **Fails if** anything is written before the Return
   gesture — that's a confirm-before-write violation, assert it as the
   negative, don't excuse it.
-- Step 7: exactly one row, for the focused card only. **Fails if** Return
-  confirms the wrong card, multiple cards, or none.
+- Step 6 (name-routing branch): opening the naming sheet must not write
+  `person_assets` — routing is not confirming. **Fails if** the sheet's
+  appearance alone writes anything.
+- Step 7: exactly the focused card's rows appear, matching its face/photo
+  count, and no other card's rows appear. **Fails if** Return confirms the
+  wrong card, multiple cards, or none.
 
 ## Cleanup
 ```bash
