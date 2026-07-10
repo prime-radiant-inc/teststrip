@@ -6581,8 +6581,13 @@ private extension View {
 
     private func assetSelectionAccessibilityValue(for asset: Asset, model: AppModel) -> String {
         let primaryState = model.selectedAssetID == asset.id ? "Selected" : "Not selected"
-        guard model.isBatchSelected(asset.id) else { return primaryState }
-        return "\(primaryState), batch selected"
+        let selectionState = model.isBatchSelected(asset.id) ? "\(primaryState), batch selected" : primaryState
+        return AssetGridCellAccessibilityValue.value(
+            selectionState: selectionState,
+            badges: AssetGridMetadataBadgePresentation.presentation(for: asset),
+            availability: asset.availability,
+            autopilotDecision: model.autopilotProposalDecision(for: asset.id)
+        )
     }
 }
 
@@ -7161,6 +7166,7 @@ struct AssetGridMetadataBadgePresentation: Equatable {
     }
 
     var flagTone: FlagTone?
+    var rating: Int = 0
     var ratingText: String?
     var colorLabel: ColorLabel?
     var keywordCountText: String?
@@ -7170,10 +7176,29 @@ struct AssetGridMetadataBadgePresentation: Equatable {
         flagTone?.systemName
     }
 
+    // VoiceOver / AX-driver strings for the icon-only badges; nil when the
+    // badge is absent so tests can assert the negative.
+    var flagAccessibilityLabel: String? {
+        switch flagTone {
+        case .pick: "Flagged Pick"
+        case .reject: "Flagged Reject"
+        case nil: nil
+        }
+    }
+
+    var ratingAccessibilityLabel: String? {
+        rating > 0 ? "Rating \(rating)" : nil
+    }
+
+    var colorAccessibilityLabel: String? {
+        colorLabel.map { "Label \($0.rawValue.capitalized)" }
+    }
+
     static func presentation(for asset: Asset) -> AssetGridMetadataBadgePresentation {
         let keywordCount = asset.metadata.keywords.count
         return AssetGridMetadataBadgePresentation(
             flagTone: flagTone(for: asset.metadata.flag),
+            rating: asset.metadata.rating,
             ratingText: asset.metadata.rating > 0 ? String(repeating: "★", count: asset.metadata.rating) : nil,
             colorLabel: asset.metadata.colorLabel,
             keywordCountText: keywordCount > 0 ? "\(keywordCount)" : nil,
@@ -7187,6 +7212,32 @@ struct AssetGridMetadataBadgePresentation: Equatable {
         case .reject: .reject
         case nil: nil
         }
+    }
+}
+
+// The grid cell button collapses its children into one AX element
+// (.accessibilityElement()), so badge views can never surface their own
+// labels; the cell's accessibility VALUE carries them instead. VoiceOver
+// reads "smoke-3.jpg, Selected, Flagged Pick, Rating 3, …" and the AX
+// driver asserts badges with `find --contains "Flagged Pick"`.
+enum AssetGridCellAccessibilityValue {
+    static func value(
+        selectionState: String,
+        badges: AssetGridMetadataBadgePresentation,
+        availability: SourceAvailability,
+        autopilotDecision: AutopilotProposalKind?
+    ) -> String {
+        var parts = [selectionState]
+        parts.append(contentsOf: [
+            badges.flagAccessibilityLabel,
+            badges.ratingAccessibilityLabel,
+            badges.colorAccessibilityLabel,
+            badges.keywordAccessibilityLabel,
+            AssetSourceStatusPresentation.presentation(for: availability)?.detail,
+            AutopilotBadgePresentation.badge(for: autopilotDecision)
+                .map { "Autopilot proposes \($0.isKeep ? "keep" : "cut")" },
+        ].compactMap { $0 })
+        return parts.joined(separator: ", ")
     }
 }
 
@@ -8759,18 +8810,24 @@ private struct AssetGridCell: View {
     private var metadataOverlay: some View {
         let presentation = AssetGridMetadataBadgePresentation.presentation(for: asset)
         return HStack(spacing: 5) {
-            if let flagTone = presentation.flagTone {
+            if let flagTone = presentation.flagTone,
+               let flagAccessibilityLabel = presentation.flagAccessibilityLabel {
                 flagBadge(systemName: flagTone.systemName, color: color(for: flagTone))
+                    .accessibilityLabel(flagAccessibilityLabel)
             }
-            if let ratingText = presentation.ratingText {
+            if let ratingText = presentation.ratingText,
+               let ratingAccessibilityLabel = presentation.ratingAccessibilityLabel {
                 Text(ratingText)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.yellow)
+                    .accessibilityLabel(ratingAccessibilityLabel)
             }
-            if let colorLabel = presentation.colorLabel {
+            if let colorLabel = presentation.colorLabel,
+               let colorAccessibilityLabel = presentation.colorAccessibilityLabel {
                 Circle()
                     .fill(color(for: colorLabel))
                     .frame(width: 8, height: 8)
+                    .accessibilityLabel(colorAccessibilityLabel)
             }
             if let keywordCountText = presentation.keywordCountText,
                let keywordAccessibilityLabel = presentation.keywordAccessibilityLabel {

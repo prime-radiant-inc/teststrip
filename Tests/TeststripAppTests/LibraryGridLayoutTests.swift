@@ -127,6 +127,96 @@ final class LibraryGridLayoutTests: XCTestCase {
         XCTAssertEqual(presentation.keywordAccessibilityLabel, "2 keywords")
     }
 
+    func testGridMetadataBadgesExposeAccessibilityLabels() {
+        let picked = AssetGridMetadataBadgePresentation.presentation(
+            for: Asset.gridLayoutTestAsset(
+                metadata: AssetMetadata(
+                    rating: 3,
+                    colorLabel: .red,
+                    flag: .pick,
+                    keywords: ["portfolio"]
+                )
+            )
+        )
+
+        XCTAssertEqual(picked.flagAccessibilityLabel, "Flagged Pick")
+        XCTAssertEqual(picked.ratingAccessibilityLabel, "Rating 3")
+        XCTAssertEqual(picked.colorAccessibilityLabel, "Label Red")
+
+        let rejected = AssetGridMetadataBadgePresentation.presentation(
+            for: Asset.gridLayoutTestAsset(
+                metadata: AssetMetadata(
+                    rating: 0,
+                    colorLabel: nil,
+                    flag: .reject,
+                    keywords: []
+                )
+            )
+        )
+
+        XCTAssertEqual(rejected.flagAccessibilityLabel, "Flagged Reject")
+        XCTAssertNil(rejected.ratingAccessibilityLabel)
+        XCTAssertNil(rejected.colorAccessibilityLabel)
+
+        let unmarked = AssetGridMetadataBadgePresentation.presentation(
+            for: Asset.gridLayoutTestAsset(metadata: AssetMetadata())
+        )
+
+        XCTAssertNil(unmarked.flagAccessibilityLabel)
+        XCTAssertNil(unmarked.ratingAccessibilityLabel)
+        XCTAssertNil(unmarked.colorAccessibilityLabel)
+    }
+
+    func testGridCellAccessibilityValueIncludesBadgesAvailabilityAndAutopilot() {
+        let asset = Asset.gridLayoutTestAsset(
+            metadata: AssetMetadata(
+                rating: 3,
+                colorLabel: .red,
+                flag: .pick,
+                keywords: ["portfolio", "client"]
+            )
+        )
+
+        let value = AssetGridCellAccessibilityValue.value(
+            selectionState: "Selected",
+            badges: AssetGridMetadataBadgePresentation.presentation(for: asset),
+            availability: .offline,
+            autopilotDecision: .pick
+        )
+
+        XCTAssertEqual(
+            value,
+            "Selected, Flagged Pick, Rating 3, Label Red, 2 keywords, "
+                + "Original offline; cached previews only, Autopilot proposes keep"
+        )
+    }
+
+    func testGridCellAccessibilityValueOmitsAbsentBadges() {
+        let asset = Asset.gridLayoutTestAsset(metadata: AssetMetadata())
+
+        let value = AssetGridCellAccessibilityValue.value(
+            selectionState: "Not selected",
+            badges: AssetGridMetadataBadgePresentation.presentation(for: asset),
+            availability: .online,
+            autopilotDecision: nil
+        )
+
+        XCTAssertEqual(value, "Not selected")
+    }
+
+    func testGridCellAccessibilityValueDescribesAutopilotCut() {
+        let asset = Asset.gridLayoutTestAsset(metadata: AssetMetadata())
+
+        let value = AssetGridCellAccessibilityValue.value(
+            selectionState: "Not selected",
+            badges: AssetGridMetadataBadgePresentation.presentation(for: asset),
+            availability: .online,
+            autopilotDecision: .reject
+        )
+
+        XCTAssertEqual(value, "Not selected, Autopilot proposes cut")
+    }
+
     func testGridSelectionChromeDistinguishesPrimaryAndBatchOnlySelection() {
         XCTAssertEqual(
             AssetGridSelectionChrome.border(isSelected: false, isBatchSelected: false),
