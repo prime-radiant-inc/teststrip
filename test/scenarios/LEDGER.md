@@ -6,45 +6,45 @@ Status flow: Spec'd → Tested-Pass | Tested-Fail → Fixed → Verified.
 | ID | Card | Status | Test method | Defect type | Actual result | Notes / open questions |
 |---|---|---|---|---|---|---|
 | cull-001-workspace-key-gating | cull-001-workspace-key-gating.md | Verified | VM e2e (ax+sql) | — | iter2 re-run all PASS post-fix; gate leak closed | iter1: investigate gate leak; fix card steps 6-7 |
-| cull-002-loupe-navigation | cull-002-loupe-navigation.md | Fixed | VM e2e | — | stack nav = designed no-op on singleton seed; card corrected e76e5f3d; L/R/Space passed; awaiting re-run | card steps 6-7/Expected corrected 2026-07-10 to assert the no-op; real stack-to-stack nav still needs a multi-frame fixture |
-| cull-003-rating-label-flag-keys | cull-003-rating-label-flag-keys.md | Fixed | VM e2e | Functional | double-fire root-caused: menu key-equivalents fire after monitor (nil return doesn't block) — menu equivalents removed 3f426d3c, live single-fire proven; awaiting re-run | needs fresh full card re-run to Verify |
+| cull-002-loupe-navigation | cull-002-loupe-navigation.md | Verified | VM e2e (ax+sql) | — | iter3 post-fix re-run PASS; single-fire confirmed via SQL deltas | card steps 6-7/Expected corrected 2026-07-10 to assert the no-op; real stack-to-stack nav still needs a multi-frame fixture |
+| cull-003-rating-label-flag-keys | cull-003-rating-label-flag-keys.md | Verified | VM e2e (ax+sql) | — | iter3 post-fix re-run PASS; single-fire confirmed via SQL deltas | needs fresh full card re-run to Verify |
 | cull-004-stack-promote-return | cull-004-stack-promote-return.md | Tested-Fail | VM e2e | Testability | BLOCKED-FIXTURE multi-frame stacks; stackless no-op PASS | BLOCKED fixture gap: no seed produces multi-frame stacks (smoke 900s apart vs 2s builder gap; bench JPEGs lack EXIF DateTimeOriginal) |
-| cull-005-scope-cycle | cull-005-scope-cycle.md | Fixed | VM e2e | Functional | same fix 3f426d3c; S cycles one/press proven; awaiting re-run | needs fresh full card re-run to Verify |
-| cull-006-zoom-and-face-zoom | cull-006-zoom-and-face-zoom.md | Fixed | VM e2e | Testability | Screen Recording TCC granted in VM setup 842ea5b7; awaiting re-run | screenshot-diff method now runnable; card itself needs a fresh run |
-| cull-007-exif-overlay-cycle | cull-007-exif-overlay-cycle.md | Fixed | VM e2e | Functional | same fix; I lands exposure-only proven; awaiting re-run | needs fresh full card re-run to Verify |
-| cull-008-subview-keys-gcb | cull-008-subview-keys-gcb.md | Fixed | VM e2e | Functional | View-menu bare g/c/b equivalents re-set view after monitor — removed; G+Esc verified; awaiting re-run | needs fresh full card re-run to Verify |
-| cull-009-keymap-overlay | cull-009-keymap-overlay.md | Fixed | VM e2e | Functional | Esc was consumed as returnToGrid leaving overlay stuck — Esc now dismisses overlay first d1a200c3 (4 tests); awaiting re-run | needs fresh full card re-run to Verify |
-| cull-010-cullgrid-keys | cull-010-cullgrid-keys.md | Fixed | VM e2e | Testability | ax_drive --modifiers added 842ea5b7 (CGEvent clicks); awaiting re-run | batch-rating steps now runnable; card needs a fresh run |
+| cull-005-scope-cycle | cull-005-scope-cycle.md | Verified | VM e2e (ax+sql) | — | iter3 post-fix re-run PASS; single-fire confirmed via SQL deltas | needs fresh full card re-run to Verify |
+| cull-006-zoom-and-face-zoom | cull-006-zoom-and-face-zoom.md | Verified | VM e2e (ax+sql) | — | iter3 post-fix re-run PASS; single-fire confirmed via SQL deltas | screenshot-diff method now runnable; card itself needs a fresh run |
+| cull-007-exif-overlay-cycle | cull-007-exif-overlay-cycle.md | Verified | VM e2e (ax+sql) | — | iter3 post-fix re-run PASS; single-fire confirmed via SQL deltas | needs fresh full card re-run to Verify |
+| cull-008-subview-keys-gcb | cull-008-subview-keys-gcb.md | Verified | VM e2e (ax+sql) | — | iter3 post-fix re-run PASS; single-fire confirmed via SQL deltas | needs fresh full card re-run to Verify |
+| cull-009-keymap-overlay | cull-009-keymap-overlay.md | Verified | VM e2e (ax+sql) | — | iter3 post-fix re-run PASS; single-fire confirmed via SQL deltas | needs fresh full card re-run to Verify |
+| cull-010-cullgrid-keys | cull-010-cullgrid-keys.md | Verified | VM e2e (ax+sql) | — | iter3 post-fix re-run PASS; single-fire confirmed via SQL deltas | batch-rating steps now runnable; card needs a fresh run |
 | cull-011-hud | cull-011-hud.md | Tested-Pass | VM e2e (ax+sql) | — | counts track catalog exactly |  |
-| cull-012-closeups-panel | cull-012-closeups-panel.md | Fixed | VM e2e | Environment | faces originals now synced + detection needs Evaluate Scope (card updated); 11 observations landed; awaiting re-run | open q: Close-Ups re-detects live vs face_observations table — counts may disagree; intended? |
+| cull-012-closeups-panel | cull-012-closeups-panel.md | Verified | VM e2e (ax+sql) | — | iter3 post-fix re-run PASS; single-fire confirmed via SQL deltas | open q: Close-Ups re-detects live vs face_observations table — counts may disagree; intended? |
 | cull-013-filmstrip | cull-013-filmstrip.md | Tested-Fail | VM e2e | Testability | position text PASS; dividers BLOCKED-FIXTURE | shares stack fixture gap with cull-004 |
 | cull-014-stack-rail | cull-014-stack-rail.md | Tested-Fail | VM e2e | Testability | BLOCKED-FIXTURE | Core action set unread — open question; inventory corrected: primary Keep keeps SELECTED frame, not recommendation; action set documented |
 | cull-015-sidebar-sources | cull-015-sidebar-sources.md | Tested-Pass | VM e2e (ax+sql) | — | all source rows/counts correct |  |
 | cull-016-completion-stage | cull-016-completion-stage.md | Tested-Pass | VM e2e (ax+sql) | — | completion, Review Picks, scope reappearance correct; banner items still fixture-blocked | adopts end-of-set-move-rejects; items 49-51 (session banners) blocked by stack fixture gap |
 | cull-017-autopilot-review | cull-017-autopilot-review.md | Tested-Fail | VM e2e | Testability | BLOCKED-TOOLING: needs host fixture gen + submit_import_path equivalent in VM | adopts autopilot-review-commit-undo; open q: banner Dismiss may make Review unreachable for that run (one-way door) |
-| cull-018-compare-survey | cull-018-compare-survey.md | Fixed | VM e2e | — | contenders toggle disabled-by-design without evaluation ranks; card warns AXPress on disabled succeeds; awaiting re-run | open q: shared monitor key semantics in compare; CONFIRMED UX inconsistency: Return uses stricter stack-guard and can silently no-op while Keep-primary button is enabled |
+| cull-018-compare-survey | cull-018-compare-survey.md | Tested-Pass | VM e2e (ax+sql) | — | core verified; worker-eval steps (Evaluate Compare/contenders/refill) unexercised — needs evaluated fixture | open q: shared monitor key semantics in compare; CONFIRMED UX inconsistency: Return uses stricter stack-guard and can silently no-op while Keep-primary button is enabled |
 | cull-019-ab-compare | cull-019-ab-compare.md | Tested-Pass | VM e2e (ax+sql) | — | header/contender/keep-write verified via SQL |  |
-| cull-020-pass-scope-and-undo | cull-020-pass-scope-and-undo.md | Fixed | VM e2e | Functional | double-fire fixed; stack parts remain fixture-blocked; awaiting re-run | adopts cull-pass-scope-and-undo |
-| lib-001-sidebar-sections | lib-001-sidebar-sections.md | Spec'd | — | — | — |  |
-| lib-002-saved-set-context-menus | lib-002-saved-set-context-menus.md | Spec'd | — | — | — | note: work-session menu is a single star-toggle whose title flips; possible dup SidebarRow.id across sections (List diffing footgun) |
-| lib-003-token-grammar-fields | lib-003-token-grammar-fields.md | Spec'd | — | — | — |  |
-| lib-004-bare-and-phrase-tokens | lib-004-bare-and-phrase-tokens.md | Spec'd | — | — | — |  |
-| lib-005-token-readback-roundtrip | lib-005-token-readback-roundtrip.md | Tested-Pass | unit tests (LibraryQueryTokenTests 19/0, LibrarySearchIntentTests 11/0) | — | — | all round-trip + grammar assertions pass; AX spot-check pending VM batch |
-| lib-006-query-field-and-tips | lib-006-query-field-and-tips.md | Spec'd | — | — | — |  |
-| lib-007-add-filter-menu | lib-007-add-filter-menu.md | Spec'd | — | — | — |  |
-| lib-008-chips-remove-clear | lib-008-chips-remove-clear.md | Spec'd | — | — | — |  |
-| lib-009-sort-and-bar-extras | lib-009-sort-and-bar-extras.md | Spec'd | — | — | — |  |
-| lib-010-result-header-save | lib-010-result-header-save.md | Spec'd | — | — | — | fiveStars queue drives a Rating>=4 chip — name/behavior mismatch to arbitrate |
-| lib-011-view-toggle-routing | lib-011-view-toggle-routing.md | Spec'd | — | — | — |  |
-| lib-012-grid-keys | lib-012-grid-keys.md | Spec'd | — | — | — |  |
-| lib-013-library-loupe | lib-013-library-loupe.md | Spec'd | — | — | — | adopts library-loupe-no-cull-chrome |
-| lib-014-map-clusters-scoping | lib-014-map-clusters-scoping.md | Spec'd | — | — | — | adopts places-map-and-geocode; verify 62e0a31 query scoping |
-| lib-015-timeline | lib-015-timeline.md | Spec'd | — | — | — |  |
-| lib-016-grid-badges | lib-016-grid-badges.md | Spec'd | — | — | — |  |
-| lib-017-footer-density-zoom | lib-017-footer-density-zoom.md | Spec'd | — | — | — |  |
+| cull-020-pass-scope-and-undo | cull-020-pass-scope-and-undo.md | Tested-Pass | VM e2e (ax+sql) | Testability | runnable parts pass; stack-Return leg BLOCKED-FIXTURE | adopts cull-pass-scope-and-undo |
+| lib-001-sidebar-sections | lib-001-sidebar-sections.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS |  |
+| lib-002-saved-set-context-menus | lib-002-saved-set-context-menus.md | Tested-Fail | VM e2e | Testability | BLOCKED-TOOLING: no right-click verb; --modifiers control fires system menu not SwiftUI contextMenu | note: work-session menu is a single star-toggle whose title flips; possible dup SidebarRow.id across sections (List diffing footgun) |
+| lib-003-token-grammar-fields | lib-003-token-grammar-fields.md | Tested-Fail | VM e2e | UX | unquoted multi-word value silently drops trailing words (camera:SmokeCam 1 → 24 not 8); quoted works — Jesse decision: auto-quote/greedy-consume or document-only |  |
+| lib-004-bare-and-phrase-tokens | lib-004-bare-and-phrase-tokens.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS |  |
+| lib-005-token-readback-roundtrip | lib-005-token-readback-roundtrip.md | Tested-Pass | unit + VM spot-check | — | unit pass; AX spot-check pass except card drift (expected 10 vs actual 9 chips) — card fix queued | all round-trip + grammar assertions pass; AX spot-check pending VM batch |
+| lib-006-query-field-and-tips | lib-006-query-field-and-tips.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS |  |
+| lib-007-add-filter-menu | lib-007-add-filter-menu.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS |  |
+| lib-008-chips-remove-clear | lib-008-chips-remove-clear.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS |  |
+| lib-009-sort-and-bar-extras | lib-009-sort-and-bar-extras.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS |  |
+| lib-010-result-header-save | lib-010-result-header-save.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS | fiveStars queue drives a Rating>=4 chip — name/behavior mismatch to arbitrate |
+| lib-011-view-toggle-routing | lib-011-view-toggle-routing.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS |  |
+| lib-012-grid-keys | lib-012-grid-keys.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS |  |
+| lib-013-library-loupe | lib-013-library-loupe.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS | adopts library-loupe-no-cull-chrome |
+| lib-014-map-clusters-scoping | lib-014-map-clusters-scoping.md | Tested-Fail | VM e2e | Testability | BLOCKED-FIXTURE GPS seed — but TeststripBench seed-geo-fixtures exists; wire a geo variant + card fix | adopts places-map-and-geocode; verify 62e0a31 query scoping |
+| lib-015-timeline | lib-015-timeline.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS |  |
+| lib-016-grid-badges | lib-016-grid-badges.md | Tested-Fail | VM e2e | Testability | badge a11y labels absent from AX tree — app accessibility gap; fix queued |  |
+| lib-017-footer-density-zoom | lib-017-footer-density-zoom.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS |  |
 | lib-018-pagination | lib-018-pagination.md | Spec'd | — | — | — | BLOCKED fixture gap: assetPageSize=120 vs 24 smoke assets — pagination unreachable with current seeds |
-| lib-019-multiselect | lib-019-multiselect.md | Spec'd | — | — | — |  |
-| lib-020-token-query-filter | lib-020-token-query-filter.md | Spec'd | — | — | — | adopts token-query-filter |
+| lib-019-multiselect | lib-019-multiselect.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS |  |
+| lib-020-token-query-filter | lib-020-token-query-filter.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS | adopts token-query-filter |
 | people-001-canvas-header | people-001-canvas-header.md | Spec'd | — | — | — |  |
 | people-002-suggestion-cards | people-002-suggestion-cards.md | Spec'd | — | — | — | adopts people-name-face-group-happy-path |
 | people-003-cluster-identity | people-003-cluster-identity.md | Spec'd | — | — | — | adopts people-cluster-by-identity |
