@@ -70,6 +70,24 @@ private struct WorkspaceCommands: Commands {
                 }
                 .keyboardShortcut(workspace.keyEquivalent, modifiers: [.command])
             }
+
+            Divider()
+
+            // Temporary sub-view routes so grid/loupe/compare/A-B stay
+            // reachable after the old top-bar switcher's removal; Task 18
+            // rebuilds Cull sub-view switching (and assigns key equivalents).
+            Button("Grid") {
+                model.selectedView = .grid
+            }
+            Button("Loupe") {
+                model.selectedView = .loupe
+            }
+            Button("Compare") {
+                model.selectedView = .compare
+            }
+            Button("A/B Compare") {
+                model.selectedView = .abCompare
+            }
         }
     }
 }

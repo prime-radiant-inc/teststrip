@@ -403,21 +403,9 @@ struct LibraryGridView: View {
     }
 
     private var libraryTopBar: some View {
-        let presentation = LibraryTopBarPresentation(
-            catalogTitle: model.catalogDisplayName,
-            libraryTitle: model.libraryTitle,
-            libraryCountText: model.libraryCountText,
-            selectedView: model.selectedView,
-            activeFilterChips: model.activeLibraryFilterChips
-        )
-        return HStack(spacing: 12) {
-            topBarCatalogIdentity(presentation)
-            Divider()
-                .frame(height: 26)
-            topBarBreadcrumb(presentation)
+        HStack(spacing: 12) {
             Spacer(minLength: 12)
             topBarSearchField
-            topBarViewSwitcher(presentation)
             Button {
                 showImportFolderPanel()
             } label: {
@@ -449,48 +437,7 @@ struct LibraryGridView: View {
         .liveMockupPlaceholder(.topChrome)
     }
 
-    private func topBarCatalogIdentity(_ presentation: LibraryTopBarPresentation) -> some View {
-        HStack(spacing: 9) {
-            Image(systemName: "chart.bar.fill")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(presentation.catalogTitle)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1)
-                Text(presentation.catalogSubtitle)
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .frame(width: 174, alignment: .leading)
-    }
 
-    private func topBarBreadcrumb(_ presentation: LibraryTopBarPresentation) -> some View {
-        HStack(spacing: 6) {
-            ForEach(Array(presentation.breadcrumbItems.enumerated()), id: \.offset) { index, item in
-                if index > 0 {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                Text(item)
-                    .font(.caption.weight(index == presentation.breadcrumbItems.count - 1 ? .semibold : .regular))
-                    .foregroundStyle(index == presentation.breadcrumbItems.count - 1 ? .primary : .secondary)
-                    .lineLimit(1)
-            }
-            if let filterSummaryText = presentation.filterSummaryText {
-                Text(filterSummaryText)
-                    .font(.caption2.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
-            }
-        }
-        .frame(minWidth: 160, alignment: .leading)
-    }
 
     private var topBarSearchField: some View {
         HStack(spacing: 8) {
@@ -578,36 +525,6 @@ struct LibraryGridView: View {
         ("from: / before: / date:", "By capture date"),
         ("source: / signal: / xmp:", "By availability, AI signal, or sync state")
     ]
-
-    private func topBarViewSwitcher(_ presentation: LibraryTopBarPresentation) -> some View {
-        HStack(spacing: 2) {
-            ForEach(presentation.modeItems) { item in
-                topBarModeButton(item)
-            }
-        }
-        .padding(2)
-        .background(Color.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 8))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Library View")
-    }
-
-    private func topBarModeButton(_ item: LibraryTopBarModeItem) -> some View {
-        let isSelected = model.selectedView == item.mode
-        return Button {
-            model.selectedView = item.mode
-        } label: {
-            Image(systemName: item.systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(isSelected ? .primary : .secondary)
-                .frame(width: 30, height: 26)
-                .background(isSelected ? Color.white.opacity(0.11) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
-        }
-        .buttonStyle(.plain)
-        .help(item.title)
-        .accessibilityLabel(item.title)
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
-        .liveMockupPlaceholder(item.liveMockupPlaceholder)
-    }
 
     @ViewBuilder
     private var topInsetContent: some View {
