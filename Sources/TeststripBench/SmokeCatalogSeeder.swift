@@ -26,15 +26,46 @@ public struct SmokeCatalogSeederResult: Equatable {
     }
 }
 
+/// Capture-time layout for the `burst` seed variant: multi-frame groups whose
+/// consecutive frames sit inside AssetStackBuilder's 2s auto-stack gap, plus
+/// trailing singles far outside it, so a seeded catalog exercises auto
+/// stacking without a real camera burst.
+public enum BurstFixtureLayout {
+    public static let burstFrameCounts = [3, 4, 3, 4]
+    public static let singleCount = 4
+    public static var totalAssetCount: Int {
+        burstFrameCounts.reduce(0, +) + singleCount
+    }
+
+    public static func captureOffsets() -> [TimeInterval] {
+        var offsets: [TimeInterval] = []
+        var groupStart: TimeInterval = 0
+        for frameCount in burstFrameCounts {
+            for frame in 0..<frameCount {
+                offsets.append(groupStart + TimeInterval(frame))
+            }
+            groupStart += 3600
+        }
+        for single in 0..<singleCount {
+            offsets.append(groupStart + TimeInterval(single) * 3600)
+        }
+        return offsets
+    }
+}
+
 public struct SmokeCatalogSeeder {
     public var applicationSupportDirectory: URL
     public var count: Int
+    /// Per-index capture-time offsets (seconds from the seed epoch). Nil keeps
+    /// the default 15-minute spacing, which never auto-stacks.
+    public var captureOffsets: [TimeInterval]?
 
     private let renderedLevels: [PreviewLevel] = [.micro, .grid, .medium, .large]
 
-    public init(applicationSupportDirectory: URL, count: Int) {
+    public init(applicationSupportDirectory: URL, count: Int, captureOffsets: [TimeInterval]? = nil) {
         self.applicationSupportDirectory = applicationSupportDirectory
         self.count = max(0, count)
+        self.captureOffsets = captureOffsets
     }
 
     public func run() throws -> SmokeCatalogSeederResult {
@@ -102,7 +133,8 @@ public struct SmokeCatalogSeeder {
     private func asset(id: AssetID, originalURL: URL, index: Int, fingerprint: FileFingerprint) -> Asset {
         let colorLabels = ColorLabel.allCases
         let colorLabel = colorLabels[index % colorLabels.count]
-        let capturedAt = Date(timeIntervalSince1970: 1_704_067_200 + TimeInterval(index * 900))
+        let captureOffset = captureOffsets?[index] ?? TimeInterval(index * 900)
+        let capturedAt = Date(timeIntervalSince1970: 1_704_067_200 + captureOffset)
         return Asset(
             id: id,
             originalURL: originalURL,

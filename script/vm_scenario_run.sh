@@ -42,9 +42,15 @@ set -euo pipefail
 #   script/vm_scenario_run.sh destroy            Stop and delete the VM.
 #
 # Seed variants (see script/build_and_run.sh for the equivalent host flags):
-#   smoke   24 synthetic photos  (script/build_and_run.sh --smoke)
-#   faces   sample-data/photos/faces via faces.tsv (script/build_and_run.sh --faces)
-#   empty   isolated but unseeded catalog (script/build_and_run.sh --isolated)
+#   smoke     24 synthetic photos  (script/build_and_run.sh --smoke)
+#   smokebig  130 synthetic photos — exceeds the 120-asset page size to
+#             exercise library pagination
+#   burst     TeststripBench seed-burst-catalog: 4 auto-groupable burst stacks
+#             (frames <=2s apart by capture time) plus singles, for stack cards
+#   geo       TeststripBench seed-geo-fixtures imported via seed-sample-catalog:
+#             half the assets carry Eiffel Tower GPS EXIF, for places cards
+#   faces     sample-data/photos/faces via faces.tsv (script/build_and_run.sh --faces)
+#   empty     isolated but unseeded catalog (script/build_and_run.sh --isolated)
 #
 # A scenario card is still driven by hand (or by an agent) issuing a sequence
 # of `vm_scenario_run.sh ax ...` / `vm_scenario_run.sh sql ...` calls per its
@@ -151,10 +157,8 @@ SQL
 
 seed_dir_for() {
   case "$1" in
-    smoke) echo "$SEED_ROOT/smoke" ;;
-    faces) echo "$SEED_ROOT/faces" ;;
-    empty) echo "$SEED_ROOT/empty" ;;
-    *) echo "unknown seed variant: $1 (want smoke|faces|empty)" >&2; exit 2 ;;
+    smoke|smokebig|burst|geo|faces|empty) echo "$SEED_ROOT/$1" ;;
+    *) echo "unknown seed variant: $1 (want smoke|smokebig|burst|geo|faces|empty)" >&2; exit 2 ;;
   esac
 }
 
@@ -169,6 +173,20 @@ seed_locally() {
   case "$variant" in
     smoke)
       ( cd "$ROOT_DIR" && swift run TeststripBench seed-app-catalog "$dir" "${TESTSTRIP_SMOKE_ASSET_COUNT:-24}" )
+      ;;
+    smokebig)
+      # 130 assets exceeds the 120-asset library page size (pagination cards).
+      ( cd "$ROOT_DIR" && swift run TeststripBench seed-app-catalog "$dir" 130 )
+      ;;
+    burst)
+      ( cd "$ROOT_DIR" && swift run TeststripBench seed-burst-catalog "$dir" )
+      ;;
+    geo)
+      # GPS-bearing originals live inside the seed dir so cmd_launch's
+      # original_path rewrite keeps them resolvable in the VM.
+      ( cd "$ROOT_DIR" \
+        && swift run TeststripBench seed-geo-fixtures "$dir/GeoOriginals" 12 \
+        && swift run TeststripBench seed-sample-catalog "$dir" "$dir/GeoOriginals" )
       ;;
     faces)
       local photos="$ROOT_DIR/sample-data/photos/faces"
@@ -226,7 +244,7 @@ cmd_sync() {
 }
 
 cmd_launch() {
-  local variant="${1:?usage: $0 launch VARIANT (smoke|faces|empty)}"
+  local variant="${1:?usage: $0 launch VARIANT (smoke|smokebig|burst|geo|faces|empty)}"
   seed_dir_for "$variant" >/dev/null # validate
   local remote_seed="$REMOTE_ROOT/isolated/$variant"
   local fresh="$REMOTE_ROOT/run/$variant-$(date +%s)"

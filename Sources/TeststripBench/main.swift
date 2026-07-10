@@ -40,6 +40,8 @@ case .samplePreviewRender(let photoDirectory):
     try runSamplePreviewRenderBenchmark(photoDirectory: photoDirectory, root: root)
 case .seedAppCatalog(let applicationSupportDirectory, let count):
     try runSeedAppCatalog(applicationSupportDirectory: applicationSupportDirectory, count: count)
+case .seedBurstCatalog(let applicationSupportDirectory):
+    try runSeedBurstCatalog(applicationSupportDirectory: applicationSupportDirectory)
 case .seedRealCorpusCatalog(let applicationSupportDirectory, let photoDirectory):
     try runSeedRealCorpusCatalog(applicationSupportDirectory: applicationSupportDirectory, photoDirectory: photoDirectory)
 case .seedSampleCatalog(let applicationSupportDirectory, let photoDirectory):
@@ -377,6 +379,28 @@ private func runSeedAppCatalog(applicationSupportDirectory: URL, count: Int) thr
     print("source images: \(result.sourceImageCount)")
     print("catalog assets: \(result.assetCount)")
     print("cached previews: \(result.cachedPreviewCount)")
+    try printMachineReadableSummary(recorder.summary)
+}
+
+private func runSeedBurstCatalog(applicationSupportDirectory: URL) throws {
+    let count = BurstFixtureLayout.totalAssetCount
+    var recorder = BenchmarkSummaryRecorder(benchmark: "seed_burst_catalog", count: count)
+
+    print("TeststripBench seed burst catalog")
+    print("application support: \(applicationSupportDirectory.path)")
+    print("burst groups: \(BurstFixtureLayout.burstFrameCounts) + \(BurstFixtureLayout.singleCount) singles")
+    let result = try measure("seed burst catalog", recorder: &recorder, key: "seed_burst_catalog") {
+        try SmokeCatalogSeeder(
+            applicationSupportDirectory: applicationSupportDirectory,
+            count: count,
+            captureOffsets: BurstFixtureLayout.captureOffsets()
+        ).run()
+    }
+    recorder.recordMetric("source_images", result.sourceImageCount)
+    recorder.recordMetric("catalog_assets", result.assetCount)
+    recorder.recordMetric("cached_previews", result.cachedPreviewCount)
+    print("catalog: \(result.catalogURL.path)")
+    print("catalog assets: \(result.assetCount)")
     try printMachineReadableSummary(recorder.summary)
 }
 

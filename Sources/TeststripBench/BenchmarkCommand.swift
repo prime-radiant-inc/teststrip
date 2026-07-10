@@ -19,6 +19,7 @@ public enum BenchmarkCommand: Equatable {
     case seedDupFixtures(directory: URL)
     case samplePreviewRender(photoDirectory: URL)
     case seedAppCatalog(applicationSupportDirectory: URL, count: Int)
+    case seedBurstCatalog(applicationSupportDirectory: URL)
     case seedRealCorpusCatalog(applicationSupportDirectory: URL, photoDirectory: URL)
     case seedSampleCatalog(applicationSupportDirectory: URL, photoDirectory: URL)
 
@@ -86,6 +87,10 @@ public enum BenchmarkCommand: Equatable {
             let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
             let count = Int(userArguments.dropFirst(2).first ?? "24") ?? 24
             return .seedAppCatalog(applicationSupportDirectory: URL(fileURLWithPath: directory), count: count)
+        }
+        if firstArgument == "seed-burst-catalog" {
+            let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
+            return .seedBurstCatalog(applicationSupportDirectory: URL(fileURLWithPath: directory))
         }
         if firstArgument == "seed-real-corpus-catalog" {
             let applicationSupportDirectory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
