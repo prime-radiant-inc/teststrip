@@ -7,6 +7,7 @@ public enum LibraryViewMode: String, CaseIterable, Sendable {
     case grid
     case copilot
     case loupe
+    case libraryLoupe
     case compare
     case abCompare
     case timeline
@@ -77,11 +78,26 @@ extension LibraryViewMode {
         switch self {
         case .loupe, .compare, .abCompare, .copilot:
             return .cull
-        case .grid, .timeline, .map:
+        case .grid, .timeline, .map, .libraryLoupe:
             return .library
         case .people:
             return .people
         }
+    }
+}
+
+/// Which chrome `LoupeView` shows: the culling loupe (`.loupe`) gets the full
+/// HUD/stack rail/pick-reject/assist toolset; the Library loupe (`.libraryLoupe`)
+/// is plain navigation plus the EXIF metadata overlay only.
+public struct LoupePresentation: Equatable, Sendable {
+    public var showsCullChrome: Bool
+
+    public init(showsCullChrome: Bool) {
+        self.showsCullChrome = showsCullChrome
+    }
+
+    public init(mode: LibraryViewMode) {
+        self.showsCullChrome = mode == .loupe
     }
 }
 
@@ -4480,6 +4496,13 @@ public final class AppModel {
         selectedView = .loupe
     }
 
+    // Enter/Space from the Library grid opens the plain-chrome Library loupe,
+    // not the culling loupe (which stays reachable only from the Cull workspace).
+    public func openAssetInLibraryLoupe(_ assetID: AssetID) {
+        select(assetID)
+        selectedView = .libraryLoupe
+    }
+
     public func compareAssets(limit: Int = 8) -> [Asset] {
         let boundedLimit = max(1, limit)
         if let persistedStack = persistedWorkStackAssets(limit: boundedLimit, anchor: selectedAssetID) {
@@ -4837,7 +4860,7 @@ public final class AppModel {
             try setFlagForSelectedAssets(nil)
         case .openLoupe:
             guard let selectedAssetID else { return }
-            openAssetInLoupe(selectedAssetID)
+            openAssetInLibraryLoupe(selectedAssetID)
         case .returnToGrid:
             returnToLibraryGrid()
         }
@@ -9157,7 +9180,7 @@ public final class AppModel {
         switch view {
         case .grid, .copilot, .timeline, .people, .map:
             return true
-        case .loupe, .compare, .abCompare:
+        case .loupe, .libraryLoupe, .compare, .abCompare:
             return false
         }
     }

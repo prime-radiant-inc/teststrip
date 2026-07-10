@@ -23,8 +23,14 @@ final class WorkspacePresentationTests: XCTestCase {
         XCTAssertEqual(LibraryViewMode.grid.workspace, .library)
         XCTAssertEqual(LibraryViewMode.timeline.workspace, .library)
         XCTAssertEqual(LibraryViewMode.map.workspace, .library)
+        XCTAssertEqual(LibraryViewMode.libraryLoupe.workspace, .library)
         XCTAssertEqual(LibraryViewMode.copilot.workspace, .cull) // queues feed culling
         XCTAssertEqual(LibraryViewMode.people.workspace, .people)
+    }
+
+    func testLoupePresentationChromeFlagByMode() {
+        XCTAssertTrue(LoupePresentation(mode: .loupe).showsCullChrome)
+        XCTAssertFalse(LoupePresentation(mode: .libraryLoupe).showsCullChrome)
     }
 
     func testSelectWorkspaceRestoresLastSubView() {

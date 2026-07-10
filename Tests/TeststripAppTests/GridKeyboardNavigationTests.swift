@@ -117,8 +117,9 @@ final class GridKeyboardNavigationTests: XCTestCase {
         XCTAssertNil(GridKeyCommand(input: .character("q")))
     }
 
-    func testEnterOpensLoupeAndEscapeReturnsToGrid() {
+    func testEnterAndSpaceOpenLoupeAndEscapeReturnsToGrid() {
         XCTAssertEqual(GridKeyCommand(input: .returnKey), .openLoupe)
+        XCTAssertEqual(GridKeyCommand(input: .space), .openLoupe)
         XCTAssertEqual(GridKeyCommand(input: .escape), .returnToGrid)
     }
 
@@ -130,6 +131,15 @@ final class GridKeyboardNavigationTests: XCTestCase {
 
         XCTAssertTrue(GridKeyCommand.returnToGrid.isAllowed(in: .loupe))
         XCTAssertFalse(GridKeyCommand.move(.right).isAllowed(in: .loupe))
+
+        // Library loupe: plain left/right stepping and Escape, but no
+        // rating/pick/reject (those stay culling-loupe-only).
+        XCTAssertTrue(GridKeyCommand.move(.left).isAllowed(in: .libraryLoupe))
+        XCTAssertTrue(GridKeyCommand.move(.right).isAllowed(in: .libraryLoupe))
+        XCTAssertTrue(GridKeyCommand.returnToGrid.isAllowed(in: .libraryLoupe))
+        XCTAssertFalse(GridKeyCommand.move(.up).isAllowed(in: .libraryLoupe))
+        XCTAssertFalse(GridKeyCommand.rating(3).isAllowed(in: .libraryLoupe))
+        XCTAssertFalse(GridKeyCommand.openLoupe.isAllowed(in: .libraryLoupe))
 
         XCTAssertFalse(GridKeyCommand.move(.right).isAllowed(in: .compare))
     }
@@ -163,13 +173,24 @@ final class GridKeyboardNavigationTests: XCTestCase {
 
         try model.applyGridKeyCommand(.openLoupe, columns: 4)
 
-        XCTAssertEqual(model.selectedView, .loupe)
+        // Enter/Space from the grid opens the plain-chrome Library loupe,
+        // not the culling loupe.
+        XCTAssertEqual(model.selectedView, .libraryLoupe)
         XCTAssertEqual(model.selectedAssetID, assets[2].id)
     }
 
     func testApplyGridKeyCommandReturnToGridSwitchesView() throws {
         let assets = (0..<4).map { makeAsset(id: "asset-\($0)", size: Int64($0 + 1)) }
         let model = AppModel(sidebarSections: [], selectedView: .loupe, assets: assets)
+
+        try model.applyGridKeyCommand(.returnToGrid, columns: 4)
+
+        XCTAssertEqual(model.selectedView, .grid)
+    }
+
+    func testApplyGridKeyCommandReturnToGridFromLibraryLoupeSwitchesView() throws {
+        let assets = (0..<4).map { makeAsset(id: "asset-\($0)", size: Int64($0 + 1)) }
+        let model = AppModel(sidebarSections: [], selectedView: .libraryLoupe, assets: assets)
 
         try model.applyGridKeyCommand(.returnToGrid, columns: 4)
 

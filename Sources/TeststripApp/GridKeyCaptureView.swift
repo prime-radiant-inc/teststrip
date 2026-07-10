@@ -20,6 +20,7 @@ public enum GridKeyInput: Equatable, Sendable {
     case home
     case end
     case returnKey
+    case space
     case escape
     case character(String)
 }
@@ -48,7 +49,7 @@ public enum GridKeyCommand: Equatable, Sendable {
             self = .move(.home)
         case .end:
             self = .move(.end)
-        case .returnKey:
+        case .returnKey, .space:
             self = .openLoupe
         case .escape:
             self = .returnToGrid
@@ -68,13 +69,22 @@ public enum GridKeyCommand: Equatable, Sendable {
         }
     }
 
-    // Grid keys navigate and rate while browsing; only Escape acts from the loupe.
+    // Grid keys navigate and rate while browsing; only Escape acts from the
+    // culling loupe. The Library loupe additionally allows left/right
+    // stepping since it has no culling-shortcut monitor of its own.
     public func isAllowed(in mode: LibraryViewMode) -> Bool {
         switch mode {
         case .grid:
             return self != .returnToGrid
         case .loupe:
             return self == .returnToGrid
+        case .libraryLoupe:
+            switch self {
+            case .move(.left), .move(.right), .returnToGrid:
+                return true
+            default:
+                return false
+            }
         default:
             return false
         }
@@ -241,6 +251,8 @@ extension GridKeyInput {
             self = .returnKey
         case GridMacKeyCode.escape:
             self = .escape
+        case GridMacKeyCode.space:
+            self = .space
         default:
             guard
                 let character = event.charactersIgnoringModifiers,
@@ -257,6 +269,7 @@ private enum GridMacKeyCode {
     static let returnKey: UInt16 = 36
     static let keypadEnter: UInt16 = 76
     static let escape: UInt16 = 53
+    static let space: UInt16 = 49
     static let leftArrow: UInt16 = 123
     static let rightArrow: UInt16 = 124
     static let downArrow: UInt16 = 125
