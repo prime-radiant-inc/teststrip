@@ -3,14 +3,15 @@ import XCTest
 @testable import TeststripApp
 
 final class CullCompletionTests: XCTestCase {
-    // MARK: - Presentation appears only at zero scoped-undecided, non-empty session
+    // MARK: - Presentation appears only at zero undecided, non-empty session
 
-    func testPresentationIsNilWhenScopedUndecidedRemains() {
+    func testPresentationIsNilWhenUndecidedRemains() {
         let presentation = CullCompletionPresentation.presentation(
             pickCount: 2,
             rejectCount: 1,
             totalCount: 5,
-            scopedUndecidedCount: 2
+            undecidedCount: 2,
+            scope: .all
         )
         XCTAssertNil(presentation)
     }
@@ -20,20 +21,64 @@ final class CullCompletionTests: XCTestCase {
             pickCount: 0,
             rejectCount: 0,
             totalCount: 0,
-            scopedUndecidedCount: 0
+            undecidedCount: 0,
+            scope: .all
         )
         XCTAssertNil(presentation)
     }
 
-    func testPresentationAppearsWhenScopedUndecidedIsZeroAndSessionNonEmpty() {
+    func testPresentationAppearsWhenUndecidedIsZeroAndSessionNonEmpty() {
+        for scope in [CullScope.unrated, .all] {
+            let presentation = CullCompletionPresentation.presentation(
+                pickCount: 3,
+                rejectCount: 2,
+                totalCount: 5,
+                undecidedCount: 0,
+                scope: scope
+            )
+            XCTAssertEqual(presentation?.picks, 3, "scope \(scope)")
+            XCTAssertEqual(presentation?.rejects, 2, "scope \(scope)")
+        }
+    }
+
+    // MARK: - Review scopes never show completion
+
+    func testPresentationIsSuppressedInReviewScopesEvenWhenComplete() {
+        // .picks/.rejects are review scopes: even a genuinely-complete
+        // session must show the frames under review, not the handoff.
+        for scope in [CullScope.picks, .rejects] {
+            let presentation = CullCompletionPresentation.presentation(
+                pickCount: 3,
+                rejectCount: 2,
+                totalCount: 5,
+                undecidedCount: 0,
+                scope: scope
+            )
+            XCTAssertNil(presentation, "scope \(scope)")
+        }
+    }
+
+    func testSwitchingToPicksScopeWithUndecidedWorkDoesNotShowCompletionAndPicksAreBrowsable() {
+        // Regression: undecided must be counted session-wide, not within the
+        // scope filter — .picks excludes unflagged frames by definition, so a
+        // scope-filtered count is trivially zero and falsely reports done.
+        let model = makeModel(withFlags: [nil, .pick, .pick, nil])
+        cycleCullScope(model, to: .picks)
+
+        XCTAssertEqual(model.cullUndecidedCount, 2)
         let presentation = CullCompletionPresentation.presentation(
-            pickCount: 3,
-            rejectCount: 2,
-            totalCount: 5,
-            scopedUndecidedCount: 0
+            pickCount: 2,
+            rejectCount: 0,
+            totalCount: 4,
+            undecidedCount: model.cullUndecidedCount,
+            scope: model.cullScope
         )
-        XCTAssertEqual(presentation?.picks, 3)
-        XCTAssertEqual(presentation?.rejects, 2)
+        XCTAssertNil(presentation)
+        // The picks are browsable: scope navigation has picks to land on.
+        XCTAssertEqual(
+            CullScopeOrdering.filteredAssetIDs(model.assets, scope: model.cullScope),
+            [AssetID(rawValue: "asset-1"), AssetID(rawValue: "asset-2")]
+        )
     }
 
     // MARK: - Actions
@@ -43,24 +88,24 @@ final class CullCompletionTests: XCTestCase {
             pickCount: 1,
             rejectCount: 1,
             totalCount: 2,
-            scopedUndecidedCount: 0
+            undecidedCount: 0,
+            scope: .all
         )
         XCTAssertEqual(presentation?.actions, [.export, .moveRejects, .reviewPicks])
     }
 
-    // MARK: - Scoped undecided count on AppModel
+    // MARK: - Undecided count on AppModel
 
-    func testScopedUndecidedCountReflectsCurrentScopeOnly() {
+    func testCullUndecidedCountIsSessionWideRegardlessOfScope() {
         let model = makeModel(withFlags: [nil, .pick, .reject, nil])
-        // Default cullScope is .all.
         XCTAssertEqual(model.cullScope, .all)
-        XCTAssertEqual(model.scopedUndecidedCount, 2)
+        XCTAssertEqual(model.cullUndecidedCount, 2)
 
         cycleCullScope(model, to: .picks)
-        XCTAssertEqual(model.scopedUndecidedCount, 0)
+        XCTAssertEqual(model.cullUndecidedCount, 2)
 
         cycleCullScope(model, to: .unrated)
-        XCTAssertEqual(model.scopedUndecidedCount, 2)
+        XCTAssertEqual(model.cullUndecidedCount, 2)
     }
 
     // MARK: - ReviewPicks sets scope
@@ -72,6 +117,31 @@ final class CullCompletionTests: XCTestCase {
         model.applyCullCompletionReviewPicks()
 
         XCTAssertEqual(model.cullScope, .picks)
+    }
+
+    func testReviewPicksFromCompleteSessionShowsPicksNotCompletion() {
+        // From a genuinely-complete session, ReviewPicks must land the user
+        // on the picks stage, not re-render the completion state.
+        let model = makeModel(withFlags: [.pick, .reject, .pick])
+        XCTAssertEqual(model.cullUndecidedCount, 0)
+
+        model.applyCullCompletionReviewPicks()
+
+        XCTAssertEqual(model.cullScope, .picks)
+        let presentation = CullCompletionPresentation.presentation(
+            pickCount: 2,
+            rejectCount: 1,
+            totalCount: 3,
+            undecidedCount: model.cullUndecidedCount,
+            scope: model.cullScope
+        )
+        XCTAssertNil(presentation)
+        // A pick is selected, so the stage shows a pick.
+        let pickIDs = CullScopeOrdering.filteredAssetIDs(model.assets, scope: .picks)
+        XCTAssertFalse(pickIDs.isEmpty)
+        if let selected = model.selectedAssetID {
+            XCTAssertTrue(pickIDs.contains(selected))
+        }
     }
 
     // MARK: - Helpers

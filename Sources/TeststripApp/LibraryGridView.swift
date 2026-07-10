@@ -3469,9 +3469,11 @@ private struct LoupeView: View {
         LoupePresentation(mode: model.selectedView)
     }
 
-    // Nil unless the loupe is in cull chrome, everything undecided in the
-    // current CullScope is decided, and the session isn't empty; also
-    // suppressed once the user dismisses it for the current asset/scope.
+    // Nil unless the loupe is in cull chrome, nothing in the session is
+    // left unflagged, the session isn't empty, and the scope is a deciding
+    // scope (unrated/all — the picks/rejects review scopes never show it);
+    // also suppressed once the user dismisses it for the current
+    // asset/scope.
     private var cullCompletion: CullCompletionPresentation? {
         guard !isCullCompletionDismissed else { return nil }
         let summary = model.cullingProgressSummary
@@ -3479,7 +3481,8 @@ private struct LoupeView: View {
             pickCount: summary.pickCount,
             rejectCount: summary.rejectCount,
             totalCount: summary.totalCount,
-            scopedUndecidedCount: model.scopedUndecidedCount
+            undecidedCount: model.cullUndecidedCount,
+            scope: model.cullScope
         )
     }
 

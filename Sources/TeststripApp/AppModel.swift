@@ -5435,18 +5435,19 @@ public final class AppModel {
         ))
     }
 
-    /// Undecided count within the current `cullScope`, for driving
-    /// `CullCompletionPresentation`. Computed from the in-memory `assets`
-    /// page (the same array `CullScopeOrdering` already navigates), not a
+    /// Count of unflagged (undecided) frames in the session, for driving
+    /// `CullCompletionPresentation`. Deliberately NOT filtered by
+    /// `cullScope`: the `.picks`/`.rejects` review scopes exclude unflagged
+    /// frames by definition, so a scope-filtered count would be trivially
+    /// zero there and falsely report completion. Computed from the in-memory
+    /// `assets` page (the same array `CullScopeOrdering` navigates), not a
     /// full-catalog query: cheap, and consistent with how scope-based nav
-    /// already treats `assets` as the scope's universe elsewhere in this
+    /// already treats `assets` as the session's universe elsewhere in this
     /// file. On a paginated library this undercounts undecided items on
     /// pages not yet loaded, matching the pagination caveat scope-nav
     /// already has (see `hasMoreAssets`/`hasPreviousAssets`).
-    public var scopedUndecidedCount: Int {
-        CullScopeOrdering.filteredAssets(assets, scope: cullScope)
-            .filter { $0.metadata.flag == nil }
-            .count
+    public var cullUndecidedCount: Int {
+        assets.filter { $0.metadata.flag == nil }.count
     }
 
     /// The `.reviewPicks` action from `CullCompletionPresentation`.
