@@ -103,8 +103,16 @@ sqlite3 "$DB" "SELECT id, original_path FROM assets WHERE json_extract(metadata_
    "✦ BEST" (`:4989`), and real metric lanes replacing "No read yet". Keep
    the app frontmost during the wait (idle-wedge; re-run `wait-vended` per
    poll).
-5. **Contenders toggle (item 56).** With signals present
-   (`isContendersModeAvailable`), press
+5. **Contenders toggle (item 56).** This step REQUIRES step 4's evaluation
+   signals to have landed first: `isContendersModeAvailable` is
+   `!rankedCandidates.isEmpty` (LibraryGridView.swift, CompareSurveyPresentation
+   init), and with zero `evaluation_signals` rows the button carries
+   `.disabled(true)` — pressing it then is a **designed no-op**, not a
+   defect (verified against source 2026-07-10; run-cull-iter2's "inert
+   toggle" was on the zero-signals `--smoke` seed). Note AXPress on a
+   disabled SwiftUI button still "succeeds" from the driver's side — check
+   the AXEnabled attribute or the title flip, not the press result. With
+   signals present, press
    `script/ax_drive.sh press --role AXButton --help "Narrows the compare grid to the top 3 ranked contenders"`.
    Assert the button title flips to "Full set"
    (`ax_drive.sh find --contains "Full set"`) and at most 3 tiles render.

@@ -65,14 +65,21 @@ calls below.
    `1_704_067_200 + index*900`), far outside `AssetStackBuilder`'s 2-second
    `maximumCaptureGap`, and there is no persisted `work-stack-` session in a
    fresh `--smoke` catalog (per README). So `cullingStacks()` partitions all
-   24 assets into 24 **singleton** stacks — Up/Down stack nav in this card
-   degenerates to "next/previous asset in catalog order," same as Left/Right.
-   Press `Down` and assert the selection advances by exactly one asset (the
-   next singleton stack's sole member); press `Up` and assert it returns.
-   This does *not* exercise genuine multi-frame stack-to-stack jumping — see
-   Sharp edges.
+   24 assets into 24 **singleton** stacks — and stack *navigation* is a
+   **designed no-op** on an all-singleton catalog: `selectCullingStack`
+   builds its jump list from `cullingStacks()`, which filters to multi-frame
+   stacks only (`AppModel.swift`, `allCullingStacks(...).filter {
+   $0.assetIDs.count > 1 }`), and guard-returns when that list is empty. The
+   filmstrip's "stack N / M" text counts *all* stacks including singletons
+   (`allCullingStacks`), so the position text and the nav keys intentionally
+   disagree on `--smoke`. Press `Down` and assert the selection does NOT
+   move; press `Up` and assert the same. (Verified live 2026-07-10: both
+   keys dispatch `.nextStack`/`.previousStack` to the monitor — traced to
+   `applyCullingShortcut` — and the no-op is the multi-frame filter, not a
+   dispatch failure.) This does *not* exercise genuine multi-frame
+   stack-to-stack jumping — see Sharp edges.
 7. Press ⌥→ (Option-Right-Arrow). Assert it behaves identically to step 6's
-   `Down` (both resolve to `.nextStack`) — same next-asset transition. This
+   `Down` (both resolve to `.nextStack`) — same designed no-op here. This
    confirms the monitor-only alternate actually fires; it has no Commands-
    menu binding to verify against (that's the point of `isMonitorOnly`).
    Press ⌥← to return.
@@ -99,9 +106,11 @@ calls below.
   Right/Space dictate; toast clears on every navigation keystroke. **Fails
   if** the toast survives a navigation press (stale decision feedback shown
   next to a different photo), or if Space does something other than advance.
-- Step 6-7: Up/Down and ⌥↑/⌥→ move selection by one asset in `--smoke`'s
-  all-singleton-stacks case. **Fails if** they no-op or jump more than one
-  asset.
+- Step 6-7: Up/Down and ⌥←/⌥→ leave the selection unchanged in `--smoke`'s
+  all-singleton-stacks case (designed no-op — stack nav only jumps between
+  multi-frame stacks). **Fails if** they move the selection at all on an
+  all-singleton catalog, or if on a catalog with multi-frame stacks they
+  no-op or skip stacks.
 - Step 8: either pagination measurably grows the loaded set and advances
   past the pre-pagination end, or (if `--smoke` has no `hasMoreAssets` at
   all) the loupe holds steady at the last frame without error. **Fails if**
