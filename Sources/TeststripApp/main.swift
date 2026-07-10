@@ -92,13 +92,22 @@ private struct WorkspaceCommands: Commands {
                 model.selectedView = .abCompare
             }
 
-            // Temporary routes for destinations whose sidebar rows Task 7
-            // deleted (Review/Timeline/People/Places); Search's permanent
-            // home is the Library grid's token field + result header
-            // (Task 9). Task 10 (Library view toggle) and Task 13 (Cull
-            // source picker) give the rest permanent homes.
+            // Temporary route for the review queue destination Task 7's
+            // sidebar deletion left homeless; Task 13 (Cull source picker)
+            // gives it a permanent home.
             Button("Review") {
                 model.selectedView = .copilot
+            }
+
+            Divider()
+
+            // Library sub-view toggle (Task 10): menu equivalents of the
+            // Library header's Grid/Loupe/Timeline/Map segmented control.
+            // Menus stay the system of record even though the header also
+            // exposes these as a toggle. "Grid" above already covers the
+            // grid sub-view.
+            Button("Library Loupe") {
+                model.selectedView = .libraryLoupe
             }
             Button("Timeline") {
                 model.selectedView = .timeline

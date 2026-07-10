@@ -94,7 +94,7 @@ struct LibraryGridView: View {
                 ScrollView {
                     emptyLibraryView
                 }
-            } else if model.selectedView == .loupe {
+            } else if model.selectedView == .loupe || model.selectedView == .libraryLoupe {
                 LoupeView(model: model)
             } else if model.selectedView == .compare {
                 CompareView(model: model, focusCullingSurface: focusCullingSurface)
@@ -166,7 +166,11 @@ struct LibraryGridView: View {
         .overlay(alignment: .topLeading) {
             CullingKeyCaptureView(
                 focusRequest: cullingFocusRequest,
-                isActive: model.selectedView != .grid,
+                // The Library loupe has no pick/reject/rating chrome, so its
+                // keyboard monitor is the plain-nav GridKeyCaptureView below
+                // instead — leaving this one active here would let culling
+                // shortcuts write metadata behind hidden chrome.
+                isActive: model.selectedView != .grid && model.selectedView != .libraryLoupe,
                 onShortcut: handleCullingShortcut
             )
             .frame(width: 1, height: 1)
@@ -394,6 +398,25 @@ struct LibraryGridView: View {
         .frame(width: 220)
     }
 
+    // Grid/Loupe/Timeline/Map: the Library workspace's own sub-view toggle
+    // (as distinct from the Cull sub-views reachable via the temporary View
+    // menu routes). Loupe here opens the plain-chrome Library loupe, not the
+    // culling loupe.
+    private var librarySubViewToggle: some View {
+        Picker("Library View", selection: Binding(
+            get: { model.selectedView },
+            set: { model.selectedView = $0 }
+        )) {
+            Text("Grid").tag(LibraryViewMode.grid)
+            Text("Loupe").tag(LibraryViewMode.libraryLoupe)
+            Text("Timeline").tag(LibraryViewMode.timeline)
+            Text("Map").tag(LibraryViewMode.map)
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 280)
+        .accessibilityLabel("Library View")
+    }
+
     private var thumbnailSizeControl: some View {
         HStack(spacing: 6) {
             Image(systemName: "square.grid.3x3")
@@ -450,6 +473,9 @@ struct LibraryGridView: View {
 
     private var libraryTopBar: some View {
         HStack(spacing: 12) {
+            if WorkspaceChromePolicy.showsLibraryViewToggle(model.selectedWorkspace) {
+                librarySubViewToggle
+            }
             Spacer(minLength: 12)
             if WorkspaceChromePolicy.showsImportButton(model.selectedWorkspace) {
                 Button {
@@ -3390,37 +3416,48 @@ private struct LoupeView: View {
 
     @State private var closeUpCrops: [(id: Int, image: CGImage)] = []
 
+    private var loupePresentation: LoupePresentation {
+        LoupePresentation(mode: model.selectedView)
+    }
+
     var body: some View {
         let stackPresentation = cullingStackPresentation
+        let presentation = loupePresentation
         VStack(spacing: 0) {
-            if let summary = model.autopilotRunSummary {
-                AutopilotBannerView(
-                    presentation: AutopilotBannerPresentation(summary: summary, canUndoAll: model.canUndoAutopilotRun),
-                    review: {
-                        do {
-                            try model.beginAutopilotReview()
-                        } catch {
-                            model.errorMessage = error.localizedDescription
-                        }
-                    },
-                    undoAll: {
-                        do {
-                            try model.undoAutopilotRun()
-                        } catch {
-                            model.errorMessage = error.localizedDescription
-                        }
-                    },
-                    dismiss: { model.dismissAutopilotRunSummary() }
-                )
+            if presentation.showsCullChrome {
+                if let summary = model.autopilotRunSummary {
+                    AutopilotBannerView(
+                        presentation: AutopilotBannerPresentation(summary: summary, canUndoAll: model.canUndoAutopilotRun),
+                        review: {
+                            do {
+                                try model.beginAutopilotReview()
+                            } catch {
+                                model.errorMessage = error.localizedDescription
+                            }
+                        },
+                        undoAll: {
+                            do {
+                                try model.undoAutopilotRun()
+                            } catch {
+                                model.errorMessage = error.localizedDescription
+                            }
+                        },
+                        dismiss: { model.dismissAutopilotRunSummary() }
+                    )
+                }
+                cullingHeader(stackPresentation: stackPresentation)
             }
-            cullingHeader(stackPresentation: stackPresentation)
             HStack(spacing: 0) {
-                cullingStackListRail
+                if presentation.showsCullChrome {
+                    cullingStackListRail
+                }
                 VStack(spacing: 0) {
                     if let asset = model.selectedAsset {
                         HStack(spacing: 0) {
                             loupeStage(for: asset)
-                            closeUpsPanel
+                            if presentation.showsCullChrome {
+                                closeUpsPanel
+                            }
                         }
                         .task(id: asset.id.rawValue) {
                             do {
@@ -3428,28 +3465,51 @@ private struct LoupeView: View {
                             } catch {
                                 model.errorMessage = error.localizedDescription
                             }
-                            await refreshCloseUps(for: asset.id)
+                            if presentation.showsCullChrome {
+                                await refreshCloseUps(for: asset.id)
+                            }
                         }
                     } else {
                         unavailableView(title: "No photo selected", systemImage: "photo")
                     }
                 }
             }
-            if let completion = model.cullingSessionCompletion {
-                CullingCompletionBannerView(
-                    summary: completion,
-                    canViewPicks: completion.picksSetID != nil,
-                    viewPicks: { openCullingSessionPicks() },
-                    cullRemainingSingles: { cullRemainingSingles() },
-                    dismiss: { model.dismissCullingSessionCompletion() }
-                )
+            if presentation.showsCullChrome {
+                if let completion = model.cullingSessionCompletion {
+                    CullingCompletionBannerView(
+                        summary: completion,
+                        canViewPicks: completion.picksSetID != nil,
+                        viewPicks: { openCullingSessionPicks() },
+                        cullRemainingSingles: { cullRemainingSingles() },
+                        dismiss: { model.dismissCullingSessionCompletion() }
+                    )
+                }
+                cullingStackRail(presentation: stackPresentation)
+                cullingFilmstrip(recommendedAssetID: stackPresentation.recommendedAssetID)
+                cullingCommandRail(stackPresentation: stackPresentation)
+            } else {
+                libraryLoupeNavBar
             }
-            cullingStackRail(presentation: stackPresentation)
-            cullingFilmstrip(recommendedAssetID: stackPresentation.recommendedAssetID)
-            cullingCommandRail(stackPresentation: stackPresentation)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.34))
+    }
+
+    // Plain prev/next navigation for the Library loupe: no pick/reject,
+    // rating, color-label, or assist chrome — just stepping through the
+    // current result set and a reminder of how to get back to the grid.
+    private var libraryLoupeNavBar: some View {
+        HStack(spacing: 14) {
+            cullingNavChevron(direction: .previous)
+            cullingNavChevron(direction: .next)
+            Spacer(minLength: 0)
+            Text("Esc: Grid")
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 48)
+        .background(.bar)
     }
 
     private func openCullingSessionPicks() {
@@ -7120,6 +7180,10 @@ enum WorkspaceChromePolicy {
     }
 
     static func showsImportButton(_ workspace: Workspace) -> Bool {
+        workspace == .library
+    }
+
+    static func showsLibraryViewToggle(_ workspace: Workspace) -> Bool {
         workspace == .library
     }
 
