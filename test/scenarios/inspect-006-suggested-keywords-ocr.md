@@ -1,8 +1,11 @@
-# inspector-describe-suggested-keyword: ⌘I opens the inspector, and accepting a suggestion writes catalog + sidecar
+# inspect-006-suggested-keywords-ocr: suggested-keyword chip accept writes catalog + sidecar; OCR captions
 
-**What this covers**: ⌘I toggles the tabbed inspector; the Describe tab's
+**What this covers**: inventory items 46-47. The Describe tab's
 suggested-keyword chip is a one-click accept that writes to both the catalog
-and the `.xmp` sidecar (confirm-before-write: not written until clicked).
+and the `.xmp` sidecar (confirm-before-write: not written until clicked); and
+OCR-derived caption suggestions surface only when the asset's caption is
+currently nil, with the accept action mirroring the OCR text into the caption
+draft (same commit-on-submit semantics as a manually typed caption).
 
 ## Pre-state
 ```bash

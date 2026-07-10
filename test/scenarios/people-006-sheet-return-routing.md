@@ -1,4 +1,4 @@
-# people-naming-sheet-return-routing: Return with the naming sheet open triggers Create, not the queue confirm
+# people-006-sheet-return-routing: Return with the naming sheet open triggers Create, not the queue confirm
 
 **What this covers**: scenario 9 added during Task 21/23 — when the "Name
 Face Group" sheet is presented and has keyboard focus, Return must reach the

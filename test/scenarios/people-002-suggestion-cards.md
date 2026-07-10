@@ -1,9 +1,18 @@
-# people-name-face-group-happy-path: Naming a face group writes only on confirm
+# people-002-suggestion-cards: Naming a face group writes only on confirm
 
-**What this covers**: the People flow — automatic face grouping surfaces
-"needs a name" suggestion cards; confirming/naming one writes a `people` row
-and its `person_assets` links; nothing is written until the explicit confirm.
-The positive path (a group gets named and persists) plus the invariant (a
+**What this covers**: inventory items 4-10 — the People suggestion cards.
+Automatic face grouping surfaces two card kinds: one-tap `matchExisting`
+("Is this X?") and `newPerson` ("Who is this?" → Name…) per
+`PeopleView.suggestionCards` (`Sources/TeststripApp/PeopleView.swift:636-660`).
+One-tap confirm writes through the `assignFaces` path with an invalid-state
+guard; the name-new sheet's Create is disabled/throws on a blank name; card
+count text is singular/plural correct; the card body is tappable to
+batch-select the suggestion's assets in Library; dismiss (X/Esc) calls
+`dismissFaces` without writing. Suggestions are built from ≤2000 unassigned
+Vision faces + ArcFace embeddings via `FaceSuggestionBuilder`, refreshed on
+appear. Confirming/naming a group writes a `people` row and its
+`person_assets` links; nothing is written until the explicit confirm — the
+positive path (a group gets named and persists) plus the invariant (a
 merely-suggested group leaves the catalog untouched).
 
 Grouping now uses the bundled ArcFace face-identity model (aligned 112×112
@@ -82,5 +91,22 @@ Quit the launched instance.
 - Two confirm shapes exist: one-tap confirm (writes immediately) and a
   name-sheet path. The `card.isOneTapConfirm` help text distinguishes them —
   handle the sheet if it appears, but don't wait for a sheet that never comes.
+  A one-tap "Is this X?" card only exists once a person has already been
+  named — a fresh `--faces` launch's first pass only produces name-routing
+  "Who is this?" cards (`PeopleView.swift:637-663`), so this card cannot
+  exercise the one-tap branch until a prior run of this same card (or
+  people-005) has named at least one person in the same catalog.
+- Not directly exercised by the Steps above (asserted only against the code
+  cited in "What this covers"): singular/plural count-text exactness, the
+  blank-name Create-disabled guard, and card-body-tap batch-selecting the
+  suggestion's assets into Library. Flag as a follow-up if a live run finds
+  the code has drifted from this description.
 - Cross-check the rendered person against the `people` row: the UI must not show
   a named person the table doesn't back (name fabricated in the view).
+
+## Run status
+BLOCKED-CONSOLE — locked console prevents any AX step. Card-kind gating and
+confirm-before-write mechanism confirmed by static trace above. Needs a
+human-present re-run. All SQL in this card was run headlessly against a
+seeded --faces catalog on 2026-07-10 (schema per
+Sources/TeststripCore/Catalog/CatalogMigrations.swift).

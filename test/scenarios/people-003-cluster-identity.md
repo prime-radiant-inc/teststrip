@@ -1,4 +1,4 @@
-# people-cluster-by-identity: Automatic grouping clusters by face identity
+# people-003-cluster-identity: Automatic grouping clusters by face identity
 
 **What this covers**: automatic face grouping on a real multi-person corpus
 clusters the same person's faces together and keeps different people apart,

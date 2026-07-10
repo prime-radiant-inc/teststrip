@@ -1,11 +1,18 @@
-# rate-writes-xmp-happy-path: Rating a photo writes a sidecar, never the original
+# inspect-008-sidecar-write-semantics: every edit writes catalog first, then sidecar; worker presence changes sync timing
 
-**What this covers**: the core non-destructive promise on its positive path —
-setting a star rating in the inspector writes a portable `.xmp` sidecar next to
-the original (mirroring the rating), while the original image bytes are never
-touched. This is the invariant the whole catalog-first architecture rests on;
-`script/verify_metadata_write.sh` checks it at the metric level, this card
-proves it through the assembled inspector UI.
+**What this covers**: inventory items 53-55 plus the original rate-writes
+happy path. Every metadata edit writes the catalog first and then syncs to
+the `.xmp` sidecar; original image bytes are never touched. When the worker
+process is present, the sidecar write is queued and the asset shows
+"pending" until the worker drains it; when the worker is absent, the sidecar
+write happens synchronously inline. This applies uniformly to every edit
+surface — field changes, suggested-keyword accepts, OCR caption accepts, and
+conflict-resolution actions (Retry/Use XMP/Merge Missing) all go through the
+same catalog-then-sidecar path. This card proves the core non-destructive
+promise on its positive path — setting a star rating in the inspector writes
+a portable `.xmp` sidecar mirroring the rating while the original is
+untouched; `script/verify_metadata_write.sh` checks it at the metric level,
+this card proves it through the assembled inspector UI.
 
 ## Pre-state
 - Fresh build, isolated catalog:
