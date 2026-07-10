@@ -5,7 +5,7 @@ Status flow: Spec'd → Tested-Pass | Tested-Fail → Fixed → Verified.
 
 | ID | Card | Status | Test method | Defect type | Actual result | Notes / open questions |
 |---|---|---|---|---|---|---|
-| cull-001-workspace-key-gating | cull-001-workspace-key-gating.md | Tested-Fail | VM e2e (ax+sql) | Functional? / card-defect | P leaks pick in libraryLoupe (step4); step6 card assumes Cull search field (none exists); step7 Return no-op likely by-design on stackless seed | iter1: investigate gate leak; fix card steps 6-7 |
+| cull-001-workspace-key-gating | cull-001-workspace-key-gating.md | Fixed | VM e2e (ax+sql) | Functional | menu key-equivalents bypassed workspace gate — fixed a1d81246 (TDD); card steps 6-7 corrected 2be7f452; awaiting re-run | iter1: investigate gate leak; fix card steps 6-7 |
 | cull-002-loupe-navigation | cull-002-loupe-navigation.md | Spec'd | — | — | — |  |
 | cull-003-rating-label-flag-keys | cull-003-rating-label-flag-keys.md | Spec'd | — | — | — |  |
 | cull-004-stack-promote-return | cull-004-stack-promote-return.md | Spec'd | — | — | — | BLOCKED fixture gap: no seed produces multi-frame stacks (smoke 900s apart vs 2s builder gap; bench JPEGs lack EXIF DateTimeOriginal) |
@@ -106,7 +106,7 @@ Status flow: Spec'd → Tested-Pass | Tested-Fail → Fixed → Verified.
 | dev-004-package-release-dry-run | dev-004-package-release-dry-run.md | Tested-Pass | host CLI e2e | — | pass; 1 flake retry (build race) |  |
 | dev-005-package-release-signing | dev-005-package-release-signing.md | Tested-Pass | static + partial CLI | — | signing path documented, not exercised (cap noted) | needs Developer ID cert locally |
 | dev-006-ax-drive | dev-006-ax-drive.md | Spec'd | — | Environment | step1 pass; rest BLOCKED-CONCURRENT; re-run iter2 |  |
-| dev-007-reset-isolated | dev-007-reset-isolated.md | Tested-Fail | host CLI e2e | Functional | running-instance guard defeated by trailing-slash \$TMPDIR (reproduced 2x) — fix queued |  |
+| dev-007-reset-isolated | dev-007-reset-isolated.md | Fixed | host CLI e2e | Functional | trailing-slash guard fixed 6b25be77 (normalize_path both sides); awaiting re-run |  |
 | dev-008-sample-downloads | dev-008-sample-downloads.md | Tested-Fail | host CLI e2e | Logistical | face-model manifest URL is literal REPLACE-ME.example.com — download permanently broken | network |
 | dev-009-bench-seeds | dev-009-bench-seeds.md | Tested-Pass | host CLI e2e | — | pass; note: negative-overwrite exits via fatalError/SIGABRT not clean error |  |
 | dev-010-bench-benchmarks | dev-010-bench-benchmarks.md | Tested-Pass | host CLI e2e | — | benchmark-summary contract holds |  |
