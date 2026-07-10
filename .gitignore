@@ -4,3 +4,5 @@
 dist/
 sample-data/photos/
 sample-data/models/
+.claude/worktrees/
+scratchpad/
