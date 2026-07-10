@@ -1786,8 +1786,8 @@ public final class AppModel {
     }
 
     /// The sidebar sections for a given workspace. Library is navigation
-    /// only (Collections/Saved Sets/Folders); Cull and People get their own
-    /// sidebar content in later tasks - empty for now.
+    /// only (Collections/Saved Sets/Folders); Cull has its own sidebar
+    /// (CullSidebarView) and People has none.
     public func sidebarSections(for workspace: Workspace) -> [SidebarSection] {
         switch workspace {
         case .library:

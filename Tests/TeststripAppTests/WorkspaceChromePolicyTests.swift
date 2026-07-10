@@ -26,4 +26,18 @@ final class WorkspaceChromePolicyTests: XCTestCase {
         // ⌘I is reachable in People (Task 11); only Cull has no inspector.
         XCTAssertTrue(WorkspaceChromePolicy.showsInspector(.people))
     }
+
+    // I2: Import ▾/Import Path/Find Best Shots/Cull/Export/More toolbar
+    // items belong to Library only — Cull has no import/search chrome
+    // (spec §3) and People has no browse chrome either.
+    func testToolbarActionChromeMatrix() {
+        for workspace in Workspace.allCases {
+            let expected = workspace == .library
+            XCTAssertEqual(WorkspaceChromePolicy.showsImportMenu(workspace), expected, "\(workspace)")
+            XCTAssertEqual(WorkspaceChromePolicy.showsFindBestShotsButton(workspace), expected, "\(workspace)")
+            XCTAssertEqual(WorkspaceChromePolicy.showsCullButton(workspace), expected, "\(workspace)")
+            XCTAssertEqual(WorkspaceChromePolicy.showsExportButton(workspace), expected, "\(workspace)")
+            XCTAssertEqual(WorkspaceChromePolicy.showsMoreMenu(workspace), expected, "\(workspace)")
+        }
+    }
 }

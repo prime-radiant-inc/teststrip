@@ -214,31 +214,34 @@ struct LibraryGridView: View {
             workspaceSwitcher
         }
 
-        ToolbarItem {
-            Menu {
-                Button {
-                    showImportFolderPanel()
-                } label: {
-                    Label("Folder…", systemImage: "square.and.arrow.down")
-                }
-                .disabled(isImporting)
+        if WorkspaceChromePolicy.showsImportMenu(model.selectedWorkspace) {
+            ToolbarItem {
+                Menu {
+                    Button {
+                        showImportFolderPanel()
+                    } label: {
+                        Label("Folder…", systemImage: "square.and.arrow.down")
+                    }
+                    .disabled(isImporting)
 
-                Button {
-                    showPrimaryCardImportRoute()
+                    Button {
+                        showPrimaryCardImportRoute()
+                    } label: {
+                        Label("From Card…", systemImage: "externaldrive.badge.plus")
+                    }
+                    .disabled(isImporting)
                 } label: {
-                    Label("From Card…", systemImage: "externaldrive.badge.plus")
+                    Label("Import", systemImage: "square.and.arrow.down")
                 }
                 .disabled(isImporting)
-            } label: {
-                Label("Import", systemImage: "square.and.arrow.down")
+                .help("Import photos from a folder or a memory card")
             }
-            .disabled(isImporting)
-            .help("Import photos from a folder or a memory card")
         }
 
-        if LibraryGridChromePolicy.shouldExposeImportPathControl(
-            environment: ProcessInfo.processInfo.environment
-        ) {
+        if WorkspaceChromePolicy.showsImportMenu(model.selectedWorkspace)
+            && LibraryGridChromePolicy.shouldExposeImportPathControl(
+                environment: ProcessInfo.processInfo.environment
+            ) {
             ToolbarItem {
                 Button {
                     showImportPathSheet()
@@ -250,111 +253,119 @@ struct LibraryGridView: View {
             }
         }
 
-        ToolbarItem {
-            Button {
-                findBestShots()
-            } label: {
-                Label("Find Best Shots", systemImage: "wand.and.stars")
-            }
-            .disabled(isImporting || !model.canFindBestShots)
-            .accessibilityLabel("Find Best Shots")
-            .help("Evaluate the photos in view and show you your best shots, ranked. Nothing is saved until you keep them.")
-        }
-
-        ToolbarItem {
-            Button {
-                // A batch selection culls straight to those photos (same
-                // primitive as the "Cull These" context-menu item); an empty
-                // selection falls back to the whole-scope naming popover.
-                if model.selectedBatchAssetCount > 0 {
-                    cullCurrentBatchSelection()
-                } else {
-                    showStartCullingPopover()
+        if WorkspaceChromePolicy.showsFindBestShotsButton(model.selectedWorkspace) {
+            ToolbarItem {
+                Button {
+                    findBestShots()
+                } label: {
+                    Label("Find Best Shots", systemImage: "wand.and.stars")
                 }
-            } label: {
-                Label("Cull", systemImage: "checkmark.seal")
-            }
-            .disabled(isImporting || !model.canBeginCullingSession)
-            .help("Review photos one at a time to rate, pick, and reject by hand with the keyboard. (Find Best Shots ranks them for you.)")
-            .popover(isPresented: $isStartingCullingSession) {
-                cullingSessionPopover
+                .disabled(isImporting || !model.canFindBestShots)
+                .accessibilityLabel("Find Best Shots")
+                .help("Evaluate the photos in view and show you your best shots, ranked. Nothing is saved until you keep them.")
             }
         }
 
-        ToolbarItem {
-            Button {
-                beginExport()
-            } label: {
-                Label("Export", systemImage: "square.and.arrow.up")
-            }
-            .disabled(isImporting || model.assets.isEmpty || model.isExporting)
-            .help("Export photo copies to a folder")
-            .popover(isPresented: $isReviewingExport) {
-                exportPopover
+        if WorkspaceChromePolicy.showsCullButton(model.selectedWorkspace) {
+            ToolbarItem {
+                Button {
+                    // A batch selection culls straight to those photos (same
+                    // primitive as the "Cull These" context-menu item); an empty
+                    // selection falls back to the whole-scope naming popover.
+                    if model.selectedBatchAssetCount > 0 {
+                        cullCurrentBatchSelection()
+                    } else {
+                        showStartCullingPopover()
+                    }
+                } label: {
+                    Label("Cull", systemImage: "checkmark.seal")
+                }
+                .disabled(isImporting || !model.canBeginCullingSession)
+                .help("Review photos one at a time to rate, pick, and reject by hand with the keyboard. (Find Best Shots ranks them for you.)")
+                .popover(isPresented: $isStartingCullingSession) {
+                    cullingSessionPopover
+                }
             }
         }
 
-        ToolbarItem {
-            Menu {
+        if WorkspaceChromePolicy.showsExportButton(model.selectedWorkspace) {
+            ToolbarItem {
                 Button {
-                    beginRejectRelocation()
+                    beginExport()
                 } label: {
-                    Label("Move Rejects…", systemImage: "tray.and.arrow.down")
+                    Label("Export", systemImage: "square.and.arrow.up")
                 }
-                .disabled(isImporting || model.assets.isEmpty || model.isRelocatingRejects)
-
-                Button {
-                    showSourceReconnectSheet()
-                } label: {
-                    Label("Reconnect Sources…", systemImage: "externaldrive")
+                .disabled(isImporting || model.assets.isEmpty || model.isExporting)
+                .help("Export photo copies to a folder")
+                .popover(isPresented: $isReviewingExport) {
+                    exportPopover
                 }
-                .disabled(isImporting || !model.canReconnectSourceRoot)
-
-                Button {
-                    openBatchMetadataSheet()
-                } label: {
-                    Label("Batch Metadata…", systemImage: "tag")
-                }
-                .disabled(isImporting || model.assets.isEmpty)
-
-                Divider()
-
-                Toggle(isOn: Binding(
-                    get: { model.autopilotEnabled },
-                    set: { model.autopilotEnabled = $0 }
-                )) {
-                    Label("Auto-cull after import", systemImage: "wand.and.stars")
-                }
-
-                Divider()
-
-                Button {
-                    evaluateSelectedAsset()
-                } label: {
-                    Label("Evaluate Photo", systemImage: "sparkles")
-                }
-                .disabled(isImporting || !model.canRequestSelectedAssetEvaluation)
-
-                Button {
-                    evaluateVisibleAssets()
-                } label: {
-                    Label("Evaluate Visible", systemImage: "sparkles")
-                }
-                .disabled(isImporting || !model.canRequestVisibleAssetEvaluations)
-
-                Button {
-                    evaluateCurrentScopeAssets()
-                } label: {
-                    Label("Evaluate Scope", systemImage: "sparkles.rectangle.stack")
-                }
-                .disabled(isImporting || !model.canRequestCurrentScopeAssetEvaluations)
-            } label: {
-                Label("More", systemImage: "ellipsis.circle")
             }
-            .popover(isPresented: $isReviewingBatchMetadata) {
-                batchMetadataPopover
+        }
+
+        if WorkspaceChromePolicy.showsMoreMenu(model.selectedWorkspace) {
+            ToolbarItem {
+                Menu {
+                    Button {
+                        beginRejectRelocation()
+                    } label: {
+                        Label("Move Rejects…", systemImage: "tray.and.arrow.down")
+                    }
+                    .disabled(isImporting || model.assets.isEmpty || model.isRelocatingRejects)
+
+                    Button {
+                        showSourceReconnectSheet()
+                    } label: {
+                        Label("Reconnect Sources…", systemImage: "externaldrive")
+                    }
+                    .disabled(isImporting || !model.canReconnectSourceRoot)
+
+                    Button {
+                        openBatchMetadataSheet()
+                    } label: {
+                        Label("Batch Metadata…", systemImage: "tag")
+                    }
+                    .disabled(isImporting || model.assets.isEmpty)
+
+                    Divider()
+
+                    Toggle(isOn: Binding(
+                        get: { model.autopilotEnabled },
+                        set: { model.autopilotEnabled = $0 }
+                    )) {
+                        Label("Auto-cull after import", systemImage: "wand.and.stars")
+                    }
+
+                    Divider()
+
+                    Button {
+                        evaluateSelectedAsset()
+                    } label: {
+                        Label("Evaluate Photo", systemImage: "sparkles")
+                    }
+                    .disabled(isImporting || !model.canRequestSelectedAssetEvaluation)
+
+                    Button {
+                        evaluateVisibleAssets()
+                    } label: {
+                        Label("Evaluate Visible", systemImage: "sparkles")
+                    }
+                    .disabled(isImporting || !model.canRequestVisibleAssetEvaluations)
+
+                    Button {
+                        evaluateCurrentScopeAssets()
+                    } label: {
+                        Label("Evaluate Scope", systemImage: "sparkles.rectangle.stack")
+                    }
+                    .disabled(isImporting || !model.canRequestCurrentScopeAssetEvaluations)
+                } label: {
+                    Label("More", systemImage: "ellipsis.circle")
+                }
+                .popover(isPresented: $isReviewingBatchMetadata) {
+                    batchMetadataPopover
+                }
+                .help("More actions")
             }
-            .help("More actions")
         }
 
         ToolbarItem {
@@ -536,8 +547,6 @@ struct LibraryGridView: View {
         .liveMockupPlaceholder(.topChrome)
     }
 
-
-
     /// The token query field: one text field that both free-text searches and,
     /// via `LibraryQueryToken`, writes recognized filter tokens (rating:,
     /// camera:, etc.) into AppModel's structured filter properties. Replaces
@@ -634,10 +643,20 @@ struct LibraryGridView: View {
         ("source: / signal: / xmp:", "By availability, AI signal, or sync state")
     ]
 
+    // Cull and People have neither the sub-view toggle nor the import button
+    // (WorkspaceChromePolicy), so libraryTopBar would otherwise render an
+    // empty 52pt gradient bar with nothing in it.
+    private var hasVisibleLibraryTopBarContent: Bool {
+        WorkspaceChromePolicy.showsLibraryViewToggle(model.selectedWorkspace)
+            || WorkspaceChromePolicy.showsImportButton(model.selectedWorkspace)
+    }
+
     @ViewBuilder
     private var topInsetContent: some View {
         VStack(spacing: 0) {
-            libraryTopBar
+            if hasVisibleLibraryTopBarContent {
+                libraryTopBar
+            }
             if WorkspaceChromePolicy.showsFilterTokens(model.selectedWorkspace) {
                 libraryQueryBar
                 libraryResultHeader
@@ -3585,7 +3604,7 @@ private struct LoupeView: View {
     }
 
     // The end-of-set handoff: replaces the image stage once nothing is left
-    // undecided in the current scope. Folds in the autopilot-review and
+    // undecided session-wide. Folds in the autopilot-review and
     // stack-cull-completion banners that used to sit above/below the stage,
     // so the review affordance and stack "cull remaining singles" flow stay
     // reachable from here instead of being separate floating banners.
@@ -7216,6 +7235,30 @@ enum WorkspaceChromePolicy {
     /// Library first (`AppModel.toggleInspector`).
     static func showsInspector(_ workspace: Workspace) -> Bool {
         workspace != .cull
+    }
+
+    /// Toolbar-level import/search/export chrome (Import ▾, Import Path,
+    /// Find Best Shots, Cull, Export, More): spec §3 gives Cull no import or
+    /// search chrome, and People has no browse chrome either — only Library
+    /// carries these actions. Activity stays global and isn't gated here.
+    static func showsImportMenu(_ workspace: Workspace) -> Bool {
+        workspace == .library
+    }
+
+    static func showsFindBestShotsButton(_ workspace: Workspace) -> Bool {
+        workspace == .library
+    }
+
+    static func showsCullButton(_ workspace: Workspace) -> Bool {
+        workspace == .library
+    }
+
+    static func showsExportButton(_ workspace: Workspace) -> Bool {
+        workspace == .library
+    }
+
+    static func showsMoreMenu(_ workspace: Workspace) -> Bool {
+        workspace == .library
     }
 }
 
