@@ -54,12 +54,25 @@ has_teststrip_marker() {
     || -d "$candidate/Teststrip/SmokeOriginals" ]]
 }
 
+# Paths reach this script through different normalizers: macOS's $TMPDIR ends
+# in a slash, so env-var/launch paths often carry doubled or trailing slashes
+# ("…/T//teststrip-app-support.x"), while `find` prints collapsed single-slash
+# paths. A naive string == between the two silently never matches, defeating
+# the running-instance guard. Collapse slash runs and strip the trailing slash
+# on both sides before comparing.
+normalize_path() {
+  local p="$1"
+  p="$(printf '%s' "$p" | /usr/bin/sed -E 's#/+#/#g')"
+  while [[ "$p" == */ && "$p" != "/" ]]; do p="${p%/}"; done
+  printf '%s' "$p"
+}
+
 is_running_support_root() {
-  local candidate="$1"
+  local candidate; candidate="$(normalize_path "$1")"
   local running_root
   while IFS= read -r running_root; do
     [[ -n "$running_root" ]] || continue
-    if [[ "$running_root" == "$candidate" ]]; then
+    if [[ "$(normalize_path "$running_root")" == "$candidate" ]]; then
       return 0
     fi
   done < <(running_app_support_directories)
