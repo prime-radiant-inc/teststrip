@@ -64,6 +64,7 @@ struct TeststripApplication: App {
         )
         .commands {
             Group {
+                FileCommands(model: model)
                 WorkspaceCommands(model: model)
                 MetadataHistoryCommands(model: model)
                 NavigationCommands(model: model)
@@ -115,6 +116,17 @@ enum AppMenuCoveragePresentation {
             .filter { !$0.isMonitorOnly }
             .map(\.title)
     }
+
+    // File ▸ Import Folder…/Import From Card…/Import Path…/Export… (spec §6).
+    static let importFolderActionID = "Import Folder…"
+    static let importFromCardActionID = "Import From Card…"
+    static let importPathActionID = "Import Path…"
+    static let exportActionID = "Export…"
+    static let fileMenuActionIDs: [String] = [importFolderActionID, importFromCardActionID, exportActionID]
+
+    // Culling ▸ Move Rejects… (spec §6), reusing the same beginRejectRelocation
+    // path Task 20's end-of-set state already calls.
+    static let moveRejectsActionID = "Move Rejects…"
 }
 
 extension LibraryViewMode {
@@ -188,6 +200,44 @@ private struct WorkspaceCommands: Commands {
                     model.selectedView = mode
                 }
             }
+        }
+    }
+}
+
+// File ▸ Import Folder…/Import From Card…/Export… (+ dev Import Path…),
+// spec §6: menus are the system of record, so every toolbar import/export
+// action also has a File menu equivalent, calling the same model actions
+// via the request-token path (AppModel.requestImportFolder, etc.).
+private struct FileCommands: Commands {
+    var model: AppModel
+
+    var body: some Commands {
+        CommandGroup(after: .newItem) {
+            Button(AppMenuCoveragePresentation.importFolderActionID) {
+                model.requestImportFolder()
+            }
+            .disabled(model.isImporting)
+
+            Button(AppMenuCoveragePresentation.importFromCardActionID) {
+                model.requestImportFromCard()
+            }
+            .disabled(model.isImporting)
+
+            if LibraryGridChromePolicy.shouldExposeImportPathControl(
+                environment: ProcessInfo.processInfo.environment
+            ) {
+                Button(AppMenuCoveragePresentation.importPathActionID) {
+                    model.requestImportPath()
+                }
+                .disabled(model.isImporting)
+            }
+
+            Divider()
+
+            Button(AppMenuCoveragePresentation.exportActionID) {
+                model.requestExport()
+            }
+            .disabled(model.isImporting || model.assets.isEmpty || model.isExporting)
         }
     }
 }
@@ -343,6 +393,11 @@ private struct CullingCommands: Commands {
                 evaluateCurrentScope()
             }
             .disabled(model.isImporting || !model.canRequestCurrentScopeAssetEvaluations)
+
+            Button(AppMenuCoveragePresentation.moveRejectsActionID) {
+                model.requestMoveRejects()
+            }
+            .disabled(model.isImporting || model.assets.isEmpty || model.isRelocatingRejects)
 
             Toggle(isOn: Binding(
                 get: { model.autopilotEnabled },

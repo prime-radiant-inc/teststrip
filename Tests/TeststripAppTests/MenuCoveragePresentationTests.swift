@@ -44,4 +44,22 @@ final class MenuCoveragePresentationTests: XCTestCase {
     func testViewMenuCoversZoomInAndOut() {
         XCTAssertEqual(AppMenuCoveragePresentation.zoomActionIDs, ["Zoom In", "Zoom Out"])
     }
+
+    // I1: File ▸ Import Folder…/Import From Card…/Export… (spec §6) — the
+    // dev-only Import Path… item is gated by environment, not enumerated
+    // in fileMenuActionIDs, so it's checked as a standalone constant.
+    func testFileMenuCoversImportAndExportActions() {
+        XCTAssertEqual(
+            AppMenuCoveragePresentation.fileMenuActionIDs,
+            ["Import Folder…", "Import From Card…", "Export…"]
+        )
+        XCTAssertEqual(AppMenuCoveragePresentation.importPathActionID, "Import Path…")
+    }
+
+    // I1: Culling ▸ Move Rejects… reuses AppModel.beginRejectRelocation's
+    // path via the lifted request-token (Task 20's end-of-set state already
+    // called this; the menu item now reaches the same place).
+    func testCullingMenuCoversMoveRejectsAction() {
+        XCTAssertEqual(AppMenuCoveragePresentation.moveRejectsActionID, "Move Rejects…")
+    }
 }

@@ -123,6 +123,21 @@ struct LibraryGridView: View {
         .onChange(of: model.batchMetadataRequestToken) { _, _ in
             openBatchMetadataSheet()
         }
+        .onChange(of: model.importFolderRequestToken) { _, _ in
+            showImportFolderPanel()
+        }
+        .onChange(of: model.importFromCardRequestToken) { _, _ in
+            showPrimaryCardImportRoute()
+        }
+        .onChange(of: model.importPathRequestToken) { _, _ in
+            showImportPathSheet()
+        }
+        .onChange(of: model.exportRequestToken) { _, _ in
+            beginExport()
+        }
+        .onChange(of: model.moveRejectsRequestToken) { _, _ in
+            beginRejectRelocation()
+        }
         .toolbar {
             libraryToolbarContent
         }

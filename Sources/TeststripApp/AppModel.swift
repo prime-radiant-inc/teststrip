@@ -2098,6 +2098,37 @@ public final class AppModel {
         batchMetadataRequestToken += 1
     }
 
+    // Bumped by the File ▸ Import Folder…/Import From Card…/Import Path…/
+    // Export… and Culling ▸ Move Rejects… menu commands (spec §6): these
+    // actions open a panel or sheet that only the library view's own
+    // @State can drive, so the menu commands (which only see AppModel) bump
+    // a token here and LibraryGridView's onChange calls the same private
+    // helper the matching toolbar button uses.
+    public private(set) var importFolderRequestToken = 0
+    public func requestImportFolder() {
+        importFolderRequestToken += 1
+    }
+
+    public private(set) var importFromCardRequestToken = 0
+    public func requestImportFromCard() {
+        importFromCardRequestToken += 1
+    }
+
+    public private(set) var importPathRequestToken = 0
+    public func requestImportPath() {
+        importPathRequestToken += 1
+    }
+
+    public private(set) var exportRequestToken = 0
+    public func requestExport() {
+        exportRequestToken += 1
+    }
+
+    public private(set) var moveRejectsRequestToken = 0
+    public func requestMoveRejects() {
+        moveRejectsRequestToken += 1
+    }
+
     // Set at import start from the import's autopilotAfterImport decision; the
     // imported asset IDs land in armedAutopilotImportAssetIDs once the import
     // completes, and autopilot runs once their evaluations all resolve.
