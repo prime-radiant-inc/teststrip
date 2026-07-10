@@ -5319,6 +5319,21 @@ public final class AppModel {
     }
 
     public func applyGridKeyCommand(_ command: GridKeyCommand, columns: Int) throws {
+        // While the ? key-map overlay is up it owns Esc. The overlay's own
+        // .onExitCommand never fires (the key monitors consume Esc before the
+        // responder chain), so the Esc-derived grid commands must dismiss the
+        // overlay instead of navigating — otherwise Esc in the cull loupe
+        // switches to the Library grid underneath the overlay, gating off the
+        // culling monitor's ? toggle and leaving the overlay undismissable.
+        if isKeyMapOverlayVisible {
+            switch command {
+            case .returnToGrid, .switchCullSubView:
+                isKeyMapOverlayVisible = false
+                return
+            default:
+                break
+            }
+        }
         switch command {
         case .move(let direction):
             moveGridSelection(direction, columns: columns)
