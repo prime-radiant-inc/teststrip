@@ -29,7 +29,7 @@ Status flow: Spec'd → Tested-Pass | Tested-Fail → Fixed → Verified.
 | lib-002-saved-set-context-menus | lib-002-saved-set-context-menus.md | Spec'd | — | — | — | note: work-session menu is a single star-toggle whose title flips; possible dup SidebarRow.id across sections (List diffing footgun) |
 | lib-003-token-grammar-fields | lib-003-token-grammar-fields.md | Spec'd | — | — | — |  |
 | lib-004-bare-and-phrase-tokens | lib-004-bare-and-phrase-tokens.md | Spec'd | — | — | — |  |
-| lib-005-token-readback-roundtrip | lib-005-token-readback-roundtrip.md | Spec'd | — | — | — |  |
+| lib-005-token-readback-roundtrip | lib-005-token-readback-roundtrip.md | Tested-Pass | unit tests (LibraryQueryTokenTests 19/0, LibrarySearchIntentTests 11/0) | — | — | all round-trip + grammar assertions pass; AX spot-check pending VM batch |
 | lib-006-query-field-and-tips | lib-006-query-field-and-tips.md | Spec'd | — | — | — |  |
 | lib-007-add-filter-menu | lib-007-add-filter-menu.md | Spec'd | — | — | — |  |
 | lib-008-chips-remove-clear | lib-008-chips-remove-clear.md | Spec'd | — | — | — |  |
@@ -99,7 +99,7 @@ Status flow: Spec'd → Tested-Pass | Tested-Fail → Fixed → Verified.
 | app-013-diagnostics | app-013-diagnostics.md | Spec'd | — | — | — |  |
 | app-014-updater | app-014-updater.md | Spec'd | — | — | — | Sparkle e2e untestable pre-release; static-only cap; Sparkle e2e untestable pre-release; static-only cap. Defaults key names unverified until first live run |
 | app-015-preferences | app-015-preferences.md | Spec'd | — | — | — |  |
-| app-016-menu-coverage-invariants | app-016-menu-coverage-invariants.md | Spec'd | — | — | — | unit-test method; gap: Run Autopilot/Scan for Faces/Evaluate Photo/Scope not enumerated — renames uncatchable; DRY-RUN PASSED (8 tests) during authoring |
+| app-016-menu-coverage-invariants | app-016-menu-coverage-invariants.md | Tested-Pass | unit tests (MenuCoveragePresentationTests 8/0) | — | — | unit-test method; gap: Run Autopilot/Scan for Faces/Evaluate Photo/Scope not enumerated — renames uncatchable; DRY-RUN PASSED (8 tests) during authoring; all coverage invariants pass |
 | dev-001-build-and-run-modes | dev-001-build-and-run-modes.md | Spec'd | — | — | — | usage drift: --real-corpus undocumented; CONFIRMED Documentation defect: usage() omits --real-corpus (live-verified) |
 | dev-002-seed-variants | dev-002-seed-variants.md | Spec'd | — | — | — |  |
 | dev-003-vm-harness | dev-003-vm-harness.md | Spec'd | — | — | — | CONFIRMED Documentation defect: --reseed hint names a flag with no dispatch path; sync smoke --reseed would error |
@@ -111,4 +111,4 @@ Status flow: Spec'd → Tested-Pass | Tested-Fail → Fixed → Verified.
 | dev-009-bench-seeds | dev-009-bench-seeds.md | Spec'd | — | — | — |  |
 | dev-010-bench-benchmarks | dev-010-bench-benchmarks.md | Spec'd | — | — | — |  |
 | dev-011-release-ci | dev-011-release-ci.md | Spec'd | — | — | — | needs tag + 7 secrets; static-only cap; needs tag + 7 secrets; static-only cap. 3 secrets currently missing (cert b64/password, app-specific pw) — next v* tag will fail |
-| dev-012-verifier-gates | dev-012-verifier-gates.md | Spec'd | — | — | — | Jesse decision: delete-or-keep stale gui verifiers? KNOWN-STALE: verify_evaluation, verify_card_import_path; KNOWN-STALE gui verifiers; ALSO live swift-test failure seen under concurrent-agent contention (WorkerEntrypointTests truncated worker JSON) — re-run solo before logging Functional |
+| dev-012-verifier-gates | dev-012-verifier-gates.md | Spec'd | — | — | — | Jesse decision: delete-or-keep stale gui verifiers? KNOWN-STALE: verify_evaluation, verify_card_import_path; KNOWN-STALE gui verifiers; ALSO live swift-test failure seen under concurrent-agent contention (WorkerEntrypointTests truncated worker JSON) — re-run solo before logging Functional; solo swift test 1693/0 — earlier failure was agent contention (Environment), not product |
