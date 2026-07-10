@@ -1785,6 +1785,18 @@ public final class AppModel {
         selectedView.workspace
     }
 
+    /// Whether the Culling menu's shortcut items (Navigation/Ratings/Color
+    /// Labels/Flags/Loupe/Scope) should be enabled right now. SwiftUI menu
+    /// `.keyboardShortcut` bindings are workspace-blind — they fire from
+    /// anywhere the app is frontmost, unlike `CullingKeyCaptureView`'s local
+    /// key monitor, which `CullingKeyCaptureGate` scopes to the Cull
+    /// workspace's loupe/compare/A-B sub-views. Mirroring that same gate here
+    /// keeps the menu (bare "P"/"X"/etc, no modifiers) from writing flags or
+    /// promoting frames while e.g. the Library Loupe is frontmost.
+    public var isCullingMenuShortcutActive: Bool {
+        CullingKeyCaptureGate.isActive(workspace: selectedWorkspace, selectedView: selectedView)
+    }
+
     /// The sidebar sections for a given workspace. Library is navigation
     /// only (Collections/Saved Sets/Folders); Cull has its own sidebar
     /// (CullSidebarView) and People has none.

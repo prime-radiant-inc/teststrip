@@ -3248,6 +3248,29 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.loupeZoomFocus)
     }
 
+    // The Culling menu's shortcut items (main.swift's `CullingCommands`) fire
+    // via bare SwiftUI `.keyboardShortcut` bindings that are workspace-blind,
+    // unlike `CullingKeyCaptureView`'s local key monitor which
+    // `CullingKeyCaptureGate` scopes to the Cull workspace's loupe/compare/
+    // A-B sub-views. `isCullingMenuShortcutActive` drives those menu items'
+    // `.disabled` state so the menu can't leak a pick/reject write into e.g.
+    // Library Loupe the way the bare "P" keystroke used to.
+    func testCullingMenuShortcutActiveMirrorsKeyCaptureGate() {
+        let asset = makeAsset(id: "menu-gate", size: 1)
+
+        let libraryLoupe = AppModel(sidebarSections: [], selectedView: .libraryLoupe, assets: [asset])
+        XCTAssertFalse(libraryLoupe.isCullingMenuShortcutActive)
+
+        let libraryGrid = AppModel(sidebarSections: [], selectedView: .grid, assets: [asset])
+        XCTAssertFalse(libraryGrid.isCullingMenuShortcutActive)
+
+        let cullGrid = AppModel(sidebarSections: [], selectedView: .cullGrid, assets: [asset])
+        XCTAssertFalse(cullGrid.isCullingMenuShortcutActive)
+
+        let cullLoupe = AppModel(sidebarSections: [], selectedView: .loupe, assets: [asset])
+        XCTAssertTrue(cullLoupe.isCullingMenuShortcutActive)
+    }
+
     func testReselectingSameAssetKeepsLoupeZoom() {
         let first = makeAsset(id: "first", size: 1)
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [first])

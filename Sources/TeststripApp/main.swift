@@ -418,6 +418,14 @@ private struct CullingCommands: Commands {
                         applyShortcut(item.shortcut)
                     }
                     .keyboardShortcut(item.key.menuKeyboardShortcut)
+                    // These bare (no-modifier) shortcuts mirror
+                    // CullingKeyCaptureView's local key monitor, which
+                    // CullingKeyCaptureGate scopes to the Cull workspace's
+                    // loupe/compare/A-B sub-views only. SwiftUI menu
+                    // .keyboardShortcut bindings are workspace-blind, so
+                    // without this the menu (and its keyboard equivalent)
+                    // would leak flag/rating writes into e.g. Library Loupe.
+                    .disabled(!model.isCullingMenuShortcutActive)
                 }
                 if index < CullingCommandMenuPresentation.sections.count - 1 {
                     Divider()
