@@ -2229,12 +2229,11 @@ final class AppModelTests: XCTestCase {
             )
         ))
 
-        let syncSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sync" })
-        XCTAssertEqual(syncSection.rowTitles, ["XMP Conflicts"])
-        XCTAssertEqual(syncSection.rows.first?.countText, "1")
-        XCTAssertEqual(syncSection.rows.first?.tone, .destructive)
+        // The sidebar "Sync" section is retired; the Activity Center popover's
+        // conflict row deep-links via `selectXMPConflictAsset` instead.
+        XCTAssertEqual(model.activityCenterPresentation.xmpConflicts.map(\.assetID), [conflicted.id])
 
-        try model.selectSidebarRow(try XCTUnwrap(syncSection.rows.first))
+        try model.selectXMPConflictAsset(conflicted.id)
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertTrue(model.metadataSyncConflictFilter)
@@ -2266,12 +2265,13 @@ final class AppModelTests: XCTestCase {
             )
         ))
 
-        let syncSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sync" })
-        XCTAssertEqual(syncSection.rowTitles, ["XMP Pending"])
-        XCTAssertEqual(syncSection.rows.first?.countText, "1")
-        XCTAssertEqual(syncSection.rows.first?.tone, .warning)
-
-        try model.selectSidebarRow(try XCTUnwrap(syncSection.rows.first))
+        // The sidebar "Sync" section is retired; the `xmp:pending` filter-bar
+        // token is the sole remaining route to this filter, so exercise the
+        // underlying model filter directly.
+        XCTAssertEqual(model.pendingMetadataSyncCount, 1)
+        model.selectedAssetSetID = nil
+        model.metadataSyncPendingFilter = true
+        try model.reload()
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertTrue(model.metadataSyncPendingFilter)
@@ -2355,7 +2355,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.assets, [])
         XCTAssertEqual(model.totalAssetCount, 0)
-        XCTAssertNil(model.sidebarSections.first { $0.title == "Sync" })
+        XCTAssertTrue(model.activityCenterPresentation.xmpConflicts.isEmpty)
     }
 
     func testResolveSelectedMetadataConflictUsingSidecarImportsSidecarMetadata() throws {
@@ -2910,8 +2910,6 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.pendingMetadataSyncItems.count, AppModel.metadataSyncStateDisplayLimit)
         XCTAssertEqual(model.pendingMetadataSyncCount, 205)
-        let syncSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sync" })
-        XCTAssertEqual(syncSection.rows.first { $0.title == "XMP Pending" }?.countText, "205")
         XCTAssertEqual(model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }.count, 200)
     }
 
@@ -5571,11 +5569,13 @@ final class AppModelTests: XCTestCase {
         )
         let model = try AppModel.load(catalog: catalog)
 
-        let signalSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "AI" })
-        XCTAssertEqual(signalSection.rowTitles, ["Faces", "Objects"])
-        let faceRow = try XCTUnwrap(signalSection.rows.first { $0.title == "Faces" })
-
-        try model.selectSidebarRow(faceRow)
+        // The sidebar "AI" section is retired; the `signal:` filter-bar token
+        // is the sole remaining route to this filter (Task 8 replaces it with
+        // first-class tokens), so exercise the underlying model filter directly.
+        model.selectedAssetSetID = nil
+        model.evaluationKindFilter = .faceQuality
+        model.selectedView = .grid
+        try model.reload()
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.evaluationKindFilter, .faceQuality)
@@ -6559,7 +6559,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.catalogPeople, [CatalogPerson(id: "person-maya", name: "Maya", assetCount: 0)])
     }
 
-    func testLoadExposesSourceAvailabilityRowsInSidebarAndSelectingRowAppliesFilter() throws {
+    func testSourceAvailabilityFilterAppliesToOfflineOriginals() throws {
         let online = makeAsset(id: "online", path: "/Volumes/NAS/Job/online.cr2", rating: 4)
         let offline = makeAsset(id: "offline", path: "/Volumes/NAS/Job/offline.cr2", rating: 4, availability: .offline)
         let firstMissing = makeAsset(id: "missing-a", path: "/Volumes/NAS/Job/missing-a.cr2", rating: 4, availability: .missing)
@@ -6571,102 +6571,17 @@ final class AppModelTests: XCTestCase {
             assets: [online, offline, firstMissing, secondMissing, moved, stale]
         )
 
-        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
-        XCTAssertEqual(sourceSection.rowTitles, [
-            "Offline Originals",
-            "Missing Originals",
-            "Moved Originals",
-            "Stale Originals"
-        ])
-        XCTAssertEqual(sourceSection.rows.map(\.countText), ["1", "2", "1", "1"])
-        XCTAssertEqual(sourceSection.rows.map(\.tone), [.warning, .destructive, .destructive, .warning])
-        let missingRow = try XCTUnwrap(sourceSection.rows.first { $0.title == "Missing Originals" })
-
-        try model.selectSidebarRow(missingRow)
+        // The sidebar "Sources" section is retired; the `source:` filter-bar
+        // token is the sole remaining route to this filter, so exercise the
+        // underlying model filter directly.
+        model.selectedAssetSetID = nil
+        model.availabilityFilter = .missing
+        try model.reload()
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.availabilityFilter, .missing)
         XCTAssertEqual(model.assets.map(\.id), [firstMissing.id, secondMissing.id])
         XCTAssertEqual(model.totalAssetCount, 2)
-    }
-
-    func testLoadExposesSourceRootRowsInSidebarAndSelectingRootFiltersCatalog() throws {
-        let archiveRoot = URL(fileURLWithPath: "/Volumes/Archive")
-        let archiveJob = makeAsset(id: "archive-job", path: "/Volumes/Archive/Job/frame-1.cr2", rating: 4)
-        let archiveTravel = makeAsset(id: "archive-travel", path: "/Volumes/Archive/Travel/frame-2.cr2", rating: 5)
-        let local = makeAsset(id: "local", path: "/Users/jesse/Pictures/frame-3.jpg", rating: 5)
-        let (model, _) = try makeModelWithCatalogAssets(
-            named: "app-model-source-root-sidebar",
-            assets: [archiveJob, archiveTravel, local],
-            configureRepository: { repository in
-                try repository.recordSourceRoot(archiveRoot)
-            }
-        )
-
-        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
-        let sourceRootRow = try XCTUnwrap(sourceSection.rows.first { $0.title == "Archive" })
-
-        XCTAssertEqual(sourceRootRow.detailText, archiveRoot.path)
-        XCTAssertEqual(sourceRootRow.countText, "2")
-        XCTAssertTrue(sourceRootRow.isSelectable)
-        XCTAssertEqual(sourceRootRow.target, .folder("/Volumes/Archive/"))
-
-        try model.selectSidebarRow(sourceRootRow)
-
-        XCTAssertNil(model.selectedAssetSetID)
-        XCTAssertEqual(model.folderFilterText, "/Volumes/Archive/")
-        XCTAssertEqual(model.assets.map(\.id), [archiveJob.id, archiveTravel.id])
-        XCTAssertEqual(model.totalAssetCount, 2)
-    }
-
-    func testSourceRootSidebarRowNamesUnavailableOriginals() throws {
-        let archiveRoot = URL(fileURLWithPath: "/Volumes/Archive")
-        let online = makeAsset(id: "archive-online", path: "/Volumes/Archive/Job/online.cr2", rating: 4)
-        let offline = makeAsset(id: "archive-offline", path: "/Volumes/Archive/Job/offline.cr2", rating: 4, availability: .offline)
-        let missing = makeAsset(id: "archive-missing", path: "/Volumes/Archive/Job/missing.cr2", rating: 4, availability: .missing)
-        let (model, _) = try makeModelWithCatalogAssets(
-            named: "app-model-source-root-unavailable-sidebar",
-            assets: [online, offline, missing],
-            configureRepository: { repository in
-                try repository.recordSourceRoot(archiveRoot)
-            }
-        )
-
-        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
-        let sourceRootRow = try XCTUnwrap(sourceSection.rows.first { $0.title == "Archive" })
-
-        XCTAssertEqual(sourceRootRow.detailText, "/Volumes/Archive · 2 unavailable originals")
-        XCTAssertEqual(sourceRootRow.countText, "3")
-        XCTAssertEqual(sourceRootRow.tone, .warning)
-    }
-
-    func testLoadExposesSourceBookmarkRepairRowsInSidebar() throws {
-        let directory = try makeTemporaryDirectory(named: "app-model-source-bookmark-repair-sidebar")
-        let sourceRoot = directory.appendingPathComponent("photos", isDirectory: true)
-        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
-        let catalog = try AppCatalog.open(paths: paths)
-        let bookmarkData = Data("source-root-bookmark".utf8)
-        try catalog.repository.recordSourceRoot(sourceRoot, securityScopedBookmarkData: bookmarkData)
-        let asset = Asset(
-            id: AssetID(rawValue: "repair-needed"),
-            originalURL: sourceRoot.appendingPathComponent("repair-needed.jpg"),
-            volumeIdentifier: "Photos",
-            fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
-            availability: .online,
-            metadata: AssetMetadata(rating: 4)
-        )
-        try catalog.repository.upsert(asset)
-        let model = try AppModel.load(catalog: catalog, resourceAccess: RecordingSecurityScopedResourceAccess(requiresSuccessfulAccess: false).value)
-
-        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
-        let repairRow = try XCTUnwrap(sourceSection.rows.first { $0.id == "source-bookmark-repair-\(sourceRoot.path)" })
-
-        XCTAssertEqual(repairRow.title, "Reconnect photos")
-        XCTAssertEqual(repairRow.detailText, "Permission needs refresh")
-        XCTAssertEqual(repairRow.countText, "1")
-        XCTAssertEqual(repairRow.tone, .warning)
-        XCTAssertTrue(repairRow.isSelectable)
-        XCTAssertEqual(repairRow.target, .sourceBookmarkRepair(sourceRoot.path))
     }
 
     func testReconnectSourceRootRefreshesLoadedAssetsAndSourceSidebar() throws {
@@ -6702,20 +6617,14 @@ final class AppModelTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
-        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
-        XCTAssertEqual(sourceSection.rowTitles, ["Missing Originals"])
-        XCTAssertEqual(sourceSection.rows.first?.countText, "1")
+        XCTAssertEqual(model.activityCenterPresentation.sources.map(\.availability), [.missing])
 
         let result = try model.reconnectSourceRoot(from: oldRoot, to: newRoot)
 
         XCTAssertEqual(result.reconnectedAssetCount, 1)
         XCTAssertEqual(model.assets.map(\.originalURL), [newOriginalURL])
         XCTAssertEqual(model.assets.map(\.availability), [.online])
-        let reconnectedSourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
-        let reconnectedSourceRow = try XCTUnwrap(reconnectedSourceSection.rows.first { $0.title == "MountedArchive" })
-        XCTAssertEqual(reconnectedSourceRow.detailText, newRoot.path)
-        XCTAssertEqual(reconnectedSourceRow.countText, "1")
-        XCTAssertEqual(reconnectedSourceRow.target, .folder("\(newRoot.path)/"))
+        XCTAssertTrue(model.activityCenterPresentation.sources.isEmpty)
         XCTAssertEqual(model.statusMessage, "Reconnected 1 source")
 
         // The Folders tree is rebuilt from the reconnected asset's new path,
@@ -9033,14 +8942,12 @@ final class AppModelTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
-        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
-        XCTAssertEqual(sourceSection.rowTitles, ["Missing Originals"])
-        XCTAssertEqual(sourceSection.rows.first?.countText, "1")
+        XCTAssertEqual(model.activityCenterPresentation.sources.map(\.availability), [.missing])
 
         try model.refreshVisibleAssetAvailability()
 
         XCTAssertEqual(model.assets.map(\.availability), [.online])
-        XCTAssertNil(model.sidebarSections.first { $0.title == "Sources" })
+        XCTAssertTrue(model.activityCenterPresentation.sources.isEmpty)
     }
 
     @MainActor
@@ -11606,7 +11513,9 @@ final class AppModelTests: XCTestCase {
             provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
         )
 
-        XCTAssertNil(model.sidebarSections.first { $0.title == "AI" })
+        // The sidebar "AI" section is retired (the `signal:` filter-bar token
+        // is the remaining route); assert the underlying summary refreshes.
+        XCTAssertTrue(model.catalogEvaluationKindSummaries.isEmpty)
 
         try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .grid)))
         try model.requestEvaluation(assetID: asset.id, provider: "apple-vision")
@@ -11617,9 +11526,9 @@ final class AppModelTests: XCTestCase {
         )))
 
         try await waitForEvaluationSignalGeneration(1, for: asset.id, in: model)
-        let aiSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "AI" })
-        XCTAssertEqual(aiSection.rowTitles, ["Faces"])
-        XCTAssertEqual(aiSection.rows.first?.countText, "1")
+        XCTAssertEqual(model.catalogEvaluationKindSummaries, [
+            CatalogEvaluationKindSummary(kind: .faceQuality, assetCount: 1)
+        ])
     }
 
     @MainActor
@@ -11822,7 +11731,7 @@ final class AppModelTests: XCTestCase {
 
         try await waitForBackgroundWorkStatus(.failed, itemID: itemID, in: model)
         XCTAssertEqual(model.selectedAsset?.availability, .missing)
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Sources" }?.rowTitles, ["Missing Originals"])
+        XCTAssertEqual(model.activityCenterPresentation.sources.map(\.availability), [.missing])
     }
 
     @MainActor
@@ -11853,7 +11762,7 @@ final class AppModelTests: XCTestCase {
         try await waitForBackgroundWorkStatus(.failed, itemID: itemID, in: model)
         XCTAssertEqual(model.assets.map(\.id), [])
         XCTAssertEqual(model.totalAssetCount, 0)
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Sources" }?.rowTitles, ["Missing Originals"])
+        XCTAssertEqual(model.activityCenterPresentation.sources.map(\.availability), [.missing])
     }
 
     func testVisibleLoupePreviewRequestsMediumThenLargeWhenNeitherIsCached() throws {
@@ -13239,12 +13148,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(sourceRoot.assetCount, 1)
         XCTAssertEqual(sourceRoot.securityScopedBookmarkData, bookmarkData)
         XCTAssertEqual(try catalog.repository.sourceRoots().first?.securityScopedBookmarkData, bookmarkData)
-
-        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
-        let sourceRootRow = try XCTUnwrap(sourceSection.rows.first { $0.title == "photos" })
-        XCTAssertEqual(sourceRootRow.detailText, photoFolder.path)
-        XCTAssertEqual(sourceRootRow.countText, "1")
-        XCTAssertEqual(sourceRootRow.target, .folder("\(photoFolder.path)/"))
     }
 
     @MainActor
@@ -13582,12 +13485,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(sourceRoot.assetCount, 1)
         XCTAssertEqual(sourceRoot.securityScopedBookmarkData, bookmarkData)
         XCTAssertEqual(try catalog.repository.sourceRoots().first?.securityScopedBookmarkData, bookmarkData)
-
-        let sourceSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Sources" })
-        let sourceRootRow = try XCTUnwrap(sourceSection.rows.first { $0.title == "Library" })
-        XCTAssertEqual(sourceRootRow.detailText, destinationRoot.path)
-        XCTAssertEqual(sourceRootRow.countText, "1")
-        XCTAssertEqual(sourceRootRow.target, .folder("\(destinationRoot.path)/"))
     }
 
     @MainActor
@@ -16703,6 +16600,72 @@ final class AppModelTests: XCTestCase {
             availability: .online,
             metadata: AssetMetadata()
         )
+    }
+
+    // MARK: - Activity Center presentation wiring
+
+    @MainActor
+    func testActivityCenterPresentationWiresProviderFailureCountFromReviewQueueCounts() {
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: [],
+            reviewQueueCounts: [.providerFailures: 3]
+        )
+
+        XCTAssertEqual(model.activityCenterPresentation.badge, .problems(3))
+    }
+
+    @MainActor
+    func testActivityCenterPresentationOnlyImportScopedErrorsFeedImportError() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-activity-center-import-error-scoping")
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let model = try AppModel.load(catalog: catalog)
+
+        model.errorMessage = "an unrelated model error"
+        XCTAssertNil(model.activityCenterPresentation.importError, "unrelated model errors must not surface as import errors")
+
+        model.beginImportFolder(directory.appendingPathComponent("does-not-exist", isDirectory: true))
+
+        let importError = try XCTUnwrap(model.activityCenterPresentation.importError)
+        XCTAssertFalse(importError.isEmpty)
+    }
+
+    @MainActor
+    func testActivityCenterPresentationSourcesReflectAvailabilityAndBookmarkRepair() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-activity-center-sources")
+        let sourceRoot = directory.appendingPathComponent("photos", isDirectory: true)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let bookmarkData = Data("source-root-bookmark".utf8)
+        try catalog.repository.recordSourceRoot(sourceRoot, securityScopedBookmarkData: bookmarkData)
+        let access = RecordingSecurityScopedResourceAccess(requiresSuccessfulAccess: false)
+
+        let model = try AppModel.load(catalog: catalog, resourceAccess: access.value)
+        let sources = model.activityCenterPresentation.sources
+
+        XCTAssertTrue(sources.contains { $0.reconnectActionID == sourceRoot.path })
+    }
+
+    @MainActor
+    func testActivityCenterPresentationXMPConflictsMapFromMetadataSyncConflictItems() {
+        let assetID = AssetID(rawValue: "asset-1")
+        let sidecarURL = URL(fileURLWithPath: "/Volumes/NAS/Vacation/IMG_0001.xmp")
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: [],
+            metadataSyncConflictItems: [
+                MetadataSyncItem(assetID: assetID, sidecarURL: sidecarURL, catalogGeneration: 1, lastSyncedFingerprint: nil)
+            ]
+        )
+
+        let conflicts = model.activityCenterPresentation.xmpConflicts
+
+        XCTAssertEqual(conflicts.count, 1)
+        XCTAssertEqual(conflicts.first?.assetID, assetID)
+        XCTAssertEqual(conflicts.first?.displayName, "IMG_0001")
     }
 }
 

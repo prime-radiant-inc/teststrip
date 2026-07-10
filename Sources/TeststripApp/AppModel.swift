@@ -1512,6 +1512,11 @@ public final class AppModel {
     private var selectedBatchAssetSortKeys: [AssetID: Int]
     public var statusMessage: String?
     public var errorMessage: String?
+    /// Import-scoped failures only, surfaced in the Activity Center's import
+    /// row - unrelated model errors stay on `errorMessage` and never route here.
+    public var importError: String?
+    /// Drives the Activity Center popover (toolbar item + Window ▸ Activity).
+    public var isActivityCenterPresented = false
     public private(set) var isExporting = false
     public var activeWork: AppWorkActivity?
     public var recentWork: [AppWorkActivity]
@@ -2091,6 +2096,76 @@ public final class AppModel {
             return false
         }
         return Self.isActiveBackgroundWorkStatus(item.status)
+    }
+
+    /// Aggregates background work, import progress, source availability, and
+    /// XMP sync conflicts for the Activity Center toolbar popover - the single
+    /// place a caller reads to render the toolbar's badge/progress and the
+    /// popover's sections, replacing the former sidebar Sources/AI/Sync
+    /// sections, the inspector-pinned Activity panel, and the footer/top-inset
+    /// import surfaces.
+    public var activityCenterPresentation: ActivityCenterPresentation {
+        let jobs = visibleWorkActivities.map { activity in
+            ActivityJobRow(
+                activity: activity,
+                canStar: canToggleWorkSessionStarred(activity),
+                canPause: canPauseBackgroundWork,
+                canResume: canResumeBackgroundWork,
+                canCancel: canCancelBackgroundWorkActivity(activity)
+            )
+        }
+        // Two independent row families, matching the retired sidebar's
+        // "Sources" section: catalog-wide availability counts (no root
+        // registration required) and bookmark-repair rows for registered
+        // source roots whose security-scoped access needs to be refreshed.
+        let availabilityRows = sourceAvailabilitySummaries
+            .filter { $0.assetCount > 0 }
+            .map { summary in
+                SourceStatusRow(
+                    id: "source-availability-\(summary.availability.rawValue)",
+                    name: Self.sourceAvailabilityDisplayName(summary.availability),
+                    availability: summary.availability,
+                    reconnectActionID: nil,
+                    refreshActionID: summary.availability.rawValue
+                )
+            }
+        let repairRows = sourceRoots
+            .filter { sourceRootBookmarkRepairPaths.contains($0.path) }
+            .map { root in
+                SourceStatusRow(
+                    id: "source-bookmark-repair-\(root.path)",
+                    name: root.name,
+                    availability: .offline,
+                    reconnectActionID: root.path,
+                    refreshActionID: nil
+                )
+            }
+        let sources = availabilityRows + repairRows
+        let xmpConflicts = metadataSyncConflictItems.map { item in
+            ConflictRow(
+                assetID: item.assetID,
+                displayName: item.sidecarURL.deletingPathExtension().lastPathComponent
+            )
+        }
+        return ActivityCenterPresentation(
+            jobs: jobs,
+            importActivity: visibleImportActivity,
+            importError: importError,
+            sources: sources,
+            xmpConflicts: xmpConflicts,
+            providerFailureCount: reviewQueueCounts[.providerFailures] ?? 0
+        )
+    }
+
+    /// Deep-links from the Activity Center's conflict row back to the asset,
+    /// filtered to the XMP-conflict scope so the selection lands in context.
+    public func selectXMPConflictAsset(_ assetID: AssetID) throws {
+        selectedAssetID = assetID
+        selectedAssetSetID = nil
+        clearLibraryQueryFilters()
+        metadataSyncConflictFilter = true
+        selectedView = .grid
+        try reload()
     }
 
     public var diagnosticsSnapshot: AppDiagnosticsSnapshot {
@@ -10346,6 +10421,7 @@ public final class AppModel {
 
     private func startImportActivity(folderURL: URL, destinationRoot: URL? = nil) {
         displayedLocalImportCatalogedAssetID = nil
+        importError = nil
         let activity = AppWorkActivity(
             kind: .ingest,
             status: .running,
@@ -10507,6 +10583,7 @@ public final class AppModel {
         )
         activeWork = nil
         displayedLocalImportCatalogedAssetID = nil
+        importError = error.localizedDescription
         recordRecentActivity(activity)
     }
 
@@ -10903,46 +10980,10 @@ public final class AppModel {
                 rows: folderTreeSidebarRows(catalogFolders: catalogFolders, expandedFolderPaths: expandedFolderPaths)
             ))
         }
-        let sourceRows = sourceAvailabilitySidebarRows(
-            sourceAvailabilitySummaries,
-            sourceRoots: sourceRoots,
-            sourceRootBookmarkRepairPaths: sourceRootBookmarkRepairPaths
-        )
-        if !sourceRows.isEmpty {
-            sections.append(SidebarSection(title: "Sources", rows: sourceRows))
-        }
-        let evaluationRows = evaluationSignalSidebarRows(catalogEvaluationKindSummaries)
-        if !evaluationRows.isEmpty {
-            sections.append(SidebarSection(title: "AI", rows: evaluationRows))
-        }
-        var syncRows: [SidebarRow] = []
-        let resolvedPendingMetadataSyncCount = pendingMetadataSyncCount ?? pendingMetadataSyncItems.count
-        let resolvedMetadataSyncConflictCount = metadataSyncConflictCount ?? metadataSyncConflictItems.count
-        if resolvedPendingMetadataSyncCount > 0 {
-            syncRows.append(
-                SidebarRow(
-                    id: "sync-xmp-pending",
-                    title: "XMP Pending",
-                    countText: sidebarCountText(resolvedPendingMetadataSyncCount),
-                    tone: .warning,
-                    target: .metadataSyncPending
-                )
-            )
-        }
-        if resolvedMetadataSyncConflictCount > 0 {
-            syncRows.append(
-                SidebarRow(
-                    id: "sync-xmp-conflicts",
-                    title: "XMP Conflicts",
-                    countText: sidebarCountText(resolvedMetadataSyncConflictCount),
-                    tone: .destructive,
-                    target: .metadataSyncConflicts
-                )
-            )
-        }
-        if !syncRows.isEmpty {
-            sections.append(SidebarSection(title: "Sync", rows: syncRows))
-        }
+        // Sources/AI/Sync sidebar sections are retired in favor of the
+        // Activity Center toolbar popover (`activityCenterPresentation`);
+        // AI-signal filtering is still reachable via the `signal:` filter-bar
+        // token, and XMP-pending/conflict filtering via `xmp:`.
         let visibleSavedAssetSets = Self.visibleSavedAssetSets(savedAssetSets)
         let starredRows = visibleSavedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0, count: assetSetCounts[$0.id]) }
         if !starredRows.isEmpty {
@@ -11076,91 +11117,28 @@ public final class AppModel {
         }
     }
 
-    private static func sourceAvailabilitySidebarRows(
-        _ summaries: [CatalogSourceAvailabilitySummary],
-        sourceRoots: [CatalogSourceRoot],
-        sourceRootBookmarkRepairPaths: Set<String>
-    ) -> [SidebarRow] {
-        let summariesByAvailability = Dictionary(uniqueKeysWithValues: summaries.map { ($0.availability, $0) })
-        var rows = sourceRootSidebarRows(sourceRoots)
-        rows.append(contentsOf: sourceAvailabilitySidebarOrder.compactMap { availability in
-            guard let summary = summariesByAvailability[availability], summary.assetCount > 0 else { return nil }
-            return SidebarRow(
-                id: "source-availability-\(availability.rawValue)",
-                title: sourceAvailabilitySidebarTitle(availability),
-                countText: sidebarCountText(summary.assetCount),
-                tone: sourceAvailabilitySidebarTone(availability),
-                target: .sourceAvailability(availability)
-            )
-        })
-        rows.append(contentsOf: sourceBookmarkRepairSidebarRows(
-            sourceRoots: sourceRoots,
-            sourceRootBookmarkRepairPaths: sourceRootBookmarkRepairPaths
-        ))
-        return rows
-    }
-
-    private static func sourceAvailabilitySidebarTone(_ availability: SourceAvailability) -> SidebarRowTone {
-        switch availability {
-        case .offline, .stale:
-            return .warning
-        case .missing, .moved:
-            return .destructive
-        case .online:
-            return .neutral
-        }
-    }
-
-    private static func sourceRootSidebarRows(_ sourceRoots: [CatalogSourceRoot]) -> [SidebarRow] {
-        sourceRoots
-            .filter { $0.assetCount > 0 }
-            .map { sourceRoot in
-                SidebarRow(
-                    id: "source-root-\(sourceRoot.path)",
-                    title: sourceRoot.name,
-                    detailText: sourceRootDetailText(sourceRoot),
-                    countText: sidebarCountText(sourceRoot.assetCount),
-                    tone: sourceRoot.unavailableAssetCount > 0 ? .warning : .neutral,
-                    target: .folder(sourceRootFolderPrefix(sourceRoot.path))
-                )
-            }
-    }
-
-    private static func sourceRootDetailText(_ sourceRoot: CatalogSourceRoot) -> String {
-        guard sourceRoot.unavailableAssetCount > 0 else { return sourceRoot.path }
-        let noun = sourceRoot.unavailableAssetCount == 1 ? "unavailable original" : "unavailable originals"
-        return "\(sourceRoot.path) · \(sourceRoot.unavailableAssetCount) \(noun)"
-    }
-
-    private static func sourceRootFolderPrefix(_ path: String) -> String {
-        guard path != "/" else { return path }
-        return path.hasSuffix("/") ? path : "\(path)/"
-    }
-
-    private static func sourceBookmarkRepairSidebarRows(
-        sourceRoots: [CatalogSourceRoot],
-        sourceRootBookmarkRepairPaths: Set<String>
-    ) -> [SidebarRow] {
-        sourceRoots
-            .filter { sourceRootBookmarkRepairPaths.contains($0.path) }
-            .map { sourceRoot in
-                SidebarRow(
-                    id: "source-bookmark-repair-\(sourceRoot.path)",
-                    title: "Reconnect \(sourceRoot.name)",
-                    detailText: "Permission needs refresh",
-                    countText: sidebarCountText(sourceRoot.assetCount),
-                    tone: .warning,
-                    target: .sourceBookmarkRepair(sourceRoot.path)
-                )
-            }
-    }
-
     private static let sourceAvailabilitySidebarOrder: [SourceAvailability] = [
         .offline,
         .missing,
         .moved,
         .stale
     ]
+
+    /// Display name for the Activity Center's per-availability source row.
+    fileprivate static func sourceAvailabilityDisplayName(_ availability: SourceAvailability) -> String {
+        switch availability {
+        case .online:
+            return "Online Originals"
+        case .offline:
+            return "Offline Originals"
+        case .missing:
+            return "Missing Originals"
+        case .moved:
+            return "Moved Originals"
+        case .stale:
+            return "Stale Originals"
+        }
+    }
 
     private static func recentlyAddedSidebarRow(_ recentWork: [AppWorkActivity]) -> SidebarRow? {
         guard let activity = recentWork.first(where: { activity in
@@ -11178,74 +11156,6 @@ public final class AppModel {
             tone: .positive,
             target: .workSession(WorkSessionID(rawValue: activity.id))
         )
-    }
-
-    private static func sourceAvailabilitySidebarTitle(_ availability: SourceAvailability) -> String {
-        switch availability {
-        case .online:
-            return "Online Originals"
-        case .offline:
-            return "Offline Originals"
-        case .missing:
-            return "Missing Originals"
-        case .moved:
-            return "Moved Originals"
-        case .stale:
-            return "Stale Originals"
-        }
-    }
-
-    private static func evaluationSignalSidebarRows(_ summaries: [CatalogEvaluationKindSummary]) -> [SidebarRow] {
-        let summariesByKind = Dictionary(uniqueKeysWithValues: summaries.map { ($0.kind, $0) })
-        return evaluationKindSidebarOrder.compactMap { kind in
-            guard let summary = summariesByKind[kind], summary.assetCount > 0 else { return nil }
-            return SidebarRow(
-                id: "evaluation-kind-\(kind.rawValue)",
-                title: evaluationKindSidebarTitle(kind),
-                countText: sidebarCountText(summary.assetCount),
-                tone: .accent,
-                target: .evaluationKind(kind)
-            )
-        }
-    }
-
-    private static let evaluationKindSidebarOrder: [EvaluationKind] = [
-        .faceCount,
-        .faceQuality,
-        .eyesOpen,
-        .eyeSharpness,
-        .smile,
-        .object,
-        .ocrText,
-        .focus,
-        .motionBlur,
-        .exposure,
-        .aesthetics,
-        .framing,
-        .colorPalette,
-        .novelty,
-        .visualSimilarity
-    ]
-
-    private static func evaluationKindSidebarTitle(_ kind: EvaluationKind) -> String {
-        switch kind {
-        case .faceCount:
-            return "People"
-        case .faceQuality:
-            return "Faces"
-        case .object:
-            return "Objects"
-        case .ocrText:
-            return "Text"
-        case .colorPalette:
-            return "Color"
-        case .framing:
-            return "Framing"
-        case .visualSimilarity:
-            return "Similarity"
-        default:
-            return kind.displayName
-        }
     }
 
     private static func visibleSavedAssetSets(_ assetSets: [AssetSet]) -> [AssetSet] {

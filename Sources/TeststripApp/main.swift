@@ -53,6 +53,7 @@ struct TeststripApplication: App {
             AutopilotCommands(model: model)
             CullingCommands(model: model)
             SupportCommands(model: model)
+            ActivityCommands(model: model)
         }
 
         Settings {
@@ -296,6 +297,20 @@ private struct SupportCommands: Commands {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(model.diagnosticsReportText, forType: .string)
         model.statusMessage = "Copied diagnostics"
+    }
+}
+
+private struct ActivityCommands: Commands {
+    var model: AppModel
+
+    var body: some Commands {
+        CommandGroup(after: .windowArrangement) {
+            Divider()
+            Button("Activity") {
+                model.isActivityCenterPresented.toggle()
+            }
+            .keyboardShortcut("0", modifiers: [.command, .shift])
+        }
     }
 }
 

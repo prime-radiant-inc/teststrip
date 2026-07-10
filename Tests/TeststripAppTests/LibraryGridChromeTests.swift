@@ -3,20 +3,6 @@ import TeststripCore
 @testable import TeststripApp
 
 final class LibraryGridChromeTests: XCTestCase {
-    func testImportProgressBannerShowsBeforeAssetsAreVisible() {
-        XCTAssertTrue(LibraryGridChromePolicy.shouldShowImportProgressBanner(
-            isImporting: true,
-            visibleAssetCount: 0
-        ))
-    }
-
-    func testImportProgressBannerHidesWhenImportIsInactive() {
-        XCTAssertFalse(LibraryGridChromePolicy.shouldShowImportProgressBanner(
-            isImporting: false,
-            visibleAssetCount: 12
-        ))
-    }
-
     func testAutopilotBadgeMapsKindToKeepOrCut() {
         XCTAssertEqual(AutopilotBadgePresentation.badge(for: .pick)?.text, "KEEP")
         XCTAssertEqual(AutopilotBadgePresentation.badge(for: .pick)?.isKeep, true)

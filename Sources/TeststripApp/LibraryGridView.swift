@@ -335,6 +335,59 @@ struct LibraryGridView: View {
             }
             .help("More actions")
         }
+
+        ToolbarItem {
+            activityToolbarButton
+        }
+    }
+
+    private var activityToolbarButton: some View {
+        let presentation = model.activityCenterPresentation
+        return Button {
+            model.isActivityCenterPresented.toggle()
+        } label: {
+            activityToolbarIcon(presentation)
+        }
+        .help(activityToolbarHelp(presentation))
+        .popover(isPresented: Binding(
+            get: { model.isActivityCenterPresented },
+            set: { model.isActivityCenterPresented = $0 }
+        )) {
+            ScrollView {
+                ActivityCenterView(model: model)
+                    .padding(14)
+            }
+            .frame(width: 340)
+        }
+    }
+
+    @ViewBuilder
+    private func activityToolbarIcon(_ presentation: ActivityCenterPresentation) -> some View {
+        ZStack(alignment: .topTrailing) {
+            if presentation.isWorking {
+                ProgressView(value: presentation.importProgress?.fraction)
+                    .progressViewStyle(.circular)
+                    .controlSize(.small)
+                    .frame(width: 16, height: 16)
+            } else {
+                Image(systemName: "bell")
+            }
+            if case .problems(let count) = presentation.badge {
+                Text("\(count)")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(3)
+                    .background(Circle().fill(Color.red))
+                    .offset(x: 8, y: -8)
+            }
+        }
+    }
+
+    private func activityToolbarHelp(_ presentation: ActivityCenterPresentation) -> String {
+        if case .problems(let count) = presentation.badge {
+            return count == 1 ? "Activity - 1 problem" : "Activity - \(count) problems"
+        }
+        return presentation.isWorking ? "Activity - working" : "Activity"
     }
 
     private var workspaceSwitcher: some View {
@@ -540,12 +593,7 @@ struct LibraryGridView: View {
                model.selectedView == .grid || model.selectedView == .search || model.selectedView == .timeline {
                 filterBar
             }
-            if LibraryGridChromePolicy.shouldShowImportProgressBanner(
-                isImporting: isImporting,
-                visibleAssetCount: model.assets.count
-            ) {
-                importProgressBanner
-            } else if let summary = visibleImportCompletionSummary {
+            if let summary = visibleImportCompletionSummary {
                 importCompletionSummary(summary)
             }
         }
@@ -1228,54 +1276,6 @@ struct LibraryGridView: View {
             selectedAssetCount: model.selectedBatchAssetCount,
             totalAssetCount: model.totalAssetCount
         )
-    }
-
-    private var importProgressBanner: some View {
-        let presentation = importProgressPresentation
-        return HStack(spacing: 10) {
-            importProgressIndicator
-                .controlSize(.small)
-            Text(presentation.phaseText)
-                .font(.caption2.monospaced().weight(.semibold))
-                .foregroundStyle(.orange)
-                .lineLimit(1)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color.orange.opacity(0.22))
-                }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(presentation.title)
-                    .font(.caption.weight(.semibold))
-                Text(presentation.detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Text(presentation.reassuranceText)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            if let countText = presentation.countText {
-                Text(countText)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            Button {
-                cancelImport()
-            } label: {
-                Image(systemName: "xmark.circle")
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(presentation.cancelHelp)
-            .help(presentation.cancelHelp)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.bar)
     }
 
     private func importCompletionSummary(_ summary: ImportCompletionSummary) -> some View {
@@ -2466,26 +2466,7 @@ struct LibraryGridView: View {
             Text(model.libraryCountText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            if isImporting {
-                ProgressView()
-                    .controlSize(.small)
-                Text(importProgressPresentation.detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Button {
-                    cancelImport()
-                } label: {
-                    Image(systemName: "xmark.circle")
-                }
-                .buttonStyle(.borderless)
-                .help("Cancel import")
-            } else if let errorMessage = model.errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .lineLimit(1)
-            } else if let statusText = model.libraryStatusText {
+            if let statusText = model.libraryStatusText {
                 Text(statusText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -8145,10 +8126,6 @@ enum LibraryGridChromePolicy {
         }
         let expandedPath = (path as NSString).expandingTildeInPath
         return URL(fileURLWithPath: expandedPath, isDirectory: true)
-    }
-
-    static func shouldShowImportProgressBanner(isImporting: Bool, visibleAssetCount _: Int) -> Bool {
-        isImporting
     }
 
     static func shouldShowImportCompletionSummary(

@@ -495,11 +495,6 @@ struct InspectorView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            Divider()
-            ActivityView(model: model)
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-                .padding(.bottom, 12)
         }
         .frame(width: InspectorPreviewLayout.columnWidth)
     }

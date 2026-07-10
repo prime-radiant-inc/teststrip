@@ -242,7 +242,7 @@ struct CopilotView: View {
 
     private var activityPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ActivityView(model: model)
+            ActivityCenterView(model: model)
         }
         .padding(12)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
