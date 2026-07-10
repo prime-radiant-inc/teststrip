@@ -3469,7 +3469,9 @@ private struct LoupeView: View {
                         dismiss: { model.dismissAutopilotRunSummary() }
                     )
                 }
-                cullingHeader(stackPresentation: stackPresentation)
+                if let asset = model.selectedAsset {
+                    cullHUD(for: asset, stackPresentation: stackPresentation)
+                }
             }
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
@@ -3507,7 +3509,6 @@ private struct LoupeView: View {
                 }
                 cullingStackRail(presentation: stackPresentation)
                 cullingFilmstrip(recommendedAssetID: stackPresentation.recommendedAssetID)
-                cullingCommandRail(stackPresentation: stackPresentation)
             } else {
                 libraryLoupeNavBar
             }
@@ -3605,121 +3606,74 @@ private struct LoupeView: View {
         closeUpCrops = crops
     }
 
-    @ViewBuilder
-    private func cullingHeader(stackPresentation: CullingStackRailPresentation) -> some View {
-        let summary = model.cullingProgressSummary
-        HStack(spacing: 10) {
-            Label("Culling", systemImage: "checkmark.seal")
-                .font(.headline)
+    private func cullHUDPresentation(for asset: Asset, stackPresentation: CullingStackRailPresentation) -> CullHUDPresentation {
+        let assistPresentation = CullingAssistPresentation.presentation(
+            for: model.selectedEvaluationSignals,
+            stackGuidance: cullingStackGuidanceAction(in: stackPresentation)
+        )
+        let verdict = assistPresentation.verdictText
+            ?? (assistPresentation.tone == .waiting ? nil : assistPresentation.title)
+        return CullHUDPresentation(
+            filename: asset.originalURL.lastPathComponent,
+            rating: asset.metadata.rating,
+            colorLabel: asset.metadata.colorLabel,
+            summary: model.cullingProgressSummary,
+            verdict: verdict
+        )
+    }
+
+    private func cullHUD(for asset: Asset, stackPresentation: CullingStackRailPresentation) -> some View {
+        let presentation = cullHUDPresentation(for: asset, stackPresentation: stackPresentation)
+        return HStack(spacing: 10) {
+            Text(presentation.filename)
+                .font(.caption.weight(.medium))
                 .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-            if let positionText = summary.positionText {
-                Text(positionText)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 180, alignment: .leading)
+            cullHUDRatingStars(presentation.rating)
+            if let colorLabel = presentation.colorLabel {
+                Circle()
+                    .fill(color(for: colorLabel))
+                    .frame(width: 10, height: 10)
+                    .accessibilityLabel("\(colorLabel.rawValue.capitalized) label")
             }
-            if summary.totalCount > 0 {
-                ProgressView(value: Double(summary.reviewedCount), total: Double(max(summary.totalCount, 1)))
+            if presentation.undecidedCount + presentation.pickCount + presentation.rejectCount > 0 {
+                ProgressView(value: presentation.progressFraction)
                     .tint(.orange)
                     .frame(width: 96)
                     .accessibilityLabel("Culling Progress")
             }
+            Text("\(presentation.undecidedCount) left")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             Spacer(minLength: 0)
-            if let feedback = model.lastCullingMetadataDecision {
-                cullingDecisionFeedbackPill(CullingDecisionFeedbackPresentation(feedback: feedback))
+            cullingCountPill(title: "Picks", count: presentation.pickCount, color: .green, systemImage: "flag.fill")
+            cullingCountPill(title: "Rejects", count: presentation.rejectCount, color: .red, systemImage: "xmark.circle.fill")
+            if let verdict = presentation.verdict {
+                Text(verdict)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: 220, alignment: .trailing)
+                    .liveMockupPlaceholder(.cullingAssistVerdict)
             }
-            cullingCountPill(title: "Picks", count: summary.pickCount, color: .green, systemImage: "flag.fill")
-            cullingCountPill(title: "Rejects", count: summary.rejectCount, color: .red, systemImage: "xmark.circle.fill")
-            cullingAssistPill(stackGuidanceAction: cullingStackGuidanceAction(in: stackPresentation))
-                .layoutPriority(1)
         }
         .padding(.horizontal, 14)
         .frame(height: 48)
         .background(.bar)
     }
 
-    private func cullingDecisionFeedbackPill(_ presentation: CullingDecisionFeedbackPresentation) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(presentation.title)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                Text(presentation.detail)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+    private func cullHUDRatingStars(_ rating: Int) -> some View {
+        HStack(spacing: 1) {
+            ForEach(0..<5, id: \.self) { index in
+                Image(systemName: "star.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(index < rating ? .yellow : .secondary.opacity(0.35))
             }
         }
-        .padding(.horizontal, 9)
-        .frame(width: 142, height: 34, alignment: .leading)
-        .background(Color.green.opacity(0.11), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Color.green.opacity(0.25))
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Last culling decision")
-        .accessibilityValue(presentation.accessibilityValue)
-    }
-
-    private func cullingAssistPill(stackGuidanceAction: CullingStackActionPresentation?) -> some View {
-        let presentation = CullingAssistPresentation.presentation(
-            for: model.selectedEvaluationSignals,
-            stackGuidance: stackGuidanceAction
-        )
-        let color = cullingAssistColor(for: presentation.tone)
-        return HStack(spacing: 7) {
-            Image(systemName: "sparkles")
-                .foregroundStyle(color)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text("Text found")
-                        .font(.caption2.monospaced().weight(.semibold))
-                        .foregroundStyle(color)
-                        .lineLimit(1)
-                    if let verdictText = presentation.verdictText {
-                        Text(verdictText)
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(cullingAssistColor(for: presentation.verdictTone))
-                            .lineLimit(1)
-                    }
-                }
-                Text(presentation.title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(presentation.detail)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-        }
-        .help(presentation.detail)
-        .padding(.horizontal, 10)
-        .frame(minWidth: 148, maxWidth: 460, alignment: .leading)
-        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(color.opacity(0.28))
-        }
-        .liveMockupPlaceholder(.cullingAssistVerdict)
-    }
-
-    private func cullingAssistColor(for tone: CullingAssistPresentation.Tone) -> Color {
-        switch tone {
-        case .waiting:
-            return .secondary
-        case .positive:
-            return .green
-        case .caution:
-            return .red
-        case .neutral:
-            return .orange
-        }
+        .accessibilityLabel("Rating \(rating)")
     }
 
     private func cullingCountPill(title: String, count: Int, color: Color, systemImage: String) -> some View {
@@ -4003,88 +3957,6 @@ private struct LoupeView: View {
         }
     }
 
-    private func cullingCommandRail(stackPresentation: CullingStackRailPresentation) -> some View {
-        HStack(spacing: 14) {
-            cullingNavChevron(direction: .previous)
-            cullingNavChevron(direction: .next)
-
-            Divider()
-                .frame(height: 22)
-
-            cullingActionButton(key: "P", title: "Pick", color: .green, shortcut: .pick)
-            cullingActionButton(key: "X", title: "Reject", color: .red, shortcut: .reject)
-            cullingActionButton(key: "U", title: "Clear", color: .secondary, shortcut: .clearFlag)
-
-            Divider()
-                .frame(height: 22)
-
-            HStack(spacing: 4) {
-                ForEach(Array(1...5), id: \.self) { rating in
-                    Button {
-                        applyCullingShortcut(.rating(rating))
-                    } label: {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(rating <= (model.selectedAsset?.metadata.rating ?? 0) ? .yellow : .secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .frame(width: 22, height: 24)
-                    .help("Rate \(rating)")
-                }
-                Button {
-                    applyCullingShortcut(.rating(0))
-                } label: {
-                    Text("0")
-                        .font(.caption.monospacedDigit().weight(.semibold))
-                }
-                .buttonStyle(.plain)
-                .frame(width: 22, height: 24)
-                .help("Clear rating")
-            }
-            .padding(.horizontal, 8)
-            .frame(height: 34)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 9))
-
-            HStack(spacing: 8) {
-                ForEach(ColorLabel.allCases, id: \.self) { label in
-                    Button {
-                        applyCullingShortcut(.colorLabel(label))
-                    } label: {
-                        Circle()
-                            .fill(color(for: label))
-                            .frame(width: 13, height: 13)
-                            .overlay {
-                                if model.selectedAsset?.metadata.colorLabel == label {
-                                    Circle().strokeBorder(.white.opacity(0.8), lineWidth: 2)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .help("\(label.rawValue.capitalized) label")
-                }
-                Button {
-                    applyCullingShortcut(.colorLabel(nil))
-                } label: {
-                    Image(systemName: "slash.circle")
-                        .font(.system(size: 13))
-                }
-                .buttonStyle(.plain)
-                .help("Clear label")
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 34)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 9))
-            Spacer(minLength: 0)
-            Text(CullingNavLegendPresentation(isStackActive: stackPresentation.isVisible).legendText)
-                .font(.caption2.monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 58)
-        .background(.bar)
-    }
-
     private enum CullingNavDirection {
         case previous
         case next
@@ -4123,33 +3995,6 @@ private struct LoupeView: View {
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
         .help(direction.accessibilityLabel)
         .accessibilityLabel(direction.accessibilityLabel)
-    }
-
-    private func cullingActionButton(key: String, title: String, color: Color, shortcut: CullingShortcut) -> some View {
-        Button {
-            applyCullingShortcut(shortcut)
-        } label: {
-            HStack(spacing: 7) {
-                Text(key)
-                    .font(.caption2.monospaced().weight(.bold))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(color.opacity(0.55))
-                    }
-            }
-            .foregroundStyle(color)
-            .frame(width: 34)
-            .frame(height: 34)
-            .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
-            .overlay {
-                RoundedRectangle(cornerRadius: 9)
-                    .strokeBorder(color.opacity(0.28))
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
     }
 
     private func loupeMetadataOverlay(for asset: Asset) -> some View {
