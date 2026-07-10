@@ -89,7 +89,11 @@ struct LibraryGridView: View {
                     emptyLibraryView
                 }
             } else if model.selectedView == .loupe || model.selectedView == .libraryLoupe {
-                LoupeView(model: model)
+                LoupeView(
+                    model: model,
+                    beginExport: beginExport,
+                    beginMoveRejects: beginRejectRelocation
+                )
             } else if model.selectedView == .compare {
                 CompareView(model: model, focusCullingSurface: focusCullingSurface)
             } else if model.selectedView == .abCompare {
@@ -262,9 +266,7 @@ struct LibraryGridView: View {
 
         ToolbarItem {
             Button {
-                exportScope = model.selectedBatchAssetCount > 0 ? .selected : .visible
-                isAllCatalogExportConfirmed = false
-                isReviewingExport = true
+                beginExport()
             } label: {
                 Label("Export", systemImage: "square.and.arrow.up")
             }
@@ -3068,6 +3070,14 @@ struct LibraryGridView: View {
         }
     }
 
+    // Shared by the toolbar Export button and the loupe's end-of-set
+    // completion state — both open the same export popover/settings flow.
+    private func beginExport() {
+        exportScope = model.selectedBatchAssetCount > 0 ? .selected : .visible
+        isAllCatalogExportConfirmed = false
+        isReviewingExport = true
+    }
+
     private func beginRejectRelocation() {
         guard let destination = resolvedDestinationFolder(
             override: LibraryGridChromePolicy.rejectDestinationDirectoryOverride(
@@ -3443,39 +3453,48 @@ private struct RejectRelocationBannerView: View {
 
 private struct LoupeView: View {
     var model: AppModel
+    var beginExport: () -> Void
+    var beginMoveRejects: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var isDecisionToastVisible = false
     @State private var closeUpCrops: [(id: Int, image: CGImage)] = []
+    // The completion state is dismissible so the handoff doesn't block a user
+    // who just wants to look around: an explicit "Continue culling" button
+    // dismisses it, and switching scope or moving to another asset (e.g. via
+    // a nav key) clears the dismissal so the check re-runs fresh next time.
+    @State private var isCullCompletionDismissed = false
 
     private var loupePresentation: LoupePresentation {
         LoupePresentation(mode: model.selectedView)
     }
 
+    // Nil unless the loupe is in cull chrome, everything undecided in the
+    // current CullScope is decided, and the session isn't empty; also
+    // suppressed once the user dismisses it for the current asset/scope.
+    private var cullCompletion: CullCompletionPresentation? {
+        guard !isCullCompletionDismissed else { return nil }
+        let summary = model.cullingProgressSummary
+        return CullCompletionPresentation.presentation(
+            pickCount: summary.pickCount,
+            rejectCount: summary.rejectCount,
+            totalCount: summary.totalCount,
+            scopedUndecidedCount: model.scopedUndecidedCount
+        )
+    }
+
     var body: some View {
         let stackPresentation = cullingStackPresentation
         let presentation = loupePresentation
+        let completion = presentation.showsCullChrome ? cullCompletion : nil
         VStack(spacing: 0) {
             if presentation.showsCullChrome {
-                if let summary = model.autopilotRunSummary {
-                    AutopilotBannerView(
-                        presentation: AutopilotBannerPresentation(summary: summary, canUndoAll: model.canUndoAutopilotRun),
-                        review: {
-                            do {
-                                try model.beginAutopilotReview()
-                            } catch {
-                                model.errorMessage = error.localizedDescription
-                            }
-                        },
-                        undoAll: {
-                            do {
-                                try model.undoAutopilotRun()
-                            } catch {
-                                model.errorMessage = error.localizedDescription
-                            }
-                        },
-                        dismiss: { model.dismissAutopilotRunSummary() }
-                    )
+                // The autopilot banner stays visible above the stage
+                // regardless of completion state, so its review affordance
+                // is never hidden; it's also folded into the completion
+                // state below once everything in scope is decided.
+                if completion == nil, let summary = model.autopilotRunSummary {
+                    autopilotBanner(summary: summary)
                 }
                 if let asset = model.selectedAsset {
                     cullHUD(for: asset, stackPresentation: stackPresentation)
@@ -3483,7 +3502,9 @@ private struct LoupeView: View {
             }
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    if let asset = model.selectedAsset {
+                    if let completion {
+                        cullCompletionStage(completion)
+                    } else if let asset = model.selectedAsset {
                         HStack(spacing: 0) {
                             loupeStage(for: asset)
                             if presentation.showsCullChrome {
@@ -3506,15 +3527,6 @@ private struct LoupeView: View {
                 }
             }
             if presentation.showsCullChrome {
-                if let completion = model.cullingSessionCompletion {
-                    CullingCompletionBannerView(
-                        summary: completion,
-                        canViewPicks: completion.picksSetID != nil,
-                        viewPicks: { openCullingSessionPicks() },
-                        cullRemainingSingles: { cullRemainingSingles() },
-                        dismiss: { model.dismissCullingSessionCompletion() }
-                    )
-                }
                 cullingStackRail(presentation: stackPresentation)
                 cullingFilmstrip(recommendedAssetID: stackPresentation.recommendedAssetID)
             } else {
@@ -3523,6 +3535,98 @@ private struct LoupeView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.34))
+        .onChange(of: model.cullScope) { isCullCompletionDismissed = false }
+        .onChange(of: model.selectedAssetID) { isCullCompletionDismissed = false }
+    }
+
+    private func autopilotBanner(summary: AutopilotRunSummary) -> some View {
+        AutopilotBannerView(
+            presentation: AutopilotBannerPresentation(summary: summary, canUndoAll: model.canUndoAutopilotRun),
+            review: { reviewAutopilotRun() },
+            undoAll: { undoAutopilotRun() },
+            dismiss: { model.dismissAutopilotRunSummary() }
+        )
+    }
+
+    private func reviewAutopilotRun() {
+        do {
+            try model.beginAutopilotReview()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func undoAutopilotRun() {
+        do {
+            try model.undoAutopilotRun()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    // The end-of-set handoff: replaces the image stage once nothing is left
+    // undecided in the current scope. Folds in the autopilot-review and
+    // stack-cull-completion banners that used to sit above/below the stage,
+    // so the review affordance and stack "cull remaining singles" flow stay
+    // reachable from here instead of being separate floating banners.
+    private func cullCompletionStage(_ completion: CullCompletionPresentation) -> some View {
+        VStack(spacing: 12) {
+            Spacer(minLength: 0)
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 36))
+                .foregroundStyle(.green)
+            Text("Nothing left to decide")
+                .font(.title3.weight(.semibold))
+            Text("\(completion.picks) picks · \(completion.rejects) rejects")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            if let summary = model.autopilotRunSummary {
+                autopilotBanner(summary: summary)
+                    .frame(maxWidth: 420)
+            }
+            if let sessionCompletion = model.cullingSessionCompletion {
+                CullingCompletionBannerView(
+                    summary: sessionCompletion,
+                    canViewPicks: sessionCompletion.picksSetID != nil,
+                    viewPicks: { openCullingSessionPicks() },
+                    cullRemainingSingles: { cullRemainingSingles() },
+                    dismiss: { model.dismissCullingSessionCompletion() }
+                )
+                .frame(maxWidth: 420)
+            }
+            HStack(spacing: 10) {
+                ForEach(completion.actions, id: \.self) { action in
+                    cullCompletionActionButton(action)
+                }
+            }
+            Button("Continue culling") {
+                isCullCompletionDismissed = true
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("End of set")
+    }
+
+    private func cullCompletionActionButton(_ action: CullCompletionPresentation.Action) -> some View {
+        Group {
+            switch action {
+            case .export:
+                Button("Export") { beginExport() }
+                    .buttonStyle(.borderedProminent)
+            case .moveRejects:
+                Button("Move Rejects…") { beginMoveRejects() }
+                    .buttonStyle(.bordered)
+            case .reviewPicks:
+                Button("Review Picks") { model.applyCullCompletionReviewPicks() }
+                    .buttonStyle(.bordered)
+            }
+        }
+        .controlSize(.regular)
     }
 
     // Plain prev/next navigation for the Library loupe: no pick/reject,

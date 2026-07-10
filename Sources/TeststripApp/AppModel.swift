@@ -5435,6 +5435,30 @@ public final class AppModel {
         ))
     }
 
+    /// Undecided count within the current `cullScope`, for driving
+    /// `CullCompletionPresentation`. Computed from the in-memory `assets`
+    /// page (the same array `CullScopeOrdering` already navigates), not a
+    /// full-catalog query: cheap, and consistent with how scope-based nav
+    /// already treats `assets` as the scope's universe elsewhere in this
+    /// file. On a paginated library this undercounts undecided items on
+    /// pages not yet loaded, matching the pagination caveat scope-nav
+    /// already has (see `hasMoreAssets`/`hasPreviousAssets`).
+    public var scopedUndecidedCount: Int {
+        CullScopeOrdering.filteredAssets(assets, scope: cullScope)
+            .filter { $0.metadata.flag == nil }
+            .count
+    }
+
+    /// The `.reviewPicks` action from `CullCompletionPresentation`.
+    public func applyCullCompletionReviewPicks() {
+        cullScope = .picks
+        selectAssetID(CullScopeOrdering.selectionAfterScopeChange(
+            assets: assets,
+            scope: cullScope,
+            currentSelection: selectedAssetID
+        ))
+    }
+
     public func toggleLoupeZoom() {
         loupeZoomFocus = loupeZoomFocus == nil ? .center : nil
         loupeFaceZoomIndex = nil
