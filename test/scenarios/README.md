@@ -23,6 +23,14 @@ keyboard cull, evaluate, import, card-import) is already driven live by
    Jesse's real catalog at `~/Library/Application Support/Teststrip`. Note the
    catalog lives at **`$ISOLATED/Teststrip/catalog.sqlite`** (nested under a
    `Teststrip/` subdir; the top-level `catalog.sqlite` is a zero-byte stub).
+   **`--smoke` is not a clean slate**: it pre-seeds metadata (11/24 photos
+   flagged, 4/24 rated 3) and contains **no persisted stacks** — write
+   assertions baseline-relative, and don't expect stack-gesture cards to run
+   against it. Ground-truth SQL must match the app's *advertised* semantics
+   (e.g. `rating:3` filters rating ≥ 3 per the search-tips text), and every
+   query should be dry-run against a seeded catalog before the card relies on
+   it. See `docs/product/focused-workspaces-followups.md` for the current
+   fixture-gap list.
    Confirm the running instance is the freshly built one, not a process left up
    from a prior run.
 2. **Drive via accessibility, not pixels — with `script/ax_drive.sh`.** This
