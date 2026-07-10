@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import TeststripCore
 
-public enum LibraryViewMode: String, Codable, Sendable {
+public enum LibraryViewMode: String, Codable, CaseIterable, Sendable {
     case grid
     case search
     case copilot
@@ -12,6 +12,36 @@ public enum LibraryViewMode: String, Codable, Sendable {
     case timeline
     case map
     case people
+}
+
+/// The three top-level workspaces the UI is organized around; each
+/// `LibraryViewMode` belongs to exactly one.
+public enum Workspace: String, CaseIterable, Sendable {
+    case cull
+    case library
+    case people
+
+    /// The sub-view shown when a workspace is selected for the first time.
+    var defaultSubView: LibraryViewMode {
+        switch self {
+        case .cull: return .loupe
+        case .library: return .grid
+        case .people: return .people
+        }
+    }
+}
+
+extension LibraryViewMode {
+    public var workspace: Workspace {
+        switch self {
+        case .loupe, .compare, .abCompare, .copilot:
+            return .cull
+        case .grid, .search, .timeline, .map:
+            return .library
+        case .people:
+            return .people
+        }
+    }
 }
 
 public enum CompareGroupKind: Equatable, Sendable {
@@ -1426,10 +1456,18 @@ public final class AppModel {
     public var sidebarSections: [SidebarSection]
     public var selectedView: LibraryViewMode {
         didSet {
+            lastSubView[selectedView.workspace] = selectedView
             updateCompareSetAfterViewChange(from: oldValue)
             persistSessionState()
         }
     }
+    /// Which workspace `selectedView` currently belongs to.
+    public var selectedWorkspace: Workspace {
+        selectedView.workspace
+    }
+    /// The last sub-view shown in each workspace, so switching workspaces
+    /// and back restores where the user left off.
+    private var lastSubView: [Workspace: LibraryViewMode] = [:]
     public var assets: [Asset]
     public var totalAssetCount: Int
     // Global view history so ⌘⇧[ / ⌘⇧] step back and forth through the
@@ -3496,6 +3534,12 @@ public final class AppModel {
     public func selectSidebarTarget(_ target: SidebarRowTarget) throws {
         try applySidebarTarget(target)
         recordNavigation(to: target)
+    }
+
+    /// Switches to a workspace, restoring whichever sub-view was last shown
+    /// there (defaulting to each workspace's primary view).
+    public func selectWorkspace(_ workspace: Workspace) {
+        selectedView = lastSubView[workspace] ?? workspace.defaultSubView
     }
 
     /// True when there is an earlier view to return to via `navigateBack()`.
