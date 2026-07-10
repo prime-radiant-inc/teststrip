@@ -149,7 +149,9 @@ struct LibraryGridView: View {
                         dismiss: { model.dismissRejectRelocationSummary() }
                     )
                 }
-                footer
+                if WorkspaceChromePolicy.showsFooter(model.selectedWorkspace) {
+                    footer
+                }
             }
         }
         .sheet(item: $rejectRelocationPreflight) { preflight in
@@ -405,17 +407,21 @@ struct LibraryGridView: View {
     private var libraryTopBar: some View {
         HStack(spacing: 12) {
             Spacer(minLength: 12)
-            topBarSearchField
-            Button {
-                showImportFolderPanel()
-            } label: {
-                Label("Import", systemImage: "square.and.arrow.down")
+            if WorkspaceChromePolicy.showsSearchField(model.selectedWorkspace) {
+                topBarSearchField
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .tint(.orange)
-            .disabled(isImporting)
-            .help("Import folder")
+            if WorkspaceChromePolicy.showsImportButton(model.selectedWorkspace) {
+                Button {
+                    showImportFolderPanel()
+                } label: {
+                    Label("Import", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(.orange)
+                .disabled(isImporting)
+                .help("Import folder")
+            }
         }
         .padding(.horizontal, 12)
         .frame(height: 52)
@@ -530,7 +536,8 @@ struct LibraryGridView: View {
     private var topInsetContent: some View {
         VStack(spacing: 0) {
             libraryTopBar
-            if model.selectedView == .grid || model.selectedView == .search || model.selectedView == .timeline {
+            if WorkspaceChromePolicy.showsFilterTokens(model.selectedWorkspace),
+               model.selectedView == .grid || model.selectedView == .search || model.selectedView == .timeline {
                 filterBar
             }
             if LibraryGridChromePolicy.shouldShowImportProgressBanner(
@@ -8073,6 +8080,32 @@ enum LibraryGridSelectionScrollPolicy {
 enum ImportCardEntryRoute: Equatable {
     case userGrantedPanel
     case typedPathSheet
+}
+
+/// Which browse-oriented chrome (search, filters, footer, inspector) a
+/// workspace shows. Views branch on this policy, never on raw `Workspace`
+/// cases, so the test matrix pins the behavior. Library shows all of it;
+/// Cull and People are focused surfaces that hide it.
+enum WorkspaceChromePolicy {
+    static func showsSearchField(_ workspace: Workspace) -> Bool {
+        workspace == .library
+    }
+
+    static func showsFilterTokens(_ workspace: Workspace) -> Bool {
+        workspace == .library
+    }
+
+    static func showsImportButton(_ workspace: Workspace) -> Bool {
+        workspace == .library
+    }
+
+    static func showsFooter(_ workspace: Workspace) -> Bool {
+        workspace == .library
+    }
+
+    static func showsInspector(_ workspace: Workspace) -> Bool {
+        workspace == .library
+    }
 }
 
 enum LibraryGridChromePolicy {

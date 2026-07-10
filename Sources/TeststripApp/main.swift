@@ -31,7 +31,9 @@ struct TeststripApplication: App {
             } content: {
                 LibraryGridView(model: model)
             } detail: {
-                InspectorView(model: model)
+                if WorkspaceChromePolicy.showsInspector(model.selectedWorkspace) {
+                    InspectorView(model: model)
+                }
             }
             .frame(
                 minWidth: AppWindowLayoutMetrics.minimumWidth,
