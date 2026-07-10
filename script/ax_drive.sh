@@ -171,9 +171,15 @@ func matches(_ e: AXUIElement) -> Bool {
     if !wantLabel.isEmpty, label(e) != wantLabel { return false }
     if !wantHelp.isEmpty, help(e) != wantHelp { return false }
     if !wantContains.isEmpty {
-        // Empty-but-placeholdered fields (a sheet Person name field) carry
-        // their meaning in the placeholder, not the value.
-        let hay = (label(e) ?? "") + " " + (placeholder(e) ?? "")
+        // Search every text-bearing attribute: a titled element (grid-cell
+        // button) carries badge state in AXValue, and empty-but-placeholdered
+        // fields (a sheet Person name field) carry meaning in the placeholder.
+        let hay = [
+            str(e, kAXTitleAttribute),
+            str(e, kAXDescriptionAttribute),
+            str(e, kAXValueAttribute),
+            placeholder(e),
+        ].compactMap { $0 }.joined(separator: " ")
         if !hay.contains(wantContains) { return false }
     }
     let anyPredicate = !wantRole.isEmpty || !wantLabel.isEmpty || !wantHelp.isEmpty || !wantContains.isEmpty
