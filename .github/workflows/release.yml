@@ -1,0 +1,170 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    env:
+      APP_NAME: Teststrip
+      ARTIFACTS_DIR: ${{ github.workspace }}/dist-artifacts
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Signing Keychain
+        env:
+          DEVELOPER_ID_APPLICATION_CERT_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_CERT_BASE64 }}
+          DEVELOPER_ID_APPLICATION_CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          APP_CERT_PATH="$RUNNER_TEMP/developer-id-application.p12"
+          EXISTING_USER_KEYCHAINS=$(security list-keychains -d user | tr -d '"')
+
+          echo "$DEVELOPER_ID_APPLICATION_CERT_BASE64" | base64 --decode > "$APP_CERT_PATH"
+
+          security create-keychain -p "$RUNNER_TEMP" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $EXISTING_USER_KEYCHAINS
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$RUNNER_TEMP" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security import "$APP_CERT_PATH" -k "$KEYCHAIN_PATH" -P "$DEVELOPER_ID_APPLICATION_CERT_PASSWORD" -A -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$RUNNER_TEMP" -D "${{ secrets.DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY }}" -t private "$KEYCHAIN_PATH"
+          echo "SIGNING_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Package Release Bundle
+        id: package
+        env:
+          TESTSTRIP_SIGNING_IDENTITY: ${{ secrets.DEVELOPER_ID_APPLICATION_SIGNING_IDENTITY }}
+          TESTSTRIP_SHORT_VERSION_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          security unlock-keychain -p "$RUNNER_TEMP" "$SIGNING_KEYCHAIN_PATH"
+
+          VERSION="${TESTSTRIP_SHORT_VERSION_TAG#v}"
+          export TESTSTRIP_SHORT_VERSION="$VERSION"
+          export TESTSTRIP_BUNDLE_VERSION="${GITHUB_RUN_NUMBER}"
+
+          # --sign-only builds, assembles, Developer ID-signs (incl. the
+          # embedded Sparkle.framework), verifies, and packages, then stops
+          # before notarization -- which runs as its own retriable step below.
+          bash script/package_release.sh --sign-only --identity "$TESTSTRIP_SIGNING_IDENTITY"
+
+          APP_BUNDLE="$(pwd)/dist/$APP_NAME.app"
+          echo "app_path=$APP_BUNDLE" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Notarize, Staple, Package
+        id: notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ steps.package.outputs.version }}"
+          APP_PATH="${{ steps.package.outputs.app_path }}"
+          mkdir -p "$ARTIFACTS_DIR"
+
+          NOTARY_ZIP="$RUNNER_TEMP/$APP_NAME-notary.zip"
+          APP_ZIP="$ARTIFACTS_DIR/$APP_NAME-$VERSION-macOS.zip"
+          APP_DMG="$ARTIFACTS_DIR/$APP_NAME-$VERSION-macOS.dmg"
+          NOTARY_SUBMIT_OUTPUT="$RUNNER_TEMP/notary-submit.json"
+          NOTARY_LOG_OUTPUT="$RUNNER_TEMP/notary-log.json"
+
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$NOTARY_ZIP"
+
+          xcrun notarytool submit "$NOTARY_ZIP" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait \
+            --output-format json > "$NOTARY_SUBMIT_OUTPUT"
+
+          SUBMISSION_ID="$(python3 -c 'import json,pathlib,sys; print(json.loads(pathlib.Path(sys.argv[1]).read_text()).get("id",""))' "$NOTARY_SUBMIT_OUTPUT")"
+          STATUS="$(python3 -c 'import json,pathlib,sys; print(json.loads(pathlib.Path(sys.argv[1]).read_text()).get("status",""))' "$NOTARY_SUBMIT_OUTPUT")"
+          echo "Notary submission: $SUBMISSION_ID status: $STATUS"
+          if [ "$STATUS" != "Accepted" ]; then
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" \
+              --output-format json > "$NOTARY_LOG_OUTPUT" || true
+            [ -s "$NOTARY_LOG_OUTPUT" ] && cat "$NOTARY_LOG_OUTPUT"
+            exit 1
+          fi
+
+          xcrun stapler staple "$APP_PATH"
+
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$APP_ZIP"
+          hdiutil create -volname "$APP_NAME" -srcfolder "$APP_PATH" -ov -format UDZO "$APP_DMG"
+
+          echo "app_zip=$APP_ZIP" >> "$GITHUB_OUTPUT"
+          echo "app_dmg=$APP_DMG" >> "$GITHUB_OUTPUT"
+
+      - name: Build Sparkle Appcast Tool
+        env:
+          SPARKLE_REVISION: 6276ba2b404829d139c45ff98427cf90e2efc59b
+        run: |
+          set -euo pipefail
+          SPARKLE_SOURCE="$RUNNER_TEMP/Sparkle"
+          SPARKLE_BUILD="$RUNNER_TEMP/sparkle-build"
+          git init "$SPARKLE_SOURCE"
+          git -C "$SPARKLE_SOURCE" remote add origin https://github.com/sparkle-project/Sparkle.git
+          git -C "$SPARKLE_SOURCE" fetch --depth 1 origin "$SPARKLE_REVISION"
+          git -C "$SPARKLE_SOURCE" checkout --detach FETCH_HEAD
+          test "$(git -C "$SPARKLE_SOURCE" rev-parse HEAD)" = "$SPARKLE_REVISION"
+          xcodebuild \
+            -project "$SPARKLE_SOURCE/Sparkle.xcodeproj" \
+            -scheme generate_appcast \
+            -configuration Release \
+            -derivedDataPath "$SPARKLE_BUILD" \
+            build
+
+      - name: Generate Sparkle Appcast
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          set -euo pipefail
+          SPARKLE_BUILD="$RUNNER_TEMP/sparkle-build"
+          GENERATE_APPCAST="$SPARKLE_BUILD/Build/Products/Release/generate_appcast"
+          APPCAST_DIR="$RUNNER_TEMP/appcast"
+          ED_KEY_FILE="$RUNNER_TEMP/sparkle-private-key"
+
+          mkdir -p "$APPCAST_DIR"
+          cp "${{ steps.notarize.outputs.app_zip }}" "$APPCAST_DIR/"
+          printf '%s' "$SPARKLE_PRIVATE_ED_KEY" > "$ED_KEY_FILE"
+
+          "$GENERATE_APPCAST" "$APPCAST_DIR" \
+            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
+            --ed-key-file "$ED_KEY_FILE"
+
+          cp "$APPCAST_DIR/appcast.xml" "$ARTIFACTS_DIR/appcast.xml"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RELEASE_FILES=(
+            "${{ steps.notarize.outputs.app_zip }}"
+            "${{ steps.notarize.outputs.app_dmg }}"
+            "${{ env.ARTIFACTS_DIR }}/appcast.xml"
+          )
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${RELEASE_FILES[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${RELEASE_FILES[@]}" --generate-notes
+          fi
+
+      - name: Cleanup Keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/build.keychain-db" || true

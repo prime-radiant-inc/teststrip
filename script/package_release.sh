@@ -33,6 +33,10 @@ set -euo pipefail
 #   --dry-run          Build + assemble + ad-hoc sign + codesign verify only.
 #                      Skips Developer ID signing, notarization, and Gatekeeper
 #                      assessment (which cannot pass for an ad-hoc signature).
+#   --sign-only        Build + assemble + Developer ID sign + codesign verify
+#                       + package, then stop before notarization. Needs
+#                       --identity but not --profile. Used by CI, which runs
+#                       notarization as its own separate, retriable step.
 #   --dmg              Package as a .dmg instead of a .zip.
 #   --identity <id>    Signing identity (overrides TESTSTRIP_SIGNING_IDENTITY).
 #   --profile <name>   Notary keychain profile (overrides TESTSTRIP_NOTARY_PROFILE).
@@ -55,10 +59,11 @@ FACE_MODEL_BUNDLED="$APP_BUNDLE/Contents/Resources/auraface-v1.mlpackage"
 SIGNING_IDENTITY="${TESTSTRIP_SIGNING_IDENTITY:-}"
 NOTARY_PROFILE="${TESTSTRIP_NOTARY_PROFILE:-}"
 DRY_RUN=0
+SIGN_ONLY=0
 ARTIFACT_FORMAT="zip"
 
 usage() {
-  echo "usage: $0 [--dry-run] [--dmg] [--identity <id>] [--profile <name>] [<signing-identity>]" >&2
+  echo "usage: $0 [--dry-run] [--sign-only] [--dmg] [--identity <id>] [--profile <name>] [<signing-identity>]" >&2
 }
 
 log() { printf '==> %s\n' "$*"; }
@@ -103,6 +108,7 @@ GUIDANCE
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
+    --sign-only) SIGN_ONLY=1; shift ;;
     --dmg) ARTIFACT_FORMAT="dmg"; shift ;;
     --zip) ARTIFACT_FORMAT="zip"; shift ;;
     --identity) SIGNING_IDENTITY="${2:-}"; shift 2 ;;
@@ -214,6 +220,20 @@ main() {
     package_artifact
     log "Dry run complete. Assembled + ad-hoc-signed + verified: $APP_BUNDLE"
     log "Artifact: $ARTIFACT_PATH (NOT distributable — ad-hoc signed, unnotarized)"
+    return 0
+  fi
+
+  if [[ "$SIGN_ONLY" == "1" ]]; then
+    if [[ -z "$SIGNING_IDENTITY" ]]; then
+      print_credential_guidance
+      die "missing signing identity; see guidance above" 3
+    fi
+    require_signing_identity_present "$SIGNING_IDENTITY"
+    build_and_assemble
+    sign_developer_id "$SIGNING_IDENTITY"
+    verify_signature
+    package_artifact
+    log "Sign-only complete: $ARTIFACT_PATH (Developer ID signed, NOT notarized)"
     return 0
   fi
 
