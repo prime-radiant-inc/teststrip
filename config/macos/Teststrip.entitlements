@@ -8,13 +8,19 @@
   <true/>
   <key>com.apple.security.network.client</key>
   <true/>
-  <!-- Sparkle's installer/downloader XPC services (bundled inside
-       Frameworks/Sparkle.framework) are looked up by mach service name from
-       this sandboxed host; see https://sparkle-project.org/documentation/sandboxing/ -->
+  <!-- Sparkle's InstallerLauncher XPC service (embedded under
+       Sparkle.framework/XPCServices, opted into via SUEnableInstallerLauncherService
+       in Info.plist) escapes the sandbox to SMJobSubmit the actual installer and
+       progress-agent as launchd jobs named "<host bundle id>-spki"/"-spkp". This
+       sandboxed host then connects directly to those jobs by mach lookup - not
+       through the XPC service - to drive installation and poll status
+       ("-spks"). See SPUInstallerServiceNameForBundleIdentifier /
+       SPUStatusInfoServiceNameForBundleIdentifier in Sparkle's Autoupdate
+       sources, and https://sparkle-project.org/documentation/sandboxing/ -->
   <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
   <array>
-    <string>$(TeamIdentifierPrefix)org.sparkle-project.InstallerLauncher</string>
-    <string>$(TeamIdentifierPrefix)org.sparkle-project.DownloaderService</string>
+    <string>com.teststrip.app-spki</string>
+    <string>com.teststrip.app-spks</string>
   </array>
 </dict>
 </plist>

@@ -156,6 +156,15 @@ teststrip_write_info_plist() {
   <string>ZY/ZPlRrnPohsWVic4GcjZ8tJg8qScm9MRHj3EWO4mg=</string>
   <key>SUEnableAutomaticChecks</key>
   <true/>
+  <!-- The sandboxed host can't spawn Sparkle's installer directly; this opts
+       in to the InstallerLauncher XPC service bundled inside
+       Sparkle.framework/XPCServices (an in-bundle XPC service reached via
+       NSXPCConnection initWithServiceName:, so no mach-lookup entitlement is
+       needed). The Downloader service stays off: the app has
+       com.apple.security.network.client, and Sparkle's SPUDownloadDriver
+       asks that the downloader service be disabled in that case. -->
+  <key>SUEnableInstallerLauncherService</key>
+  <true/>
 </dict>
 </plist>
 PLIST
