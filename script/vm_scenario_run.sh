@@ -185,8 +185,21 @@ cmd_launch() {
   seed_dir_for "$variant" >/dev/null # validate
   local remote_seed="$REMOTE_ROOT/isolated/$variant"
   local fresh="$REMOTE_ROOT/run/$variant-$(date +%s)"
+  # seed-app-catalog/seed-sample-catalog bake original_path as an absolute
+  # path rooted at the directory they were given at seed time — the *host's*
+  # local seed_dir_for($variant), since seeding itself always runs on the
+  # host (cmd_sync). That host path never existed on the VM at all. A plain
+  # `cp -R` from remote_seed to a fresh per-launch directory does not fix
+  # this — it only relocates the copy, not the baked-in string — so every
+  # original_path still points at a nonexistent host path, breaking any card
+  # that needs a real on-disk original (XMP sidecar writes, Move Rejects).
+  # Rewrite the prefix after copying so original_path tracks the copy,
+  # matching how build_and_run.sh's host flow seeds directly into the live
+  # isolated dir with no relocate step.
+  local local_seed; local_seed="$(seed_dir_for "$variant")"
   ssh_cmd "pkill -x $APP_NAME 2>/dev/null || true; pkill -x TeststripApp 2>/dev/null || true; pkill -x TeststripWorker 2>/dev/null || true; sleep 1; \
     mkdir -p '$(dirname "$fresh")' && cp -R '$remote_seed' '$fresh' && \
+    sqlite3 '$fresh/Teststrip/catalog.sqlite' \"UPDATE assets SET original_path = replace(original_path, '$local_seed', '$fresh');\" && \
     open -n '$REMOTE_ROOT/dist/$APP_NAME.app' --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY='$fresh' && sleep 2 && pgrep -x $APP_NAME"
   echo "launched '$variant' fresh at $fresh (catalog: $fresh/Teststrip/catalog.sqlite)"
 }
