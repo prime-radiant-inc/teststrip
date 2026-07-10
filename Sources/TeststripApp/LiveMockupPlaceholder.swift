@@ -234,28 +234,28 @@ public enum LiveMockupDesignSurfaces {
             title: "Studio",
             status: .partial,
             placeholder: .studioLibrary,
-            currentImplementation: "Main Library route has real catalog navigation, selectable Recently Added import output, adaptive true-aspect grid cells, top chrome, and inspector passes; remaining work is deeper visual parity and density tuning."
+            currentImplementation: "Library workspace (⌘2) has real catalog navigation, selectable Recently Added import output, adaptive true-aspect grid cells, top chrome, and inspector passes; remaining work is deeper visual parity and density tuning."
         ),
         LiveMockupDesignSurface(
             designID: "1b",
             title: "Copilot",
             status: .partial,
             placeholder: .copilotLibrary,
-            currentImplementation: "Copilot route absorbed (Task 13): review queues live in the Cull sidebar's source picker, needs-eyes reasons and diagnostics in the Inspector's AI tab, scope save/freeze actions in the Library toolbar, beside deterministic search parsing and explicit filters; natural-language planning and autonomous actions are not built."
+            currentImplementation: "Copilot route absorbed (Task 13) and further folded into the focused-workspaces chrome (Task 22, ⌘1/⌘2/⌘3): review queues live in the Cull sidebar's source picker, needs-eyes reasons and diagnostics in the Inspector's AI tab, scope save/freeze actions in the Library toolbar, beside deterministic search parsing and explicit filters; natural-language planning and autonomous actions are not built."
         ),
         LiveMockupDesignSurface(
             designID: "1c",
             title: "Timeline",
             status: .partial,
             placeholder: .timelineLibrary,
-            currentImplementation: "Timeline route uses catalog-backed capture-day counts, a year-density ribbon, focused month/day scrubber, day drill-down, month/year drill-down into existing date predicates, and scroll-position syncing centers focused chips and sections."
+            currentImplementation: "Timeline sub-view (Library workspace, ⌘2) uses catalog-backed capture-day counts, a year-density ribbon, focused month/day scrubber, day drill-down, month/year drill-down into existing date predicates, and scroll-position syncing centers focused chips and sections."
         ),
         LiveMockupDesignSurface(
             designID: "2a",
             title: "Rapid cull",
             status: .partial,
             placeholder: .cullingAssistVerdict,
-            currentImplementation: "Loupe-first culling has keyboard pick/reject/rating/labels, Space advances, progress, filmstrip, selected-frame signal verdicts with compact supporting quality rationale, and stack-level keep recommendations when persisted quality signals rank the active stack."
+            currentImplementation: "Cull workspace (⌘1), loupe-first culling has keyboard pick/reject/rating/labels, Space advances, progress, filmstrip, selected-frame signal verdicts with compact supporting quality rationale, and stack-level keep recommendations when persisted quality signals rank the active stack."
         ),
         LiveMockupDesignSurface(
             designID: "2b",
@@ -297,7 +297,7 @@ public enum LiveMockupDesignSurfaces {
             title: "People",
             status: .partial,
             placeholder: .peopleSidebar,
-            currentImplementation: "People route shows automatic grouping suggestions with one-tap confirm and dismiss backed by persisted per-face embeddings, plus the manual review strip, scan action, Name selection, face-review dismissal, persisted named people rows, and merge; suggestions are provisional until confirmed, and split and face-box-level naming remain disabled."
+            currentImplementation: "People workspace (⌘3) shows automatic grouping suggestions with one-tap confirm and dismiss backed by persisted per-face embeddings, plus the manual review strip, scan action, Name selection, face-review dismissal, persisted named people rows, and merge; suggestions are provisional until confirmed, and split and face-box-level naming remain disabled. Arrow keys move focus through the confirm queue and Return confirms/names the focused card (routed to the naming sheet's default action when it's open)."
         ),
         LiveMockupDesignSurface(
             designID: "5b",

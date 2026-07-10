@@ -10,6 +10,24 @@ For Jesse's first (and every subsequent) real-library session. One command to la
 
 Run from the repo root. This rebuilds `TeststripApp` and `TeststripWorker`, ad-hoc codesigns an unsigned dev bundle at `dist/Teststrip.app` (no sandbox entitlements), and opens it. With no flags it does **not** override the application-support directory or seed any sample/synthetic data, so it opens against your real catalog at `~/Library/Application Support/Teststrip`. Because it isn't sandboxed, the background worker is fully enabled (the sandboxed build disables worker-driven imports — don't switch builds mid-dogfood). This is the one command; every other flag (`--isolated`, `--sandboxed`, `--smoke`, `--sample-photos`, `--real-corpus`, `--build`, `--verify*`) is for development/testing, not daily use.
 
+## Workspaces
+
+The window is organized into three focused workspaces, switched with the
+toolbar Picker or **⌘1** (Cull) / **⌘2** (Library) / **⌘3** (People) — same
+shortcuts in the View menu, so the two never drift apart:
+
+- **Cull** — the loupe-first rapid-review flow: sidebar sources (including
+  Autopilot Proposals and stacks), the HUD, pick/reject/rate keys, `S` to
+  cycle scope, `Z`/`I`/`?`, and the end-of-set handoff. Minimum window width
+  800pt.
+- **Library** — grid/loupe/timeline/map browsing with the token query field,
+  result-count header, and sort/filter chrome. Minimum window width 1000pt.
+- **People** — the face-grouping queue (arrow keys to move focus, Return to
+  confirm/name, Esc to dismiss). Minimum window width 700pt.
+
+**⌘I** opens the tabbed inspector (Describe/Metadata/AI) in Library and Cull;
+People has no inspector.
+
 ## Where things live
 
 - Catalog root: `~/Library/Application Support/Teststrip/`
@@ -43,7 +61,7 @@ Click **Start Import** to proceed, or Cancel.
 ## During and after import
 
 - An orange progress banner appears at the top of the grid immediately, with a phase label ("Waiting" / "Cataloging" / "Building previews"), a cancel button, and a reassurance line — while queued it says "Queued safely; originals will not be modified."
-- The **Activity** panel (Inspector sidebar on the right, also visible from Copilot) lists import and preview/metadata background work with Queued/Running/Paused/Done/Failed status, per-item progress, and pause/resume/cancel controls.
+- The **Activity** icon lives in the toolbar (a bell, replaced by a spinner while work is running, with a red count badge when something needs attention — an XMP conflict, an offline source, a provider failure). Click it to open a popover listing import and preview/metadata background work with Queued/Running/Paused/Done/Failed status, per-item progress, and pause/resume/cancel controls; clicking a problem row jumps to Library with that asset selected.
 - Micro and grid previews for imported photos render inline during import for immediate browsing; anything left over drains in the background afterward. On a large subtree this backlog can take a while to fully drain — see Known Rough Edges.
 - When import finishes, a completion panel reports the imported count (and how many were already-cataloged/matched), preview status, and offers next actions: Start culling, Review imported frames, Open imported set, Evaluate import (enabled once previews are cached), Cull stacks (if bursts were detected), plus face/keyword review prompts when applicable.
 
