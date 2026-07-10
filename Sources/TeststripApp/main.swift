@@ -52,16 +52,21 @@ struct TeststripApplication: App {
             height: AppWindowLayoutMetrics.defaultHeight
         )
         .commands {
-            WorkspaceCommands(model: model)
-            MetadataHistoryCommands(model: model)
-            NavigationCommands(model: model)
-            MetadataActionCommands(model: model)
-            AutopilotCommands(model: model)
-            CullingCommands(model: model)
-            SupportCommands(model: model)
-            ActivityCommands(model: model)
-            InspectorCommands(model: model)
-            ZoomCommands()
+            Group {
+                WorkspaceCommands(model: model)
+                MetadataHistoryCommands(model: model)
+                NavigationCommands(model: model)
+                MetadataActionCommands(model: model)
+                AutopilotCommands(model: model)
+            }
+            Group {
+                CullingCommands(model: model)
+                PeopleCommands(model: model)
+                SupportCommands(model: model)
+                ActivityCommands(model: model)
+                InspectorCommands(model: model)
+                ZoomCommands()
+            }
         }
 
         Settings {
@@ -261,6 +266,32 @@ private struct AutopilotCommands: Commands {
     private func runAutopilot() {
         do {
             try model.runAutopilotOnCurrentScope()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+}
+
+// The People workspace's scan trigger (Task 21): it leaves the canvas so
+// the queue can own the Return-confirm keystroke without a stray button
+// stealing focus. Progress reports through the Activity item like any
+// other evaluation pass (requestPeopleFaceScan reuses the same
+// requestEvaluation path as Find ▸ Evaluate Photos).
+private struct PeopleCommands: Commands {
+    var model: AppModel
+
+    var body: some Commands {
+        CommandMenu("People") {
+            Button("Scan for Faces") {
+                requestPeopleFaceScan()
+            }
+            .disabled(!model.canRequestPeopleFaceScan)
+        }
+    }
+
+    private func requestPeopleFaceScan() {
+        do {
+            try model.requestPeopleFaceScan()
         } catch {
             model.errorMessage = error.localizedDescription
         }

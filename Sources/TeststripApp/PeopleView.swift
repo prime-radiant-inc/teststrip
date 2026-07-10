@@ -8,6 +8,8 @@ struct PeopleView: View {
     @State private var personName = ""
     @State private var namingSuggestion: PeopleFaceSuggestion?
     @State private var suggestionPersonName = ""
+    @State private var queueFocusedIndex = 0
+    @State private var keyCaptureFocusRequest = 0
 
     private var presentation: PeoplePresentation {
         PeoplePresentation(
@@ -17,6 +19,17 @@ struct PeopleView: View {
             canRequestCurrentScopeFaceScan: model.canRequestPeopleFaceScan,
             faceSuggestions: model.peopleFaceSuggestions,
             faceObservationAssetCount: model.peopleFaceObservationAssetCount
+        )
+    }
+
+    // Folds suggestion cards and review cards into one keyboard-focusable
+    // queue (Task 21). ←/→ move `queueFocusedIndex`; Return confirms only
+    // the focused card via PeopleQueuePresentation.confirmAction().
+    private var queuePresentation: PeopleQueuePresentation {
+        PeopleQueuePresentation(
+            suggestionCards: presentation.suggestionCards,
+            reviewCards: presentation.reviewCards,
+            focusedIndex: queueFocusedIndex
         )
     }
 
@@ -31,8 +44,19 @@ struct PeopleView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(nsColor: .textBackgroundColor).opacity(0.08))
+        .overlay(alignment: .topLeading) {
+            PeopleKeyCaptureView(
+                focusRequest: keyCaptureFocusRequest,
+                onCommand: handleQueueCommand
+            )
+            .frame(width: 1, height: 1)
+            .accessibilityHidden(true)
+        }
         .task {
             model.refreshPeopleFaceSuggestions()
+        }
+        .onAppear {
+            keyCaptureFocusRequest += 1
         }
         .sheet(isPresented: $isNamingSelection) {
             nameSelectionSheet
@@ -41,6 +65,54 @@ struct PeopleView: View {
             nameSuggestionSheet(suggestion)
         }
         .liveMockupPlaceholder(.peopleSidebar)
+    }
+
+    private func handleQueueCommand(_ command: PeopleQueueCommand) {
+        let queue = queuePresentation
+        switch command {
+        case .moveFocus(let direction):
+            let moved = queue.movingFocus(direction)
+            queueFocusedIndex = moved.focusedIndex
+        case .confirmFocused:
+            applyConfirmAction(queue.confirmAction())
+        case .dismissFocused:
+            applyDismissAction(queue.dismissAction())
+        }
+    }
+
+    private func applyConfirmAction(_ action: PeopleQueueConfirmAction) {
+        switch action {
+        case .confirmSuggestion(let suggestion):
+            do {
+                try model.confirmPeopleFaceSuggestion(suggestion)
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
+        case .nameSuggestion(let suggestion):
+            suggestionPersonName = ""
+            namingSuggestion = suggestion
+        case .selectReview(let target):
+            do {
+                try model.selectSidebarTarget(target)
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
+        case .none:
+            break
+        }
+    }
+
+    private func applyDismissAction(_ action: PeopleQueueDismissAction) {
+        switch action {
+        case .dismissSuggestion(let suggestion):
+            do {
+                try model.dismissPeopleFaceSuggestion(suggestion)
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
+        case .none:
+            break
+        }
     }
 
     private var header: some View {
@@ -72,20 +144,21 @@ struct PeopleView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            // The scan trigger lives in the People ▸ Scan for Faces menu
+            // (Task 21) — no button on this canvas — and its progress
+            // reports through the Activity item like any other evaluation
+            // pass. `presentation.scanAction` still gates whether scanning
+            // is currently possible; its detail text now surfaces here.
             if let scanAction = presentation.scanAction {
-                Button {
-                    requestPeopleFaceScan()
-                } label: {
-                    Label(scanAction.title, systemImage: scanAction.systemImage)
-                }
-                .controlSize(.small)
-                .help(scanAction.detail)
+                Text(scanAction.detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             if !presentation.suggestionCards.isEmpty {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], alignment: .leading, spacing: 12) {
                     ForEach(presentation.suggestionCards) { card in
-                        faceSuggestionCard(card)
+                        faceSuggestionCard(card, isFocused: isQueueFocused(cardID: card.id))
                     }
                 }
             }
@@ -103,7 +176,7 @@ struct PeopleView: View {
                         Button {
                             selectPeopleReviewCard(card)
                         } label: {
-                            peopleReviewCard(card)
+                            peopleReviewCard(card, isFocused: isQueueFocused(cardID: card.id))
                         }
                         .buttonStyle(.plain)
                         .disabled(!card.isActionEnabled)
@@ -217,7 +290,11 @@ struct PeopleView: View {
         }
     }
 
-    private func faceSuggestionCard(_ card: PeopleFaceSuggestionCard) -> some View {
+    private func isQueueFocused(cardID: String) -> Bool {
+        queuePresentation.focusedCard?.id == cardID
+    }
+
+    private func faceSuggestionCard(_ card: PeopleFaceSuggestionCard, isFocused: Bool) -> some View {
         HStack(spacing: 12) {
             FaceCropAvatar(
                 previewURL: model.previewURL(for: card.suggestion.representativeFace.assetID, levels: [.grid, .medium, .micro]),
@@ -251,7 +328,7 @@ struct PeopleView: View {
         .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.white.opacity(0.07))
+                .strokeBorder(isFocused ? Color.accentColor : Color.white.opacity(0.07), lineWidth: isFocused ? 2 : 1)
         }
         .contentShape(RoundedRectangle(cornerRadius: 10))
         .onTapGesture {
@@ -373,7 +450,7 @@ struct PeopleView: View {
         }
     }
 
-    private func peopleReviewCard(_ card: PeopleReviewCard) -> some View {
+    private func peopleReviewCard(_ card: PeopleReviewCard, isFocused: Bool) -> some View {
         HStack(spacing: 12) {
             Circle()
                 .fill(avatarGradient(seed: card.id, colors: card.gradientColors))
@@ -412,7 +489,7 @@ struct PeopleView: View {
         .background(Color.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.white.opacity(0.07))
+                .strokeBorder(isFocused ? Color.accentColor : Color.white.opacity(0.07), lineWidth: isFocused ? 2 : 1)
         }
     }
 
@@ -420,14 +497,6 @@ struct PeopleView: View {
         guard let target = card.target else { return }
         do {
             try model.selectSidebarTarget(target)
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func requestPeopleFaceScan() {
-        do {
-            try model.requestPeopleFaceScan()
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -710,26 +779,55 @@ struct NamedPersonPresentation: Equatable, Identifiable {
     }
 }
 
-struct PeopleFaceSuggestionCard: Equatable, Identifiable {
-    var id: String
-    var title: String
-    var countText: String
-    var confirmActionTitle: String
-    var isOneTapConfirm: Bool
-    var suggestion: PeopleFaceSuggestion
+public struct PeopleFaceSuggestionCard: Equatable, Identifiable {
+    public var id: String
+    public var title: String
+    public var countText: String
+    public var confirmActionTitle: String
+    public var isOneTapConfirm: Bool
+    public var suggestion: PeopleFaceSuggestion
+
+    public init(id: String, title: String, countText: String, confirmActionTitle: String, isOneTapConfirm: Bool, suggestion: PeopleFaceSuggestion) {
+        self.id = id
+        self.title = title
+        self.countText = countText
+        self.confirmActionTitle = confirmActionTitle
+        self.isOneTapConfirm = isOneTapConfirm
+        self.suggestion = suggestion
+    }
 }
 
-struct PeopleReviewCard: Equatable, Identifiable {
-    var id: String
-    var title: String
-    var countText: String
-    var suggestedActionTitle: String
-    var filterKind: EvaluationKind?
-    var target: SidebarRowTarget?
-    var showsUnbuiltFaceActionLock = false
-    var gradientColors: [Color]
+public struct PeopleReviewCard: Equatable, Identifiable {
+    public var id: String
+    public var title: String
+    public var countText: String
+    public var suggestedActionTitle: String
+    public var filterKind: EvaluationKind?
+    public var target: SidebarRowTarget?
+    public var showsUnbuiltFaceActionLock = false
+    public var gradientColors: [Color]
 
-    var isActionEnabled: Bool {
+    public init(
+        id: String,
+        title: String,
+        countText: String,
+        suggestedActionTitle: String,
+        filterKind: EvaluationKind?,
+        target: SidebarRowTarget?,
+        showsUnbuiltFaceActionLock: Bool = false,
+        gradientColors: [Color]
+    ) {
+        self.id = id
+        self.title = title
+        self.countText = countText
+        self.suggestedActionTitle = suggestedActionTitle
+        self.filterKind = filterKind
+        self.target = target
+        self.showsUnbuiltFaceActionLock = showsUnbuiltFaceActionLock
+        self.gradientColors = gradientColors
+    }
+
+    public var isActionEnabled: Bool {
         target != nil
     }
 }
