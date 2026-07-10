@@ -34,3 +34,22 @@ final class CullingCommandMenuPresentationTests: XCTestCase {
         ])
     }
 }
+
+// The CullingKeyCaptureView local monitor is the single owner of every bare
+// (modifier-less) culling key. A bare menu key equivalent fires through
+// AppKit's performKeyEquivalent path independently of the monitor — the
+// monitor consuming the NSEvent does not stop it — so any live bare menu
+// equivalent double-dispatches the shortcut (one keypress writes two assets
+// and advances twice; run-cull-iter2 cull-003/005/007).
+final class CullingMenuSingleKeyOwnerTests: XCTestCase {
+    func testNoCullingMenuItemCarriesAKeyEquivalent() {
+        for section in CullingCommandMenuPresentation.sections {
+            for item in section.items {
+                XCTAssertNil(
+                    item.key.menuKeyboardShortcut,
+                    "\(item.title) (\(item.key.displayText)) must not bind a menu key equivalent — the culling key monitor is the single dispatch owner"
+                )
+            }
+        }
+    }
+}

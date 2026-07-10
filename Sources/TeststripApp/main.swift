@@ -150,18 +150,14 @@ extension LibraryViewMode {
         }
     }
 
-    /// Bare (no-modifier) key equivalent mirroring the in-view g/c/b key
-    /// captures for the cull sub-views (CullingKeyCaptureView in loupe/
-    /// compare/A-B, GridKeyCaptureView in the cull grid). Library sub-views
-    /// have no bare shortcut.
-    var subViewMenuKey: Character? {
-        switch self {
-        case .cullGrid: return "g"
-        case .compare: return "c"
-        case .abCompare: return "b"
-        default: return nil
-        }
-    }
+    // The cull sub-view keys (g/c/b) are owned solely by the in-view key
+    // monitors (CullingKeyCaptureView in loupe/compare/A-B,
+    // GridKeyCaptureView in the cull grid). Binding them here as bare menu
+    // key equivalents dispatched a second, mode-blind `selectedView = mode`
+    // ~150ms after the monitor's switch — from the cull grid, G flipped to
+    // loupe and the menu equivalent immediately flipped back to cullGrid,
+    // making G/Esc appear inert (run-cull-iter2 cull-008). Menus stay
+    // clickable; the ? key map documents the keys.
 }
 
 private struct WorkspaceCommands: Commands {
@@ -194,15 +190,8 @@ private struct WorkspaceCommands: Commands {
             Divider()
         }
         if let title = mode.subViewMenuTitle {
-            if let key = mode.subViewMenuKey {
-                Button(title) {
-                    model.selectedView = mode
-                }
-                .keyboardShortcut(KeyEquivalent(key), modifiers: [])
-            } else {
-                Button(title) {
-                    model.selectedView = mode
-                }
+            Button(title) {
+                model.selectedView = mode
             }
         }
     }
@@ -483,25 +472,19 @@ private struct CullingCommands: Commands {
     }
 }
 
-private extension CullingShortcutKey {
-    // The arrow and Return keys are owned by the in-view key captures
-    // (GridKeyCaptureView in the grid, CullingKeyCaptureView in loupe/culling),
-    // which handle them through an app-wide key monitor. Binding those same keys
-    // as bare menu equivalents makes AppKit fire the shortcut a second time per
-    // press — the double-step regression. Only character keys, which AppKit does
-    // not honour as bare (modifier-less) menu equivalents, get a shortcut here so
-    // the menu still displays them for discoverability.
+extension CullingShortcutKey {
+    // Every bare (modifier-less) culling key is owned by exactly one
+    // dispatcher: the in-view key monitors (GridKeyCaptureView in the grids,
+    // CullingKeyCaptureView in loupe/compare/A-B). A bare menu key equivalent
+    // fires through AppKit's performKeyEquivalent path *independently* of
+    // those monitors — a monitor consuming the NSEvent does not stop it — so
+    // binding any of these keys in the menu double-dispatches the shortcut
+    // (one keypress wrote two assets and advanced two frames; verified live,
+    // run-cull-iter2 cull-003/005/007). The menu items stay clickable for
+    // mouse users (gated by isCullingMenuShortcutActive) and the ? key-map
+    // overlay carries keyboard discoverability.
     var menuKeyboardShortcut: KeyboardShortcut? {
-        switch self {
-        case .leftArrow, .rightArrow, .upArrow, .downArrow, .returnKey:
-            return nil
-        case .optionLeftArrow, .optionRightArrow:
-            // Monitor-only: never reached since CullingCommands filters
-            // isMonitorOnly items out before building menu bindings.
-            return nil
-        case .character(let character):
-            return KeyboardShortcut(KeyEquivalent(Character(character)), modifiers: [])
-        }
+        nil
     }
 }
 
