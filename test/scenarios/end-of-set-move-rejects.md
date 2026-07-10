@@ -14,9 +14,13 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 
 ## Steps
 1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘1 for Cull.
-2. Decide all 24 frames (P or X each, advancing with Space) — a driver loop
-   is fine here (this is bulk setup, not the assertion). Confirm via sqlite:
+2. Decide all remaining frames (P or X each, advancing with Space) — a
+   driver loop is fine here (this is bulk setup, not the assertion). Note
+   `--smoke` pre-seeds flags on 11 of the 24 (verified 2026-07-10), so only
+   the rest need deciding. Confirm via sqlite:
    `SELECT count(*) FROM assets WHERE json_extract(metadata_json,'\$.flag') IS NULL;` reads 0.
+   (Both flag queries in this card were run against a seeded catalog
+   2026-07-10.)
 3. Assert the completion state renders: `ax_drive.sh find --contains "End of set"`
    (accessibility label) or the visible completion copy/actions.
 4. Record the rejected originals' paths:
@@ -48,4 +52,4 @@ Move Rejects wiring confirmed by source read:
 `Sources/TeststripApp/CullCompletionPresentation.swift:17`,
 `Sources/TeststripApp/LibraryGridView.swift:3570-3615` (end-of-set handoff,
 `accessibilityLabel("End of set")`), `:3625` (`Button("Move Rejects…")`).
-Needs a human-present re-run.
+Needs a human-present re-run. All SQL in this card was run headlessly against a seeded --smoke catalog on 2026-07-10 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).

@@ -51,4 +51,4 @@ static trace in `.superpowers/sdd/task-21-report.md` (guards:
 `eventTargetsWindow` fails for the People window while the sheet is key;
 `firstResponder.isTextEditor` is true while typing), mirroring
 `CullingKeyCaptureView`'s existing pattern. Needs a human-present re-run to
-confirm the static trace holds live.
+confirm the static trace holds live. All SQL in this card was run headlessly against a seeded --smoke catalog on 2026-07-10 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).

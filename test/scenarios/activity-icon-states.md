@@ -18,14 +18,22 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 1. `script/ax_drive.sh wait-vended Teststrip`. Immediately after `--smoke`
    launch, import/preview work is likely still draining — assert **working**
    state first: `ax_drive.sh find --role AXButton --help "Activity - working"`.
-2. Wait for `SELECT count(*) FROM background_work WHERE state NOT IN ('done','failed');`
-   to reach 0 (stay warm every poll). Assert **idle** state:
+2. Wait for the queues to drain — there is no `background_work` table; poll
+   the real queues (stay warm every poll):
+   ```bash
+   sqlite3 "$DB" "SELECT (SELECT count(*) FROM preview_generation_queue)
+                       + (SELECT count(*) FROM work_sessions WHERE status IN ('queued','running','paused'));"
+   ```
+   until it reads 0 (query verified against a seeded `--smoke` catalog
+   2026-07-10). Then assert **idle** state:
    `ax_drive.sh find --role AXButton --help "Activity"` (exact match — not
    "- working" or "- N problem(s)").
 3. Seed an offline source: pick an asset whose `original_path` is under a
    fake `/Volumes/<name>/...` mount point that doesn't exist, or simulate by
    unmounting a seeded volume if `--smoke` supports one; otherwise seed via
-   `UPDATE assets SET original_path = '/Volumes/NoSuchVolume/x.jpg' WHERE id = <id>;`
+   `UPDATE assets SET original_path = '/Volumes/NoSuchVolume/x.jpg' WHERE id = '<id>';`
+   (asset ids are TEXT, e.g. `'smoke-0'`; UPDATE syntax verified in a
+   rolled-back transaction against a seeded catalog 2026-07-10)
    and trigger a source-availability rescan.
 4. Assert **problem** state: `ax_drive.sh find --role AXButton --help "Activity - 1 problem"`
    (or "N problems" if more than one source/conflict already present).
@@ -47,4 +55,4 @@ BLOCKED-CONSOLE — locked console prevents any AX step. State text confirmed
 at `Sources/TeststripApp/LibraryGridView.swift:369-395`
 (`activityToolbarIcon`/`activityToolbarHelp`: `isWorking` → spinner + "Activity
 - working"; `.problems(count)` → badge + "Activity - N problem(s)"; else
-"Activity"). Needs a human-present re-run.
+"Activity"). Needs a human-present re-run. All SQL in this card was run headlessly against a seeded --smoke catalog on 2026-07-10 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).

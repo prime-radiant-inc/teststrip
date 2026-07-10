@@ -44,4 +44,4 @@ routing already covered by a unit test per task-21-report.md
 (`testReturnAppliedThroughTheQueueWritesOnlyTheFocusedSuggestion` in
 `Tests/TeststripAppTests/PeopleQueuePresentationTests.swift`, full suite
 green); this card is the live-AX counterpart the report calls out as still
-needed. Needs a human-present re-run.
+needed. Needs a human-present re-run. All SQL in this card was run headlessly against a seeded --smoke catalog on 2026-07-10 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).

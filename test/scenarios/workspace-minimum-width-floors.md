@@ -22,11 +22,14 @@ tightest fit at the 700pt floor.
    window's right edge (compare AXFrame width to window width if available).
 3. Press ⌘1 (Cull). Resize to 800pt. Assert: sidebar (source picker), HUD,
    and pick/reject controls remain present and unclipped.
-4. Press ⌘3 (People). Resize to 700pt. Assert: the queue's 320pt fixed panels
-   are both present without being pushed off-screen or overlapping — this is
-   the tightest fit (700pt window with two ~320pt panels leaves ~60pt for
-   chrome/padding), so check carefully for any panel whose AXFrame origin is
-   negative or extends past 700pt.
+4. Press ⌘3 (People). Resize to 700pt. Assert: the queue's fixed-width
+   panels are present without being pushed off-screen or overlapping.
+   **Unverified estimate**: the "two 320pt panels leave ~60pt" arithmetic is
+   a code-inspection guess — the 320pt figure comes from the task brief, and
+   how many such panels render side by side has not been measured live. Do
+   not treat the numbers as ground truth; the real assertion is simply that
+   no panel's AXFrame extends past the 700pt window or reports a negative
+   origin.
 
 ## Expected
 - Every key element listed above is present and fully within the window

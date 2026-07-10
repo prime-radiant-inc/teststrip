@@ -15,8 +15,16 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 
 ## Steps
 1. `script/ax_drive.sh wait-vended Teststrip`, then wait for import/preview
-   work to drain (poll `SELECT count(*) FROM background_work WHERE state NOT IN ('done','failed');`
-   until 0, staying warm every poll).
+   work to drain — there is no `background_work` table; the real queues are
+   `preview_generation_queue` and `work_sessions` (statuses per
+   `WorkSessionStatus`: queued/running/paused/completed/failed/cancelled).
+   Poll until 0, staying warm every poll:
+   ```bash
+   sqlite3 "$DB" "SELECT (SELECT count(*) FROM preview_generation_queue)
+                       + (SELECT count(*) FROM work_sessions WHERE status IN ('queued','running','paused'));"
+   ```
+   (Query verified against a seeded `--smoke` catalog 2026-07-10: reads 0 at
+   idle.)
 2. **Idle assertion**: assert no badge element renders — the toolbar Activity
    button's AXHelp is exactly `"Activity"` (not `"Activity - working"` or
    `"Activity - N problem(s)"`); `ax_drive.sh find --role AXButton --help "Activity"`.
@@ -58,4 +66,4 @@ wiring exists: `Sources/TeststripApp/LibraryGridView.swift:390-395`
 (`activityToolbarHelp`), `Sources/TeststripApp/AppModel.swift:2481-2492`
 (`xmpConflicts` built from `metadataSyncConflictItems`),
 `Sources/TeststripApp/ActivityCenterView.swift:39-40` (conflicts section).
-Needs a human-present re-run.
+Needs a human-present re-run. All SQL in this card was run headlessly against a seeded --smoke catalog on 2026-07-10 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).

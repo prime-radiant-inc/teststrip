@@ -14,23 +14,43 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 
 ## Steps
 1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘1 for Cull.
-2. Assert nothing decided yet: `sqlite3 "$DB" "SELECT count(*) FROM assets WHERE json_extract(metadata_json,'\$.flag') IS NOT NULL;"` reads 0.
-3. Press `P` (pick current frame), advance (Space), press `X` (reject next
-   frame). Assert `SELECT flag FROM ...` (via metadata_json) shows one pick
-   and one reject.
+2. Record the baseline — **`--smoke` pre-seeds flags** (verified against a
+   seeded catalog 2026-07-10: 11 of 24 assets launch already flagged), so do
+   NOT assert 0 here:
+   ```bash
+   BASELINE=$(sqlite3 "$DB" "SELECT count(*) FROM assets WHERE json_extract(metadata_json,'\$.flag') IS NOT NULL;")
+   ```
+3. Press `P` (pick current frame), advance (Space), press `X` (reject the
+   next frame) — choose frames that launch unflagged. Assert the two frames
+   now carry the right flag:
+   ```bash
+   sqlite3 "$DB" "SELECT id, json_extract(metadata_json,'\$.flag') FROM assets WHERE id IN ('<picked-id>','<rejected-id>');"
+   ```
 4. Press `S` to cycle scope to Picks. Assert the HUD/sidebar scope indicator
    reads "Picks" (`ax_drive.sh find --contains "Picks"` in the scope area)
    and the visible set narrows to picked frames only.
-5. Advance to a frame that belongs to a persisted/loaded stack (seeded
-   burst); press Return. Assert **one gesture** wrote: the frame picked AND
-   its stack siblings rejected — query `person`-free assertion:
+5. Advance to a frame that belongs to a persisted stack; press Return.
+   There is no `assets.stack_id` column — persisted stack membership lives in
+   `asset_sets.membership_json` (set ids prefixed `work-stack-`, member ids
+   at JSON path `$.manual._0[].rawValue`; loaded/derived stacks exist only
+   in-memory via `AssetStackBuilder`, so drive a *persisted* stack). Assert
+   **one gesture** wrote pick + sibling rejects across the stack's members:
    ```bash
-   sqlite3 "$DB" "SELECT asset_id, json_extract(metadata_json,'\$.flag') FROM assets WHERE stack_id = (SELECT stack_id FROM assets WHERE id=<frame>);"
+   sqlite3 "$DB" "
+     SELECT json_extract(m.value,'\$.rawValue') AS member,
+            (SELECT json_extract(a.metadata_json,'\$.flag') FROM assets a
+              WHERE a.id = json_extract(m.value,'\$.rawValue')) AS flag
+     FROM asset_sets s, json_each(s.membership_json,'\$.manual._0') m
+     WHERE s.id = '<work-stack-set-id>';"
    ```
-   confirms exactly one `pick` and the rest `reject` within that stack.
-6. Press ⌘Z. Assert every flag set in steps 3 and 5 is cleared in one undo
-   (`SELECT count(*) ... flag IS NOT NULL` returns 0 again) — a single ⌘Z
-   reverts the whole pass, not just the last stack decision.
+   confirms exactly one `pick` (the Return target) and every other member
+   `reject`. (Query shape verified against a seeded `--smoke` catalog
+   2026-07-10; if the set was stored as a snapshot, use `$.snapshot._0` —
+   the two paths mirror `CatalogRepository.workSessionAssetMembershipSelector`.)
+6. Press ⌘Z. Assert every flag set in steps 3 and 5 is cleared in one undo —
+   the flagged count returns to `BASELINE` and the specific ids from steps
+   3/5 read NULL again — a single ⌘Z reverts the whole pass, not just the
+   last stack decision.
 
 ## Expected
 - Step 3: exactly the picked/rejected frames show the matching flag.
@@ -52,5 +72,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. `CullScope.cycleScope`
 keyboard wiring confirmed at `Sources/TeststripApp/AppModel.swift:210-260`
-and `:5418`; scope titles at `:270-303`. Needs a human-present re-run,
-including the preload-ahead spot-check above.
+and `:5418`; scope titles at `:270-303`. All SQL in this card was run
+headlessly against a seeded `--smoke` catalog on 2026-07-10 (schema per
+`Sources/TeststripCore/Catalog/CatalogMigrations.swift`). Needs a
+human-present re-run, including the preload-ahead spot-check above.

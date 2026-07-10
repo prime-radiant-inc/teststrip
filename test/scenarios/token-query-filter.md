@@ -12,9 +12,9 @@ ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APP
 DB="$ISOLATED/Teststrip/catalog.sqlite"
 TOTAL=$(sqlite3 "$DB" "SELECT count(*) FROM assets;")
 ```
-Ratings live in `metadata_json`, not a `rating` column (per README) —
-seed at least one 3-star asset first via the inspector's "Rate 3" button so
-the token has something to match, then record the expected count:
+Ratings live in `metadata_json`, not a `rating` column (per README). No
+seeding needed: `--smoke` pre-seeds rated assets (verified against a seeded
+catalog 2026-07-10: 4 of 24 at rating 3). Record the expected count:
 ```bash
 EXPECTED=$(sqlite3 "$DB" "SELECT count(*) FROM assets WHERE json_extract(metadata_json,'\$.rating')=3;")
 ```
@@ -48,4 +48,4 @@ BLOCKED-CONSOLE — locked console prevents any AX step. Field/help text
 confirmed at `Sources/TeststripApp/LibraryGridView.swift:528-562`
 (`queryTokenField`, `.help("Search your library, or type filter tokens like
 rating:3, camera:, keyword:. ...")`) and `submitQueryTokenField()` at line
-575. Needs a human-present re-run.
+575. Needs a human-present re-run. All SQL in this card was run headlessly against a seeded --smoke catalog on 2026-07-10 (schema per Sources/TeststripCore/Catalog/CatalogMigrations.swift).
