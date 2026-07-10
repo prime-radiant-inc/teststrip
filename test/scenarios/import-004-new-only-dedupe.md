@@ -1,4 +1,4 @@
-# duplicate-detection-import-new-only: Re-importing a card copies only new frames
+# import-004-new-only-dedupe: Re-importing a card copies only new frames
 
 **What this covers**: content-hash duplicate detection merged at migration 15 —
 the `content_hash` column plus the **import-new-only** toggle. Re-importing a
