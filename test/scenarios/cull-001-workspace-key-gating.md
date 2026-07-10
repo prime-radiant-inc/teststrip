@@ -72,27 +72,35 @@ below.
 5. Switch to Cull (⌘1). Confirm the workspace switcher reads "Cull"
    (`script/ax_drive.sh find --contains "Cull"`), landing in the Cull loupe
    (`selectedView == .loupe`, satisfying `CullingKeyCaptureGate.isActive`).
-6. Click into the search/query token field (placeholder "Search photos,
-   people, places, or rating:3 camera:… "):
+6. **Corrected premise**: the search/query token field (placeholder "Search
+   photos, people, places, or rating:3 camera:… ") is **Library-only** chrome
+   (`Sources/TeststripApp/LibraryGridView.swift`) — the Cull workspace has no
+   such field. An iteration-1 live run confirmed this by AX inspection: `ax
+   find --role AXTextField` (unfiltered) returned no match anywhere in the
+   Cull workspace tree. This step therefore asserts the field's **absence**
+   in Cull (the actual chrome-policy behavior), rather than typing into a
+   field that doesn't exist there:
    ```bash
    script/ax_drive.sh find --role AXTextField --contains "Search photos"
    ```
-   then click it to focus, and press `P`. Because
-   `firstResponder is NSTextView`, both monitors bail before the shortcut
-   fires — assert the letter `P` was typed into the field instead:
-   ```bash
-   script/ax_drive.sh wait --role AXTextField --contains "P"
-   ```
-   and assert the currently-selected Cull-loupe asset's flag is unchanged
-   (record its id/flag before this step, re-check after).
-7. Clear the field (⌘A, Delete) and press Escape or click the loupe stage to
-   return focus to the Cull loupe. Press `Return` (promote-and-reject-
-   siblings — a shortcut only the Cull-only monitor produces, so this
-   isolates `CullingKeyCaptureGate` from the text-field guard already proven
-   in step 6). Assert the flag write happened this time:
+   Assert this returns **no match** while the Cull workspace is frontmost.
+   (The text-editor guard itself — `firstResponder is NSTextView` bailing
+   both monitors — is exercised in Library, where the field actually lives;
+   see cull-002+ for Library search-field coverage, or add it there if
+   missing.)
+7. Press `Return` (promote-and-reject-siblings — a shortcut only the
+   Cull-only monitor produces) with the Cull loupe focused on the current
+   `--smoke` seed. **Corrected premise**: the `--smoke` seed's assets are not
+   members of any stack, and `AppModel.promoteCurrentFrameAndRejectSiblings`
+   guards on stack membership — with no stack, this is a **designed no-op**,
+   not evidence the monitor isn't firing. Record the selected asset's flag
+   before and after and assert it is **unchanged**:
    ```bash
    sqlite3 "$DB" "SELECT json_extract(metadata_json,'\$.flag') FROM assets WHERE id = '<cull-loupe-selected-id>';"
    ```
+   Positive promote-and-reject-siblings coverage (asserting the write *does*
+   land, plus sibling rejection) belongs in a card with a real stack fixture —
+   see cull-004 (stack fixture pending as of this writing).
 
 ## Expected
 - Step 3: `$TARGET`'s flag becomes `pick`. **Fails if** it stays NULL — would
@@ -100,14 +108,14 @@ below.
   real regression, not the originally-assumed gating).
 - Step 4: `$TARGET2`'s flag stays NULL. **Fails if** it becomes `pick` — the
   Library Loupe would be leaking Cull-only shortcuts.
-- Step 6: the search field's AX value contains `P`, and the tracked asset's
-  flag is unchanged. **Fails if** the keystroke instead flagged/rejected a
-  photo — the text-editor guard is the confirm-before-write-adjacent
-  invariant here (never act on typed input as a shortcut).
-- Step 7: the Return-promote write lands (flag becomes non-NULL on the
-  Return target, and — if it's part of a stack — siblings reject). **Fails
-  if** nothing happens, meaning the Cull-only monitor isn't actually active
-  in the Cull loupe.
+- Step 6: `ax find --role AXTextField --contains "Search photos"` returns no
+  match in the Cull workspace. **Fails if** a search field is found there —
+  would mean Cull unexpectedly grew Library's search chrome (or the card's
+  workspace assumption about where the field lives is wrong).
+- Step 7: the Cull-loupe selected asset's flag is unchanged after `Return` on
+  the stackless `--smoke` seed. **Fails if** the flag changes — would mean
+  `promoteCurrentFrameAndRejectSiblings` stopped guarding on stack
+  membership, applying to a stackless asset when it shouldn't.
 
 ## Cleanup
 ```bash
@@ -124,10 +132,15 @@ below.
   (`targetWindowIsKey` fallback) — not exercised directly here, but relevant
   if a future card needs to test cross-window focus edge cases (e.g. a
   detached inspector panel).
-- Step 6/7 split the text-field guard (workspace-independent) from the
-  workspace/view gate (`CullingKeyCaptureGate`) deliberately — collapsing
-  them into one keystroke wouldn't tell you *which* gate is doing the work if
-  the assertion failed.
+- Step 6 was originally written assuming a Cull-workspace search field; there
+  is none (it's Library-only chrome), so step 6 now asserts its absence
+  instead of typing into it. The text-editor guard itself needs a Library
+  card, not this one.
+- Step 7 was originally written expecting a flag write on Return in Cull; the
+  `--smoke` seed has no stacks, and `promoteCurrentFrameAndRejectSiblings` is
+  a designed no-op without one — so step 7 now asserts the no-op. A stack
+  fixture (cull-004) is needed for positive promote-and-reject-siblings
+  coverage.
 
 ## Run status
 UNRUN — SQL not yet dry-run against a live catalog; needs human-present
