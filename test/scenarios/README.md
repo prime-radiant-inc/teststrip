@@ -133,6 +133,47 @@ are the point; do not weaken them to make a card pass.
 | `activity-icon-states.md` | Idle/working/problem-badge states of the toolbar Activity icon |
 | `workspace-minimum-width-floors.md` | Library 1000pt / Cull 800pt / People 700pt floors hold chrome without clipping |
 
+## Running scenarios in a Tart VM
+
+Jesse's host console gets stolen/locked by other work mid-session, which
+wedges any card at the "locked console" trap above. `script/vm_scenario_run.sh`
+runs the interactive AX-driven half of a card inside a Tart macOS VM whose
+auto-login GUI session never locks, while **building stays on the host** — the
+VM never runs `swift build`; it only receives a pre-built `.app` bundle and a
+pre-seeded isolated catalog over rsync.
+
+```bash
+script/vm_scenario_run.sh setup            # clone+boot the VM once, grant TCC
+script/vm_scenario_run.sh sync smoke faces # build locally, seed variants, rsync in
+script/vm_scenario_run.sh launch smoke     # fresh isolated copy of the smoke catalog
+script/vm_scenario_run.sh ax wait-vended Teststrip
+script/vm_scenario_run.sh ax find --role AXButton --label Import
+script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets;"
+script/vm_scenario_run.sh shell            # interactive ssh session, e.g. to send
+                                            # a keyboard shortcut via osascript
+```
+
+Seed variants mirror `build_and_run.sh`'s flags: `smoke` (24 synthetic
+photos), `faces` (`sample-data/photos/faces`), `empty` (unseeded). `sync`
+treats a variant's local seed directory as an idempotent template — it won't
+reseed over an existing catalog (pass a second positional isn't needed; delete
+`$TMPDIR/teststrip-vm-seeds/<variant>` to force a reseed) — and `launch`
+copies that template fresh into `~/teststrip-vm/run/<variant>-<timestamp>` on
+every call, so cards never inherit state from a prior run.
+
+TCC: the Cirrus base image ships with SIP disabled, so `setup` grants
+`kTCCServiceAccessibility`/`kTCCServiceAppleEvents` directly via
+`sudo sqlite3` against `/Library/Application Support/com.apple.TCC/TCC.db` —
+no manual System Settings click needed. If a future base image ships with SIP
+enabled, this direct-DB grant will fail loudly and a one-time manual grant in
+the `tart run` viewer window becomes the fallback.
+
+`vm_scenario_run.sh` owns VM lifecycle, build/seed sync, and the
+launch/ax/sql primitives — it does not encode any card's specific step
+sequence, matching how `ax_drive.sh` itself is a primitive rather than a card
+runner. Driving a card's Steps is still done by hand (or by an agent) issuing
+a sequence of `vm_scenario_run.sh ax ...`/`sql ...` calls per the card's file.
+
 ## Fixture status
 
 Cards that need synthetic photos with specific properties (GPS tags for
