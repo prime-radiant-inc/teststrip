@@ -25,8 +25,20 @@ set -euo pipefail
 #                                                 VM (over ssh) against the launched app.
 #   script/vm_scenario_run.sh sql VARIANT SQL    Run `sqlite3 catalog.sqlite SQL` inside the
 #                                                 VM against the given variant's catalog.
-#   script/vm_scenario_run.sh shell              Interactive ssh session into the VM.
-#   script/vm_scenario_run.sh ip                 Print the VM's current IP.
+#   script/vm_scenario_run.sh shell               Interactive ssh session into the VM.
+#   script/vm_scenario_run.sh shell CMD...        Run CMD... remotely (non-interactively,
+#                                                  quoted like `ax`) and return its output.
+#   script/vm_scenario_run.sh key SPEC             Deliver a keystroke/key-code to the
+#                                                  frontmost app in the VM via
+#                                                  `osascript -e 'tell application "System
+#                                                  Events" to SPEC'`. SPEC is passed through
+#                                                  verbatim, so it can be any System Events
+#                                                  keyboard command, e.g.:
+#                                                    key 'keystroke "p"'
+#                                                    key 'keystroke "p" using {command down}'
+#                                                    key 'key code 36'          (Return)
+#                                                    key 'key code 123'         (Left arrow)
+#   script/vm_scenario_run.sh ip                  Print the VM's current IP.
 #   script/vm_scenario_run.sh destroy            Stop and delete the VM.
 #
 # Seed variants (see script/build_and_run.sh for the equivalent host flags):
@@ -51,7 +63,7 @@ DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 SEED_ROOT="${TMPDIR:-/tmp}/teststrip-vm-seeds"
 
-usage() { sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,53p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 require_tart() { command -v tart >/dev/null || { echo "tart not found; brew install cirruslabs/cli/tart" >&2; exit 1; }; }
 
@@ -212,7 +224,19 @@ cmd_sql() {
   ssh_cmd "latest=\$(ls -dt '$REMOTE_ROOT'/run/$variant-* 2>/dev/null | head -1); sqlite3 \"\$latest/Teststrip/catalog.sqlite\" $(printf '%q' "$sql")"
 }
 
-cmd_shell() { local ip; ip="$(vm_ip)"; SSHPASS="$VM_PASS" sshpass -e ssh -o StrictHostKeyChecking=no "$VM_USER@$ip"; }
+cmd_shell() {
+  local ip; ip="$(vm_ip)"
+  if [[ $# -eq 0 ]]; then
+    SSHPASS="$VM_PASS" sshpass -e ssh -o StrictHostKeyChecking=no "$VM_USER@$ip"
+  else
+    ssh_cmd "$(printf '%q ' "$@")"
+  fi
+}
+
+cmd_key() {
+  local spec="${1:?usage: $0 key OSASCRIPT-KEYSTROKE-SPEC (e.g. 'keystroke \"p\"' or 'key code 36')}"
+  ssh_cmd "osascript -e $(printf '%q' "tell application \"System Events\" to $spec")"
+}
 
 cmd_destroy() { require_tart; tart stop "$VM_NAME" 2>/dev/null || true; tart delete "$VM_NAME"; }
 
@@ -222,7 +246,8 @@ case "${1:-}" in
   launch) shift; cmd_launch "$@" ;;
   ax) shift; cmd_ax "$@" ;;
   sql) shift; cmd_sql "$@" ;;
-  shell) cmd_shell ;;
+  shell) shift; cmd_shell "$@" ;;
+  key) shift; cmd_key "$@" ;;
   ip) vm_ip ;;
   destroy) cmd_destroy ;;
   --help|-h|help|"") usage ;;

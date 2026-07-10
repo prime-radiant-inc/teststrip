@@ -157,8 +157,10 @@ script/vm_scenario_run.sh launch smoke     # fresh isolated copy of the smoke ca
 script/vm_scenario_run.sh ax wait-vended Teststrip
 script/vm_scenario_run.sh ax find --role AXButton --label Import
 script/vm_scenario_run.sh sql smoke "SELECT count(*) FROM assets;"
-script/vm_scenario_run.sh shell            # interactive ssh session, e.g. to send
-                                            # a keyboard shortcut via osascript
+script/vm_scenario_run.sh shell            # interactive ssh session
+script/vm_scenario_run.sh shell 'ls -la'   # run one command remotely, non-interactively
+script/vm_scenario_run.sh key 'keystroke "p"'   # send a keystroke to the frontmost app
+script/vm_scenario_run.sh key 'key code 36'     # send a key code (e.g. Return)
 ```
 
 Seed variants mirror `build_and_run.sh`'s flags: `smoke` (24 synthetic
