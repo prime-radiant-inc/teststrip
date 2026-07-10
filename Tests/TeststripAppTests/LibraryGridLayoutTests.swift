@@ -199,6 +199,16 @@ final class LibraryGridLayoutTests: XCTestCase {
 
         XCTAssertEqual(AssetGridCellLayout.aspectRatio(for: asset), 3.0 / 2.0)
     }
+
+    func testZoomedThumbnailWidthStepsByZoomStep() {
+        XCTAssertEqual(LibraryGridLayout.zoomedThumbnailWidth(140, zoomingIn: true), 148)
+        XCTAssertEqual(LibraryGridLayout.zoomedThumbnailWidth(140, zoomingIn: false), 132)
+    }
+
+    func testZoomedThumbnailWidthClampsToSupportedRange() {
+        XCTAssertEqual(LibraryGridLayout.zoomedThumbnailWidth(260, zoomingIn: true), 260)
+        XCTAssertEqual(LibraryGridLayout.zoomedThumbnailWidth(96, zoomingIn: false), 96)
+    }
 }
 
 private extension Asset {

@@ -56,8 +56,14 @@ struct LibraryGridLayout: Equatable {
         ]
     }
 
+    static let thumbnailZoomStep: Double = 8
+
     static func clampedThumbnailWidth(_ value: Double) -> Double {
         min(max(value, minimumThumbnailWidth), maximumThumbnailWidth)
+    }
+
+    static func zoomedThumbnailWidth(_ value: Double, zoomingIn: Bool) -> Double {
+        clampedThumbnailWidth(value + (zoomingIn ? thumbnailZoomStep : -thumbnailZoomStep))
     }
 }
 

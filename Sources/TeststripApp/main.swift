@@ -57,6 +57,7 @@ struct TeststripApplication: App {
             SupportCommands(model: model)
             ActivityCommands(model: model)
             InspectorCommands(model: model)
+            ZoomCommands()
         }
 
         Settings {
@@ -358,6 +359,25 @@ private struct InspectorCommands: Commands {
                 }
                 .keyboardShortcut(tab.keyEquivalent, modifiers: [.command, .option])
             }
+        }
+    }
+}
+
+private struct ZoomCommands: Commands {
+    @AppStorage("LibraryGridView.thumbnailWidth") private var storedThumbnailWidth = LibraryGridLayout.defaultThumbnailWidth
+
+    var body: some Commands {
+        CommandGroup(after: .toolbar) {
+            Divider()
+            Button("Zoom In") {
+                storedThumbnailWidth = LibraryGridLayout.zoomedThumbnailWidth(storedThumbnailWidth, zoomingIn: true)
+            }
+            .keyboardShortcut("+", modifiers: .command)
+
+            Button("Zoom Out") {
+                storedThumbnailWidth = LibraryGridLayout.zoomedThumbnailWidth(storedThumbnailWidth, zoomingIn: false)
+            }
+            .keyboardShortcut("-", modifiers: .command)
         }
     }
 }
