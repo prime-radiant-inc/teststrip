@@ -117,6 +117,22 @@ are the point; do not weaken them to make a card pass.
 | `export-presets-with-exif.md` | Export presets + optional EXIF/IPTC carry checkbox |
 | `ux-simplification-chrome.md` | Find Best Shots + collapsed toolbar + Copilot→Review chrome |
 
+**Focused workspaces** — the ⌘1/⌘2/⌘3 Cull/Library/People chrome (Task 22/23):
+
+| Card | Surface under test |
+| --- | --- |
+| `workspace-switching.md` | ⌘1/⌘2/⌘3 and the toolbar switcher agree on the active workspace |
+| `quiet-activity-badge.md` | Activity icon idle→badge→popover→navigate-to-asset |
+| `token-query-filter.md` | Query token field narrows the grid to the matching catalog rows |
+| `cull-pass-scope-and-undo.md` | P/X/S/Return keyboard loop; stack Return is one gesture; ⌘Z reverts the pass |
+| `end-of-set-move-rejects.md` | Completion state on deciding all frames; Move Rejects relocates files on disk |
+| `library-loupe-no-cull-chrome.md` | Library's loupe has no pick/reject pills |
+| `inspector-describe-suggested-keyword.md` | ⌘I opens the inspector; accepting a suggestion writes catalog + sidecar |
+| `people-confirm-writes-on-return.md` | Arrow-focus then Return confirms; `person_assets` appears only after |
+| `people-naming-sheet-return-routing.md` | Return with the naming sheet open triggers Create, not the queue confirm |
+| `activity-icon-states.md` | Idle/working/problem-badge states of the toolbar Activity icon |
+| `workspace-minimum-width-floors.md` | Library 1000pt / Cull 800pt / People 700pt floors hold chrome without clipping |
+
 ## Fixture status
 
 Cards that need synthetic photos with specific properties (GPS tags for
