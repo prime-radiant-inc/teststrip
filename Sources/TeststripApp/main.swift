@@ -25,7 +25,7 @@ struct TeststripApplication: App {
     }
 
     var body: some Scene {
-        WindowGroup("Teststrip") {
+        WindowGroup {
             NavigationSplitView {
                 SidebarView(model: model)
             } content: {
@@ -44,6 +44,7 @@ struct TeststripApplication: App {
             height: AppWindowLayoutMetrics.defaultHeight
         )
         .commands {
+            WorkspaceCommands(model: model)
             MetadataHistoryCommands(model: model)
             NavigationCommands(model: model)
             MetadataActionCommands(model: model)
@@ -54,6 +55,21 @@ struct TeststripApplication: App {
 
         Settings {
             PreferencesView(model: model)
+        }
+    }
+}
+
+private struct WorkspaceCommands: Commands {
+    var model: AppModel
+
+    var body: some Commands {
+        CommandGroup(after: .toolbar) {
+            ForEach(Workspace.allCases, id: \.self) { workspace in
+                Button(workspace.title) {
+                    model.selectWorkspace(workspace)
+                }
+                .keyboardShortcut(workspace.keyEquivalent, modifiers: [.command])
+            }
         }
     }
 }

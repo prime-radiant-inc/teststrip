@@ -1,7 +1,18 @@
 import XCTest
+import SwiftUI
 @testable import TeststripApp
 
 final class WorkspacePresentationTests: XCTestCase {
+    func testWorkspaceTitleAndKeyEquivalent() {
+        XCTAssertEqual(Workspace.cull.title, "Cull")
+        XCTAssertEqual(Workspace.library.title, "Library")
+        XCTAssertEqual(Workspace.people.title, "People")
+
+        XCTAssertEqual(Workspace.cull.keyEquivalent, KeyEquivalent("1"))
+        XCTAssertEqual(Workspace.library.keyEquivalent, KeyEquivalent("2"))
+        XCTAssertEqual(Workspace.people.keyEquivalent, KeyEquivalent("3"))
+    }
+
     func testEveryViewModeMapsToExactlyOneWorkspace() {
         for mode in LibraryViewMode.allCases {
             _ = mode.workspace // exhaustive switch compiles = every mode owned

@@ -130,11 +130,73 @@ struct LibraryGridView: View {
                 }
             }
         }
-        .navigationTitle(model.libraryTitle)
+        .navigationTitle(model.catalogDisplayName)
         .onChange(of: model.batchMetadataRequestToken) { _, _ in
             openBatchMetadataSheet()
         }
         .toolbar {
+            libraryToolbarContent
+        }
+        .safeAreaInset(edge: .top) {
+            topInsetContent
+        }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                if let summary = model.rejectRelocationSummary {
+                    RejectRelocationBannerView(
+                        summary: summary,
+                        moveBack: { moveBackRejectRelocation(sessionID: summary.sessionID) },
+                        dismiss: { model.dismissRejectRelocationSummary() }
+                    )
+                }
+                footer
+            }
+        }
+        .sheet(item: $rejectRelocationPreflight) { preflight in
+            rejectRelocationSheet(preflight)
+        }
+        .sheet(isPresented: $isShowingImportPathSheet) {
+            importPathSheet
+        }
+        .sheet(isPresented: $isShowingImportCardPathSheet) {
+            importCardPathSheet
+        }
+        .sheet(item: $importConfirmationDraft) { draft in
+            importConfirmationSheet(draft)
+        }
+        .sheet(item: $importIssueReview) { review in
+            importIssueReviewSheet(review)
+        }
+        .sheet(isPresented: $isShowingSourceReconnectSheet) {
+            sourceReconnectSheet
+        }
+        .overlay(alignment: .topLeading) {
+            CullingKeyCaptureView(
+                focusRequest: cullingFocusRequest,
+                isActive: model.selectedView != .grid,
+                onShortcut: handleCullingShortcut
+            )
+            .frame(width: 1, height: 1)
+            .accessibilityHidden(true)
+        }
+        .overlay(alignment: .topLeading) {
+            GridKeyCaptureView(
+                mode: model.selectedView,
+                focusRequest: gridFocusRequest,
+                onCommand: handleGridCommand
+            )
+            .frame(width: 1, height: 1)
+            .accessibilityHidden(true)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var libraryToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            workspaceSwitcher
+        }
+
+        ToolbarItem {
             Menu {
                 Button {
                     showImportFolderPanel()
@@ -154,10 +216,12 @@ struct LibraryGridView: View {
             }
             .disabled(isImporting)
             .help("Import photos from a folder or a memory card")
+        }
 
-            if LibraryGridChromePolicy.shouldExposeImportPathControl(
-                environment: ProcessInfo.processInfo.environment
-            ) {
+        if LibraryGridChromePolicy.shouldExposeImportPathControl(
+            environment: ProcessInfo.processInfo.environment
+        ) {
+            ToolbarItem {
                 Button {
                     showImportPathSheet()
                 } label: {
@@ -166,7 +230,9 @@ struct LibraryGridView: View {
                 .disabled(isImporting)
                 .help("Import a folder by typed path (dev/automation)")
             }
+        }
 
+        ToolbarItem {
             Button {
                 findBestShots()
             } label: {
@@ -175,7 +241,9 @@ struct LibraryGridView: View {
             .disabled(isImporting || !model.canFindBestShots)
             .accessibilityLabel("Find Best Shots")
             .help("Evaluate the photos in view and show you your best shots, ranked. Nothing is saved until you keep them.")
+        }
 
+        ToolbarItem {
             Button {
                 showStartCullingPopover()
             } label: {
@@ -186,7 +254,9 @@ struct LibraryGridView: View {
             .popover(isPresented: $isStartingCullingSession) {
                 cullingSessionPopover
             }
+        }
 
+        ToolbarItem {
             Button {
                 exportScope = model.selectedBatchAssetCount > 0 ? .selected : .visible
                 isAllCatalogExportConfirmed = false
@@ -199,7 +269,9 @@ struct LibraryGridView: View {
             .popover(isPresented: $isReviewingExport) {
                 exportPopover
             }
+        }
 
+        ToolbarItem {
             Menu {
                 Button {
                     beginRejectRelocation()
@@ -261,57 +333,19 @@ struct LibraryGridView: View {
             }
             .help("More actions")
         }
-        .safeAreaInset(edge: .top) {
-            topInsetContent
-        }
-        .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 0) {
-                if let summary = model.rejectRelocationSummary {
-                    RejectRelocationBannerView(
-                        summary: summary,
-                        moveBack: { moveBackRejectRelocation(sessionID: summary.sessionID) },
-                        dismiss: { model.dismissRejectRelocationSummary() }
-                    )
-                }
-                footer
+    }
+
+    private var workspaceSwitcher: some View {
+        Picker("Workspace", selection: Binding(
+            get: { model.selectedWorkspace },
+            set: { model.selectWorkspace($0) }
+        )) {
+            ForEach(Workspace.allCases, id: \.self) { workspace in
+                Text(workspace.title).tag(workspace)
             }
         }
-        .sheet(item: $rejectRelocationPreflight) { preflight in
-            rejectRelocationSheet(preflight)
-        }
-        .sheet(isPresented: $isShowingImportPathSheet) {
-            importPathSheet
-        }
-        .sheet(isPresented: $isShowingImportCardPathSheet) {
-            importCardPathSheet
-        }
-        .sheet(item: $importConfirmationDraft) { draft in
-            importConfirmationSheet(draft)
-        }
-        .sheet(item: $importIssueReview) { review in
-            importIssueReviewSheet(review)
-        }
-        .sheet(isPresented: $isShowingSourceReconnectSheet) {
-            sourceReconnectSheet
-        }
-        .overlay(alignment: .topLeading) {
-            CullingKeyCaptureView(
-                focusRequest: cullingFocusRequest,
-                isActive: model.selectedView != .grid,
-                onShortcut: handleCullingShortcut
-            )
-            .frame(width: 1, height: 1)
-            .accessibilityHidden(true)
-        }
-        .overlay(alignment: .topLeading) {
-            GridKeyCaptureView(
-                mode: model.selectedView,
-                focusRequest: gridFocusRequest,
-                onCommand: handleGridCommand
-            )
-            .frame(width: 1, height: 1)
-            .accessibilityHidden(true)
-        }
+        .pickerStyle(.segmented)
+        .frame(width: 220)
     }
 
     private var thumbnailSizeControl: some View {

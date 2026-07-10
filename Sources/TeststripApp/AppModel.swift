@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 import TeststripCore
 
 public enum LibraryViewMode: String, Codable, CaseIterable, Sendable {
@@ -27,6 +28,25 @@ public enum Workspace: String, CaseIterable, Sendable {
         case .cull: return .loupe
         case .library: return .grid
         case .people: return .people
+        }
+    }
+
+    /// Display name shared by the toolbar switcher and the View menu.
+    public var title: String {
+        switch self {
+        case .cull: return "Cull"
+        case .library: return "Library"
+        case .people: return "People"
+        }
+    }
+
+    /// ⌘1/2/3, shared by the toolbar switcher and the View menu so the two
+    /// never drift out of sync.
+    public var keyEquivalent: KeyEquivalent {
+        switch self {
+        case .cull: return "1"
+        case .library: return "2"
+        case .people: return "3"
         }
     }
 }
