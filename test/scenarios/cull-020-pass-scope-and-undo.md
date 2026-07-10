@@ -1,4 +1,4 @@
-# cull-pass-scope-and-undo: P/X/S/Return in the Cull workspace, and ⌘Z reverts one gesture at a time
+# cull-020-pass-scope-and-undo: P/X/S/Return in the Cull workspace, and ⌘Z reverts one gesture at a time
 
 **What this covers**: the Cull workspace's keyboard loop — pick (`P`) and
 reject (`X`) a few frames, cycle scope with `S` to Picks and confirm the
