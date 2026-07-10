@@ -20,6 +20,10 @@ set -euo pipefail
 #   wait  [App] MATCHSPEC             Poll until >=1 element matches (assert that
 #                                     something appeared); exit 0/1 on timeout.
 #   press [App] MATCHSPEC             AXPress the first matching element.
+#                                     With --modifiers, clicks the element's
+#                                     center via CGEvent with the modifier keys
+#                                     held (AXPress cannot carry modifiers) —
+#                                     e.g. shift-click range selection.
 #   type  [App] MATCHSPEC --text STR  Set the first matching field's value to STR
 #                                     (role defaults to AXTextField for `type`).
 #
@@ -29,11 +33,12 @@ set -euo pipefail
 #   --help  TEXT     exact match on AXHelp (icon-only controls carry meaning here)
 #   --contains TEXT  substring match on title/description/value
 #   --text  STR      (type only) the string to write into the matched field
+#   --modifiers M    (press only) comma-separated shift,command,option,control
 #
 # Env: TESTSTRIP_AX_TIMEOUT_SECONDS (default 20), TESTSTRIP_AX_POLL_SECONDS (0.15).
 # Exit: 0 success, 1 not found / timeout, 2 usage/permission error.
 
-usage() { sed -n '3,32p' "$0" >&2; }
+usage() { sed -n '3,37p' "$0" >&2; }
 
 VERB="${1:-}"; shift || true
 case "$VERB" in
@@ -45,7 +50,7 @@ esac
 APP="Teststrip"
 if [[ "${1:-}" != "" && "${1:-}" != --* ]]; then APP="$1"; shift; fi
 
-ROLE=""; LABEL=""; HELP=""; CONTAINS=""; TEXT=""
+ROLE=""; LABEL=""; HELP=""; CONTAINS=""; TEXT=""; MODIFIERS=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --role) ROLE="$2"; shift 2 ;;
@@ -53,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     --help) HELP="$2"; shift 2 ;;
     --contains) CONTAINS="$2"; shift 2 ;;
     --text) TEXT="$2"; shift 2 ;;
+    --modifiers) MODIFIERS="$2"; shift 2 ;;
     *) echo "unknown option: $1" >&2; usage; exit 2 ;;
   esac
 done
@@ -67,6 +73,7 @@ TESTSTRIP_AX_LABEL="$LABEL" \
 TESTSTRIP_AX_HELP="$HELP" \
 TESTSTRIP_AX_CONTAINS="$CONTAINS" \
 TESTSTRIP_AX_TEXT="$TEXT" \
+TESTSTRIP_AX_MODIFIERS="$MODIFIERS" \
 /usr/bin/swift -e '
 import AppKit
 import ApplicationServices
@@ -80,6 +87,7 @@ let wantLabel = env["TESTSTRIP_AX_LABEL"] ?? ""
 let wantHelp = env["TESTSTRIP_AX_HELP"] ?? ""
 let wantContains = env["TESTSTRIP_AX_CONTAINS"] ?? ""
 let wantText = env["TESTSTRIP_AX_TEXT"] ?? ""
+let wantModifiers = (env["TESTSTRIP_AX_MODIFIERS"] ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.filter { !$0.isEmpty }
 let timeout = TimeInterval(env["TESTSTRIP_AX_TIMEOUT_SECONDS"] ?? "20") ?? 20
 let poll = TimeInterval(env["TESTSTRIP_AX_POLL_SECONDS"] ?? "0.15") ?? 0.15
 
@@ -175,6 +183,44 @@ repeat {
                 for e in found { print(label(e) ?? help(e) ?? role(e) ?? "?") }
                 exit(0)
             case "press":
+                if !wantModifiers.isEmpty {
+                    // AXPress cannot carry modifier keys, so a modifier-click
+                    // posts real CGEvents at the element center with the
+                    // flags held (permitted under Accessibility trust).
+                    guard let posValue = attr(found[0], kAXPositionAttribute),
+                          let sizeValue = attr(found[0], kAXSizeAttribute) else {
+                        FileHandle.standardError.write(Data("element has no AXPosition/AXSize for modifier click\n".utf8))
+                        exit(1)
+                    }
+                    var pos = CGPoint.zero; var size = CGSize.zero
+                    AXValueGetValue(posValue as! AXValue, .cgPoint, &pos)
+                    AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+                    let center = CGPoint(x: pos.x + size.width / 2, y: pos.y + size.height / 2)
+                    var flags = CGEventFlags()
+                    for m in wantModifiers {
+                        switch m {
+                        case "shift": flags.insert(.maskShift)
+                        case "command", "cmd": flags.insert(.maskCommand)
+                        case "option", "opt", "alt": flags.insert(.maskAlternate)
+                        case "control", "ctrl": flags.insert(.maskControl)
+                        default:
+                            FileHandle.standardError.write(Data("unknown modifier: \(m)\n".utf8))
+                            exit(2)
+                        }
+                    }
+                    guard let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: center, mouseButton: .left),
+                          let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: center, mouseButton: .left) else {
+                        FileHandle.standardError.write(Data("could not create mouse events\n".utf8))
+                        exit(1)
+                    }
+                    down.flags = flags
+                    up.flags = flags
+                    down.post(tap: .cghidEventTap)
+                    usleep(60_000)
+                    up.post(tap: .cghidEventTap)
+                    print("modifier-clicked (\(wantModifiers.joined(separator: "+"))): \(label(found[0]) ?? help(found[0]) ?? "?")")
+                    exit(0)
+                }
                 let result = AXUIElementPerformAction(found[0], kAXPressAction as CFString)
                 if result == .success {
                     print("pressed: \(label(found[0]) ?? help(found[0]) ?? "?")")

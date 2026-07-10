@@ -30,8 +30,19 @@ script/ax_drive.sh wait-vended Teststrip
 ```
 
 ## Steps
-1. Find a `--faces`-seeded asset with 2+ worker-detected faces (wait for the
-   worker to drain first — face detection runs asynchronously post-import):
+1. Face detection is NOT passive on a pre-seeded catalog — the worker only
+   produces `face_observations` for assets that get an evaluation request.
+   Trigger one first (menu item, not a toolbar button):
+   ```bash
+   script/ax_drive.sh press Teststrip --role AXMenuItem --label "Evaluate Scope"
+   ```
+   In the VM this also requires the faces originals on disk —
+   `vm_scenario_run.sh sync faces` ships `sample-data/photos/faces` and
+   `launch` rewrites `original_path`. A catalog whose loupe reads "Original
+   missing; cached previews only" will never produce observations (that
+   combination is what stalled run-cull-iter2 at 0 rows for 95s).
+   Then find a `--faces`-seeded asset with 2+ detected faces (verified live
+   2026-07-10: 11 observations landed within ~10s of Evaluate Scope):
    ```bash
    for i in $(seq 1 60); do
      n=$(sqlite3 "$DB" "SELECT asset_id FROM face_observations GROUP BY asset_id HAVING count(*) >= 2 LIMIT 1;")

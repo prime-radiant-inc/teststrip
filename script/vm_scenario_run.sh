@@ -119,11 +119,33 @@ VALUES
 ('kTCCServiceAccessibility','/bin/bash',1,2,1,1,0,'UNUSED',0,strftime('%s','now')),
 ('kTCCServiceAccessibility','/usr/bin/osascript',1,2,1,1,0,'UNUSED',0,strftime('%s','now')),
 ('kTCCServiceAppleEvents','/usr/bin/osascript',1,2,1,1,0,'com.apple.systemevents',0,strftime('%s','now')),
-('kTCCServiceAppleEvents','/usr/bin/swift',1,2,1,1,0,'com.apple.systemevents',0,strftime('%s','now'));
+('kTCCServiceAppleEvents','/usr/bin/swift',1,2,1,1,0,'com.apple.systemevents',0,strftime('%s','now')),
+('kTCCServiceScreenCapture','/usr/libexec/sshd-keygen-wrapper',1,2,1,1,0,'UNUSED',0,strftime('%s','now')),
+('kTCCServiceScreenCapture','/usr/libexec/sshd-session',1,2,1,1,0,'UNUSED',0,strftime('%s','now'));
 SQL
   SSHPASS="$VM_PASS" sshpass -e scp -o StrictHostKeyChecking=no "$sql_file" "$VM_USER@$ip:/tmp/grant_tcc.sql"
   ssh_cmd "sudo sqlite3 '/Library/Application Support/com.apple.TCC/TCC.db' < /tmp/grant_tcc.sql" \
     || { echo "TCC grant failed — if csrutil status (SIP) is enabled in the VM, this direct-DB approach cannot work; a one-time manual grant in the tart viewer window (System Settings > Privacy & Security > Accessibility/Automation) is required instead." >&2; exit 1; }
+
+  # Screen Recording is gated twice on macOS 15+: the TCC row above AND
+  # replayd's per-binary "bypass the system private window picker" approval,
+  # which otherwise pops a consent dialog over the app on every ssh-driven
+  # `screencapture` (blocking screenshot-diff verification — see cull-006).
+  # Pre-approve the ssh session binary with a far-future approval date, and
+  # click through any dialog a prior capture already left up.
+  echo "granting Screen Recording picker-bypass approval to sshd-session"
+  ssh_cmd 'P="$HOME/Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist";
+    for bin in /usr/libexec/sshd-session /usr/libexec/sshd-keygen-wrapper; do
+      defaults write "$P" "$bin" -dict \
+        kScreenCaptureApprovalLastAlerted -date "3024-01-01 00:00:00 +0000" \
+        kScreenCaptureApprovalLastUsed -date "3024-01-01 00:00:00 +0000" \
+        kScreenCapturePrivacyHintDate -date "3024-01-01 00:00:00 +0000" \
+        kScreenCaptureAlertableUsageCount -int 0 \
+        kScreenCapturePrivacyHintPolicy -int 2592000;
+    done;
+    killall replayd 2>/dev/null;
+    osascript -e "tell application \"System Events\" to tell process \"UserNotificationCenter\" to click button \"Allow\" of window 1" 2>/dev/null;
+    true'
   echo "setup complete"
 }
 
@@ -186,6 +208,17 @@ cmd_sync() {
     echo "rsyncing '$v' seed catalog to VM"
     ssh_cmd "mkdir -p '$REMOTE_ROOT/isolated/$v'"
     scp_to_vm "isolated/$v/" "$(seed_dir_for "$v")/"
+    if [[ "$v" == "faces" ]]; then
+      # The faces catalog bakes original_path pointing at the host repo's
+      # sample-data/photos/faces — unlike smoke, the photo bytes live outside
+      # the seed dir, so without this the VM has cached previews but no
+      # originals: face detection silently produces zero face_observations
+      # (run-cull-iter2 cull-012) and the loupe reads "Original missing".
+      # Ship the photos and let cmd_launch rewrite the path prefix.
+      echo "rsyncing faces sample photos to VM"
+      ssh_cmd "mkdir -p '$REMOTE_ROOT/sample-data/photos/faces'"
+      scp_to_vm "sample-data/photos/faces/" "$ROOT_DIR/sample-data/photos/faces/"
+    fi
   done
 
   ssh_cmd "codesign --force --sign - '$REMOTE_ROOT/dist/$APP_NAME.app/Contents/Helpers/TeststripWorker' 2>&1 || true; codesign --force --sign - '$REMOTE_ROOT/dist/$APP_NAME.app' && chmod +x '$REMOTE_ROOT'/script/*.sh"
@@ -212,6 +245,7 @@ cmd_launch() {
   ssh_cmd "pkill -x $APP_NAME 2>/dev/null || true; pkill -x TeststripApp 2>/dev/null || true; pkill -x TeststripWorker 2>/dev/null || true; sleep 1; \
     mkdir -p '$(dirname "$fresh")' && cp -R '$remote_seed' '$fresh' && \
     sqlite3 '$fresh/Teststrip/catalog.sqlite' \"UPDATE assets SET original_path = replace(original_path, '$local_seed', '$fresh');\" && \
+    sqlite3 '$fresh/Teststrip/catalog.sqlite' \"UPDATE assets SET original_path = replace(original_path, '$ROOT_DIR/sample-data', '$REMOTE_ROOT/sample-data');\" && \
     open -n '$REMOTE_ROOT/dist/$APP_NAME.app' --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY='$fresh' && sleep 2 && pgrep -x $APP_NAME"
   echo "launched '$variant' fresh at $fresh (catalog: $fresh/Teststrip/catalog.sqlite)"
 }
@@ -228,6 +262,12 @@ cmd_shell() {
   local ip; ip="$(vm_ip)"
   if [[ $# -eq 0 ]]; then
     SSHPASS="$VM_PASS" sshpass -e ssh -o StrictHostKeyChecking=no "$VM_USER@$ip"
+  elif [[ $# -eq 1 ]]; then
+    # A single argument is a shell command line — pass it through verbatim so
+    # the remote shell parses its quoting. (printf %q here would escape the
+    # embedded quotes/spaces and the remote shell would treat the whole
+    # string as one command name: `shell 'echo "a b"'` -> command not found.)
+    ssh_cmd "$1"
   else
     ssh_cmd "$(printf '%q ' "$@")"
   fi
