@@ -273,7 +273,7 @@ private struct CullingCommands: Commands {
     var body: some Commands {
         CommandMenu("Culling") {
             ForEach(Array(CullingCommandMenuPresentation.sections.enumerated()), id: \.element.id) { index, section in
-                ForEach(section.items) { item in
+                ForEach(section.items.filter { !$0.isMonitorOnly }) { item in
                     Button(item.title) {
                         applyShortcut(item.shortcut)
                     }
@@ -306,6 +306,10 @@ private extension CullingShortcutKey {
     var menuKeyboardShortcut: KeyboardShortcut? {
         switch self {
         case .leftArrow, .rightArrow, .upArrow, .downArrow, .returnKey:
+            return nil
+        case .optionLeftArrow, .optionRightArrow:
+            // Monitor-only: never reached since CullingCommands filters
+            // isMonitorOnly items out before building menu bindings.
             return nil
         case .character(let character):
             return KeyboardShortcut(KeyEquivalent(Character(character)), modifiers: [])

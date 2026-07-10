@@ -79,10 +79,25 @@ final class CullingKeyCaptureTests: XCTestCase {
 
     func testCullingShortcutMapsZoomToggleKeyEvent() throws {
         let lowercase = try makeKeyEvent(characters: "z", charactersIgnoringModifiers: "z")
-        let uppercase = try makeKeyEvent(characters: "Z", charactersIgnoringModifiers: "z", modifierFlags: .shift)
 
         XCTAssertEqual(CullingShortcut(event: lowercase), .toggleZoom)
-        XCTAssertEqual(CullingShortcut(event: uppercase), .toggleZoom)
+    }
+
+    // Shift-Z is a distinct shortcut (zoom to nearest face) from plain z
+    // (toggle 1:1 zoom). charactersIgnoringModifiers strips Shift along with
+    // the other modifiers (real hardware reports the base "z", not "Z" —
+    // see testCullingShortcutMapsShiftedPickKeyEvent above), so this must be
+    // detected from the modifier flag, not character case.
+    func testCullingShortcutMapsShiftZKeyEventToZoomToNearestFace() throws {
+        let event = try makeKeyEvent(characters: "Z", charactersIgnoringModifiers: "z", modifierFlags: .shift)
+
+        XCTAssertEqual(CullingShortcut(event: event), .zoomToNearestFace)
+    }
+
+    func testCullingShortcutMapsShiftSlashKeyEventToShowKeyMap() throws {
+        let event = try makeKeyEvent(characters: "?", charactersIgnoringModifiers: "/", modifierFlags: .shift)
+
+        XCTAssertEqual(CullingShortcut(event: event), .showKeyMap)
     }
 
     func testCullingShortcutIgnoresCommandModifiedKeyEvents() throws {

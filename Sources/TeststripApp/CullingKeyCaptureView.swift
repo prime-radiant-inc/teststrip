@@ -114,6 +114,24 @@ extension CullingShortcut {
 
         guard relevantModifiers.isEmpty else { return nil }
 
+        // Shift+Z (zoom to nearest face) and Shift+/ ("?", key map) need
+        // explicit shift-aware detection: charactersIgnoringModifiers strips
+        // Shift along with the other modifiers (see
+        // testCullingShortcutMapsShiftedPickKeyEvent), so it never reports
+        // the shifted character or case — only the modifier flag does.
+        if event.modifierFlags.contains(.shift), let base = event.charactersIgnoringModifiers {
+            switch base {
+            case "z":
+                self = .zoomToNearestFace
+                return
+            case "/":
+                self = .showKeyMap
+                return
+            default:
+                break
+            }
+        }
+
         switch event.keyCode {
         case MacKeyCode.leftArrow:
             self = .previousPhoto

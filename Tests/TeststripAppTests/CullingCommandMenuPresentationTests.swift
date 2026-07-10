@@ -5,7 +5,7 @@ final class CullingCommandMenuPresentationTests: XCTestCase {
     func testNavigationSectionExposesPhotoAndStackShortcuts() {
         let navigation = CullingCommandMenuPresentation.sections.first
 
-        XCTAssertEqual(navigation?.items, [
+        XCTAssertEqual(navigation?.items.filter { !$0.isMonitorOnly }, [
             CullingCommandMenuItem(title: "Previous Photo", shortcut: .previousPhoto, key: .leftArrow),
             CullingCommandMenuItem(title: "Next Photo", shortcut: .nextPhoto, key: .rightArrow),
             CullingCommandMenuItem(title: "Previous Stack", shortcut: .previousStack, key: .upArrow),
@@ -14,11 +14,23 @@ final class CullingCommandMenuPresentationTests: XCTestCase {
         ])
     }
 
-    func testLoupeSectionExposesZoomToggleShortcut() {
+    func testNavigationSectionExposesMonitorOnlyOptionArrowAlternates() {
+        let navigation = CullingCommandMenuPresentation.sections.first
+
+        XCTAssertEqual(navigation?.items.filter(\.isMonitorOnly), [
+            CullingCommandMenuItem(title: "Previous Stack (Option)", shortcut: .previousStack, key: .optionLeftArrow, isMonitorOnly: true),
+            CullingCommandMenuItem(title: "Next Stack (Option)", shortcut: .nextStack, key: .optionRightArrow, isMonitorOnly: true)
+        ])
+    }
+
+    func testLoupeSectionExposesZoomExifAndKeyMapShortcuts() {
         let loupe = CullingCommandMenuPresentation.sections.first { $0.title == "Loupe" }
 
         XCTAssertEqual(loupe?.items, [
-            CullingCommandMenuItem(title: "Toggle 1:1 Zoom", shortcut: .toggleZoom, key: .character("z"))
+            CullingCommandMenuItem(title: "Toggle 1:1 Zoom", shortcut: .toggleZoom, key: .character("z")),
+            CullingCommandMenuItem(title: "Zoom to Nearest Face", shortcut: .zoomToNearestFace, key: .character("Z")),
+            CullingCommandMenuItem(title: "Cycle EXIF Overlay", shortcut: .cycleExifOverlay, key: .character("i")),
+            CullingCommandMenuItem(title: "Show Key Map", shortcut: .showKeyMap, key: .character("?"))
         ])
     }
 }

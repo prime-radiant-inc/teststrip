@@ -204,6 +204,9 @@ public enum CullingShortcut: Equatable, Sendable {
     case clearFlag
     case promoteAndRejectSiblings
     case toggleZoom
+    case zoomToNearestFace
+    case cycleExifOverlay
+    case showKeyMap
     case cycleScope
     case showCullGrid
     case showCompare
@@ -221,6 +224,16 @@ public enum CullingShortcut: Equatable, Sendable {
             self = .nextStack
         case .returnKey:
             self = .promoteAndRejectSiblings
+        case .optionLeftArrow:
+            self = .previousStack
+        case .optionRightArrow:
+            self = .nextStack
+        // Shift-Z (exact-case match, checked before the lowercased switch
+        // below) is a distinct shortcut from plain "z" toggle-zoom.
+        case .character("Z"):
+            self = .zoomToNearestFace
+        case .character("?"):
+            self = .showKeyMap
         case .character(let character):
             switch character.lowercased() {
             case " ": self = .nextPhoto
@@ -240,6 +253,7 @@ public enum CullingShortcut: Equatable, Sendable {
             case "x": self = .reject
             case "u": self = .clearFlag
             case "z": self = .toggleZoom
+            case "i": self = .cycleExifOverlay
             case "s": self = .cycleScope
             case "g": self = .showCullGrid
             case "c": self = .showCompare
@@ -366,6 +380,43 @@ public enum CompareAutoPopulateOrdering {
     }
 }
 
+/// Pure targeting math for the Z (zoom-to-face) shortcut: which detected
+/// face is nearest a reference point, and which face a repeated press
+/// cycles to next. Kept free of `AppModel` state so it's directly testable.
+public enum LoupeFaceZoomTargeting {
+    public static func nearestFaceIndex(to focus: LoupeZoomFocus, among faces: [LoupeZoomFocus]) -> Int? {
+        guard !faces.isEmpty else { return nil }
+        return faces.indices.min { lhs, rhs in
+            distanceSquared(faces[lhs], focus) < distanceSquared(faces[rhs], focus)
+        }
+    }
+
+    public static func wrappedIndex(current: Int, faceCount: Int) -> Int {
+        guard faceCount > 0 else { return 0 }
+        return (current + 1) % faceCount
+    }
+
+    private static func distanceSquared(_ a: LoupeZoomFocus, _ b: LoupeZoomFocus) -> Double {
+        let dx = a.x - b.x
+        let dy = a.y - b.y
+        return dx * dx + dy * dy
+    }
+}
+
+/// The loupe's EXIF overlay detail: hidden, a single exposure summary line,
+/// or the full set of technical fields. Cycled with the `i` shortcut.
+public enum ExifOverlayLevel: Int, CaseIterable, Equatable, Sendable {
+    case off
+    case exposureLine
+    case full
+
+    public func next() -> ExifOverlayLevel {
+        let cases = Self.allCases
+        guard let index = cases.firstIndex(of: self) else { return .off }
+        return cases[(index + 1) % cases.count]
+    }
+}
+
 public enum CullingShortcutKey: Equatable, Sendable {
     case leftArrow
     case rightArrow
@@ -373,19 +424,44 @@ public enum CullingShortcutKey: Equatable, Sendable {
     case downArrow
     case returnKey
     case character(String)
+    // Display-only entries for the monitor-only ⌥←/⌥→ stack-navigation
+    // alternates (see CullingKeyCaptureView): never routed through
+    // CullingShortcut.init(key:) at runtime — the key monitor handles them
+    // directly — but present here so the ? key-map overlay can list them.
+    case optionLeftArrow
+    case optionRightArrow
+
+    /// Human-readable key label for the ? key-map overlay.
+    public var displayText: String {
+        switch self {
+        case .leftArrow: return "←"
+        case .rightArrow: return "→"
+        case .upArrow: return "↑"
+        case .downArrow: return "↓"
+        case .returnKey: return "⏎"
+        case .character(let character): return character
+        case .optionLeftArrow: return "⌥←"
+        case .optionRightArrow: return "⌥→"
+        }
+    }
 }
 
 public struct CullingCommandMenuItem: Equatable, Identifiable, Sendable {
     public var title: String
     public var shortcut: CullingShortcut
     public var key: CullingShortcutKey
+    /// Monitor-only shortcuts (e.g. ⌥←/⌥→) have no menu equivalent — a bare
+    /// menu binding would double-fire alongside the key monitor — but the
+    /// ? key-map overlay still lists them for discoverability.
+    public var isMonitorOnly: Bool
 
     public var id: String { title }
 
-    public init(title: String, shortcut: CullingShortcut, key: CullingShortcutKey) {
+    public init(title: String, shortcut: CullingShortcut, key: CullingShortcutKey, isMonitorOnly: Bool = false) {
         self.title = title
         self.shortcut = shortcut
         self.key = key
+        self.isMonitorOnly = isMonitorOnly
     }
 }
 
@@ -408,7 +484,9 @@ public enum CullingCommandMenuPresentation {
             CullingCommandMenuItem(title: "Next Photo", shortcut: .nextPhoto, key: .rightArrow),
             CullingCommandMenuItem(title: "Previous Stack", shortcut: .previousStack, key: .upArrow),
             CullingCommandMenuItem(title: "Next Stack", shortcut: .nextStack, key: .downArrow),
-            CullingCommandMenuItem(title: "Promote Frame & Reject Siblings", shortcut: .promoteAndRejectSiblings, key: .returnKey)
+            CullingCommandMenuItem(title: "Promote Frame & Reject Siblings", shortcut: .promoteAndRejectSiblings, key: .returnKey),
+            CullingCommandMenuItem(title: "Previous Stack (Option)", shortcut: .previousStack, key: .optionLeftArrow, isMonitorOnly: true),
+            CullingCommandMenuItem(title: "Next Stack (Option)", shortcut: .nextStack, key: .optionRightArrow, isMonitorOnly: true)
         ]),
         CullingCommandMenuSection(title: "Ratings", items: [
             CullingCommandMenuItem(title: "Clear Rating", shortcut: .rating(0), key: .character("0")),
@@ -432,7 +510,10 @@ public enum CullingCommandMenuPresentation {
             CullingCommandMenuItem(title: "Clear Flag", shortcut: .clearFlag, key: .character("u"))
         ]),
         CullingCommandMenuSection(title: "Loupe", items: [
-            CullingCommandMenuItem(title: "Toggle 1:1 Zoom", shortcut: .toggleZoom, key: .character("z"))
+            CullingCommandMenuItem(title: "Toggle 1:1 Zoom", shortcut: .toggleZoom, key: .character("z")),
+            CullingCommandMenuItem(title: "Zoom to Nearest Face", shortcut: .zoomToNearestFace, key: .character("Z")),
+            CullingCommandMenuItem(title: "Cycle EXIF Overlay", shortcut: .cycleExifOverlay, key: .character("i")),
+            CullingCommandMenuItem(title: "Show Key Map", shortcut: .showKeyMap, key: .character("?"))
         ]),
         CullingCommandMenuSection(title: "Scope", items: [
             CullingCommandMenuItem(title: "Cycle Scope", shortcut: .cycleScope, key: .character("s"))
@@ -1747,6 +1828,19 @@ public final class AppModel {
     // Loupe 1:1 zoom state: nil shows the fitted frame. Reset whenever the
     // selection moves so every new frame starts fitted.
     public private(set) var loupeZoomFocus: LoupeZoomFocus?
+    // Detected-face targets for the current selection, reusing the Close-Ups
+    // face-box pipeline (LoupeView populates this from on-demand detection).
+    // Normalized (0...1) image-relative points, same space as LoupeZoomFocus.
+    public private(set) var loupeFaceFocuses: [LoupeZoomFocus] = []
+    // Which face in `loupeFaceFocuses` the Z shortcut last zoomed to, so a
+    // repeated press cycles rather than re-picking the nearest face. Cleared
+    // by any zoom that didn't come from face-cycling (manual pan/click,
+    // fit-toggle, or selection change) so the next Z press starts fresh.
+    public private(set) var loupeFaceZoomIndex: Int?
+    // Cycles off/exposureLine/full for the loupe's EXIF overlay (I shortcut).
+    public var exifOverlayLevel: ExifOverlayLevel = .off
+    // Drives the ? key-map overlay, dismissed by Esc or a repeated ?.
+    public var isKeyMapOverlayVisible = false
     /// The subset of frames the loupe/filmstrip/grid navigate through while
     /// culling. `.all` means unfiltered. Cycled with the `s` shortcut.
     public private(set) var cullScope: CullScope = .all
@@ -5315,6 +5409,12 @@ public final class AppModel {
             try promoteCurrentFrameAndRejectSiblings()
         case .toggleZoom:
             toggleLoupeZoom()
+        case .zoomToNearestFace:
+            zoomToNearestFaceOrCycleFace()
+        case .cycleExifOverlay:
+            exifOverlayLevel = exifOverlayLevel.next()
+        case .showKeyMap:
+            isKeyMapOverlayVisible.toggle()
         case .cycleScope:
             cycleCullScope()
         case .showCullGrid:
@@ -5337,14 +5437,50 @@ public final class AppModel {
 
     public func toggleLoupeZoom() {
         loupeZoomFocus = loupeZoomFocus == nil ? .center : nil
+        loupeFaceZoomIndex = nil
     }
 
     public func zoomLoupe(to focus: LoupeZoomFocus) {
         loupeZoomFocus = focus
+        loupeFaceZoomIndex = nil
     }
 
     public func resetLoupeZoom() {
         loupeZoomFocus = nil
+        loupeFaceZoomIndex = nil
+    }
+
+    /// Reuses the Close-Ups face-box pipeline's detections as zoom targets
+    /// for the current selection. Called by LoupeView after it refreshes its
+    /// close-up crops. Out-of-range face-cycle state is dropped.
+    public func setLoupeFaceFocuses(_ focuses: [LoupeZoomFocus]) {
+        loupeFaceFocuses = focuses
+        if let index = loupeFaceZoomIndex, !focuses.indices.contains(index) {
+            loupeFaceZoomIndex = nil
+        }
+    }
+
+    /// Z (shift-z): zooms 1:1 to the detected face nearest the current focus
+    /// (or image center) the first time it's pressed; a repeated press while
+    /// still face-zoomed cycles to the next face, wrapping. Falls back to a
+    /// plain centered 1:1 zoom when no faces were detected.
+    public func zoomToNearestFaceOrCycleFace() {
+        guard !loupeFaceFocuses.isEmpty else {
+            loupeFaceZoomIndex = nil
+            loupeZoomFocus = .center
+            return
+        }
+        let nextIndex: Int
+        if let currentIndex = loupeFaceZoomIndex {
+            nextIndex = LoupeFaceZoomTargeting.wrappedIndex(current: currentIndex, faceCount: loupeFaceFocuses.count)
+        } else {
+            nextIndex = LoupeFaceZoomTargeting.nearestFaceIndex(
+                to: loupeZoomFocus ?? .center,
+                among: loupeFaceFocuses
+            ) ?? 0
+        }
+        loupeFaceZoomIndex = nextIndex
+        loupeZoomFocus = loupeFaceFocuses[nextIndex]
     }
 
     private func applyCullingCommandAndAdvance(_ command: CullingCommand) throws {

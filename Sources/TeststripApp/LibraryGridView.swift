@@ -179,6 +179,12 @@ struct LibraryGridView: View {
             .frame(width: 1, height: 1)
             .accessibilityHidden(true)
         }
+        .overlay {
+            if model.isKeyMapOverlayVisible {
+                KeyMapOverlayView(dismiss: { model.isKeyMapOverlayVisible = false })
+                    .onExitCommand { model.isKeyMapOverlayVisible = false }
+            }
+        }
     }
 
     @ToolbarContentBuilder
@@ -3585,27 +3591,38 @@ private struct LoupeView: View {
     }
 
     // Detection is display-only and per-selection: the cached preview is read
-    // off the main actor, cropped in memory, and nothing is persisted.
+    // off the main actor, cropped in memory, and nothing is persisted. The
+    // same detections feed both the Close-Ups panel crops and the Z
+    // zoom-to-face targets (normalized face-box centers), so they always
+    // agree on what counts as "a face" for this frame.
     private func refreshCloseUps(for assetID: AssetID) async {
         closeUpCrops = []
-        guard let previewURL = model.loupePreviewURL(for: assetID) else { return }
-        let crops = await Task.detached(priority: .utility) { () -> [(id: Int, image: CGImage)] in
+        guard let previewURL = model.loupePreviewURL(for: assetID) else {
+            model.setLoupeFaceFocuses([])
+            return
+        }
+        let result = await Task.detached(priority: .utility) { () -> (crops: [(id: Int, image: CGImage)], faceFocuses: [LoupeZoomFocus]) in
             guard let faces = try? CoreImageFaceExpressionAnalyzer().detectFaces(previewURL: previewURL),
                   !faces.isEmpty,
                   let source = CGImageSourceCreateWithURL(previewURL as CFURL, nil),
                   let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-                return []
+                return ([], [])
             }
             let presentation = CloseUpFacesPresentation(
                 faces: faces,
                 imagePixelSize: CGSize(width: image.width, height: image.height)
             )
-            return presentation.crops.compactMap { crop in
+            let crops = presentation.crops.compactMap { crop in
                 image.cropping(to: crop.pixelRect).map { (id: crop.id, image: $0) }
             }
+            let faceFocuses = faces.map { face in
+                LoupeZoomFocus(x: face.normalizedBounds.midX, y: face.normalizedBounds.midY)
+            }
+            return (crops, faceFocuses)
         }.value
         guard model.selectedAssetID == assetID else { return }
-        closeUpCrops = crops
+        closeUpCrops = result.crops
+        model.setLoupeFaceFocuses(result.faceFocuses)
     }
 
     private func cullHUDPresentation(for asset: Asset, stackPresentation: CullingStackRailPresentation) -> CullHUDPresentation {
@@ -4120,8 +4137,11 @@ private struct LoupeView: View {
                     .font(.caption2.monospaced())
                     .lineLimit(1)
             }
-            if let summaryText = LoupeExifSummaryPresentation(technicalMetadata: asset.technicalMetadata).summaryText {
-                Text(summaryText)
+            ForEach(
+                Array(LoupeExifOverlayPresentation(technicalMetadata: asset.technicalMetadata, level: model.exifOverlayLevel).lines.enumerated()),
+                id: \.offset
+            ) { _, line in
+                Text(line)
                     .foregroundStyle(.secondary)
                     .font(.caption2.monospaced())
                     .lineLimit(1)
@@ -8327,6 +8347,103 @@ struct LoupeExifSummaryPresentation: Equatable {
     private static func trimmed(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed?.isEmpty == false ? trimmed : nil
+    }
+}
+
+/// The loupe's I-cycled EXIF overlay, restructured around `ExifOverlayLevel`:
+/// off shows nothing, exposureLine reuses the one-line camera/lens/exposure
+/// summary, full adds pixel dimensions, GPS coordinates, and capture date.
+struct LoupeExifOverlayPresentation: Equatable {
+    var lines: [String]
+
+    init(technicalMetadata: AssetTechnicalMetadata?, level: ExifOverlayLevel) {
+        switch level {
+        case .off:
+            lines = []
+        case .exposureLine:
+            lines = Self.exposureLine(technicalMetadata)
+        case .full:
+            var result = Self.exposureLine(technicalMetadata)
+            if let technicalMetadata {
+                result.append("\(technicalMetadata.pixelWidth) × \(technicalMetadata.pixelHeight)")
+                if let latitude = technicalMetadata.latitude, let longitude = technicalMetadata.longitude {
+                    result.append(String(format: "%.5f, %.5f", latitude, longitude))
+                }
+                if let capturedAt = technicalMetadata.capturedAt {
+                    result.append(Self.dateFormatter.string(from: capturedAt))
+                }
+            }
+            lines = result
+        }
+    }
+
+    var isVisible: Bool { !lines.isEmpty }
+
+    private static func exposureLine(_ technicalMetadata: AssetTechnicalMetadata?) -> [String] {
+        guard let summaryText = LoupeExifSummaryPresentation(technicalMetadata: technicalMetadata).summaryText else {
+            return []
+        }
+        return [summaryText]
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+}
+
+/// The `?` key-map overlay: every culling shortcut, generated straight from
+/// `CullingCommandMenuPresentation` (the single source of truth the Culling
+/// menu also reads) — including monitor-only entries like ⌥←/⌥→ that have no
+/// menu equivalent. View-only; Esc or a repeated `?` dismisses it.
+struct KeyMapOverlayView: View {
+    var dismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Keyboard Shortcuts")
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss key map")
+            }
+            .padding(.bottom, 12)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(CullingCommandMenuPresentation.sections) { section in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(section.title.uppercased())
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            ForEach(section.items) { item in
+                                HStack {
+                                    Text(item.title)
+                                    Spacer()
+                                    Text(item.key.displayText)
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .frame(width: 360, height: 420)
+        .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .shadow(radius: 20)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Keyboard shortcuts")
     }
 }
 
