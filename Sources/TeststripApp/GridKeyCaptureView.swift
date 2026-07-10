@@ -34,6 +34,28 @@ public enum GridKeyCommand: Equatable, Sendable {
     case clearFlag
     case openLoupe
     case returnToGrid
+    /// Cull sub-view switch (Task 18), fired only while in `.cullGrid`: "g"/
+    /// Escape return to `.loupe`, "c"/"b" jump straight to Compare/A-B.
+    case switchCullSubView(LibraryViewMode)
+
+    // Only meaningful while `mode == .cullGrid`; constructed directly by
+    // GridKeyCaptureNSView.command(for:) rather than through `init?(input:)`
+    // since it needs mode context the plain initializer doesn't have.
+    static func cullSubViewSwitch(for input: GridKeyInput) -> GridKeyCommand? {
+        switch input {
+        case .escape:
+            return .switchCullSubView(.loupe)
+        case .character(let character):
+            switch character.lowercased() {
+            case "g": return .switchCullSubView(.loupe)
+            case "c": return .switchCullSubView(.compare)
+            case "b": return .switchCullSubView(.abCompare)
+            default: return nil
+            }
+        default:
+            return nil
+        }
+    }
 
     public init?(input: GridKeyInput) {
         switch input {
@@ -74,7 +96,7 @@ public enum GridKeyCommand: Equatable, Sendable {
     // stepping since it has no culling-shortcut monitor of its own.
     public func isAllowed(in mode: LibraryViewMode) -> Bool {
         switch mode {
-        case .grid:
+        case .grid, .cullGrid:
             return self != .returnToGrid
         case .loupe:
             return self == .returnToGrid
@@ -196,8 +218,11 @@ final class GridKeyCaptureNSView: NSView {
     }
 
     private func command(for event: NSEvent) -> GridKeyCommand? {
-        guard let input = GridKeyInput(event: event),
-              let command = GridKeyCommand(input: input),
+        guard let input = GridKeyInput(event: event) else { return nil }
+        if mode == .cullGrid, let cullSwitch = GridKeyCommand.cullSubViewSwitch(for: input) {
+            return cullSwitch
+        }
+        guard let command = GridKeyCommand(input: input),
               command.isAllowed(in: mode) else {
             return nil
         }

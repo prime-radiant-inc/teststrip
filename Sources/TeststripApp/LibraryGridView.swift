@@ -164,7 +164,7 @@ struct LibraryGridView: View {
                 // keyboard monitor is the plain-nav GridKeyCaptureView below
                 // instead — leaving this one active here would let culling
                 // shortcuts write metadata behind hidden chrome.
-                isActive: model.selectedView != .grid && model.selectedView != .libraryLoupe,
+                isActive: model.selectedView != .grid && model.selectedView != .libraryLoupe && model.selectedView != .cullGrid,
                 onShortcut: handleCullingShortcut
             )
             .frame(width: 1, height: 1)

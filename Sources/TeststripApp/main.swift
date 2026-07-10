@@ -84,27 +84,35 @@ private struct WorkspaceCommands: Commands {
 
             Divider()
 
-            // Temporary sub-view routes so grid/loupe/compare/A-B stay
-            // reachable after the old top-bar switcher's removal; Task 18
-            // rebuilds Cull sub-view switching (and assigns key equivalents).
-            Button("Grid") {
-                model.selectedView = .grid
-            }
+            // Cull sub-view routes (Task 18): keys mirror the in-view g/c/b
+            // shortcuts (CullingKeyCaptureView in loupe/compare/A-B,
+            // GridKeyCaptureView in the cull grid). Menus stay the system of
+            // record even though the shortcuts are also reachable by hand.
             Button("Loupe") {
                 model.selectedView = .loupe
             }
+            Button("Grid") {
+                model.selectedView = .cullGrid
+            }
+            .keyboardShortcut("g", modifiers: [])
             Button("Compare") {
                 model.selectedView = .compare
             }
+            .keyboardShortcut("c", modifiers: [])
             Button("A/B Compare") {
                 model.selectedView = .abCompare
             }
+            .keyboardShortcut("b", modifiers: [])
+
+            Divider()
 
             // Library sub-view toggle (Task 10): menu equivalents of the
             // Library header's Grid/Loupe/Timeline/Map segmented control.
             // Menus stay the system of record even though the header also
-            // exposes these as a toggle. "Grid" above already covers the
-            // grid sub-view.
+            // exposes these as a toggle.
+            Button("Library Grid") {
+                model.selectedView = .grid
+            }
             Button("Library Loupe") {
                 model.selectedView = .libraryLoupe
             }

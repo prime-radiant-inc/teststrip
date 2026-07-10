@@ -12,6 +12,11 @@ public enum LibraryViewMode: String, CaseIterable, Sendable {
     case timeline
     case map
     case people
+    /// The asset grid scoped to the active cull session (Task 18) — same grid
+    /// rendering as `.grid`, but a distinct case so it stays in the `.cull`
+    /// workspace (autopilot badges, cull sidebar, cull session scope) instead
+    /// of jumping to Library the way plain `.grid` does.
+    case cullGrid
 }
 
 extension LibraryViewMode: Codable {
@@ -77,7 +82,7 @@ public enum Workspace: String, CaseIterable, Sendable {
 extension LibraryViewMode {
     public var workspace: Workspace {
         switch self {
-        case .loupe, .compare, .abCompare:
+        case .loupe, .compare, .abCompare, .cullGrid:
             return .cull
         case .grid, .timeline, .map, .libraryLoupe:
             return .library
@@ -200,6 +205,9 @@ public enum CullingShortcut: Equatable, Sendable {
     case promoteAndRejectSiblings
     case toggleZoom
     case cycleScope
+    case showCullGrid
+    case showCompare
+    case showABCompare
 
     public init?(key: CullingShortcutKey) {
         switch key {
@@ -233,6 +241,9 @@ public enum CullingShortcut: Equatable, Sendable {
             case "u": self = .clearFlag
             case "z": self = .toggleZoom
             case "s": self = .cycleScope
+            case "g": self = .showCullGrid
+            case "c": self = .showCompare
+            case "b": self = .showABCompare
             default: return nil
             }
         }
@@ -314,6 +325,44 @@ public enum CullScopeOrdering {
             backward -= 1
         }
         return nil
+    }
+}
+
+/// Pure ordering for Compare refill (Task 18): when a frame is rejected out
+/// of the survey, the next undecided sibling from the same candidate stack —
+/// if any — takes its slot so the grid stays full until the stack runs out.
+public enum CompareRefillOrdering {
+    public static func afterReject(
+        currentCompareAssetIDs: [AssetID],
+        rejectedAssetID: AssetID,
+        stackAssetIDs: [AssetID],
+        isUndecided: (AssetID) -> Bool
+    ) -> [AssetID] {
+        var result = currentCompareAssetIDs.filter { $0 != rejectedAssetID }
+        guard !stackAssetIDs.isEmpty else { return result }
+        let present = Set(result)
+        if let refill = stackAssetIDs.first(where: { $0 != rejectedAssetID && !present.contains($0) && isUndecided($0) }) {
+            result.append(refill)
+        }
+        return result
+    }
+}
+
+/// Pure ordering for auto-populating Compare when entering it from a stack
+/// (Task 18): the top-recommended frame leads, the rest keep the stack's
+/// original order, capped at `cap` frames.
+public enum CompareAutoPopulateOrdering {
+    public static func orderedStackAssetIDs(
+        stackAssetIDs: [AssetID],
+        recommendedAssetID: AssetID?,
+        cap: Int
+    ) -> [AssetID] {
+        guard let recommendedAssetID, stackAssetIDs.contains(recommendedAssetID) else {
+            return Array(stackAssetIDs.prefix(max(0, cap)))
+        }
+        var ordered = [recommendedAssetID]
+        ordered.append(contentsOf: stackAssetIDs.filter { $0 != recommendedAssetID })
+        return Array(ordered.prefix(max(0, cap)))
     }
 }
 
@@ -5004,9 +5053,29 @@ public final class AppModel {
             return nil
         }
 
-        let stackAssetIDs = Set(stack.assetIDs)
-        let stackAssets = assets.filter { stackAssetIDs.contains($0.id) }
-        return Self.limitedCompareAssets(stackAssets, limit: limit, anchor: anchor)
+        let stackAssetIDSet = Set(stack.assetIDs)
+        let stackAssets = assets.filter { stackAssetIDSet.contains($0.id) }
+        let stackAssetIDs = stackAssets.map(\.id)
+
+        // Recommended-first ordering (Task 18) only kicks in once the stack
+        // has evaluation signals to recommend from; otherwise this keeps the
+        // pre-existing anchor-windowed behavior (a stack larger than the cap,
+        // with no recommendation yet, centers the window on the selection).
+        let evaluationSignalsByAssetID = Dictionary(uniqueKeysWithValues: stackAssetIDs.map { ($0, evaluationSignals(for: $0)) })
+        guard let recommendedAssetID = CullingStackRecommendation.rankedCandidates(
+            stackAssetIDs: stackAssetIDs,
+            evaluationSignalsByAssetID: evaluationSignalsByAssetID
+        ).first?.assetID else {
+            return Self.limitedCompareAssets(stackAssets, limit: limit, anchor: anchor)
+        }
+
+        let orderedIDs = CompareAutoPopulateOrdering.orderedStackAssetIDs(
+            stackAssetIDs: stackAssetIDs,
+            recommendedAssetID: recommendedAssetID,
+            cap: limit
+        )
+        let assetsByID = Dictionary(uniqueKeysWithValues: stackAssets.map { ($0.id, $0) })
+        return orderedIDs.compactMap { assetsByID[$0] }
     }
 
     private static func limitedCompareAssets(_ assets: [Asset], limit: Int, anchor: AssetID?) -> [Asset] {
@@ -5126,9 +5195,16 @@ public final class AppModel {
             try setFlagForSelectedAssets(nil)
         case .openLoupe:
             guard let selectedAssetID else { return }
-            openAssetInLibraryLoupe(selectedAssetID)
+            if selectedView == .cullGrid {
+                select(selectedAssetID)
+                selectedView = .loupe
+            } else {
+                openAssetInLibraryLoupe(selectedAssetID)
+            }
         case .returnToGrid:
             returnToLibraryGrid()
+        case .switchCullSubView(let mode):
+            selectedView = mode
         }
     }
 
@@ -5241,6 +5317,12 @@ public final class AppModel {
             toggleLoupeZoom()
         case .cycleScope:
             cycleCullScope()
+        case .showCullGrid:
+            selectedView = .cullGrid
+        case .showCompare:
+            selectedView = .compare
+        case .showABCompare:
+            selectedView = .abCompare
         }
     }
 
@@ -5654,10 +5736,34 @@ public final class AppModel {
     }
 
     public func setFlagForSelectedAsset(_ flag: PickFlag?) throws {
+        let rejectedAssetID = (flag == .reject) ? selectedAssetID : nil
         try updateSelectedAssetMetadata(label: "Flag") { metadata in
             metadata.flag = flag
         }
         try updateActiveCullingSessionProgressAfterFlagChange()
+        if let rejectedAssetID {
+            refillCompareSetAfterReject(rejectedAssetID)
+        }
+    }
+
+    // Compare refill (Task 18): rejecting a frame removes it from the survey
+    // and, if the same candidate stack has an undecided frame not already in
+    // the set, pulls that in to backfill the slot. No-op outside Compare, and
+    // when the stack has no undecided frames left to offer.
+    private func refillCompareSetAfterReject(_ rejectedAssetID: AssetID) {
+        guard selectedView == .compare,
+              let compareAssetIDs,
+              compareAssetIDs.contains(rejectedAssetID) else {
+            return
+        }
+        let stackAssetIDs = candidateStackAssets(limit: Int.max, anchor: rejectedAssetID)?.map(\.id) ?? []
+        let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+        self.compareAssetIDs = CompareRefillOrdering.afterReject(
+            currentCompareAssetIDs: compareAssetIDs,
+            rejectedAssetID: rejectedAssetID,
+            stackAssetIDs: stackAssetIDs,
+            isUndecided: { assetID in assetsByID[assetID]?.metadata.flag == nil }
+        )
     }
 
     public func setColorLabelForSelectedAsset(_ colorLabel: ColorLabel?) throws {
@@ -9492,7 +9598,7 @@ public final class AppModel {
         switch view {
         case .grid, .timeline, .people, .map:
             return true
-        case .loupe, .libraryLoupe, .compare, .abCompare:
+        case .loupe, .libraryLoupe, .compare, .abCompare, .cullGrid:
             return false
         }
     }
