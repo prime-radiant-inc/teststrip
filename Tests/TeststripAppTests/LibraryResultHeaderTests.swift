@@ -74,13 +74,14 @@ final class LibraryResultHeaderTests: XCTestCase {
             canSaveDynamicSet: false,
             canSaveSnapshotSet: false,
             canSaveManualSet: false,
-            reviewQueueCounts: [.fiveStars: 3, .needsKeywords: 4],
+            reviewQueueCounts: [.fiveStars: 3, .needsKeywords: 4, .rejects: 2],
             evaluationKindSummaries: [
                 CatalogEvaluationKindSummary(kind: .focus, assetCount: 7)
             ]
         )
 
         XCTAssertTrue(presentation.suggestedTokens.contains { $0.field == .rating })
+        XCTAssertTrue(presentation.suggestedTokens.contains { $0.display == "Reject" })
         XCTAssertTrue(presentation.suggestedTokens.contains { $0.field == .needsKeywords })
         XCTAssertTrue(presentation.suggestedTokens.contains { $0.field == .signal })
     }

@@ -7307,6 +7307,85 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .loupe)
     }
 
+    func testActiveQueryReplacesRecentWorkSidebarRowsWithMatchedSessions() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-matched-work-sidebar")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let keeper = makeAsset(id: "keeper", path: "/Photos/keeper.jpg", rating: 5)
+        try repository.upsert([keeper])
+        let ceremony = WorkSession(
+            id: WorkSessionID(rawValue: "ceremony-cull"),
+            kind: .culling,
+            intent: "Pick ceremony keepers",
+            title: "Cull Ceremony",
+            detail: "Reviewed ceremony candidates",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: 2,
+            totalUnitCount: 2,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 10),
+            updatedAt: Date(timeIntervalSince1970: 20)
+        )
+        let unrelated = WorkSession(
+            id: WorkSessionID(rawValue: "portrait-import"),
+            kind: .ingest,
+            intent: "Import portraits",
+            title: "Import Portraits",
+            detail: "Imported portraits",
+            status: .completed,
+            inputSetIDs: [],
+            outputSetIDs: [],
+            completedUnitCount: 4,
+            totalUnitCount: 4,
+            failureCount: 0,
+            createdAt: Date(timeIntervalSince1970: 11),
+            updatedAt: Date(timeIntervalSince1970: 30)
+        )
+        try repository.save(ceremony)
+        try repository.save(unrelated)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        let defaultRows = recentWorkCollectionRows(model)
+        XCTAssertEqual(
+            Set(defaultRows.compactMap(workSessionTargetID)),
+            [ceremony.id, unrelated.id]
+        )
+
+        model.librarySearchText = "ceremony"
+        try model.applyLibraryFilters()
+
+        let matchedRows = recentWorkCollectionRows(model)
+        XCTAssertEqual(matchedRows.compactMap(workSessionTargetID), [ceremony.id])
+        XCTAssertTrue(matchedRows.allSatisfy { $0.id.hasPrefix("work-matched-") })
+
+        model.librarySearchText = ""
+        try model.applyLibraryFilters()
+
+        XCTAssertEqual(
+            Set(recentWorkCollectionRows(model).compactMap(workSessionTargetID)),
+            [ceremony.id, unrelated.id]
+        )
+    }
+
+    private func workSessionTargetID(_ row: SidebarRow) -> WorkSessionID? {
+        if case .workSession(let id) = row.target {
+            return id
+        }
+        return nil
+    }
+
     func testSelectingCullingWorkSessionReopensLoupeView() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-select-culling-work-session")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
@@ -15544,7 +15623,10 @@ final class AppModelTests: XCTestCase {
     // "Starred Work" section's contents.
     private func recentWorkCollectionRows(_ model: AppModel) -> [SidebarRow] {
         (model.sidebarSections.first { $0.title == "Collections" }?.rows ?? [])
-            .filter { $0.id.hasPrefix("work-recent-") || $0.id.hasPrefix("work-starred-") }
+            .filter {
+                $0.id.hasPrefix("work-recent-") || $0.id.hasPrefix("work-starred-")
+                    || $0.id.hasPrefix("work-matched-")
+            }
     }
 
     // Just the recency-sourced slice (excludes starred sessions old enough

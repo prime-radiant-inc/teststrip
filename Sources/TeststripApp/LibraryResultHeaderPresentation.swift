@@ -106,6 +106,9 @@ public struct LibraryResultHeaderPresentation: Equatable {
         if hasResults(.picks) {
             addIfNeeded(LibraryQueryToken(field: .flag, display: "Pick", value: .flag(.pick)))
         }
+        if hasResults(.rejects) {
+            addIfNeeded(LibraryQueryToken(field: .flag, display: "Reject", value: .flag(.reject)))
+        }
         if hasResults(.needsKeywords) {
             addIfNeeded(LibraryQueryToken(field: .needsKeywords, display: "Needs Keywords", value: .int(0)))
         }

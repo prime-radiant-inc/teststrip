@@ -1523,7 +1523,8 @@ public final class AppModel {
                 catalogFolders: catalogFolders,
                 expandedFolderPaths: expandedFolderPaths,
                 recentWork: recentWork,
-                starredWork: starredWork
+                starredWork: starredWork,
+                matchedWork: workHistorySearchResults
             )
         case .cull, .people:
             return []
@@ -8115,14 +8116,20 @@ public final class AppModel {
     }
 
     private func refreshWorkHistorySearchResults(repository: CatalogRepository) throws {
+        let previousResults = workHistorySearchResults
         let residualText = LibrarySearchIntent.parse(librarySearchText).residualText?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let residualText, !residualText.isEmpty else {
+        if let residualText, !residualText.isEmpty {
+            workHistorySearchResults = try repository.workSessions(matching: residualText, limit: 5)
+                .map(AppWorkActivity.init)
+        } else {
             workHistorySearchResults = []
-            return
         }
-        workHistorySearchResults = try repository.workSessions(matching: residualText, limit: 5)
-            .map(AppWorkActivity.init)
+        // The Collections group's Recent Work rows show the matched sessions
+        // while a query is active, so a result change re-renders the sidebar.
+        if workHistorySearchResults != previousResults {
+            rebuildSidebarSections()
+        }
     }
 
     public func loadMoreAssets() throws {
@@ -10940,6 +10947,7 @@ public final class AppModel {
         metadataSyncConflictCount: Int? = nil,
         recentWork: [AppWorkActivity] = [],
         starredWork: [AppWorkActivity] = [],
+        matchedWork: [AppWorkActivity] = [],
         sourceRoots: [CatalogSourceRoot] = [],
         sourceRootBookmarkRepairPaths: Set<String> = []
     ) -> [SidebarSection] {
@@ -10963,11 +10971,22 @@ public final class AppModel {
         let visibleSavedAssetSets = Self.visibleSavedAssetSets(savedAssetSets)
         let starredRows = visibleSavedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0, count: assetSetCounts[$0.id]) }
         collectionsRows.append(contentsOf: starredRows)
-        collectionsRows.append(contentsOf: mergedRecentWorkSidebarRows(
-            recentWork: recentWork,
-            starredWork: starredWork,
-            scopeCounts: workSessionScopeCounts
-        ))
+        if matchedWork.isEmpty {
+            collectionsRows.append(contentsOf: mergedRecentWorkSidebarRows(
+                recentWork: recentWork,
+                starredWork: starredWork,
+                scopeCounts: workSessionScopeCounts
+            ))
+        } else {
+            // An active Library query narrows Recent Work to the sessions
+            // matching its plain-text remainder (the SearchWorkspace "Work
+            // History" rail's home after Task 9), keeping their reopen targets.
+            collectionsRows.append(contentsOf: Self.workSidebarRows(
+                for: matchedWork,
+                idPrefix: "work-matched",
+                scopeCounts: workSessionScopeCounts
+            ))
+        }
 
         var sections = [SidebarSection(title: "Collections", rows: collectionsRows)]
         if !visibleSavedAssetSets.isEmpty {
