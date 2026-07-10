@@ -2,9 +2,20 @@ import AppKit
 import SwiftUI
 
 struct AppWindowLayoutMetrics {
-    static let minimumSplitContentWidth: CGFloat = 1_505
-    static let minimumWidth: CGFloat = 1_520
-    static let defaultWidth: CGFloat = minimumWidth
+    /// Per-workspace minimum window width (Task 22): the prior single global
+    /// 1520pt floor forced every workspace to pay for Library's chrome
+    /// (sidebar + inspector + footer). Library keeps the widest floor; Cull's
+    /// rail is narrower; People has neither inspector nor filter chrome.
+    /// Sidebar/inspector collapse before content squeezes below these.
+    static func minimumWidth(for workspace: Workspace) -> CGFloat {
+        switch workspace {
+        case .library: return 1_000
+        case .cull: return 800
+        case .people: return 700
+        }
+    }
+
+    static let defaultWidth: CGFloat = 1_520
     static let minimumHeight: CGFloat = 720
     static let defaultHeight: CGFloat = 820
 }
@@ -42,7 +53,7 @@ struct TeststripApplication: App {
                 InspectorView(model: model)
             }
             .frame(
-                minWidth: AppWindowLayoutMetrics.minimumWidth,
+                minWidth: AppWindowLayoutMetrics.minimumWidth(for: model.selectedWorkspace),
                 minHeight: AppWindowLayoutMetrics.minimumHeight
             )
             .preferredColorScheme(.dark)
@@ -57,7 +68,6 @@ struct TeststripApplication: App {
                 MetadataHistoryCommands(model: model)
                 NavigationCommands(model: model)
                 MetadataActionCommands(model: model)
-                AutopilotCommands(model: model)
             }
             Group {
                 CullingCommands(model: model)
@@ -71,6 +81,67 @@ struct TeststripApplication: App {
 
         Settings {
             PreferencesView(model: model)
+        }
+    }
+}
+
+/// Canonical menu action ids (Task 22): the workspace/sub-view/inspector-tab/
+/// zoom menu items below are built ad hoc as SwiftUI `Button`s rather than
+/// from a data-driven presentation type (as `CullingCommands` is), so this
+/// gives `MenuCoveragePresentationTests` something to enumerate against the
+/// underlying action-producing enums. Update alongside the Commands below
+/// whenever a menu item is added, renamed, or removed.
+enum AppMenuCoveragePresentation {
+    static let workspaceActionIDs: [String] = Workspace.allCases.map(\.title)
+
+    /// Sub-view switcher items (Task 10 Library / Task 18 Cull). `.people`
+    /// has no switcher — People is a single view, not a workspace with
+    /// alternate routes — so it's excluded.
+    static let subViewMenuModes: [LibraryViewMode] = [
+        .loupe, .cullGrid, .compare, .abCompare,
+        .grid, .libraryLoupe, .timeline, .map
+    ]
+
+    static let inspectorTabActionIDs: [String] = InspectorTab.allCases.map { "\($0.title) Tab" }
+    static let showInspectorActionID = "Show Inspector"
+
+    static let zoomActionIDs: [String] = ["Zoom In", "Zoom Out"]
+
+    static var cullingShortcutActionIDs: [String] {
+        CullingCommandMenuPresentation.sections
+            .flatMap(\.items)
+            .filter { !$0.isMonitorOnly }
+            .map(\.title)
+    }
+}
+
+extension LibraryViewMode {
+    /// Title shown in the View menu's sub-view switcher; `nil` excludes the
+    /// mode (currently only `.people`, which has no switcher).
+    var subViewMenuTitle: String? {
+        switch self {
+        case .loupe: return "Loupe"
+        case .cullGrid: return "Grid"
+        case .compare: return "Compare"
+        case .abCompare: return "A/B Compare"
+        case .grid: return "Library Grid"
+        case .libraryLoupe: return "Library Loupe"
+        case .timeline: return "Timeline"
+        case .map: return "Map"
+        case .people: return nil
+        }
+    }
+
+    /// Bare (no-modifier) key equivalent mirroring the in-view g/c/b key
+    /// captures for the cull sub-views (CullingKeyCaptureView in loupe/
+    /// compare/A-B, GridKeyCaptureView in the cull grid). Library sub-views
+    /// have no bare shortcut.
+    var subViewMenuKey: Character? {
+        switch self {
+        case .cullGrid: return "g"
+        case .compare: return "c"
+        case .abCompare: return "b"
+        default: return nil
         }
     }
 }
@@ -89,43 +160,31 @@ private struct WorkspaceCommands: Commands {
 
             Divider()
 
-            // Cull sub-view routes (Task 18): keys mirror the in-view g/c/b
-            // shortcuts (CullingKeyCaptureView in loupe/compare/A-B,
-            // GridKeyCaptureView in the cull grid). Menus stay the system of
-            // record even though the shortcuts are also reachable by hand.
-            Button("Loupe") {
-                model.selectedView = .loupe
+            // Menus stay the system of record even though the sub-view
+            // switchers (in-view key captures, header toggle) also reach
+            // these routes.
+            ForEach(AppMenuCoveragePresentation.subViewMenuModes, id: \.self) { mode in
+                subViewButton(for: mode)
             }
-            Button("Grid") {
-                model.selectedView = .cullGrid
-            }
-            .keyboardShortcut("g", modifiers: [])
-            Button("Compare") {
-                model.selectedView = .compare
-            }
-            .keyboardShortcut("c", modifiers: [])
-            Button("A/B Compare") {
-                model.selectedView = .abCompare
-            }
-            .keyboardShortcut("b", modifiers: [])
+        }
+    }
 
+    @ViewBuilder
+    private func subViewButton(for mode: LibraryViewMode) -> some View {
+        // Divider between the cull and library sub-view groups (Tasks 18/10).
+        if mode == .grid {
             Divider()
-
-            // Library sub-view toggle (Task 10): menu equivalents of the
-            // Library header's Grid/Loupe/Timeline/Map segmented control.
-            // Menus stay the system of record even though the header also
-            // exposes these as a toggle.
-            Button("Library Grid") {
-                model.selectedView = .grid
-            }
-            Button("Library Loupe") {
-                model.selectedView = .libraryLoupe
-            }
-            Button("Timeline") {
-                model.selectedView = .timeline
-            }
-            Button("Map") {
-                model.selectedView = .map
+        }
+        if let title = mode.subViewMenuTitle {
+            if let key = mode.subViewMenuKey {
+                Button(title) {
+                    model.selectedView = mode
+                }
+                .keyboardShortcut(KeyEquivalent(key), modifiers: [])
+            } else {
+                Button(title) {
+                    model.selectedView = mode
+                }
             }
         }
     }
@@ -217,61 +276,6 @@ private struct MetadataActionCommands: Commands {
     }
 }
 
-private struct AutopilotCommands: Commands {
-    var model: AppModel
-
-    var body: some Commands {
-        CommandMenu("Find") {
-            Button("Find Best Shots") {
-                findBestShots()
-            }
-            .keyboardShortcut("b", modifiers: [.command, .shift])
-            .disabled(model.isImporting || !model.canFindBestShots)
-
-            // A keyboard-reachable Evaluate for power users; the toolbar entry
-            // (More ▸ Evaluate…) is one level deep, no longer buried under Analyze.
-            Button("Evaluate Photos") {
-                evaluateVisiblePhotos()
-            }
-            .keyboardShortcut("e", modifiers: [.command, .shift])
-            .disabled(model.isImporting || !model.canRequestVisibleAssetEvaluations)
-
-            Divider()
-
-            // Power-user entry into the same run→review machinery; a newcomer
-            // never needs it — Find Best Shots subsumes it.
-            Button("Run Autopilot") {
-                runAutopilot()
-            }
-            .disabled(model.isImporting || model.assets.isEmpty)
-        }
-    }
-
-    private func evaluateVisiblePhotos() {
-        do {
-            try model.requestVisibleAssetEvaluations()
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func findBestShots() {
-        do {
-            try model.findBestShots()
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func runAutopilot() {
-        do {
-            try model.runAutopilotOnCurrentScope()
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-}
-
 // The People workspace's scan trigger (Task 21): it leaves the canvas so
 // the queue can own the Return-confirm keystroke without a stray button
 // stealing focus. Progress reports through the Activity item like any
@@ -298,11 +302,55 @@ private struct PeopleCommands: Commands {
     }
 }
 
+// Find Best Shots / Evaluate / Run Autopilot / auto-cull used to live in a
+// standalone "Find" menu; spec §6 folds them into Culling alongside the
+// existing shortcut sections so Culling is the one place for cull-workflow
+// actions. Shortcuts are unchanged (⇧⌘B, ⇧⌘E on Evaluate Visible).
 private struct CullingCommands: Commands {
     var model: AppModel
 
     var body: some Commands {
         CommandMenu("Culling") {
+            Button("Find Best Shots") {
+                findBestShots()
+            }
+            .keyboardShortcut("b", modifiers: [.command, .shift])
+            .disabled(model.isImporting || !model.canFindBestShots)
+
+            Button("Run Autopilot") {
+                runAutopilot()
+            }
+            .disabled(model.isImporting || model.assets.isEmpty)
+
+            Divider()
+
+            Button("Evaluate Photo") {
+                evaluateSelectedPhoto()
+            }
+            .disabled(model.isImporting || !model.canRequestSelectedAssetEvaluation)
+
+            // The keyboard-reachable Evaluate for power users; the toolbar
+            // entry (More ▸ Evaluate Visible) is one level deep.
+            Button("Evaluate Visible") {
+                evaluateVisiblePhotos()
+            }
+            .keyboardShortcut("e", modifiers: [.command, .shift])
+            .disabled(model.isImporting || !model.canRequestVisibleAssetEvaluations)
+
+            Button("Evaluate Scope") {
+                evaluateCurrentScope()
+            }
+            .disabled(model.isImporting || !model.canRequestCurrentScopeAssetEvaluations)
+
+            Toggle(isOn: Binding(
+                get: { model.autopilotEnabled },
+                set: { model.autopilotEnabled = $0 }
+            )) {
+                Text("Auto-cull After Import")
+            }
+
+            Divider()
+
             ForEach(Array(CullingCommandMenuPresentation.sections.enumerated()), id: \.element.id) { index, section in
                 ForEach(section.items.filter { !$0.isMonitorOnly }) { item in
                     Button(item.title) {
@@ -320,6 +368,46 @@ private struct CullingCommands: Commands {
     private func applyShortcut(_ shortcut: CullingShortcut) {
         do {
             try model.applyCullingShortcut(shortcut)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func findBestShots() {
+        do {
+            try model.findBestShots()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func runAutopilot() {
+        do {
+            try model.runAutopilotOnCurrentScope()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func evaluateSelectedPhoto() {
+        do {
+            try model.requestSelectedAssetEvaluations()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func evaluateVisiblePhotos() {
+        do {
+            try model.requestVisibleAssetEvaluations()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func evaluateCurrentScope() {
+        do {
+            try model.requestCurrentScopeAssetEvaluations()
         } catch {
             model.errorMessage = error.localizedDescription
         }
