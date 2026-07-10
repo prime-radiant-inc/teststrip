@@ -126,8 +126,8 @@ public struct ActivityCenterPresentation: Equatable {
         self.sources = sources
         self.xmpConflicts = xmpConflicts
 
-        let offlineSourceCount = sources.filter { $0.availability == .offline }.count
-        let problemCount = xmpConflicts.count + offlineSourceCount + providerFailureCount
+        let unavailableSourceCount = sources.filter { $0.availability != .online }.count
+        let problemCount = xmpConflicts.count + unavailableSourceCount + providerFailureCount
         self.badge = problemCount > 0 ? .problems(problemCount) : .none
 
         func isActive(_ status: WorkSessionStatus) -> Bool {

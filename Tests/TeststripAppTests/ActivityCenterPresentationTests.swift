@@ -70,6 +70,28 @@ final class ActivityCenterPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.badge, .problems(4))
     }
 
+    func testEveryNonOnlineSourceAvailabilityCountsTowardProblemBadge() {
+        for availability in [SourceAvailability.offline, .missing, .moved, .stale] {
+            let presentation = ActivityCenterPresentation(
+                jobs: [],
+                importActivity: nil,
+                importError: nil,
+                sources: [
+                    SourceStatusRow(id: "root-ok", name: "Library", availability: .online),
+                    SourceStatusRow(id: "root-bad", name: "Card", availability: availability)
+                ],
+                xmpConflicts: [],
+                providerFailureCount: 0
+            )
+
+            XCTAssertEqual(
+                presentation.badge,
+                .problems(1),
+                "\(availability) source should count toward the problem badge"
+            )
+        }
+    }
+
     func testImportProgressAndErrorSurface() {
         let importActivity = AppWorkActivity(
             kind: .ingest,
