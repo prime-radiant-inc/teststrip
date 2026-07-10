@@ -37,7 +37,7 @@ struct CullSidebarView: View {
     }
 
     private var sourceGroups: [CullSourceGroup] {
-        [.recentImport, .topPicks, .needsEyes, .selection]
+        [.recentImport, .autopilotProposals, .topPicks, .needsEyes, .selection]
     }
 
     private var sourcesByGroup: [CullSourceGroup: [CullSource]] {

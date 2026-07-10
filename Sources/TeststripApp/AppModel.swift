@@ -16,13 +16,15 @@ public enum LibraryViewMode: String, CaseIterable, Sendable {
 
 extension LibraryViewMode: Codable {
     // Search used to be its own route (`.search`); it's now just the Library
-    // grid with a query in the token field (Task 9). A persisted session
-    // from before that migration decodes its stored "search" rawValue as
-    // `.grid` instead of failing the whole `SessionRestoreState` decode.
+    // grid with a query in the token field (Task 9). Copilot/Review was its
+    // own route (`.copilot`) until the Cull sidebar's source picker absorbed
+    // it (Task 13). A persisted session from before those migrations decodes
+    // its stored "search"/"copilot" rawValue as `.grid` instead of failing
+    // the whole `SessionRestoreState` decode.
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
-        if rawValue == "search" {
+        if rawValue == "search" || rawValue == "copilot" {
             self = .grid
             return
         }
@@ -371,12 +373,14 @@ public extension ReviewQueue {
     }
 }
 
-/// The groupings the Cull sidebar's source picker presents. Recent Import and
-/// Selection are singletons; Top Picks and Needs Eyes each carry the pair of
-/// review queues Copilot used to read (picks/potentialPicks, likelyIssues/
-/// needsEvaluation) so the sidebar row-per-queue reuses the same counts.
+/// The groupings the Cull sidebar's source picker presents. Recent Import,
+/// Autopilot Proposals, and Selection are singletons; Top Picks and Needs
+/// Eyes each carry the pair of review queues Copilot used to read
+/// (picks/potentialPicks, likelyIssues/needsEvaluation) so the sidebar
+/// row-per-queue reuses the same counts.
 public enum CullSourceGroup: String, Equatable, Sendable {
     case recentImport
+    case autopilotProposals
     case topPicks
     case needsEyes
     case diagnostics
@@ -386,6 +390,7 @@ public enum CullSourceGroup: String, Equatable, Sendable {
 public struct CullSource: Equatable, Sendable, Identifiable {
     public enum Target: Equatable, Sendable {
         case recentImport
+        case autopilotProposals
         case reviewQueue(ReviewQueue)
         case selection
     }
@@ -4577,16 +4582,20 @@ public final class AppModel {
     /// Activates a Cull sidebar source: reuses the same routes Copilot's
     /// Top Picks / Needs Eyes panels and "Cull remaining from latest import"
     /// action used, scoping a fresh culling session to the source's assets.
-    @discardableResult
-    public func activateCullSource(_ target: CullSource.Target) throws -> WorkSession {
+    /// Autopilot proposals route into the confirm-before-write review flow
+    /// instead of a culling session — nothing is written until the user
+    /// keeps them.
+    public func activateCullSource(_ target: CullSource.Target) throws {
         switch target {
         case .recentImport:
-            return try beginCullingFromLatestImportCompletion()
+            try beginCullingFromLatestImportCompletion()
+        case .autopilotProposals:
+            try beginAutopilotReview()
         case .reviewQueue(let queue):
             try applyReviewQueue(queue)
-            return try beginCullingSession(named: queue.presentation.title)
+            _ = try beginCullingSession(named: queue.presentation.title)
         case .selection:
-            return try cullCurrentSelection()
+            try cullCurrentSelection()
         }
     }
 
@@ -4603,6 +4612,18 @@ public final class AppModel {
                 systemImage: "tray.and.arrow.down",
                 count: summary.importedPhotoCount,
                 target: .recentImport
+            ))
+        }
+        // The confirm-before-write review path for machine labels: present
+        // only while proposals are pending so it never renders as a dead row.
+        if !pendingAutopilotProposals.isEmpty {
+            sources.append(CullSource(
+                id: "autopilot-proposals",
+                group: .autopilotProposals,
+                title: "Autopilot Proposals",
+                systemImage: "wand.and.stars",
+                count: pendingAutopilotProposals.count,
+                target: .autopilotProposals
             ))
         }
         for queue in [ReviewQueue.picks, .potentialPicks] {

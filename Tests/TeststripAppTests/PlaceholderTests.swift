@@ -206,15 +206,17 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertFalse(placeholder.currentFallback.localizedCaseInsensitiveContains("placeholder People view"))
     }
 
-    func testCopilotLedgerTracksLiveRouteWithoutAutonomousActions() throws {
+    func testCopilotLedgerTracksAbsorbedRouteWithoutAutonomousActions() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "library.copilot" })
         let surface = try XCTUnwrap(LiveMockupDesignSurfaces.all.first { $0.designID == "1b" })
 
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("copilot route"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("review queues"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("absorbed"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Cull sidebar's source picker"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("Inspector's AI tab"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("scope save/freeze actions"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("autonomous"))
-        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("copilot route"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("absorbed"))
+        XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("Cull sidebar's source picker"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("scope save/freeze actions"))
         XCTAssertTrue(surface.currentImplementation.localizedCaseInsensitiveContains("autonomous"))
     }
