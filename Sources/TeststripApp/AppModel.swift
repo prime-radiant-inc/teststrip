@@ -5,7 +5,6 @@ import TeststripCore
 
 public enum LibraryViewMode: String, CaseIterable, Sendable {
     case grid
-    case copilot
     case loupe
     case libraryLoupe
     case compare
@@ -76,7 +75,7 @@ public enum Workspace: String, CaseIterable, Sendable {
 extension LibraryViewMode {
     public var workspace: Workspace {
         switch self {
-        case .loupe, .compare, .abCompare, .copilot:
+        case .loupe, .compare, .abCompare:
             return .cull
         case .grid, .timeline, .map, .libraryLoupe:
             return .library
@@ -372,6 +371,50 @@ public extension ReviewQueue {
     }
 }
 
+/// The groupings the Cull sidebar's source picker presents. Recent Import and
+/// Selection are singletons; Top Picks and Needs Eyes each carry the pair of
+/// review queues Copilot used to read (picks/potentialPicks, likelyIssues/
+/// needsEvaluation) so the sidebar row-per-queue reuses the same counts.
+public enum CullSourceGroup: String, Equatable, Sendable {
+    case recentImport
+    case topPicks
+    case needsEyes
+    case diagnostics
+    case selection
+}
+
+public struct CullSource: Equatable, Sendable, Identifiable {
+    public enum Target: Equatable, Sendable {
+        case recentImport
+        case reviewQueue(ReviewQueue)
+        case selection
+    }
+
+    public var id: String
+    public var group: CullSourceGroup
+    public var title: String
+    public var systemImage: String
+    public var count: Int
+    public var target: Target
+
+    public init(id: String, group: CullSourceGroup, title: String, systemImage: String, count: Int, target: Target) {
+        self.id = id
+        self.group = group
+        self.title = title
+        self.systemImage = systemImage
+        self.count = count
+        self.target = target
+    }
+}
+
+public struct CullSourcePresentation: Equatable, Sendable {
+    public var sources: [CullSource]
+
+    public init(sources: [CullSource]) {
+        self.sources = sources
+    }
+}
+
 /// The plan the "Find Best Shots" marquee action follows: whether to kick off
 /// evaluation over the current scope, and where to land the user. It never
 /// dead-ends — when nothing ranks and there is nothing left to evaluate it
@@ -566,7 +609,6 @@ public struct PeopleFaceSuggestion: Equatable, Identifiable, Sendable {
 public enum SidebarRowTarget: Equatable, Sendable {
     case allPhotographs
     case search
-    case copilot
     case timeline
     case people
     case places
@@ -2044,9 +2086,6 @@ public final class AppModel {
     }
 
     public var libraryTitle: String {
-        if selectedView == .copilot {
-            return "Review"
-        }
         if selectedView == .timeline {
             return "Timeline"
         }
@@ -3783,9 +3822,6 @@ public final class AppModel {
             // just routes there now instead of a dedicated route.
             selectedAssetSetID = nil
             selectedView = .grid
-        case .copilot:
-            selectedAssetSetID = nil
-            selectedView = .copilot
         case .timeline:
             selectedAssetSetID = nil
             selectedView = .timeline
@@ -4512,6 +4548,105 @@ public final class AppModel {
         )
         statusMessage = "Started \(title)"
         return try catalog.repository.session(id: sessionID)
+    }
+
+    /// Scopes a fresh culling session to whatever the Library has selected —
+    /// the multi-select batch if there is one, else the single loupe/grid
+    /// selection — and switches into the Cull workspace on it. Exposed as the
+    /// Library context-menu item "Cull These".
+    @discardableResult
+    public func cullCurrentSelection() throws -> WorkSession {
+        let selectionIDs = selectedBatchAssetIDsInCatalogOrder.isEmpty
+            ? (selectedAssetID.map { [$0] } ?? [])
+            : selectedBatchAssetIDsInCatalogOrder
+        guard !selectionIDs.isEmpty else {
+            throw TeststripError.invalidState("no photos selected to cull")
+        }
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let setID = AssetSetID(rawValue: "cull-selection-\(UUID().uuidString)")
+        let selectionSet = AssetSet.manual(id: setID, name: "Cull These", assetIDs: selectionIDs)
+        try catalog.repository.upsert(selectionSet)
+        savedAssetSets = try catalog.repository.assetSets()
+        assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
+        try applyAssetSet(id: setID)
+        return try beginCullingSession(named: "Cull These")
+    }
+
+    /// Activates a Cull sidebar source: reuses the same routes Copilot's
+    /// Top Picks / Needs Eyes panels and "Cull remaining from latest import"
+    /// action used, scoping a fresh culling session to the source's assets.
+    @discardableResult
+    public func activateCullSource(_ target: CullSource.Target) throws -> WorkSession {
+        switch target {
+        case .recentImport:
+            return try beginCullingFromLatestImportCompletion()
+        case .reviewQueue(let queue):
+            try applyReviewQueue(queue)
+            return try beginCullingSession(named: queue.presentation.title)
+        case .selection:
+            return try cullCurrentSelection()
+        }
+    }
+
+    /// The Cull sidebar's source picker: recent import, the Top Picks /
+    /// Needs Eyes review-queue groups Copilot used to read, and whatever the
+    /// Library currently has selected.
+    public var cullSourcePresentation: CullSourcePresentation {
+        var sources: [CullSource] = []
+        if let summary = latestImportCompletionSummary {
+            sources.append(CullSource(
+                id: "recent-import",
+                group: .recentImport,
+                title: summary.title,
+                systemImage: "tray.and.arrow.down",
+                count: summary.importedPhotoCount,
+                target: .recentImport
+            ))
+        }
+        for queue in [ReviewQueue.picks, .potentialPicks] {
+            sources.append(CullSource(
+                id: "queue-\(queue.rawValue)",
+                group: .topPicks,
+                title: queue.presentation.title,
+                systemImage: queue.presentation.systemImage,
+                count: reviewQueueCounts[queue] ?? 0,
+                target: .reviewQueue(queue)
+            ))
+        }
+        for queue in [ReviewQueue.likelyIssues, .needsEvaluation] {
+            sources.append(CullSource(
+                id: "queue-\(queue.rawValue)",
+                group: .needsEyes,
+                title: queue.presentation.title,
+                systemImage: queue.presentation.systemImage,
+                count: reviewQueueCounts[queue] ?? 0,
+                target: .reviewQueue(queue)
+            ))
+        }
+        for queue in [ReviewQueue.rejects, .fiveStars, .needsKeywords, .facesFound, .ocrFound, .providerFailures] {
+            sources.append(CullSource(
+                id: "queue-\(queue.rawValue)",
+                group: .diagnostics,
+                title: queue.presentation.title,
+                systemImage: queue.presentation.systemImage,
+                count: reviewQueueCounts[queue] ?? 0,
+                target: .reviewQueue(queue)
+            ))
+        }
+        let selectionCount = selectedBatchAssetIDs.isEmpty
+            ? (selectedAssetID != nil ? 1 : 0)
+            : selectedBatchAssetIDs.count
+        sources.append(CullSource(
+            id: "selection",
+            group: .selection,
+            title: "Selection",
+            systemImage: "checkmark.circle",
+            count: selectionCount,
+            target: .selection
+        ))
+        return CullSourcePresentation(sources: sources)
     }
 
     public func openAssetInLoupe(_ assetID: AssetID) {
@@ -9201,7 +9336,7 @@ public final class AppModel {
     // Routes that only ever exist mid-culling-session; never auto-restored.
     private static func isRestorableSessionRoute(_ view: LibraryViewMode) -> Bool {
         switch view {
-        case .grid, .copilot, .timeline, .people, .map:
+        case .grid, .timeline, .people, .map:
             return true
         case .loupe, .libraryLoupe, .compare, .abCompare:
             return false

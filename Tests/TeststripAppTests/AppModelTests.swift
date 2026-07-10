@@ -267,7 +267,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.canNavigateBack)
         XCTAssertFalse(model.canNavigateForward)
 
-        try model.selectSidebarTarget(.copilot)
+        try model.selectSidebarTarget(.people)
         try model.selectSidebarTarget(.timeline)
         try model.selectSidebarTarget(.search)
         XCTAssertEqual(model.selectedView, .grid)
@@ -279,7 +279,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.canNavigateForward)
 
         try model.navigateBack()
-        XCTAssertEqual(model.selectedView, .copilot)
+        XCTAssertEqual(model.selectedView, .people)
         XCTAssertFalse(model.canNavigateBack)
 
         try model.navigateForward()
@@ -291,24 +291,24 @@ final class AppModelTests: XCTestCase {
 
     func testNavigatingToANewViewAfterGoingBackClearsForwardHistory() throws {
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
-        try model.selectSidebarTarget(.copilot)
+        try model.selectSidebarTarget(.people)
         try model.selectSidebarTarget(.timeline)
 
         try model.navigateBack()
-        XCTAssertEqual(model.selectedView, .copilot)
+        XCTAssertEqual(model.selectedView, .people)
         XCTAssertTrue(model.canNavigateForward)
 
         try model.selectSidebarTarget(.search)
         XCTAssertFalse(model.canNavigateForward)
 
         try model.navigateBack()
-        XCTAssertEqual(model.selectedView, .copilot)
+        XCTAssertEqual(model.selectedView, .people)
     }
 
     func testRepeatingTheCurrentViewDoesNotGrowNavigationHistory() throws {
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
-        try model.selectSidebarTarget(.copilot)
-        try model.selectSidebarTarget(.copilot)
+        try model.selectSidebarTarget(.people)
+        try model.selectSidebarTarget(.people)
         XCTAssertFalse(model.canNavigateBack)
     }
 
@@ -5816,14 +5816,14 @@ final class AppModelTests: XCTestCase {
             named: "app-model-all-photos-sidebar",
             assets: [filtered, unfiltered]
         )
-        model.selectedView = .copilot
+        model.selectedView = .timeline
         model.minimumRatingFilter = 5
         try model.applyLibraryFilters()
         XCTAssertEqual(model.assets.map(\.id), [filtered.id])
 
-        // The sidebar is empty while in Cull's Copilot sub-view (Task 7);
-        // the All Photographs target still works directly regardless of
-        // which sidebar rows are currently rendered.
+        // The sidebar is empty while in Cull's sub-views (Task 7); the All
+        // Photographs target still works directly regardless of which
+        // sidebar rows are currently rendered.
         try model.selectSidebarTarget(.allPhotographs)
 
         XCTAssertEqual(model.selectedView, .grid)

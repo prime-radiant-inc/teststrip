@@ -288,23 +288,11 @@ final class LiveMockupPlaceholderTests: XCTestCase {
     // The Search/Review(copilot)/People sidebar rows are gone (Task 7 -
     // Library is Collections/Saved Sets/Folders only). Search's permanent
     // home is now the Library grid itself (Task 9 - token field + result
-    // header, no dedicated route to preserve a query across). Review is
-    // reachable directly via `model.selectedView` (the temporary View menu
-    // item until Tasks 10/13 land its permanent home); People via the
-    // workspace switcher. Their `.agenticSearch`/`.copilotLibrary` mockup
-    // ledger entries are still tracked in the copilot/search-focused tests
-    // above.
-    func testSelectingCopilotViewPreservesScope() throws {
-        let model = AppModel.demo()
-        model.librarySearchText = "ceremony"
-        model.minimumRatingFilter = 4
-
-        model.selectedView = .copilot
-
-        XCTAssertEqual(model.selectedView, .copilot)
-        XCTAssertEqual(model.librarySearchText, "ceremony")
-        XCTAssertEqual(model.minimumRatingFilter, 4)
-    }
+    // header, no dedicated route to preserve a query across). Review's
+    // permanent home is the Cull sidebar's source picker (Task 13 -
+    // CullSidebarView); People via the workspace switcher. Their
+    // `.agenticSearch`/`.copilotLibrary` mockup ledger entries are still
+    // tracked in the copilot/search-focused tests above.
 
     func testWorkHistoryLedgerTracksRecentAndStarredWorkWithoutEmptyRows() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "work.history" })

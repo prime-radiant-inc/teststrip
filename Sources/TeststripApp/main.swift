@@ -27,7 +27,11 @@ struct TeststripApplication: App {
     var body: some Scene {
         WindowGroup {
             NavigationSplitView {
-                SidebarView(model: model)
+                if model.selectedWorkspace == .cull {
+                    CullSidebarView(model: model)
+                } else {
+                    SidebarView(model: model)
+                }
             } detail: {
                 LibraryGridView(model: model)
             }
@@ -95,15 +99,6 @@ private struct WorkspaceCommands: Commands {
             Button("A/B Compare") {
                 model.selectedView = .abCompare
             }
-
-            // Temporary route for the review queue destination Task 7's
-            // sidebar deletion left homeless; Task 13 (Cull source picker)
-            // gives it a permanent home.
-            Button("Review") {
-                model.selectedView = .copilot
-            }
-
-            Divider()
 
             // Library sub-view toggle (Task 10): menu equivalents of the
             // Library header's Grid/Loupe/Timeline/Map segmented control.

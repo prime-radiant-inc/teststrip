@@ -302,8 +302,6 @@ struct SidebarView: View {
             return "photo.on.rectangle"
         case .search:
             return "magnifyingglass"
-        case .copilot:
-            return "wand.and.stars"
         case .timeline:
             return "calendar"
         case .people:

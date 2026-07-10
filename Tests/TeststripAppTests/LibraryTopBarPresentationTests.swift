@@ -31,7 +31,7 @@ final class LibraryTopBarPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.filterSummaryText, "2 filters")
     }
 
-    func testTimelineCopilotAndPeopleAreDirectLibraryRoutes() {
+    func testTimelineAndPeopleAreDirectLibraryRoutes() {
         XCTAssertEqual(
             LibraryTopBarPresentation(
                 catalogTitle: "Wedding Archive",
@@ -41,16 +41,6 @@ final class LibraryTopBarPresentationTests: XCTestCase {
                 activeFilterChips: []
             ).breadcrumbItems,
             ["Library", "Timeline"]
-        )
-        XCTAssertEqual(
-            LibraryTopBarPresentation(
-                catalogTitle: "Wedding Archive",
-                libraryTitle: "Review",
-                libraryCountText: "12 photos",
-                selectedView: .copilot,
-                activeFilterChips: []
-            ).breadcrumbItems,
-            ["Library", "Review"]
         )
         XCTAssertEqual(
             LibraryTopBarPresentation(

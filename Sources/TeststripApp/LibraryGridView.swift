@@ -74,12 +74,6 @@ struct LibraryGridView: View {
         Group {
             if model.selectedView == .people {
                 PeopleView(model: model)
-            } else if model.selectedView == .copilot {
-                CopilotView(
-                    model: model,
-                    saveDynamicSet: showSaveSearchPopover,
-                    saveSnapshotSet: showSaveSnapshotSetPopover
-                )
             } else if model.selectedView == .timeline {
                 TimelineWorkspaceView(
                     model: model,
@@ -242,7 +236,14 @@ struct LibraryGridView: View {
 
         ToolbarItem {
             Button {
-                showStartCullingPopover()
+                // A batch selection culls straight to those photos (same
+                // primitive as the "Cull These" context-menu item); an empty
+                // selection falls back to the whole-scope naming popover.
+                if model.selectedBatchAssetCount > 0 {
+                    cullCurrentBatchSelection()
+                } else {
+                    showStartCullingPopover()
+                }
             } label: {
                 Label("Cull", systemImage: "checkmark.seal")
             }
@@ -2272,6 +2273,11 @@ struct LibraryGridView: View {
                     .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
                         selectAssetFromGrid(assetID)
                     }
+                    .contextMenu {
+                        Button("Cull These") {
+                            cullSelection(anchoredOn: asset.id)
+                        }
+                    }
                     .id(asset.id.rawValue)
                     .task(id: asset.id.rawValue) {
                         do {
@@ -2833,6 +2839,24 @@ struct LibraryGridView: View {
         do {
             try model.beginCullingSession(named: cullingSessionName, intent: cullingSessionIntent)
             isStartingCullingSession = false
+            focusCullingSurface()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    // Right-click "Cull These": culls the batch selection if the clicked
+    // asset is part of it, otherwise culls just that one asset.
+    private func cullSelection(anchoredOn assetID: AssetID) {
+        if !model.isBatchSelected(assetID) {
+            model.select(assetID)
+        }
+        cullCurrentBatchSelection()
+    }
+
+    private func cullCurrentBatchSelection() {
+        do {
+            try model.cullCurrentSelection()
             focusCullingSurface()
         } catch {
             model.errorMessage = error.localizedDescription
@@ -3448,9 +3472,6 @@ private struct LoupeView: View {
                 cullingHeader(stackPresentation: stackPresentation)
             }
             HStack(spacing: 0) {
-                if presentation.showsCullChrome {
-                    cullingStackListRail
-                }
                 VStack(spacing: 0) {
                     if let asset = model.selectedAsset {
                         HStack(spacing: 0) {
@@ -3528,87 +3549,6 @@ private struct LoupeView: View {
         }
     }
 
-    @ViewBuilder
-    private var cullingStackListRail: some View {
-        let entries = model.cullingStackListEntries()
-        if !entries.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("STACKS · AUTO-GROUPED")
-                    .font(.caption2.monospaced().weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.top, 10)
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 4) {
-                        ForEach(entries) { entry in
-                            stackListRow(entry)
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                }
-            }
-            .frame(width: 168)
-            .background(Color.black.opacity(0.26))
-            .overlay(alignment: .trailing) { Divider() }
-        }
-    }
-
-    private func stackListRow(_ entry: CullingStackListEntry) -> some View {
-        Button {
-            do {
-                try model.selectCullingStackSet(id: entry.setID)
-            } catch {
-                model.errorMessage = error.localizedDescription
-            }
-        } label: {
-            HStack(spacing: 8) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.black.opacity(0.55))
-                    if let previewURL = model.gridPreviewURL(for: entry.leadAssetID) {
-                        CachedPreviewImage(
-                            previewURL: previewURL,
-                            scaling: .fit,
-                            cacheGeneration: model.previewCacheGeneration(for: entry.leadAssetID)
-                        )
-                    } else {
-                        Image(systemName: "photo")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(width: 36, height: 26)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(entry.title)
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(1)
-                    Text(entry.frameCountText)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                if entry.isDecided {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                }
-            }
-            .padding(6)
-            .background(
-                entry.isSelected ? Color.orange.opacity(0.18) : Color.clear,
-                in: RoundedRectangle(cornerRadius: 6)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(entry.isSelected ? Color.orange.opacity(0.4) : Color.clear)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(entry.title)
-        .accessibilityValue(entry.isDecided ? "Decided" : "Undecided")
-    }
 
     @ViewBuilder
     private var closeUpsPanel: some View {
@@ -4439,7 +4379,7 @@ struct LibraryTopBarPresentation: Equatable {
     ]
 
     private static func breadcrumbItems(scopeTitle: String, selectedView: LibraryViewMode) -> [String] {
-        if selectedView == .copilot || selectedView == .timeline || selectedView == .people || selectedView == .map {
+        if selectedView == .timeline || selectedView == .people || selectedView == .map {
             return ["Library", scopeTitle]
         }
         if scopeTitle == "All Photographs" {
