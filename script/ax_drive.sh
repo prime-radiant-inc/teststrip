@@ -24,11 +24,11 @@ set -euo pipefail
 #                                     center via CGEvent with the modifier keys
 #                                     held (AXPress cannot carry modifiers) —
 #                                     e.g. shift-click range selection.
-#                                     With --button right, posts a real
-#                                     right-click (CGEvent) at the element's
-#                                     center instead of AXPress — needed to
-#                                     open a SwiftUI .contextMenu, which AXPress
-#                                     cannot trigger.
+#                                     With --button right, opens the element's
+#                                     context menu (AXShowMenu on the element or
+#                                     an ancestor, falling back to a CGEvent
+#                                     right-click) — needed for SwiftUI
+#                                     .contextMenu, which AXPress cannot open.
 #   type  [App] MATCHSPEC --text STR  Set the first matching field's value to STR
 #                                     (role defaults to AXTextField for `type`).
 #
@@ -39,9 +39,9 @@ set -euo pipefail
 #   --contains TEXT  substring match on title/description/value
 #   --text  STR      (type only) the string to write into the matched field
 #   --modifiers M    (press only) comma-separated shift,command,option,control
-#   --button B       (press only) "left" (default) or "right" — right posts a
-#                     real CGEvent right-click instead of AXPress, to open
-#                     context menus
+#   --button B       (press only) "left" (default) or "right" — right opens the
+#                     context menu (AXShowMenu, CGEvent right-click fallback)
+#                     instead of AXPress
 #
 # Env: TESTSTRIP_AX_TIMEOUT_SECONDS (default 20), TESTSTRIP_AX_POLL_SECONDS (0.15).
 # Exit: 0 success, 1 not found / timeout, 2 usage/permission error.
@@ -200,8 +200,20 @@ repeat {
                 exit(0)
             case "press":
                 if wantButton == "right" {
-                    // SwiftUI .contextMenu only opens on a real right-click;
-                    // AXPress has no right-click equivalent.
+                    // Prefer the canonical AXShowMenu action (SwiftUI rows
+                    // expose it for .contextMenu); walk up a few ancestors
+                    // because the matched element is often the row label,
+                    // not the row itself. Fall back to a real CGEvent
+                    // right-click if nothing in the chain supports it.
+                    var candidate: AXUIElement? = found[0]
+                    for _ in 0..<4 {
+                        guard let c = candidate else { break }
+                        if AXUIElementPerformAction(c, "AXShowMenu" as CFString) == .success {
+                            print("right-clicked (AXShowMenu): \(label(found[0]) ?? help(found[0]) ?? "?")")
+                            exit(0)
+                        }
+                        candidate = attr(c, kAXParentAttribute).map { $0 as! AXUIElement }
+                    }
                     guard let posValue = attr(found[0], kAXPositionAttribute),
                           let sizeValue = attr(found[0], kAXSizeAttribute) else {
                         FileHandle.standardError.write(Data("element has no AXPosition/AXSize for right click\n".utf8))
@@ -216,6 +228,14 @@ repeat {
                         FileHandle.standardError.write(Data("could not create mouse events\n".utf8))
                         exit(1)
                     }
+                    // SwiftUI hit-tests context menus against the real cursor
+                    // location, not just the event position — move the cursor
+                    // there first or the menu will not open.
+                    CGWarpMouseCursorPosition(center)
+                    if let move = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: center, mouseButton: .left) {
+                        move.post(tap: .cghidEventTap)
+                    }
+                    usleep(60_000)
                     down.post(tap: .cghidEventTap)
                     usleep(60_000)
                     up.post(tap: .cghidEventTap)
