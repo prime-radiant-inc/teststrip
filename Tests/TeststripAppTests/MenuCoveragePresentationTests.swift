@@ -62,4 +62,9 @@ final class MenuCoveragePresentationTests: XCTestCase {
     func testCullingMenuCoversMoveRejectsAction() {
         XCTAssertEqual(AppMenuCoveragePresentation.moveRejectsActionID, "Move Rejects…")
     }
+
+    // Support ▸ Check for Updates… drives the Sparkle updater.
+    func testSupportMenuCoversCheckForUpdatesAction() {
+        XCTAssertEqual(AppMenuCoveragePresentation.checkForUpdatesActionID, "Check for Updates…")
+    }
 }

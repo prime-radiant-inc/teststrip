@@ -12,6 +12,9 @@ let package = Package(
         .executable(name: "TeststripWorker", targets: ["TeststripWorker"]),
         .executable(name: "TeststripBench", targets: ["TeststripBench"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", "2.6.0"..<"3.0.0")
+    ],
     targets: [
         .target(
             name: "TeststripCore",
@@ -23,7 +26,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "TeststripApp",
-            dependencies: ["TeststripCore"]
+            dependencies: [
+                "TeststripCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ]
         ),
         .executableTarget(
             name: "TeststripBench",

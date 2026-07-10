@@ -8,5 +8,13 @@
   <true/>
   <key>com.apple.security.network.client</key>
   <true/>
+  <!-- Sparkle's installer/downloader XPC services (bundled inside
+       Frameworks/Sparkle.framework) are looked up by mach service name from
+       this sandboxed host; see https://sparkle-project.org/documentation/sandboxing/ -->
+  <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
+  <array>
+    <string>$(TeamIdentifierPrefix)org.sparkle-project.InstallerLauncher</string>
+    <string>$(TeamIdentifierPrefix)org.sparkle-project.DownloaderService</string>
+  </array>
 </dict>
 </plist>

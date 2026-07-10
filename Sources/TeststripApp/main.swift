@@ -33,6 +33,7 @@ struct TeststripApplication: App {
         } catch {
             fatalError("Unable to open Teststrip catalog: \(error.localizedDescription)")
         }
+        _ = Updater.shared   // start Sparkle's background update checks
     }
 
     var body: some Scene {
@@ -127,6 +128,9 @@ enum AppMenuCoveragePresentation {
     // Culling ▸ Move Rejects… (spec §6), reusing the same beginRejectRelocation
     // path Task 20's end-of-set state already calls.
     static let moveRejectsActionID = "Move Rejects…"
+
+    // Support ▸ Check for Updates… (Sparkle auto-updater).
+    static let checkForUpdatesActionID = "Check for Updates…"
 }
 
 extension LibraryViewMode {
@@ -500,6 +504,12 @@ private struct SupportCommands: Commands {
         CommandMenu("Support") {
             Button("Copy Diagnostics") {
                 copyDiagnostics()
+            }
+
+            Divider()
+
+            Button(AppMenuCoveragePresentation.checkForUpdatesActionID) {
+                Updater.shared.checkForUpdates()
             }
         }
     }
