@@ -1,4 +1,4 @@
-# token-query-filter: typing a filter token narrows the grid to the matching catalog rows
+# lib-020-token-query-filter: typing a filter token narrows the grid to the matching catalog rows
 
 **What this covers**: the Library workspace's token query field — typing
 `rating:3` and pressing Return must narrow the grid to exactly the rows

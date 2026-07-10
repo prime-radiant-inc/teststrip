@@ -1,4 +1,4 @@
-# library-loupe-no-cull-chrome: Library's loupe is plain navigation, no pick/reject pills
+# lib-013-library-loupe: Library's loupe is plain navigation, no pick/reject pills
 
 **What this covers**: `LoupePresentation.showsCullChrome` — the Library
 workspace's loupe (`.libraryLoupe`) is metadata/navigation only; it must not

@@ -1,4 +1,4 @@
-# places-map-and-geocode: GPS photos cluster on the map and reverse-geocode to names
+# lib-014-map-clusters-scoping: GPS photos cluster on the map and reverse-geocode to names, scoped to the active query
 
 **What this covers**: the Places feature merged at migrations 18/19 — GPS
 ingest from photo EXIF, the `.map` view's bounded-SQL cluster bubbles, TOP
@@ -54,6 +54,26 @@ a human place name, cross-checked against the `place_cache` table.
    ```
    Expect ≥ 1, and the name shown in the UI must match a `place_cache` row.
 
+6. **Assert the map is query-scoped, not whole-catalog** (per commit
+   `62e0a31`, "fix: scope Library Map geo queries to the current filtered
+   result set" — `AppModel.refreshPlaceData` now passes
+   `currentLibraryQuery()` through to
+   `CatalogRepository.placeClusters(bounds:cellSize:matching:)`,
+   `.topLocations(limit:matching:)`, and `.geotaggedCoverage(matching:)`,
+   which push the shared `SetQuery` WHERE-building (`compileClauses`) into the
+   geo SQL instead of materializing filtered asset IDs). With Places/Map open
+   and clusters showing the full `GEO` count, type a query token in the
+   Library search field that excludes some of the GPS-tagged fixtures (e.g. a
+   `keyword:`/filename-scoped token matching only a subset — pick one from the
+   imported fixture set), submit it, and:
+   - Assert the coverage badge's numerator drops to match only the assets the
+     token matches (cross-check with
+     `sqlite3 "$DB" "SELECT count(*) FROM assets WHERE json_valid(technical_metadata_json) AND json_extract(technical_metadata_json,'\$.latitude') IS NOT NULL AND <token's equivalent WHERE clause>;"`).
+   - Assert cluster bubble counts sum to that scoped count, not `GEO`.
+   - Clear the token; assert clusters/coverage revert to the full `GEO` count.
+   This must hold live, not just on route entry — `AppModel.reload()` refreshes
+   place data while Map is the active view per the commit's stated behavior.
+
 ## Expected
 - Step 1: `GEO ≥ 1`. **Fails if** 0 — GPS never ingested; the rest is moot.
 - Step 3: ≥ 1 cluster with a count; the coverage badge reflects `GEO`/total.
@@ -62,6 +82,9 @@ a human place name, cross-checked against the `place_cache` table.
   **Fails if** the UI shows only raw coordinates, or shows a name absent from
   `place_cache` (UI fabricating a name the cache doesn't back). Quote the UI
   string and the matching `place_cache` row.
+- Step 6: **Fails if** applying a query token does not narrow the map's
+  clusters/top-locations/coverage — i.e. the surfaces still reflect the whole
+  catalog rather than the active `SetQuery`, regressing commit `62e0a31`.
 
 ## Cleanup
 ```bash
@@ -82,3 +105,14 @@ Quit the launched instance.
 - Confirm the `technical_metadata_json` latitude JSON path against a real row
   (`sqlite3 "$DB" "SELECT technical_metadata_json FROM assets LIMIT 1;"`) — a
   wrong path silently reads 0 and makes step 1 vacuous.
+- Step 6 (query-scoping) is new as of commit `62e0a31`; the scoping code path
+  (`AppModel.refreshPlaceData` → `CatalogRepository.placeClusters/topLocations/geotaggedCoverage(matching:)`)
+  was confirmed by reading the diff, not by a live drive — no live GUI drive
+  has been performed for this addition. Needs a human-present or VM run
+  before this step can be marked passing.
+
+## Run status
+NOT YET RUN — this card (renamed from `places-map-and-geocode.md`) has no
+recorded live pass; prior notes above were headless/source-verification only.
+Step 6 is newly added and equally unrun. Needs a human-present or VM re-run
+per `test/scenarios/README.md`.
