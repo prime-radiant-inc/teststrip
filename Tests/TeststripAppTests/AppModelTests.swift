@@ -7,10 +7,10 @@ final class AppModelTests: XCTestCase {
     func testAppModelStartsWithStudioLayoutSections() {
         let model = AppModel.demo()
 
-        XCTAssertTrue(model.sidebarSections.map(\.title).contains("Library"))
+        XCTAssertTrue(model.sidebarSections.map(\.title).contains("Collections"))
         XCTAssertFalse(model.sidebarSections.map(\.title).contains("Work"))
-        let librarySection = model.sidebarSections.first { $0.title == "Library" }
-        XCTAssertEqual(librarySection?.rows.first { $0.title == "All Photographs" }?.countText, "1")
+        let collectionsSection = model.sidebarSections.first { $0.title == "Collections" }
+        XCTAssertEqual(collectionsSection?.rows.first { $0.title == "All Photographs" }?.countText, "1")
         XCTAssertEqual(model.selectedView, .grid)
         XCTAssertEqual(model.selectedAsset?.id, model.assets.first?.id)
     }
@@ -5417,12 +5417,11 @@ final class AppModelTests: XCTestCase {
             technicalMetadata: Self.technicalMetadata(capturedAt: Self.date(year: 2026, month: 2, day: 4, calendar: calendar))
         )
         let (model, _) = try makeModelWithCatalogAssets(named: "timeline-sidebar", assets: [asset])
-        let timelineRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" }?.rows.first { $0.title == "Timeline" })
 
-        XCTAssertEqual(timelineRow.target, .timeline)
-        XCTAssertEqual(timelineRow.countText, "1")
-
-        try model.selectSidebarRow(timelineRow)
+        // Timeline's sidebar row is gone (Task 7); the View menu's temporary
+        // "Timeline" item drives the same route until Task 10 lands the
+        // Library view toggle.
+        model.selectedView = .timeline
 
         XCTAssertEqual(model.selectedView, .timeline)
         XCTAssertEqual(model.libraryTitle, "Timeline")
@@ -5676,18 +5675,9 @@ final class AppModelTests: XCTestCase {
         )
         let model = try AppModel.load(catalog: catalog)
 
-        let reviewSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Review" })
-        XCTAssertEqual(reviewSection.rowTitles, [
-            "Picks",
-            "Rejects",
-            "5 Stars",
-            "Needs Keywords",
-            "Not analyzed yet",
-            "Faces Found",
-            "OCR Found",
-            "Likely Issues",
-            "Provider Failures"
-        ])
+        // Review-queue rows are gone from the Library sidebar (Task 7 moves
+        // them to the Cull sidebar in Task 13); the counts stay live on the
+        // model and each queue's target still applies its filter directly.
         XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
         XCTAssertEqual(reviewQueueCount("Rejects", in: model), "1")
         XCTAssertEqual(reviewQueueCount("5 Stars", in: model), "1")
@@ -5698,8 +5688,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(reviewQueueCount("Likely Issues", in: model), "1")
         XCTAssertEqual(reviewQueueCount("Provider Failures", in: model), "1")
 
-        let picksRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Picks" })
-        try model.selectSidebarRow(picksRow)
+        try model.selectSidebarTarget(.reviewQueue(.picks))
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertEqual(model.flagFilter, .pick)
@@ -5707,24 +5696,21 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [pick.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        let rejectsRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Rejects" })
-        try model.selectSidebarRow(rejectsRow)
+        try model.selectSidebarTarget(.reviewQueue(.rejects))
 
         XCTAssertEqual(model.flagFilter, .reject)
         XCTAssertNil(model.minimumRatingFilter)
         XCTAssertEqual(model.assets.map(\.id), [reject.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        let fiveStarsRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "5 Stars" })
-        try model.selectSidebarRow(fiveStarsRow)
+        try model.selectSidebarTarget(.reviewQueue(.fiveStars))
 
         XCTAssertNil(model.flagFilter)
         XCTAssertEqual(model.minimumRatingFilter, 5)
         XCTAssertEqual(model.assets.map(\.id), [fiveStar.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        let needsKeywordsRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Needs Keywords" })
-        try model.selectSidebarRow(needsKeywordsRow)
+        try model.selectSidebarTarget(.reviewQueue(.needsKeywords))
 
         XCTAssertNil(model.flagFilter)
         XCTAssertNil(model.minimumRatingFilter)
@@ -5732,8 +5718,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        let needsEvaluationRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Not analyzed yet" })
-        try model.selectSidebarRow(needsEvaluationRow)
+        try model.selectSidebarTarget(.reviewQueue(.needsEvaluation))
 
         XCTAssertNil(model.flagFilter)
         XCTAssertNil(model.minimumRatingFilter)
@@ -5742,30 +5727,26 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [unreviewed.id, needsKeywords.id])
         XCTAssertEqual(model.totalAssetCount, 2)
 
-        let facesFoundRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Faces Found" })
-        try model.selectSidebarRow(facesFoundRow)
+        try model.selectSidebarTarget(.reviewQueue(.facesFound))
 
         XCTAssertEqual(model.evaluationKindFilter, .faceCount)
         XCTAssertEqual(model.assets.map(\.id), [faceFound.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        let ocrFoundRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "OCR Found" })
-        try model.selectSidebarRow(ocrFoundRow)
+        try model.selectSidebarTarget(.reviewQueue(.ocrFound))
 
         XCTAssertEqual(model.evaluationKindFilter, .ocrText)
         XCTAssertEqual(model.assets.map(\.id), [ocrFound.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        let likelyIssuesRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Likely Issues" })
-        try model.selectSidebarRow(likelyIssuesRow)
+        try model.selectSidebarTarget(.reviewQueue(.likelyIssues))
 
         XCTAssertTrue(model.likelyIssuesFilter)
         XCTAssertNil(model.evaluationKindFilter)
         XCTAssertEqual(model.assets.map(\.id), [likelyIssue.id])
         XCTAssertEqual(model.totalAssetCount, 1)
 
-        let providerFailuresRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Provider Failures" })
-        try model.selectSidebarRow(providerFailuresRow)
+        try model.selectSidebarTarget(.reviewQueue(.providerFailures))
 
         XCTAssertTrue(model.providerFailuresFilter)
         XCTAssertFalse(model.likelyIssuesFilter)
@@ -5816,10 +5797,12 @@ final class AppModelTests: XCTestCase {
         ])
         try model.reload()
 
-        let reviewSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Review" })
-        XCTAssertEqual(reviewSection.rowTitles, ["Picks", "Not analyzed yet"])
+        // Review-queue rows are gone from the Library sidebar (Task 7); the
+        // "only queues with catalog-backed counts" behavior now lives purely
+        // in `reviewQueueCounts` (nil/absent entries for empty queues).
         XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
         XCTAssertEqual(reviewQueueCount("Not analyzed yet", in: model), "2")
+        XCTAssertNil(reviewQueueCount("Rejects", in: model))
     }
 
     func testSelectingAllPhotographsSidebarRowReturnsToGridAndClearsFilters() throws {
@@ -5833,10 +5816,11 @@ final class AppModelTests: XCTestCase {
         model.minimumRatingFilter = 5
         try model.applyLibraryFilters()
         XCTAssertEqual(model.assets.map(\.id), [filtered.id])
-        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
-        let allPhotographsRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-all" })
 
-        try model.selectSidebarRow(allPhotographsRow)
+        // The sidebar is empty while in Cull's Copilot sub-view (Task 7);
+        // the All Photographs target still works directly regardless of
+        // which sidebar rows are currently rendered.
+        try model.selectSidebarTarget(.allPhotographs)
 
         XCTAssertEqual(model.selectedView, .grid)
         XCTAssertEqual(model.librarySearchText, "")
@@ -5962,8 +5946,8 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.savedAssetSets.map(\.id), [starred.id, saved.id, manual.id])
         XCTAssertEqual(model.starredAssetSets.map(\.id), [starred.id])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, [starred.name])
-        XCTAssertEqual(sidebarRowCount(starred.name, in: "Starred", of: model), "2")
+        XCTAssertEqual(starredCollectionRows(model).map(\.title), [starred.name])
+        XCTAssertEqual(sidebarRowCount(starred.name, in: "Collections", of: model), "2")
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, [starred.name, saved.name, manual.name])
         let savedRows = try XCTUnwrap(model.sidebarSections.first { $0.title == "Saved Sets" }?.rows)
         XCTAssertEqual(savedRows.map(\.detailText), ["Smart collection", "Smart collection", "Manual set"])
@@ -6026,20 +6010,20 @@ final class AppModelTests: XCTestCase {
         let savedSetRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Saved Sets" }?.rows.first)
 
         XCTAssertTrue(model.canToggleAssetSetStarred(savedSetRow))
-        XCTAssertNil(model.sidebarSections.first { $0.title == "Starred" })
+        XCTAssertTrue(starredCollectionRows(model).isEmpty)
 
         try model.toggleAssetSetStarred(id: savedSet.id)
 
         XCTAssertTrue(try repository.assetSet(id: savedSet.id).starred)
         XCTAssertEqual(model.starredAssetSets.map(\.id), [savedSet.id])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, ["Five Stars"])
-        XCTAssertEqual(sidebarRowCount("Five Stars", in: "Starred", of: model), "1")
+        XCTAssertEqual(starredCollectionRows(model).map(\.title), ["Five Stars"])
+        XCTAssertEqual(sidebarRowCount("Five Stars", in: "Collections", of: model), "1")
 
         try model.setAssetSetStarred(id: savedSet.id, starred: false)
 
         XCTAssertFalse(try repository.assetSet(id: savedSet.id).starred)
         XCTAssertEqual(model.starredAssetSets, [])
-        XCTAssertNil(model.sidebarSections.first { $0.title == "Starred" })
+        XCTAssertTrue(starredCollectionRows(model).isEmpty)
         XCTAssertEqual(model.sidebarSections.first { $0.title == "Saved Sets" }?.rowTitles, ["Five Stars"])
     }
 
@@ -7003,14 +6987,14 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.recentWork.map(\.id), [recent.id.rawValue, starred.id.rawValue])
         XCTAssertEqual(model.starredWork.map(\.id), [starred.id.rawValue])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Recent Work" }?.rowTitles, [recent.detail, starred.title])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.map(\.target), [
+        XCTAssertEqual(recentWorkCollectionRows(model).map(\.title), [recent.detail, starred.title])
+        XCTAssertEqual(recentWorkCollectionRows(model).map(\.target), [
             .workSession(recent.id),
             .workSession(starred.id)
         ])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred Work" }?.rowTitles, [starred.title])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.map(\.isSelectable), [true, true])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred Work" }?.rows.map(\.isSelectable), [true])
+        XCTAssertEqual(starredWorkCollectionRows(model).map(\.title), [starred.title])
+        XCTAssertEqual(recentWorkCollectionRows(model).map(\.isSelectable), [true, true])
+        XCTAssertEqual(starredWorkCollectionRows(model).map(\.isSelectable), [true])
     }
 
     func testWorkSidebarIncludesStarredSessionOutsideDisplayedRecentRows() throws {
@@ -7072,8 +7056,8 @@ final class AppModelTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
-        let recentRows = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows)
-        let starredRows = try XCTUnwrap(model.sidebarSections.first { $0.title == "Starred Work" }?.rows)
+        let recentRows = recentOnlyWorkRows(model)
+        let starredRows = starredWorkCollectionRows(model)
 
         XCTAssertEqual(recentRows.map(\.title), [
             "Recent 5",
@@ -7130,7 +7114,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.recentWork.first?.id, session.id.rawValue)
         XCTAssertEqual(model.recentWork.first?.starred, true)
         XCTAssertEqual(model.starredWork.map(\.id), [session.id.rawValue])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred Work" }?.rowTitles, [session.title])
+        XCTAssertEqual(starredWorkCollectionRows(model).map(\.title), [session.title])
 
         try model.setWorkSessionStarred(id: session.id, starred: false)
 
@@ -7170,7 +7154,7 @@ final class AppModelTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
-        let recentRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
+        let recentRow = try XCTUnwrap(recentWorkCollectionRows(model).first)
         var action = try XCTUnwrap(model.sidebarContextActions(for: recentRow).first)
 
         XCTAssertEqual(action.kind, .toggleWorkSessionStarred(session.id))
@@ -7180,7 +7164,7 @@ final class AppModelTests: XCTestCase {
         try model.performSidebarContextAction(action)
 
         XCTAssertEqual(try repository.session(id: session.id).starred, true)
-        let starredRow = try XCTUnwrap(model.sidebarSections.first { $0.title == "Starred Work" }?.rows.first)
+        let starredRow = try XCTUnwrap(starredWorkCollectionRows(model).first)
         action = try XCTUnwrap(model.sidebarContextActions(for: starredRow).first)
         XCTAssertEqual(action.kind, .toggleWorkSessionStarred(session.id))
         XCTAssertEqual(action.title, "Remove Star")
@@ -7234,7 +7218,7 @@ final class AppModelTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
-        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
+        let row = try XCTUnwrap(recentWorkCollectionRows(model).first)
 
         XCTAssertEqual(row.countText, "2")
 
@@ -7364,7 +7348,7 @@ final class AppModelTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
-        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
+        let row = try XCTUnwrap(recentWorkCollectionRows(model).first)
 
         XCTAssertEqual(row.countText, "1")
 
@@ -7491,8 +7475,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.flagFilter)
         XCTAssertNil(model.colorLabelFilter)
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, ["Ceremony Picks"])
-        XCTAssertEqual(sidebarRowCount("Ceremony Picks", in: "Starred", of: model), "1")
+        XCTAssertEqual(starredCollectionRows(model).map(\.title), ["Ceremony Picks"])
+        XCTAssertEqual(sidebarRowCount("Ceremony Picks", in: "Collections", of: model), "1")
     }
 
     func testSavingCurrentAssetScopeSnapshotCapturesAllFilteredMatchesBeyondLoadedPage() throws {
@@ -7530,8 +7514,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.assetSet(id: savedSet.id), savedSet)
         XCTAssertEqual(model.selectedAssetSetID, savedSet.id)
         XCTAssertEqual(model.totalAssetCount, 130)
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, ["Ceremony Snapshot"])
-        XCTAssertEqual(sidebarRowCount("Ceremony Snapshot", in: "Starred", of: model), "130")
+        XCTAssertEqual(starredCollectionRows(model).map(\.title), ["Ceremony Snapshot"])
+        XCTAssertEqual(sidebarRowCount("Ceremony Snapshot", in: "Collections", of: model), "130")
 
         var changedKeeper = keepers[0]
         changedKeeper.metadata.rating = 1
@@ -8456,8 +8440,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.starredAssetSets, [savedSet])
         XCTAssertEqual(model.selectedAssetSetID, savedSet.id)
         XCTAssertEqual(model.assets.map(\.id), [asset.id])
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Starred" }?.rowTitles, ["Keeper"])
-        XCTAssertEqual(sidebarRowCount("Keeper", in: "Starred", of: model), "1")
+        XCTAssertEqual(starredCollectionRows(model).map(\.title), ["Keeper"])
+        XCTAssertEqual(sidebarRowCount("Keeper", in: "Collections", of: model), "1")
     }
 
     func testSavingSelectionAsManualSetUsesSelectedBatchInLoadedOrder() throws {
@@ -8564,10 +8548,14 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(session.totalUnitCount, 1)
         XCTAssertEqual(model.selectedView, .loupe)
         XCTAssertEqual(model.recentWork.first?.id, session.id.rawValue)
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Recent Work" }?.rowTitles.first, "Ceremony Cull")
+
+        // Cull's sidebar is empty (Task 7); switch to Library to read the
+        // Collections row before returning to Cull via the row's own target.
+        model.selectedView = .grid
+        XCTAssertEqual(recentWorkCollectionRows(model).first?.title, "Ceremony Cull")
+        let row = try XCTUnwrap(recentWorkCollectionRows(model).first)
 
         try model.clearLibraryFilters()
-        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
         try model.selectSidebarRow(row)
 
         XCTAssertNil(model.selectedAssetSetID)
@@ -8605,7 +8593,10 @@ final class AppModelTests: XCTestCase {
         })
 
         try model.clearLibraryFilters()
-        let row = try XCTUnwrap(model.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
+        // Cull's sidebar is empty (Task 7); switch to Library to read the
+        // Collections row before returning to Cull via the row's own target.
+        model.selectedView = .grid
+        let row = try XCTUnwrap(recentWorkCollectionRows(model).first)
         try model.selectSidebarRow(row)
 
         XCTAssertNil(model.selectedAssetSetID)
@@ -11753,9 +11744,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(matching: SetQuery(predicates: [.evaluationFailure])), 1)
         XCTAssertEqual(reviewQueueCount("Provider Failures", in: model), "1")
 
-        let reviewSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Review" })
-        let providerFailuresRow = try XCTUnwrap(reviewSection.rows.first { $0.title == "Provider Failures" })
-        try model.selectSidebarRow(providerFailuresRow)
+        try model.selectSidebarTarget(.reviewQueue(.providerFailures))
 
         XCTAssertTrue(model.providerFailuresFilter)
         XCTAssertEqual(model.assets.map(\.id), [asset.id])
@@ -14594,7 +14583,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(reloaded.sidebarSections.contains { section in
             section.title == "Saved Sets" && section.rowTitles.contains("Imported 1 photo from photos")
         })
-        XCTAssertEqual(reloaded.sidebarSections.first { $0.title == "Recent Work" }?.rowTitles.first, "Imported 1 photo from photos")
+        let collectionsSection = try XCTUnwrap(reloaded.sidebarSections.first { $0.title == "Collections" })
+        let recentWorkRow = try XCTUnwrap(collectionsSection.rows.first { $0.id.hasPrefix("work-recent-") })
+        XCTAssertEqual(recentWorkRow.title, "Imported 1 photo from photos")
         let session = try catalog.repository.session(id: WorkSessionID(rawValue: activity.id))
         let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
         let outputSet = try catalog.repository.assetSet(id: outputSetID)
@@ -14604,8 +14595,7 @@ final class AppModelTests: XCTestCase {
             XCTFail("import output set should be manual")
         }
 
-        let row = try XCTUnwrap(reloaded.sidebarSections.first { $0.title == "Recent Work" }?.rows.first)
-        try reloaded.selectSidebarRow(row)
+        try reloaded.selectSidebarRow(recentWorkRow)
 
         XCTAssertNil(reloaded.selectedAssetSetID)
         XCTAssertEqual(reloaded.librarySearchText, "session:\(session.id.rawValue)")
@@ -14661,10 +14651,10 @@ final class AppModelTests: XCTestCase {
             outputAssetIDs: [first.id, second.id]
         )
 
-        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
-        let recentlyAddedRow = try XCTUnwrap(librarySection.rows.first { $0.title == "Recently Added" })
+        let collectionsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Collections" })
+        let recentlyAddedRow = try XCTUnwrap(collectionsSection.rows.first { $0.title == "Recent Import" })
 
-        XCTAssertEqual(librarySection.rowTitles.prefix(2), ["All Photographs", "Recently Added"])
+        XCTAssertEqual(collectionsSection.rowTitles.prefix(2), ["All Photographs", "Recent Import"])
         XCTAssertEqual(recentlyAddedRow.detailText, "Imported 2 photos from Import")
         XCTAssertEqual(recentlyAddedRow.countText, "2")
         XCTAssertEqual(recentlyAddedRow.target, .workSession(WorkSessionID(rawValue: "latest-import-session")))
@@ -14681,8 +14671,8 @@ final class AppModelTests: XCTestCase {
         )
         model.minimumRatingFilter = 5
         try model.reload()
-        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
-        let recentlyAddedRow = try XCTUnwrap(librarySection.rows.first { $0.title == "Recently Added" })
+        let collectionsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Collections" })
+        let recentlyAddedRow = try XCTUnwrap(collectionsSection.rows.first { $0.title == "Recent Import" })
 
         try model.selectSidebarRow(recentlyAddedRow)
 
@@ -14721,9 +14711,9 @@ final class AppModelTests: XCTestCase {
         )
 
         XCTAssertNotNil(try? repository.session(id: WorkSessionID(rawValue: "empty-import-session")))
-        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
+        let collectionsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Collections" })
 
-        XCTAssertFalse(librarySection.rowTitles.contains("Recently Added"))
+        XCTAssertFalse(collectionsSection.rowTitles.contains("Recent Import"))
     }
 
     func testLatestImportCompletionSummarySeparatesExistingReimportedPhotos() throws {
@@ -15110,7 +15100,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(activity.kind, .ingest)
         XCTAssertEqual(activity.status, .running)
         XCTAssertEqual(activity.detail, "Importing from photos")
-        XCTAssertEqual(model.sidebarSections.first { $0.title == "Recent Work" }?.rowTitles.first, "Importing from photos")
+        XCTAssertTrue(model.sidebarSections.first { $0.title == "Collections" }?.rowTitles.contains("Importing from photos") ?? false)
         let persisted = try catalog.repository.session(id: WorkSessionID(rawValue: activity.id))
         XCTAssertEqual(persisted.status, .running)
         XCTAssertEqual(persisted.detail, "Importing from photos")
@@ -15538,8 +15528,53 @@ final class AppModelTests: XCTestCase {
             .countText
     }
 
+    // The old top-level "Starred" section is now the starred-asset-set rows
+    // folded into Collections (Task 7); those rows keep the "asset-set-"
+    // id they share with the Saved Sets section, which is what
+    // distinguishes them from Collections' other rows.
+    private func starredCollectionRows(_ model: AppModel) -> [SidebarRow] {
+        (model.sidebarSections.first { $0.title == "Collections" }?.rows ?? [])
+            .filter { $0.id.hasPrefix("asset-set-") }
+    }
+
+    // The old top-level "Recent Work"/"Starred Work" sections are now one
+    // merged group of rows folded into Collections (Task 7).
+    // `recentWorkCollectionRows` is the merged group; `starredWorkCollectionRows`
+    // is the subset backed by a starred work session, matching the old
+    // "Starred Work" section's contents.
+    private func recentWorkCollectionRows(_ model: AppModel) -> [SidebarRow] {
+        (model.sidebarSections.first { $0.title == "Collections" }?.rows ?? [])
+            .filter { $0.id.hasPrefix("work-recent-") || $0.id.hasPrefix("work-starred-") }
+    }
+
+    // Just the recency-sourced slice (excludes starred sessions old enough
+    // to have fallen out of the recent window and only appear via the
+    // "work-starred-" overflow rows).
+    private func recentOnlyWorkRows(_ model: AppModel) -> [SidebarRow] {
+        (model.sidebarSections.first { $0.title == "Collections" }?.rows ?? [])
+            .filter { $0.id.hasPrefix("work-recent-") }
+    }
+
+    private func starredWorkCollectionRows(_ model: AppModel) -> [SidebarRow] {
+        let starredIDs = Set(model.starredWork.map { WorkSessionID(rawValue: $0.id) })
+        return recentWorkCollectionRows(model).filter { row in
+            if case .workSession(let id) = row.target {
+                return starredIDs.contains(id)
+            }
+            return false
+        }
+    }
+
+    // Review-queue rows are gone from the Library sidebar (Task 7 moves them
+    // to the Cull sidebar in Task 13), but the underlying counts stay live on
+    // the model - read those directly instead of a rendered sidebar row.
     private func reviewQueueCount(_ title: String, in model: AppModel) -> String? {
-        sidebarRowCount(title, in: "Review", of: model)
+        guard let queue = ReviewQueue.allCases.first(where: { $0.presentation.title == title }),
+              let count = model.reviewQueueCounts[queue],
+              count > 0 else {
+            return nil
+        }
+        return count.formatted(.number.notation(.compactName))
     }
 
     private func fileFingerprint(for url: URL) throws -> FileFingerprint {

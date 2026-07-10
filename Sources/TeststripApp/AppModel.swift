@@ -285,7 +285,7 @@ private struct IndexedCullingStack {
     }
 }
 
-public enum ReviewQueue: String, Equatable, Hashable, Sendable {
+public enum ReviewQueue: String, CaseIterable, Equatable, Hashable, Sendable {
     case picks
     case potentialPicks
     case rejects
@@ -1478,11 +1478,35 @@ public final class AppModel {
             lastSubView[selectedView.workspace] = selectedView
             updateCompareSetAfterViewChange(from: oldValue)
             persistSessionState()
+            if selectedView.workspace != oldValue.workspace {
+                rebuildSidebarSections()
+            }
         }
     }
     /// Which workspace `selectedView` currently belongs to.
     public var selectedWorkspace: Workspace {
         selectedView.workspace
+    }
+
+    /// The sidebar sections for a given workspace. Library is navigation
+    /// only (Collections/Saved Sets/Folders); Cull and People get their own
+    /// sidebar content in later tasks - empty for now.
+    public func sidebarSections(for workspace: Workspace) -> [SidebarSection] {
+        switch workspace {
+        case .library:
+            return Self.defaultSidebarSections(
+                totalAssetCount: totalAssetCount,
+                savedAssetSets: savedAssetSets,
+                assetSetCounts: assetSetCounts,
+                workSessionScopeCounts: workSessionScopeCounts,
+                catalogFolders: catalogFolders,
+                expandedFolderPaths: expandedFolderPaths,
+                recentWork: recentWork,
+                starredWork: starredWork
+            )
+        case .cull, .people:
+            return []
+        }
     }
     /// The last sub-view shown in each workspace, so switching workspaces
     /// and back restores where the user left off.
@@ -9979,26 +10003,7 @@ public final class AppModel {
     }
 
     private func rebuildSidebarSections() {
-        sidebarSections = Self.defaultSidebarSections(
-            totalAssetCount: totalAssetCount,
-            savedAssetSets: savedAssetSets,
-            assetSetCounts: assetSetCounts,
-            workSessionScopeCounts: workSessionScopeCounts,
-            catalogFolders: catalogFolders,
-            expandedFolderPaths: expandedFolderPaths,
-            catalogTimelineDays: catalogTimelineDays,
-            sourceAvailabilitySummaries: sourceAvailabilitySummaries,
-            catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
-            reviewQueueCounts: reviewQueueCounts,
-            pendingMetadataSyncItems: pendingMetadataSyncItems,
-            metadataSyncConflictItems: metadataSyncConflictItems,
-            pendingMetadataSyncCount: pendingMetadataSyncCount,
-            metadataSyncConflictCount: metadataSyncConflictCount,
-            recentWork: recentWork,
-            starredWork: starredWork,
-            sourceRoots: sourceRoots,
-            sourceRootBookmarkRepairPaths: sourceRootBookmarkRepairPaths
-        )
+        sidebarSections = sidebarSections(for: selectedWorkspace)
     }
 
     private func refreshCatalogFolders() {
@@ -10917,7 +10922,13 @@ public final class AppModel {
         sourceRoots: [CatalogSourceRoot] = [],
         sourceRootBookmarkRepairPaths: Set<String> = []
     ) -> [SidebarSection] {
-        var libraryRows = [
+        // Library is navigation only: Collections (All Photographs, Recent
+        // Import, Starred, Recent Work), Saved Sets, Folders. Search/Review/
+        // Timeline/People/Places routes moved to the workspace switcher, the
+        // Library view toggle, and the Cull source picker; review-queue data
+        // (`reviewQueueCounts`) stays available for the Cull sidebar even
+        // though its Library rows are gone.
+        var collectionsRows = [
             SidebarRow(
                 id: "library-all",
                 title: "All Photographs",
@@ -10925,64 +10936,21 @@ public final class AppModel {
                 target: .allPhotographs
             )
         ]
-        if let recentlyAddedRow = recentlyAddedSidebarRow(recentWork) {
-            libraryRows.append(recentlyAddedRow)
+        if let recentImportRow = recentlyAddedSidebarRow(recentWork) {
+            collectionsRows.append(recentImportRow)
         }
-        libraryRows.append(
-            SidebarRow(
-                id: "library-search",
-                title: "Search",
-                detailText: "Ask or filter",
-                tone: .accent,
-                target: .search,
-                liveMockupPlaceholder: .agenticSearch
-            )
-        )
-        libraryRows.append(
-            SidebarRow(
-                id: "library-copilot",
-                title: "Review",
-                detailText: "Top picks and to-dos",
-                tone: .accent,
-                target: .copilot,
-                liveMockupPlaceholder: .copilotLibrary
-            )
-        )
-        libraryRows.append(
-            SidebarRow(
-                id: "library-timeline",
-                title: "Timeline",
-                detailText: "By date",
-                countText: catalogTimelineDays.isEmpty ? nil : sidebarCountText(catalogTimelineDays.count),
-                tone: .accent,
-                target: .timeline,
-                liveMockupPlaceholder: .timelineLibrary
-            )
-        )
-        libraryRows.append(
-            SidebarRow(
-                id: "library-people",
-                title: "People",
-                detailText: "Face review",
-                tone: .accent,
-                target: .people,
-                liveMockupPlaceholder: .peopleSidebar
-            )
-        )
-        libraryRows.append(
-            SidebarRow(
-                id: "library-places",
-                title: "Places",
-                detailText: "On the map",
-                tone: .accent,
-                target: .places,
-                liveMockupPlaceholder: .placesMap
-            )
-        )
-        var sections = [SidebarSection(title: "Library", rows: libraryRows)]
-        let reviewRows = reviewQueueSidebarRows(reviewQueueCounts: reviewQueueCounts)
-        if !reviewRows.isEmpty {
-            sections.append(SidebarSection(title: "Review", rows: reviewRows))
+        let visibleSavedAssetSets = Self.visibleSavedAssetSets(savedAssetSets)
+        let starredRows = visibleSavedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0, count: assetSetCounts[$0.id]) }
+        collectionsRows.append(contentsOf: starredRows)
+        collectionsRows.append(contentsOf: mergedRecentWorkSidebarRows(
+            recentWork: recentWork,
+            starredWork: starredWork,
+            scopeCounts: workSessionScopeCounts
+        ))
+
+        var sections = [SidebarSection(title: "Collections", rows: collectionsRows)]
+        if !visibleSavedAssetSets.isEmpty {
+            sections.append(SidebarSection(title: "Saved Sets", rows: visibleSavedAssetSets.map { Self.sidebarRow(for: $0, count: assetSetCounts[$0.id]) }))
         }
         if !catalogFolders.isEmpty {
             sections.append(SidebarSection(
@@ -10990,35 +10958,22 @@ public final class AppModel {
                 rows: folderTreeSidebarRows(catalogFolders: catalogFolders, expandedFolderPaths: expandedFolderPaths)
             ))
         }
-        // Sources/AI/Sync sidebar sections are retired in favor of the
-        // Activity Center toolbar popover (`activityCenterPresentation`);
-        // AI-signal filtering is still reachable via the `signal:` filter-bar
-        // token, and XMP-pending/conflict filtering via `xmp:`.
-        let visibleSavedAssetSets = Self.visibleSavedAssetSets(savedAssetSets)
-        let starredRows = visibleSavedAssetSets.filter(\.starred).map { Self.sidebarRow(for: $0, count: assetSetCounts[$0.id]) }
-        if !starredRows.isEmpty {
-            sections.append(SidebarSection(title: "Starred", rows: starredRows))
-        }
-        if !visibleSavedAssetSets.isEmpty {
-            sections.append(SidebarSection(title: "Saved Sets", rows: visibleSavedAssetSets.map { Self.sidebarRow(for: $0, count: assetSetCounts[$0.id]) }))
-        }
-        let recentWorkRows = Self.workSidebarRows(
-            for: Array(recentWork.prefix(5)),
-            idPrefix: "work-recent",
-            scopeCounts: workSessionScopeCounts
-        )
-        let starredWorkRows = Self.workSidebarRows(
-            for: Array(starredWork.prefix(5)),
-            idPrefix: "work-starred",
-            scopeCounts: workSessionScopeCounts
-        )
-        if !recentWorkRows.isEmpty {
-            sections.append(SidebarSection(title: "Recent Work", rows: recentWorkRows))
-        }
-        if !starredWorkRows.isEmpty {
-            sections.append(SidebarSection(title: "Starred Work", rows: starredWorkRows))
-        }
         return sections
+    }
+
+    /// Folds the Recent Work and Starred Work rows into one list: the most
+    /// recent sessions, plus any starred session old enough to have fallen
+    /// out of that recent window (deduplicated by session id).
+    private static func mergedRecentWorkSidebarRows(
+        recentWork: [AppWorkActivity],
+        starredWork: [AppWorkActivity],
+        scopeCounts: [WorkSessionID: Int]
+    ) -> [SidebarRow] {
+        let recentSlice = Array(recentWork.prefix(5))
+        let recentIDs = Set(recentSlice.map(\.id))
+        let extraStarred = starredWork.filter { !recentIDs.contains($0.id) }
+        return Self.workSidebarRows(for: recentSlice, idPrefix: "work-recent", scopeCounts: scopeCounts)
+            + Self.workSidebarRows(for: Array(extraStarred.prefix(5)), idPrefix: "work-starred", scopeCounts: scopeCounts)
     }
 
     /// Flattens the folder tree into sidebar rows, only descending into a
@@ -11160,7 +11115,7 @@ public final class AppModel {
         }
         return SidebarRow(
             id: "library-recently-added",
-            title: "Recently Added",
+            title: "Recent Import",
             detailText: activity.detail.isEmpty ? "Latest import" : activity.detail,
             countText: sidebarCountText(activity.totalUnitCount ?? activity.completedUnitCount),
             tone: .positive,

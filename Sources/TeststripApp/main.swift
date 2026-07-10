@@ -91,6 +91,23 @@ private struct WorkspaceCommands: Commands {
             Button("A/B Compare") {
                 model.selectedView = .abCompare
             }
+
+            // Temporary routes for destinations whose sidebar rows Task 7
+            // deleted (Search/Review/Timeline/People/Places); Task 9 (search),
+            // Task 10 (Library view toggle), and Task 13 (Cull source picker)
+            // give them permanent homes.
+            Button("Search") {
+                model.selectedView = .search
+            }
+            Button("Review") {
+                model.selectedView = .copilot
+            }
+            Button("Timeline") {
+                model.selectedView = .timeline
+            }
+            Button("Map") {
+                model.selectedView = .map
+            }
         }
     }
 }

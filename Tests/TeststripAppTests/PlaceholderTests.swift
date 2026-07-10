@@ -165,16 +165,10 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("rating/flag state"))
     }
 
-    func testPeopleSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
-        let model = AppModel.demo()
-        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
-        let peopleRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-people" })
-
-        XCTAssertEqual(peopleRow.liveMockupPlaceholder, .peopleSidebar)
-        XCTAssertEqual(peopleRow.detailText, "Face review")
-        XCTAssertTrue(peopleRow.isSelectable)
-        XCTAssertEqual(peopleRow.target, .people)
-    }
+    // The People sidebar row is gone (Task 7 - Library is Collections/Saved
+    // Sets/Folders only); People is reachable via the workspace switcher
+    // (⌘3) instead. The `.peopleSidebar` mockup ledger entry it used to
+    // carry is still tracked below.
 
     func testPeopleLedgerTracksUnnamedFaceReviewAndPersistedNamedRows() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "sidebar.people" })
@@ -281,67 +275,41 @@ final class LiveMockupPlaceholderTests: XCTestCase {
 
     func testEmptyFoldersGapStaysInLedgerWithoutRenderingDeadSidebarRow() throws {
         let model = AppModel.demo()
-        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
+        let collectionsSection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Collections" })
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "sidebar.folders-empty" })
 
-        XCTAssertFalse(librarySection.rows.contains { $0.id == "library-folders" })
+        XCTAssertFalse(collectionsSection.rows.contains { $0.id == "library-folders" })
+        XCTAssertNil(model.sidebarSections.first { $0.title == "Folders" })
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("hierarchical tree"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("expand on demand"))
         XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("hidden entirely when the catalog has no folders yet"))
     }
 
-    func testSearchSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
-        let model = AppModel.demo()
-        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
-        let searchRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-search" })
-
-        XCTAssertEqual(searchRow.liveMockupPlaceholder, .agenticSearch)
-        XCTAssertTrue(searchRow.isSelectable)
-        XCTAssertEqual(searchRow.target, .search)
-    }
-
-    func testCopilotSidebarRowIsMarkedAsLiveMockupPlaceholder() throws {
-        let model = AppModel.demo()
-        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
-        let copilotRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-copilot" })
-
-        XCTAssertEqual(copilotRow.liveMockupPlaceholder, .copilotLibrary)
-        XCTAssertTrue(copilotRow.isSelectable)
-        XCTAssertEqual(copilotRow.target, .copilot)
-    }
-
-    func testSelectingPeopleSidebarRowOpensPeopleView() throws {
-        let model = AppModel.demo()
-        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
-        let peopleRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-people" })
-
-        try model.selectSidebarRow(peopleRow)
-
-        XCTAssertEqual(model.selectedView, .people)
-    }
-
-    func testSelectingSearchSidebarRowOpensSearchViewWithoutClearingQuery() throws {
+    // The Search/Review(copilot)/People sidebar rows are gone (Task 7 -
+    // Library is Collections/Saved Sets/Folders only). Search and Review are
+    // reachable directly via `model.selectedView` (the temporary View menu
+    // items until Tasks 9/10/13 land their permanent homes); People via the
+    // workspace switcher. Their `.agenticSearch`/`.copilotLibrary` mockup
+    // ledger entries are still tracked in the copilot/search-focused tests
+    // above.
+    func testSelectingSearchViewPreservesQuery() throws {
         let model = AppModel.demo()
         model.librarySearchText = "ceremony"
         model.minimumRatingFilter = 4
-        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
-        let searchRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-search" })
 
-        try model.selectSidebarRow(searchRow)
+        model.selectedView = .search
 
         XCTAssertEqual(model.selectedView, .search)
         XCTAssertEqual(model.librarySearchText, "ceremony")
         XCTAssertEqual(model.minimumRatingFilter, 4)
     }
 
-    func testSelectingCopilotSidebarRowOpensCopilotWithoutClearingScope() throws {
+    func testSelectingCopilotViewPreservesScope() throws {
         let model = AppModel.demo()
         model.librarySearchText = "ceremony"
         model.minimumRatingFilter = 4
-        let librarySection = try XCTUnwrap(model.sidebarSections.first { $0.title == "Library" })
-        let copilotRow = try XCTUnwrap(librarySection.rows.first { $0.id == "library-copilot" })
 
-        try model.selectSidebarRow(copilotRow)
+        model.selectedView = .copilot
 
         XCTAssertEqual(model.selectedView, .copilot)
         XCTAssertEqual(model.librarySearchText, "ceremony")
