@@ -22,6 +22,10 @@ public struct LibraryQueryToken: Equatable, Identifiable {
         case signal
         case xmpPending
         case xmpConflict
+        case needsKeywords
+        case needsEvaluation
+        case likelyIssues
+        case providerFailures
         /// Recognized by `LibrarySearchIntent` but with no structured
         /// AppModel property backing it (e.g. `person:`). Round-trips
         /// through `librarySearchText` verbatim.
@@ -42,7 +46,11 @@ public struct LibraryQueryToken: Equatable, Identifiable {
     public let display: String
     public let value: Value
 
-    public var id: String { "\(field)" }
+    // Includes `searchText` so distinct values of the same field (e.g. two
+    // `.signal` suggestions) don't collide in a `ForEach`; `tokens(from:)`
+    // never surfaces more than one active token per field, but
+    // `LibraryResultHeaderPresentation.suggestedTokens` can.
+    public var id: String { "\(field)-\(searchText)" }
 
     /// The `LibrarySearchIntent`-compatible text form, e.g. `rating:3`.
     public var searchText: String {
@@ -75,6 +83,14 @@ public struct LibraryQueryToken: Equatable, Identifiable {
             return "xmp:pending"
         case (.xmpConflict, _):
             return "xmp:conflict"
+        case (.needsKeywords, _):
+            return "needs keywords"
+        case (.needsEvaluation, _):
+            return "needs evaluation"
+        case (.likelyIssues, _):
+            return "likely issues"
+        case (.providerFailures, _):
+            return "provider failures"
         case (.passthrough, .text(let fragment)):
             return fragment
         default:
@@ -150,6 +166,18 @@ public struct LibraryQueryToken: Equatable, Identifiable {
         if model.metadataSyncConflictFilter {
             tokens.append(LibraryQueryToken(field: .xmpConflict, display: "XMP Conflicts", value: .int(0)))
         }
+        if model.needsKeywordsFilter {
+            tokens.append(LibraryQueryToken(field: .needsKeywords, display: "Needs Keywords", value: .int(0)))
+        }
+        if model.needsEvaluationFilter {
+            tokens.append(LibraryQueryToken(field: .needsEvaluation, display: "Not analyzed yet", value: .int(0)))
+        }
+        if model.likelyIssuesFilter {
+            tokens.append(LibraryQueryToken(field: .likelyIssues, display: "Likely Issues", value: .int(0)))
+        }
+        if model.providerFailuresFilter {
+            tokens.append(LibraryQueryToken(field: .providerFailures, display: "Provider Failures", value: .int(0)))
+        }
 
         return tokens
     }
@@ -186,6 +214,14 @@ public struct LibraryQueryToken: Equatable, Identifiable {
             model.metadataSyncPendingFilter = true
         case (.xmpConflict, _):
             model.metadataSyncConflictFilter = true
+        case (.needsKeywords, _):
+            model.needsKeywordsFilter = true
+        case (.needsEvaluation, _):
+            model.needsEvaluationFilter = true
+        case (.likelyIssues, _):
+            model.likelyIssuesFilter = true
+        case (.providerFailures, _):
+            model.providerFailuresFilter = true
         default:
             // .passthrough tokens live in librarySearchText, which
             // parse(_:applyingTo:) reconstructs itself — applying one here
@@ -226,6 +262,14 @@ public struct LibraryQueryToken: Equatable, Identifiable {
             model.metadataSyncPendingFilter = false
         case .xmpConflict:
             model.metadataSyncConflictFilter = false
+        case .needsKeywords:
+            model.needsKeywordsFilter = false
+        case .needsEvaluation:
+            model.needsEvaluationFilter = false
+        case .likelyIssues:
+            model.likelyIssuesFilter = false
+        case .providerFailures:
+            model.providerFailuresFilter = false
         case .passthrough:
             if case .text(let fragment) = token.value {
                 let updated = model.librarySearchText
@@ -314,6 +358,14 @@ public struct LibraryQueryToken: Equatable, Identifiable {
             return LibraryQueryToken(field: .xmpPending, display: "XMP Pending", value: .int(0))
         case .metadataSyncConflict:
             return LibraryQueryToken(field: .xmpConflict, display: "XMP Conflicts", value: .int(0))
+        case .missingKeywords:
+            return LibraryQueryToken(field: .needsKeywords, display: "Needs Keywords", value: .int(0))
+        case .unevaluated:
+            return LibraryQueryToken(field: .needsEvaluation, display: "Not analyzed yet", value: .int(0))
+        case .likelyIssue:
+            return LibraryQueryToken(field: .likelyIssues, display: "Likely Issues", value: .int(0))
+        case .evaluationFailure:
+            return LibraryQueryToken(field: .providerFailures, display: "Provider Failures", value: .int(0))
         default:
             return nil
         }
@@ -378,6 +430,14 @@ public struct LibraryQueryToken: Equatable, Identifiable {
             return [.metadataSyncPending]
         case (.xmpConflict, _):
             return [.metadataSyncConflicts]
+        case (.needsKeywords, _):
+            return [.reviewQueue(.needsKeywords)]
+        case (.needsEvaluation, _):
+            return [.reviewQueue(.needsEvaluation)]
+        case (.likelyIssues, _):
+            return [.reviewQueue(.likelyIssues)]
+        case (.providerFailures, _):
+            return [.reviewQueue(.providerFailures)]
         default:
             return []
         }

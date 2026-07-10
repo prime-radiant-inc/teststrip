@@ -790,6 +790,24 @@ struct LibraryGridView: View {
                     applyLibraryFilters()
                 }
             }
+            Menu("Review Queue") {
+                Button("Needs Keywords") {
+                    model.needsKeywordsFilter = true
+                    applyLibraryFilters()
+                }
+                Button("Needs Evaluation") {
+                    model.needsEvaluationFilter = true
+                    applyLibraryFilters()
+                }
+                Button("Likely Issues") {
+                    model.likelyIssuesFilter = true
+                    applyLibraryFilters()
+                }
+                Button("Provider Failures") {
+                    model.providerFailuresFilter = true
+                    applyLibraryFilters()
+                }
+            }
             Button("Date Range…") {
                 isShowingDateFilters = true
             }
