@@ -106,7 +106,7 @@ Status flow: Spec'd → Tested-Pass | Tested-Fail → Fixed → Verified.
 | dev-004-package-release-dry-run | dev-004-package-release-dry-run.md | Tested-Pass | host CLI e2e | — | pass; 1 flake retry (build race) |  |
 | dev-005-package-release-signing | dev-005-package-release-signing.md | Tested-Pass | static + partial CLI | — | signing path documented, not exercised (cap noted) | needs Developer ID cert locally |
 | dev-006-ax-drive | dev-006-ax-drive.md | Spec'd | — | Environment | step1 pass; rest BLOCKED-CONCURRENT; re-run iter2 |  |
-| dev-007-reset-isolated | dev-007-reset-isolated.md | Fixed | host CLI e2e | Functional | trailing-slash guard fixed 6b25be77 (normalize_path both sides); awaiting re-run |  |
+| dev-007-reset-isolated | dev-007-reset-isolated.md | Verified | host CLI e2e | Functional | post-fix re-run all 5 assertions pass (fix 6b25be77 confirmed live) |  |
 | dev-008-sample-downloads | dev-008-sample-downloads.md | Tested-Fail | host CLI e2e | Logistical | face-model manifest URL is literal REPLACE-ME.example.com — download permanently broken | network |
 | dev-009-bench-seeds | dev-009-bench-seeds.md | Tested-Pass | host CLI e2e | — | pass; note: negative-overwrite exits via fatalError/SIGABRT not clean error |  |
 | dev-010-bench-benchmarks | dev-010-bench-benchmarks.md | Tested-Pass | host CLI e2e | — | benchmark-summary contract holds |  |
