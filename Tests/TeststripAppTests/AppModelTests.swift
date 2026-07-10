@@ -2280,6 +2280,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedBatchAssetIDs, [first.id, second.id])
         XCTAssertTrue(model.isInspectorVisible)
         XCTAssertTrue(model.metadataSyncConflictFilter)
+
+        // Conflicted assets are only visible in the Grid subview, so a reveal
+        // must land there even when Library last showed another subview.
+        model.selectedView = .timeline
+        model.selectWorkspace(.cull)
+        try model.revealConflicts([first.id])
+        XCTAssertEqual(model.selectedView, .grid)
+
+        // Empty reveal is a no-op: no workspace switch or filter churn.
+        model.selectWorkspace(.cull)
+        model.isInspectorVisible = false
+        try model.revealConflicts([])
+        XCTAssertEqual(model.selectedWorkspace, .cull)
+        XCTAssertFalse(model.isInspectorVisible)
     }
 
     func testSelectingPendingMetadataSyncSidebarRowLoadsPendingAssets() throws {

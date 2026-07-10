@@ -2164,7 +2164,10 @@ public final class AppModel {
     /// affected assets: switches to Library, filters to the XMP-conflict
     /// scope, selects the assets, and reveals the inspector.
     public func revealConflicts(_ assetIDs: [AssetID]) throws {
-        selectWorkspace(.library)
+        guard !assetIDs.isEmpty else { return }
+        // Land in Grid regardless of which Library subview was last used —
+        // the conflicted selection is only visible there.
+        selectedView = .grid
         selectedAssetID = assetIDs.first
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
