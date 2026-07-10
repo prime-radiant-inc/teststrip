@@ -24,6 +24,11 @@ set -euo pipefail
 #                                     center via CGEvent with the modifier keys
 #                                     held (AXPress cannot carry modifiers) —
 #                                     e.g. shift-click range selection.
+#                                     With --button right, posts a real
+#                                     right-click (CGEvent) at the element's
+#                                     center instead of AXPress — needed to
+#                                     open a SwiftUI .contextMenu, which AXPress
+#                                     cannot trigger.
 #   type  [App] MATCHSPEC --text STR  Set the first matching field's value to STR
 #                                     (role defaults to AXTextField for `type`).
 #
@@ -34,6 +39,9 @@ set -euo pipefail
 #   --contains TEXT  substring match on title/description/value
 #   --text  STR      (type only) the string to write into the matched field
 #   --modifiers M    (press only) comma-separated shift,command,option,control
+#   --button B       (press only) "left" (default) or "right" — right posts a
+#                     real CGEvent right-click instead of AXPress, to open
+#                     context menus
 #
 # Env: TESTSTRIP_AX_TIMEOUT_SECONDS (default 20), TESTSTRIP_AX_POLL_SECONDS (0.15).
 # Exit: 0 success, 1 not found / timeout, 2 usage/permission error.
@@ -50,7 +58,7 @@ esac
 APP="Teststrip"
 if [[ "${1:-}" != "" && "${1:-}" != --* ]]; then APP="$1"; shift; fi
 
-ROLE=""; LABEL=""; HELP=""; CONTAINS=""; TEXT=""; MODIFIERS=""
+ROLE=""; LABEL=""; HELP=""; CONTAINS=""; TEXT=""; MODIFIERS=""; BUTTON="left"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --role) ROLE="$2"; shift 2 ;;
@@ -59,9 +67,15 @@ while [[ $# -gt 0 ]]; do
     --contains) CONTAINS="$2"; shift 2 ;;
     --text) TEXT="$2"; shift 2 ;;
     --modifiers) MODIFIERS="$2"; shift 2 ;;
+    --button) BUTTON="$2"; shift 2 ;;
     *) echo "unknown option: $1" >&2; usage; exit 2 ;;
   esac
 done
+
+case "$BUTTON" in
+  left|right) ;;
+  *) echo "unknown --button: $BUTTON (want left|right)" >&2; exit 2 ;;
+esac
 
 # `type` defaults to text fields, and needs somewhere to descend from.
 if [[ "$VERB" == "type" && -z "$ROLE" ]]; then ROLE="AXTextField"; fi
@@ -74,6 +88,7 @@ TESTSTRIP_AX_HELP="$HELP" \
 TESTSTRIP_AX_CONTAINS="$CONTAINS" \
 TESTSTRIP_AX_TEXT="$TEXT" \
 TESTSTRIP_AX_MODIFIERS="$MODIFIERS" \
+TESTSTRIP_AX_BUTTON="$BUTTON" \
 /usr/bin/swift -e '
 import AppKit
 import ApplicationServices
@@ -88,6 +103,7 @@ let wantHelp = env["TESTSTRIP_AX_HELP"] ?? ""
 let wantContains = env["TESTSTRIP_AX_CONTAINS"] ?? ""
 let wantText = env["TESTSTRIP_AX_TEXT"] ?? ""
 let wantModifiers = (env["TESTSTRIP_AX_MODIFIERS"] ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.filter { !$0.isEmpty }
+let wantButton = env["TESTSTRIP_AX_BUTTON"] ?? "left"
 let timeout = TimeInterval(env["TESTSTRIP_AX_TIMEOUT_SECONDS"] ?? "20") ?? 20
 let poll = TimeInterval(env["TESTSTRIP_AX_POLL_SECONDS"] ?? "0.15") ?? 0.15
 
@@ -183,6 +199,29 @@ repeat {
                 for e in found { print(label(e) ?? help(e) ?? role(e) ?? "?") }
                 exit(0)
             case "press":
+                if wantButton == "right" {
+                    // SwiftUI .contextMenu only opens on a real right-click;
+                    // AXPress has no right-click equivalent.
+                    guard let posValue = attr(found[0], kAXPositionAttribute),
+                          let sizeValue = attr(found[0], kAXSizeAttribute) else {
+                        FileHandle.standardError.write(Data("element has no AXPosition/AXSize for right click\n".utf8))
+                        exit(1)
+                    }
+                    var pos = CGPoint.zero; var size = CGSize.zero
+                    AXValueGetValue(posValue as! AXValue, .cgPoint, &pos)
+                    AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+                    let center = CGPoint(x: pos.x + size.width / 2, y: pos.y + size.height / 2)
+                    guard let down = CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown, mouseCursorPosition: center, mouseButton: .right),
+                          let up = CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp, mouseCursorPosition: center, mouseButton: .right) else {
+                        FileHandle.standardError.write(Data("could not create mouse events\n".utf8))
+                        exit(1)
+                    }
+                    down.post(tap: .cghidEventTap)
+                    usleep(60_000)
+                    up.post(tap: .cghidEventTap)
+                    print("right-clicked: \(label(found[0]) ?? help(found[0]) ?? "?")")
+                    exit(0)
+                }
                 if !wantModifiers.isEmpty {
                     // AXPress cannot carry modifier keys, so a modifier-click
                     // posts real CGEvents at the element center with the

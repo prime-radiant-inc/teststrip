@@ -44,6 +44,10 @@ keyboard cull, evaluate, import, card-import) is already driven live by
    - `ax_drive.sh press --role AXButton --help "Rate 5"` — AXPress the first
      match. Match by `--label` (title/description/value), `--help` (AXHelp, for
      icon-only controls), or `--contains` (substring).
+   - `ax_drive.sh press --contains "Smoke Picks" --button right` — right-click
+     the first match instead of AXPress, needed to open a SwiftUI
+     `.contextMenu` (AXPress cannot trigger one). Combine with a follow-up
+     `find`/`press` against `--role AXMenuItem` to drive the menu that appears.
    - `ax_drive.sh type --contains "…" --text "1024"` — set a single field's
      value. Good for an unambiguous field (export long-edge); for the multi-field
      Import Path / Import Card sheets use **`script/submit_import_path.sh App
