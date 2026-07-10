@@ -12,13 +12,15 @@ struct CullHUDPresentation: Equatable {
     var pickCount: Int
     var rejectCount: Int
     var verdict: String?
+    var scope: CullScope
 
     init(
         filename: String,
         rating: Int,
         colorLabel: ColorLabel?,
         summary: CullingProgressSummary,
-        verdict: String?
+        verdict: String?,
+        scope: CullScope = .all
     ) {
         self.filename = filename
         self.rating = rating
@@ -30,5 +32,6 @@ struct CullHUDPresentation: Equatable {
             ? Double(summary.reviewedCount) / Double(summary.totalCount)
             : 0
         self.verdict = verdict
+        self.scope = scope
     }
 }

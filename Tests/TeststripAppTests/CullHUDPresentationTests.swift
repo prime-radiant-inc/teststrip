@@ -17,7 +17,8 @@ final class CullHUDPresentationTests: XCTestCase {
             rating: 4,
             colorLabel: .green,
             summary: summary,
-            verdict: nil
+            verdict: nil,
+            scope: .all
         )
 
         XCTAssertEqual(presentation.filename, "IMG_0042.CR2")
@@ -28,6 +29,28 @@ final class CullHUDPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.undecidedCount, 5)
         XCTAssertEqual(presentation.progressFraction, 0.5, accuracy: 0.0001)
         XCTAssertNil(presentation.verdict)
+        XCTAssertEqual(presentation.scope, .all)
+    }
+
+    func testScopePassesThroughUnchanged() {
+        let summary = CullingProgressSummary(
+            selectedPosition: 1,
+            positionText: "Frame 1 of 1",
+            pickCount: 0,
+            rejectCount: 0,
+            totalCount: 1
+        )
+
+        let presentation = CullHUDPresentation(
+            filename: "IMG_0099.CR2",
+            rating: 0,
+            colorLabel: nil,
+            summary: summary,
+            verdict: nil,
+            scope: .picks
+        )
+
+        XCTAssertEqual(presentation.scope, .picks)
     }
 
     func testUndecidedCountNeverGoesNegativeWhenReviewedExceedsTotal() {

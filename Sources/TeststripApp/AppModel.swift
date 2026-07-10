@@ -199,6 +199,7 @@ public enum CullingShortcut: Equatable, Sendable {
     case clearFlag
     case acceptStackSelection
     case toggleZoom
+    case cycleScope
 
     public init?(key: CullingShortcutKey) {
         switch key {
@@ -231,9 +232,88 @@ public enum CullingShortcut: Equatable, Sendable {
             case "x": self = .reject
             case "u": self = .clearFlag
             case "z": self = .toggleZoom
+            case "s": self = .cycleScope
             default: return nil
             }
         }
+    }
+}
+
+/// The subset of in-progress frames the loupe/filmstrip/grid navigate
+/// through while culling. Cycled with the `s` shortcut; `.all` disables
+/// filtering.
+public enum CullScope: String, CaseIterable, Equatable, Sendable {
+    case unrated
+    case picks
+    case rejects
+    case all
+
+    public func next() -> CullScope {
+        let cases = Self.allCases
+        guard let index = cases.firstIndex(of: self) else { return .unrated }
+        return cases[(index + 1) % cases.count]
+    }
+
+    public func matches(_ flag: PickFlag?) -> Bool {
+        switch self {
+        case .unrated: return flag == nil
+        case .picks: return flag == .pick
+        case .rejects: return flag == .reject
+        case .all: return true
+        }
+    }
+
+    public var label: String {
+        switch self {
+        case .unrated: return "Unrated"
+        case .picks: return "Picks"
+        case .rejects: return "Rejects"
+        case .all: return "All"
+        }
+    }
+}
+
+/// Pure ordering helpers for `CullScope` filtering, kept free of `AppModel`
+/// state so cycle/advance semantics are directly testable.
+public enum CullScopeOrdering {
+    public static func filteredAssetIDs(_ assets: [Asset], scope: CullScope) -> [AssetID] {
+        assets.filter { scope.matches($0.metadata.flag) }.map(\.id)
+    }
+
+    public static func filteredAssets(_ assets: [Asset], scope: CullScope) -> [Asset] {
+        assets.filter { scope.matches($0.metadata.flag) }
+    }
+
+    /// The frame to select after the scope changes: the current frame if it
+    /// still matches, otherwise the nearest matching frame (checking forward
+    /// and backward from the current position in lockstep), otherwise nil.
+    public static func selectionAfterScopeChange(
+        assets: [Asset],
+        scope: CullScope,
+        currentSelection: AssetID?
+    ) -> AssetID? {
+        if let currentSelection,
+           let currentAsset = assets.first(where: { $0.id == currentSelection }),
+           scope.matches(currentAsset.metadata.flag) {
+            return currentSelection
+        }
+        guard let currentSelection,
+              let currentIndex = assets.firstIndex(where: { $0.id == currentSelection }) else {
+            return assets.first(where: { scope.matches($0.metadata.flag) })?.id
+        }
+        var forward = currentIndex + 1
+        var backward = currentIndex - 1
+        while forward < assets.count || backward >= 0 {
+            if forward < assets.count, scope.matches(assets[forward].metadata.flag) {
+                return assets[forward].id
+            }
+            if backward >= 0, scope.matches(assets[backward].metadata.flag) {
+                return assets[backward].id
+            }
+            forward += 1
+            backward -= 1
+        }
+        return nil
     }
 }
 
@@ -304,6 +384,9 @@ public enum CullingCommandMenuPresentation {
         ]),
         CullingCommandMenuSection(title: "Loupe", items: [
             CullingCommandMenuItem(title: "Toggle 1:1 Zoom", shortcut: .toggleZoom, key: .character("z"))
+        ]),
+        CullingCommandMenuSection(title: "Scope", items: [
+            CullingCommandMenuItem(title: "Cycle Scope", shortcut: .cycleScope, key: .character("s"))
         ])
     ]
 }
@@ -1615,6 +1698,9 @@ public final class AppModel {
     // Loupe 1:1 zoom state: nil shows the fitted frame. Reset whenever the
     // selection moves so every new frame starts fitted.
     public private(set) var loupeZoomFocus: LoupeZoomFocus?
+    /// The subset of frames the loupe/filmstrip/grid navigate through while
+    /// culling. `.all` means unfiltered. Cycled with the `s` shortcut.
+    public private(set) var cullScope: CullScope = .all
     public private(set) var selectedBatchAssetIDs: Set<AssetID>
     /// Whether the on-demand inspector (⌘I) is shown, presented via
     /// `.inspector()` and gated by `WorkspaceChromePolicy.showsInspector`.
@@ -5008,17 +5094,18 @@ public final class AppModel {
     }
 
     public func moveGridSelection(_ direction: GridMoveDirection, columns: Int) {
-        guard !assets.isEmpty else { return }
+        let scopedAssets = CullScopeOrdering.filteredAssets(assets, scope: cullScope)
+        guard !scopedAssets.isEmpty else { return }
         let currentIndex = selectedAssetID.flatMap { id in
-            assets.firstIndex(where: { $0.id == id })
+            scopedAssets.firstIndex(where: { $0.id == id })
         } ?? 0
         guard let nextIndex = GridSelectionMovement.nextIndex(
             from: currentIndex,
             direction: direction,
-            count: assets.count,
+            count: scopedAssets.count,
             columns: columns
         ) else { return }
-        selectAssetID(assets[nextIndex].id)
+        selectAssetID(scopedAssets[nextIndex].id)
     }
 
     public func returnToLibraryGrid() {
@@ -5140,7 +5227,18 @@ public final class AppModel {
             try acceptSelectedStackSelectionForCulling()
         case .toggleZoom:
             toggleLoupeZoom()
+        case .cycleScope:
+            cycleCullScope()
         }
+    }
+
+    public func cycleCullScope() {
+        cullScope = cullScope.next()
+        selectAssetID(CullScopeOrdering.selectionAfterScopeChange(
+            assets: assets,
+            scope: cullScope,
+            currentSelection: selectedAssetID
+        ))
     }
 
     public func toggleLoupeZoom() {
@@ -5205,10 +5303,10 @@ public final class AppModel {
         }
         guard let currentSelection = selectedAssetID,
               let index = assets.firstIndex(where: { $0.id == currentSelection }) else {
-            selectAssetID(assets.first?.id)
+            selectAssetID(CullScopeOrdering.filteredAssets(assets, scope: cullScope).first?.id)
             return
         }
-        if index == assets.count - 1, hasMoreAssets {
+        if cullScope == .all, index == assets.count - 1, hasMoreAssets {
             try loadMoreAssets()
             guard let reloadedIndex = assets.firstIndex(where: { $0.id == currentSelection }) else {
                 selectAssetID(assets.first?.id)
@@ -5217,7 +5315,31 @@ public final class AppModel {
             selectAssetID(assets[min(reloadedIndex + 1, assets.count - 1)].id)
             return
         }
-        selectAssetID(assets[min(index + 1, assets.count - 1)].id)
+        if let nextID = Self.assetID(in: assets, after: index, matching: cullScope) {
+            selectAssetID(nextID)
+        }
+    }
+
+    private static func assetID(in assets: [Asset], after index: Int, matching scope: CullScope) -> AssetID? {
+        var candidate = index + 1
+        while assets.indices.contains(candidate) {
+            if scope.matches(assets[candidate].metadata.flag) {
+                return assets[candidate].id
+            }
+            candidate += 1
+        }
+        return nil
+    }
+
+    private static func assetID(in assets: [Asset], before index: Int, matching scope: CullScope) -> AssetID? {
+        var candidate = index - 1
+        while assets.indices.contains(candidate) {
+            if scope.matches(assets[candidate].metadata.flag) {
+                return assets[candidate].id
+            }
+            candidate -= 1
+        }
+        return nil
     }
 
     private func nextAssetID(after stack: AssetStack) -> AssetID? {
@@ -5496,10 +5618,10 @@ public final class AppModel {
         }
         guard let currentSelection = selectedAssetID,
               let index = assets.firstIndex(where: { $0.id == currentSelection }) else {
-            selectAssetID(assets.first?.id)
+            selectAssetID(CullScopeOrdering.filteredAssets(assets, scope: cullScope).first?.id)
             return
         }
-        if index == 0, hasPreviousAssets {
+        if cullScope == .all, index == 0, hasPreviousAssets {
             try loadPreviousAssets()
             guard let reloadedIndex = assets.firstIndex(where: { $0.id == currentSelection }) else {
                 selectAssetID(assets.last?.id)
@@ -5508,7 +5630,9 @@ public final class AppModel {
             selectAssetID(assets[max(reloadedIndex - 1, 0)].id)
             return
         }
-        selectAssetID(assets[max(index - 1, 0)].id)
+        if let previousID = Self.assetID(in: assets, before: index, matching: cullScope) {
+            selectAssetID(previousID)
+        }
     }
 
     public func setRatingForSelectedAsset(_ rating: Int) throws {

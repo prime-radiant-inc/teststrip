@@ -3618,7 +3618,8 @@ private struct LoupeView: View {
             rating: asset.metadata.rating,
             colorLabel: asset.metadata.colorLabel,
             summary: model.cullingProgressSummary,
-            verdict: verdict
+            verdict: verdict,
+            scope: model.cullScope
         )
     }
 
@@ -3631,6 +3632,7 @@ private struct LoupeView: View {
                 .truncationMode(.middle)
                 .frame(maxWidth: 180, alignment: .leading)
             cullHUDRatingStars(presentation.rating)
+            cullHUDScopeChip(presentation.scope)
             if let colorLabel = presentation.colorLabel {
                 Circle()
                     .fill(color(for: colorLabel))
@@ -3663,6 +3665,15 @@ private struct LoupeView: View {
         .padding(.horizontal, 14)
         .frame(height: 48)
         .background(.bar)
+    }
+
+    private func cullHUDScopeChip(_ scope: CullScope) -> some View {
+        Text(scope.label)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.secondary.opacity(0.18)))
+            .accessibilityLabel("Cull scope: \(scope.label)")
     }
 
     private func cullHUDRatingStars(_ rating: Int) -> some View {
@@ -3702,7 +3713,7 @@ private struct LoupeView: View {
 
     private func cullingFilmstrip(recommendedAssetID: AssetID?) -> some View {
         let presentation = CullingFilmstripPresentation(
-            assets: model.assets,
+            assets: CullScopeOrdering.filteredAssets(model.assets, scope: model.cullScope),
             selectedAssetID: model.selectedAssetID
         )
         return VStack(spacing: 6) {
