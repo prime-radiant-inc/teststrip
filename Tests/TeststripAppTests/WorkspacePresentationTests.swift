@@ -21,7 +21,6 @@ final class WorkspacePresentationTests: XCTestCase {
         XCTAssertEqual(LibraryViewMode.compare.workspace, .cull)
         XCTAssertEqual(LibraryViewMode.abCompare.workspace, .cull)
         XCTAssertEqual(LibraryViewMode.grid.workspace, .library)
-        XCTAssertEqual(LibraryViewMode.search.workspace, .library)
         XCTAssertEqual(LibraryViewMode.timeline.workspace, .library)
         XCTAssertEqual(LibraryViewMode.map.workspace, .library)
         XCTAssertEqual(LibraryViewMode.copilot.workspace, .cull) // queues feed culling

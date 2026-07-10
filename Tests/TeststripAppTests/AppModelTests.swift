@@ -270,7 +270,7 @@ final class AppModelTests: XCTestCase {
         try model.selectSidebarTarget(.copilot)
         try model.selectSidebarTarget(.timeline)
         try model.selectSidebarTarget(.search)
-        XCTAssertEqual(model.selectedView, .search)
+        XCTAssertEqual(model.selectedView, .grid)
         XCTAssertTrue(model.canNavigateBack)
         XCTAssertFalse(model.canNavigateForward)
 
@@ -285,7 +285,7 @@ final class AppModelTests: XCTestCase {
         try model.navigateForward()
         XCTAssertEqual(model.selectedView, .timeline)
         try model.navigateForward()
-        XCTAssertEqual(model.selectedView, .search)
+        XCTAssertEqual(model.selectedView, .grid)
         XCTAssertFalse(model.canNavigateForward)
     }
 

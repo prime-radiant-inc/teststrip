@@ -5,7 +5,7 @@ import TeststripCore
 final class SessionRestoreStateTests: XCTestCase {
     func testRoundTripPreservesAllFields() throws {
         let state = SessionRestoreState(
-            selectedView: .search,
+            selectedView: .grid,
             selectedAssetSetID: AssetSetID(rawValue: "set-1"),
             selectedAssetID: AssetID(rawValue: "asset-1"),
             sortOption: .captureTimeNewestFirst,
@@ -82,6 +82,14 @@ final class SessionRestoreStateTests: XCTestCase {
         defaults.set(data, forKey: SessionRestoreStore.key(forCatalogRoot: catalogRoot))
 
         XCTAssertNil(store.load())
+    }
+
+    func testLegacySearchRawValueDecodesAsGrid() throws {
+        // Search used to be its own LibraryViewMode case; a session
+        // persisted before Task 9 stored "search" as selectedView. That
+        // migrates to `.grid` (search's permanent home now) instead of
+        // failing SessionRestoreState's whole decode.
+        XCTAssertEqual(try JSONDecoder().decode(LibraryViewMode.self, from: Data("\"search\"".utf8)), .grid)
     }
 
     func testStoreLoadReturnsNilForCorruptData() throws {

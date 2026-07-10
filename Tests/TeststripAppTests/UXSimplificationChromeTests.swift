@@ -95,7 +95,6 @@ final class UXSimplificationChromeTests: XCTestCase {
         )
         XCTAssertEqual(presentation.modeItems.map(\.mode), [.grid, .loupe, .compare, .abCompare])
         XCTAssertFalse(presentation.modeItems.map(\.mode).contains(.copilot))
-        XCTAssertFalse(presentation.modeItems.map(\.mode).contains(.search))
     }
 
     // MARK: De-jargon labels

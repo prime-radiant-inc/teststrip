@@ -19,7 +19,7 @@ final class AppModelSessionRestoreTests: XCTestCase {
         let catalogB = try makeCatalog(directory: directory)
         let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
 
-        XCTAssertEqual(modelB.selectedView, .search)
+        XCTAssertEqual(modelB.selectedView, .grid)
         XCTAssertEqual(modelB.librarySearchText, "patagonia")
         XCTAssertEqual(modelB.minimumRatingFilter, 4)
         XCTAssertEqual(modelB.flagFilter, .pick)

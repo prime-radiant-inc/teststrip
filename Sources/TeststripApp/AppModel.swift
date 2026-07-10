@@ -3,9 +3,8 @@ import Observation
 import SwiftUI
 import TeststripCore
 
-public enum LibraryViewMode: String, Codable, CaseIterable, Sendable {
+public enum LibraryViewMode: String, CaseIterable, Sendable {
     case grid
-    case search
     case copilot
     case loupe
     case compare
@@ -13,6 +12,28 @@ public enum LibraryViewMode: String, Codable, CaseIterable, Sendable {
     case timeline
     case map
     case people
+}
+
+extension LibraryViewMode: Codable {
+    // Search used to be its own route (`.search`); it's now just the Library
+    // grid with a query in the token field (Task 9). A persisted session
+    // from before that migration decodes its stored "search" rawValue as
+    // `.grid` instead of failing the whole `SessionRestoreState` decode.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        if rawValue == "search" {
+            self = .grid
+            return
+        }
+        guard let mode = LibraryViewMode(rawValue: rawValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown LibraryViewMode rawValue: \(rawValue)"
+            )
+        }
+        self = mode
+    }
 }
 
 /// The three top-level workspaces the UI is organized around; each
@@ -56,7 +77,7 @@ extension LibraryViewMode {
         switch self {
         case .loupe, .compare, .abCompare, .copilot:
             return .cull
-        case .grid, .search, .timeline, .map:
+        case .grid, .timeline, .map:
             return .library
         case .people:
             return .people
@@ -2004,9 +2025,6 @@ public final class AppModel {
     }
 
     public var libraryTitle: String {
-        if selectedView == .search {
-            return "Search"
-        }
         if selectedView == .copilot {
             return "Review"
         }
@@ -3720,8 +3738,11 @@ public final class AppModel {
             selectedView = .grid
             try clearLibraryFilters()
         case .search:
+            // Search's permanent home is the Library grid's token query
+            // field and result header (Task 9) — SidebarRowTarget.search
+            // just routes there now instead of a dedicated route.
             selectedAssetSetID = nil
-            selectedView = .search
+            selectedView = .grid
         case .copilot:
             selectedAssetSetID = nil
             selectedView = .copilot
@@ -9127,7 +9148,7 @@ public final class AppModel {
     // Routes that only ever exist mid-culling-session; never auto-restored.
     private static func isRestorableSessionRoute(_ view: LibraryViewMode) -> Bool {
         switch view {
-        case .grid, .search, .copilot, .timeline, .people, .map:
+        case .grid, .copilot, .timeline, .people, .map:
             return true
         case .loupe, .compare, .abCompare:
             return false

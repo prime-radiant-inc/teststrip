@@ -80,14 +80,6 @@ struct LibraryGridView: View {
                     saveDynamicSet: showSaveSearchPopover,
                     saveSnapshotSet: showSaveSnapshotSetPopover
                 )
-            } else if model.selectedView == .search {
-                SearchWorkspaceView(
-                    model: model,
-                    assetGrid: AnyView(assetGrid),
-                    saveDynamicSet: showSaveSearchPopover,
-                    saveSnapshotSet: showSaveSnapshotSetPopover,
-                    startCulling: showStartCullingPopover
-                )
             } else if model.selectedView == .timeline {
                 TimelineWorkspaceView(
                     model: model,
@@ -596,6 +588,7 @@ struct LibraryGridView: View {
             libraryTopBar
             if WorkspaceChromePolicy.showsFilterTokens(model.selectedWorkspace) {
                 libraryQueryBar
+                libraryResultHeader
             }
             if let summary = visibleImportCompletionSummary {
                 importCompletionSummary(summary)
@@ -663,47 +656,6 @@ struct LibraryGridView: View {
                     .help("Clear filters")
                 }
 
-                Button {
-                    showSaveSearchPopover()
-                } label: {
-                    Image(systemName: "bookmark")
-                }
-                .buttonStyle(.borderless)
-                .disabled(!model.canSaveCurrentLibraryQuery)
-                .help("Save search")
-                .accessibilityLabel("Save search")
-                .popover(isPresented: $isSavingSearch) {
-                    saveSearchPopover
-                }
-                .liveMockupPlaceholder(.smartCollectionsBuilder)
-
-                Button {
-                    showSaveSnapshotSetPopover()
-                } label: {
-                    Image(systemName: "camera.viewfinder")
-                }
-                .buttonStyle(.borderless)
-                .disabled(!model.canSaveCurrentAssetScopeSnapshot)
-                .help("Save current results as snapshot")
-                .accessibilityLabel("Save current results as snapshot")
-                .popover(isPresented: $isSavingSnapshotSet) {
-                    saveSnapshotSetPopover
-                }
-
-                Button {
-                    manualSetName = model.suggestedManualSetName
-                    manualSetStarred = false
-                    isSavingManualSet = true
-                } label: {
-                    Image(systemName: "rectangle.stack.badge.plus")
-                }
-                .buttonStyle(.borderless)
-                .disabled(!model.canSaveSelectedAssetAsManualSet)
-                .help("Save selected photos as set")
-                .accessibilityLabel("Save as Set")
-                .popover(isPresented: $isSavingManualSet) {
-                    saveManualSetPopover
-                }
             }
             .padding(.horizontal, 12)
             .padding(.top, 8)
@@ -716,6 +668,105 @@ struct LibraryGridView: View {
         .padding(.bottom, 7)
         .background(.bar)
         .liveMockupPlaceholder(.searchRefine)
+    }
+
+    private var libraryResultHeaderPresentation: LibraryResultHeaderPresentation {
+        LibraryResultHeaderPresentation(
+            totalAssetCount: model.totalAssetCount,
+            librarySearchText: model.librarySearchText,
+            canSaveDynamicSet: model.canSaveCurrentLibraryQuery,
+            canSaveSnapshotSet: model.canSaveCurrentAssetScopeSnapshot,
+            canSaveManualSet: model.canSaveSelectedAssetAsManualSet,
+            reviewQueueCounts: model.reviewQueueCounts,
+            evaluationKindSummaries: model.catalogEvaluationKindSummaries,
+            activeTokens: LibraryQueryToken.tokens(from: model)
+        )
+    }
+
+    /// Match count + a plain-English "read as" line for whatever's left
+    /// after `LibrarySearchIntent` parses out structured filters, plus
+    /// catalog-backed suggested filters and the Save ▾ menu. Replaces
+    /// SearchWorkspaceView: search results are just the Library in a
+    /// filtered state, not a separate route.
+    private var libraryResultHeader: some View {
+        let presentation = libraryResultHeaderPresentation
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(presentation.matchCount == 1 ? "1 photo" : "\(presentation.matchCount) photos")
+                .font(.caption.weight(.semibold))
+            if let interpretation = presentation.interpretation {
+                Text(interpretation)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            if !presentation.suggestedTokens.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(presentation.suggestedTokens) { token in
+                            suggestedTokenChip(token)
+                        }
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+            if !presentation.saveActions.isEmpty {
+                saveMenu(presentation.saveActions)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.bar)
+    }
+
+    private func suggestedTokenChip(_ token: LibraryQueryToken) -> some View {
+        Button {
+            LibraryQueryToken.apply(token, to: model)
+            applyLibraryFilters()
+        } label: {
+            Text(token.display)
+                .lineLimit(1)
+        }
+        .buttonStyle(.plain)
+        .font(.caption.weight(.medium))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+        .help("Add \(token.display) filter")
+    }
+
+    private func saveMenu(_ actions: [LibraryResultHeaderPresentation.SaveAction]) -> some View {
+        Menu {
+            ForEach(actions) { action in
+                Button {
+                    performSaveAction(action)
+                } label: {
+                    Label(action.title, systemImage: action.systemImage)
+                }
+            }
+        } label: {
+            Text("Save \u{25BE}")
+        }
+        .buttonStyle(.borderless)
+        .disabled(actions.isEmpty)
+        .help("Save this result set")
+        .accessibilityLabel("Save")
+        .liveMockupPlaceholder(.smartCollectionsBuilder)
+        .popover(isPresented: $isSavingSearch) { saveSearchPopover }
+        .popover(isPresented: $isSavingSnapshotSet) { saveSnapshotSetPopover }
+        .popover(isPresented: $isSavingManualSet) { saveManualSetPopover }
+    }
+
+    private func performSaveAction(_ action: LibraryResultHeaderPresentation.SaveAction) {
+        switch action {
+        case .dynamicSearch:
+            showSaveSearchPopover()
+        case .frozenSnapshot:
+            showSaveSnapshotSetPopover()
+        case .manualSet:
+            manualSetName = model.suggestedManualSetName
+            manualSetStarred = false
+            isSavingManualSet = true
+        }
     }
 
     private var librarySortPicker: some View {
@@ -4328,7 +4379,7 @@ struct LibraryTopBarPresentation: Equatable {
     ]
 
     private static func breadcrumbItems(scopeTitle: String, selectedView: LibraryViewMode) -> [String] {
-        if selectedView == .search || selectedView == .copilot || selectedView == .timeline || selectedView == .people || selectedView == .map {
+        if selectedView == .copilot || selectedView == .timeline || selectedView == .people || selectedView == .map {
             return ["Library", scopeTitle]
         }
         if scopeTitle == "All Photographs" {
@@ -6433,892 +6484,6 @@ private extension View {
         let primaryState = model.selectedAssetID == asset.id ? "Selected" : "Not selected"
         guard model.isBatchSelected(asset.id) else { return primaryState }
         return "\(primaryState), batch selected"
-    }
-}
-
-struct SearchWorkspaceRefineRow: Equatable, Identifiable {
-    var title: String
-    var value: String
-    var target: SidebarRowTarget? = nil
-
-    var id: String { "\(title)|\(value)" }
-    var isActive: Bool { value == "active" }
-}
-
-struct SearchWorkspaceRefineGroup: Equatable, Identifiable {
-    var title: String
-    var rows: [SearchWorkspaceRefineRow]
-
-    var id: String { title }
-}
-
-enum SearchWorkspaceSuggestedActionKind: Equatable {
-    case saveDynamicSet
-    case saveSnapshotSet
-    case startCulling
-    case openReviewQueue(ReviewQueue)
-}
-
-struct SearchWorkspaceSuggestedAction: Equatable, Identifiable {
-    var action: SearchWorkspaceSuggestedActionKind
-    var title: String
-    var detail: String
-    var systemImage: String
-
-    var id: String {
-        switch action {
-        case .saveDynamicSet:
-            return "save-dynamic-set"
-        case .saveSnapshotSet:
-            return "save-snapshot-set"
-        case .startCulling:
-            return "start-culling"
-        case .openReviewQueue(let queue):
-            return "review-\(queue.rawValue)"
-        }
-    }
-}
-
-struct SearchWorkspaceGeneratedRefinement: Equatable, Identifiable {
-    var preset: SmartCollectionRulePreset
-    var title: String
-    var detail: String
-    var systemImage: String
-
-    var id: String { preset.id }
-}
-
-struct SearchWorkspaceAskInterpretation: Equatable {
-    var queryText: String
-    var title: String
-    var detail: String
-    var systemImage: String
-}
-
-private extension Array where Element == SearchWorkspaceGeneratedRefinement {
-    func containsPreset(_ preset: SmartCollectionRulePreset) -> Bool {
-        contains { $0.preset == preset }
-    }
-}
-
-struct SearchWorkspacePresentation: Equatable {
-    var title: String
-    var resultCountText: String
-    var savedSetCountText: String
-    var starredSetCountText: String
-    var askInterpretation: SearchWorkspaceAskInterpretation?
-    var refineRows: [SearchWorkspaceRefineRow]
-    var refineGroups: [SearchWorkspaceRefineGroup]
-    var workHistoryRows: [SearchWorkspaceRefineRow]
-    var generatedRefinements: [SearchWorkspaceGeneratedRefinement]
-    var relatedFilterRows: [SearchWorkspaceRefineRow]
-    var suggestedActions: [SearchWorkspaceSuggestedAction]
-
-    init(
-        suggestedName: String,
-        totalAssetCount: Int,
-        savedSetCount: Int,
-        starredSetCount: Int,
-        activeFilterChips: [String],
-        activeFilterRows: [ActiveLibraryFilterRow]? = nil,
-        canSaveDynamicSet: Bool = false,
-        canSaveSnapshotSet: Bool = false,
-        canStartCulling: Bool = false,
-        reviewQueueCounts: [ReviewQueue: Int] = [:],
-        evaluationKindSummaries: [CatalogEvaluationKindSummary] = [],
-        workHistory: [AppWorkActivity] = []
-    ) {
-        title = suggestedName
-        resultCountText = "\(totalAssetCount)"
-        savedSetCountText = "\(savedSetCount)"
-        starredSetCountText = "\(starredSetCount)"
-        let rows = activeFilterRows ?? activeFilterChips.map { ActiveLibraryFilterRow(title: $0) }
-        if rows.isEmpty {
-            refineRows = [SearchWorkspaceRefineRow(title: "All photos", value: "current scope", target: .allPhotographs)]
-        } else {
-            refineRows = rows.map { SearchWorkspaceRefineRow(title: $0.title, value: "active", target: $0.target) }
-        }
-        askInterpretation = Self.askInterpretation(for: refineRows)
-        refineGroups = Self.groupRefineRows(refineRows)
-        workHistoryRows = workHistory.map { activity in
-            SearchWorkspaceRefineRow(
-                title: activity.title,
-                value: activity.detail.isEmpty ? activity.status.rawValue : activity.detail,
-                target: .workSession(WorkSessionID(rawValue: activity.id))
-            )
-        }
-        generatedRefinements = Self.generatedRefinements(
-            reviewQueueCounts: reviewQueueCounts,
-            evaluationKindSummaries: evaluationKindSummaries,
-            activeRows: refineRows
-        )
-        relatedFilterRows = Self.relatedFilterRows(
-            reviewQueueCounts: reviewQueueCounts,
-            activeRows: refineRows
-        )
-        suggestedActions = Self.suggestedActions(
-            suggestedName: suggestedName,
-            totalAssetCount: totalAssetCount,
-            canSaveDynamicSet: canSaveDynamicSet,
-            canSaveSnapshotSet: canSaveSnapshotSet,
-            canStartCulling: canStartCulling,
-            reviewQueueCounts: reviewQueueCounts
-        )
-    }
-
-    private static func askInterpretation(for rows: [SearchWorkspaceRefineRow]) -> SearchWorkspaceAskInterpretation? {
-        let searchRows = rows.filter { $0.title.hasPrefix("Search:") }
-        guard let searchRow = searchRows.first else { return nil }
-        let queryText = String(searchRow.title.dropFirst("Search:".count))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !queryText.isEmpty else { return nil }
-        let hasParsedFilters = rows.contains { row in
-            !row.title.hasPrefix("Search:") && row.title != "All photos"
-        }
-        return SearchWorkspaceAskInterpretation(
-            queryText: queryText,
-            title: "Plain search fallback",
-            detail: hasParsedFilters ? "Plain text remains after parsed filters" : "No structured filters were recognized yet",
-            systemImage: "text.magnifyingglass"
-        )
-    }
-
-    private static func groupRefineRows(_ rows: [SearchWorkspaceRefineRow]) -> [SearchWorkspaceRefineGroup] {
-        let order = ["Scope", "Decisions", "Metadata", "Review Queues", "Signals", "Source & XMP"]
-        var groupedRows: [String: [SearchWorkspaceRefineRow]] = [:]
-        for row in rows {
-            groupedRows[groupTitle(for: row), default: []].append(row)
-        }
-        return order.compactMap { title in
-            guard let rows = groupedRows[title], !rows.isEmpty else { return nil }
-            return SearchWorkspaceRefineGroup(title: title, rows: rows)
-        }
-    }
-
-    private static func groupTitle(for row: SearchWorkspaceRefineRow) -> String {
-        switch row.target {
-        case .assetSet?, .workSession?:
-            return "Scope"
-        default:
-            return groupTitle(for: row.title)
-        }
-    }
-
-    private static func groupTitle(for rowTitle: String) -> String {
-        if rowTitle == "All photos" {
-            return "Scope"
-        }
-        if rowTitle.hasPrefix("Session:")
-            || rowTitle.hasPrefix("Import:") {
-            return "Scope"
-        }
-        if rowTitle == "Pick"
-            || rowTitle == "Reject"
-            || rowTitle.hasPrefix("Rating")
-            || rowTitle.hasSuffix("Label") {
-            return "Decisions"
-        }
-        if rowTitle.hasPrefix("Search:")
-            || rowTitle.hasPrefix("Camera:")
-            || rowTitle.hasPrefix("Lens:")
-            || rowTitle.hasPrefix("Keyword:")
-            || rowTitle.hasPrefix("Folder:")
-            || rowTitle.hasPrefix("ISO")
-            || rowTitle.hasPrefix("From ")
-            || rowTitle.hasPrefix("Before ") {
-            return "Metadata"
-        }
-        if rowTitle == "Needs Keywords"
-            || rowTitle == "Not analyzed yet"
-            || rowTitle == "Likely Issues"
-            || rowTitle == "Provider Failures" {
-            return "Review Queues"
-        }
-        if rowTitle.hasPrefix("Signal:") {
-            return "Signals"
-        }
-        if rowTitle.hasPrefix("Source:")
-            || rowTitle.hasPrefix("XMP") {
-            return "Source & XMP"
-        }
-        return "Metadata"
-    }
-
-    private static func generatedRefinements(
-        reviewQueueCounts: [ReviewQueue: Int],
-        evaluationKindSummaries: [CatalogEvaluationKindSummary],
-        activeRows: [SearchWorkspaceRefineRow]
-    ) -> [SearchWorkspaceGeneratedRefinement] {
-        let rowLimit = evaluationKindSummaries.isEmpty ? 3 : 5
-        let candidates: [(queue: ReviewQueue, preset: SmartCollectionRulePreset)] = [
-            (.fiveStars, .ratingFourPlus),
-            (.picks, .picked),
-            (.needsKeywords, .needsKeywords),
-            (.facesFound, .facesFound),
-            (.needsEvaluation, .needsEvaluation),
-            (.likelyIssues, .likelyIssues),
-            (.providerFailures, .providerFailures)
-        ]
-        var rows: [SearchWorkspaceGeneratedRefinement] = candidates.compactMap { candidate in
-            guard let count = reviewQueueCounts[candidate.queue], count > 0 else { return nil }
-            guard !isPresetActive(candidate.preset, activeRows: activeRows) else { return nil }
-            return generatedRefinement(preset: candidate.preset, count: count)
-        }
-        .prefix(rowLimit)
-        .map { $0 }
-
-        for row in providerSignalGeneratedRefinements(
-            evaluationKindSummaries: evaluationKindSummaries,
-            activeRows: activeRows
-        ) {
-            guard rows.count < rowLimit else { break }
-            guard !rows.containsPreset(row.preset) else { continue }
-            rows.append(row)
-        }
-        return rows
-    }
-
-    private static func providerSignalGeneratedRefinements(
-        evaluationKindSummaries: [CatalogEvaluationKindSummary],
-        activeRows: [SearchWorkspaceRefineRow]
-    ) -> [SearchWorkspaceGeneratedRefinement] {
-        let summariesByKind = Dictionary(uniqueKeysWithValues: evaluationKindSummaries.map { ($0.kind, $0) })
-        let candidates: [(kind: EvaluationKind, preset: SmartCollectionRulePreset)] = [
-            (.focus, .focusSignals),
-            (.object, .objectSignals),
-            (.ocrText, .ocrFound),
-            (.faceCount, .facesFound)
-        ]
-        return candidates.compactMap { candidate in
-            guard let summary = summariesByKind[candidate.kind], summary.assetCount > 0 else { return nil }
-            guard !isPresetActive(candidate.preset, activeRows: activeRows) else { return nil }
-            return providerSignalGeneratedRefinement(
-                preset: candidate.preset,
-                kind: candidate.kind,
-                count: summary.assetCount
-            )
-        }
-    }
-
-    private static func providerSignalGeneratedRefinement(
-        preset: SmartCollectionRulePreset,
-        kind: EvaluationKind,
-        count: Int
-    ) -> SearchWorkspaceGeneratedRefinement {
-        switch kind {
-        case .focus:
-            return SearchWorkspaceGeneratedRefinement(
-                preset: preset,
-                title: "Find focus-scored photos",
-                detail: count == 1 ? "1 photo has focus signals" : "\(count) photos have focus signals",
-                systemImage: preset.systemImage
-            )
-        case .object:
-            return SearchWorkspaceGeneratedRefinement(
-                preset: preset,
-                title: "Find object-labeled photos",
-                detail: count == 1 ? "1 photo has object labels" : "\(count) photos have object labels",
-                systemImage: preset.systemImage
-            )
-        case .ocrText:
-            return SearchWorkspaceGeneratedRefinement(
-                preset: preset,
-                title: "Find OCR text",
-                detail: count == 1 ? "1 photo has OCR text" : "\(count) photos have OCR text",
-                systemImage: preset.systemImage
-            )
-        case .faceCount:
-            return SearchWorkspaceGeneratedRefinement(
-                preset: preset,
-                title: "Review photos with people signals",
-                detail: count == 1 ? "1 photo has people signals" : "\(count) photos have people signals",
-                systemImage: preset.systemImage
-            )
-        default:
-            return SearchWorkspaceGeneratedRefinement(
-                preset: preset,
-                title: preset.title,
-                detail: count == 1 ? "1 matching signal" : "\(count) matching signals",
-                systemImage: preset.systemImage
-            )
-        }
-    }
-
-    private static func generatedRefinement(
-        preset: SmartCollectionRulePreset,
-        count: Int
-    ) -> SearchWorkspaceGeneratedRefinement {
-        switch preset {
-        case .ratingFourPlus:
-            return SearchWorkspaceGeneratedRefinement(
-                preset: preset,
-                title: "Narrow to rated keepers",
-                detail: count == 1 ? "1 five-star photo available" : "\(count) five-star photos available",
-                systemImage: preset.systemImage
-            )
-        case .picked:
-            return SearchWorkspaceGeneratedRefinement(
-                preset: preset,
-                title: "Narrow to picks",
-                detail: count == 1 ? "1 picked photo available" : "\(count) picked photos available",
-                systemImage: preset.systemImage
-            )
-        case .needsKeywords:
-            return SearchWorkspaceGeneratedRefinement(
-                preset: preset,
-                title: "Find missing keywords",
-                detail: count == 1 ? "1 photo needs keywords" : "\(count) photos need keywords",
-                systemImage: preset.systemImage
-            )
-        case .facesFound:
-            return SearchWorkspaceGeneratedRefinement(
-                preset: preset,
-                title: "Review photos with faces",
-                detail: count == 1 ? "1 photo has face signals" : "\(count) photos have face signals",
-                systemImage: preset.systemImage
-            )
-        case .needsEvaluation:
-            return SearchWorkspaceGeneratedRefinement(
-                preset: preset,
-                title: "Find unevaluated photos",
-                detail: count == 1 ? "1 photo needs evaluation" : "\(count) photos need evaluation",
-                systemImage: preset.systemImage
-            )
-        case .likelyIssues:
-            return SearchWorkspaceGeneratedRefinement(
-                preset: preset,
-                title: "Review likely issues",
-                detail: count == 1 ? "1 photo has likely issues" : "\(count) photos have likely issues",
-                systemImage: preset.systemImage
-            )
-        case .providerFailures:
-            return SearchWorkspaceGeneratedRefinement(
-                preset: preset,
-                title: "Check provider failures",
-                detail: count == 1 ? "1 provider failure" : "\(count) provider failures",
-                systemImage: preset.systemImage
-            )
-        default:
-            return SearchWorkspaceGeneratedRefinement(
-                preset: preset,
-                title: preset.title,
-                detail: count == 1 ? "1 matching photo" : "\(count) matching photos",
-                systemImage: preset.systemImage
-            )
-        }
-    }
-
-    private static func isPresetActive(
-        _ preset: SmartCollectionRulePreset,
-        activeRows: [SearchWorkspaceRefineRow]
-    ) -> Bool {
-        activeRows.contains { row in
-            switch preset {
-            case .ratingFourPlus:
-                return row.target == .reviewQueue(.fiveStars) || row.title.hasPrefix("Rating")
-            case .picked:
-                return row.target == .reviewQueue(.picks) || row.title == "Pick"
-            case .rejected:
-                return row.target == .reviewQueue(.rejects) || row.title == "Reject"
-            case .needsKeywords:
-                return row.target == .reviewQueue(.needsKeywords) || row.title == "Needs Keywords"
-            case .needsEvaluation:
-                return row.target == .reviewQueue(.needsEvaluation) || row.title == "Not analyzed yet"
-            case .onlineSources:
-                return row.target == .sourceAvailability(.online) || row.title == "Source: Online"
-            case .offlineSources:
-                return row.target == .sourceAvailability(.offline) || row.title == "Source: Offline"
-            case .facesFound:
-                return row.target == .reviewQueue(.facesFound)
-                    || row.target == .evaluationKind(.faceCount)
-                    || row.title == "Faces Found"
-                    || row.title == "Signal: Face Count"
-            case .ocrFound:
-                return row.target == .reviewQueue(.ocrFound)
-                    || row.target == .evaluationKind(.ocrText)
-                    || row.title == "OCR Found"
-                    || row.title == "Signal: OCR Text"
-            case .focusSignals:
-                return row.target == .evaluationKind(.focus) || row.title == "Signal: Focus"
-            case .objectSignals:
-                return row.target == .evaluationKind(.object) || row.title == "Signal: Object"
-            case .likelyIssues:
-                return row.target == .reviewQueue(.likelyIssues) || row.title == "Likely Issues"
-            case .providerFailures:
-                return row.target == .reviewQueue(.providerFailures) || row.title == "Provider Failures"
-            case .xmpPending:
-                return row.target == .metadataSyncPending || row.title == "XMP Pending"
-            case .xmpConflicts:
-                return row.target == .metadataSyncConflicts || row.title == "XMP Conflicts"
-            }
-        }
-    }
-
-    private static func relatedFilterRows(
-        reviewQueueCounts: [ReviewQueue: Int],
-        activeRows: [SearchWorkspaceRefineRow]
-    ) -> [SearchWorkspaceRefineRow] {
-        reviewQueueFilterOrder.compactMap { queue in
-            guard let count = reviewQueueCounts[queue], count > 0 else { return nil }
-            let presentation = queue.presentation
-            let isActive = activeRows.contains { row in
-                row.target == .reviewQueue(queue) || row.title == presentation.title
-            }
-            guard !isActive else { return nil }
-            return SearchWorkspaceRefineRow(
-                title: presentation.title,
-                value: count == 1 ? "1 photo" : "\(count) photos",
-                target: .reviewQueue(queue)
-            )
-        }
-    }
-
-    private static func suggestedActions(
-        suggestedName: String,
-        totalAssetCount: Int,
-        canSaveDynamicSet: Bool,
-        canSaveSnapshotSet: Bool,
-        canStartCulling: Bool,
-        reviewQueueCounts: [ReviewQueue: Int]
-    ) -> [SearchWorkspaceSuggestedAction] {
-        var actions: [SearchWorkspaceSuggestedAction] = []
-        if canSaveDynamicSet {
-            actions.append(SearchWorkspaceSuggestedAction(
-                action: .saveDynamicSet,
-                title: "Save dynamic set",
-                detail: "\(suggestedName) updates as the catalog changes",
-                systemImage: "bookmark"
-            ))
-        }
-        if canSaveSnapshotSet {
-            actions.append(SearchWorkspaceSuggestedAction(
-                action: .saveSnapshotSet,
-                title: totalAssetCount == 1 ? "Freeze 1 result" : "Freeze \(totalAssetCount) results",
-                detail: "Capture this exact result set",
-                systemImage: "camera.viewfinder"
-            ))
-        }
-        if canStartCulling, totalAssetCount > 0 {
-            actions.append(SearchWorkspaceSuggestedAction(
-                action: .startCulling,
-                title: "Cull current scope",
-                detail: totalAssetCount == 1
-                    ? "Start a culling session for 1 result"
-                    : "Start a culling session for \(totalAssetCount) results",
-                systemImage: "checkmark.seal"
-            ))
-        }
-        for queue in reviewQueueActionOrder {
-            guard let count = reviewQueueCounts[queue], count > 0 else { continue }
-            actions.append(SearchWorkspaceSuggestedAction(
-                action: .openReviewQueue(queue),
-                title: "Review \(queue.presentation.title)",
-                detail: count == 1 ? "1 photo" : "\(count) photos",
-                systemImage: queue.presentation.systemImage
-            ))
-        }
-        return actions
-    }
-
-    private static let reviewQueueActionOrder: [ReviewQueue] = [
-        .needsKeywords,
-        .needsEvaluation,
-        .facesFound,
-        .ocrFound,
-        .likelyIssues,
-        .providerFailures
-    ]
-
-    private static let reviewQueueFilterOrder: [ReviewQueue] = [
-        .picks,
-        .rejects,
-        .fiveStars,
-        .needsKeywords,
-        .needsEvaluation,
-        .facesFound,
-        .ocrFound,
-        .likelyIssues,
-        .providerFailures
-    ]
-}
-
-private struct SearchWorkspaceView: View {
-    var model: AppModel
-    var assetGrid: AnyView
-    var saveDynamicSet: () -> Void
-    var saveSnapshotSet: () -> Void
-    var startCulling: () -> Void
-
-    private var presentation: SearchWorkspacePresentation {
-        SearchWorkspacePresentation(
-            suggestedName: model.suggestedSavedSearchName,
-            totalAssetCount: model.totalAssetCount,
-            savedSetCount: model.savedAssetSets.count,
-            starredSetCount: model.starredAssetSets.count,
-            activeFilterChips: model.activeLibraryFilterChips,
-            activeFilterRows: model.activeLibraryFilterRows,
-            canSaveDynamicSet: model.canSaveCurrentLibraryQuery,
-            canSaveSnapshotSet: model.canSaveCurrentAssetScopeSnapshot,
-            canStartCulling: !model.isImporting && model.canBeginCullingSession,
-            reviewQueueCounts: model.reviewQueueCounts,
-            evaluationKindSummaries: model.catalogEvaluationKindSummaries,
-            workHistory: model.workHistorySearchResults
-        )
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                searchHeader
-                Divider()
-                HStack(alignment: .top, spacing: 0) {
-                    refineRail
-                    Divider()
-                    if model.assets.isEmpty {
-                        emptySearchResults
-                            .frame(maxWidth: .infinity, minHeight: 280)
-                    } else {
-                        assetGrid
-                    }
-                }
-            }
-        }
-        .background(Color.black.opacity(0.18))
-    }
-
-    private var searchHeader: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Label("Search", systemImage: "sparkles")
-                    .font(.headline)
-                    .foregroundStyle(.orange)
-                Text(presentation.title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                searchMetric(title: "Results", value: presentation.resultCountText)
-                searchMetric(title: "Sets", value: presentation.savedSetCountText)
-                searchMetric(title: "Starred", value: presentation.starredSetCountText)
-            }
-            if presentation.refineRows.count == 1,
-               presentation.refineRows.first?.title == "All photos" {
-                Text("All photos")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(presentation.refineRows) { row in
-                            refineChip(row)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(14)
-        .background(.bar)
-        .liveMockupPlaceholder(.searchRefine)
-    }
-
-    private var refineRail: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Teststrip Reads")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-            if let askInterpretation = presentation.askInterpretation {
-                askInterpretationRow(askInterpretation)
-            }
-            if !presentation.workHistoryRows.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Work History")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    ForEach(presentation.workHistoryRows) { row in
-                        refineRailRow(row)
-                    }
-                }
-            }
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(presentation.refineGroups) { group in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(group.title)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        ForEach(group.rows) { row in
-                            refineRailRow(row)
-                        }
-                    }
-                }
-            }
-            if !presentation.generatedRefinements.isEmpty {
-                Divider()
-                    .padding(.vertical, 2)
-                Text("Generated Refinements")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(presentation.generatedRefinements) { refinement in
-                        generatedRefinementRow(refinement)
-                    }
-                }
-            }
-            if !presentation.relatedFilterRows.isEmpty {
-                Divider()
-                    .padding(.vertical, 2)
-                Text("Related Filters")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(presentation.relatedFilterRows) { row in
-                        refineRailRow(row)
-                    }
-                }
-            }
-            if !presentation.suggestedActions.isEmpty {
-                Divider()
-                    .padding(.vertical, 2)
-                Text("Suggested Actions")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(presentation.suggestedActions) { action in
-                        suggestedActionRow(action)
-                    }
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .frame(width: 214, alignment: .topLeading)
-        .liveMockupPlaceholder(.searchRefine)
-    }
-
-    private func askInterpretationRow(_ interpretation: SearchWorkspaceAskInterpretation) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: interpretation.systemImage)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 16)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(interpretation.title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(interpretation.queryText)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                Text(interpretation.detail)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-        }
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(interpretation.title)
-        .accessibilityValue("\(interpretation.queryText), \(interpretation.detail)")
-    }
-
-    @ViewBuilder
-    private func refineChip(_ row: SearchWorkspaceRefineRow) -> some View {
-        let chip = HStack(spacing: 5) {
-            Text(row.title)
-                .lineLimit(1)
-            if row.isActive {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-            }
-        }
-        .font(.caption.weight(.medium))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
-        if row.isActive {
-            Button {
-                removeActiveRefineRow(row)
-            } label: {
-                chip
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Remove filter \(row.title)")
-            .help("Remove \(row.title) filter")
-        } else if row.target != nil {
-            Button {
-                selectRefineRow(row)
-            } label: {
-                chip
-            }
-            .buttonStyle(.plain)
-            .help("Open \(row.title)")
-        } else {
-            chip
-        }
-    }
-
-    @ViewBuilder
-    private func refineRailRow(_ row: SearchWorkspaceRefineRow) -> some View {
-        let content = HStack(spacing: 8) {
-            Image(systemName: row.isActive ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(row.isActive ? .orange : .secondary)
-                .font(.caption)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(row.title)
-                    .font(.caption.weight(.medium))
-                    .lineLimit(1)
-                Text(row.value)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        if row.isActive {
-            Button {
-                removeActiveRefineRow(row)
-            } label: {
-                HStack(spacing: 8) {
-                    content
-                    Spacer(minLength: 0)
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Remove filter \(row.title)")
-            .help("Remove \(row.title) filter")
-        } else if row.target != nil {
-            Button {
-                selectRefineRow(row)
-            } label: {
-                content
-            }
-            .buttonStyle(.plain)
-            .help("Open \(row.title)")
-        } else {
-            content
-        }
-    }
-
-    private func generatedRefinementRow(_ refinement: SearchWorkspaceGeneratedRefinement) -> some View {
-        Button {
-            applyGeneratedRefinement(refinement)
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: refinement.systemImage)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .frame(width: 14)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(refinement.title)
-                        .font(.caption.weight(.medium))
-                        .lineLimit(1)
-                    Text(refinement.detail)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.plain)
-        .help(refinement.detail)
-    }
-
-    private func suggestedActionRow(_ suggestedAction: SearchWorkspaceSuggestedAction) -> some View {
-        Button {
-            performSuggestedAction(suggestedAction.action)
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: suggestedAction.systemImage)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .frame(width: 14)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(suggestedAction.title)
-                        .font(.caption.weight(.medium))
-                        .lineLimit(1)
-                    Text(suggestedAction.detail)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.plain)
-        .help(suggestedAction.detail)
-    }
-
-    private func applyGeneratedRefinement(_ refinement: SearchWorkspaceGeneratedRefinement) {
-        do {
-            try model.applySmartCollectionRulePreset(refinement.preset)
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func performSuggestedAction(_ action: SearchWorkspaceSuggestedActionKind) {
-        switch action {
-        case .saveDynamicSet:
-            saveDynamicSet()
-        case .saveSnapshotSet:
-            saveSnapshotSet()
-        case .startCulling:
-            startCulling()
-        case .openReviewQueue(let queue):
-            do {
-                try model.selectSidebarTarget(.reviewQueue(queue))
-            } catch {
-                model.errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func removeActiveRefineRow(_ row: SearchWorkspaceRefineRow) {
-        do {
-            try model.removeActiveLibraryFilter(ActiveLibraryFilterRow(title: row.title, target: row.target))
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func selectRefineRow(_ row: SearchWorkspaceRefineRow) {
-        guard let target = row.target else { return }
-        do {
-            try model.selectSidebarTarget(target)
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func searchMetric(title: String, value: String) -> some View {
-        HStack(spacing: 4) {
-            Text(value)
-                .font(.caption.monospacedDigit().weight(.semibold))
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var emptySearchResults: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 34))
-                .foregroundStyle(.secondary)
-            Text("No matches")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-        }
     }
 }
 

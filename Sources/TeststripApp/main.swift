@@ -93,12 +93,10 @@ private struct WorkspaceCommands: Commands {
             }
 
             // Temporary routes for destinations whose sidebar rows Task 7
-            // deleted (Search/Review/Timeline/People/Places); Task 9 (search),
-            // Task 10 (Library view toggle), and Task 13 (Cull source picker)
-            // give them permanent homes.
-            Button("Search") {
-                model.selectedView = .search
-            }
+            // deleted (Review/Timeline/People/Places); Search's permanent
+            // home is the Library grid's token field + result header
+            // (Task 9). Task 10 (Library view toggle) and Task 13 (Cull
+            // source picker) give the rest permanent homes.
             Button("Review") {
                 model.selectedView = .copilot
             }

@@ -286,24 +286,14 @@ final class LiveMockupPlaceholderTests: XCTestCase {
     }
 
     // The Search/Review(copilot)/People sidebar rows are gone (Task 7 -
-    // Library is Collections/Saved Sets/Folders only). Search and Review are
+    // Library is Collections/Saved Sets/Folders only). Search's permanent
+    // home is now the Library grid itself (Task 9 - token field + result
+    // header, no dedicated route to preserve a query across). Review is
     // reachable directly via `model.selectedView` (the temporary View menu
-    // items until Tasks 9/10/13 land their permanent homes); People via the
+    // item until Tasks 10/13 land its permanent home); People via the
     // workspace switcher. Their `.agenticSearch`/`.copilotLibrary` mockup
     // ledger entries are still tracked in the copilot/search-focused tests
     // above.
-    func testSelectingSearchViewPreservesQuery() throws {
-        let model = AppModel.demo()
-        model.librarySearchText = "ceremony"
-        model.minimumRatingFilter = 4
-
-        model.selectedView = .search
-
-        XCTAssertEqual(model.selectedView, .search)
-        XCTAssertEqual(model.librarySearchText, "ceremony")
-        XCTAssertEqual(model.minimumRatingFilter, 4)
-    }
-
     func testSelectingCopilotViewPreservesScope() throws {
         let model = AppModel.demo()
         model.librarySearchText = "ceremony"
