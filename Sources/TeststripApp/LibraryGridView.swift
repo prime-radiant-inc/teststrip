@@ -164,11 +164,13 @@ struct LibraryGridView: View {
         .overlay(alignment: .topLeading) {
             CullingKeyCaptureView(
                 focusRequest: cullingFocusRequest,
-                // The Library loupe has no pick/reject/rating chrome, so its
-                // keyboard monitor is the plain-nav GridKeyCaptureView below
-                // instead — leaving this one active here would let culling
-                // shortcuts write metadata behind hidden chrome.
-                isActive: model.selectedView != .grid && model.selectedView != .libraryLoupe && model.selectedView != .cullGrid,
+                // Scoped to the Cull workspace's loupe/compare/A-B sub-views
+                // only (see CullingKeyCaptureGate) — every other view either
+                // has its own monitor (.cullGrid uses GridKeyCaptureView) or
+                // no culling chrome at all (.people/.timeline/.map/.grid/
+                // .libraryLoupe), where these shortcuts would write metadata
+                // or navigate behind hidden chrome.
+                isActive: CullingKeyCaptureGate.isActive(workspace: model.selectedWorkspace, selectedView: model.selectedView),
                 onShortcut: handleCullingShortcut
             )
             .frame(width: 1, height: 1)
