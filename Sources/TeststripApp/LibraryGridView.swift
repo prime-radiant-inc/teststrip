@@ -11,7 +11,6 @@ struct LibraryGridView: View {
     @State private var isSavingSnapshotSet = false
     @State private var isStartingCullingSession = false
     @State private var isReviewingBatchMetadata = false
-    @State private var isShowingMoreFilters = false
     @State private var isShowingSourceReconnectSheet = false
     @State private var savedSearchName = ""
     @State private var savedSearchStarred = false
@@ -460,9 +459,6 @@ struct LibraryGridView: View {
     private var libraryTopBar: some View {
         HStack(spacing: 12) {
             Spacer(minLength: 12)
-            if WorkspaceChromePolicy.showsSearchField(model.selectedWorkspace) {
-                topBarSearchField
-            }
             if WorkspaceChromePolicy.showsImportButton(model.selectedWorkspace) {
                 Button {
                     showImportFolderPanel()
@@ -498,20 +494,24 @@ struct LibraryGridView: View {
 
 
 
-    private var topBarSearchField: some View {
+    /// The token query field: one text field that both free-text searches and,
+    /// via `LibraryQueryToken`, writes recognized filter tokens (rating:,
+    /// camera:, etc.) into AppModel's structured filter properties. Replaces
+    /// the old compact top-bar search box and the 13-picker filter bar.
+    private var queryTokenField: some View {
         HStack(spacing: 8) {
             Image(systemName: "sparkles")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.orange)
-            TextField("Search photos, people, places…", text: Binding(
+            TextField("Search photos, people, places, or rating:3 camera:… ", text: Binding(
                 get: { model.librarySearchText },
                 set: { model.librarySearchText = $0 }
             ))
             .textFieldStyle(.plain)
             .onSubmit {
-                applyLibraryFilters()
+                submitQueryTokenField()
             }
-            .help("Search your library. Click the info button for filter tokens.")
+            .help("Search your library, or type filter tokens like rating:3, camera:, keyword:. Click the info button for the full list.")
             .accessibilityLabel("Search Catalog")
             Button {
                 isShowingSearchTips = true
@@ -526,7 +526,7 @@ struct LibraryGridView: View {
                 searchTipsPopover
             }
             Button {
-                applyLibraryFilters()
+                submitQueryTokenField()
             } label: {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 12, weight: .semibold))
@@ -536,13 +536,18 @@ struct LibraryGridView: View {
             .accessibilityLabel("Search")
         }
         .padding(.horizontal, 10)
-        .frame(width: 262, height: 31)
+        .frame(minWidth: 262, maxWidth: .infinity, minHeight: 31)
         .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(Color.white.opacity(0.09))
         }
         .liveMockupPlaceholder(.agenticSearch)
+    }
+
+    private func submitQueryTokenField() {
+        LibraryQueryToken.parse(model.librarySearchText, applyingTo: model)
+        applyLibraryFilters()
     }
 
     private var searchTipsPopover: some View {
@@ -591,7 +596,7 @@ struct LibraryGridView: View {
             libraryTopBar
             if WorkspaceChromePolicy.showsFilterTokens(model.selectedWorkspace),
                model.selectedView == .grid || model.selectedView == .search || model.selectedView == .timeline {
-                filterBar
+                libraryQueryBar
             }
             if let summary = visibleImportCompletionSummary {
                 importCompletionSummary(summary)
@@ -611,160 +616,98 @@ struct LibraryGridView: View {
         return summary
     }
 
-    private var filterBar: some View {
+    /// One query surface: a persistent sort picker, the token query field,
+    /// an "Add filter" menu covering every option the deleted pickers
+    /// offered, and the save/snapshot/refresh/clear button cluster. Replaces
+    /// the old 13-picker filter bar.
+    private var libraryQueryBar: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    librarySortPicker
+            HStack(spacing: 8) {
+                librarySortPicker
 
-                    ratingFilterPicker
+                queryTokenField
 
-                    flagFilterPicker
+                addFilterMenu
 
-                    filterTextField(
-                        "Keyword",
-                        text: Binding(
-                            get: { model.keywordFilterText },
-                            set: { model.keywordFilterText = $0 }
-                        ),
-                        width: 96
-                    )
-
+                if LibraryGridChromePolicy.shouldShowPendingMetadataSyncRetryAction(
+                    isPendingFilterActive: model.metadataSyncPendingFilter
+                ) {
                     Button {
-                        isShowingMoreFilters.toggle()
+                        retryPendingMetadataSync()
                     } label: {
-                        Label(
-                            "More filters",
-                            systemImage: isShowingMoreFilters ? "chevron.down" : "chevron.right"
-                        )
-                        .font(.caption)
+                        Image(systemName: "arrow.triangle.2.circlepath")
                     }
                     .buttonStyle(.borderless)
-                    .help("Show camera, lens, ISO, source, AI score, and metadata-sync filters")
-
-                    if isShowingMoreFilters {
-                        filterTextField(
-                            "Folder",
-                            text: Binding(
-                                get: { model.folderFilterText },
-                                set: { model.folderFilterText = $0 }
-                            ),
-                            width: 128
-                        )
-
-                        filterTextField(
-                            "Camera",
-                            text: Binding(
-                                get: { model.cameraFilterText },
-                                set: { model.cameraFilterText = $0 }
-                            ),
-                            width: 96
-                        )
-
-                        filterTextField(
-                            "Lens",
-                            text: Binding(
-                                get: { model.lensFilterText },
-                                set: { model.lensFilterText = $0 }
-                            ),
-                            width: 96
-                        )
-
-                        filterTextField("ISO+", text: minimumISOTextBinding, width: 48)
-
-                        dateFilterButton
-
-                        colorLabelFilterPicker
-
-                        sourceFilterPicker
-
-                        signalFilterPicker
-
-                        metadataSyncFilterPicker
-
-                        if LibraryGridChromePolicy.shouldShowPendingMetadataSyncRetryAction(
-                            isPendingFilterActive: model.metadataSyncPendingFilter
-                        ) {
-                            Button {
-                                retryPendingMetadataSync()
-                            } label: {
-                                Image(systemName: "arrow.triangle.2.circlepath")
-                            }
-                            .buttonStyle(.borderless)
-                            .disabled(LibraryGridChromePolicy.isPendingMetadataSyncRetryActionDisabled(
-                                isImporting: isImporting,
-                                canRetry: model.canRetryPendingMetadataSyncInCurrentScope
-                            ))
-                            .help("Retry pending metadata sync in current results")
-                        }
-                    }
-
-                    Button {
-                        refreshVisibleAvailability()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(!model.canRefreshVisibleAssetAvailability)
-                    .help("Refresh source status")
-
-                    if hasActiveFilters {
-                        Button {
-                            clearLibraryFilters()
-                        } label: {
-                            Image(systemName: "xmark.circle")
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Clear filters")
-                    }
-
-                    Button {
-                        showSaveSearchPopover()
-                    } label: {
-                        Image(systemName: "bookmark")
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(!model.canSaveCurrentLibraryQuery)
-                    .help("Save search")
-                    .accessibilityLabel("Save search")
-                    .popover(isPresented: $isSavingSearch) {
-                        saveSearchPopover
-                    }
-                    .liveMockupPlaceholder(.smartCollectionsBuilder)
-
-                    Button {
-                        showSaveSnapshotSetPopover()
-                    } label: {
-                        Image(systemName: "camera.viewfinder")
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(!model.canSaveCurrentAssetScopeSnapshot)
-                    .help("Save current results as snapshot")
-                    .accessibilityLabel("Save current results as snapshot")
-                    .popover(isPresented: $isSavingSnapshotSet) {
-                        saveSnapshotSetPopover
-                    }
-
-                    Button {
-                        manualSetName = model.suggestedManualSetName
-                        manualSetStarred = false
-                        isSavingManualSet = true
-                    } label: {
-                        Image(systemName: "rectangle.stack.badge.plus")
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(!model.canSaveSelectedAssetAsManualSet)
-                    .help("Save selected photos as set")
-                    .accessibilityLabel("Save as Set")
-                    .popover(isPresented: $isSavingManualSet) {
-                        saveManualSetPopover
-                    }
-
-                    Spacer(minLength: 0)
+                    .disabled(LibraryGridChromePolicy.isPendingMetadataSyncRetryActionDisabled(
+                        isImporting: isImporting,
+                        canRetry: model.canRetryPendingMetadataSyncInCurrentScope
+                    ))
+                    .help("Retry pending metadata sync in current results")
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
+
+                Button {
+                    refreshVisibleAvailability()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!model.canRefreshVisibleAssetAvailability)
+                .help("Refresh source status")
+
+                if hasActiveFilters {
+                    Button {
+                        clearLibraryFilters()
+                    } label: {
+                        Image(systemName: "xmark.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Clear filters")
+                }
+
+                Button {
+                    showSaveSearchPopover()
+                } label: {
+                    Image(systemName: "bookmark")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!model.canSaveCurrentLibraryQuery)
+                .help("Save search")
+                .accessibilityLabel("Save search")
+                .popover(isPresented: $isSavingSearch) {
+                    saveSearchPopover
+                }
+                .liveMockupPlaceholder(.smartCollectionsBuilder)
+
+                Button {
+                    showSaveSnapshotSetPopover()
+                } label: {
+                    Image(systemName: "camera.viewfinder")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!model.canSaveCurrentAssetScopeSnapshot)
+                .help("Save current results as snapshot")
+                .accessibilityLabel("Save current results as snapshot")
+                .popover(isPresented: $isSavingSnapshotSet) {
+                    saveSnapshotSetPopover
+                }
+
+                Button {
+                    manualSetName = model.suggestedManualSetName
+                    manualSetStarred = false
+                    isSavingManualSet = true
+                } label: {
+                    Image(systemName: "rectangle.stack.badge.plus")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!model.canSaveSelectedAssetAsManualSet)
+                .help("Save selected photos as set")
+                .accessibilityLabel("Save as Set")
+                .popover(isPresented: $isSavingManualSet) {
+                    saveManualSetPopover
+                }
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
 
             if !model.activeLibraryFilterChips.isEmpty {
                 activeFilterChips
@@ -787,99 +730,75 @@ struct LibraryGridView: View {
         .help("Sort library")
     }
 
-    private func filterTextField(_ title: String, text: Binding<String>, width: CGFloat) -> some View {
-        TextField(title, text: text)
-            .textFieldStyle(.plain)
-            .frame(width: width)
-            .padding(.horizontal, 9)
-            .frame(height: 28)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
-            .overlay {
-                RoundedRectangle(cornerRadius: 7)
-                    .strokeBorder(.quaternary)
+    /// Covers every option the deleted rating/flag/color/source/signal/xmp
+    /// pickers offered. Free-text fields (keyword, folder, camera, lens,
+    /// iso, date) stay reachable via typed tokens in the query field itself
+    /// (documented in the search-tips popover), plus a date-range shortcut
+    /// here since that one has no plain-text UI equivalent.
+    private var addFilterMenu: some View {
+        Menu {
+            Menu("Rating") {
+                ForEach(LibraryQueryToken.ratingOptions, id: \.self) { rating in
+                    Button("\(rating)+ Stars") {
+                        model.minimumRatingFilter = rating
+                        applyLibraryFilters()
+                    }
+                }
             }
-            .onSubmit {
-                applyLibraryFilters()
+            Menu("Flag") {
+                ForEach(LibraryQueryToken.flagOptions, id: \.self) { flag in
+                    Button(flag.rawValue.capitalized) {
+                        model.flagFilter = flag
+                        applyLibraryFilters()
+                    }
+                }
             }
-            .accessibilityLabel(title)
-    }
-
-    private var dateFilterButton: some View {
-        Button {
-            isShowingDateFilters = true
+            Menu("Color Label") {
+                ForEach(LibraryQueryToken.colorOptions, id: \.self) { color in
+                    Button(color.rawValue.capitalized) {
+                        model.colorLabelFilter = color
+                        applyLibraryFilters()
+                    }
+                }
+            }
+            Menu("Source") {
+                ForEach(LibraryQueryToken.sourceOptions, id: \.rawValue) { source in
+                    Button(source.rawValue.capitalized) {
+                        model.availabilityFilter = source
+                        applyLibraryFilters()
+                    }
+                }
+            }
+            Menu("AI Signal") {
+                ForEach(LibraryQueryToken.signalOptions, id: \.rawValue) { signal in
+                    Button(signal.displayName) {
+                        model.evaluationKindFilter = signal
+                        applyLibraryFilters()
+                    }
+                }
+            }
+            Menu("Metadata Sync") {
+                Button("Pending") {
+                    model.metadataSyncPendingFilter = true
+                    applyLibraryFilters()
+                }
+                Button("Conflicts") {
+                    model.metadataSyncConflictFilter = true
+                    applyLibraryFilters()
+                }
+            }
+            Button("Date Range…") {
+                isShowingDateFilters = true
+            }
         } label: {
-            Image(systemName: "calendar")
-                .frame(width: 20)
+            Image(systemName: "plus.circle")
         }
         .buttonStyle(.borderless)
-        .help("Date filters")
+        .help("Add a filter")
+        .accessibilityLabel("Add filter")
         .popover(isPresented: $isShowingDateFilters) {
             dateFilterPopover
         }
-    }
-
-    private var ratingFilterPicker: some View {
-        Picker("Rating", selection: minimumRatingBinding) {
-            Text("Any Rating").tag(0)
-            ForEach(Array(1...5), id: \.self) { rating in
-                Text("\(rating)+").tag(rating)
-            }
-        }
-        .frame(width: 112)
-        .controlSize(.small)
-    }
-
-    private var flagFilterPicker: some View {
-        Picker("Flag", selection: flagFilterBinding) {
-            Text("Any Flag").tag("")
-            Text("Pick").tag(PickFlag.pick.rawValue)
-            Text("Reject").tag(PickFlag.reject.rawValue)
-        }
-        .frame(width: 104)
-        .controlSize(.small)
-    }
-
-    private var colorLabelFilterPicker: some View {
-        Picker("Label", selection: colorLabelFilterBinding) {
-            Text("Any Label").tag("")
-            ForEach(ColorLabel.allCases, id: \.self) { label in
-                Text(label.rawValue.capitalized).tag(label.rawValue)
-            }
-        }
-        .frame(width: 116)
-        .controlSize(.small)
-    }
-
-    private var sourceFilterPicker: some View {
-        Picker("Source", selection: availabilityFilterBinding) {
-            Text("Any Source").tag("")
-            ForEach(availabilityFilterOptions, id: \.rawValue) { availability in
-                Text(availability.rawValue.capitalized).tag(availability.rawValue)
-            }
-        }
-        .frame(width: 118)
-        .controlSize(.small)
-    }
-
-    private var signalFilterPicker: some View {
-        Picker("AI score", selection: evaluationKindFilterBinding) {
-            Text("Any AI score").tag("")
-            ForEach(evaluationKindFilterOptions, id: \.rawValue) { kind in
-                Text(kind.displayName).tag(kind.rawValue)
-            }
-        }
-        .frame(width: 150)
-        .controlSize(.small)
-    }
-
-    private var metadataSyncFilterPicker: some View {
-        Picker("Metadata sync", selection: metadataSyncFilterBinding) {
-            Text("Any metadata sync").tag(MetadataSyncFilterOption.any.rawValue)
-            Text("Pending").tag(MetadataSyncFilterOption.pending.rawValue)
-            Text("Conflicts").tag(MetadataSyncFilterOption.conflicts.rawValue)
-        }
-        .frame(width: 150)
-        .controlSize(.small)
     }
 
     private var activeFilterChips: some View {
@@ -2192,96 +2111,11 @@ struct LibraryGridView: View {
         }
     }
 
-    private var minimumRatingBinding: Binding<Int> {
-        Binding(
-            get: { model.minimumRatingFilter ?? 0 },
-            set: { value in
-                model.minimumRatingFilter = value == 0 ? nil : value
-                applyLibraryFilters()
-            }
-        )
-    }
-
     private var librarySortBinding: Binding<LibrarySortOption> {
         Binding(
             get: { model.librarySortOption },
             set: { option in
                 applyLibrarySort(option)
-            }
-        )
-    }
-
-    private var flagFilterBinding: Binding<String> {
-        Binding(
-            get: { model.flagFilter?.rawValue ?? "" },
-            set: { value in
-                model.flagFilter = PickFlag(rawValue: value)
-                applyLibraryFilters()
-            }
-        )
-    }
-
-    private var colorLabelFilterBinding: Binding<String> {
-        Binding(
-            get: { model.colorLabelFilter?.rawValue ?? "" },
-            set: { value in
-                model.colorLabelFilter = ColorLabel(rawValue: value)
-                applyLibraryFilters()
-            }
-        )
-    }
-
-    private var availabilityFilterBinding: Binding<String> {
-        Binding(
-            get: { model.availabilityFilter?.rawValue ?? "" },
-            set: { value in
-                model.availabilityFilter = SourceAvailability(rawValue: value)
-                applyLibraryFilters()
-            }
-        )
-    }
-
-    private var availabilityFilterOptions: [SourceAvailability] {
-        [.online, .offline, .missing, .moved, .stale]
-    }
-
-    private var evaluationKindFilterBinding: Binding<String> {
-        Binding(
-            get: { model.evaluationKindFilter?.rawValue ?? "" },
-            set: { value in
-                model.evaluationKindFilter = evaluationKindFilterOptions.first { $0.rawValue == value }
-                applyLibraryFilters()
-            }
-        )
-    }
-
-    private var evaluationKindFilterOptions: [EvaluationKind] {
-        [.focus, .motionBlur, .exposure, .aesthetics, .framing, .object, .faceCount, .faceQuality, .eyesOpen, .eyeSharpness, .smile, .ocrText, .colorPalette, .novelty, .visualSimilarity]
-    }
-
-    private var metadataSyncFilterBinding: Binding<String> {
-        Binding(
-            get: {
-                MetadataSyncFilterOption(
-                    pending: model.metadataSyncPendingFilter,
-                    conflict: model.metadataSyncConflictFilter
-                ).rawValue
-            },
-            set: { value in
-                let option = MetadataSyncFilterOption(rawValue: value) ?? .any
-                model.metadataSyncPendingFilter = option.pendingFilter
-                model.metadataSyncConflictFilter = option.conflictFilter
-                applyLibraryFilters()
-            }
-        )
-    }
-
-    private var minimumISOTextBinding: Binding<String> {
-        Binding(
-            get: { model.minimumISOFilter.map(String.init) ?? "" },
-            set: { value in
-                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                model.minimumISOFilter = trimmed.isEmpty ? nil : Int(trimmed)
             }
         )
     }
