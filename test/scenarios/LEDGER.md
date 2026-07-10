@@ -100,15 +100,15 @@ Status flow: Spec'd → Tested-Pass | Tested-Fail → Fixed → Verified.
 | app-014-updater | app-014-updater.md | Spec'd | — | — | — | Sparkle e2e untestable pre-release; static-only cap; Sparkle e2e untestable pre-release; static-only cap. Defaults key names unverified until first live run |
 | app-015-preferences | app-015-preferences.md | Spec'd | — | — | — |  |
 | app-016-menu-coverage-invariants | app-016-menu-coverage-invariants.md | Tested-Pass | unit tests (MenuCoveragePresentationTests 8/0) | — | — | unit-test method; gap: Run Autopilot/Scan for Faces/Evaluate Photo/Scope not enumerated — renames uncatchable; DRY-RUN PASSED (8 tests) during authoring; all coverage invariants pass |
-| dev-001-build-and-run-modes | dev-001-build-and-run-modes.md | Spec'd | — | — | — | usage drift: --real-corpus undocumented; CONFIRMED Documentation defect: usage() omits --real-corpus (live-verified) |
-| dev-002-seed-variants | dev-002-seed-variants.md | Spec'd | — | — | — |  |
-| dev-003-vm-harness | dev-003-vm-harness.md | Spec'd | — | — | — | CONFIRMED Documentation defect: --reseed hint names a flag with no dispatch path; sync smoke --reseed would error |
-| dev-004-package-release-dry-run | dev-004-package-release-dry-run.md | Spec'd | — | — | — |  |
-| dev-005-package-release-signing | dev-005-package-release-signing.md | Spec'd | — | — | — | needs Developer ID cert locally |
-| dev-006-ax-drive | dev-006-ax-drive.md | Spec'd | — | — | — |  |
-| dev-007-reset-isolated | dev-007-reset-isolated.md | Spec'd | — | — | — |  |
-| dev-008-sample-downloads | dev-008-sample-downloads.md | Spec'd | — | — | — | network |
-| dev-009-bench-seeds | dev-009-bench-seeds.md | Spec'd | — | — | — |  |
-| dev-010-bench-benchmarks | dev-010-bench-benchmarks.md | Spec'd | — | — | — |  |
-| dev-011-release-ci | dev-011-release-ci.md | Spec'd | — | — | — | needs tag + 7 secrets; static-only cap; needs tag + 7 secrets; static-only cap. 3 secrets currently missing (cert b64/password, app-specific pw) — next v* tag will fail |
-| dev-012-verifier-gates | dev-012-verifier-gates.md | Spec'd | — | — | — | Jesse decision: delete-or-keep stale gui verifiers? KNOWN-STALE: verify_evaluation, verify_card_import_path; KNOWN-STALE gui verifiers; ALSO live swift-test failure seen under concurrent-agent contention (WorkerEntrypointTests truncated worker JSON) — re-run solo before logging Functional; solo swift test 1693/0 — earlier failure was agent contention (Environment), not product |
+| dev-001-build-and-run-modes | dev-001-build-and-run-modes.md | Tested-Pass | host CLI e2e | — | all assertions pass incl. exit codes | usage drift: --real-corpus undocumented; CONFIRMED Documentation defect: usage() omits --real-corpus (live-verified) |
+| dev-002-seed-variants | dev-002-seed-variants.md | Tested-Pass | host CLI e2e | — | pass; 1 flake retry (catalog-init race) |  |
+| dev-003-vm-harness | dev-003-vm-harness.md | Spec'd | — | Environment | BLOCKED-CONCURRENT iter1 (VM held); re-run iter2 | CONFIRMED Documentation defect: --reseed hint names a flag with no dispatch path; sync smoke --reseed would error |
+| dev-004-package-release-dry-run | dev-004-package-release-dry-run.md | Tested-Pass | host CLI e2e | — | pass; 1 flake retry (build race) |  |
+| dev-005-package-release-signing | dev-005-package-release-signing.md | Tested-Pass | static + partial CLI | — | signing path documented, not exercised (cap noted) | needs Developer ID cert locally |
+| dev-006-ax-drive | dev-006-ax-drive.md | Spec'd | — | Environment | step1 pass; rest BLOCKED-CONCURRENT; re-run iter2 |  |
+| dev-007-reset-isolated | dev-007-reset-isolated.md | Tested-Fail | host CLI e2e | Functional | running-instance guard defeated by trailing-slash \$TMPDIR (reproduced 2x) — fix queued |  |
+| dev-008-sample-downloads | dev-008-sample-downloads.md | Tested-Fail | host CLI e2e | Logistical | face-model manifest URL is literal REPLACE-ME.example.com — download permanently broken | network |
+| dev-009-bench-seeds | dev-009-bench-seeds.md | Tested-Pass | host CLI e2e | — | pass; note: negative-overwrite exits via fatalError/SIGABRT not clean error |  |
+| dev-010-bench-benchmarks | dev-010-bench-benchmarks.md | Tested-Pass | host CLI e2e | — | benchmark-summary contract holds |  |
+| dev-011-release-ci | dev-011-release-ci.md | Tested-Pass | static checks only | — | static-only cap — never promotes past Tested-Pass; 3 secrets still missing | needs tag + 7 secrets; static-only cap; needs tag + 7 secrets; static-only cap. 3 secrets currently missing (cert b64/password, app-specific pw) — next v* tag will fail |
+| dev-012-verifier-gates | dev-012-verifier-gates.md | Tested-Pass | host CLI e2e + solo swift test | — | legs 2-13 live pass; leg1 dispute resolved by controller solo run 1693/0 | Jesse decision: delete-or-keep stale gui verifiers? KNOWN-STALE: verify_evaluation, verify_card_import_path; KNOWN-STALE gui verifiers; ALSO live swift-test failure seen under concurrent-agent contention (WorkerEntrypointTests truncated worker JSON) — re-run solo before logging Functional; solo swift test 1693/0 — earlier failure was agent contention (Environment), not product |
