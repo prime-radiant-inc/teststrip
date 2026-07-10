@@ -42,6 +42,13 @@ and face embedding over a JSON-lines protocol.
 
 ## End-to-end verification (the short version; details in test/scenarios/README.md)
 
+- **Interactive launches run in the Tart VM, never on Jesse's console.** Any
+  launch you intend to look at or drive (AX driving, menu checks, visual
+  verification, scenario cards) goes through `script/vm_scenario_run.sh`
+  (setup/sync/launch/ax/sql verbs; see the "Running scenarios in a Tart VM"
+  section of test/scenarios/README.md). Local launches steal focus and hit the
+  locked-console wall. Building, unit tests, and launch-and-quit smoke checks
+  (no driving, no focus needed) stay on the host.
 - **Launch isolated, never against the real catalog.** `build_and_run.sh
   --smoke` seeds 24 synthetic photos into a throwaway app-support dir;
   `--isolated` alone is *empty*; `--sample-photos`/`--faces` seed real photos.
