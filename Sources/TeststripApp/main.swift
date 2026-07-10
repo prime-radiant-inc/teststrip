@@ -105,7 +105,9 @@ enum AppMenuCoveragePresentation {
     static let inspectorTabActionIDs: [String] = InspectorTab.allCases.map { "\($0.title) Tab" }
     static let showInspectorActionID = "Show Inspector"
 
-    static let zoomActionIDs: [String] = ["Zoom In", "Zoom Out"]
+    static let zoomInActionID = "Zoom In"
+    static let zoomOutActionID = "Zoom Out"
+    static let zoomActionIDs: [String] = [zoomInActionID, zoomOutActionID]
 
     static var cullingShortcutActionIDs: [String] {
         CullingCommandMenuPresentation.sections
@@ -474,13 +476,15 @@ private struct InspectorCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .toolbar) {
             Divider()
-            Button("Show Inspector") {
+            Button(AppMenuCoveragePresentation.showInspectorActionID) {
                 model.toggleInspector()
             }
             .keyboardShortcut("i", modifiers: [.command])
 
-            ForEach(InspectorTab.allCases) { tab in
-                Button("\(tab.title) Tab") {
+            // Titles come from the same presentation list the coverage test
+            // enumerates, so the menu and test can't drift apart.
+            ForEach(Array(zip(InspectorTab.allCases, AppMenuCoveragePresentation.inspectorTabActionIDs)), id: \.0) { tab, title in
+                Button(title) {
                     model.selectInspectorTab(tab)
                 }
                 .keyboardShortcut(tab.keyEquivalent, modifiers: [.command, .option])
@@ -495,12 +499,12 @@ private struct ZoomCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .toolbar) {
             Divider()
-            Button("Zoom In") {
+            Button(AppMenuCoveragePresentation.zoomInActionID) {
                 storedThumbnailWidth = LibraryGridLayout.zoomedThumbnailWidth(storedThumbnailWidth, zoomingIn: true)
             }
             .keyboardShortcut("+", modifiers: .command)
 
-            Button("Zoom Out") {
+            Button(AppMenuCoveragePresentation.zoomOutActionID) {
                 storedThumbnailWidth = LibraryGridLayout.zoomedThumbnailWidth(storedThumbnailWidth, zoomingIn: false)
             }
             .keyboardShortcut("-", modifiers: .command)
