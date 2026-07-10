@@ -246,6 +246,106 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(clusters[1].assetCount, 1)
     }
 
+    func testPlaceClustersScopesToMatchingQuery() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-place-clusters-filtered")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        func upsert(_ name: String, _ lat: Double, _ lon: Double, rating: Int) throws {
+            try repository.upsert(Asset.testAsset(
+                path: "/Volumes/NAS/\(name).cr2", rating: rating,
+                technicalMetadata: AssetTechnicalMetadata(
+                    pixelWidth: 1, pixelHeight: 1, latitude: lat, longitude: lon,
+                    provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+                )
+            ))
+        }
+        try upsert("a", 37.1, -122.1, rating: 5)
+        try upsert("b", 37.9, -122.9, rating: 0)
+        try upsert("c", -33.8, 151.2, rating: 5)
+
+        // Unfiltered: all three geotagged assets appear (two clusters).
+        let unfiltered = try repository.placeClusters(bounds: nil, cellSize: 10.0)
+        XCTAssertEqual(unfiltered.reduce(0) { $0 + $1.assetCount }, 3)
+
+        // Filtered to rating >= 5: only "a" and "c" remain, in separate cells.
+        let filtered = try repository.placeClusters(
+            bounds: nil, cellSize: 10.0,
+            matching: SetQuery(predicates: [.ratingAtLeast(5)])
+        )
+        XCTAssertEqual(filtered.reduce(0) { $0 + $1.assetCount }, 2)
+    }
+
+    func testTopLocationsScopesToMatchingQuery() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-top-locations-filtered")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        func upsert(_ name: String, _ lat: Double, _ lon: Double, rating: Int) throws {
+            try repository.upsert(Asset.testAsset(
+                path: "/Volumes/NAS/\(name).cr2", rating: rating,
+                technicalMetadata: AssetTechnicalMetadata(
+                    pixelWidth: 1, pixelHeight: 1, latitude: lat, longitude: lon,
+                    provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+                )
+            ))
+        }
+        try upsert("paris1", 48.8584, 2.2945, rating: 5)
+        try upsert("paris2", 48.8600, 2.2950, rating: 0)   // same 2dp key as paris1
+        try upsert("nyc", 40.7484, -73.9857, rating: 5)
+
+        try repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: GeocodeCoordinateKey.key(latitude: 48.8584, longitude: 2.2945),
+            locality: "Paris", administrativeArea: nil, country: "France", displayName: "Paris · France"))
+        try repository.recordPlaceName(CatalogPlaceName(
+            coordinateKey: GeocodeCoordinateKey.key(latitude: 40.7484, longitude: -73.9857),
+            locality: "New York", administrativeArea: nil, country: "USA", displayName: "New York · USA"))
+
+        // Unfiltered: Paris has 2 assets (paris1 + paris2).
+        let unfiltered = try repository.topLocations(limit: 10)
+        XCTAssertEqual(unfiltered.first(where: { $0.displayName == "Paris · France" })?.assetCount, 2)
+
+        // Filtered to rating >= 5: Paris drops to 1 asset (paris2 excluded); New York still present.
+        let filtered = try repository.topLocations(limit: 10, matching: SetQuery(predicates: [.ratingAtLeast(5)]))
+        XCTAssertEqual(filtered.first(where: { $0.displayName == "Paris · France" })?.assetCount, 1)
+        XCTAssertEqual(filtered.map(\.displayName).sorted(), ["New York · USA", "Paris · France"])
+    }
+
+    func testGeotaggedCoverageScopesToMatchingQuery() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-coverage-filtered")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+
+        try repository.upsert(Asset.testAsset(
+            path: "/Volumes/NAS/geo-picked.cr2", rating: 5,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 1, pixelHeight: 1, latitude: 1.0, longitude: 2.0,
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        ))
+        try repository.upsert(Asset.testAsset(
+            path: "/Volumes/NAS/geo-unrated.cr2", rating: 0,
+            technicalMetadata: AssetTechnicalMetadata(
+                pixelWidth: 1, pixelHeight: 1, latitude: 3.0, longitude: 4.0,
+                provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+            )
+        ))
+        try repository.upsert(Asset.testAsset(path: "/Volumes/NAS/plain-picked.cr2", rating: 5))
+
+        // Unfiltered: matches the existing coverage semantics across the whole catalog.
+        let unfiltered = try repository.geotaggedCoverage()
+        XCTAssertEqual(unfiltered.geotaggedCount, 2)
+        XCTAssertEqual(unfiltered.totalCount, 3)
+
+        // Filtered to rating >= 5: one geotagged + one non-geotagged asset match.
+        let filtered = try repository.geotaggedCoverage(matching: SetQuery(predicates: [.ratingAtLeast(5)]))
+        XCTAssertEqual(filtered.geotaggedCount, 1)
+        XCTAssertEqual(filtered.totalCount, 2)
+    }
+
     func testGeotaggedCoverageCountsCoordinateBearingAssets() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-coverage")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

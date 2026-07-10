@@ -408,19 +408,30 @@ public final class CatalogRepository {
         }
     }
 
-    public func placeClusters(bounds: GeoBounds?, cellSize: Double) throws -> [CatalogPlaceCluster] {
+    public func placeClusters(
+        bounds: GeoBounds?,
+        cellSize: Double,
+        matching query: SetQuery? = nil
+    ) throws -> [CatalogPlaceCluster] {
         precondition(cellSize > 0, "cellSize must be positive")
-        var boundsClause = ""
+        var extraClause = ""
         var bindings: [String] = []
         if let bounds {
-            boundsClause = """
+            extraClause += """
                 AND \(Self.latitudeExpressionSQL) BETWEEN ? AND ?
                 AND \(Self.longitudeExpressionSQL) BETWEEN ? AND ?
             """
-            bindings = [
+            bindings += [
                 "\(bounds.minLatitude)", "\(bounds.maxLatitude)",
                 "\(bounds.minLongitude)", "\(bounds.maxLongitude)"
             ]
+        }
+        if let query {
+            let (queryClauses, queryBindings) = try compileClauses(query)
+            for clause in queryClauses {
+                extraClause += "\nAND \(clause)"
+            }
+            bindings += queryBindings
         }
         let cell = "\(cellSize)"
         let rows = try database.rows(
@@ -432,7 +443,7 @@ public final class CatalogRepository {
                 WHERE json_valid(technical_metadata_json)
                   AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
                   AND json_type(technical_metadata_json, '$.longitude') IN ('integer', 'real')
-                  \(boundsClause)
+                  \(extraClause)
             )
             SELECT
                 CAST(FLOOR(lat / \(cell)) AS INTEGER) AS lat_cell,
@@ -455,7 +466,14 @@ public final class CatalogRepository {
         }
     }
 
-    public func geotaggedCoverage() throws -> CatalogGeotaggedCoverage {
+    public func geotaggedCoverage(matching query: SetQuery? = nil) throws -> CatalogGeotaggedCoverage {
+        let whereSQL: String
+        let bindings: [String]
+        if let query {
+            (whereSQL, bindings) = try compile(query)
+        } else {
+            (whereSQL, bindings) = ("", [])
+        }
         let rows = try database.rows(
             """
             SELECT
@@ -464,8 +482,9 @@ public final class CatalogRepository {
                     WHEN json_valid(technical_metadata_json)
                      AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
                     THEN 1 ELSE 0 END) AS geotagged
-            FROM assets
-            """
+            FROM assets\(whereSQL)
+            """,
+            bindings: bindings
         )
         guard let row = rows.first,
               let total = row["total"].flatMap(Int.init) else {
@@ -637,8 +656,17 @@ public final class CatalogRepository {
         }
     }
 
-    public func topLocations(limit: Int) throws -> [CatalogTopLocation] {
+    public func topLocations(limit: Int, matching query: SetQuery? = nil) throws -> [CatalogTopLocation] {
         guard limit > 0 else { return [] }
+        var extraClause = ""
+        var extraBindings: [String] = []
+        if let query {
+            let (queryClauses, queryBindings) = try compileClauses(query)
+            for clause in queryClauses {
+                extraClause += "\nAND \(clause)"
+            }
+            extraBindings += queryBindings
+        }
         let rows = try database.rows(
             """
             WITH located AS (
@@ -648,6 +676,7 @@ public final class CatalogRepository {
                 WHERE json_valid(technical_metadata_json)
                   AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
                   AND json_type(technical_metadata_json, '$.longitude') IN ('integer', 'real')
+                  \(extraClause)
             ),
             keyed AS (
                 SELECT printf('%.2f,%.2f', ROUND(lat, 2), ROUND(lon, 2)) AS coordinate_key,
@@ -665,7 +694,7 @@ public final class CatalogRepository {
             ORDER BY asset_count DESC, display_name ASC
             LIMIT ?
             """,
-            bindings: ["\(limit)"]
+            bindings: extraBindings + ["\(limit)"]
         )
         return try rows.map { row in
             guard let displayName = row["display_name"],
@@ -2215,6 +2244,17 @@ public final class CatalogRepository {
     }
 
     private func compile(_ query: SetQuery) throws -> (whereSQL: String, bindings: [String]) {
+        let (clauses, bindings) = try compileClauses(query)
+        guard !clauses.isEmpty else {
+            return ("", [])
+        }
+        return (" WHERE " + clauses.joined(separator: " AND "), bindings)
+    }
+
+    /// Same predicate compilation as `compile`, but returns the bare AND-able
+    /// clauses (no leading `WHERE`) so callers can fold them into a larger
+    /// hand-written WHERE clause, e.g. the geo queries' own coordinate filters.
+    private func compileClauses(_ query: SetQuery) throws -> (clauses: [String], bindings: [String]) {
         var clauses: [String] = []
         var bindings: [String] = []
 
@@ -2515,10 +2555,7 @@ public final class CatalogRepository {
             }
         }
 
-        guard !clauses.isEmpty else {
-            return ("", [])
-        }
-        return (" WHERE " + clauses.joined(separator: " AND "), bindings)
+        return (clauses, bindings)
     }
 
     private func workSessionDynamicAssetIDs(

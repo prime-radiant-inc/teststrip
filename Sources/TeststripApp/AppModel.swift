@@ -8732,6 +8732,9 @@ public final class AppModel {
             replaceAssets(loadedAssets, pageOffset: 0)
             totalAssetCount = try catalog.repository.assetCount(ids: explicitAssetIDs)
             pruneBatchSelection(retaining: Set(explicitAssetIDs))
+            if selectedView == .map {
+                try refreshPlaceData()
+            }
             return
         }
         let loadedAssets: [Asset]
@@ -8746,6 +8749,12 @@ public final class AppModel {
         replaceAssets(loadedAssets, pageOffset: 0)
         totalAssetCount = count
         try pruneBatchSelectionToCurrentLibraryQuery(repository: catalog.repository)
+        // Map is a view of the current filtered result set (spec §4): keep its
+        // geo aggregates in sync whenever the token/filter set that drives
+        // `reload()` changes, not just on first appearance.
+        if selectedView == .map {
+            try refreshPlaceData()
+        }
     }
 
     private func refreshWorkHistorySearchResults(repository: CatalogRepository) throws {
@@ -8878,9 +8887,10 @@ public final class AppModel {
         cellSize: Double = AppModel.defaultPlaceClusterCellSize
     ) throws {
         guard let catalog else { return }
-        catalogPlaceClusters = try catalog.repository.placeClusters(bounds: bounds, cellSize: cellSize)
-        catalogTopLocations = try catalog.repository.topLocations(limit: Self.topLocationsDisplayLimit)
-        geotaggedCoverage = try catalog.repository.geotaggedCoverage()
+        let query = currentLibraryQuery()
+        catalogPlaceClusters = try catalog.repository.placeClusters(bounds: bounds, cellSize: cellSize, matching: query)
+        catalogTopLocations = try catalog.repository.topLocations(limit: Self.topLocationsDisplayLimit, matching: query)
+        geotaggedCoverage = try catalog.repository.geotaggedCoverage(matching: query)
     }
 
     static let defaultPlaceClusterCellSize = 10.0
