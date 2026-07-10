@@ -10,7 +10,7 @@ final class WorkspaceChromePolicyTests: XCTestCase {
         XCTAssertTrue(WorkspaceChromePolicy.showsInspector(.library))
     }
 
-    func testCullHidesAllBrowseChrome() {
+    func testCullHidesAllBrowseChromeIncludingInspector() {
         XCTAssertFalse(WorkspaceChromePolicy.showsSearchField(.cull))
         XCTAssertFalse(WorkspaceChromePolicy.showsFilterTokens(.cull))
         XCTAssertFalse(WorkspaceChromePolicy.showsImportButton(.cull))
@@ -18,11 +18,12 @@ final class WorkspaceChromePolicyTests: XCTestCase {
         XCTAssertFalse(WorkspaceChromePolicy.showsInspector(.cull))
     }
 
-    func testPeopleHidesAllBrowseChrome() {
+    func testPeopleHidesBrowseChromeButAllowsTheOnDemandInspector() {
         XCTAssertFalse(WorkspaceChromePolicy.showsSearchField(.people))
         XCTAssertFalse(WorkspaceChromePolicy.showsFilterTokens(.people))
         XCTAssertFalse(WorkspaceChromePolicy.showsImportButton(.people))
         XCTAssertFalse(WorkspaceChromePolicy.showsFooter(.people))
-        XCTAssertFalse(WorkspaceChromePolicy.showsInspector(.people))
+        // ⌘I is reachable in People (Task 11); only Cull has no inspector.
+        XCTAssertTrue(WorkspaceChromePolicy.showsInspector(.people))
     }
 }

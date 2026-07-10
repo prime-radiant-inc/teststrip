@@ -447,41 +447,142 @@ struct InspectorMetadataSyncStatus: Equatable {
     }
 }
 
+/// The three on-demand inspector tabs (Task 11). Selected via the segmented
+/// picker in the inspector, or the ⌥⌘1..3 menu items.
+public enum InspectorTab: String, CaseIterable, Identifiable, Sendable {
+    case info
+    case describe
+    case ai
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .info: "Info"
+        case .describe: "Describe"
+        case .ai: "AI"
+        }
+    }
+
+    public var keyEquivalent: KeyEquivalent {
+        switch self {
+        case .info: "1"
+        case .describe: "2"
+        case .ai: "3"
+        }
+    }
+}
+
+/// Every element the on-demand inspector renders, so the tab assignment can
+/// be enumerated and checked for orphans (see `InspectorTabsPresentationTests`).
+public enum InspectorElement: CaseIterable, Sendable {
+    // Info
+    case preview
+    case identityHeader
+    case ratingDisplay
+    case flagDisplay
+    case labelDisplay
+    case exifRows
+    case syncStatus
+    case conflictResolver
+    case previewRetry
+    // Describe
+    case keywordChips
+    case keywordField
+    case suggestedKeywords
+    case captionField
+    case ocrCaptionSuggestions
+    case creatorField
+    case copyrightField
+    case multiSelectNote
+    case ratingEditButtons
+    case flagEditButtons
+    case labelEditButtons
+    // AI
+    case verdictGroups
+    case technicalDetailsDisclosure
+    case providerFailureRetry
+}
+
+/// The binding assignment of every inspector element to exactly one tab,
+/// per the Task 11 brief. Data (not a switch), so the anti-orphan tests can
+/// actually catch a missed or duplicated assignment.
+public enum InspectorTabPresentation {
+    public static let elementsByTab: [InspectorTab: [InspectorElement]] = [
+        .info: [
+            .preview,
+            .identityHeader,
+            .ratingDisplay,
+            .flagDisplay,
+            .labelDisplay,
+            .exifRows,
+            .syncStatus,
+            .conflictResolver,
+            .previewRetry
+        ],
+        .describe: [
+            .keywordChips,
+            .keywordField,
+            .suggestedKeywords,
+            .captionField,
+            .ocrCaptionSuggestions,
+            .creatorField,
+            .copyrightField,
+            .multiSelectNote,
+            .ratingEditButtons,
+            .flagEditButtons,
+            .labelEditButtons
+        ],
+        .ai: [
+            .verdictGroups,
+            .technicalDetailsDisclosure,
+            .providerFailureRetry
+        ]
+    ]
+}
+
 struct InspectorView: View {
     var model: AppModel
     @State private var metadataDraft = InspectorMetadataDraft()
     @State private var isShowingSignalDetails = false
 
+    private var tabBinding: Binding<InspectorTab> {
+        Binding(
+            get: { model.inspectorTab },
+            set: { model.selectInspectorTab($0) }
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if let asset = model.selectedAsset {
-                VStack(alignment: .leading, spacing: 10) {
-                    selectedPreview(for: asset)
-                    assetHeader(for: asset)
+                Picker("Inspector tab", selection: tabBinding) {
+                    ForEach(InspectorTab.allCases) { tab in
+                        Text(tab.title).tag(tab)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
                 .padding(.horizontal, 14)
-                .padding(.top, 14)
-                .padding(.bottom, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
                 Divider()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        metadataControls(for: asset)
-                            .onAppear {
-                                metadataDraft.sync(to: asset)
-                            }
-                            .onChange(of: asset.id) { _, _ in
-                                metadataDraft.sync(to: asset)
-                            }
-                        statusAlerts(for: asset)
-                        if let technicalMetadata = asset.technicalMetadata {
-                            technicalMetadataView(technicalMetadata)
-                        }
-                        portableTextControls(for: asset)
-                        let signals = model.selectedEvaluationSignals
-                        if !signals.isEmpty {
-                            evaluationSignals(signals)
+                    Group {
+                        switch model.inspectorTab {
+                        case .info:
+                            infoTabBody(for: asset)
+                        case .describe:
+                            describeTabBody(for: asset)
+                                .onAppear {
+                                    metadataDraft.sync(to: asset)
+                                }
+                                .onChange(of: asset.id) { _, _ in
+                                    metadataDraft.sync(to: asset)
+                                }
+                        case .ai:
+                            aiTabBody(for: asset)
                         }
                     }
                     .padding(14)
@@ -497,6 +598,69 @@ struct InspectorView: View {
             }
         }
         .frame(width: InspectorPreviewLayout.columnWidth)
+    }
+
+    @ViewBuilder
+    private func infoTabBody(for asset: Asset) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            selectedPreview(for: asset)
+            assetHeader(for: asset)
+            metadataDisplaySummary(for: asset)
+            infoStatusAlerts(for: asset)
+            if let technicalMetadata = asset.technicalMetadata {
+                technicalMetadataView(technicalMetadata)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func describeTabBody(for asset: Asset) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            metadataControls(for: asset)
+            portableTextControls(for: asset)
+        }
+    }
+
+    @ViewBuilder
+    private func aiTabBody(for asset: Asset) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            providerFailureAlert(for: asset)
+            let signals = model.selectedEvaluationSignals
+            if !signals.isEmpty {
+                evaluationSignals(signals)
+            }
+        }
+    }
+
+    /// Read-only rating/flag/label summary for the Info tab. The interactive
+    /// editing controls (star buttons, flag buttons, label swatches) live in
+    /// the Describe tab as metadata-authoring actions.
+    private func metadataDisplaySummary(for asset: Asset) -> some View {
+        HStack(spacing: 10) {
+            Text(ratingDisplayText(asset.metadata.rating))
+            Text(flagDisplayText(asset.metadata.flag))
+            Text(labelDisplayText(asset.metadata.colorLabel))
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Rating, flag, and label")
+    }
+
+    private func ratingDisplayText(_ rating: Int) -> String {
+        rating > 0 ? String(repeating: "\u{2605}", count: rating) : "No rating"
+    }
+
+    private func flagDisplayText(_ flag: PickFlag?) -> String {
+        switch flag {
+        case .pick: "Pick"
+        case .reject: "Reject"
+        case nil: "No flag"
+        }
+    }
+
+    private func labelDisplayText(_ label: ColorLabel?) -> String {
+        label?.rawValue.capitalized ?? "No label"
     }
 
     private func selectedPreview(for asset: Asset) -> some View {
@@ -557,7 +721,7 @@ struct InspectorView: View {
     }
 
     @ViewBuilder
-    private func statusAlerts(for asset: Asset) -> some View {
+    private func infoStatusAlerts(for asset: Asset) -> some View {
         if let syncStatus = InspectorMetadataSyncStatus(
             asset: asset,
             pendingItems: model.pendingMetadataSyncItems,
@@ -571,6 +735,10 @@ struct InspectorView: View {
         if !model.selectedPreviewGenerationFailures.isEmpty {
             previewFailureStatus(model.selectedPreviewGenerationFailures)
         }
+    }
+
+    @ViewBuilder
+    private func providerFailureAlert(for asset: Asset) -> some View {
         let providerFailurePresentation = InspectorProviderFailurePresentation(failures: model.selectedProviderFailures)
         if providerFailurePresentation.isVisible {
             providerFailureStatus(providerFailurePresentation)
@@ -835,19 +1003,19 @@ struct InspectorView: View {
             if !asset.metadata.keywords.isEmpty {
                 keywordChips(asset.metadata.keywords)
             }
+            metadataTextField("Keywords", text: $metadataDraft.keywords) {
+                try model.setKeywordTextForSelectedAsset(metadataDraft.keywords)
+            }
             let suggestions = model.selectedSuggestedKeywords
             if !suggestions.isEmpty {
                 suggestedKeywordChips(suggestions)
             }
-            let captionPresentation = InspectorCaptionSuggestionPresentation(suggestions: model.selectedSuggestedCaptions)
-            metadataTextField("Keywords", text: $metadataDraft.keywords) {
-                try model.setKeywordTextForSelectedAsset(metadataDraft.keywords)
-            }
-            if captionPresentation.isVisible {
-                suggestedCaptionButtons(captionPresentation)
-            }
             metadataTextField("Caption", text: $metadataDraft.caption) {
                 try model.setCaptionForSelectedAsset(metadataDraft.caption)
+            }
+            let captionPresentation = InspectorCaptionSuggestionPresentation(suggestions: model.selectedSuggestedCaptions)
+            if captionPresentation.isVisible {
+                suggestedCaptionButtons(captionPresentation)
             }
             metadataTextField("Creator", text: $metadataDraft.creator) {
                 try model.setCreatorForSelectedAsset(metadataDraft.creator)

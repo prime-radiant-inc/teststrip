@@ -28,12 +28,14 @@ struct TeststripApplication: App {
         WindowGroup {
             NavigationSplitView {
                 SidebarView(model: model)
-            } content: {
-                LibraryGridView(model: model)
             } detail: {
-                if WorkspaceChromePolicy.showsInspector(model.selectedWorkspace) {
-                    InspectorView(model: model)
-                }
+                LibraryGridView(model: model)
+            }
+            .inspector(isPresented: Binding(
+                get: { model.isInspectorVisible && WorkspaceChromePolicy.showsInspector(model.selectedWorkspace) },
+                set: { model.isInspectorVisible = $0 }
+            )) {
+                InspectorView(model: model)
             }
             .frame(
                 minWidth: AppWindowLayoutMetrics.minimumWidth,
@@ -54,6 +56,7 @@ struct TeststripApplication: App {
             CullingCommands(model: model)
             SupportCommands(model: model)
             ActivityCommands(model: model)
+            InspectorCommands(model: model)
         }
 
         Settings {
@@ -334,6 +337,27 @@ private struct ActivityCommands: Commands {
                 model.isActivityCenterPresented.toggle()
             }
             .keyboardShortcut("0", modifiers: [.command, .shift])
+        }
+    }
+}
+
+private struct InspectorCommands: Commands {
+    var model: AppModel
+
+    var body: some Commands {
+        CommandGroup(after: .toolbar) {
+            Divider()
+            Button("Show Inspector") {
+                model.toggleInspector()
+            }
+            .keyboardShortcut("i", modifiers: [.command])
+
+            ForEach(InspectorTab.allCases) { tab in
+                Button("\(tab.title) Tab") {
+                    model.selectInspectorTab(tab)
+                }
+                .keyboardShortcut(tab.keyEquivalent, modifiers: [.command, .option])
+            }
         }
     }
 }

@@ -7191,8 +7191,11 @@ enum WorkspaceChromePolicy {
         workspace == .library
     }
 
+    /// The on-demand inspector (⌘I, Task 11) is reachable in Library and
+    /// People; Cull has no inspector column, so ⌘I there switches to
+    /// Library first (`AppModel.toggleInspector`).
     static func showsInspector(_ workspace: Workspace) -> Bool {
-        workspace == .library
+        workspace != .cull
     }
 }
 

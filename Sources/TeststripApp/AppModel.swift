@@ -1569,10 +1569,12 @@ public final class AppModel {
     // selection moves so every new frame starts fitted.
     public private(set) var loupeZoomFocus: LoupeZoomFocus?
     public private(set) var selectedBatchAssetIDs: Set<AssetID>
-    /// Whether the inspector should be shown. Currently informational only —
-    /// the Library workspace always shows its inspector column regardless
-    /// (`WorkspaceChromePolicy`); Task 11 wires this into `.inspector()`.
+    /// Whether the on-demand inspector (⌘I) is shown, presented via
+    /// `.inspector()` and gated by `WorkspaceChromePolicy.showsInspector`.
     public var isInspectorVisible = false
+    /// Which inspector tab is active. Selected by the segmented picker in
+    /// the inspector itself, or the ⌥⌘1..3 menu items.
+    public var inspectorTab: InspectorTab = .info
     private var selectedBatchAssetIDOrder: [AssetID]
     private var selectedBatchAssetSortKeys: [AssetID: Int]
     public var statusMessage: String?
@@ -2236,6 +2238,7 @@ public final class AppModel {
         for assetID in assetIDs {
             setBatchSelection(assetID, isSelected: true)
         }
+        inspectorTab = .info
         isInspectorVisible = true
     }
 
@@ -3706,6 +3709,26 @@ public final class AppModel {
     /// there (defaulting to each workspace's primary view).
     public func selectWorkspace(_ workspace: Workspace) {
         selectedView = lastSubView[workspace] ?? workspace.defaultSubView
+    }
+
+    /// ⌘I. Toggles the on-demand inspector in Library/People; Cull has no
+    /// inspector column, so there it switches to Library and shows it.
+    public func toggleInspector() {
+        if selectedWorkspace == .cull {
+            selectWorkspace(.library)
+            isInspectorVisible = true
+        } else {
+            isInspectorVisible.toggle()
+        }
+    }
+
+    /// ⌥⌘1..3. Selects an inspector tab, and presents the inspector if the
+    /// current workspace can show one.
+    public func selectInspectorTab(_ tab: InspectorTab) {
+        inspectorTab = tab
+        if WorkspaceChromePolicy.showsInspector(selectedWorkspace) {
+            isInspectorVisible = true
+        }
     }
 
     /// True when there is an earlier view to return to via `navigateBack()`.
