@@ -133,6 +133,9 @@ sign_developer_id() {
   local identity="$1"
   local common=(codesign --force --timestamp --options runtime --sign "$identity")
 
+  log "Signing Sparkle.framework (nested XPC services, Autoupdate, Updater.app)"
+  teststrip_sign_frameworks "$APP_BUNDLE" "${common[@]}"
+
   log "Signing worker helper"
   "${common[@]}" --entitlements "$WORKER_ENTITLEMENTS" "$WORKER_BINARY"
 
@@ -141,10 +144,15 @@ sign_developer_id() {
 }
 
 sign_ad_hoc() {
+  local common=(codesign --force --sign -)
+
+  log "Ad-hoc signing Sparkle.framework (dry run)"
+  teststrip_sign_frameworks "$APP_BUNDLE" "${common[@]}"
+
   log "Ad-hoc signing worker helper (dry run)"
-  codesign --force --sign - --entitlements "$WORKER_ENTITLEMENTS" "$WORKER_BINARY"
+  "${common[@]}" --entitlements "$WORKER_ENTITLEMENTS" "$WORKER_BINARY"
   log "Ad-hoc signing outer app bundle (dry run)"
-  codesign --force --sign - --entitlements "$APP_ENTITLEMENTS" "$APP_BUNDLE"
+  "${common[@]}" --entitlements "$APP_ENTITLEMENTS" "$APP_BUNDLE"
 }
 
 # --- Step 5: package ----------------------------------------------------------

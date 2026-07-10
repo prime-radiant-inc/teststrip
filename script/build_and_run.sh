@@ -63,6 +63,7 @@ build_app_bundle() {
     worker_codesign+=(--entitlements "$WORKER_ENTITLEMENTS")
     app_codesign+=(--entitlements "$APP_ENTITLEMENTS")
   fi
+  teststrip_sign_frameworks "$APP_BUNDLE" "${app_codesign[@]}"
   "${worker_codesign[@]}" "$WORKER_BINARY" >/dev/null
   "${app_codesign[@]}" "$APP_BUNDLE" >/dev/null
 }
