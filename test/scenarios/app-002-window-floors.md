@@ -1,8 +1,10 @@
-# workspace-minimum-width-floors: each workspace holds its chrome at its minimum window width
+# app-002-window-floors: each workspace holds its chrome at its minimum window width
 
-**What this covers**: `AppWindowLayoutMetrics.minimumWidth(for:)`
-(Library 1000pt / Cull 800pt / People 700pt, `Sources/TeststripApp/main.swift:10-16`)
-— resizing to each workspace's floor must not clip or overflow chrome.
+**What this covers**: Jesse works on a laptop screen and shrinks the window;
+each workspace must hold its chrome at its documented floor. Inventory items
+7-8: per-workspace `AppWindowLayoutMetrics.minimumWidth(for:)`
+(Library 1000pt / Cull 800pt / People 700pt) live-switches with the workspace,
+and minHeight 720 / default 1520x820 (`Sources/TeststripApp/main.swift:10-21,55-63`).
 People's `PeopleView` uses 320pt fixed-width panels, called out as the
 tightest fit at the 700pt floor.
 
@@ -45,9 +47,19 @@ tightest fit at the 700pt floor.
 ./script/reset_isolated_test_data.sh --delete
 ```
 
-## Run status
-BLOCKED-CONSOLE — locked console prevents any AX/window-resize step. Floor
-values confirmed by source read (`Sources/TeststripApp/main.swift:10-16`).
-The 320pt-panel risk at the People floor is a code-inspection flag, not yet
-run live — needs a human-present re-run, and if it fails, treat it as a
-genuine layout bug (not a scenario-authoring adjustment).
+## Sharp edges
+- A prior run was BLOCKED-CONSOLE: floor values confirmed by source read
+  only (`Sources/TeststripApp/main.swift:10-16`); the resize assertions have
+  never run live. If the People 700pt floor fails, treat it as a genuine
+  layout bug, not a scenario-authoring adjustment.
+- Resizing via System Events `set size of window 1` uses points on a
+  non-retina VM display; confirm the resulting AXSize actually reads the
+  requested width before asserting anything about clipping — SwiftUI clamps
+  to `minWidth`, so asking for less than the floor is the cheap way to prove
+  the floor is enforced (window refuses to shrink below it).
+- Item 8's default 1520x820 only applies to a first-ever window; an isolated
+  launch with a fresh app-support dir still restores frame from the
+  `com.teststrip.app` defaults domain if one exists on the machine. Assert
+  the default size only on a VM/user account that has never run the app, or
+  after `defaults delete com.teststrip.app` — otherwise skip that assertion
+  and say so.

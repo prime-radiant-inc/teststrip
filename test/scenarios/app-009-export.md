@@ -1,6 +1,14 @@
-# export-presets-with-exif: Export copies with an optional EXIF/IPTC carry
+# app-009-export: Export copies with presets and an optional EXIF/IPTC carry
 
-**What this covers**: the export surface — the toolbar **Export** popover, its
+**What this covers**: Jesse exports finished picks for delivery; the copies
+must actually be resized and the metadata carry must obey the checkbox.
+Inventory items 31-33: one export flow shared by File ▸ Export…, the toolbar
+button, and the end-of-set surface via `exportRequestToken`
+(`Sources/TeststripApp/main.swift` FileCommands, `AppModel.requestExport`);
+the review sheet's scope picker (selected/visible/current scope) + confirm,
+JPEG/PNG, quality, EXIF/IPTC toggle, long edge; and `ExportService` dedupe,
+filename de-collision, progress, with the `TESTSTRIP_EXPORT_DESTINATION_DIR`
+override. Concretely: the toolbar **Export** popover, its
 Format/Quality/Long-edge settings, presets, and the **"Include EXIF/IPTC
 metadata"** checkbox (`includeSourceMetadata`, Jesse's explicit ask: EXIF/IPTC
 optional, checkbox at export). The load-bearing assertions are on the exported

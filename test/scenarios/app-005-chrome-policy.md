@@ -1,6 +1,12 @@
-# ux-simplification-chrome: the legibility sweep is live in the assembled UI
+# app-005-chrome-policy: the simplified chrome policy is live in the assembled UI
 
-**What this covers**: the UX-simplification sweep (spec
+**What this covers**: Jesse lives in this chrome every session; the
+simplification sweep must hold in the assembled window, not just in unit
+tests. Inventory items 16-17: `WorkspaceChromePolicy` — the ten chrome
+booleans are Library-only, and `showsInspector` is true for every workspace
+except Cull (`WorkspaceChromePolicy`,
+`Sources/TeststripApp/LibraryGridView.swift:7208-7268`; inspector gating in
+`Sources/TeststripApp/main.swift:49-54`). Also the UX-simplification sweep (spec
 `docs/superpowers/specs/2026-07-08-teststrip-ux-simplification-proposal.md`) is
 a legibility pass over working machinery — most of it only exists in the
 assembled AppKit chrome, where unit tests and the headless gate can't see it.
@@ -40,6 +46,14 @@ Find Best Shots never dead-ends the user on a bare "0 keepers".
 4. **Cross-check the switcher de-dup.** The top view-switcher exposes only
    `Grid`, `Loupe`, `Compare` — assert `Search`, `Review`, `Timeline`,
    `People`, `Places` are **not** switcher buttons (they live in the sidebar).
+5. **Chrome policy per workspace (items 16-17).** Press ⌘2 (Library): assert
+   the search token field, Import ▾, Find Best Shots, Export, and the footer
+   are present. Press ⌘1 (Cull): assert *all* of those are absent, and that
+   ⌘I does not open an inspector column inside Cull (per
+   `AppModel.toggleInspector` it switches to Library first — after ⌘I the
+   Library chrome should be what renders). Press ⌘3 (People): assert the
+   browse chrome (search field, Import ▾, Export, footer) is absent but ⌘I
+   can open the inspector (showsInspector is true for People).
 
 ## Expected
 - Step 2: `verify_ux_simplification_chrome.sh` prints `PASS: …` and exits 0.
@@ -52,9 +66,29 @@ Find Best Shots never dead-ends the user on a bare "0 keepers".
   ```
 - Step 4: exactly three switcher buttons; the five set-routes are absent from
   the switcher (present in the sidebar instead).
+- Step 5: every Library-only control disappears in Cull and People, and the
+  inspector rule holds (never in Cull; available in Library and People).
+  **Fails if** any browse control leaks into Cull/People, or ⌘I opens an
+  inspector while Cull is active.
 
 ## Fixture status
 Runnable with the standard `--smoke` seed (24 synthetic photos) — no special
 fixture required. The plain-language branch in Step 3 is exercised when the
 seed produces no likely-picks; the ranked-queue branch when it does. Either
 outcome passes as long as the result is legible and never a bare zero.
+
+## Cleanup
+```bash
+./script/reset_isolated_test_data.sh --delete
+```
+Quit the launched instance.
+
+## Sharp edges
+- Views branch on `WorkspaceChromePolicy`, never on raw `Workspace` cases —
+  if a step-5 assertion fails, cite which policy boolean disagrees with the
+  rendered chrome (that is the regression, not the card).
+- Step 3's full routing matrix (evaluate-then-route vs. picks vs.
+  nothing-ranked) is app-011's job; here it is only a smoke check that the
+  button never dead-ends.
+- Activity (⇧⌘0 toolbar item) is global chrome and intentionally NOT gated by
+  the policy — do not count its presence in Cull/People as a leak.

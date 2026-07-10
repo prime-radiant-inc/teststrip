@@ -1,6 +1,14 @@
-# reject-relocation-move-and-back: Move rejects to a folder, then move them back
+# app-010-move-rejects: Move rejects to a folder, then move them back
 
-**What this covers**: the reject-relocation feature merged at migration 16 —
+**What this covers**: Jesse finishes a cull and sweeps the rejects out of the
+shoot folder — reversibly. Inventory items 34-37: Culling ▸ Move Rejects…
+request-token path gated on non-empty/non-importing
+(`Sources/TeststripApp/main.swift` CullingCommands,
+`AppModel.requestMoveRejects`); the preflight sheet + confirm with the
+`TESTSTRIP_REJECT_DESTINATION_DIR` override; per-file move of original +
+sidecar with a `relocation_manifest_entries` row (WorkSession persisted
+first, abortable); and the completion banner's **Move back** (manifest
+reverse) + Dismiss. Underlying feature merged at migration 16 —
 Teststrip's first origin-relocating action. Flagging a photo Reject, then
 **Move Rejects**, must physically move the original file (and its XMP sidecar)
 into the chosen folder, record a `relocation_manifest_entries` row, and be
@@ -90,4 +98,10 @@ Quit the launched instance.
   preview for a moved-away original (previews are cached independently of the
   original's availability). The `test -f` on the real path is authoritative.
 - Confirm the reject `keep_state`/`rating` column names against `.schema assets`
-  before trusting step 3's count.
+  before trusting step 3's count. Per `CatalogMigrations.swift` there is no
+  `rating` column — flag/rating live in `metadata_json`; expect a
+  `json_extract(metadata_json, ...)` query instead.
+- Item 34's menu entry: Culling ▸ Move Rejects… reaches the same
+  `requestMoveRejects()` token as the toolbar button. Run Step 4 via the menu
+  at least once (System Events menu-bar click) to prove the menu path, and
+  note it is disabled while importing or when the catalog is empty.
