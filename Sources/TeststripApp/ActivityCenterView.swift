@@ -314,7 +314,7 @@ struct ActivityCenterView: View {
 
     private func selectConflict(_ conflict: ConflictRow) {
         do {
-            try model.selectXMPConflictAsset(conflict.assetID)
+            try model.revealConflicts([conflict.assetID])
         } catch {
             model.errorMessage = error.localizedDescription
         }

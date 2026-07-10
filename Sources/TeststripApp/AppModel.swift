@@ -1507,6 +1507,10 @@ public final class AppModel {
     // selection moves so every new frame starts fitted.
     public private(set) var loupeZoomFocus: LoupeZoomFocus?
     public private(set) var selectedBatchAssetIDs: Set<AssetID>
+    /// Whether the inspector should be shown. Currently informational only —
+    /// the Library workspace always shows its inspector column regardless
+    /// (`WorkspaceChromePolicy`); Task 11 wires this into `.inspector()`.
+    public var isInspectorVisible = false
     private var selectedBatchAssetIDOrder: [AssetID]
     private var selectedBatchAssetSortKeys: [AssetID: Int]
     public var statusMessage: String?
@@ -2156,15 +2160,21 @@ public final class AppModel {
         )
     }
 
-    /// Deep-links from the Activity Center's conflict row back to the asset,
-    /// filtered to the XMP-conflict scope so the selection lands in context.
-    public func selectXMPConflictAsset(_ assetID: AssetID) throws {
-        selectedAssetID = assetID
+    /// Deep-links from the Activity Center's conflict row(s) back to the
+    /// affected assets: switches to Library, filters to the XMP-conflict
+    /// scope, selects the assets, and reveals the inspector.
+    public func revealConflicts(_ assetIDs: [AssetID]) throws {
+        selectWorkspace(.library)
+        selectedAssetID = assetIDs.first
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
         metadataSyncConflictFilter = true
-        selectedView = .grid
         try reload()
+        clearBatchSelection()
+        for assetID in assetIDs {
+            setBatchSelection(assetID, isSelected: true)
+        }
+        isInspectorVisible = true
     }
 
     public var diagnosticsSnapshot: AppDiagnosticsSnapshot {

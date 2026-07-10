@@ -2230,15 +2230,56 @@ final class AppModelTests: XCTestCase {
         ))
 
         // The sidebar "Sync" section is retired; the Activity Center popover's
-        // conflict row deep-links via `selectXMPConflictAsset` instead.
+        // conflict row deep-links via `revealConflicts` instead.
         XCTAssertEqual(model.activityCenterPresentation.xmpConflicts.map(\.assetID), [conflicted.id])
 
-        try model.selectXMPConflictAsset(conflicted.id)
+        try model.revealConflicts([conflicted.id])
 
         XCTAssertNil(model.selectedAssetSetID)
         XCTAssertTrue(model.metadataSyncConflictFilter)
         XCTAssertEqual(model.assets.map(\.id), [conflicted.id])
         XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
+    func testRevealConflictsSwitchesToLibrarySelectsAssetsAndShowsInspector() throws {
+        let directory = try makeTemporaryDirectory(named: "xmp-conflict-reveal")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let first = makeAsset(id: "conflicted-1", path: "/Photos/conflicted-1.jpg", rating: 0)
+        let second = makeAsset(id: "conflicted-2", path: "/Photos/conflicted-2.jpg", rating: 0)
+        try repository.upsert([first, second])
+        try repository.recordMetadataSyncConflict(MetadataSyncItem(
+            assetID: first.id,
+            sidecarURL: first.originalURL.appendingPathExtension("xmp"),
+            catalogGeneration: 1,
+            lastSyncedFingerprint: "old"
+        ))
+        try repository.recordMetadataSyncConflict(MetadataSyncItem(
+            assetID: second.id,
+            sidecarURL: second.originalURL.appendingPathExtension("xmp"),
+            catalogGeneration: 1,
+            lastSyncedFingerprint: "old"
+        ))
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        model.selectWorkspace(.cull)
+        XCTAssertEqual(model.selectedWorkspace, .cull)
+        XCTAssertFalse(model.isInspectorVisible)
+
+        try model.revealConflicts([first.id, second.id])
+
+        XCTAssertEqual(model.selectedWorkspace, .library)
+        XCTAssertEqual(model.selectedBatchAssetIDs, [first.id, second.id])
+        XCTAssertTrue(model.isInspectorVisible)
+        XCTAssertTrue(model.metadataSyncConflictFilter)
     }
 
     func testSelectingPendingMetadataSyncSidebarRowLoadsPendingAssets() throws {
