@@ -3438,6 +3438,8 @@ private struct RejectRelocationBannerView: View {
 private struct LoupeView: View {
     var model: AppModel
 
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @State private var isDecisionToastVisible = false
     @State private var closeUpCrops: [(id: Int, image: CGImage)] = []
 
     private var loupePresentation: LoupePresentation {
@@ -3705,29 +3707,86 @@ private struct LoupeView: View {
             } else {
                 unavailableView(title: "No cached preview", systemImage: "photo.badge.exclamationmark")
             }
-            loupeMetadataOverlay(for: asset)
-                .padding(20)
+            VStack(alignment: .leading, spacing: 6) {
+                decisionToast
+                loupeMetadataOverlay(for: asset)
+            }
+            .padding(20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: decisionToastTaskID) {
+            await showDecisionToastThenFade()
+        }
+    }
+
+    private var decisionToastTaskID: String {
+        guard let feedback = model.lastCullingMetadataDecision else { return "none" }
+        return "\(feedback.assetID.rawValue)|\(feedback.decisionText)"
+    }
+
+    private func showDecisionToastThenFade() async {
+        guard model.lastCullingMetadataDecision != nil else {
+            isDecisionToastVisible = false
+            return
+        }
+        isDecisionToastVisible = true
+        try? await Task.sleep(for: .seconds(2))
+        guard !Task.isCancelled else { return }
+        if accessibilityReduceMotion {
+            isDecisionToastVisible = false
+        } else {
+            withAnimation(.easeOut(duration: 0.3)) {
+                isDecisionToastVisible = false
+            }
+        }
+    }
+
+    // Transient auto-fading line summarizing the last culling decision, so
+    // Jesse doesn't have to glance at the HUD counters to confirm a keypress
+    // landed. Never overlaps the filmstrip below the stage.
+    @ViewBuilder
+    private var decisionToast: some View {
+        if let feedback = model.lastCullingMetadataDecision, isDecisionToastVisible {
+            Text(CullDecisionToastPresentation(feedback: feedback).text)
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.thinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .transition(accessibilityReduceMotion ? .identity : .opacity)
+        }
     }
 
     private func cullingFilmstrip(recommendedAssetID: AssetID?) -> some View {
+        let scopedAssets = CullScopeOrdering.filteredAssets(model.assets, scope: model.cullScope)
         let presentation = CullingFilmstripPresentation(
-            assets: CullScopeOrdering.filteredAssets(model.assets, scope: model.cullScope),
+            assets: scopedAssets,
             selectedAssetID: model.selectedAssetID
         )
+        let stackPresentation = CullFilmstripPresentation(
+            assets: scopedAssets,
+            stacks: model.allCullingStacks(for: scopedAssets),
+            selectedAssetID: model.selectedAssetID
+        )
+        let stackIndexByAssetID = Self.stackIndexByAssetID(items: stackPresentation.items)
         return VStack(spacing: 6) {
             HStack {
                 Text("Filmstrip")
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.secondary)
-                Text(presentation.positionText)
+                Text(stackPresentation.positionText)
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
             }
             HStack(spacing: 7) {
-                ForEach(presentation.visibleAssets, id: \.id.rawValue) { asset in
+                ForEach(Array(presentation.visibleAssets.enumerated()), id: \.element.id.rawValue) { index, asset in
+                    if index > 0,
+                       let previousStackIndex = stackIndexByAssetID[presentation.visibleAssets[index - 1].id],
+                       let stackIndex = stackIndexByAssetID[asset.id],
+                       previousStackIndex != stackIndex {
+                        filmstripStackDivider
+                    }
                     filmstripTile(
                         for: asset,
                         isSelected: asset.id == model.selectedAssetID,
@@ -3746,6 +3805,27 @@ private struct LoupeView: View {
         .task(id: presentation.requestID) {
             requestFilmstripPreviews(for: presentation.visibleAssets)
         }
+    }
+
+    private static func stackIndexByAssetID(items: [CullFilmstripPresentation.Item]) -> [AssetID: Int] {
+        var result: [AssetID: Int] = [:]
+        var stackIndex = 0
+        for item in items {
+            switch item {
+            case .frame(let assetID):
+                result[assetID] = stackIndex
+            case .stackDivider:
+                stackIndex += 1
+            }
+        }
+        return result
+    }
+
+    private var filmstripStackDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.18))
+            .frame(width: 1, height: 40)
+            .accessibilityHidden(true)
     }
 
     @ViewBuilder

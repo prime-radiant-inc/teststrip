@@ -5367,12 +5367,18 @@ public final class AppModel {
     }
 
     private func cullingStacks() -> [AssetStack] {
+        allCullingStacks(for: assets).filter { $0.assetIDs.count > 1 }
+    }
+
+    /// The full auto-grouped stack partition (including singleton stacks) for
+    /// the given assets, in scope order — used by the filmstrip's dividers,
+    /// which need every frame accounted for, not just multi-frame stacks.
+    public func allCullingStacks(for assets: [Asset]) -> [AssetStack] {
         stackBuilder()
             .stacks(
                 from: assets,
                 visualSimilarityVectorsByAssetID: visualSimilarityVectorsByAssetID(for: assets)
             )
-            .filter { $0.assetIDs.count > 1 }
     }
 
     public func selectedCullingStackEvaluationSignals() -> [AssetID: [EvaluationSignal]] {
