@@ -5,26 +5,26 @@ Status flow: Spec'd → Tested-Pass | Tested-Fail → Fixed → Verified.
 
 | ID | Card | Status | Test method | Defect type | Actual result | Notes / open questions |
 |---|---|---|---|---|---|---|
-| cull-001-workspace-key-gating | cull-001-workspace-key-gating.md | Fixed | VM e2e (ax+sql) | Functional | menu key-equivalents bypassed workspace gate — fixed a1d81246 (TDD); card steps 6-7 corrected 2be7f452; awaiting re-run | iter1: investigate gate leak; fix card steps 6-7 |
-| cull-002-loupe-navigation | cull-002-loupe-navigation.md | Spec'd | — | — | — |  |
-| cull-003-rating-label-flag-keys | cull-003-rating-label-flag-keys.md | Spec'd | — | — | — |  |
-| cull-004-stack-promote-return | cull-004-stack-promote-return.md | Spec'd | — | — | — | BLOCKED fixture gap: no seed produces multi-frame stacks (smoke 900s apart vs 2s builder gap; bench JPEGs lack EXIF DateTimeOriginal) |
-| cull-005-scope-cycle | cull-005-scope-cycle.md | Spec'd | — | — | — |  |
-| cull-006-zoom-and-face-zoom | cull-006-zoom-and-face-zoom.md | Spec'd | — | — | — | no AX signal for zoom state — indirect checks only |
-| cull-007-exif-overlay-cycle | cull-007-exif-overlay-cycle.md | Spec'd | — | — | — |  |
-| cull-008-subview-keys-gcb | cull-008-subview-keys-gcb.md | Spec'd | — | — | — |  |
-| cull-009-keymap-overlay | cull-009-keymap-overlay.md | Spec'd | — | — | — |  |
-| cull-010-cullgrid-keys | cull-010-cullgrid-keys.md | Spec'd | — | — | — | Testability gap: ax_drive.sh has no modifier-click verb — batch multi-select undrivable |
-| cull-011-hud | cull-011-hud.md | Spec'd | — | — | — |  |
-| cull-012-closeups-panel | cull-012-closeups-panel.md | Spec'd | — | — | — | open q: Close-Ups re-detects live vs face_observations table — counts may disagree; intended? |
-| cull-013-filmstrip | cull-013-filmstrip.md | Spec'd | — | — | — | shares stack fixture gap with cull-004 |
-| cull-014-stack-rail | cull-014-stack-rail.md | Spec'd | — | — | — | Core action set unread — open question; inventory corrected: primary Keep keeps SELECTED frame, not recommendation; action set documented |
-| cull-015-sidebar-sources | cull-015-sidebar-sources.md | Spec'd | — | — | — |  |
-| cull-016-completion-stage | cull-016-completion-stage.md | Spec'd | — | — | — | adopts end-of-set-move-rejects; items 49-51 (session banners) blocked by stack fixture gap |
-| cull-017-autopilot-review | cull-017-autopilot-review.md | Spec'd | — | — | — | adopts autopilot-review-commit-undo; open q: banner Dismiss may make Review unreachable for that run (one-way door) |
-| cull-018-compare-survey | cull-018-compare-survey.md | Spec'd | — | — | — | open q: shared monitor key semantics in compare; CONFIRMED UX inconsistency: Return uses stricter stack-guard and can silently no-op while Keep-primary button is enabled |
-| cull-019-ab-compare | cull-019-ab-compare.md | Spec'd | — | — | — |  |
-| cull-020-pass-scope-and-undo | cull-020-pass-scope-and-undo.md | Spec'd | — | — | — | adopts cull-pass-scope-and-undo |
+| cull-001-workspace-key-gating | cull-001-workspace-key-gating.md | Verified | VM e2e (ax+sql) | — | iter2 re-run all PASS post-fix; gate leak closed | iter1: investigate gate leak; fix card steps 6-7 |
+| cull-002-loupe-navigation | cull-002-loupe-navigation.md | Tested-Fail | VM e2e | Functional | arrows L/R/Space PASS; Up/Down + ⌥arrows stack nav inert |  |
+| cull-003-rating-label-flag-keys | cull-003-rating-label-flag-keys.md | Tested-Fail | VM e2e | Functional | CRITICAL: decision keys double-fire — one press writes 2 assets, advances 2 (2 undo entries) |  |
+| cull-004-stack-promote-return | cull-004-stack-promote-return.md | Tested-Fail | VM e2e | Testability | BLOCKED-FIXTURE multi-frame stacks; stackless no-op PASS | BLOCKED fixture gap: no seed produces multi-frame stacks (smoke 900s apart vs 2s builder gap; bench JPEGs lack EXIF DateTimeOriginal) |
+| cull-005-scope-cycle | cull-005-scope-cycle.md | Tested-Fail | VM e2e | Functional | S skips a scope per press — same double-fire root |  |
+| cull-006-zoom-and-face-zoom | cull-006-zoom-and-face-zoom.md | Tested-Fail | VM e2e | Testability | BLOCKED-TOOLING: no AX zoom signal; VM lacks Screen Recording TCC | no AX signal for zoom state — indirect checks only |
+| cull-007-exif-overlay-cycle | cull-007-exif-overlay-cycle.md | Tested-Fail | VM e2e | Functional | overlay cycle skips states — double-fire |  |
+| cull-008-subview-keys-gcb | cull-008-subview-keys-gcb.md | Tested-Fail | VM e2e | Functional | loupe→G/C/B PASS; grid→loupe via G/Esc broken 3x (Return works) |  |
+| cull-009-keymap-overlay | cull-009-keymap-overlay.md | Tested-Fail | VM e2e | Functional | opens correctly; Esc/? never dismiss per AX — needs screenshot disambiguation |  |
+| cull-010-cullgrid-keys | cull-010-cullgrid-keys.md | Tested-Fail | VM e2e | Testability | nav PASS; batch ops BLOCKED-TOOLING (no modifier-click verb) | Testability gap: ax_drive.sh has no modifier-click verb — batch multi-select undrivable |
+| cull-011-hud | cull-011-hud.md | Tested-Pass | VM e2e (ax+sql) | — | counts track catalog exactly |  |
+| cull-012-closeups-panel | cull-012-closeups-panel.md | Tested-Fail | VM e2e | Environment | face_observations 0 for 95s — possible worker stall in VM; investigate | open q: Close-Ups re-detects live vs face_observations table — counts may disagree; intended? |
+| cull-013-filmstrip | cull-013-filmstrip.md | Tested-Fail | VM e2e | Testability | position text PASS; dividers BLOCKED-FIXTURE | shares stack fixture gap with cull-004 |
+| cull-014-stack-rail | cull-014-stack-rail.md | Tested-Fail | VM e2e | Testability | BLOCKED-FIXTURE | Core action set unread — open question; inventory corrected: primary Keep keeps SELECTED frame, not recommendation; action set documented |
+| cull-015-sidebar-sources | cull-015-sidebar-sources.md | Tested-Pass | VM e2e (ax+sql) | — | all source rows/counts correct |  |
+| cull-016-completion-stage | cull-016-completion-stage.md | Tested-Pass | VM e2e (ax+sql) | — | completion, Review Picks, scope reappearance correct; banner items still fixture-blocked | adopts end-of-set-move-rejects; items 49-51 (session banners) blocked by stack fixture gap |
+| cull-017-autopilot-review | cull-017-autopilot-review.md | Tested-Fail | VM e2e | Testability | BLOCKED-TOOLING: needs host fixture gen + submit_import_path equivalent in VM | adopts autopilot-review-commit-undo; open q: banner Dismiss may make Review unreachable for that run (one-way door) |
+| cull-018-compare-survey | cull-018-compare-survey.md | Tested-Fail | VM e2e | Functional | core PASS; contenders toggle non-functional or silently gated — check isContendersModeAvailable | open q: shared monitor key semantics in compare; CONFIRMED UX inconsistency: Return uses stricter stack-guard and can silently no-op while Keep-primary button is enabled |
+| cull-019-ab-compare | cull-019-ab-compare.md | Tested-Pass | VM e2e (ax+sql) | — | header/contender/keep-write verified via SQL |  |
+| cull-020-pass-scope-and-undo | cull-020-pass-scope-and-undo.md | Tested-Fail | VM e2e | Functional | P/X loop hit double-fire; stack parts fixture-blocked | adopts cull-pass-scope-and-undo |
 | lib-001-sidebar-sections | lib-001-sidebar-sections.md | Spec'd | — | — | — |  |
 | lib-002-saved-set-context-menus | lib-002-saved-set-context-menus.md | Spec'd | — | — | — | note: work-session menu is a single star-toggle whose title flips; possible dup SidebarRow.id across sections (List diffing footgun) |
 | lib-003-token-grammar-fields | lib-003-token-grammar-fields.md | Spec'd | — | — | — |  |
