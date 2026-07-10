@@ -195,7 +195,69 @@ final class LibraryQueryTokenTests: XCTestCase {
         XCTAssertTrue(restored.metadataSyncPendingFilter)
     }
 
+    func testXMPConflictRoundTrips() {
+        let model = makeModel()
+        model.metadataSyncConflictFilter = true
+
+        let tokens = LibraryQueryToken.tokens(from: model)
+        guard let token = tokens.first(where: { $0.field == .xmpConflict }) else {
+            return XCTFail("expected an xmpConflict token")
+        }
+        XCTAssertEqual(token.display, "XMP Conflicts")
+
+        let restored = makeModel()
+        LibraryQueryToken.apply(token, to: restored)
+        XCTAssertTrue(restored.metadataSyncConflictFilter)
+    }
+
     // MARK: - Removal only clears its own filter, siblings untouched
+
+    /// Activates every structured filter, then removes each token in turn
+    /// and asserts exactly that one field cleared and all siblings survived.
+    func testRemovingEachTokenClearsOnlyItsOwnFilter() {
+        func fullyFilteredModel() -> AppModel {
+            let model = makeModel()
+            model.minimumRatingFilter = 3
+            model.flagFilter = .pick
+            model.keywordFilterText = "portfolio"
+            model.folderFilterText = "/Volumes/Photos/2024"
+            model.cameraFilterText = "Canon EOS R5"
+            model.lensFilterText = "RF50"
+            model.minimumISOFilter = 800
+            model.captureDateStartFilter = date(2024, 1, 1)
+            model.captureDateEndFilter = date(2024, 2, 1)
+            model.colorLabelFilter = .red
+            model.availabilityFilter = .online
+            model.evaluationKindFilter = .focus
+            model.metadataSyncPendingFilter = true
+            model.metadataSyncConflictFilter = true
+            return model
+        }
+
+        let allFields: [LibraryQueryToken.Field] = [
+            .rating, .flag, .keyword, .folder, .camera, .lens, .iso,
+            .dateFrom, .dateBefore, .color, .source, .signal,
+            .xmpPending, .xmpConflict
+        ]
+        XCTAssertEqual(LibraryQueryToken.tokens(from: fullyFilteredModel()).map(\.field), allFields)
+
+        for field in allFields {
+            let model = fullyFilteredModel()
+            guard let token = LibraryQueryToken.tokens(from: model).first(where: { $0.field == field }) else {
+                XCTFail("expected a \(field) token")
+                continue
+            }
+
+            LibraryQueryToken.remove(token, from: model)
+
+            let remaining = LibraryQueryToken.tokens(from: model).map(\.field)
+            XCTAssertEqual(
+                remaining,
+                allFields.filter { $0 != field },
+                "removing \(field) should clear exactly that filter"
+            )
+        }
+    }
 
     func testRemovingTokenClearsOnlyThatFilter() {
         let model = makeModel()

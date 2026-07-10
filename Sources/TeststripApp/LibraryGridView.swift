@@ -594,8 +594,7 @@ struct LibraryGridView: View {
     private var topInsetContent: some View {
         VStack(spacing: 0) {
             libraryTopBar
-            if WorkspaceChromePolicy.showsFilterTokens(model.selectedWorkspace),
-               model.selectedView == .grid || model.selectedView == .search || model.selectedView == .timeline {
+            if WorkspaceChromePolicy.showsFilterTokens(model.selectedWorkspace) {
                 libraryQueryBar
             }
             if let summary = visibleImportCompletionSummary {
@@ -778,12 +777,16 @@ struct LibraryGridView: View {
                 }
             }
             Menu("Metadata Sync") {
+                // Single-select, matching the old MetadataSyncFilterOption
+                // picker: choosing one clears the other.
                 Button("Pending") {
                     model.metadataSyncPendingFilter = true
+                    model.metadataSyncConflictFilter = false
                     applyLibraryFilters()
                 }
                 Button("Conflicts") {
                     model.metadataSyncConflictFilter = true
+                    model.metadataSyncPendingFilter = false
                     applyLibraryFilters()
                 }
             }
@@ -801,8 +804,16 @@ struct LibraryGridView: View {
         }
     }
 
+    /// Structured-filter chips render straight from `LibraryQueryToken`
+    /// (removal goes through the bridge), so the token field, chips, and
+    /// AppModel's 13 filter properties are one system. Chips the bridge
+    /// doesn't cover — selected asset set, dynamic set rules, detached
+    /// predicates, and `librarySearchText`'s own chips/residual — still come
+    /// from `activeLibraryFilterRows`, deduplicated by title.
     private var activeFilterChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        let tokens = LibraryQueryToken.tokens(from: model)
+        let tokenTitles = Set(tokens.map(\.display))
+        return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
                     .font(.caption)
@@ -810,43 +821,57 @@ struct LibraryGridView: View {
                 Text("Text found")
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.orange)
-                ForEach(model.activeLibraryFilterRows) { row in
-                    Button {
-                        removeActiveLibraryFilter(row)
-                    } label: {
-                        HStack(spacing: 5) {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(row.title)
-                                    .lineLimit(1)
-                                if row.isPlainSearchFallback {
-                                    Text("Plain search fallback")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 6)
-                                .strokeBorder(Color.orange.opacity(0.18))
-                        }
+                ForEach(tokens) { token in
+                    filterChip(title: token.display, isPlainSearchFallback: false) {
+                        LibraryQueryToken.remove(token, from: model)
+                        applyLibraryFilters()
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(
-                        row.isPlainSearchFallback
-                            ? "Remove plain search fallback filter \(row.title)"
-                            : "Remove filter \(row.title)"
-                    )
-                    .help("Remove \(row.title) filter")
+                }
+                ForEach(model.activeLibraryFilterRows.filter { !tokenTitles.contains($0.title) }) { row in
+                    filterChip(title: row.title, isPlainSearchFallback: row.isPlainSearchFallback) {
+                        removeActiveLibraryFilter(row)
+                    }
                 }
             }
             .padding(.horizontal, 12)
         }
+    }
+
+    private func filterChip(
+        title: String,
+        isPlainSearchFallback: Bool,
+        remove: @escaping () -> Void
+    ) -> some View {
+        Button(action: remove) {
+            HStack(spacing: 5) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .lineLimit(1)
+                    if isPlainSearchFallback {
+                        Text("Plain search fallback")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+            }
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(Color.orange.opacity(0.18))
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            isPlainSearchFallback
+                ? "Remove plain search fallback filter \(title)"
+                : "Remove filter \(title)"
+        )
+        .help("Remove \(title) filter")
     }
 
     @ViewBuilder

@@ -186,10 +186,10 @@ public struct LibraryQueryToken: Equatable, Identifiable {
             model.metadataSyncPendingFilter = true
         case (.xmpConflict, _):
             model.metadataSyncConflictFilter = true
-        case (.passthrough, .text(let fragment)):
-            let trimmed = model.librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-            model.librarySearchText = trimmed.isEmpty ? fragment : "\(trimmed) \(fragment)"
         default:
+            // .passthrough tokens live in librarySearchText, which
+            // parse(_:applyingTo:) reconstructs itself — applying one here
+            // would double-append its fragment.
             break
         }
     }
