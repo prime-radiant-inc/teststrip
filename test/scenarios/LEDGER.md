@@ -5,7 +5,7 @@ Status flow: Spec'd → Tested-Pass | Tested-Fail → Fixed → Verified.
 
 | ID | Card | Status | Test method | Defect type | Actual result | Notes / open questions |
 |---|---|---|---|---|---|---|
-| cull-001-workspace-key-gating | cull-001-workspace-key-gating.md | Spec'd | — | — | — |  |
+| cull-001-workspace-key-gating | cull-001-workspace-key-gating.md | Tested-Fail | VM e2e (ax+sql) | Functional? / card-defect | P leaks pick in libraryLoupe (step4); step6 card assumes Cull search field (none exists); step7 Return no-op likely by-design on stackless seed | iter1: investigate gate leak; fix card steps 6-7 |
 | cull-002-loupe-navigation | cull-002-loupe-navigation.md | Spec'd | — | — | — |  |
 | cull-003-rating-label-flag-keys | cull-003-rating-label-flag-keys.md | Spec'd | — | — | — |  |
 | cull-004-stack-promote-return | cull-004-stack-promote-return.md | Spec'd | — | — | — | BLOCKED fixture gap: no seed produces multi-frame stacks (smoke 900s apart vs 2s builder gap; bench JPEGs lack EXIF DateTimeOriginal) |
