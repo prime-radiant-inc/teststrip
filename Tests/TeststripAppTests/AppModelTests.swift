@@ -3393,7 +3393,7 @@ final class AppModelTests: XCTestCase {
         )
         model.select(selected.id)
 
-        try model.keepSelectedStackFrameAndRejectAlternates()
+        try model.promoteCurrentFrameAndRejectSiblings()
 
         XCTAssertEqual(try repository.asset(id: first.id).metadata.flag, .reject)
         XCTAssertEqual(try repository.asset(id: selected.id).metadata.flag, .pick)
@@ -3436,7 +3436,7 @@ final class AppModelTests: XCTestCase {
         model.select(selected.id)
         let startedSession = try model.beginCullingSession(named: "Loaded Stack Cull")
 
-        try model.keepSelectedStackFrameAndRejectAlternates()
+        try model.promoteCurrentFrameAndRejectSiblings()
 
         XCTAssertEqual(try repository.asset(id: first.id).metadata.flag, .reject)
         XCTAssertEqual(try repository.asset(id: selected.id).metadata.flag, .pick)
@@ -3485,7 +3485,7 @@ final class AppModelTests: XCTestCase {
         )
         model.select(selected.id)
 
-        try model.applyCullingShortcut(.acceptStackSelection)
+        try model.applyCullingShortcut(.promoteAndRejectSiblings)
 
         XCTAssertEqual(try repository.asset(id: first.id).metadata.flag, .reject)
         XCTAssertEqual(try repository.asset(id: selected.id).metadata.flag, .pick)
@@ -3513,7 +3513,7 @@ final class AppModelTests: XCTestCase {
         )
         model.select(first.id)
 
-        try model.applyCullingShortcut(.acceptStackSelection)
+        try model.applyCullingShortcut(.promoteAndRejectSiblings)
 
         XCTAssertEqual(model.selectedAssetID, first.id)
         XCTAssertNil(try repository.asset(id: first.id).metadata.flag)
@@ -3548,7 +3548,7 @@ final class AppModelTests: XCTestCase {
         try model.applyAssetSet(id: stackSet.id)
         model.select(alternate.id)
 
-        try model.applyCullingShortcut(.acceptStackSelection)
+        try model.applyCullingShortcut(.promoteAndRejectSiblings)
 
         XCTAssertEqual(try repository.asset(id: lead.id).metadata.flag, .reject)
         XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .pick)
@@ -3563,7 +3563,7 @@ final class AppModelTests: XCTestCase {
         try fixture.model.applyAssetSet(id: fixture.firstSet.id)
         fixture.model.select(fixture.firstAlternate.id)
 
-        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.promoteAndRejectSiblings)
 
         let session = try fixture.repository.session(id: WorkSessionID(rawValue: "progress-session"))
         XCTAssertEqual(session.completedUnitCount, 2)
@@ -3584,11 +3584,11 @@ final class AppModelTests: XCTestCase {
         )
         try fixture.model.applyAssetSet(id: fixture.firstSet.id)
         fixture.model.select(fixture.firstLead.id)
-        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.promoteAndRejectSiblings)
         XCTAssertNil(fixture.model.cullingSessionCompletion)
 
         // Auto-advance landed on the second stack; decide it too.
-        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.promoteAndRejectSiblings)
 
         let completion = try XCTUnwrap(fixture.model.cullingSessionCompletion)
         XCTAssertEqual(completion.sessionID, WorkSessionID(rawValue: "completion-summary-session"))
@@ -3606,8 +3606,8 @@ final class AppModelTests: XCTestCase {
         )
         try fixture.model.applyAssetSet(id: fixture.firstSet.id)
         fixture.model.select(fixture.firstLead.id)
-        try fixture.model.applyCullingShortcut(.acceptStackSelection)
-        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.promoteAndRejectSiblings)
+        try fixture.model.applyCullingShortcut(.promoteAndRejectSiblings)
         let completion = try XCTUnwrap(fixture.model.cullingSessionCompletion)
         let picksSetID = try XCTUnwrap(completion.picksSetID)
 
@@ -3629,8 +3629,8 @@ final class AppModelTests: XCTestCase {
         )
         try fixture.model.applyAssetSet(id: fixture.firstSet.id)
         fixture.model.select(fixture.firstLead.id)
-        try fixture.model.applyCullingShortcut(.acceptStackSelection)
-        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.promoteAndRejectSiblings)
+        try fixture.model.applyCullingShortcut(.promoteAndRejectSiblings)
         XCTAssertNotNil(fixture.model.cullingSessionCompletion)
 
         fixture.model.select(fixture.secondAlternate.id)
@@ -3646,8 +3646,8 @@ final class AppModelTests: XCTestCase {
         )
         try fixture.model.applyAssetSet(id: fixture.firstSet.id)
         fixture.model.select(fixture.firstLead.id)
-        try fixture.model.applyCullingShortcut(.acceptStackSelection)
-        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.promoteAndRejectSiblings)
+        try fixture.model.applyCullingShortcut(.promoteAndRejectSiblings)
         XCTAssertNotNil(fixture.model.cullingSessionCompletion)
 
         fixture.model.selectedAssetSetID = nil
@@ -3696,7 +3696,7 @@ final class AppModelTests: XCTestCase {
 
         // Decide the only stack; the session completes and should notice the
         // two unstacked singles that never got a flag.
-        try model.applyCullingShortcut(.acceptStackSelection)
+        try model.applyCullingShortcut(.promoteAndRejectSiblings)
 
         let completion = try XCTUnwrap(model.cullingSessionCompletion)
         XCTAssertEqual(completion.remainingSingleCount, 2)
@@ -3743,7 +3743,7 @@ final class AppModelTests: XCTestCase {
         )
 
         _ = try model.beginStackCullingFromLatestImportCompletion()
-        try model.applyCullingShortcut(.acceptStackSelection)
+        try model.applyCullingShortcut(.promoteAndRejectSiblings)
 
         let completion = try XCTUnwrap(model.cullingSessionCompletion)
         XCTAssertEqual(completion.remainingSingleCount, 0)
@@ -3768,7 +3768,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(initialEntries.map(\.isDecided), [false, false])
         XCTAssertEqual(initialEntries.map(\.isSelected), [true, false])
 
-        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.promoteAndRejectSiblings)
 
         let advancedEntries = fixture.model.cullingStackListEntries()
         XCTAssertEqual(advancedEntries.map(\.isDecided), [true, false])
@@ -3913,9 +3913,9 @@ final class AppModelTests: XCTestCase {
         try fixture.model.applyAssetSet(id: fixture.firstSet.id)
         fixture.model.select(fixture.firstLead.id)
 
-        try fixture.model.applyCullingShortcut(.acceptStackSelection)
-        try fixture.model.applyCullingShortcut(.acceptStackSelection)
-        try fixture.model.applyCullingShortcut(.acceptStackSelection)
+        try fixture.model.applyCullingShortcut(.promoteAndRejectSiblings)
+        try fixture.model.applyCullingShortcut(.promoteAndRejectSiblings)
+        try fixture.model.applyCullingShortcut(.promoteAndRejectSiblings)
 
         let session = try fixture.repository.session(id: WorkSessionID(rawValue: "complete-session"))
         XCTAssertEqual(session.completedUnitCount, 4)
@@ -4265,7 +4265,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(key: .upArrow), .previousStack)
         XCTAssertEqual(CullingShortcut(key: .downArrow), .nextStack)
         XCTAssertEqual(CullingShortcut(key: .character(" ")), .nextPhoto)
-        XCTAssertEqual(CullingShortcut(key: .returnKey), .acceptStackSelection)
+        XCTAssertEqual(CullingShortcut(key: .returnKey), .promoteAndRejectSiblings)
         XCTAssertEqual(CullingShortcut(key: .character("5")), .rating(5))
         XCTAssertEqual(CullingShortcut(key: .character("6")), .colorLabel(.red))
         XCTAssertEqual(CullingShortcut(key: .character("7")), .colorLabel(.yellow))

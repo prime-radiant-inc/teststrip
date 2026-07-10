@@ -197,7 +197,7 @@ public enum CullingShortcut: Equatable, Sendable {
     case pick
     case reject
     case clearFlag
-    case acceptStackSelection
+    case promoteAndRejectSiblings
     case toggleZoom
     case cycleScope
 
@@ -212,7 +212,7 @@ public enum CullingShortcut: Equatable, Sendable {
         case .downArrow:
             self = .nextStack
         case .returnKey:
-            self = .acceptStackSelection
+            self = .promoteAndRejectSiblings
         case .character(let character):
             switch character.lowercased() {
             case " ": self = .nextPhoto
@@ -359,7 +359,7 @@ public enum CullingCommandMenuPresentation {
             CullingCommandMenuItem(title: "Next Photo", shortcut: .nextPhoto, key: .rightArrow),
             CullingCommandMenuItem(title: "Previous Stack", shortcut: .previousStack, key: .upArrow),
             CullingCommandMenuItem(title: "Next Stack", shortcut: .nextStack, key: .downArrow),
-            CullingCommandMenuItem(title: "Accept Stack Selection", shortcut: .acceptStackSelection, key: .returnKey)
+            CullingCommandMenuItem(title: "Promote Frame & Reject Siblings", shortcut: .promoteAndRejectSiblings, key: .returnKey)
         ]),
         CullingCommandMenuSection(title: "Ratings", items: [
             CullingCommandMenuItem(title: "Clear Rating", shortcut: .rating(0), key: .character("0")),
@@ -5147,7 +5147,12 @@ public final class AppModel {
         }
     }
 
-    public func keepSelectedStackFrameAndRejectAlternates() throws {
+    public func promoteCurrentFrameAndRejectSiblings() throws {
+        guard let selectedAssetID,
+              selectedWorkStackAssetIDs?.contains(selectedAssetID) == true
+                || cullingStacks().contains(where: { $0.assetIDs.contains(selectedAssetID) }) else {
+            return
+        }
         let context = try selectedCullingStackDecisionContext()
         try applyCullingStackDecision(context: context, pickedAssetIDs: [context.selectedAssetID])
     }
@@ -5180,11 +5185,18 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
 
+        var changes: [MetadataChange] = []
         for assetID in context.stack.assetIDs {
-            var metadata = try catalog.repository.asset(id: assetID).metadata
+            let originalAsset = try catalog.repository.asset(id: assetID)
+            var metadata = originalAsset.metadata
             metadata.flag = pickedAssetIDs.contains(assetID) ? .pick : .reject
+            guard metadata != originalAsset.metadata else { continue }
             try applyMetadataSnapshot(assetID: assetID, metadata: metadata)
+            changes.append(MetadataChange(assetID: assetID, before: originalAsset.metadata, after: metadata))
         }
+        let scopedLabel = changes.count > 1 ? "Flag · \(Self.photoCountDescription(changes.count))" : "Flag"
+        recordMetadataChangeGroup(label: scopedLabel, changes: changes)
+
         if let selectedWorkStackSetID = context.selectedWorkStackSetID {
             try updatePersistedStackCullingSessionProgress(selectedStackSetID: selectedWorkStackSetID)
         } else {
@@ -5222,9 +5234,9 @@ public final class AppModel {
             try applyCullingCommandAndAdvance(.reject)
         case .clearFlag:
             try applyCullingCommandAndAdvance(.clearFlag)
-        case .acceptStackSelection:
+        case .promoteAndRejectSiblings:
             clearCullingMetadataDecisionFeedback()
-            try acceptSelectedStackSelectionForCulling()
+            try promoteCurrentFrameAndRejectSiblings()
         case .toggleZoom:
             toggleLoupeZoom()
         case .cycleScope:
@@ -5518,15 +5530,6 @@ public final class AppModel {
         }
 
         return nil
-    }
-
-    private func acceptSelectedStackSelectionForCulling() throws {
-        guard let selectedAssetID,
-              selectedWorkStackAssetIDs?.contains(selectedAssetID) == true
-                || cullingStacks().contains(where: { $0.assetIDs.contains(selectedAssetID) }) else {
-            return
-        }
-        try keepSelectedStackFrameAndRejectAlternates()
     }
 
     private func selectedCullingStackDecisionContext() throws -> (

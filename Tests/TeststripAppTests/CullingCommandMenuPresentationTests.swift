@@ -10,7 +10,7 @@ final class CullingCommandMenuPresentationTests: XCTestCase {
             CullingCommandMenuItem(title: "Next Photo", shortcut: .nextPhoto, key: .rightArrow),
             CullingCommandMenuItem(title: "Previous Stack", shortcut: .previousStack, key: .upArrow),
             CullingCommandMenuItem(title: "Next Stack", shortcut: .nextStack, key: .downArrow),
-            CullingCommandMenuItem(title: "Accept Stack Selection", shortcut: .acceptStackSelection, key: .returnKey)
+            CullingCommandMenuItem(title: "Promote Frame & Reject Siblings", shortcut: .promoteAndRejectSiblings, key: .returnKey)
         ])
     }
 

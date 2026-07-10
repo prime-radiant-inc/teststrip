@@ -43,14 +43,38 @@ final class CullingKeyCaptureTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(event: down), .nextStack)
     }
 
+    func testCullingShortcutMapsOptionArrowKeyEventsToStackNavigation() throws {
+        let optionLeft = try makeKeyEvent(
+            characters: arrowCharacter(NSLeftArrowFunctionKey),
+            charactersIgnoringModifiers: arrowCharacter(NSLeftArrowFunctionKey),
+            modifierFlags: .option,
+            keyCode: 123
+        )
+        let optionRight = try makeKeyEvent(
+            characters: arrowCharacter(NSRightArrowFunctionKey),
+            charactersIgnoringModifiers: arrowCharacter(NSRightArrowFunctionKey),
+            modifierFlags: .option,
+            keyCode: 124
+        )
+
+        XCTAssertEqual(CullingShortcut(event: optionLeft), .previousStack)
+        XCTAssertEqual(CullingShortcut(event: optionRight), .nextStack)
+    }
+
+    func testCullingShortcutIgnoresOptionModifiedNonArrowKeyEvents() throws {
+        let event = try makeKeyEvent(characters: "5", charactersIgnoringModifiers: "5", modifierFlags: .option)
+
+        XCTAssertNil(CullingShortcut(event: event))
+    }
+
     func testCullingShortcutMapsSpaceAndReturnKeyEvents() throws {
         let space = try makeKeyEvent(characters: " ", charactersIgnoringModifiers: " ", keyCode: 49)
         let returnKey = try makeKeyEvent(characters: "\r", charactersIgnoringModifiers: "\r", keyCode: 36)
         let keypadEnter = try makeKeyEvent(characters: "\r", charactersIgnoringModifiers: "\r", keyCode: 76)
 
         XCTAssertEqual(CullingShortcut(event: space), .nextPhoto)
-        XCTAssertEqual(CullingShortcut(event: returnKey), .acceptStackSelection)
-        XCTAssertEqual(CullingShortcut(event: keypadEnter), .acceptStackSelection)
+        XCTAssertEqual(CullingShortcut(event: returnKey), .promoteAndRejectSiblings)
+        XCTAssertEqual(CullingShortcut(event: keypadEnter), .promoteAndRejectSiblings)
     }
 
     func testCullingShortcutMapsZoomToggleKeyEvent() throws {

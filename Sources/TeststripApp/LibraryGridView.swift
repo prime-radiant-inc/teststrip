@@ -4069,7 +4069,7 @@ private struct LoupeView: View {
 
     private func keepSelectedStackFrame() {
         do {
-            try model.keepSelectedStackFrameAndRejectAlternates()
+            try model.promoteCurrentFrameAndRejectSiblings()
         } catch {
             model.errorMessage = error.localizedDescription
         }
