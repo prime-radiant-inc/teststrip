@@ -79,8 +79,10 @@ don't") and a coherent icon/button/label design language.
   (today it shows an empty "Stacks · Auto-Grouped" header on singleton
   catalogs). Secondary stack actions (keep-top-ranked / keep-all / …) collapse
   into an ellipsis menu on the rail; **Keep** stays the single visible verb.
-- **Cull sidebar:** "Diagnostics" disclosure group moves out of the source
-  picker into the Activity popover's job details (it is status, not a source).
+- **Cull sidebar:** "Diagnostics" disclosure group dissolves: its rows are click-to-cull
+  review-queue sources, so they fold into "Cull From" under the same
+  zero-count-omission rule (adjudicated during Task 7 — the original
+  move-to-Activity idea misread them as status).
   Source rows with count 0 are **omitted, not disabled** (empty-state text
   "Nothing to cull" when all are empty).
 - **Close-Ups panel:** unchanged behavior, but gains a header ellipsis to hide
