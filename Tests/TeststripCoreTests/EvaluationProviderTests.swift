@@ -477,8 +477,12 @@ final class EvaluationProviderTests: XCTestCase {
     }
 
     func testAppleVisionProviderWithoutModelProducesNoFaceObservations() throws {
-        let previewURL = Bundle.faceCorpusImageURL()
-            ?? URL(fileURLWithPath: "/tmp/nonexistent-preview.jpg")
+        // Hermetic: any decodable image proves the "no embedder" branch short-
+        // circuits before the corpus-only face-detection path, so this must
+        // not depend on the (gitignored, download-only) face corpus.
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "apple-vision-no-model")
+        let previewURL = directory.appendingPathComponent("preview.jpg")
+        try TestDirectories.writeTestJPEG(to: previewURL, width: 64, height: 64)
         let provider = AppleVisionEvaluationProvider(
             analyzer: AppleVisionAnalyzer(),
             faceEmbedder: nil
