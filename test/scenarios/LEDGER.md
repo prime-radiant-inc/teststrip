@@ -30,7 +30,7 @@ Status flow: Spec'd → Tested-Pass | Tested-Fail → Fixed → Verified.
 | lib-003-token-grammar-fields | lib-003-token-grammar-fields.md | Tested-Fail | VM e2e | UX | unquoted multi-word value silently drops trailing words (camera:SmokeCam 1 → 24 not 8); quoted works — Jesse decision: auto-quote/greedy-consume or document-only |  |
 | lib-004-bare-and-phrase-tokens | lib-004-bare-and-phrase-tokens.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS |  |
 | lib-005-token-readback-roundtrip | lib-005-token-readback-roundtrip.md | Tested-Pass | unit + VM spot-check | — | unit pass; AX spot-check pass except card drift (expected 10 vs actual 9 chips) — card fix queued | all round-trip + grammar assertions pass; AX spot-check pending VM batch |
-| lib-006-query-field-and-tips | lib-006-query-field-and-tips.md | Verified | VM e2e (ax+sql) | — | Task-12 re-run PASS (leading filter menu) |  |
+| lib-006-query-field-and-tips | lib-006-query-field-and-tips.md | Fixed | VM e2e (ax+sql) | — | Esc two-stage staging root-caused (field bound committed state) and fixed 86c34750 via search draft; unit-tested | PENDING-VM: live re-verify of Esc staging |
 | lib-007-add-filter-menu | lib-007-add-filter-menu.md | Verified | VM e2e (ax+sql) | — | Task-12 re-run PASS |  |
 | lib-008-chips-remove-clear | lib-008-chips-remove-clear.md | Tested-Pass | VM e2e (ax+sql) | — | iter1 PASS |  |
 | lib-009-sort-and-bar-extras | lib-009-sort-and-bar-extras.md | Verified | VM e2e (ax+sql) | — | Task-12 re-run PASS (default-sort checkmark AX-unverifiable, noted) |  |
@@ -83,7 +83,7 @@ Status flow: Spec'd → Tested-Pass | Tested-Fail → Fixed → Verified.
 | worker-003-face-pipeline | worker-003-face-pipeline.md | Tested-Pass | VM e2e | — | PASS — rescan replaces not appends | 2000-observation cap source-grounded only; no fixture reaches it |
 | worker-004-death-recovery | worker-004-death-recovery.md | Tested-Pass | VM e2e | — | PASS — kill -9 → respawn ~5s, queue intact |  |
 | worker-005-offline-reconnect | worker-005-offline-reconnect.md | Tested-Pass | VM e2e | — | PASS — no retry storm | open q: no confirmed UI trigger for post-reconnect availability re-probe |
-| worker-006-geocode-backfill | worker-006-geocode-backfill.md | Tested-Fail | VM e2e | Environment | SKIP-offline (CLGeocoder unreachable in VM); trigger+enqueue verified | network-dependent; SKIP offline |
+| worker-006-geocode-backfill | worker-006-geocode-backfill.md | Fixed | VM e2e + unit | — | VM: CPU flat over 15 min (hot-loop fix holds); hung-lookup gap fixed 6736a714 (30s bounded wait records failure; unit+e2e tests) | real reverse-geocode result still network-dependent; SKIP offline |
 | app-001-launch-scene | app-001-launch-scene.md | Verified | VM e2e | Functional | ⌘N no-op verified; tolerant-decode covers corrupt-catalog leg |  |
 | app-002-window-floors | app-002-window-floors.md | Tested-Fail | VM e2e | Testability | PARTIAL-tooling | adopts workspace-minimum-width-floors |
 | app-003-workspace-switching | app-003-workspace-switching.md | Tested-Pass | VM e2e | — | PASS | adopts workspace-switching |
