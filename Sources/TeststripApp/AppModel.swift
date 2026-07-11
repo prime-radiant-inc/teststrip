@@ -2388,6 +2388,9 @@ public final class AppModel {
 
     private var previewCacheGenerationsByAssetID: [AssetID: Int]
     private var evaluationSignalGenerationsByAssetID: [AssetID: Int]
+    /// IDs of activities recorded live in this app session (vs. restored
+    /// from persisted history on launch) — see isCurrentSessionActivity.
+    private var currentSessionActivityIDs: Set<String> = []
     private var metadataUndoStack: [MetadataChangeGroup]
     private var metadataRedoStack: [MetadataChangeGroup]
     private var assetPageOffset: Int
@@ -12255,6 +12258,14 @@ public final class AppModel {
         }
     }
 
+    /// Whether this activity was recorded live during the current app
+    /// session, as opposed to restored from the persisted work history on
+    /// launch. Completion banners/panels are session-scoped: only live
+    /// work may auto-show one (persona-7's relaunch-zombie panel).
+    public func isCurrentSessionActivity(id: String) -> Bool {
+        currentSessionActivityIDs.contains(id)
+    }
+
     private func recordRecentActivity(
         _ activity: AppWorkActivity,
         intent: String? = nil,
@@ -12264,6 +12275,7 @@ public final class AppModel {
         var recordedActivity = activity
         recordedActivity.inputSetIDs = inputSetIDs
         recordedActivity.outputSetIDs = outputSetIDs
+        currentSessionActivityIDs.insert(recordedActivity.id)
         recentWork.removeAll { $0.id == recordedActivity.id }
         recentWork.insert(recordedActivity, at: 0)
         refreshLatestImportPresentation()

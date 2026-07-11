@@ -742,7 +742,8 @@ struct LibraryGridView: View {
         guard LibraryGridChromePolicy.shouldShowImportCompletionSummary(
             isImporting: isImporting,
             summaryID: summary.id,
-            dismissedSummaryID: dismissedImportCompletionSummaryID
+            dismissedSummaryID: dismissedImportCompletionSummaryID,
+            isFromCurrentSession: model.isCurrentSessionActivity(id: summary.activityID)
         ) else {
             return nil
         }
@@ -7802,9 +7803,15 @@ enum LibraryGridChromePolicy {
     static func shouldShowImportCompletionSummary(
         isImporting: Bool,
         summaryID: String?,
-        dismissedSummaryID: String?
+        dismissedSummaryID: String?,
+        isFromCurrentSession: Bool
     ) -> Bool {
-        guard !isImporting, let summaryID else { return false }
+        // Session-scoped: a summary restored from the persisted work history
+        // (previous app session) never auto-shows again — otherwise a
+        // relaunch resurrects a stale completion panel the user already
+        // moved past (persona-7's zombie panel). The work stays reachable
+        // through Recent Work.
+        guard !isImporting, isFromCurrentSession, let summaryID else { return false }
         return summaryID != dismissedSummaryID
     }
 

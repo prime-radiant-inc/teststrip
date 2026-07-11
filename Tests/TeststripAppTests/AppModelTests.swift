@@ -16403,6 +16403,28 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.reviewQueueCounts[.needsEvaluation], 1)
     }
 
+    // Session scoping for completion banners: work restored from the
+    // persisted history on relaunch is not "this session's" work, so its
+    // completion panel must not resurrect; work recorded live is.
+    func testCurrentSessionActivityTracksOnlyThisSessionsWork() throws {
+        let assets = [makeAsset(id: "session-scope-asset", path: "/Photos/session-scope.jpg", rating: 0, flag: nil)]
+        let (model, _, _) = try makeModelWithCompletedImportSession(
+            named: "session-scope",
+            assets: assets,
+            outputAssetIDs: assets.map(\.id)
+        )
+        XCTAssertNotNil(model.latestImportCompletionSummary)
+        XCTAssertFalse(model.isCurrentSessionActivity(id: "latest-import-session"))
+
+        let liveDirectory = try makeTemporaryDirectory(named: "session-scope-live")
+        let original = liveDirectory.appendingPathComponent("reject.cr2")
+        try Data("raw".utf8).write(to: original)
+        let reject = makeAsset(id: "session-scope-reject", path: original.path, rating: 0, flag: .reject)
+        let (liveModel, _) = try makeModelWithCatalogAssets(named: "session-scope-live-model", assets: [reject])
+        let summary = try liveModel.moveRejectsToTrash(try liveModel.rejectRelocationTrashPreflight())
+        XCTAssertTrue(liveModel.isCurrentSessionActivity(id: summary.sessionID.rawValue))
+    }
+
     func testMoveBackFromTrashReinsertsIdenticalRowAndRestoresFile() throws {
         let directory = try makeTemporaryDirectory(named: "move-back-trash")
         let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
