@@ -4062,6 +4062,7 @@ private struct LoupeView: View {
                             }
                             .disabled(!action.isEnabled)
                             .help(action.help)
+                            .liveMockupPlaceholder(action.liveMockupPlaceholder)
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
