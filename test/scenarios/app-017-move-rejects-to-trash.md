@@ -47,8 +47,14 @@ end-to-end filesystem/catalog behavior a unit test can't reach.
    appears — assert its primary button's title is **"Move N to Trash"** (N =
    the reject count) and it carries the warning copy "Files go to the macOS
    Trash and the catalog forgets them." before confirming. Toggle the
-   confirmation checkbox on, then AX-press the primary button. `waitFor` an
-   `AXStaticText` **"Reject relocation complete"**.
+   confirmation checkbox on, then AX-press the primary button. `waitFor` the
+   **"Move back"** button (AXLabel "Move back", AXHelp "Move these photos
+   back to where they came from") — this is the completion banner's only
+   AX-exposed static content; the banner's own "Reject relocation complete"
+   string is set as its *container* accessibilityLabel (`.contain` children
+   policy), which `ax find`/`waitFor`'s title/description/value substring
+   match does not surface as a separate element. Driven live in the VM twice
+   (app-010, app-017): the string never matched, but "Move back" reliably did.
 4. **Assert the original moved to the real Trash and the catalog forgot it**:
    ```bash
    test ! -f "$SRC" && echo "left source: OK"
@@ -70,9 +76,9 @@ end-to-end filesystem/catalog behavior a unit test can't reach.
 
 ## Expected
 - Step 3: the sheet's primary button reads "Move N to Trash" (not a folder
-  name) and the warning copy is present. "Reject relocation complete" appears
-  within 20s. **Fails if** the button says anything else, the warning copy is
-  missing, or the completion state never appears.
+  name) and the warning copy is present. The completion banner's "Move back"
+  button appears within 20s. **Fails if** the button says anything else, the
+  warning copy is missing, or the completion state never appears.
 - Step 4: `$SRC` gone from its source path, a same-named item present under
   `$HOME/.Trash`, the asset row count is 0, a manifest entry exists, and the
   preview directory is gone. **Fails if** the row still exists (catalog didn't

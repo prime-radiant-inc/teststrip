@@ -262,8 +262,10 @@ cmd_launch() {
   local local_seed; local_seed="$(seed_dir_for "$variant")"
   ssh_cmd "pkill -x $APP_NAME 2>/dev/null || true; pkill -x TeststripApp 2>/dev/null || true; pkill -x TeststripWorker 2>/dev/null || true; sleep 1; \
     mkdir -p '$(dirname "$fresh")' && cp -R '$remote_seed' '$fresh' && \
-    sqlite3 '$fresh/Teststrip/catalog.sqlite' \"UPDATE assets SET original_path = replace(original_path, '$local_seed', '$fresh');\" && \
-    sqlite3 '$fresh/Teststrip/catalog.sqlite' \"UPDATE assets SET original_path = replace(original_path, '$ROOT_DIR/sample-data', '$REMOTE_ROOT/sample-data');\" && \
+    if [[ -s '$fresh/Teststrip/catalog.sqlite' ]]; then \
+      sqlite3 '$fresh/Teststrip/catalog.sqlite' \"UPDATE assets SET original_path = replace(original_path, '$local_seed', '$fresh');\" && \
+      sqlite3 '$fresh/Teststrip/catalog.sqlite' \"UPDATE assets SET original_path = replace(original_path, '$ROOT_DIR/sample-data', '$REMOTE_ROOT/sample-data');\"; \
+    fi && \
     open -n '$REMOTE_ROOT/dist/$APP_NAME.app' --env TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY='$fresh' && sleep 2 && pgrep -x $APP_NAME"
   echo "launched '$variant' fresh at $fresh (catalog: $fresh/Teststrip/catalog.sqlite)"
 }

@@ -3218,6 +3218,93 @@ final class AppModelTests: XCTestCase {
         })
     }
 
+    @MainActor
+    func testRetrySelectedPendingMetadataSyncRewritesSidecarThroughRealWorkerAfterStaleGenerationFailure() async throws {
+        // Reproduces inspect-003's retry-FAIL leg end to end through the real
+        // supervisor->executor path (a "loopback" transport that actually runs
+        // WorkerCommandExecutor against the same repository, instead of the
+        // dumb RecordingWorkerTransport other tests use). The prior fix
+        // (ac207bbb) made Retry enqueue again; this proves the re-enqueued
+        // command actually rewrites the sidecar and clears the pending row
+        // when the pending row's recorded generation trails the current one.
+        let directory = try makeTemporaryDirectory(named: "retry-selected-pending-loopback")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "retry-selected-pending-loopback"),
+            originalURL: originalURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata(rating: 2)
+        )
+        try repository.upsert(asset)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+        let initialWrite = try XMPSidecarStore().write(metadata: asset.metadata, forOriginalAt: originalURL)
+        try repository.markMetadataSynced(
+            assetID: asset.id,
+            sidecarURL: initialWrite.sidecarURL,
+            catalogGeneration: try repository.catalogGeneration(assetID: asset.id),
+            fingerprint: initialWrite.fingerprint
+        )
+
+        let executor = WorkerCommandExecutor(repository: repository, previewCache: previewCache)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: photosDirectory.path)
+        try repository.updateMetadata(assetID: asset.id) { $0.rating = 3 }
+        _ = try executor.execute(.syncMetadata(assetID: asset.id))
+        try repository.updateMetadata(assetID: asset.id) { $0.rating = 4 }
+        _ = try executor.execute(.syncMetadata(assetID: asset.id))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: photosDirectory.path)
+
+        let pendingBeforeRetry = try XCTUnwrap(try repository.pendingMetadataSyncItem(assetID: asset.id))
+        XCTAssertNotEqual(
+            pendingBeforeRetry.catalogGeneration,
+            try repository.catalogGeneration(assetID: asset.id),
+            "pending row must trail the catalog generation for this repro to be meaningful"
+        )
+
+        let transport = LoopbackWorkerTransport(executor: executor)
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+        model.pendingMetadataSyncItems = [pendingBeforeRetry]
+
+        try model.retrySelectedMetadataSync()
+        let itemID = WorkSessionID(rawValue: "xmp-\(asset.id.rawValue)-\(pendingBeforeRetry.catalogGeneration)")
+        try await waitForBackgroundWorkStatus(.completed, itemID: itemID, in: model)
+
+        XCTAssertEqual(transport.executedCommands, [.syncMetadata(assetID: asset.id)])
+        if let lastError = transport.lastError {
+            XCTFail("worker command threw: \(lastError)")
+        }
+        XCTAssertEqual(transport.lastResult, .completed("synced metadata for frame.cr2"))
+        let sidecarData = try Data(contentsOf: sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata, AssetMetadata(rating: 4))
+        XCTAssertEqual(try repository.pendingMetadataSyncItems(), [])
+        XCTAssertEqual(
+            try repository.lastMetadataSyncFingerprint(assetID: asset.id),
+            XMPSidecarStore.fingerprint(for: sidecarData)
+        )
+        XCTAssertEqual(model.pendingMetadataSyncItems, [])
+    }
+
     func testRetryPendingMetadataSyncInCurrentScopeQueuesOnlyRetryableItems() throws {
         let fixture = try makePendingMetadataSyncScopeModel(named: "retry-pending-xmp-scope")
         fixture.model.metadataSyncPendingFilter = true
@@ -17472,6 +17559,71 @@ private final class RecordingWorkerTransport: WorkerTransport {
 
     func emitErrorLine(_ line: String) {
         errorHandler?(line)
+    }
+}
+
+/// Runs commands through a real `WorkerCommandExecutor` synchronously instead
+/// of just recording them, so tests can exercise the full
+/// AppModel -> WorkerSupervisor -> WorkerCommandExecutor round trip without
+/// spawning the out-of-process worker binary.
+private final class LoopbackWorkerTransport: WorkerTransport {
+    var outputHandler: ((String) -> Void)?
+    var errorHandler: ((String) -> Void)?
+    var terminationHandler: (() -> Void)?
+
+    private let executor: WorkerCommandExecutor
+    private(set) var isRunning = false
+    private(set) var executedCommands: [WorkerCommand] = []
+    private(set) var lastError: Error?
+    private(set) var lastResult: WorkerCommandResult?
+
+    init(executor: WorkerCommandExecutor) {
+        self.executor = executor
+    }
+
+    func launch() throws {
+        isRunning = true
+    }
+
+    func writeLine(_ line: String) throws {
+        let request = try WorkerProtocolEncoder.decodeRequest(line)
+        executedCommands.append(request.command)
+        let event: WorkerEvent
+        do {
+            let result = try executor.execute(request.command)
+            lastResult = result
+            switch result {
+            case .accepted(let message):
+                event = .accepted(itemID: request.itemID, message: message)
+            case .completed(let message):
+                event = .completed(itemID: request.itemID, message: message)
+            case .completedImport(
+                let message,
+                let importedAssetIDs,
+                let newAssetCount,
+                let existingAssetCount,
+                let skippedSourceFileCount,
+                let skippedSourceFiles
+            ):
+                event = .completedImport(
+                    itemID: request.itemID,
+                    message: message,
+                    importedAssetIDs: importedAssetIDs,
+                    newAssetCount: newAssetCount,
+                    existingAssetCount: existingAssetCount,
+                    skippedSourceFileCount: skippedSourceFileCount,
+                    skippedSourceFiles: skippedSourceFiles
+                )
+            }
+        } catch {
+            lastError = error
+            event = .failed(itemID: request.itemID, message: error.localizedDescription)
+        }
+        outputHandler?(try WorkerProtocolEncoder.encode(event))
+    }
+
+    func terminate() {
+        isRunning = false
     }
 }
 

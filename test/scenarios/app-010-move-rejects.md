@@ -54,8 +54,15 @@ exact same path on Move back — per-file atomic, nothing orphaned.
 4. **Move Rejects.** AX-press the toolbar button labeled **"Move Rejects"**.
    With `TESTSTRIP_REJECT_DESTINATION_DIR` set the folder panel is skipped and
    the destination is `$REJECTS`; a confirmation sheet still appears — AX-confirm
-   it. `waitFor` an `AXStaticText` **"Reject relocation complete"**. (Without the
-   override, navigate the native panel to `$REJECTS` via Cmd+Shift+G first.)
+   it. `waitFor` the **"Move back"** button (AXLabel "Move back", AXHelp "Move
+   these photos back to where they came from") — this is the completion
+   banner's only AX-exposed static content; the banner's own "Reject
+   relocation complete" string is set as its *container* accessibilityLabel
+   (`.contain` children policy), which `ax find`/`waitFor`'s title/description/
+   value substring match does not surface as a separate element. Driven live
+   in the VM twice (app-010, app-017): the string never matched, but "Move
+   back" reliably did. (Without the override, navigate the native panel to
+   `$REJECTS` via Cmd+Shift+G first.)
 5. **Assert the original physically moved**:
    ```bash
    test ! -f "$SRC" && echo "left source: OK"        # original gone from source path
@@ -71,8 +78,8 @@ exact same path on Move back — per-file atomic, nothing orphaned.
    ```
 
 ## Expected
-- Step 4: "Reject relocation complete" within 20s. **Fails if** it never
-  appears or an error alert shows.
+- Step 4: the completion banner's "Move back" button appears within 20s.
+  **Fails if** it never appears or an error alert shows.
 - Step 5: `$SRC` no longer exists at its source path, appears under `$REJECTS`,
   and manifest count ≥ 1. **Fails if** the original file is still at `$SRC`
   (nothing moved) OR exists in neither place (data loss — report immediately).

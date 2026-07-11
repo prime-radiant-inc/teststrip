@@ -731,6 +731,66 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try setup.repository.metadataSyncConflictItems().map(\.assetID), [setup.asset.id])
     }
 
+    func testSyncMetadataCommandRewritesSidecarOnRetryAfterWriteFailureWithIntermediateGenerations() throws {
+        // Reproduces the VM inspect-003 trace: an initial sync succeeds, a
+        // later edit's sync attempt fails (sidecar directory unwritable) and
+        // is recorded pending, more edits land while still unwritable (so the
+        // catalog generation keeps advancing past what the pending row could
+        // observe), and only then is the directory made writable again and a
+        // retry issued. The retry must write the CURRENT catalog metadata and
+        // clear the pending row — not silently report "done" while leaving
+        // the sidecar stale and the row pending forever.
+        let initialMetadata = AssetMetadata(rating: 2)
+        let setup = try makeMetadataSyncSetup(
+            named: "worker-sync-retry-stale-gen",
+            metadata: initialMetadata,
+            originalsInSubdirectory: true
+        )
+        let initialWrite = try XMPSidecarStore().write(metadata: initialMetadata, forOriginalAt: setup.asset.originalURL)
+        try setup.repository.markMetadataSynced(
+            assetID: setup.asset.id,
+            sidecarURL: initialWrite.sidecarURL,
+            catalogGeneration: try setup.repository.catalogGeneration(assetID: setup.asset.id),
+            fingerprint: initialWrite.fingerprint
+        )
+
+        let sidecarDirectory = setup.sidecarURL.deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: sidecarDirectory.path)
+
+        // Two edits land while the sidecar directory is unwritable, so the
+        // catalog generation advances twice past the last-observed-by-sync
+        // generation before anyone ever successfully retries.
+        try setup.repository.updateMetadata(assetID: setup.asset.id) { metadata in
+            metadata.rating = 3
+        }
+        _ = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+        try setup.repository.updateMetadata(assetID: setup.asset.id) { metadata in
+            metadata.rating = 4
+        }
+        _ = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        let pendingBeforeRetry = try XCTUnwrap(try setup.repository.pendingMetadataSyncItem(assetID: setup.asset.id))
+        let currentGenerationBeforeRetry = try setup.repository.catalogGeneration(assetID: setup.asset.id)
+        XCTAssertNotEqual(
+            pendingBeforeRetry.catalogGeneration,
+            currentGenerationBeforeRetry,
+            "pending row must trail the catalog generation for this repro to be meaningful"
+        )
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sidecarDirectory.path)
+
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("synced metadata for asset.raw"))
+        let sidecarData = try Data(contentsOf: setup.sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata, AssetMetadata(rating: 4))
+        XCTAssertEqual(try setup.repository.pendingMetadataSyncItems(), [])
+        XCTAssertEqual(
+            try setup.repository.lastMetadataSyncFingerprint(assetID: setup.asset.id),
+            XMPSidecarStore.fingerprint(for: sidecarData)
+        )
+    }
+
     func testSyncMetadataCommandWritesPendingCatalogEditOverOlderUncheckpointedSidecar() throws {
         let catalogMetadata = AssetMetadata(rating: 4, flag: .pick, keywords: ["catalog"])
         let setup = try makeMetadataSyncSetup(named: "worker-sync-pending-writes-older-sidecar", metadata: catalogMetadata)
@@ -1267,7 +1327,8 @@ final class WorkerCommandExecutorTests: XCTestCase {
 
     private func makeMetadataSyncSetup(
         named name: String,
-        metadata: AssetMetadata
+        metadata: AssetMetadata,
+        originalsInSubdirectory: Bool = false
     ) throws -> (
         repository: CatalogRepository,
         executor: WorkerCommandExecutor,
@@ -1275,7 +1336,17 @@ final class WorkerCommandExecutorTests: XCTestCase {
         sidecarURL: URL
     ) {
         let root = try TestDirectories.makeTemporaryDirectory(named: name)
-        let originalURL = root.appendingPathComponent("asset.raw")
+        // Tests that chmod the sidecar's parent directory to simulate a
+        // write failure must not put the catalog database in that same
+        // directory, or the chmod locks out sqlite too.
+        let assetDirectory: URL
+        if originalsInSubdirectory {
+            assetDirectory = root.appendingPathComponent("originals", isDirectory: true)
+            try FileManager.default.createDirectory(at: assetDirectory, withIntermediateDirectories: true)
+        } else {
+            assetDirectory = root
+        }
+        let originalURL = assetDirectory.appendingPathComponent("asset.raw")
         try Data("original bytes".utf8).write(to: originalURL)
         let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
