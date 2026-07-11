@@ -3733,12 +3733,17 @@ private struct RejectRelocationBannerView: View {
                 .font(.caption.weight(.medium))
                 .lineLimit(1)
             Spacer(minLength: 0)
-            Button("Move back") {
-                moveBack()
+            // Retired once nothing restorable remains (e.g. the user emptied
+            // the Trash): a live button that silently does nothing would lie
+            // about data loss.
+            if summary.canMoveBack {
+                Button("Move back") {
+                    moveBack()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .help("Move these photos back to where they came from")
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .help("Move these photos back to where they came from")
             Button("Dismiss") {
                 dismiss()
             }

@@ -16432,10 +16432,60 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: kept.id).id, kept.id)
         XCTAssertThrowsError(try repository.asset(id: emptied.id))
         XCTAssertFalse(FileManager.default.fileExists(atPath: emptiedOriginal.path))
-        // The unrecoverable entry is reported, not silently dropped: it
-        // remains in the manifest (or the banner surfaces it) rather than
-        // the run reporting a clean full restore.
-        XCTAssertNotNil(model.errorMessage)
+        // The unrecoverable file is reported on the banner itself, not
+        // silently dropped: the summary says what restored and what is gone
+        // for good, and — with nothing left restorable — the Move back
+        // affordance retires and the manifest is cleared.
+        let updatedSummary = try XCTUnwrap(model.rejectRelocationSummary)
+        XCTAssertEqual(updatedSummary.restoredCount, 1)
+        XCTAssertEqual(updatedSummary.unrestorableCount, 1)
+        XCTAssertFalse(updatedSummary.canMoveBack)
+        XCTAssertEqual(
+            updatedSummary.detailText,
+            "Moved back 1 photo · 1 file is no longer in the Trash and can't be restored"
+        )
+        XCTAssertEqual(try repository.relocationManifestEntries(sessionID: summary.sessionID), [])
+    }
+
+    // Persona-7 Marcus's "THE APP LIES": trash rejects, empty the Trash in
+    // Finder, press Move back — the app must say the files are gone instead
+    // of silently doing nothing behind a still-live Move back button.
+    func testMoveBackFromTrashReportsWhenEveryTrashFileWasEmptied() throws {
+        let directory = try makeTemporaryDirectory(named: "move-back-trash-all-emptied")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let originalA = shoot.appendingPathComponent("a.cr2")
+        let originalB = shoot.appendingPathComponent("b.cr2")
+        try Data("raw-a".utf8).write(to: originalA)
+        try Data("raw-b".utf8).write(to: originalB)
+        let rejectA = makeAsset(id: "emptied-a", path: originalA.path, rating: 0, flag: .reject)
+        let rejectB = makeAsset(id: "emptied-b", path: originalB.path, rating: 0, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "move-back-trash-all-emptied-model",
+            assets: [rejectA, rejectB]
+        )
+        let preflight = try model.rejectRelocationTrashPreflight()
+        let summary = try model.moveRejectsToTrash(preflight)
+        for entry in try repository.relocationManifestEntries(sessionID: summary.sessionID) {
+            try FileManager.default.removeItem(at: entry.originalTo)
+        }
+
+        let restored = try model.moveBackRelocation(sessionID: summary.sessionID)
+
+        XCTAssertEqual(restored, 0)
+        let updatedSummary = try XCTUnwrap(model.rejectRelocationSummary)
+        XCTAssertEqual(updatedSummary.restoredCount, 0)
+        XCTAssertEqual(updatedSummary.unrestorableCount, 2)
+        XCTAssertFalse(updatedSummary.canMoveBack)
+        XCTAssertEqual(
+            updatedSummary.detailText,
+            "2 files are no longer in the Trash and can't be restored"
+        )
+        XCTAssertEqual(model.statusMessage, "2 files are no longer in the Trash and can't be restored")
+        // The manifest is retired: a second press (were the button still
+        // rendered) restores nothing and does not throw.
+        XCTAssertEqual(try repository.relocationManifestEntries(sessionID: summary.sessionID), [])
+        XCTAssertEqual(try model.moveBackRelocation(sessionID: summary.sessionID), 0)
     }
 
     func testLoadSurvivesDanglingPendingMetadataSyncRow() throws {
