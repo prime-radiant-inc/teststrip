@@ -15753,6 +15753,102 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try model.moveBackRelocation(sessionID: summary.sessionID), 0)
     }
 
+    func testMoveRejectsToTrashRemovesCatalogRowsPreviewsAndRecordsManifest() throws {
+        let directory = try makeTemporaryDirectory(named: "move-rejects-trash")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let original = shoot.appendingPathComponent("reject.cr2")
+        let sidecar = shoot.appendingPathComponent("reject.cr2.xmp")
+        try Data("raw".utf8).write(to: original)
+        try Data("<xmp/>".utf8).write(to: sidecar)
+        let reject = makeAsset(id: "trash-reject", path: original.path, rating: 0, flag: .reject)
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "move-rejects-trash-model",
+            assets: [reject]
+        )
+        let previewURL = previewCache.url(for: PreviewCacheKey(assetID: reject.id, level: .grid))
+        try writePreviewPlaceholder(to: previewURL)
+        let preflight = try model.rejectRelocationTrashPreflight()
+
+        let summary = try model.moveRejectsToTrash(preflight)
+
+        XCTAssertEqual(summary.movedCount, 1)
+        XCTAssertEqual(summary.skippedCount, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: original.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sidecar.path))
+        XCTAssertThrowsError(try repository.asset(id: reject.id)) { error in
+            guard case CatalogError.notFound = error else {
+                return XCTFail("expected notFound, got \(error)")
+            }
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: previewURL.path))
+        let entries = try repository.relocationManifestEntries(sessionID: summary.sessionID)
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.assetID, reject.id)
+        XCTAssertEqual(entries.first?.assetSnapshot?.id, reject.id)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(entries.first?.originalTo.path)))
+    }
+
+    func testMoveBackFromTrashReinsertsIdenticalRowAndRestoresFile() throws {
+        let directory = try makeTemporaryDirectory(named: "move-back-trash")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let original = shoot.appendingPathComponent("reject.cr2")
+        let sidecar = shoot.appendingPathComponent("reject.cr2.xmp")
+        try Data("raw".utf8).write(to: original)
+        try Data("<xmp/>".utf8).write(to: sidecar)
+        let reject = makeAsset(id: "back-trash-reject", path: original.path, rating: 3, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(named: "move-back-trash-model", assets: [reject])
+        let preflight = try model.rejectRelocationTrashPreflight()
+        let summary = try model.moveRejectsToTrash(preflight)
+
+        let restored = try model.moveBackRelocation(sessionID: summary.sessionID)
+
+        XCTAssertEqual(restored, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: original.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sidecar.path))
+        let reinserted = try repository.asset(id: reject.id)
+        XCTAssertEqual(reinserted.id, reject.id)
+        XCTAssertEqual(reinserted.originalURL, original)
+        XCTAssertEqual(reinserted.metadata, reject.metadata)
+        XCTAssertEqual(try repository.relocationManifestEntries(sessionID: summary.sessionID), [])
+    }
+
+    func testMoveBackFromTrashSkipsAndReportsEntriesWhoseTrashURLWasEmptied() throws {
+        let directory = try makeTemporaryDirectory(named: "move-back-trash-emptied")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let keptOriginal = shoot.appendingPathComponent("kept.cr2")
+        let emptiedOriginal = shoot.appendingPathComponent("emptied.cr2")
+        try Data("raw".utf8).write(to: keptOriginal)
+        try Data("raw".utf8).write(to: emptiedOriginal)
+        let kept = makeAsset(id: "kept-reject", path: keptOriginal.path, rating: 0, flag: .reject)
+        let emptied = makeAsset(id: "emptied-reject", path: emptiedOriginal.path, rating: 0, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "move-back-trash-emptied-model",
+            assets: [kept, emptied]
+        )
+        let preflight = try model.rejectRelocationTrashPreflight()
+        let summary = try model.moveRejectsToTrash(preflight)
+        // Simulate the user emptying the Finder Trash for one of the two
+        // trashed files between the trash operation and Move Back.
+        let entries = try repository.relocationManifestEntries(sessionID: summary.sessionID)
+        let emptiedEntry = try XCTUnwrap(entries.first { $0.assetID == emptied.id })
+        try FileManager.default.removeItem(at: emptiedEntry.originalTo)
+
+        let restored = try model.moveBackRelocation(sessionID: summary.sessionID)
+
+        XCTAssertEqual(restored, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: keptOriginal.path))
+        XCTAssertEqual(try repository.asset(id: kept.id).id, kept.id)
+        XCTAssertThrowsError(try repository.asset(id: emptied.id))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: emptiedOriginal.path))
+        // The unrecoverable entry is reported, not silently dropped: it
+        // remains in the manifest (or the banner surfaces it) rather than
+        // the run reporting a clean full restore.
+        XCTAssertNotNil(model.errorMessage)
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-app-tests", isDirectory: true)

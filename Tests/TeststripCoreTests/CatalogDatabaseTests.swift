@@ -2905,6 +2905,58 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.relocationManifestEntries(sessionID: kept), [keptEntry])
     }
 
+    func testRelocationManifestEntryRoundTripsAssetSnapshot() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "relocation-manifest-snapshot")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let sessionID = WorkSessionID(rawValue: "trash-1")
+        let asset = Asset(
+            id: AssetID(rawValue: "t1"),
+            originalURL: URL(fileURLWithPath: "/Shoot/Day1/t1.cr2"),
+            volumeIdentifier: "Vol",
+            fingerprint: FileFingerprint(size: 3, modificationDate: Date(timeIntervalSince1970: 0), contentHash: "abc"),
+            availability: .online,
+            metadata: AssetMetadata(rating: 2, colorLabel: .red, flag: .reject, keywords: ["k"])
+        )
+        let entry = RelocationManifestEntry(
+            assetID: asset.id,
+            originalFrom: URL(fileURLWithPath: "/Shoot/Day1/t1.cr2"),
+            originalTo: URL(fileURLWithPath: "/Users/x/.Trash/t1.cr2"),
+            sidecarFrom: nil,
+            sidecarTo: nil,
+            assetSnapshot: asset
+        )
+
+        try repository.saveRelocationManifestEntry(entry, sessionID: sessionID)
+
+        XCTAssertEqual(try repository.relocationManifestEntries(sessionID: sessionID), [entry])
+    }
+
+    func testDeleteAssetRemovesTheRow() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "delete-asset")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "d1"),
+            originalURL: URL(fileURLWithPath: "/Shoot/d1.cr2"),
+            volumeIdentifier: "Vol",
+            fingerprint: FileFingerprint(size: 3, modificationDate: Date(timeIntervalSince1970: 0), contentHash: "abc"),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+
+        try repository.deleteAsset(id: asset.id)
+
+        XCTAssertThrowsError(try repository.asset(id: asset.id)) { error in
+            guard case CatalogError.notFound = error else {
+                return XCTFail("expected notFound, got \(error)")
+            }
+        }
+    }
+
     func testRelocationWorkSessionKindRoundTrips() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "relocation-session-kind")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

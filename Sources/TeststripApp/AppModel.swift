@@ -1336,7 +1336,7 @@ public struct ExportCompletionSummary: Equatable, Sendable {
 }
 
 public struct RejectRelocationPreflight: Equatable, Identifiable, Sendable {
-    public var id: String { destinationFolder.path }
+    public var id: String { "\(mode == .trash ? "trash" : "folder")-\(destinationFolder.path)" }
     public var assetIDs: [AssetID]
     public var originalURLs: [URL]
     public var plans: [RejectRelocationPlan]
@@ -1345,6 +1345,12 @@ public struct RejectRelocationPreflight: Equatable, Identifiable, Sendable {
     public var unavailableCount: Int
     public var alreadyInDestinationCount: Int
     public var destinationFolder: URL
+    public var mode: RelocationMode
+
+    // The Trash isn't a single user-chosen folder, so a trash-mode preflight
+    // carries this placeholder purely for display (title text, sheet id)
+    // rather than an actual move destination.
+    static let trashDisplayFolder = URL(fileURLWithPath: "/Trash", isDirectory: true)
 
     public init(
         assetIDs: [AssetID],
@@ -1354,7 +1360,8 @@ public struct RejectRelocationPreflight: Equatable, Identifiable, Sendable {
         totalByteCount: Int64,
         unavailableCount: Int,
         alreadyInDestinationCount: Int,
-        destinationFolder: URL
+        destinationFolder: URL,
+        mode: RelocationMode? = nil
     ) {
         self.assetIDs = assetIDs
         self.originalURLs = originalURLs
@@ -1364,6 +1371,7 @@ public struct RejectRelocationPreflight: Equatable, Identifiable, Sendable {
         self.unavailableCount = unavailableCount
         self.alreadyInDestinationCount = alreadyInDestinationCount
         self.destinationFolder = destinationFolder
+        self.mode = mode ?? .folder(destinationFolder)
     }
 
     public var moveCount: Int { plans.count }
@@ -10055,6 +10063,54 @@ public final class AppModel {
         )
     }
 
+    /// Trash-mode counterpart of `rejectRelocationPreflight(destinationFolder:)`.
+    /// There's no destination collision to check (the Trash isn't a catalog
+    /// location), so this only counts rejects in scope and flags unavailable
+    /// originals. `plans` carries identity from/to pairs — trash mode doesn't
+    /// plan a destination path, `moveRejectsToTrash` only reads `originalFrom`.
+    public func rejectRelocationTrashPreflight() throws -> RejectRelocationPreflight {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let scopeIDs = try currentAssetScopeIDs(repository: catalog.repository)
+        let rejectIDs = try catalog.repository.assetIDs(
+            ids: scopeIDs,
+            matching: SetQuery(predicates: [.flag(.reject)])
+        )
+        let sidecarStore = XMPSidecarStore()
+        var movableAssetIDs: [AssetID] = []
+        var movableOriginalURLs: [URL] = []
+        var sidecarCount = 0
+        var totalByteCount: Int64 = 0
+        var unavailableCount = 0
+        for assetID in rejectIDs {
+            let asset = try catalog.repository.asset(id: assetID)
+            guard FileManager.default.fileExists(atPath: asset.originalURL.path) else {
+                unavailableCount += 1
+                continue
+            }
+            movableAssetIDs.append(assetID)
+            movableOriginalURLs.append(asset.originalURL)
+            totalByteCount += Self.fileByteCount(at: asset.originalURL)
+            if let sidecarURL = sidecarStore.existingSidecarURL(forOriginalAt: asset.originalURL) {
+                sidecarCount += 1
+                totalByteCount += Self.fileByteCount(at: sidecarURL)
+            }
+        }
+        let plans = movableOriginalURLs.map { RejectRelocationPlan(originalFrom: $0, originalTo: $0) }
+        return RejectRelocationPreflight(
+            assetIDs: movableAssetIDs,
+            originalURLs: movableOriginalURLs,
+            plans: plans,
+            sidecarCount: sidecarCount,
+            totalByteCount: totalByteCount,
+            unavailableCount: unavailableCount,
+            alreadyInDestinationCount: 0,
+            destinationFolder: RejectRelocationPreflight.trashDisplayFolder,
+            mode: .trash
+        )
+    }
+
     private static func fileByteCount(at url: URL) -> Int64 {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return 0 }
         return (attributes[.size] as? NSNumber)?.int64Value ?? 0
@@ -10145,6 +10201,102 @@ public final class AppModel {
         return summary
     }
 
+    /// Trash-mode counterpart of `moveRejectsToFolder`: files go to the
+    /// platform Trash via `Recycler` (recoverable through Finder "Put Back"),
+    /// and — unlike folder relocation, which just repoints the catalog row's
+    /// path — the catalog row and cached previews are removed entirely. The
+    /// manifest entry snapshots the removed row so Move Back can re-insert it
+    /// verbatim.
+    @discardableResult
+    public func moveRejectsToTrash(_ preflight: RejectRelocationPreflight) throws -> RejectRelocationSummary {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        guard !isRelocatingRejects else {
+            throw TeststripError.invalidState("a relocation is already running")
+        }
+        isRelocatingRejects = true
+        rejectRelocationAbortRequested = false
+        defer { isRelocatingRejects = false }
+
+        let sessionID = WorkSessionID(rawValue: "relocation-\(UUID().uuidString)")
+        let service = RejectRelocationService()
+        let recycler = FileManagerRecycler()
+        // Persist a running session before the loop so a crash still leaves an
+        // Activity row and a partial, reversible manifest.
+        try catalog.repository.save(Self.relocationWorkSession(
+            id: sessionID,
+            status: .running,
+            destinationFolder: RejectRelocationPreflight.trashDisplayFolder,
+            movedCount: 0,
+            skippedCount: 0,
+            issues: []
+        ))
+
+        var movedCount = 0
+        var sidecarCount = 0
+        var issues: [WorkSessionIssue] = []
+        // Per-file loop: snapshot asset N's row, trash its bytes (original +
+        // sidecar), then remove its catalog row and cached previews, then
+        // record its manifest entry, then advance. The abort flag is checked
+        // at the top of each iteration so whatever already moved stays
+        // truthful and reversible.
+        for (assetID, plan) in zip(preflight.assetIDs, preflight.plans) {
+            if rejectRelocationAbortRequested { break }
+            do {
+                let assetSnapshot = try catalog.repository.asset(id: assetID)
+                let result = try service.trash(originalFrom: plan.originalFrom, recycler: recycler)
+                try catalog.repository.deleteAsset(id: assetID)
+                try catalog.previewCache.deleteAll(for: assetID)
+                try catalog.repository.saveRelocationManifestEntry(
+                    RelocationManifestEntry(
+                        assetID: assetID,
+                        originalFrom: result.originalFrom,
+                        originalTo: result.originalTo,
+                        sidecarFrom: result.sidecarFrom,
+                        sidecarTo: result.sidecarTo,
+                        assetSnapshot: assetSnapshot
+                    ),
+                    sessionID: sessionID
+                )
+                movedCount += 1
+                if result.sidecarTo != nil { sidecarCount += 1 }
+            } catch {
+                // Skip-with-issue: a file that can't be trashed is recorded and
+                // the loop continues; its catalog row is left untouched.
+                issues.append(WorkSessionIssue(
+                    kind: .skippedSourceFile,
+                    sourceURL: plan.originalFrom,
+                    message: error.localizedDescription
+                ))
+            }
+        }
+
+        let finalStatus: WorkSessionStatus = rejectRelocationAbortRequested ? .cancelled : .completed
+        let session = Self.relocationWorkSession(
+            id: sessionID,
+            status: finalStatus,
+            destinationFolder: RejectRelocationPreflight.trashDisplayFolder,
+            movedCount: movedCount,
+            skippedCount: issues.count,
+            issues: issues
+        )
+        try catalog.repository.save(session)
+        recordRecentActivity(AppWorkActivity(workSession: session))
+        try reload()
+
+        let summary = RejectRelocationSummary(
+            sessionID: sessionID,
+            movedCount: movedCount,
+            sidecarCount: sidecarCount,
+            skippedCount: issues.count,
+            destinationFolder: RejectRelocationPreflight.trashDisplayFolder
+        )
+        rejectRelocationSummary = summary
+        statusMessage = summary.detailText
+        return summary
+    }
+
     public func abortRejectRelocation() {
         rejectRelocationAbortRequested = true
     }
@@ -10168,10 +10320,21 @@ public final class AppModel {
             do {
                 try service.moveBack(entry)
                 if FileManager.default.fileExists(atPath: entry.originalFrom.path) {
-                    try catalog.repository.relocateOriginal(assetID: entry.assetID, to: entry.originalFrom)
+                    if let assetSnapshot = entry.assetSnapshot {
+                        // Trash-mode entry: the catalog row was removed when the
+                        // asset was trashed, so restore re-inserts it verbatim
+                        // (same asset ID and metadata) rather than repointing it.
+                        try catalog.repository.upsert(assetSnapshot)
+                    } else {
+                        try catalog.repository.relocateOriginal(assetID: entry.assetID, to: entry.originalFrom)
+                    }
                     restoredCount += 1
                 } else {
+                    // The Trash URL is gone (the user emptied the Trash): the
+                    // asset is unrecoverable. Report it and continue restoring
+                    // the rest rather than failing the whole batch.
                     skippedCount += 1
+                    errorMessage = "Could not move back \(entry.originalFrom.lastPathComponent): its Trash file is gone"
                 }
             } catch {
                 skippedCount += 1

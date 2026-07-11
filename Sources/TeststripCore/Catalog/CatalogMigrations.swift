@@ -187,6 +187,7 @@ enum CatalogMigrations {
             original_to_path TEXT NOT NULL,
             sidecar_from_path TEXT,
             sidecar_to_path TEXT,
+            asset_snapshot_json TEXT,
             created_at REAL NOT NULL,
             PRIMARY KEY (session_id, asset_id)
         )

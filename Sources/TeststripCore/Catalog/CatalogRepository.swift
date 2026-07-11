@@ -1256,18 +1256,19 @@ public final class CatalogRepository {
             INSERT INTO relocation_manifest_entries (
                 session_id, sequence, asset_id,
                 original_from_path, original_to_path,
-                sidecar_from_path, sidecar_to_path, created_at
+                sidecar_from_path, sidecar_to_path, asset_snapshot_json, created_at
             )
             VALUES (
                 ?,
                 (SELECT COALESCE(MAX(sequence), -1) + 1 FROM relocation_manifest_entries WHERE session_id = ?),
-                ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?
             )
             ON CONFLICT(session_id, asset_id) DO UPDATE SET
                 original_from_path = excluded.original_from_path,
                 original_to_path = excluded.original_to_path,
                 sidecar_from_path = excluded.sidecar_from_path,
-                sidecar_to_path = excluded.sidecar_to_path
+                sidecar_to_path = excluded.sidecar_to_path,
+                asset_snapshot_json = excluded.asset_snapshot_json
             """,
             bindings: [
                 sessionID.rawValue,
@@ -1277,6 +1278,7 @@ public final class CatalogRepository {
                 entry.originalTo.path,
                 entry.sidecarFrom?.path ?? "",
                 entry.sidecarTo?.path ?? "",
+                try entry.assetSnapshot.map(encode) ?? "",
                 now
             ]
         )
@@ -1303,13 +1305,22 @@ public final class CatalogRepository {
               let originalTo = row["original_to_path"] else {
             throw CatalogError.sqlite("relocation manifest row is missing required columns")
         }
+        let assetSnapshotJSON = row["asset_snapshot_json"]
+        let assetSnapshot: Asset? = try assetSnapshotJSON.flatMap { json in
+            json.isEmpty ? nil : try decode(Asset.self, from: json)
+        }
         return RelocationManifestEntry(
             assetID: AssetID(rawValue: assetID),
             originalFrom: URL(fileURLWithPath: originalFrom),
             originalTo: URL(fileURLWithPath: originalTo),
             sidecarFrom: row["sidecar_from_path"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) },
-            sidecarTo: row["sidecar_to_path"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+            sidecarTo: row["sidecar_to_path"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) },
+            assetSnapshot: assetSnapshot
         )
+    }
+
+    public func deleteAsset(id: AssetID) throws {
+        try database.execute("DELETE FROM assets WHERE id = ?", bindings: [id.rawValue])
     }
 
     public func session(id: WorkSessionID) throws -> WorkSession {
