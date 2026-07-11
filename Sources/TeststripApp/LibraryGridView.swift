@@ -3817,7 +3817,7 @@ private struct LoupeView: View {
         guard isDecisionToastVisible,
               let feedback = model.lastCullingMetadataDecision,
               feedback.assetID == asset.id else { return false }
-        return feedback.decisionText == "Cleared rating" || feedback.decisionText.hasPrefix("Rated ")
+        return feedback.isRatingDecision
     }
 
     private func cullHUD(for asset: Asset, stackPresentation: CullingStackRailPresentation) -> some View {
@@ -3835,7 +3835,7 @@ private struct LoupeView: View {
                 if presentation.showsScopeChip {
                     cullHUDScopeChip(presentation.scope)
                 }
-                if presentation.showsLabelDot, let colorLabel = presentation.colorLabel {
+                if let colorLabel = presentation.colorLabel {
                     Circle()
                         .fill(color(for: colorLabel))
                         .frame(width: 10, height: 10)

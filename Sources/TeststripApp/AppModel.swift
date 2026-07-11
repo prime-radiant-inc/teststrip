@@ -1687,12 +1687,22 @@ private struct MetadataChangeGroup: Equatable {
 public struct CullingMetadataDecisionFeedback: Equatable, Sendable {
     public var assetID: AssetID
     public var filename: String
+    public var command: CullingCommand
     public var decisionText: String
 
-    public init(assetID: AssetID, filename: String, decisionText: String) {
+    public init(assetID: AssetID, filename: String, command: CullingCommand, decisionText: String) {
         self.assetID = assetID
         self.filename = filename
+        self.command = command
         self.decisionText = decisionText
+    }
+
+    /// True when the decision was a rating keystroke (including clear-to-zero),
+    /// so the HUD's rating-echo window keys off the command itself rather than
+    /// the rendered decision text.
+    public var isRatingDecision: Bool {
+        if case .rating = command { return true }
+        return false
     }
 }
 
@@ -5612,6 +5622,7 @@ public final class AppModel {
         CullingMetadataDecisionFeedback(
             assetID: asset.id,
             filename: asset.originalURL.lastPathComponent,
+            command: command,
             decisionText: cullingMetadataDecisionText(command)
         )
     }

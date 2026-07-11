@@ -77,6 +77,7 @@ final class CullFilmstripPresentationTests: XCTestCase {
         let feedback = CullingMetadataDecisionFeedback(
             assetID: AssetID(rawValue: "a"),
             filename: "DSCF1023.RAF",
+            command: .reject,
             decisionText: "Rejected"
         )
 
@@ -89,6 +90,7 @@ final class CullFilmstripPresentationTests: XCTestCase {
         let feedback = CullingMetadataDecisionFeedback(
             assetID: AssetID(rawValue: "a"),
             filename: "DSCF1024.RAF",
+            command: .pick,
             decisionText: "Picked"
         )
 
@@ -101,6 +103,7 @@ final class CullFilmstripPresentationTests: XCTestCase {
         let feedback = CullingMetadataDecisionFeedback(
             assetID: AssetID(rawValue: "a"),
             filename: "DSCF1025.RAF",
+            command: .rating(3),
             decisionText: "Rated 3"
         )
 
@@ -113,6 +116,7 @@ final class CullFilmstripPresentationTests: XCTestCase {
         let feedback = CullingMetadataDecisionFeedback(
             assetID: AssetID(rawValue: "a"),
             filename: "DSCF1026.RAF",
+            command: .clearFlag,
             decisionText: "Cleared flag"
         )
 
@@ -125,6 +129,7 @@ final class CullFilmstripPresentationTests: XCTestCase {
         let feedback = CullingMetadataDecisionFeedback(
             assetID: AssetID(rawValue: "a"),
             filename: "DSCF1027.RAF",
+            command: .colorLabel(.red),
             decisionText: "Red label"
         )
 

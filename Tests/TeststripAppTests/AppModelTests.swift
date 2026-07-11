@@ -3454,6 +3454,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.lastCullingMetadataDecision, CullingMetadataDecisionFeedback(
             assetID: firstID,
             filename: "frame-0.dng",
+            command: .rating(5),
             decisionText: "Rated 5"
         ))
     }

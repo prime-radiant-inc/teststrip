@@ -192,4 +192,31 @@ final class CullHUDPresentationTests: XCTestCase {
         XCTAssertFalse(presentation.showsLabelDot)
         XCTAssertEqual(presentation.sessionClusterText, "\u{2713} 3 \u{00B7} \u{2715} 2 \u{00B7} 5 left")
     }
+
+    // MARK: - Rating echo discrimination on the decision feedback
+
+    private func makeFeedback(command: CullingCommand) -> CullingMetadataDecisionFeedback {
+        CullingMetadataDecisionFeedback(
+            assetID: AssetID(rawValue: "a"),
+            filename: "IMG_0001.CR2",
+            command: command,
+            decisionText: "irrelevant"
+        )
+    }
+
+    func testRatingFeedbackIsRatingDecision() {
+        XCTAssertTrue(makeFeedback(command: .rating(3)).isRatingDecision)
+    }
+
+    func testClearedRatingFeedbackIsRatingDecision() {
+        XCTAssertTrue(makeFeedback(command: .rating(0)).isRatingDecision)
+    }
+
+    func testNonRatingFeedbackIsNotRatingDecision() {
+        XCTAssertFalse(makeFeedback(command: .pick).isRatingDecision)
+        XCTAssertFalse(makeFeedback(command: .reject).isRatingDecision)
+        XCTAssertFalse(makeFeedback(command: .clearFlag).isRatingDecision)
+        XCTAssertFalse(makeFeedback(command: .colorLabel(.red)).isRatingDecision)
+        XCTAssertFalse(makeFeedback(command: .colorLabel(nil)).isRatingDecision)
+    }
 }

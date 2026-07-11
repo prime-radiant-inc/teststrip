@@ -49,8 +49,9 @@ Exact computation (read from source, not guessed):
   `isRatingEchoActive` is true only while `isDecisionToastVisible` is true
   (the same 2s-then-fade timer driving the decision toast) **and**
   `lastCullingMetadataDecision.assetID` matches the selected asset **and**
-  its `decisionText` is a rating decision (`"Rated N"` or `"Cleared
-  rating"` — pick/reject/label decisions do not trigger the echo).
+  its `isRatingDecision` is true (the feedback carries the originating
+  `CullingCommand`; only the `.rating` case — including clear-to-zero —
+  triggers the echo; pick/reject/label decisions do not).
 - `showsLabelDot = (colorLabel != nil)`.
 - Verdict fallback in `cullHUDPresentation`:
   `verdict = assistPresentation.verdictText ?? (tone == .waiting ? nil :

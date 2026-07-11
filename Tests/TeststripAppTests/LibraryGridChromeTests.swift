@@ -193,6 +193,7 @@ final class LibraryGridChromeTests: XCTestCase {
             feedback: CullingMetadataDecisionFeedback(
                 assetID: AssetID(rawValue: "rated"),
                 filename: "frame-0.dng",
+                command: .rating(5),
                 decisionText: "Rated 5"
             )
         )
