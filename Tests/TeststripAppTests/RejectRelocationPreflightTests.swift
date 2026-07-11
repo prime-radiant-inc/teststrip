@@ -21,13 +21,15 @@ final class RejectRelocationPreflightTests: XCTestCase {
         XCTAssertEqual(preflight.moveCount, 1)
     }
 
-    // Disabled-furniture trap (persona-1 Maya, "THE WALL"): a primary button
-    // that's silently disabled until a checkbox is ticked reads as dead —
-    // AXPress and real clicks alike appear to do nothing. The primary stays
-    // enabled whenever there are movable files; the confirm toggle gates the
-    // *action* (LibraryGridView shows an inline error if pressed unconfirmed),
-    // not the button's enabled state.
-    func testSheetPresentationEnablesMoveRegardlessOfConfirmationToggle() {
+    // The armed-looking dead confirm button (persona-7 Marcus, "the ghost"):
+    // an enabled-looking primary that silently swallows presses until a
+    // checkbox is ticked reads as broken — AXPress reports success and
+    // nothing happens. The gate is the sheet template's standard one
+    // instead: the primary is genuinely disabled (AX reports it) until the
+    // confirm toggle is checked, and a standing hint says exactly what
+    // arms it, so the disabled state is never mystery furniture
+    // (persona-1 Maya's "THE WALL").
+    func testSheetPresentationGatesMoveOnConfirmationToggle() {
         let preflight = RejectRelocationPreflight(
             assetIDs: [AssetID(rawValue: "a")],
             originalURLs: [URL(fileURLWithPath: "/Shoot/a.cr2")],
@@ -41,7 +43,39 @@ final class RejectRelocationPreflightTests: XCTestCase {
             alreadyInDestinationCount: 0,
             destinationFolder: URL(fileURLWithPath: "/Rejects", isDirectory: true)
         )
-        XCTAssertTrue(RejectRelocationSheetPresentation(preflight: preflight, isConfirmed: false).isMoveEnabled)
+        let unconfirmed = RejectRelocationSheetPresentation(preflight: preflight, isConfirmed: false)
+        XCTAssertFalse(unconfirmed.isMoveEnabled)
+        XCTAssertEqual(unconfirmed.confirmationHintText, "Check the box above to enable “Move 1 reject photo to Rejects”.")
+        let confirmed = RejectRelocationSheetPresentation(preflight: preflight, isConfirmed: true)
+        XCTAssertTrue(confirmed.isMoveEnabled)
+        XCTAssertNil(confirmed.confirmationHintText)
+    }
+
+    // Trash and folder sheets share one gate: unconfirmed disables the
+    // primary with the same standing hint in both modes.
+    func testTrashSheetPresentationGatesMoveIdentically() {
+        let unconfirmed = RejectRelocationSheetPresentation(preflight: makeTrashPreflight(), isConfirmed: false)
+        XCTAssertFalse(unconfirmed.isMoveEnabled)
+        XCTAssertEqual(unconfirmed.confirmationHintText, "Check the box above to enable “Move 2 to Trash”.")
+        let confirmed = RejectRelocationSheetPresentation(preflight: makeTrashPreflight(), isConfirmed: true)
+        XCTAssertTrue(confirmed.isMoveEnabled)
+        XCTAssertNil(confirmed.confirmationHintText)
+    }
+
+    func testSheetPresentationEnablesMoveWhenConfirmed() {
+        let preflight = RejectRelocationPreflight(
+            assetIDs: [AssetID(rawValue: "a")],
+            originalURLs: [URL(fileURLWithPath: "/Shoot/a.cr2")],
+            plans: [RejectRelocationPlan(
+                originalFrom: URL(fileURLWithPath: "/Shoot/a.cr2"),
+                originalTo: URL(fileURLWithPath: "/Rejects/a.cr2")
+            )],
+            sidecarCount: 0,
+            totalByteCount: 100,
+            unavailableCount: 0,
+            alreadyInDestinationCount: 0,
+            destinationFolder: URL(fileURLWithPath: "/Rejects", isDirectory: true)
+        )
         XCTAssertTrue(RejectRelocationSheetPresentation(preflight: preflight, isConfirmed: true).isMoveEnabled)
         XCTAssertEqual(RejectRelocationSheetPresentation(preflight: preflight, isConfirmed: true).destinationPreviewRows, ["a.cr2"])
     }
@@ -57,7 +91,10 @@ final class RejectRelocationPreflightTests: XCTestCase {
             alreadyInDestinationCount: 0,
             destinationFolder: URL(fileURLWithPath: "/Rejects", isDirectory: true)
         )
-        XCTAssertFalse(RejectRelocationSheetPresentation(preflight: empty, isConfirmed: true).isMoveEnabled)
+        let presentation = RejectRelocationSheetPresentation(preflight: empty, isConfirmed: true)
+        XCTAssertFalse(presentation.isMoveEnabled)
+        // No confirm toggle renders without movable files, so no hint about it.
+        XCTAssertNil(presentation.confirmationHintText)
     }
 
     // MARK: - Trash-mode preflight sheet copy (spec Part 1)
