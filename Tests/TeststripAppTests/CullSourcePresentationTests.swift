@@ -91,6 +91,32 @@ final class CullSourcePresentationTests: XCTestCase {
         XCTAssertGreaterThan(proposalsSource.count, 0)
     }
 
+    func testVisibleSourcesOmitsZeroCountRows() {
+        let presentation = CullSourcePresentation(sources: [
+            CullSource(id: "a", group: .topPicks, title: "Picks", systemImage: "star", count: 3, target: .reviewQueue(.picks)),
+            CullSource(id: "b", group: .needsEyes, title: "Needs Evaluation", systemImage: "eye", count: 0, target: .reviewQueue(.needsEvaluation)),
+            CullSource(id: "c", group: .selection, title: "Selection", systemImage: "checkmark.circle", count: 0, target: .selection)
+        ])
+
+        XCTAssertEqual(presentation.visibleSources.map(\.id), ["a"])
+    }
+
+    func testIsEmptyIsTrueOnlyWhenAllSourcesAreZeroCount() {
+        let allZero = CullSourcePresentation(sources: [
+            CullSource(id: "a", group: .topPicks, title: "Picks", systemImage: "star", count: 0, target: .reviewQueue(.picks))
+        ])
+        XCTAssertTrue(allZero.isEmpty)
+
+        let oneNonZero = CullSourcePresentation(sources: [
+            CullSource(id: "a", group: .topPicks, title: "Picks", systemImage: "star", count: 0, target: .reviewQueue(.picks)),
+            CullSource(id: "b", group: .selection, title: "Selection", systemImage: "checkmark.circle", count: 2, target: .selection)
+        ])
+        XCTAssertFalse(oneNonZero.isEmpty)
+
+        let noSources = CullSourcePresentation(sources: [])
+        XCTAssertTrue(noSources.isEmpty)
+    }
+
     func testCullCurrentSelectionScopesToSelectedBatchAndSwitchesToCull() throws {
         let keeper = makeAsset(id: "keeper", path: "/Photos/Cull/keeper.jpg", rating: 5)
         let reject = makeAsset(id: "reject", path: "/Photos/Cull/reject.jpg", rating: 1)

@@ -8,20 +8,21 @@ import TeststripCore
 /// collapses this view the same as it does `SidebarView`.
 struct CullSidebarView: View {
     var model: AppModel
-    @State private var isDiagnosticsExpanded = false
 
     var body: some View {
+        let presentation = model.cullSourcePresentation
         List {
             Section("Cull From") {
-                ForEach(sourceGroups, id: \.self) { group in
-                    ForEach(sourcesByGroup[group] ?? []) { source in
-                        sourceRow(source)
+                if presentation.isEmpty {
+                    Text("Nothing to cull")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(sourceGroups, id: \.self) { group in
+                        ForEach(sourcesByGroup(presentation)[group] ?? []) { source in
+                            sourceRow(source)
+                        }
                     }
-                }
-            }
-            DisclosureGroup("Diagnostics", isExpanded: $isDiagnosticsExpanded) {
-                ForEach(sourcesByGroup[.diagnostics] ?? []) { source in
-                    sourceRow(source)
                 }
             }
             let stackEntries = model.cullingStackListEntries()
@@ -36,12 +37,17 @@ struct CullSidebarView: View {
         .frame(minWidth: 220)
     }
 
+    // Diagnostics folds into the same list as every other group: these rows
+    // (Rejects, Five Stars, Needs Keywords, Faces Found, OCR Found, Provider
+    // Failures) are click-to-cull review queues, not background-job status,
+    // so they belong beside Top Picks/Needs Eyes rather than in the Activity
+    // popover.
     private var sourceGroups: [CullSourceGroup] {
-        [.recentImport, .autopilotProposals, .topPicks, .needsEyes, .selection]
+        [.recentImport, .autopilotProposals, .topPicks, .needsEyes, .diagnostics, .selection]
     }
 
-    private var sourcesByGroup: [CullSourceGroup: [CullSource]] {
-        Dictionary(grouping: model.cullSourcePresentation.sources, by: \.group)
+    private func sourcesByGroup(_ presentation: CullSourcePresentation) -> [CullSourceGroup: [CullSource]] {
+        Dictionary(grouping: presentation.visibleSources, by: \.group)
     }
 
     private func sourceRow(_ source: CullSource) -> some View {
@@ -57,7 +63,6 @@ struct CullSidebarView: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(source.count == 0)
     }
 
     private func activate(_ source: CullSource) {

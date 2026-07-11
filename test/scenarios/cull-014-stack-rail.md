@@ -1,16 +1,28 @@
-# cull-014-stack-rail: Stack rail's primary Keep button and its secondary action set
+# cull-014-stack-rail: Stack rail's primary Keep button and its secondary-actions ellipsis menu
 
 **What this covers**: As a photographer working a burst I want the stack
 rail's big "Keep" button to keep the frame I'm looking at (and reject its
-siblings) in one gesture, plus secondary shortcuts for keeping the
+siblings) in one gesture, plus secondary shortcuts — now collapsed into an
+ellipsis (`⋯`) menu so Keep is the rail's one visible verb — for keeping the
 recommended/top-ranked frame(s) or the whole stack when none should be cut.
-Covered inventory items 39 (rail: primary Keep + secondary actions + frame
-chips) and 40 (guidance text/action set — resolved below by reading
-`CullingStackActionPresentation` directly, per assignment). Source:
-`cullingStackRail` at `Sources/TeststripApp/LibraryGridView.swift:3992-4075`,
-`CullingStackRailPresentation` (action list construction) at `:5456-5639`,
-`CullingStackAction` enum at `:5641-5646`, action dispatch
-(`performCullingStackAction`/`keepSelectedStackFrame`) at `:4313-4353`.
+Covered inventory items 39 (rail: primary Keep + secondary actions in an
+ellipsis menu + frame chips) and 40 (guidance text/action set — resolved
+below by reading `CullingStackActionPresentation` directly, per assignment).
+Source: `cullingStackRail` at `Sources/TeststripApp/LibraryGridView.swift`
+(ellipsis menu wrapping `presentation.actions.dropFirst()`, help text "More
+stack actions"), `CullingStackRailPresentation` (action list construction),
+`CullingStackAction` enum, action dispatch
+(`performCullingStackAction`/`keepSelectedStackFrame`).
+
+**Task 7 revision (2026-07-11)**: the two secondary action buttons
+(previously rendered as individual `.bordered` buttons beside the primary
+Keep) are now inside a `Menu` labeled with an `ellipsis.circle` glyph
+(AXHelp "More stack actions"), rendered only when
+`presentation.actions.dropFirst()` is non-empty. The primary Keep button's
+identity, help text, and semantics (`keepSelectedStackFrame()`, unaffected
+by ranking) are unchanged — only the secondary actions moved from inline
+bordered buttons into the menu. Update step 5 below to open the ellipsis
+menu before pressing "Keep recommended"/"Keep top 2".
 
 **Resolving the "Action set in Core unread" ambiguity**: `grep -n "struct
 CullingStackActionPresentation"` finds it in
@@ -94,9 +106,10 @@ script/vm_scenario_run.sh ax wait-vended
 4. Undo (⌘Z) to revert the stack promote from step 3 — cross-check against
    `cull-pass-scope-and-undo.md`'s established Return-gesture undo semantics
    (one ⌘Z reverts the whole pick+reject-siblings transaction as a unit).
-5. Re-select a frame in the stack, then click the **secondary** "Keep
-   recommended N" / "Keep top 2" button
-   (`script/ax_drive.sh press --role AXButton --contains "Keep recommended"`
+5. Re-select a frame in the stack, then open the rail's ellipsis menu
+   (`script/ax_drive.sh press --role AXButton --help "More stack actions"`)
+   and click the **secondary** "Keep recommended N" / "Keep top 2" menu item
+   (`script/ax_drive.sh press --role AXMenuItem --contains "Keep recommended"`
    or `"Keep top 2"`, whichever `rankedAction` produced). Assert it kept the
    ranked/recommended frame(s) specifically, matching what step 2's
    evaluation-signal read predicted, regardless of which frame was selected

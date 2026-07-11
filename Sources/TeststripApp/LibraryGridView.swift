@@ -4053,15 +4053,23 @@ private struct LoupeView: View {
                     .help(primaryAction.help)
                     .liveMockupPlaceholder(primaryAction.liveMockupPlaceholder)
                 }
-                ForEach(Array(presentation.actions.dropFirst())) { action in
-                    Button(action.title) {
-                        performCullingStackAction(action.action)
+                let secondaryActions = Array(presentation.actions.dropFirst())
+                if !secondaryActions.isEmpty {
+                    Menu {
+                        ForEach(secondaryActions) { action in
+                            Button(action.title) {
+                                performCullingStackAction(action.action)
+                            }
+                            .disabled(!action.isEnabled)
+                            .help(action.help)
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(!action.isEnabled)
-                        .help(action.help)
-                        .liveMockupPlaceholder(action.liveMockupPlaceholder)
+                    .menuStyle(.borderlessButton)
+                    .controlSize(.small)
+                    .fixedSize()
+                    .help("More stack actions")
                 }
                 HStack(spacing: 5) {
                     ForEach(presentation.items, id: \.assetID.rawValue) { item in

@@ -1,3 +1,14 @@
+**Task 7 note (2026-07-11)**: the Cull sidebar's former "Diagnostics"
+disclosure (Rejects/Five Stars/Needs Keywords/Faces Found/OCR Found/Provider
+Failures review-queue counts) was evaluated for a move into this popover's
+job-details area per spec §2a bullet 3, and **not** moved — those rows are
+click-to-cull review-queue sources, not background-job/source-availability
+status, and this popover has no structural equivalent (`jobsSection` is
+`work_sessions` rows, `sourcesSection` is source-root availability). They
+now render inline in the Cull sidebar's main list instead
+(`cull-015-sidebar-sources.md`). This popover's rows/sections are unchanged
+by Task 7.
+
 # activity-003-jobs-controls: Activity popover jobs list caps at 4 and exposes per-job controls
 
 **What this covers**: the Activity popover's "Activity" jobs section

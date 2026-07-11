@@ -631,6 +631,17 @@ public struct CullSourcePresentation: Equatable, Sendable {
     public init(sources: [CullSource]) {
         self.sources = sources
     }
+
+    /// Sources actually worth showing: zero-count rows are omitted rather
+    /// than rendered disabled, so the sidebar never shows a dead-end row.
+    public var visibleSources: [CullSource] {
+        sources.filter { $0.count > 0 }
+    }
+
+    /// True when there is nothing actionable to cull from any source.
+    public var isEmpty: Bool {
+        visibleSources.isEmpty
+    }
 }
 
 /// The plan the "Find Best Shots" marquee action follows: whether to kick off
