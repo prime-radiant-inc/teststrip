@@ -1256,19 +1256,20 @@ public final class CatalogRepository {
             INSERT INTO relocation_manifest_entries (
                 session_id, sequence, asset_id,
                 original_from_path, original_to_path,
-                sidecar_from_path, sidecar_to_path, asset_snapshot_json, created_at
+                sidecar_from_path, sidecar_to_path, asset_snapshot_json, person_ids_json, created_at
             )
             VALUES (
                 ?,
                 (SELECT COALESCE(MAX(sequence), -1) + 1 FROM relocation_manifest_entries WHERE session_id = ?),
-                ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?
             )
             ON CONFLICT(session_id, asset_id) DO UPDATE SET
                 original_from_path = excluded.original_from_path,
                 original_to_path = excluded.original_to_path,
                 sidecar_from_path = excluded.sidecar_from_path,
                 sidecar_to_path = excluded.sidecar_to_path,
-                asset_snapshot_json = excluded.asset_snapshot_json
+                asset_snapshot_json = excluded.asset_snapshot_json,
+                person_ids_json = excluded.person_ids_json
             """,
             bindings: [
                 sessionID.rawValue,
@@ -1279,6 +1280,7 @@ public final class CatalogRepository {
                 entry.sidecarFrom?.path ?? "",
                 entry.sidecarTo?.path ?? "",
                 try entry.assetSnapshot.map(encode) ?? "",
+                entry.personIDs.isEmpty ? "" : try encode(entry.personIDs),
                 now
             ]
         )
@@ -1309,18 +1311,52 @@ public final class CatalogRepository {
         let assetSnapshot: Asset? = try assetSnapshotJSON.flatMap { json in
             json.isEmpty ? nil : try decode(Asset.self, from: json)
         }
+        let personIDsJSON = row["person_ids_json"]
+        let personIDs: [String] = try personIDsJSON.flatMap { json in
+            json.isEmpty ? nil : try decode([String].self, from: json)
+        } ?? []
         return RelocationManifestEntry(
             assetID: AssetID(rawValue: assetID),
             originalFrom: URL(fileURLWithPath: originalFrom),
             originalTo: URL(fileURLWithPath: originalTo),
             sidecarFrom: row["sidecar_from_path"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) },
             sidecarTo: row["sidecar_to_path"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) },
-            assetSnapshot: assetSnapshot
+            assetSnapshot: assetSnapshot,
+            personIDs: personIDs
         )
     }
 
+    /// Removes an asset row together with the dependent rows that reference
+    /// its ID, so a deleted asset can't leave orphans that inflate person
+    /// counts or crash lookups (e.g. the pending-metadata-sync scan resolves
+    /// each pending row's asset at launch).
     public func deleteAsset(id: AssetID) throws {
-        try database.execute("DELETE FROM assets WHERE id = ?", bindings: [id.rawValue])
+        try database.transaction {
+            try database.execute("DELETE FROM assets WHERE id = ?", bindings: [id.rawValue])
+            try database.execute("DELETE FROM metadata_sync_state WHERE asset_id = ?", bindings: [id.rawValue])
+            try database.execute("DELETE FROM person_assets WHERE asset_id = ?", bindings: [id.rawValue])
+            try database.execute("DELETE FROM dismissed_face_assets WHERE asset_id = ?", bindings: [id.rawValue])
+            try database.execute("DELETE FROM preview_generation_queue WHERE asset_id = ?", bindings: [id.rawValue])
+        }
+    }
+
+    public func personIDs(assetID: AssetID) throws -> [String] {
+        let rows = try database.rows(
+            "SELECT person_id FROM person_assets WHERE asset_id = ? ORDER BY rowid ASC",
+            bindings: [assetID.rawValue]
+        )
+        return try rows.map { row in
+            guard let personID = row["person_id"] else {
+                throw CatalogError.sqlite("person asset row is missing person_id")
+            }
+            return personID
+        }
+    }
+
+    /// Drops an asset's metadata-sync row without touching anything else.
+    /// Used to clean up a dangling pending row whose asset no longer exists.
+    public func deleteMetadataSyncState(assetID: AssetID) throws {
+        try database.execute("DELETE FROM metadata_sync_state WHERE asset_id = ?", bindings: [assetID.rawValue])
     }
 
     public func session(id: WorkSessionID) throws -> WorkSession {

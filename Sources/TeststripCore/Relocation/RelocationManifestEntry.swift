@@ -26,6 +26,10 @@ public struct RelocationManifestEntry: Equatable, Sendable {
     public var sidecarFrom: URL?
     public var sidecarTo: URL?
     public var assetSnapshot: Asset?
+    /// People this asset was assigned to when it was trashed (its
+    /// `person_assets` links are removed with the row), so Move Back can
+    /// restore the assignments along with the row.
+    public var personIDs: [String]
 
     public init(
         assetID: AssetID,
@@ -33,7 +37,8 @@ public struct RelocationManifestEntry: Equatable, Sendable {
         originalTo: URL,
         sidecarFrom: URL?,
         sidecarTo: URL?,
-        assetSnapshot: Asset? = nil
+        assetSnapshot: Asset? = nil,
+        personIDs: [String] = []
     ) {
         self.assetID = assetID
         self.originalFrom = originalFrom
@@ -41,5 +46,6 @@ public struct RelocationManifestEntry: Equatable, Sendable {
         self.sidecarFrom = sidecarFrom
         self.sidecarTo = sidecarTo
         self.assetSnapshot = assetSnapshot
+        self.personIDs = personIDs
     }
 }

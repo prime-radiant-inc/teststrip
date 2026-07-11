@@ -15849,6 +15849,77 @@ final class AppModelTests: XCTestCase {
         XCTAssertNotNil(model.errorMessage)
     }
 
+    func testLoadSurvivesDanglingPendingMetadataSyncRow() throws {
+        // Regression: a pending metadata_sync_state row whose asset row is gone
+        // (e.g. trashed before the cascade-delete fix, or any historic orphan)
+        // must not crash app launch — enqueuePendingMetadataSync used to call
+        // repository.asset(id:) with no per-item guard, so notFound propagated
+        // to AppModel.load and main.swift's fatalError.
+        let directory = try makeTemporaryDirectory(named: "dangling-sync-row")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let danglingID = AssetID(rawValue: "long-gone-asset")
+        try repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: danglingID,
+            sidecarURL: directory.appendingPathComponent("gone.cr2.xmp"),
+            catalogGeneration: 1,
+            lastSyncedFingerprint: nil
+        ))
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: RecordingWorkerTransport()
+        )
+
+        XCTAssertNoThrow(try AppModel.load(catalog: catalog, workerSupervisor: supervisor))
+
+        // The dangling row is dropped, not just skipped, so it can't resurface.
+        XCTAssertNil(try repository.pendingMetadataSyncItem(assetID: danglingID))
+    }
+
+    func testMoveRejectsToTrashRemovesPersonLinksAndMoveBackRestoresThem() throws {
+        let directory = try makeTemporaryDirectory(named: "trash-person-links")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let keptOriginal = shoot.appendingPathComponent("kept.cr2")
+        let trashedOriginal = shoot.appendingPathComponent("trashed.cr2")
+        try Data("raw".utf8).write(to: keptOriginal)
+        try Data("raw".utf8).write(to: trashedOriginal)
+        let kept = makeAsset(id: "person-kept", path: keptOriginal.path, rating: 0, flag: .pick)
+        let trashed = makeAsset(id: "person-trashed", path: trashedOriginal.path, rating: 0, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "trash-person-links-model",
+            assets: [kept, trashed],
+            configureRepository: { repository in
+                try repository.upsertPerson(id: "person-1", name: "Person One")
+                try repository.assignAssets([kept.id, trashed.id], toPersonID: "person-1")
+            }
+        )
+        let summary = try model.moveRejectsToTrash(try model.rejectRelocationTrashPreflight())
+        XCTAssertEqual(summary.movedCount, 1)
+
+        // The trashed asset no longer counts toward the person or appears in
+        // its asset list; the kept one still does.
+        XCTAssertEqual(try repository.people().first?.assetCount, 1)
+        XCTAssertEqual(try repository.assetIDs(personID: "person-1"), [kept.id])
+
+        _ = try model.moveBackRelocation(sessionID: summary.sessionID)
+
+        // Move Back is a true undo: the person link comes back with the row.
+        XCTAssertEqual(try repository.people().first?.assetCount, 2)
+        XCTAssertEqual(Set(try repository.assetIDs(personID: "person-1")), [kept.id, trashed.id])
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-app-tests", isDirectory: true)

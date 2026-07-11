@@ -2957,6 +2957,68 @@ final class CatalogDatabaseTests: XCTestCase {
         }
     }
 
+    func testDeleteAssetCascadesDependentRows() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "delete-asset-cascade")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "cascade-1"),
+            originalURL: URL(fileURLWithPath: "/Shoot/cascade-1.cr2"),
+            volumeIdentifier: "Vol",
+            fingerprint: FileFingerprint(size: 3, modificationDate: Date(timeIntervalSince1970: 0), contentHash: "abc"),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(asset)
+        try repository.recordMetadataSyncPending(MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: URL(fileURLWithPath: "/Shoot/cascade-1.cr2.xmp"),
+            catalogGeneration: 1,
+            lastSyncedFingerprint: nil
+        ))
+        try repository.upsertPerson(id: "person-1", name: "Person One")
+        try repository.assignAssets([asset.id], toPersonID: "person-1")
+        try repository.recordPreviewGenerationPending(PreviewGenerationItem(assetID: asset.id, level: .grid))
+
+        try repository.deleteAsset(id: asset.id)
+
+        XCTAssertNil(try repository.pendingMetadataSyncItem(assetID: asset.id))
+        XCTAssertEqual(try repository.assetIDs(personID: "person-1"), [])
+        XCTAssertEqual(try repository.people().first?.assetCount, 0)
+        XCTAssertTrue(try repository.pendingPreviewGenerationItems().isEmpty)
+
+        // Dismissed-face marks are cleaned too (a dismissed asset can't also
+        // hold person links, so exercise it on its own asset).
+        let dismissed = Asset(
+            id: AssetID(rawValue: "cascade-2"),
+            originalURL: URL(fileURLWithPath: "/Shoot/cascade-2.cr2"),
+            volumeIdentifier: "Vol",
+            fingerprint: FileFingerprint(size: 3, modificationDate: Date(timeIntervalSince1970: 0), contentHash: "def"),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(dismissed)
+        try repository.dismissFaceAssets([dismissed.id])
+        try repository.deleteAsset(id: dismissed.id)
+        XCTAssertEqual(try repository.dismissedFaceAssetIDs(), [])
+    }
+
+    func testPersonIDsForAssetListsEveryLinkedPerson() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "person-ids-for-asset")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let assetID = AssetID(rawValue: "pia-1")
+        try repository.upsertPerson(id: "person-a", name: "A")
+        try repository.upsertPerson(id: "person-b", name: "B")
+        try repository.assignAssets([assetID], toPersonID: "person-a")
+        try repository.assignAssets([assetID], toPersonID: "person-b")
+
+        XCTAssertEqual(try repository.personIDs(assetID: assetID).sorted(), ["person-a", "person-b"])
+        XCTAssertEqual(try repository.personIDs(assetID: AssetID(rawValue: "unlinked")), [])
+    }
+
     func testRelocationWorkSessionKindRoundTrips() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "relocation-session-kind")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

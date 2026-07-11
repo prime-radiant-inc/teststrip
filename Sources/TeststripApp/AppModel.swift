@@ -7499,7 +7499,16 @@ public final class AppModel {
             guard enqueuedCount < Self.pendingMetadataSyncRecoveryBatchSize else {
                 break
             }
-            let asset = try catalog.repository.asset(id: pendingItem.assetID)
+            // A pending row whose asset is gone (trashed, or a historic orphan)
+            // must not abort the scan — this runs during AppModel.load, where a
+            // thrown notFound is fatal. Drop the dangling row and move on.
+            let asset: Asset
+            do {
+                asset = try catalog.repository.asset(id: pendingItem.assetID)
+            } catch CatalogError.notFound {
+                try catalog.repository.deleteMetadataSyncState(assetID: pendingItem.assetID)
+                continue
+            }
             guard canAutomaticallyRetryMetadataSync(for: asset, sidecarURL: pendingItem.sidecarURL) else {
                 continue
             }
@@ -10016,49 +10025,16 @@ public final class AppModel {
     }
 
     public func rejectRelocationPreflight(destinationFolder: URL) throws -> RejectRelocationPreflight {
-        guard let catalog else {
-            throw TeststripError.invalidState("app model has no catalog")
-        }
-        let scopeIDs = try currentAssetScopeIDs(repository: catalog.repository)
-        let rejectIDs = try catalog.repository.assetIDs(
-            ids: scopeIDs,
-            matching: SetQuery(predicates: [.flag(.reject)])
-        )
-        let sidecarStore = XMPSidecarStore()
-        let destinationRootPath = destinationFolder.standardizedFileURL.path
-        var movableAssetIDs: [AssetID] = []
-        var movableOriginalURLs: [URL] = []
-        var sidecarCount = 0
-        var totalByteCount: Int64 = 0
-        var unavailableCount = 0
-        var alreadyInDestinationCount = 0
-        for assetID in rejectIDs {
-            let asset = try catalog.repository.asset(id: assetID)
-            guard FileManager.default.fileExists(atPath: asset.originalURL.path) else {
-                unavailableCount += 1
-                continue
-            }
-            if asset.originalURL.standardizedFileURL.path.hasPrefix(destinationRootPath + "/") {
-                alreadyInDestinationCount += 1
-                continue
-            }
-            movableAssetIDs.append(assetID)
-            movableOriginalURLs.append(asset.originalURL)
-            totalByteCount += Self.fileByteCount(at: asset.originalURL)
-            if let sidecarURL = sidecarStore.existingSidecarURL(forOriginalAt: asset.originalURL) {
-                sidecarCount += 1
-                totalByteCount += Self.fileByteCount(at: sidecarURL)
-            }
-        }
-        let plans = RejectRelocationPlanner(destinationRoot: destinationFolder).plan(originals: movableOriginalURLs)
+        let scope = try rejectRelocationScope(destinationFolder: destinationFolder)
+        let plans = RejectRelocationPlanner(destinationRoot: destinationFolder).plan(originals: scope.originalURLs)
         return RejectRelocationPreflight(
-            assetIDs: movableAssetIDs,
-            originalURLs: movableOriginalURLs,
+            assetIDs: scope.assetIDs,
+            originalURLs: scope.originalURLs,
             plans: plans,
-            sidecarCount: sidecarCount,
-            totalByteCount: totalByteCount,
-            unavailableCount: unavailableCount,
-            alreadyInDestinationCount: alreadyInDestinationCount,
+            sidecarCount: scope.sidecarCount,
+            totalByteCount: scope.totalByteCount,
+            unavailableCount: scope.unavailableCount,
+            alreadyInDestinationCount: scope.alreadyInDestinationCount,
             destinationFolder: destinationFolder
         )
     }
@@ -10069,6 +10045,35 @@ public final class AppModel {
     /// originals. `plans` carries identity from/to pairs — trash mode doesn't
     /// plan a destination path, `moveRejectsToTrash` only reads `originalFrom`.
     public func rejectRelocationTrashPreflight() throws -> RejectRelocationPreflight {
+        let scope = try rejectRelocationScope(destinationFolder: nil)
+        let plans = scope.originalURLs.map { RejectRelocationPlan(originalFrom: $0, originalTo: $0) }
+        return RejectRelocationPreflight(
+            assetIDs: scope.assetIDs,
+            originalURLs: scope.originalURLs,
+            plans: plans,
+            sidecarCount: scope.sidecarCount,
+            totalByteCount: scope.totalByteCount,
+            unavailableCount: scope.unavailableCount,
+            alreadyInDestinationCount: 0,
+            destinationFolder: RejectRelocationPreflight.trashDisplayFolder,
+            mode: .trash
+        )
+    }
+
+    private struct RejectRelocationScope {
+        var assetIDs: [AssetID] = []
+        var originalURLs: [URL] = []
+        var sidecarCount = 0
+        var totalByteCount: Int64 = 0
+        var unavailableCount = 0
+        var alreadyInDestinationCount = 0
+    }
+
+    /// Counts the rejects in the current scope that can be moved: on-disk
+    /// originals plus their sidecar/byte totals. `destinationFolder` (folder
+    /// mode) additionally excludes originals already under the destination;
+    /// trash mode passes nil — the Trash can't already contain a catalog file.
+    private func rejectRelocationScope(destinationFolder: URL?) throws -> RejectRelocationScope {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
@@ -10078,37 +10083,28 @@ public final class AppModel {
             matching: SetQuery(predicates: [.flag(.reject)])
         )
         let sidecarStore = XMPSidecarStore()
-        var movableAssetIDs: [AssetID] = []
-        var movableOriginalURLs: [URL] = []
-        var sidecarCount = 0
-        var totalByteCount: Int64 = 0
-        var unavailableCount = 0
+        let destinationRootPath = destinationFolder?.standardizedFileURL.path
+        var scope = RejectRelocationScope()
         for assetID in rejectIDs {
             let asset = try catalog.repository.asset(id: assetID)
             guard FileManager.default.fileExists(atPath: asset.originalURL.path) else {
-                unavailableCount += 1
+                scope.unavailableCount += 1
                 continue
             }
-            movableAssetIDs.append(assetID)
-            movableOriginalURLs.append(asset.originalURL)
-            totalByteCount += Self.fileByteCount(at: asset.originalURL)
+            if let destinationRootPath,
+               asset.originalURL.standardizedFileURL.path.hasPrefix(destinationRootPath + "/") {
+                scope.alreadyInDestinationCount += 1
+                continue
+            }
+            scope.assetIDs.append(assetID)
+            scope.originalURLs.append(asset.originalURL)
+            scope.totalByteCount += Self.fileByteCount(at: asset.originalURL)
             if let sidecarURL = sidecarStore.existingSidecarURL(forOriginalAt: asset.originalURL) {
-                sidecarCount += 1
-                totalByteCount += Self.fileByteCount(at: sidecarURL)
+                scope.sidecarCount += 1
+                scope.totalByteCount += Self.fileByteCount(at: sidecarURL)
             }
         }
-        let plans = movableOriginalURLs.map { RejectRelocationPlan(originalFrom: $0, originalTo: $0) }
-        return RejectRelocationPreflight(
-            assetIDs: movableAssetIDs,
-            originalURLs: movableOriginalURLs,
-            plans: plans,
-            sidecarCount: sidecarCount,
-            totalByteCount: totalByteCount,
-            unavailableCount: unavailableCount,
-            alreadyInDestinationCount: 0,
-            destinationFolder: RejectRelocationPreflight.trashDisplayFolder,
-            mode: .trash
-        )
+        return scope
     }
 
     private static func fileByteCount(at url: URL) -> Int64 {
@@ -10245,6 +10241,9 @@ public final class AppModel {
             if rejectRelocationAbortRequested { break }
             do {
                 let assetSnapshot = try catalog.repository.asset(id: assetID)
+                // Person links live outside the asset row and are removed with
+                // it; capture them so Move Back is a true undo.
+                let personIDs = try catalog.repository.personIDs(assetID: assetID)
                 let result = try service.trash(originalFrom: plan.originalFrom, recycler: recycler)
                 try catalog.repository.deleteAsset(id: assetID)
                 try catalog.previewCache.deleteAll(for: assetID)
@@ -10255,7 +10254,8 @@ public final class AppModel {
                         originalTo: result.originalTo,
                         sidecarFrom: result.sidecarFrom,
                         sidecarTo: result.sidecarTo,
-                        assetSnapshot: assetSnapshot
+                        assetSnapshot: assetSnapshot,
+                        personIDs: personIDs
                     ),
                     sessionID: sessionID
                 )
@@ -10323,8 +10323,18 @@ public final class AppModel {
                     if let assetSnapshot = entry.assetSnapshot {
                         // Trash-mode entry: the catalog row was removed when the
                         // asset was trashed, so restore re-inserts it verbatim
-                        // (same asset ID and metadata) rather than repointing it.
+                        // (same asset ID and metadata) rather than repointing it,
+                        // along with the person assignments captured at trash
+                        // time. A person deleted since then is reported, not a
+                        // reason to fail the asset's restore.
                         try catalog.repository.upsert(assetSnapshot)
+                        for personID in entry.personIDs {
+                            do {
+                                try catalog.repository.assignAssets([entry.assetID], toPersonID: personID)
+                            } catch {
+                                errorMessage = error.localizedDescription
+                            }
+                        }
                     } else {
                         try catalog.repository.relocateOriginal(assetID: entry.assetID, to: entry.originalFrom)
                     }
