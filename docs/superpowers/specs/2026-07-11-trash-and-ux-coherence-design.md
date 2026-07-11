@@ -102,7 +102,8 @@ don't") and a coherent icon/button/label design language.
 - **Import** stays the sole prominent button in Library. "Find Best Shots"
   and "Cull" toolbar buttons move into the Culling menu only (they're verbs,
   already there) — the toolbar keeps Import, the view toggle, search, sort,
-  Activity. The "More" ellipsis menu absorbs Reconnect Sources and the
+  Activity — and the Cull button (Task 8 adjudication: its zero-selection
+  whole-scope naming popover has no other reachable route). The "More" ellipsis menu absorbs Reconnect Sources and the
   auto-cull toggle unchanged.
 - **Footer:** count + selection cluster left; density + zoom right
   (unchanged); "Load Previous/More" render only when the respective page
