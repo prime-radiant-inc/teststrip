@@ -46,6 +46,32 @@ public struct RejectRelocationService: Sendable {
         )
     }
 
+    /// Trashes a reject original and its adjacent XMP sidecar (if any) via the
+    /// injected `Recycler`, rolling the sidecar back out of the trash if the
+    /// original's trash fails so a partial run never orphans a sidecar. A
+    /// missing sidecar is not an error — it's simply not trashed.
+    public func trash(originalFrom: URL, recycler: Recycler) throws -> RejectRelocationMoveResult {
+        let sidecarFrom = sidecarStore.existingSidecarURL(forOriginalAt: originalFrom)
+        var sidecarTo: URL?
+        if let sidecarFrom {
+            sidecarTo = try recycler.trash(sidecarFrom)
+        }
+        do {
+            let originalTo = try recycler.trash(originalFrom)
+            return RejectRelocationMoveResult(
+                originalFrom: originalFrom,
+                originalTo: originalTo,
+                sidecarFrom: sidecarFrom,
+                sidecarTo: sidecarTo
+            )
+        } catch {
+            if let sidecarFrom, let sidecarTo {
+                try? FileManager.default.moveItem(at: sidecarTo, to: sidecarFrom)
+            }
+            throw error
+        }
+    }
+
     public func moveBack(_ entry: RelocationManifestEntry) throws {
         try createDirectory(at: entry.originalFrom.deletingLastPathComponent())
         if let sidecarTo = entry.sidecarTo, let sidecarFrom = entry.sidecarFrom,
