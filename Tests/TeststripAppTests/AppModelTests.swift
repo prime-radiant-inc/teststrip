@@ -2479,6 +2479,46 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.totalAssetCount, 1)
     }
 
+    // persona-1 Maya: "Filter chips lied to me" — applying the Pick chip
+    // while a cull session's explicit-ID scope (AssetSet.manual) was active
+    // left the grid unchanged. reload()'s explicit-scope branch bypassed
+    // flagFilter entirely; it must narrow within the scoped set instead of
+    // ignoring the filter.
+    func testFlagFilterNarrowsWithinExplicitAssetSetScope() throws {
+        let directory = try makeTemporaryDirectory(named: "flag-filter-explicit-scope")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let picked = makeAsset(id: "scope-picked", path: "/Photos/scope-picked.jpg", rating: 0, flag: .pick)
+        let rejected = makeAsset(id: "scope-rejected", path: "/Photos/scope-rejected.jpg", rating: 0, flag: .reject)
+        let undecided = makeAsset(id: "scope-undecided", path: "/Photos/scope-undecided.jpg", rating: 0)
+        try repository.upsert([picked, rejected, undecided])
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        let set = AssetSet.manual(
+            id: AssetSetID(rawValue: "cull-session-scope"),
+            name: "Cull Session",
+            assetIDs: [picked.id, rejected.id, undecided.id]
+        )
+        model.savedAssetSets = [set]
+        model.selectedAssetSetID = set.id
+        try model.reload()
+        XCTAssertEqual(Set(model.assets.map(\.id)), [picked.id, rejected.id, undecided.id])
+
+        model.flagFilter = .pick
+        try model.reload()
+
+        XCTAssertEqual(model.assets.map(\.id), [picked.id])
+        XCTAssertEqual(model.totalAssetCount, 1)
+    }
+
     func testSelectingAssetLoadsPendingMetadataSyncOutsideStateSample() throws {
         let directory = try makeTemporaryDirectory(named: "selected-pending-xmp-outside-sample")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

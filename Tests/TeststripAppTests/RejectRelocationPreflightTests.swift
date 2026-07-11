@@ -21,7 +21,13 @@ final class RejectRelocationPreflightTests: XCTestCase {
         XCTAssertEqual(preflight.moveCount, 1)
     }
 
-    func testSheetPresentationDisablesMoveUntilConfirmed() {
+    // Disabled-furniture trap (persona-1 Maya, "THE WALL"): a primary button
+    // that's silently disabled until a checkbox is ticked reads as dead —
+    // AXPress and real clicks alike appear to do nothing. The primary stays
+    // enabled whenever there are movable files; the confirm toggle gates the
+    // *action* (LibraryGridView shows an inline error if pressed unconfirmed),
+    // not the button's enabled state.
+    func testSheetPresentationEnablesMoveRegardlessOfConfirmationToggle() {
         let preflight = RejectRelocationPreflight(
             assetIDs: [AssetID(rawValue: "a")],
             originalURLs: [URL(fileURLWithPath: "/Shoot/a.cr2")],
@@ -35,7 +41,7 @@ final class RejectRelocationPreflightTests: XCTestCase {
             alreadyInDestinationCount: 0,
             destinationFolder: URL(fileURLWithPath: "/Rejects", isDirectory: true)
         )
-        XCTAssertFalse(RejectRelocationSheetPresentation(preflight: preflight, isConfirmed: false).isMoveEnabled)
+        XCTAssertTrue(RejectRelocationSheetPresentation(preflight: preflight, isConfirmed: false).isMoveEnabled)
         XCTAssertTrue(RejectRelocationSheetPresentation(preflight: preflight, isConfirmed: true).isMoveEnabled)
         XCTAssertEqual(RejectRelocationSheetPresentation(preflight: preflight, isConfirmed: true).destinationPreviewRows, ["a.cr2"])
     }

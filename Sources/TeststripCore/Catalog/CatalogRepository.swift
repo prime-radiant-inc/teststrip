@@ -256,7 +256,11 @@ public final class CatalogRepository {
         }
     }
 
-    public func assets(ids: [AssetID], limit: Int, offset: Int = 0) throws -> [Asset] {
+    // `flag` narrows an explicit-ID scope (e.g. an active cull session) by
+    // the flag-filter chip; without it the chip silently had no effect
+    // whenever a session's explicit scope was active (persona-1 Maya:
+    // "Filter chips lied to me").
+    public func assets(ids: [AssetID], flag: PickFlag? = nil, limit: Int, offset: Int = 0) throws -> [Asset] {
         guard limit > 0 else { return [] }
         var skippedAssetCount = 0
         var loadedAssets: [Asset] = []
@@ -272,6 +276,7 @@ public final class CatalogRepository {
             }
             for id in chunk {
                 guard let asset = assetsByID[id] else { continue }
+                if let flag, asset.metadata.flag != flag { continue }
                 if skippedAssetCount < offset {
                     skippedAssetCount += 1
                     continue
@@ -292,7 +297,10 @@ public final class CatalogRepository {
         return AssetID(rawValue: id)
     }
 
-    public func assetCount(ids: [AssetID]) throws -> Int {
+    public func assetCount(ids: [AssetID], flag: PickFlag? = nil) throws -> Int {
+        if let flag {
+            return try assetCount(ids: ids, flag: flag)
+        }
         var count = 0
         for chunk in Self.chunks(ids, size: 500) {
             let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
