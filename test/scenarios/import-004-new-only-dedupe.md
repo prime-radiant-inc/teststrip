@@ -58,8 +58,13 @@ folder, and never drops a distinct frame that merely shares a hash prefix.
   silent-drop class; report immediately). Quote `A1`, `M`, `A2`.
 - Step 3 completion panel: reports N already-cataloged/matched. **Fails if** it
   claims 0 matched while the count math says otherwise (UI/So disagree).
-- Step 5: `A3 == A2 + N` — with import-new-only OFF, the duplicates re-import as
-  intentional copies. **Fails if** they were still skipped (toggle ignored).
+- Step 5: `A3 == A2 + (N + M)` — with import-new-only OFF, *every* file in
+  CARD2 (both the N frames shared with CARD1 and the M frames already
+  cataloged from step 3) re-imports as an intentional copy; toggling dedupe
+  off skips nothing regardless of what's already cataloged. (Not `A2 + N`:
+  by step 5 all N+M CARD2 files are already in the catalog, not just the N
+  shared ones, so the whole CARD2 folder — N+M files — re-imports.) **Fails
+  if** any of CARD2's files were still skipped (toggle ignored).
 
 ## Cleanup
 ```bash

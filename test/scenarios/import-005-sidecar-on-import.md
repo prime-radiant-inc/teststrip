@@ -10,8 +10,11 @@ the sidecar's metadata into the catalog
 whose sidecar now disagrees with catalog metadata that changed in between
 produces a `metadata_sync_state` row with `status='conflict'`
 (`MetadataSyncPlanner.swift:42-47`, recorded via
-`repository.recordMetadataSyncConflict`, `IngestService.swift:227-233`) — not
-a silent pick of either side; (c) an **unparsable/corrupt sidecar** flags only
+`repository.recordMetadataSyncConflict`, `IngestService.swift:227-233`) —
+**not currently reachable through user gestures alone** (see the (b) rewrite
+below and the Sharp edges note); this card instead exercises the two
+behaviors a re-import of already-cataloged content actually produces under
+new-only ON (default) vs OFF; (c) an **unparsable/corrupt sidecar** flags only
 that one asset as a conflict
 (`IngestService.swift:173-186`: the catch block routes an unparsable sidecar
 into `sidecarConflicts` rather than rethrowing) while the rest of the batch
@@ -80,30 +83,45 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    sqlite3 "$DB" "SELECT status FROM metadata_sync_state WHERE asset_id = (SELECT id FROM assets WHERE original_path = '$FIXTURE/valid-frame.jpg');"
    ```
 
-### (b) Conflicting second import produces a conflict record, not a silent pick
+### (b) Re-importing already-cataloged content with an out-of-band sidecar edit
+Confirmed unreachable as originally written (see Sharp edges): the app's own
+metadata writes immediately mirror to the sidecar and re-sync
+`lastSynced`/`catalog_generation` at write time, so a re-import can never
+observe *both* "catalog changed since last sync" AND "sidecar changed since
+last sync" through this recipe — `localChanged` is always false by the time
+the sidecar edit is picked up. This sub-scenario instead exercises the two
+behaviors that a re-import of already-cataloged content actually produces,
+gated by the **import-new-only** toggle:
+
 4. **Change the catalog side** of `valid-frame.jpg`'s metadata through the
-   app (not the sidecar) so the catalog and the about-to-be-reimported
-   sidecar diverge — e.g. rate it differently via the inspector
+   app (not the sidecar) — e.g. rate it differently via the inspector
    (`ax_drive.sh press --role AXButton --help "Rate 2"` with the asset
-   selected). This bumps `catalog_generation` past what `metadata_sync_state`
-   last recorded, satisfying `MetadataSyncPlanner`'s `localChanged` branch
-   (`Sources/TeststripCore/Metadata/MetadataSyncPlanner.swift:29`).
+   selected). This write immediately mirrors to the sidecar and updates
+   `lastSynced` (confirmed live 2026-07-10).
 5. **Change the sidecar out-of-band** to a third, different rating (not the
    original 5, not the step-4 rating):
    ```bash
    sed -i '' 's/Rating="5"/Rating="1"/' "$FIXTURE/valid-frame.jpg.xmp"
    ```
-6. **Re-import the same folder** (re-ingest `valid-frame.jpg` at its
-   unchanged `original_path`, so `existingAsset != nil` and `lastSynced` is
-   populated from step 3's fold — the precondition for the `conflict` branch
-   at `MetadataSyncPlanner.swift:42-47`, not the "brand new asset" branch at
-   line 25 which always folds unconditionally):
+6a. **Re-import with import-new-only ON (the default)**:
    ```bash
    script/submit_import_path.sh Teststrip "$FIXTURE"
    ```
-7. Ground-truth:
+   `.skipCatalogedContent` early-continues before the sidecar is even
+   examined (`IngestService.swift:102-121`) — ground-truth:
    ```bash
-   sqlite3 "$DB" "SELECT status, sidecar_path FROM metadata_sync_state WHERE asset_id = (SELECT id FROM assets WHERE original_path = '$FIXTURE/valid-frame.jpg');"
+   sqlite3 "$DB" "SELECT status FROM metadata_sync_state WHERE asset_id = (SELECT id FROM assets WHERE original_path = '$FIXTURE/valid-frame.jpg');"
+   sqlite3 "$DB" "SELECT metadata_json FROM assets WHERE original_path = '$FIXTURE/valid-frame.jpg';"
+   ```
+6b. **Re-import with import-new-only OFF** (toggle off in the confirmation
+   sheet, same folder): the planner now runs and folds the sidecar
+   (`.importSidecar`, unconditional overwrite — not `.conflict`, since
+   `localChanged` is false per the note above):
+   ```bash
+   script/submit_import_path.sh Teststrip "$FIXTURE"
+   ```
+   ```bash
+   sqlite3 "$DB" "SELECT status FROM metadata_sync_state WHERE asset_id = (SELECT id FROM assets WHERE original_path = '$FIXTURE/valid-frame.jpg');"
    sqlite3 "$DB" "SELECT metadata_json FROM assets WHERE original_path = '$FIXTURE/valid-frame.jpg';"
    ```
 
@@ -124,17 +142,26 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   `metadata_sync_state` row with status `'conflict'` for this asset). **Fails
   if** the catalog metadata is empty/default (the fold never happened) or a
   conflict was recorded for a first-time import.
-- (b) Step 7: `metadata_sync_state.status = 'conflict'` for
-  `valid-frame.jpg`'s asset, and `assets.metadata_json` still reflects
-  whatever the catalog held *before* the reimport (step 4's rating), not the
-  sidecar's step-5 value and not silently the sidecar's value either.
-  **Fails if** no conflict row exists (the divergence was silently resolved
-  one way or the other — the exact bug class this scenario exists to catch),
-  or if `metadata_json` changed to the sidecar's un-reconciled value (a
-  silent sidecar-wins resolution, which the code path explicitly avoids by
-  leaving `metadata` unmodified in the `.conflict` branch,
-  `IngestService.swift:158-172` only reassigns `metadata` in the
-  `.importSidecar` case).
+- (b) Step 6a (new-only ON, default): `metadata_sync_state.status` stays
+  `'synced'` and `metadata_json` still shows the step-4 rating (2) — the
+  sidecar's step-5 edit (rating 1) is never examined. **Fails if** the status
+  changed to `'conflict'` or the rating changed (would mean
+  `.skipCatalogedContent` stopped early-continuing, a different bug).
+- (b) Step 6b (new-only OFF): `metadata_sync_state.status` stays `'synced'`
+  and `metadata_json` now shows the sidecar's step-5 rating (1) — an
+  unconditional fold, not a conflict record. **Fails if** `status` becomes
+  `'conflict'` (would mean `localChanged` was somehow true, contradicting the
+  write-time re-sync this sub-scenario documents) or the rating didn't
+  change (the fold didn't run).
+- **Product gap, not a card failure**: neither 6a nor 6b ever produces
+  `metadata_sync_state.status = 'conflict'` for this recipe. Out-of-band
+  sidecar edits/corruption on already-synced content are invisible to the
+  app — new-only ON never looks at the sidecar again, and new-only OFF
+  silently overwrites the catalog with the sidecar's value with no dual-
+  divergence detection. There is no UI-reachable rescan trigger that stages
+  the `(localChanged, sidecarChanged)` = `(true, true)` conflict branch; see
+  `activity-006-xmp-lifecycle.md` sub-case A/B (same finding, confirmed twice)
+  for the cross-referenced product gap.
 - (c) Step 8: all three of `valid-frame.jpg`, `corrupt-frame.jpg`, and
   `plain-frame.jpg` appear as cataloged assets — the corrupt sidecar did not
   abort the batch. `corrupt-frame.jpg`'s `metadata_sync_state.status` is
@@ -151,19 +178,23 @@ rm -rf "$FIXTURE" /tmp/import-005-valid.xmp /tmp/import-005-corrupt.xmp
 Quit the launched instance.
 
 ## Sharp edges
-- **Sub-scenario (b) cannot be produced on a first-time import.**
+- **Sub-scenario (b) cannot be produced on a first-time import**, and — per a
+  2026-07-10 live run — **not through a same-content re-import either.**
   `MetadataSyncPlanner.decision` (`MetadataSyncPlanner.swift:24-25`) always
-  returns `.importSidecar` unconditionally when `lastSynced == nil` — which
-  is true for every brand-new asset (`IngestService.swift:146-149`:
-  `catalogGeneration = 1; lastSynced = nil`). A conflict is only reachable on
-  a *re*-import of an asset the catalog already knows, whose catalog
-  metadata changed since the last recorded sync generation AND whose sidecar
-  also changed. A card that tries to reproduce (b) by hand-writing two
-  disagreeing sidecars before a single first-time import will only ever
-  exercise the unconditional-fold branch and prove nothing — this is the one
-  place this card diverges from a literal reading of the task ("conflicts
-  with something already known") and instead uses the "second import"
-  variant the task explicitly allows.
+  returns `.importSidecar` unconditionally when `lastSynced == nil`, true for
+  every brand-new asset. The conflict branch instead needs
+  `(localChanged, sidecarChanged) = (true, true)` on a re-import. But every
+  in-app metadata write immediately mirrors to the sidecar and updates
+  `lastSynced`/`catalog_generation` at write time (verified live: rating
+  `valid-frame.jpg` via the inspector both wrote `metadata_json` and re-synced
+  `lastSynced` in the same gesture) — so by the time a re-import runs,
+  `localChanged` is always false, and dual divergence can never be staged
+  through user gestures alone; there is no UI-reachable rescan trigger that
+  would re-evaluate `localChanged` against a stale `lastSynced` (cross-ref
+  `activity-006-xmp-lifecycle.md`). The steps above were rewritten to assert
+  the two behaviors that a re-import of already-cataloged content actually
+  produces (silently-ignored sidecar edit under new-only ON; unconditional
+  fold under new-only OFF) rather than an unreachable conflict.
 - **No dedicated conflict table.** There is no `xmp_conflicts` or
   `sidecar_conflicts` table in the schema
   (`Sources/TeststripCore/Catalog/CatalogMigrations.swift`) — conflicts are
@@ -198,4 +229,4 @@ seeded `--smoke` catalog the same day (schema per
 (filtered by `original_path` under a fixture folder) were not run against a
 populated fixture import since that requires a live app to drive the ingest.
 Needs a human-present or console-unlocked re-run to actually drive Steps 2,
-4, and 6 and confirm the fixtures parse/conflict as predicted.
+4, and 6a/6b and confirm the fixtures behave as predicted.
