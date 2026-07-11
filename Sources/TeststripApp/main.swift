@@ -64,6 +64,10 @@ struct TeststripApplication: App {
             height: AppWindowLayoutMetrics.defaultHeight
         )
         .commands {
+            // Teststrip is single-window/single-catalog: suppress AppKit's
+            // default File > New Window item (⌘N), which would otherwise
+            // mint a second window over the same catalog (app-001).
+            CommandGroup(replacing: .newItem) {}
             Group {
                 FileCommands(model: model)
                 WorkspaceCommands(model: model)

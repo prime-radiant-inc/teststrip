@@ -24,8 +24,10 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 2. **One window, split-view scene.** Via System Events, assert `count of
    windows of process "Teststrip"` is 1 and the window contains a sidebar
    (an `AXOutline`/sidebar group) plus a detail area (the grid). ⌘N must not
-   mint a second catalog window (press it; window count stays 1 — or if the
-   OS beeps/ignores it, that also passes).
+   mint a second catalog window: press it and assert window count stays
+   exactly 1 (`CommandGroup(replacing: .newItem) {}` in `main.swift` removes
+   the default File > New Window item entirely, so ⌘N has no handler and is a
+   plain no-op — not a beep).
 3. **Env override took effect (item 5).** Ground truth that the running
    instance is using the isolated dir, not Jesse's real catalog:
    ```bash
@@ -58,8 +60,9 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    crash message: it should contain `Unable to open Teststrip catalog:`.
 
 ## Expected
-- Step 2: exactly one window with sidebar+detail. **Fails if** zero windows
-  (check `IOConsoleLocked` first — a locked console mimics this) or multiple.
+- Step 2: exactly one window with sidebar+detail, unchanged by ⌘N. **Fails
+  if** zero windows (check `IOConsoleLocked` first — a locked console mimics
+  this) or window count becomes 2 after ⌘N.
 - Step 3: `$DB` exists with 24 assets; the real catalog untouched. **Fails
   if** the real catalog's mtime changed — the override leaked.
 - Step 4: non-empty AXTitle matching the catalog root name. **Fails if**
