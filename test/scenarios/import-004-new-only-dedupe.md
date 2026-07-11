@@ -38,9 +38,18 @@ folder, and never drops a distinct frame that merely shares a hash prefix.
    sqlite3 "$DB" "SELECT count(*) FROM assets;"                 # call it A1
    sqlite3 "$DB" "SELECT count(DISTINCT content_hash) FROM assets WHERE content_hash IS NOT NULL;"
    ```
-3. **Import CARD2 with import-new-only ON.** Same route; type `CARD2`'s path;
-   confirm the toggle is ON; start; wait for completion. Note the completion
-   panel's "already-cataloged / matched" count.
+3. **Import CARD2 with import-new-only ON.** Same route; type `CARD2`'s path.
+   **Assert the preflight tells the truth before confirming** (persona-7's
+   "Duplicates: 90 new" lie): the confirmation sheet's "Duplicates" line must
+   read "M new · N already in catalog" — the N shared frames may never be
+   promised as new. Then confirm the toggle is ON; start; wait for
+   completion. Note the completion panel's "already-cataloged / matched"
+   count.
+3b. **Re-open the confirmation sheet for CARD2 after it fully imported**
+   (same typed path, don't start the import): the "Duplicates" line must now
+   read "0 new · <count> already in catalog" — an all-duplicate re-import
+   must never claim its files as new. Cancel the sheet. **Fails if** the
+   preflight claims any already-cataloged file as new.
 4. **Record the post-CARD2 count**:
    ```bash
    sqlite3 "$DB" "SELECT count(*) FROM assets;"                 # call it A2
@@ -58,6 +67,10 @@ folder, and never drops a distinct frame that merely shares a hash prefix.
   silent-drop class; report immediately). Quote `A1`, `M`, `A2`.
 - Step 3 completion panel: reports N already-cataloged/matched. **Fails if** it
   claims 0 matched while the count math says otherwise (UI/So disagree).
+- Steps 3/3b preflight: the "Duplicates" line's new/already-in-catalog split
+  matches what the importer then actually does. **Fails if** the preflight's
+  "new" count exceeds the rows actually added — the sheet must say what will
+  happen, not scare the user into cancelling (or lull them into importing).
 - Step 5: `A3 == A2 + (N + M)` — with import-new-only OFF, *every* file in
   CARD2 (both the N frames shared with CARD1 and the M frames already
   cataloged from step 3) re-imports as an intentional copy; toggling dedupe

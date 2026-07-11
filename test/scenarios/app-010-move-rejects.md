@@ -53,8 +53,16 @@ exact same path on Move back — per-file atomic, nothing orphaned.
    Expect ≥ 1. (Verify the real column via `.schema assets` first.)
 4. **Move Rejects.** AX-press the toolbar button labeled **"Move Rejects"**.
    With `TESTSTRIP_REJECT_DESTINATION_DIR` set the folder panel is skipped and
-   the destination is `$REJECTS`; a confirmation sheet still appears — AX-confirm
-   it. `waitFor` the **"Move back"** button (AXLabel "Move back", AXHelp "Move
+   the destination is `$REJECTS`; a confirmation sheet still appears.
+   **Assert the confirm gate before confirming** (persona-7's ghost button):
+   the primary "Move N reject photo(s) to <folder>" button must AX-report
+   **disabled** (AXEnabled false) while the confirm checkbox is unchecked,
+   and a standing hint "Check the box above to enable “<primary title>”."
+   must be present in the AX tree. Toggle the checkbox on — the hint
+   disappears and the primary becomes enabled — then AX-press it.
+   **Fails if** the primary reports enabled while unchecked (an AXPress that
+   silently does nothing is the exact regression this guards), or the hint
+   is missing while unchecked. `waitFor` the **"Move back"** button (AXLabel "Move back", AXHelp "Move
    these photos back to where they came from") — this is the completion
    banner's only AX-exposed static content; the banner's own "Reject
    relocation complete" string is set as its *container* accessibilityLabel

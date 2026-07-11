@@ -15,7 +15,13 @@ version gate: only `version == 1` loads (23); the defaults key is
 per-catalog-root: `SessionRestoreState.<catalog root path>` (24); nil
 defaults disables restore — unit-test-only, not driven here (25);
 `autopilotEnabled`/`defaultCreator`/`defaultCopyright` persist separately
-under their own keys (26).
+under their own keys (26). Also covered: completion banners/panels are
+session-scoped — the import-completion panel derives from the persisted
+work history, but only auto-shows for activities recorded live in the
+current session (`AppModel.isCurrentSessionActivity`,
+`LibraryGridChromePolicy.shouldShowImportCompletionSummary`), so a relaunch
+must never resurrect the previous session's completion panel as a zombie
+(persona-7); the work stays reachable via Recent Work.
 
 ## Pre-state
 Run in the Tart VM — this card requires a quit/relaunch cycle against the
@@ -67,6 +73,12 @@ shell with `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=$RUN` — do NOT call
    half-restoring.
 9. **Version gate (item 23).** Repeat with `"version":2` and a valid view.
    Relaunch: state discarded, defaults again.
+10. **No zombie completion panels across relaunch.** Run an import (any
+   route; the typed-path route avoids native panels), wait for the
+   import-completion panel to appear, then quit without dismissing it and
+   relaunch against the same `$RUN`. The completion panel must NOT reappear
+   (`ax find` for its "Import complete" title fails), while the import
+   itself remains listed under Recent Work.
 
 ## Expected
 - Step 4: the per-catalog-root key exists with version 1 and the exact
@@ -75,6 +87,9 @@ shell with `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=$RUN` — do NOT call
 - Step 5: all five facets restore. **Fails if** any one (view, search,
   selection, sort, set scope) silently resets — quote which.
 - Step 6: relaunch never lands in a cull view. **Fails if** it does.
+- Step 10: no completion panel after relaunch, import still in Recent Work.
+  **Fails if** the pre-quit completion panel resurrects on relaunch (the
+  persona-7 zombie) — even though its work session is persisted.
 - Steps 7-9: `"search"` lands on grid; unknown rawValue and version≠1 both
   yield a clean default launch with no crash and no partial restore.
   **Fails if** the app crashes on a corrupt blob (restore must be

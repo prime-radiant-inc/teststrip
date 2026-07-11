@@ -20,6 +20,15 @@ inside one of the auto-grouped stacks; otherwise it falls back to `"N
 frame(s)"` (plural handling per `CullFilmstripPresentation.positionText`
 line 33).
 
+**Frame numbers are catalog-wide in the unscoped view.** When the cull
+scope is All and the catalog exceeds one 120-asset page, the caption's frame
+number and total come from the page offset and `model.totalAssetCount`
+(`frameNumberOffset`/`totalFrameCount` on `CullFilmstripPresentation`), so
+it agrees with the header's "Frame X of Y" — assert the caption's total
+equals `SELECT count(*) FROM assets`, never the loaded-page size (the
+persona-7 "frame 1 / 120 vs Frame 1 of 130" drift). Scoped views
+(picks/rejects/unrated) stay scope-local by design.
+
 **Stack grouping is auto-derived, not the persisted `asset_sets` rows.** The
 filmstrip's stacks come from `model.allCullingStacks(for: scopedAssets)` —
 the in-memory `AssetStackBuilder` clustering by capture-time proximity
