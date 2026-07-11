@@ -87,6 +87,20 @@ struct PeopleQueuePresentation: Equatable {
             return .none
         }
     }
+
+    /// Focus after Esc: a review card has nothing to dismiss, so Esc
+    /// advances focus to the next card (wrapping) rather than doing
+    /// nothing. A suggestion card's Esc is handled by `dismissAction()`
+    /// (which removes it), so focus itself does not need to move here.
+    func focusAfterEscape() -> PeopleQueuePresentation {
+        guard let focusedCard else { return self }
+        switch focusedCard.kind {
+        case .suggestion:
+            return self
+        case .review:
+            return movingFocus(.next)
+        }
+    }
 }
 
 enum PeopleQueueConfirmAction: Equatable {

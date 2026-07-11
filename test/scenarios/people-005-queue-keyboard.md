@@ -4,8 +4,10 @@
 unified suggestions+review queue keyboard model and its confirm-before-write
 invariant (Task 21): clamped `focusedIndex` with an accent border, ←→ wrap
 navigation, Return confirms only the focused card (nameable cards open the
-naming sheet without writing), Esc dismisses a suggestion / is a no-op on a
-review card, Space does nothing, and the key monitor guards on key-window +
+naming sheet without writing), Esc dismisses a suggestion / advances focus to
+the next card (wrapping) on a review card since there's nothing to dismiss
+(ruling 2026-07-10, `PeopleQueuePresentation.focusAfterEscape()`), Space does
+nothing, and the key monitor guards on key-window +
 not-an-NSTextView + no-modifiers so a sheet's own Return (Create) isn't
 double-fired. Focus is requested on appear. `person_assets` must not exist
 for a focused card until Return is pressed on it, and all writes happen only

@@ -77,6 +77,7 @@ struct PeopleView: View {
             applyConfirmAction(queue.confirmAction())
         case .dismissFocused:
             applyDismissAction(queue.dismissAction())
+            queueFocusedIndex = queue.focusAfterEscape().focusedIndex
         }
     }
 

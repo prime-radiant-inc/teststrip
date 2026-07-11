@@ -134,6 +134,34 @@ final class PeopleQueuePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.dismissAction(), .none)
     }
 
+    func testEscapeOnFocusedReviewCardAdvancesFocusToNextCardWrapping() {
+        let presentation = PeopleQueuePresentation(
+            suggestionCards: [],
+            reviewCards: [reviewCard("unnamed-faces"), reviewCard("face-quality")],
+            focusedIndex: 0
+        )
+
+        let advanced = presentation.focusAfterEscape()
+
+        XCTAssertEqual(advanced.focusedIndex, 1)
+
+        // Wraps back to 0 from the last card.
+        let wrapped = advanced.focusAfterEscape()
+        XCTAssertEqual(wrapped.focusedIndex, 0)
+    }
+
+    func testEscapeOnFocusedSuggestionCardDoesNotMoveFocus() {
+        // Esc on a suggestion card still dismisses it (via dismissAction());
+        // focus itself doesn't need to move here.
+        let presentation = PeopleQueuePresentation(
+            suggestionCards: [suggestionCard("a"), suggestionCard("b")],
+            reviewCards: [],
+            focusedIndex: 0
+        )
+
+        XCTAssertEqual(presentation.focusAfterEscape().focusedIndex, 0)
+    }
+
     // MARK: - Negative-invariant integration: only Return-routed confirms write
 
     private func makeFaceSuggestionModel(
