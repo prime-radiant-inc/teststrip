@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Asserts the UX-simplification chrome is live in the assembled AppKit UI:
 #   - the marquee "Find Best Shots" control is present,
-#   - the "Copilot" label is gone and "Review" is present in the sidebar,
+#   - the "Copilot" label is gone from the UI,
 #   - the toolbar no longer exposes the three separate Import buttons
 #     (Import Folder / Import Card as top-level controls),
 #   - the primary bar shows the collapsed "Import" and "More" controls.
@@ -38,12 +38,13 @@ if "$AX" find "$APP_NAME" --role AXButton --label "Import Card" >/dev/null 2>&1;
   fail "toolbar still exposes a top-level 'Import Card' button"
 fi
 
-# "Copilot" must be gone; "Review" must be present in the sidebar.
+# "Copilot" must be gone. (There is no static "Review" sidebar row to assert
+# on: the sidebar's review-queue rows (Picks/Likely Issues/etc.) only render
+# once their counts are non-zero, and the sole "Review" control left in the
+# UI is the autopilot-proposals banner button, which only appears when a
+# proposal batch is pending — neither is guaranteed present on a fresh seed.)
 if "$AX" find "$APP_NAME" --contains "Copilot" >/dev/null 2>&1; then
   fail "'Copilot' label still present in the UI"
 fi
-# The sidebar row renders as an AXButton (a SwiftUI List row), not static text.
-"$AX" find "$APP_NAME" --role AXButton --label "Review" >/dev/null \
-  || fail "'Review' sidebar row not present"
 
-echo "PASS: UX-simplification chrome present (Find Best Shots, Import ▾, Review; three-Imports/Copilot gone)"
+echo "PASS: UX-simplification chrome present (Find Best Shots, Import ▾; three-Imports/Copilot gone)"

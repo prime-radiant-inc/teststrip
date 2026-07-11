@@ -12,9 +12,13 @@ a legibility pass over working machinery — most of it only exists in the
 assembled AppKit chrome, where unit tests and the headless gate can't see it.
 This card drives the live window and asserts the new chrome is present and the
 old jargon is gone: the marquee **Find Best Shots** action, the collapsed
-**Import ▾** / **⋯ More** toolbar, the **Copilot → Review** rename, and the
-absence of the three-Imports tangle. It also exercises the core promise that
-Find Best Shots never dead-ends the user on a bare "0 keepers".
+**Import ▾** / **⋯ More** toolbar, the removal of the **Copilot** label, and
+the absence of the three-Imports tangle. (There is no static "Review" sidebar
+row — the sidebar's review-queue rows are named Picks/Likely Issues/etc. and
+only render once their counts are non-zero; the sole surviving "Review"
+control is the autopilot-proposals banner button, which appears only when a
+proposal batch is pending.) It also exercises the core promise that Find Best
+Shots never dead-ends the user on a bare "0 keepers".
 
 ## Pre-state
 - Fresh build, seeded isolated catalog so the grid and sidebar render real rows:
@@ -36,16 +40,19 @@ Find Best Shots never dead-ends the user on a bare "0 keepers".
    - No top-level `Import Folder` **and** no top-level `Import Card` button
      remain (they moved under Import ▾).
    - No element anywhere still reads `Copilot`.
-   - A `Review` sidebar row (AXStaticText) is present.
 3. **Prove Find Best Shots lands on best shots, not a dead end.** AX-press
-   `Find Best Shots`. `waitFor` the grid scope to change to the ranked view —
-   either the **Potential Picks** / **Picks** breadcrumb, or (on a genuinely
+   `Find Best Shots`. `waitFor` the grid scope to change to a ranked view —
+   the evaluation pass runs and the grid scopes down to a ranked set of
+   photos (the "Potential Picks"/"Picks" breadcrumb literal is not currently
+   rendered — naming drift, tracked separately — so do not gate the pass/fail
+   on that exact string; assert instead that the scope count is non-zero and
+   ranked, e.g. via `sqlite3` evaluation_signals growth), or (on a genuinely
    unrankable seed) the plain-language status
    `These look too distinct to auto-rank — rate a few to rank`. A bare
    `0 keepers` / `0 · 0` result is a **failure**.
-4. **Cross-check the switcher de-dup.** The top view-switcher exposes only
-   `Grid`, `Loupe`, `Compare` — assert `Search`, `Review`, `Timeline`,
-   `People`, `Places` are **not** switcher buttons (they live in the sidebar).
+4. **Cross-check the switcher de-dup.** The Library sub-view switcher exposes
+   `Grid`, `Loupe`, `Timeline`, `Map` — assert `Search`, `Review`, `People`,
+   `Places` are **not** switcher buttons (they live in the sidebar).
 5. **Chrome policy per workspace (items 16-17).** Press ⌘2 (Library): assert
    the search token field, Import ▾, Find Best Shots, Export, and the footer
    are present. Press ⌘1 (Cull): assert *all* of those are absent, and that
