@@ -27,7 +27,7 @@ final class SidecarRescanAppTests: XCTestCase {
         XCTAssertEqual(model.pendingMetadataSyncCount, 1)
         XCTAssertEqual(
             model.statusMessage,
-            "1 sidecar changed on disk — queued to re-sync"
+            "Checked 1 sidecar — 1 changed on disk, queued to re-sync"
         )
     }
 
@@ -41,13 +41,54 @@ final class SidecarRescanAppTests: XCTestCase {
         )
 
         let quietSummary = try await model.checkSidecarsForChanges()
-        XCTAssertEqual(quietSummary, SidecarRescanSummary())
+        XCTAssertEqual(quietSummary, SidecarRescanSummary(scannedCount: 1))
         XCTAssertNil(model.statusMessage)
 
         let announcedSummary = try await model.checkSidecarsForChanges(announceWhenUnchanged: true)
-        XCTAssertEqual(announcedSummary, SidecarRescanSummary())
-        XCTAssertEqual(model.statusMessage, "Sidecars match the catalog — no changes found")
+        XCTAssertEqual(announcedSummary, SidecarRescanSummary(scannedCount: 1))
+        XCTAssertEqual(model.statusMessage, "Checked 1 sidecar — no changes")
         XCTAssertNil(try repository.pendingMetadataSyncItem(assetID: assetID))
+    }
+
+    // persona-6 Priya: with the Pick chip still active from an earlier task,
+    // Metadata ▸ Check Sidecars for Changes silently skipped every unpicked
+    // asset — a real out-of-band edit went permanently unnoticed. The menu
+    // command is a catalog-integrity check: it must walk the whole catalog
+    // regardless of the active library filter.
+    @MainActor
+    func testMenuCheckIgnoresActiveLibraryFilterAndFindsEdit() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-rescan-filtered")
+        let (model, repository, sidecarURL, assetID) = try makeModelWithSyncedSidecar(directory: directory)
+        // Active filter that excludes the (unflagged) edited asset.
+        model.flagFilter = .pick
+
+        let editedData = try XMPPacket(metadata: AssetMetadata(rating: 2, caption: "edited by exiftool-sim")).xmlData()
+        try editedData.write(to: sidecarURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(60)],
+            ofItemAtPath: sidecarURL.path
+        )
+
+        await model.checkSidecarsForChangesInCurrentScope()
+
+        XCTAssertNotNil(try repository.pendingMetadataSyncItem(assetID: assetID))
+        XCTAssertEqual(model.statusMessage, "Checked 1 sidecar — 1 changed on disk, queued to re-sync")
+    }
+
+    // The command used to finish in total silence; silence is
+    // indistinguishable from broken. The menu path always reports.
+    @MainActor
+    func testMenuCheckReportsCompletionWhenNothingChanged() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-rescan-report")
+        let (model, _, sidecarURL, _) = try makeModelWithSyncedSidecar(directory: directory)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-3600)],
+            ofItemAtPath: sidecarURL.path
+        )
+
+        await model.checkSidecarsForChangesInCurrentScope()
+
+        XCTAssertEqual(model.statusMessage, "Checked 1 sidecar — no changes")
     }
 
     // MARK: - Fixtures

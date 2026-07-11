@@ -7935,24 +7935,21 @@ public final class AppModel {
             try enqueuePendingMetadataSync()
             statusMessage = Self.sidecarRescanStatusText(summary)
         } else if announceWhenUnchanged {
-            statusMessage = "Sidecars match the catalog — no changes found"
+            statusMessage = Self.sidecarRescanStatusText(summary)
         }
         return summary
     }
 
     /// Metadata ▸ Check Sidecars for Changes: on-demand rescan over the
-    /// current scope's assets.
+    /// whole catalog. Deliberately not filter-scoped — persona-6 Priya's
+    /// still-active Pick chip silently excluded the edited asset and a real
+    /// out-of-band edit went unnoticed; an integrity check must not depend
+    /// on whatever library filters happen to be stacked. Always reports a
+    /// completion summary ("Checked N sidecars — …").
     @MainActor
     public func checkSidecarsForChangesInCurrentScope() async {
         do {
-            guard let catalog else {
-                throw TeststripError.invalidState("app model has no catalog")
-            }
-            let scopeAssetIDs = try currentAssetScopeIDs(repository: catalog.repository)
-            _ = try await checkSidecarsForChanges(
-                scopeAssetIDs: scopeAssetIDs,
-                announceWhenUnchanged: true
-            )
+            _ = try await checkSidecarsForChanges(announceWhenUnchanged: true)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -7967,14 +7964,18 @@ public final class AppModel {
     }
 
     static func sidecarRescanStatusText(_ summary: SidecarRescanSummary) -> String {
+        let checked = "Checked \(summary.scannedCount) sidecar\(summary.scannedCount == 1 ? "" : "s")"
         var parts: [String] = []
         if summary.pendingCount > 0 {
-            parts.append("\(summary.pendingCount) sidecar\(summary.pendingCount == 1 ? "" : "s") changed on disk — queued to re-sync")
+            parts.append("\(summary.pendingCount) changed on disk, queued to re-sync")
         }
         if summary.conflictCount > 0 {
             parts.append("\(summary.conflictCount) conflict\(summary.conflictCount == 1 ? "" : "s")")
         }
-        return parts.joined(separator: " · ")
+        guard !parts.isEmpty else {
+            return "\(checked) — no changes"
+        }
+        return "\(checked) — \(parts.joined(separator: " · "))"
     }
 
     private func enqueuePendingMetadataSync() throws {
