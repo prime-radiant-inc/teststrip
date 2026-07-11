@@ -1435,6 +1435,96 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(try repository.asset(id: assets[2].id).metadata.flag)
     }
 
+    func testBatchKeywordTextAppendsPerAssetDedupedWithoutClobberingOtherAssetsKeywords() throws {
+        let a = makeAsset(id: "kw-batch-a", path: "/Volumes/NAS/Wedding/kw-batch-a.jpg", rating: 0, keywords: ["existing-a"])
+        let b = makeAsset(id: "kw-batch-b", path: "/Volumes/NAS/Wedding/kw-batch-b.jpg", rating: 0, keywords: ["existing-b", "sunset"])
+        let (model, repository) = try makeModelWithCatalogAssets(named: "app-model-batch-keyword-text", assets: [a, b])
+        model.setBatchSelection(a.id, isSelected: true)
+        model.setBatchSelection(b.id, isSelected: true)
+
+        try model.setKeywordTextForSelectedAssets("sunset, new-tag")
+
+        // Appends new-tag to both, sunset only to `a` (already deduped on `b`);
+        // each asset's unrelated existing keyword survives untouched.
+        XCTAssertEqual(try repository.asset(id: a.id).metadata.keywords, ["existing-a", "sunset", "new-tag"])
+        XCTAssertEqual(try repository.asset(id: b.id).metadata.keywords, ["existing-b", "sunset", "new-tag"])
+
+        try model.undoMetadataChange()
+        XCTAssertEqual(try repository.asset(id: a.id).metadata.keywords, ["existing-a"])
+        XCTAssertEqual(try repository.asset(id: b.id).metadata.keywords, ["existing-b", "sunset"])
+    }
+
+    func testBatchKeywordTextStillReplacesForASingleFocusedAsset() throws {
+        // No batch selection active — preserves the pre-existing single-asset
+        // full-replace semantics (e.g. clearing the field clears keywords).
+        let asset = makeAsset(id: "kw-single", path: "/Volumes/NAS/Wedding/kw-single.jpg", rating: 0, keywords: ["old"])
+        let (model, repository) = try makeModelWithCatalogAssets(named: "app-model-single-keyword-text", assets: [asset])
+        model.select(asset.id)
+
+        try model.setKeywordTextForSelectedAssets("")
+
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.keywords, [])
+    }
+
+    func testBatchRemoveKeywordRemovesFromEverySelectedAsset() throws {
+        let a = makeAsset(id: "kw-remove-a", path: "/Volumes/NAS/Wedding/kw-remove-a.jpg", rating: 0, keywords: ["keeper", "travel"])
+        let b = makeAsset(id: "kw-remove-b", path: "/Volumes/NAS/Wedding/kw-remove-b.jpg", rating: 0, keywords: ["keeper"])
+        let (model, repository) = try makeModelWithCatalogAssets(named: "app-model-batch-keyword-remove", assets: [a, b])
+        model.setBatchSelection(a.id, isSelected: true)
+        model.setBatchSelection(b.id, isSelected: true)
+
+        try model.removeKeywordFromSelectedAssets("keeper")
+
+        XCTAssertEqual(try repository.asset(id: a.id).metadata.keywords, ["travel"])
+        XCTAssertEqual(try repository.asset(id: b.id).metadata.keywords, [])
+    }
+
+    func testBatchCaptionCreatorCopyrightOverwriteWholeSelectionInOneUndoGroup() throws {
+        let a = makeAsset(id: "text-batch-a", path: "/Volumes/NAS/Wedding/text-batch-a.jpg", rating: 0)
+        let b = makeAsset(id: "text-batch-b", path: "/Volumes/NAS/Wedding/text-batch-b.jpg", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(named: "app-model-batch-caption-creator-copyright", assets: [a, b])
+        model.setBatchSelection(a.id, isSelected: true)
+        model.setBatchSelection(b.id, isSelected: true)
+
+        try model.setCaptionForSelectedAssets("Fitz Roy sunrise")
+        try model.setCreatorForSelectedAssets("Jesse")
+        try model.setCopyrightForSelectedAssets("Copyright Jesse")
+
+        for assetID in [a.id, b.id] {
+            let metadata = try repository.asset(id: assetID).metadata
+            XCTAssertEqual(metadata.caption, "Fitz Roy sunrise")
+            XCTAssertEqual(metadata.creator, "Jesse")
+            XCTAssertEqual(metadata.copyright, "Copyright Jesse")
+        }
+
+        // Three gestures -> three undo groups, each covering the whole batch.
+        try model.undoMetadataChange()
+        for assetID in [a.id, b.id] {
+            XCTAssertNil(try repository.asset(id: assetID).metadata.copyright)
+        }
+        try model.undoMetadataChange()
+        for assetID in [a.id, b.id] {
+            XCTAssertNil(try repository.asset(id: assetID).metadata.creator)
+        }
+        try model.undoMetadataChange()
+        for assetID in [a.id, b.id] {
+            XCTAssertNil(try repository.asset(id: assetID).metadata.caption)
+        }
+    }
+
+    func testBatchAcceptSuggestedKeywordAppendsToEverySelectedAssetDeduped() throws {
+        let a = makeAsset(id: "suggest-kw-a", path: "/Volumes/NAS/Wedding/suggest-kw-a.jpg", rating: 0)
+        let b = makeAsset(id: "suggest-kw-b", path: "/Volumes/NAS/Wedding/suggest-kw-b.jpg", rating: 0, keywords: ["mountain"])
+        let (model, repository) = try makeModelWithCatalogAssets(named: "app-model-batch-accept-keyword", assets: [a, b])
+        model.setBatchSelection(a.id, isSelected: true)
+        model.setBatchSelection(b.id, isSelected: true)
+
+        try model.acceptSuggestedKeywordForSelectedAssets("mountain")
+
+        XCTAssertEqual(try repository.asset(id: a.id).metadata.keywords, ["mountain"])
+        XCTAssertEqual(try repository.asset(id: b.id).metadata.keywords, ["mountain"])
+    }
+
     @MainActor
     func testRequestBatchMetadataSheetBumpsTokenForTheView() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-batch-meta-token")

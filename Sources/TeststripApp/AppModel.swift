@@ -6032,10 +6032,43 @@ public final class AppModel {
         }
     }
 
+    /// Batch keywords/caption/creator/copyright across the whole grid
+    /// multi-selection when one is active, otherwise the single focused
+    /// asset — the Describe panel's counterpart to
+    /// `setRatingForSelectedAssets`/`setFlagForSelectedAssets`/
+    /// `setColorLabelForSelectedAssets`. Keyword edits APPEND (dedup per
+    /// asset, so distinct existing keywords on other assets survive);
+    /// caption/creator/copyright OVERWRITE across the batch, matching the
+    /// single-asset field semantics. One undo group per gesture.
+    public func setKeywordTextForSelectedAssets(_ keywordText: String) throws {
+        let parsedKeywords = Self.keywords(from: keywordText)
+        guard currentManualSelectionAssetIDs.count > 1 else {
+            try updateSelectedAssetsMetadata(label: "Keywords") { metadata in
+                metadata.keywords = parsedKeywords
+            }
+            return
+        }
+        try updateSelectedAssetsMetadata(label: "Keywords") { metadata in
+            for keyword in parsedKeywords where !Self.keywordList(metadata.keywords, contains: keyword) {
+                metadata.keywords.append(keyword)
+            }
+        }
+    }
+
     public func removeKeywordFromSelectedAsset(_ keyword: String) throws {
         let key = Self.keywordKey(keyword)
         guard !key.isEmpty else { return }
         try updateSelectedAssetMetadata(label: "Keywords") { metadata in
+            metadata.keywords.removeAll { Self.keywordKey($0) == key }
+        }
+    }
+
+    /// Batch-remove a keyword chip from every selected asset (or the single
+    /// focused asset when no batch is active).
+    public func removeKeywordFromSelectedAssets(_ keyword: String) throws {
+        let key = Self.keywordKey(keyword)
+        guard !key.isEmpty else { return }
+        try updateSelectedAssetsMetadata(label: "Keywords") { metadata in
             metadata.keywords.removeAll { Self.keywordKey($0) == key }
         }
     }
@@ -6049,9 +6082,30 @@ public final class AppModel {
         }
     }
 
+    /// Batch-accept a suggested keyword: appends it to every selected asset
+    /// that doesn't already have it (dedup per asset).
+    public func acceptSuggestedKeywordForSelectedAssets(_ keyword: String) throws {
+        let cleanedKeyword = Self.cleanedKeyword(keyword)
+        guard !cleanedKeyword.isEmpty else { return }
+        try updateSelectedAssetsMetadata(label: "Keywords") { metadata in
+            guard !Self.keywordList(metadata.keywords, contains: cleanedKeyword) else { return }
+            metadata.keywords.append(cleanedKeyword)
+        }
+    }
+
     public func acceptSuggestedCaptionForSelectedAsset(_ caption: String) throws {
         guard let portableCaption = Self.portableCaption(from: caption) else { return }
         try updateSelectedAssetMetadata(label: "Caption") { metadata in
+            guard metadata.caption != portableCaption else { return }
+            metadata.caption = portableCaption
+        }
+    }
+
+    /// Batch-accept a suggested caption: overwrites it across every
+    /// selected asset.
+    public func acceptSuggestedCaptionForSelectedAssets(_ caption: String) throws {
+        guard let portableCaption = Self.portableCaption(from: caption) else { return }
+        try updateSelectedAssetsMetadata(label: "Caption") { metadata in
             guard metadata.caption != portableCaption else { return }
             metadata.caption = portableCaption
         }
@@ -6346,14 +6400,37 @@ public final class AppModel {
         }
     }
 
+    /// Overwrites the caption across every selected asset (or the single
+    /// focused asset when no batch is active) — same overwrite semantics
+    /// as the single-asset field, just widened to the batch.
+    public func setCaptionForSelectedAssets(_ caption: String) throws {
+        try updateSelectedAssetsMetadata(label: "Caption") { metadata in
+            metadata.caption = Self.portableText(from: caption)
+        }
+    }
+
     public func setCreatorForSelectedAsset(_ creator: String) throws {
         try updateSelectedAssetMetadata(label: "Creator") { metadata in
             metadata.creator = Self.portableText(from: creator)
         }
     }
 
+    /// Overwrites the creator across every selected asset.
+    public func setCreatorForSelectedAssets(_ creator: String) throws {
+        try updateSelectedAssetsMetadata(label: "Creator") { metadata in
+            metadata.creator = Self.portableText(from: creator)
+        }
+    }
+
     public func setCopyrightForSelectedAsset(_ copyright: String) throws {
         try updateSelectedAssetMetadata(label: "Copyright") { metadata in
+            metadata.copyright = Self.portableText(from: copyright)
+        }
+    }
+
+    /// Overwrites the copyright across every selected asset.
+    public func setCopyrightForSelectedAssets(_ copyright: String) throws {
+        try updateSelectedAssetsMetadata(label: "Copyright") { metadata in
             metadata.copyright = Self.portableText(from: copyright)
         }
     }

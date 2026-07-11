@@ -1,14 +1,19 @@
-# inspect-005-describe-editing: Describe tab editing controls, draft protection, and the batch-vs-single asymmetry
+# inspect-005-describe-editing: Describe tab editing controls, draft protection, and batch text-field apply
 
 **What this covers**: the Describe tab's authoring surface — rating/flag/
 label buttons (with the multi-select batch note), keyword chip
 add/remove/dedupe via comma-split text, caption/creator/copyright
 commit-on-submit-to-nil semantics, the unsaved-draft protection against a
-concurrent catalog refresh clobbering in-progress keystrokes, and — as its
-own explicit sub-scenario — the asymmetry where rating/flag/label edits
-apply to the whole multi-select batch while keywords/caption/creator/
-copyright edit only the single currently-inspected asset even when multiple
-are selected.
+concurrent catalog refresh clobbering in-progress keystrokes, and — per
+Jesse's ruling (2026-07-10) — keywords/caption/creator/copyright now
+batch-apply across a multi-select exactly like rating/flag/label: keyword
+edits (the Keywords field, chip removal, and "accept suggestion") APPEND
+per asset with per-asset dedup so unrelated existing keywords on other
+selected assets survive; caption/creator/copyright OVERWRITE across the
+whole batch. One undo group covers the whole batch per gesture, following
+`updateSelectedAssetsMetadata`'s existing pattern. Prior to this ruling the
+text fields silently single-asset-applied during a multi-select — that
+asymmetry is now fixed, not merely documented.
 
 ## Pre-state
 ```bash
@@ -99,41 +104,41 @@ SRC_B=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1 OFFS
     commit only touches the caption field via `updateSelectedAssetMetadata`'s
     targeted mutation, not a wholesale overwrite of the asset).
 
-### Batch-vs-single asymmetry (explicit probe)
+### Batch text-field apply (rating parity probe)
 16. In the Library grid, multi-select `$SRC_A` and `$SRC_B` (⌘-click both
     thumbnails). Confirm `model.selectedBatchAssetCount == 2` (indirectly:
-    the "apply to all N selected photos" note should now read "2").
-17. **Batch field**: press "Rate 4" on the Describe tab. Assert **both**
-    `$SRC_A` and `$SRC_B` now show `"rating":4` in `metadata_json` —
-    `setRatingForSelectedAssets` iterates
-    `currentManualSelectionAssetIDs` (`AppModel.swift:6443-6469`,
+    both the rating/flag/label note and the new keywords/caption/creator/
+    copyright note should now read "2").
+17. **Rating (unchanged reference case)**: press "Rate 4" on the Describe
+    tab. Assert **both** `$SRC_A` and `$SRC_B` now show `"rating":4` in
+    `metadata_json` — `setRatingForSelectedAssets` iterates
+    `currentManualSelectionAssetIDs` (`AppModel.swift`,
     `updateSelectedAssetsMetadata`), recording one change group labeled
-    `"Rating · 2 photos"` (`photoCountDescription`, `AppModel.swift:6468-6470`
-    — see inspect-009 for the undo-label assertion in detail).
-18. **Single-asset field**: with the same two-asset multi-select still
-    active, type a caption into the Caption field and submit. Assert
-    **only** the single currently-inspected asset (whichever one the
-    inspector is bound to — confirm which via `model.selectedAsset` /
-    the asset shown in the Info-tab identity header) receives the caption;
-    the other selected asset's `metadata_json.caption` is unchanged.
-    `setCaptionForSelectedAsset` calls `updateSelectedAssetMetadata`
-    (singular, `AppModel.swift:6306-6310` → the `ForSelectedAsset`,
-    not `ForSelectedAssets`, family), which operates on `selectedAssetID`
-    alone, not `currentManualSelectionAssetIDs`.
-19. Document this explicitly: **[ASYMMETRY, by design per the API split]** —
-    rating/flag/label are named `...ForSelectedAssets` (plural,
-    `AppModel.swift:5970-5990`) and batch-apply; keywords/caption/creator/
-    copyright are named `...ForSelectedAsset` (singular,
-    `AppModel.swift:5992-6023`, `6306-6322`) and single-apply. This is
-    visible to the user only via the "apply to all N selected photos" note
-    scoped to the rating/flag/label group (`metadataControls`,
-    `InspectorView.swift:888-905`) — there is **no equivalent note** near
-    the keyword/caption/creator/copyright controls
-    (`portableTextControls`, `InspectorView.swift:1001-1030`) warning that
-    those fields are single-asset-only during a multi-select. From a user's
-    point of view this is a real ambiguity: nothing in the Describe tab UI
-    tells you, while 2 photos are selected, that editing the caption will
-    silently affect only one of them.
+    `"Rating · 2 photos"` (`photoCountDescription` — see inspect-009 for the
+    undo-label assertion in detail).
+18. **Caption/creator/copyright now batch-apply too**: with the same
+    two-asset multi-select still active, type a caption into the Caption
+    field and submit. Assert **both** `$SRC_A` and `$SRC_B` now carry the
+    same caption in `metadata_json` — `setCaptionForSelectedAssets`
+    (`AppModel.swift`) now calls `updateSelectedAssetsMetadata` (plural),
+    overwriting the caption across the whole batch in one undo group.
+    Repeat for Creator and Copyright.
+19. **Keywords now batch-apply with per-asset append+dedup, not overwrite**:
+    ensure `$SRC_A` and `$SRC_B` start with different existing keywords
+    (e.g. seed one with `unique-a`, the other with `unique-b`, via the
+    single-selection Keywords field before re-selecting both). With both
+    selected, type a new keyword (e.g. `both`) into the Keywords field and
+    submit. Assert **both** assets now include `both` in their keyword
+    list, and each asset's prior distinct keyword (`unique-a` / `unique-b`)
+    is still present — `setKeywordTextForSelectedAssets` appends+dedupes
+    per asset when a batch is active rather than overwriting each asset's
+    list with the typed text (that overwrite-on-batch behavior only kicks
+    in for a single-asset selection, matching the field's pre-existing
+    single-asset semantics — see
+    `AppModelTests.testBatchKeywordTextAppendsPerAssetDedupedWithoutClobberingOtherAssetsKeywords`
+    for the exact unit-level assertion). Also confirm: removing a keyword
+    chip while both are selected (`removeKeywordFromSelectedAssets`) removes
+    that keyword from **both** assets.
 
 ## Expected
 - Steps 2-4: rating/flag/label writes land in `metadata_json` exactly as
@@ -158,13 +163,17 @@ SRC_B=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1 OFFS
   externally-set rating survives. **Fails if** committing the draft
   reverts the rating (implies the draft's commit path does a full-metadata
   overwrite instead of a targeted field mutation).
-- Steps 17-18: rating batch-applies to both selected assets; caption applies
-  to only the single inspected asset. **Fails if** the caption also silently
-  batch-applies (contradicts the singular API naming and
-  `updateSelectedAssetMetadata`'s single-asset scoping) — that would in fact
-  be a **more surprising but more consistent** outcome for the user, so
-  confirm the actual observed behavior carefully and report exactly what
-  happened, not what the code suggests should happen.
+- Step 17: rating batch-applies to both selected assets (unchanged reference
+  case). **Fails if** it doesn't.
+- Step 18: caption/creator/copyright now batch-apply (overwrite) to both
+  selected assets in one undo group each. **Fails if** only the single
+  inspected asset is updated — that would mean the ruling's overwrite path
+  regressed back to the old single-asset scoping.
+- Step 19: a batch keyword edit appends the new keyword to every selected
+  asset while leaving each asset's other, distinct keywords untouched — not
+  a wholesale replace of every asset's keyword list with the typed text.
+  **Fails if** either asset loses its pre-existing distinct keyword, or if
+  only one asset receives the new keyword.
 
 ## Cleanup
 ```bash
@@ -172,13 +181,29 @@ SRC_B=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1 OFFS
 ```
 
 ## Sharp edges
-- **[AMBIG asymmetry]**: the batch-vs-single split (step 19) is intentional
-  per the code's method naming and is not flagged anywhere in the UI. This
-  is worth Jesse's attention as a product question, not just a test
-  footnote — a user who multi-selects 5 photos to caption them all at once
-  will silently caption only one, with no error or warning. Flagging here
-  per this card's mandate rather than treating it as a bug to fix
-  unilaterally.
+- **Batch-vs-single asymmetry resolved (2026-07-10 ruling)**: keywords/
+  caption/creator/copyright now batch-apply via new plural
+  `AppModel` methods (`setKeywordTextForSelectedAssets`,
+  `removeKeywordFromSelectedAssets`, `acceptSuggestedKeywordForSelectedAssets`,
+  `acceptSuggestedCaptionForSelectedAssets`, `setCaptionForSelectedAssets`,
+  `setCreatorForSelectedAssets`, `setCopyrightForSelectedAssets`), mirroring
+  the pre-existing `setRatingForSelectedAssets`/`setFlagForSelectedAssets`/
+  `setColorLabelForSelectedAssets` family. The old singular
+  `...ForSelectedAsset` methods still exist unchanged (still used by other
+  callers outside the Describe panel) — only `InspectorView.swift`'s
+  `portableTextControls` was repointed to the plural family. The
+  "Keywords, caption, creator, and copyright apply to all N selected
+  photos" note (`portableTextControls`) now makes the batch behavior
+  visible, closing the UI gap the previous version of this card flagged.
+- Keyword batch semantics are asymmetric by field intent, not a bug: the
+  free-text Keywords field OVERWRITES for a single-asset selection (typing
+  an empty string clears keywords — this is unchanged, existing behavior)
+  but APPENDS+dedupes per asset once 2+ assets are selected
+  (`setKeywordTextForSelectedAssets` branches on
+  `currentManualSelectionAssetIDs.count > 1`). This avoids the far worse
+  failure mode of a batch edit silently wiping every other selected asset's
+  unrelated keywords down to whatever the currently-inspected asset had
+  typed into its field.
 - Step 13's direct-SQL simulation of a concurrent catalog write is a stand-in
   for a real worker write; if a live worker-driven write (e.g. evaluation
   completing and updating suggested keywords) is available as a faster
@@ -194,20 +219,26 @@ SRC_B=$(sqlite3 "$DB" "SELECT original_path FROM assets ORDER BY id LIMIT 1 OFFS
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Wiring confirmed
-statically: `Sources/TeststripApp/InspectorView.swift:888-999`
+statically: `Sources/TeststripApp/InspectorView.swift`
 (`metadataControls`, `ratingButtons`, `flagButtons`, `labelButtons`, the
-batch note), `:1001-1177` (`portableTextControls`, `keywordChips`,
-`metadataTextField` commit wiring), `:1340-1382`
-(`InspectorMetadataDraft.sync(to:)`, the dirty-tracking guard),
-`Sources/TeststripApp/AppModel.swift:5970-5990`
+rating/flag/label batch note; `portableTextControls`, `keywordChips`,
+`metadataTextField` commit wiring, the new keywords/caption/creator/
+copyright batch note), `InspectorMetadataDraft.sync(to:)` (the
+dirty-tracking guard), `Sources/TeststripApp/AppModel.swift`
 (`setRatingForSelectedAssets`/`setFlagForSelectedAssets`/
-`setColorLabelForSelectedAssets`, plural/batch family),
-`:5992-6023,6306-6322` (`setKeywordTextForSelectedAsset`,
-`removeKeywordFromSelectedAsset`, `setCaptionForSelectedAsset`,
-`setCreatorForSelectedAsset`, `setCopyrightForSelectedAsset`, singular/
-single-asset family), `:6420-6470`
-(`updateSelectedAssetMetadata` vs `updateSelectedAssetsMetadata`, the two
-distinct scoping helpers that produce the asymmetry). Needs a human-present
-re-run. All SQL in this card was run headlessly against a seeded --smoke
+`setColorLabelForSelectedAssets` and the new
+`setKeywordTextForSelectedAssets`/`removeKeywordFromSelectedAssets`/
+`acceptSuggestedKeywordForSelectedAssets`/
+`acceptSuggestedCaptionForSelectedAssets`/`setCaptionForSelectedAssets`/
+`setCreatorForSelectedAssets`/`setCopyrightForSelectedAssets`, all now
+plural/batch, sharing `updateSelectedAssetsMetadata`'s one-undo-group
+scoping). Unit-level coverage:
+`AppModelTests.testBatchKeywordTextAppendsPerAssetDedupedWithoutClobberingOtherAssetsKeywords`,
+`testBatchKeywordTextStillReplacesForASingleFocusedAsset`,
+`testBatchRemoveKeywordRemovesFromEverySelectedAsset`,
+`testBatchCaptionCreatorCopyrightOverwriteWholeSelectionInOneUndoGroup`,
+`testBatchAcceptSuggestedKeywordAppendsToEverySelectedAssetDeduped`. Needs a
+human-present live re-run to confirm the AX-level steps above. All SQL in
+this card was run headlessly against a seeded --smoke
 catalog on 2026-07-10 (schema per
 Sources/TeststripCore/Catalog/CatalogMigrations.swift).

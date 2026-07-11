@@ -1004,24 +1004,29 @@ struct InspectorView: View {
                 keywordChips(asset.metadata.keywords)
             }
             metadataTextField("Keywords", text: $metadataDraft.keywords) {
-                try model.setKeywordTextForSelectedAsset(metadataDraft.keywords)
+                try model.setKeywordTextForSelectedAssets(metadataDraft.keywords)
             }
             let suggestions = model.selectedSuggestedKeywords
             if !suggestions.isEmpty {
                 suggestedKeywordChips(suggestions)
             }
             metadataTextField("Caption", text: $metadataDraft.caption) {
-                try model.setCaptionForSelectedAsset(metadataDraft.caption)
+                try model.setCaptionForSelectedAssets(metadataDraft.caption)
             }
             let captionPresentation = InspectorCaptionSuggestionPresentation(suggestions: model.selectedSuggestedCaptions)
             if captionPresentation.isVisible {
                 suggestedCaptionButtons(captionPresentation)
             }
             metadataTextField("Creator", text: $metadataDraft.creator) {
-                try model.setCreatorForSelectedAsset(metadataDraft.creator)
+                try model.setCreatorForSelectedAssets(metadataDraft.creator)
             }
             metadataTextField("Copyright", text: $metadataDraft.copyright) {
-                try model.setCopyrightForSelectedAsset(metadataDraft.copyright)
+                try model.setCopyrightForSelectedAssets(metadataDraft.copyright)
+            }
+            if model.selectedBatchAssetCount > 1 {
+                Text("Keywords, caption, creator, and copyright apply to all \(model.selectedBatchAssetCount) selected photos")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .onChange(of: asset.metadata) { _, _ in
@@ -1033,7 +1038,7 @@ struct InspectorView: View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 5)], alignment: .leading, spacing: 5) {
             ForEach(keywords, id: \.self) { keyword in
                 Button {
-                    apply { try model.removeKeywordFromSelectedAsset(keyword) }
+                    apply { try model.removeKeywordFromSelectedAssets(keyword) }
                 } label: {
                     HStack(spacing: 5) {
                         Text(keyword)
@@ -1068,7 +1073,7 @@ struct InspectorView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 5)], alignment: .leading, spacing: 5) {
                 ForEach(suggestions) { suggestion in
                     Button {
-                        apply { try model.acceptSuggestedKeywordForSelectedAsset(suggestion.keyword) }
+                        apply { try model.acceptSuggestedKeywordForSelectedAssets(suggestion.keyword) }
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "plus.circle.fill")
@@ -1113,7 +1118,7 @@ struct InspectorView: View {
                 ForEach(presentation.suggestions) { suggestion in
                     Button {
                         apply {
-                            try model.acceptSuggestedCaptionForSelectedAsset(suggestion.caption)
+                            try model.acceptSuggestedCaptionForSelectedAssets(suggestion.caption)
                             metadataDraft.caption = suggestion.caption
                         }
                     } label: {
