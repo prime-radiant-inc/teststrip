@@ -2161,7 +2161,16 @@ public final class AppModel {
     }
 
     public private(set) var exportRequestToken = 0
+    // Export's sheet is a popover hosted on the Library toolbar's Export
+    // button (WorkspaceChromePolicy.showsExportButton == .library only), so
+    // bumping the token alone is a silent no-op while Cull is frontmost —
+    // Maya's persona-1 finding ("File > Export does nothing in the Cull
+    // workspace"). Mirror toggleInspector's ⌘I pattern: switch to Library
+    // first, so the token-consuming onChange has somewhere to attach.
     public func requestExport() {
+        if selectedWorkspace != .library {
+            selectWorkspace(.library)
+        }
         exportRequestToken += 1
     }
 
@@ -5426,7 +5435,35 @@ public final class AppModel {
             return
         }
         let context = try selectedCullingStackDecisionContext()
+        let originalAsset = selectedAsset
         try applyCullingStackDecision(context: context, pickedAssetIDs: [context.selectedAssetID])
+        // Return silently overrides any explicit pick among the siblings
+        // (Maya's persona-1 scare) — the toast must name the full effect so
+        // the user can tell what just happened without reading the catalog.
+        if let originalAsset {
+            lastCullingMetadataDecision = Self.promoteDecisionFeedback(
+                asset: originalAsset,
+                siblingCount: context.stack.assetIDs.count - 1
+            )
+        }
+    }
+
+    private static func promoteDecisionFeedback(
+        asset: Asset,
+        siblingCount: Int
+    ) -> CullingMetadataDecisionFeedback {
+        let decisionText: String
+        if siblingCount > 0 {
+            decisionText = "Picked · \(siblingCount) sibling\(siblingCount == 1 ? "" : "s") rejected"
+        } else {
+            decisionText = cullingMetadataDecisionText(.pick)
+        }
+        return CullingMetadataDecisionFeedback(
+            assetID: asset.id,
+            filename: asset.originalURL.lastPathComponent,
+            command: .pick,
+            decisionText: decisionText
+        )
     }
 
     public func keepAllFramesInSelectedCullingStack() throws {
@@ -8908,9 +8945,9 @@ public final class AppModel {
         isAutopilotReviewActive = false
         try refreshWorkHistorySearchResults(repository: catalog.repository)
         if let explicitAssetIDs = selectedExplicitAssetIDs {
-            let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, limit: Self.assetPageSize)
+            let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: Self.assetPageSize)
             replaceAssets(loadedAssets, pageOffset: 0)
-            totalAssetCount = try catalog.repository.assetCount(ids: explicitAssetIDs)
+            totalAssetCount = try catalog.repository.assetCount(ids: explicitAssetIDs, flag: flagFilter)
             pruneBatchSelection(retaining: Set(explicitAssetIDs))
             if selectedView == .map {
                 try refreshPlaceData()
@@ -8962,7 +8999,7 @@ public final class AppModel {
         let offset = assetPageOffset + assets.count
         let loadedAssets: [Asset]
         if let explicitAssetIDs = selectedExplicitAssetIDs {
-            loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, limit: Self.assetPageSize, offset: offset)
+            loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: Self.assetPageSize, offset: offset)
         } else if let query = currentLibraryQuery() {
             loadedAssets = try catalog.repository.allAssets(matching: query, limit: Self.assetPageSize, offset: offset)
         } else {
@@ -8986,6 +9023,7 @@ public final class AppModel {
         if let explicitAssetIDs = selectedExplicitAssetIDs {
             filteredPreviousAssets = try catalog.repository.assets(
                 ids: explicitAssetIDs,
+                flag: flagFilter,
                 limit: assetPageOffset - previousOffset,
                 offset: previousOffset
             )
@@ -9947,9 +9985,9 @@ public final class AppModel {
 
         try refreshWorkHistorySearchResults(repository: catalog.repository)
         if let explicitAssetIDs = selectedExplicitAssetIDs {
-            let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, limit: Self.assetPageSize)
+            let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: Self.assetPageSize)
             replaceAssets(loadedAssets, pageOffset: 0, preferredSelection: state.selectedAssetID)
-            totalAssetCount = try catalog.repository.assetCount(ids: explicitAssetIDs)
+            totalAssetCount = try catalog.repository.assetCount(ids: explicitAssetIDs, flag: flagFilter)
         } else {
             // A persisted selectedAssetID that no longer exists (deleted since last
             // run) makes catalogPage's import-order offset lookup throw notFound;
@@ -10065,7 +10103,7 @@ public final class AppModel {
 
     private func currentLibraryAssetCount(repository: CatalogRepository) throws -> Int {
         if let explicitAssetIDs = selectedExplicitAssetIDs {
-            return try repository.assetCount(ids: explicitAssetIDs)
+            return try repository.assetCount(ids: explicitAssetIDs, flag: flagFilter)
         }
         if let query = currentLibraryQuery() {
             return try repository.assetCount(matching: query)

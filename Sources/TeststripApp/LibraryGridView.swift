@@ -36,6 +36,7 @@ struct LibraryGridView: View {
     @State private var exportSizeEstimateText: String?
     @State private var rejectRelocationPreflight: RejectRelocationPreflight?
     @State private var isRejectRelocationConfirmed = false
+    @State private var isRejectRelocationMissingConfirmation = false
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
     @State private var isShowingImportCardPathSheet = false
@@ -3125,6 +3126,7 @@ struct LibraryGridView: View {
             panel: { FolderSelectionPanel.chooseRejectDestinationFolder() }
         ) else { return }
         isRejectRelocationConfirmed = false
+        isRejectRelocationMissingConfirmation = false
         do {
             rejectRelocationPreflight = try model.rejectRelocationPreflight(destinationFolder: destination)
         } catch {
@@ -3137,6 +3139,7 @@ struct LibraryGridView: View {
     // the folder flow's panel).
     private func beginRejectRelocationToTrash() {
         isRejectRelocationConfirmed = false
+        isRejectRelocationMissingConfirmation = false
         do {
             rejectRelocationPreflight = try model.rejectRelocationTrashPreflight()
         } catch {
@@ -3144,9 +3147,18 @@ struct LibraryGridView: View {
         }
     }
 
+    // The primary button stays enabled (disabled furniture is banned) even
+    // before the confirm toggle is checked, so pressing it unconfirmed must
+    // surface a visible reason instead of doing nothing — the exact trap
+    // that stranded Maya's rejects ("THE WALL", persona-1).
     private func confirmRejectRelocation(_ preflight: RejectRelocationPreflight) {
+        guard isRejectRelocationConfirmed else {
+            isRejectRelocationMissingConfirmation = true
+            return
+        }
         rejectRelocationPreflight = nil
         isRejectRelocationConfirmed = false
+        isRejectRelocationMissingConfirmation = false
         do {
             if preflight.mode == .trash {
                 try model.moveRejectsToTrash(preflight)
@@ -3181,6 +3193,7 @@ struct LibraryGridView: View {
             cancel: {
                 rejectRelocationPreflight = nil
                 isRejectRelocationConfirmed = false
+                isRejectRelocationMissingConfirmation = false
             },
             primary: { confirmRejectRelocation(preflight) }
         ) {
@@ -3206,8 +3219,19 @@ struct LibraryGridView: View {
             // Destructive-adjacent: this confirm toggle stays visible outside
             // Options per spec §2c (files leave catalog tracking on move).
             if preflight.hasMovableFiles {
-                Toggle(preflight.confirmationText, isOn: $isRejectRelocationConfirmed)
-                    .font(.caption)
+                Toggle(preflight.confirmationText, isOn: Binding(
+                    get: { isRejectRelocationConfirmed },
+                    set: {
+                        isRejectRelocationConfirmed = $0
+                        if $0 { isRejectRelocationMissingConfirmation = false }
+                    }
+                ))
+                .font(.caption)
+                if isRejectRelocationMissingConfirmation {
+                    Label("Check the box above to confirm the move.", systemImage: "exclamationmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
         }
     }
@@ -4711,7 +4735,12 @@ struct RejectRelocationSheetPresentation: Equatable {
     init(preflight: RejectRelocationPreflight, isConfirmed: Bool) {
         summaryText = preflight.summaryText
         destinationPreviewRows = preflight.destinationPreview
-        isMoveEnabled = preflight.hasMovableFiles && isConfirmed
+        // Disabled furniture is banned (spec): the primary stays enabled
+        // whenever there's something to move. The confirm toggle instead
+        // gates the action itself — pressing it unconfirmed surfaces an
+        // inline error rather than silently doing nothing (see
+        // LibraryGridView.confirmRejectRelocation).
+        isMoveEnabled = preflight.hasMovableFiles
         if preflight.mode == .trash {
             titleText = "Move Rejects to Trash"
             moveButtonTitle = "Move \(preflight.moveCount) to Trash"

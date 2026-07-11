@@ -97,6 +97,32 @@ final class InspectorTabsPresentationTests: XCTestCase {
         XCTAssertTrue(model.isInspectorVisible)
     }
 
+    // File ▸ Export…'s sheet is a popover hosted on the Library toolbar's
+    // Export button, so bumping the token alone is a silent no-op while Cull
+    // is frontmost (persona-1 Maya: "File > Export does nothing in the Cull
+    // workspace"). requestExport mirrors ⌘I's switch-to-Library pattern.
+    func testRequestExportInCullSwitchesToLibrary() {
+        let model = AppModel.demo()
+        model.selectWorkspace(.cull)
+        let originalToken = model.exportRequestToken
+
+        model.requestExport()
+
+        XCTAssertEqual(model.selectedWorkspace, .library)
+        XCTAssertEqual(model.exportRequestToken, originalToken + 1)
+    }
+
+    func testRequestExportInLibraryStaysInLibrary() {
+        let model = AppModel.demo()
+        model.selectWorkspace(.library)
+        let originalToken = model.exportRequestToken
+
+        model.requestExport()
+
+        XCTAssertEqual(model.selectedWorkspace, .library)
+        XCTAssertEqual(model.exportRequestToken, originalToken + 1)
+    }
+
     func testSelectInspectorTabSetsTabAndPresentsWhenEligible() {
         let model = AppModel.demo()
         model.selectWorkspace(.library)

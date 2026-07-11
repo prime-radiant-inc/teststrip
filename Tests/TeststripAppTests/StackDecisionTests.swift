@@ -86,6 +86,66 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .reject)
     }
 
+    // Maya's session (persona-1): pressing Return silently overrode her
+    // explicit pick of a sibling with no toast, so she couldn't tell what
+    // happened without reading the database. Promote must set the same
+    // decision-feedback the P/X shortcuts set, naming the full effect.
+    func testPromoteSetsDecisionFeedbackNamingSiblingCount() throws {
+        let capturedAt = Date(timeIntervalSince1970: 300)
+        let frame1 = makeAsset(
+            id: "toast-frame-1",
+            path: "/Photos/Job/toast-frame-1.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let frame2 = makeAsset(
+            id: "toast-frame-2",
+            path: "/Photos/Job/toast-frame-2.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let frame3 = makeAsset(
+            id: "toast-frame-3",
+            path: "/Photos/Job/toast-frame-3.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1.8))
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "promote-stack-toast",
+            assets: [frame1, frame2, frame3]
+        )
+        model.select(frame1.id)
+
+        XCTAssertNil(model.lastCullingMetadataDecision)
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
+        XCTAssertEqual(feedback.assetID, frame1.id)
+        XCTAssertEqual(feedback.filename, "toast-frame-1.cr2")
+        XCTAssertEqual(feedback.decisionText, "Picked · 2 siblings rejected")
+    }
+
+    func testPromoteSingleSiblingUsesSingularWording() throws {
+        let capturedAt = Date(timeIntervalSince1970: 400)
+        let frame1 = makeAsset(
+            id: "singular-frame-1",
+            path: "/Photos/Job/singular-frame-1.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let frame2 = makeAsset(
+            id: "singular-frame-2",
+            path: "/Photos/Job/singular-frame-2.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "promote-stack-toast-singular",
+            assets: [frame1, frame2]
+        )
+        model.select(frame1.id)
+
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
+        XCTAssertEqual(feedback.decisionText, "Picked · 1 sibling rejected")
+    }
+
     // MARK: - Fixtures (mirrors AppModelTests' private helpers; kept local per file)
 
     private func makeAsset(
