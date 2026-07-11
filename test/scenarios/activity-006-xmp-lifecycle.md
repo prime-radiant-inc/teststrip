@@ -42,7 +42,8 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    the last-synced fingerprint — the exact condition
    `MetadataSyncPlanner.decision`'s `case (true, true, _)` matches
    (`MetadataSyncPlanner.swift:42-47`).
-4. Trigger the next sync scan (see Sharp edges — no UI trigger). Assert a
+4. Trigger the next sync scan — use Metadata ▸ **Check Sidecars for
+   Changes** (or relaunch; both run the rescan — see Sharp edges). Assert a
    conflict was recorded:
    ```bash
    sqlite3 "$DB" "SELECT status FROM metadata_sync_state WHERE asset_id = 'smoke-0';"   # expect 'conflict'
@@ -122,22 +123,32 @@ rm -f "$SRC.xmp" "$SRC2.xmp" 2>/dev/null
 Quit the launched instance.
 
 ## Sharp edges
-- **No UI-reachable trigger exists for the metadata-sync-conflict rescan**
-  (`docs/product/focused-workspaces-followups.md`, "Known test-fixture
-  gaps") — every "trigger the next sync scan" step above is unverified as
-  to *how* to fire it live; the existing cards that share this gap
-  (`quiet-activity-badge.md`, `activity-icon-states.md`) are both marked
-  PARTIAL for the same reason. This card inherits that gap for steps 4, 8,
-  and 10 — an app relaunch against the mutated catalog (forcing a fresh
-  scan at startup) is the most likely workaround but was not verified this
-  pass.
+- **The no-rescan product gap is closed (Jesse's ruling 2026-07-11).** Two
+  UI-reachable triggers now exist for "trigger the next sync scan" (steps
+  4, 8, 10):
+  1. **Relaunch the app** — catalog open runs a whole-catalog sidecar
+     rescan (`AppModel.performLaunchSidecarRescan`, wired via `.task` in
+     `Sources/TeststripApp/main.swift`), batched off the main actor.
+  2. **Metadata ▸ Check Sidecars for Changes** — the same rescan on demand
+     over the current scope (`checkSidecarsForChangesInCurrentScope`).
+  Both walk `metadata_sync_state` rows with `status='synced'`, cheap-gate on
+  sidecar mtime vs the recorded sync instant, fingerprint-compare changed
+  files, and re-enter the existing planner semantics: sidecar-only change →
+  `pending` (worker re-syncs); sidecar + catalog both changed → `conflict`.
+  No schema change was needed — `last_synced_fingerprint` (content hash) and
+  `updated_at` already record what the check needs. Core logic:
+  `Sources/TeststripCore/Metadata/SidecarRescanService.swift`; unit coverage:
+  `SidecarRescanServiceTests` (pending/conflict/cheap-gate/missing/scope) +
+  `SidecarRescanAppTests` (model plumbing, status line). A changed sidecar
+  surfaces as "N sidecars changed on disk — queued to re-sync" in the status
+  line. PENDING-VM: the live-driven legs (menu click, relaunch trigger, AX
+  assertions) have not been re-run — VM unavailable this pass.
 - Sub-case A requires *not* letting a sync scan run between steps 1-2 and
   step 3 (or the catalog-only divergence would resolve to `writeCatalog`
-  before the sidecar is touched) — sequencing matters and there is no
-  in-app cue that a scan just ran; the no-UI-trigger gap above cuts both
-  ways (can't force one, can't reliably prevent an automatic one either) and
-  makes this sub-case timing-fragile without more visibility into when
-  scans actually fire.
+  before the sidecar is touched) — sequencing still matters: forcing a scan
+  is now easy (menu command), but the worker's own automatic sync of the
+  step-1 rating can still land between steps; do steps 2 and 3 promptly and
+  only then fire the menu command.
 - Step 1 and step 6's exact `metadata_sync_state.status` value immediately
   after a clean rate-and-sync was not independently re-derived this pass —
   confirm the literal string (`'synced'`, `'clean'`, or similar) against a

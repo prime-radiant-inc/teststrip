@@ -33,6 +33,7 @@ struct LibraryGridView: View {
     @State private var selectedExportPresetName = ExportPresetStore.lastUsedPresetOrDefault().name
     @State private var exportSettings = ExportPresetStore.lastUsedPresetOrDefault().settings
     @State private var isAllCatalogExportConfirmed = false
+    @State private var exportCollisionPrompt: ExportCollisionPrompt?
     @State private var isNamingNewExportPreset = false
     @State private var newExportPresetName = ""
     @State private var exportSizeEstimateText: String?
@@ -310,6 +311,29 @@ struct LibraryGridView: View {
                 .help("Export photo copies to a folder")
                 .popover(isPresented: $isReviewingExport) {
                     exportPopover
+                }
+                .confirmationDialog(
+                    "Replace existing files?",
+                    isPresented: Binding(
+                        get: { exportCollisionPrompt != nil },
+                        set: { if !$0 { exportCollisionPrompt = nil } }
+                    ),
+                    titleVisibility: .visible,
+                    presenting: exportCollisionPrompt
+                ) { prompt in
+                    Button("Replace All", role: .destructive) {
+                        exportCollisionPrompt = nil
+                        runExport(scope: prompt.scope, settings: prompt.settings, destination: prompt.destinationFolder, collisionResolution: .replaceAll)
+                    }
+                    Button("Keep Both") {
+                        exportCollisionPrompt = nil
+                        runExport(scope: prompt.scope, settings: prompt.settings, destination: prompt.destinationFolder, collisionResolution: .keepBoth)
+                    }
+                    Button("Cancel", role: .cancel) {
+                        exportCollisionPrompt = nil
+                    }
+                } message: { prompt in
+                    Text(prompt.message)
                 }
             }
         }
@@ -1369,11 +1393,11 @@ struct LibraryGridView: View {
             Toggle("Include EXIF/IPTC metadata", isOn: $exportSettings.includeSourceMetadata)
                 .font(.caption)
 
-            // Collision policy note (persona-4 Gloria: re-exporting into the
-            // same folder silently suffixed -2/-3 with no warning). Full
-            // overwrite-prompt UX is a Jesse question (see report); this is
-            // the honesty-principle minimum — state the policy up front.
-            Text("Re-exporting into the same folder appends -2, -3, … rather than overwriting.")
+            // Collision policy note (persona-4 Gloria; Jesse's ruling
+            // 2026-07-11): name collisions in the destination now raise one
+            // batch-level Replace All / Keep Both / Cancel prompt before
+            // anything is written.
+            Text("If names collide in the destination, you'll be asked once: Replace All, Keep Both (-2, -3, …), or Cancel.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -3192,15 +3216,54 @@ struct LibraryGridView: View {
         ExportPresetStore.rememberLastUsedPreset(named: selectedExportPresetName)
         isReviewingExport = false
         isAllCatalogExportConfirmed = false
+        // Collision check before writing anything: one batch-level prompt
+        // (Replace All / Keep Both / Cancel) instead of silent -2/-3 suffixes.
+        do {
+            let assetIDs: [AssetID]
+            switch scope {
+            case .selected:
+                assetIDs = model.selectedBatchAssetIDsInCatalogOrder
+            case .visible:
+                assetIDs = model.visibleExportAssetIDs()
+            case .currentScope:
+                assetIDs = try model.currentScopeExportAssetIDs()
+            }
+            let collisions = try model.exportCollisionFilenames(
+                assetIDs: assetIDs,
+                format: settings.format,
+                destinationFolder: destination
+            )
+            if !collisions.isEmpty {
+                exportCollisionPrompt = ExportCollisionPrompt(
+                    destinationFolder: destination,
+                    settings: settings,
+                    scope: scope,
+                    collidingFilenames: collisions
+                )
+                return
+            }
+        } catch {
+            model.errorMessage = error.localizedDescription
+            return
+        }
+        runExport(scope: scope, settings: settings, destination: destination, collisionResolution: .keepBoth)
+    }
+
+    private func runExport(
+        scope: BatchScopeMode,
+        settings: ExportSettings,
+        destination: URL,
+        collisionResolution: ExportCollisionResolution
+    ) {
         Task { @MainActor in
             do {
                 switch scope {
                 case .selected:
-                    try await model.exportSelectedAssets(settings: settings, destinationFolder: destination)
+                    try await model.exportSelectedAssets(settings: settings, destinationFolder: destination, collisionResolution: collisionResolution)
                 case .visible:
-                    try await model.exportVisibleAssets(settings: settings, destinationFolder: destination)
+                    try await model.exportVisibleAssets(settings: settings, destinationFolder: destination, collisionResolution: collisionResolution)
                 case .currentScope:
-                    try await model.exportCurrentScopeAssets(settings: settings, destinationFolder: destination)
+                    try await model.exportCurrentScopeAssets(settings: settings, destinationFolder: destination, collisionResolution: collisionResolution)
                 }
             } catch {
                 model.errorMessage = error.localizedDescription
@@ -3437,6 +3500,7 @@ struct LibraryGridView: View {
     }
 
     private func handleCullingShortcut(_ shortcut: CullingShortcut) {
+        model.noteCullingKeystroke()
         do {
             try model.applyCullingShortcut(shortcut)
         } catch {
@@ -3647,6 +3711,8 @@ private struct LoupeView: View {
     // dismisses it, and switching scope or moving to another asset (e.g. via
     // a nav key) clears the dismissal so the check re-runs fresh next time.
     @State private var isCullCompletionDismissed = false
+    // Hover-revealed P/X/star decision controls over the cull loupe stage.
+    @State private var hoverControls = CullLoupeHoverControlsPresentation()
 
     private var loupePresentation: LoupePresentation {
         LoupePresentation(mode: model.selectedView)
@@ -4031,9 +4097,94 @@ private struct LoupeView: View {
             }
             .padding(20)
         }
+        .overlay(alignment: .bottom) {
+            // Hover-revealed decision controls (Jesse's ruling 2026-07-11):
+            // cull loupe only — the library loupe stays chrome-free.
+            if loupePresentation.showsCullChrome, hoverControls.isVisible {
+                hoverDecisionControls(for: asset)
+                    .padding(.bottom, 16)
+                    .transition(accessibilityReduceMotion ? .identity : .opacity)
+            }
+        }
+        .onContinuousHover { phase in
+            guard loupePresentation.showsCullChrome else { return }
+            switch phase {
+            case .active:
+                setHoverControls { $0.pointerMoved(at: Date()) }
+            case .ended:
+                setHoverControls { $0.pointerExited() }
+            }
+        }
+        .task(id: hoverControls.hideDeadline) {
+            guard let deadline = hoverControls.hideDeadline else { return }
+            try? await Task.sleep(for: .seconds(max(deadline.timeIntervalSinceNow, 0)))
+            guard !Task.isCancelled else { return }
+            setHoverControls { $0.idleCheck(at: Date()) }
+        }
+        .onChange(of: model.cullingKeystrokeToken) {
+            setHoverControls { $0.keyPressed() }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: decisionToastTaskID) {
             await showDecisionToastThenFade()
+        }
+    }
+
+    private func setHoverControls(_ change: (inout CullLoupeHoverControlsPresentation) -> Void) {
+        var updated = hoverControls
+        change(&updated)
+        guard updated != hoverControls else { return }
+        if accessibilityReduceMotion || updated.isVisible == hoverControls.isVisible {
+            hoverControls = updated
+        } else {
+            withAnimation(.easeOut(duration: 0.2)) {
+                hoverControls = updated
+            }
+        }
+    }
+
+    /// P / X / star click targets — the same model methods the keys call.
+    private func hoverDecisionControls(for asset: Asset) -> some View {
+        HStack(spacing: 12) {
+            Button {
+                applyHoverCullingShortcut(.pick)
+            } label: {
+                Label("Pick", systemImage: "checkmark.circle")
+            }
+            .help("Pick this photo (P)")
+            Button {
+                applyHoverCullingShortcut(.reject)
+            } label: {
+                Label("Reject", systemImage: "xmark.circle")
+            }
+            .help("Reject this photo (X)")
+            Divider().frame(height: 16)
+            let rating = asset.metadata.rating
+            ForEach(1...5, id: \.self) { star in
+                Button {
+                    // Clicking the current rating clears it, matching the
+                    // rating keys' clear-to-zero behavior via `0`.
+                    applyHoverCullingShortcut(.rating(star == rating ? 0 : star))
+                } label: {
+                    Image(systemName: star <= rating ? "star.fill" : "star")
+                }
+                .help("Rate \(star) star\(star == 1 ? "" : "s") (\(star))")
+            }
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Cull decision controls")
+    }
+
+    private func applyHoverCullingShortcut(_ shortcut: CullingShortcut) {
+        do {
+            try model.applyCullingShortcut(shortcut)
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 
@@ -4723,6 +4874,22 @@ struct BatchMetadataDraft: Equatable {
                 guard seen.insert(key).inserted else { return nil }
                 return keyword
             }
+    }
+}
+
+/// Pending "Replace All / Keep Both / Cancel" decision for an export whose
+/// planned outputs collide with files already in the destination (Jesse's
+/// ruling 2026-07-11: ask once per batch, before writing anything).
+struct ExportCollisionPrompt: Equatable {
+    var destinationFolder: URL
+    var settings: ExportSettings
+    var scope: BatchScopeMode
+    var collidingFilenames: [String]
+
+    var message: String {
+        let count = collidingFilenames.count
+        let noun = count == 1 ? "file" : "files"
+        return "\(count) \(noun) with the same name already exist in \(destinationFolder.lastPathComponent). Replace All overwrites them; Keep Both saves new copies with -2, -3, … names."
     }
 }
 

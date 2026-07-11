@@ -2,8 +2,25 @@
 
 **What this covers**: as a photographer working a burst, I want `Return` (and
 the rail's "Keep" button, which is the same action) to pick the frame I'm
-looking at and reject every other frame in its stack in a single write/undo
-unit — and to do nothing when the current frame isn't part of any stack.
+looking at and reject every *non-picked* frame in its stack in a single
+write/undo unit — and to do nothing when the current frame isn't part of any
+stack.
+
+**Pick protection (Jesse's ruling 2026-07-11):** siblings whose flag is
+already `pick` are PROTECTED — promote never reflags a pick to reject. Flag
+provenance is not recorded (autopilot commits write plain picks), so ALL
+picked siblings are protected. Only undecided/rejected siblings get rejected,
+and the toast discloses the kept pick: `Picked · 2 siblings rejected · kept
+your pick of <filename>` (or `kept your picks of N siblings` when several).
+Unit coverage: `StackDecisionTests.testPromoteProtectsPickedSiblingAndDisclosesInToast`
+/ `testPromoteProtectsMultiplePickedSiblingsWithPluralToast` /
+`testPromoteStillRejectsPreviouslyRejectedAndUndecidedSiblings`. Live
+assertion for a driven run: pre-pick one sibling of a burst stack (`P`), move
+to another frame, press Return, then confirm via SQL that *both* frames read
+`pick`, remaining siblings read `reject`, one ⌘Z reverts only the promote's
+writes (the pre-picked sibling stays picked), and the toast names the kept
+pick. VM verification of this ruling is pending (VM busy this pass).
+
 Covers:
 - `promoteCurrentFrameAndRejectSiblings()` (`Sources/TeststripApp/
   AppModel.swift:5351-5359`): guards on stack membership (persisted
