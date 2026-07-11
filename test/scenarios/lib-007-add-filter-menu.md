@@ -29,6 +29,14 @@ Confirmed against a seeded `--smoke` catalog 2026-07-10: `PICKS=6`.
    "Color Label", "Source", "AI Signal", "Metadata Sync", plus one leaf
    `Button` "Review Queue" (also a submenu, see step 5) and one final leaf
    action "Date Range…" (opens a popover, not a submenu).
+3a. Open "AI Signal" and assert its leaf items are exactly the 15
+   `LibraryQueryToken.signalOptions` display names, including
+   "Color Palette" (present in the live menu per run-lib-iter1; the
+   submenu is built from `signalOptions` = focus, motionBlur, exposure,
+   aesthetics, framing, object, faceCount, faceQuality, eyesOpen,
+   eyeSharpness, smile, ocrText, colorPalette, novelty, visualSimilarity,
+   rendered via `EvaluationKind.displayName` — "Color Palette" for
+   `.colorPalette`).
 4. Open "Flag" and assert it contains exactly two leaf items, "Pick" and
    "Reject" (`LibraryQueryToken.flagOptions = [.pick, .reject]`,
    `.rawValue.capitalized` per line 871). Click "Pick".

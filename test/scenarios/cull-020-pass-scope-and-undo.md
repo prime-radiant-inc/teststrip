@@ -12,9 +12,11 @@ pass).
 
 ## Pre-state
 ```bash
-./script/build_and_run.sh --smoke
-ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-DB="$ISOLATED/Teststrip/catalog.sqlite"
+# The `burst` variant makes the stack leg (step 5) drivable: it seeds 4
+# auto-groupable stacks (capture times 1s apart). The pass/scope/undo legs
+# work identically on it.
+script/vm_scenario_run.sh sync burst && script/vm_scenario_run.sh launch burst
+# ground truth via: script/vm_scenario_run.sh sql burst "..."
 ```
 
 ## Steps
@@ -34,7 +36,15 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 4. Press `S` to cycle scope to Picks. Assert the HUD/sidebar scope indicator
    reads "Picks" (`ax_drive.sh find --contains "Picks"` in the scope area)
    and the visible set narrows to picked frames only.
-5. Advance to a frame that belongs to a persisted stack; press Return.
+5. Advance to a frame that belongs to a multi-frame stack; press Return.
+   With the `burst` seed, Return fires on the in-memory auto stack —
+   `promoteCurrentFrameAndRejectSiblings` accepts membership in
+   `cullingStacks()` (AssetStackBuilder auto-grouping), not only a
+   persisted work stack — so assert the promote wrote pick + sibling
+   rejects across that auto stack's 3-4 members (ground truth: the
+   burst group's assets share capture times <=2s apart in
+   `technical_metadata_json.capturedAt`). The persisted-set variant below
+   applies when a `work-stack-%` set exists (requires a live import):
    There is no `assets.stack_id` column — persisted stack membership lives in
    `asset_sets.membership_json` (set ids prefixed `work-stack-`, member ids
    at JSON path `$.manual._0[].rawValue`; loaded/derived stacks exist only

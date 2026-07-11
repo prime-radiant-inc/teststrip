@@ -18,16 +18,12 @@ driving the menu through AX.
 ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
 DB="$ISOLATED/Teststrip/catalog.sqlite"
 ```
-**Fixture gap**: `--smoke` seeds no `asset_sets` rows
-(`sqlite3 "$DB" "SELECT count(*) FROM asset_sets;"` returns 0 on a fresh
-`--smoke` catalog per `script/build_and_run.sh`'s seeding path, which never
-inserts into `asset_sets`). This card's saved-set-menu assertions therefore
-require first *creating* two saved sets live through the app before driving
-the context menu:
-1. A **manual** set: select an asset in the grid, save-as-set via whatever
-   UI creates one (Library selection → "Save as Set", if present — confirm
-   the actual affordance by AX-walking the toolbar/menu before relying on
-   it), giving a manual/non-dynamic `AssetSet` (`membership: .manual`).
+`--smoke` now seeds ONE manual starred saved set out of the box:
+"smoke-picks" / "Smoke Picks" (`SmokeCatalogSeeder`, `membership: .manual`,
+`starred: true`) — drive the manual-set context-menu assertions against it
+directly. Only the **dynamic**-set leg still requires creating a set live
+through the app first:
+1. A **manual** set: seeded ("Smoke Picks") — nothing to create.
 2. A **dynamic** set: apply a Library query token (e.g. `rating:3`) and save
    the resulting smart-collection as a set, giving `membership: .dynamic`.
 
@@ -35,8 +31,11 @@ Confirm creation via SQL before proceeding:
 ```bash
 sqlite3 "$DB" "SELECT id, name, json_extract(membership,'$') FROM asset_sets;"
 ```
-No seed flag produces these directly — this is a genuine prerequisite gap,
-not an invented workaround.
+No seed flag produces a dynamic set directly — that leg's prerequisite is
+created in-app. Context menus are drivable with
+`ax_drive.sh press --contains "Smoke Picks" --button right` (AXShowMenu;
+see test/scenarios/README.md), which lifted this card's earlier
+BLOCKED-TOOLING status.
 
 ## Steps
 1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for Library.

@@ -73,11 +73,13 @@ is prefixed `work-stack-` and for every caller of `AssetStackBuilder`:
   never runs an import through `beginStackCullingFromLatestImportCompletion`
   anyway (it seeds the catalog directly, bypassing `IngestService`).
 
-**Conclusion**: there is a real, reachable UI path to create a persisted
-stack (import -> "Cull stacks" completion action), but no existing fixture
-generator produces EXIF timestamps close enough together (or a same-folder,
-sub-2s capture cluster) to make `AssetStackBuilder` actually group frames
-into a multi-frame stack from a *synthetic* import. A **real burst** from
+**Conclusion (updated)**: `TeststripBench seed-burst-catalog` (the VM
+`burst` variant) now seeds capture times sub-2s apart directly into the
+catalog, so `AssetStackBuilder` auto-groups 4 multi-frame candidate stacks
+— the candidate-stack legs (Down/Up, Return promote on an auto stack) are
+drivable. The *persisted* work-stack leg (import -> "Cull stacks"
+completion action creating `work-stack-%` sets) still requires a live
+import of burst-timestamped files, which no seed performs. A **real burst** from
 `sample-data/photos/` (multiple frames shot within ~2s, same folder) might
 incidentally qualify, but confirming that requires inspecting live EXIF
 `DateTimeOriginal` values on files under `sample-data/photos/` — not done
@@ -86,12 +88,14 @@ tests what's reachable without that fixture and documents the rest as a gap.
 
 ## Pre-state
 ```bash
-./script/build_and_run.sh --smoke
-ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-DB="$ISOLATED/Teststrip/catalog.sqlite"
+# The `burst` variant seeds 4 auto-groupable stacks (3/4/3/4 frames,
+# capture times 1s apart, within AssetStackBuilder's 2s gap) + 4 singles:
+script/vm_scenario_run.sh sync burst && script/vm_scenario_run.sh launch burst
+# ground truth via: script/vm_scenario_run.sh sql burst "..."
 ```
-Fallback: `script/vm_scenario_run.sh setup && sync smoke && launch smoke`,
-then `vm_scenario_run.sh ax ...` / `sql smoke ...`.
+(Host equivalent: `swift run TeststripBench seed-burst-catalog <appsupport>`
+then launch against it. `--smoke` alone cannot drive the multi-frame legs —
+its 900s spacing never stacks.)
 
 ## Steps
 1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘1 for Cull, scope to

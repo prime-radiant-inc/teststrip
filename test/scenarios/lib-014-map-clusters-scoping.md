@@ -8,18 +8,23 @@ GPS produce map clusters (photos without GPS don't), and a cluster resolves to
 a human place name, cross-checked against the `place_cache` table.
 
 ## Pre-state
-- Fresh build, isolated catalog:
+- In the VM harness, use the `geo` seed variant, which pre-imports 12
+  GeoFixtureSeeder JPEGs (6 with Eiffel-Tower GPS EXIF, ingested through
+  the real import pipeline by `seed-sample-catalog` at seed time):
   ```bash
-  ./script/build_and_run.sh --isolated
-  ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-  DB="$ISOLATED/Teststrip/catalog.sqlite"
+  script/vm_scenario_run.sh sync geo && script/vm_scenario_run.sh launch geo
+  # ground truth via: script/vm_scenario_run.sh sql geo "..."
   ```
+  (Host equivalent: `./script/build_and_run.sh --isolated` plus a live
+  import of a seed-geo-fixtures folder, below. The manual-import leg is
+  still the only way to exercise the Import flow itself; the `geo` variant
+  covers the map/cluster/scoping assertions without it.)
 - **Network reachable** — reverse geocoding is a live CLGeocoder round-trip.
   First confirm the geocoder path works at all:
   ```bash
   ./script/verify_reverse_geocode_smoke.sh    # expect "PASS <locality>"; SKIP means offline → this card can't assert names
   ```
-- **GPS-tagged fixtures on disk to import.** Generate a fixture folder with the
+- **(Host route only) GPS-tagged fixtures on disk to import.** Generate a fixture folder with the
   bench seeder — half the JPEGs carry GPS EXIF at the Eiffel Tower (48.8584,
   2.2945, matching `verify_reverse_geocode_smoke.sh`), the rest carry none:
   ```bash

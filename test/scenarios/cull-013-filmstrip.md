@@ -30,18 +30,19 @@ Return-gesture card (`cull-pass-scope-and-undo.md`). **`--smoke`'s synthetic
 photos are seeded 900 seconds apart** (`SmokeCatalogSeeder.swift:105`), which
 is far outside the 2-second auto-grouping window — so `--smoke` will show
 **zero multi-frame auto-stacks** and the divider/position-text-with-stack
-assertions are untestable on it. Use `--faces` (real photos, likely closer
-capture timestamps within a burst) and independently confirm at least one
-auto-stack forms before relying on step 3/4 below; if none forms even there,
-this card's stack-specific assertions stay untestable-without-fixture and
-that must be reported honestly, not routed around.
+assertions are untestable on it. Use the `burst` seed variant
+(`TeststripBench seed-burst-catalog`), which guarantees 4 multi-frame
+auto-stacks (3/4/3/4 frames, capture times 1s apart) plus 4 singles.
 
 ## Pre-state
 ```bash
-./script/build_and_run.sh --faces
-ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-DB="$ISOLATED/Teststrip/catalog.sqlite"
-script/ax_drive.sh wait-vended Teststrip
+# The `burst` variant guarantees multi-frame auto-stacks (4 groups of
+# 3/4/3/4 frames with capture times 1s apart, inside AssetStackBuilder's
+# 2s gap) plus 4 singles:
+script/vm_scenario_run.sh sync burst && script/vm_scenario_run.sh launch burst
+script/vm_scenario_run.sh ax wait-vended
+# ground truth via: script/vm_scenario_run.sh sql burst "..."
+# (Host equivalent: swift run TeststripBench seed-burst-catalog <appsupport>.)
 ```
 
 ## Steps

@@ -67,10 +67,13 @@ SOURCE_ONLINE=$(sqlite3 "$DB" "SELECT count(*) FROM assets WHERE availability='o
 ## Steps
 1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for Library. Note the
    header count reads `$TOTAL` (24).
-2. **camera** — type `camera:SmokeCam 1` into the query field
+2. **camera** — type `camera:"SmokeCam 1"` (QUOTED — the value contains a
+   space; see Sharp edges) into the query field
    (`--role AXTextField --contains "Search your library"`), press Return.
    Assert header count == `$CAMERA` (8) and a chip reading `Camera: SmokeCam 1`
-   is shown. Clear the token; assert header restores to `$TOTAL`.
+   is shown. Clear the token; assert header restores to `$TOTAL`. Verified
+   live in run-lib-iter1: quoted -> 8; unquoted `camera:SmokeCam 1` -> 24
+   (token committed as `camera:SmokeCam`, " 1" dropped).
 3. **keyword** (alias `tag:` recognized identically per
    `LibrarySearchIntent.swift:122-123` — not separately driven) — type
    `keyword:batch-0`, Return. Assert header count == `$KEYWORD` (6), chip
@@ -187,6 +190,16 @@ ground truth or to keep this card's Steps bounded:
 ```
 
 ## Sharp edges
+- **Multi-word field values REQUIRE quotes** — the tokenizer
+  (`LibrarySearchIntent`'s quote-aware splitter, unit-tested in
+  `testParsesQuotedFieldValuesAndImportBatch`) treats an unquoted space as a
+  token boundary, so `camera:SmokeCam 1` commits as `camera:SmokeCam`
+  (matching every SmokeCam-N) and **silently drops the trailing " 1"** into
+  a separate bare token. Confirmed live in run-lib-iter1. Whether that
+  silent truncation is acceptable UX (vs. an error, or auto-quoting) is an
+  open product question pending Jesse's ruling — until then, cards must use
+  the quoted form and must NOT treat the unquoted behavior as a pass/fail
+  assertion.
 - The grid is lazily virtualized — off-screen rows aren't in the AX tree, so
   don't rely on scanning for a filename; use the result-count header instead.
 - Keep the app frontmost/warm while typing multi-character tokens — an

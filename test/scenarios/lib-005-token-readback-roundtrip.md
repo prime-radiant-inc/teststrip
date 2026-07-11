@@ -112,13 +112,16 @@ ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APP
 DB="$ISOLATED/Teststrip/catalog.sqlite"
 TOTAL=$(sqlite3 "$DB" "SELECT count(*) FROM assets;")   # 24
 ISO=$(sqlite3 "$DB" "SELECT count(*) FROM assets WHERE (json_valid(technical_metadata_json) AND CAST(json_extract(technical_metadata_json,'\$.isoSpeed') AS INTEGER) >= 700);")
-# dry-run 2026-07-10 -> 10 of 24
+# -> 9 of 24. Recount: --smoke's isoSpeed = 100 + (index % 5) * 200 cycles
+# 100/300/500/700/900; over 24 assets residues 0-3 occur 5x and residue 4
+# occurs 4x, so iso >= 700 = residue 3 (700, 5 assets) + residue 4 (900,
+# 4 assets) = 9. Confirmed live in the VM run (run-lib-iter1: header 9).
 ```
 
 ### Steps
 1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for Library.
 2. Type `iso:700`, press Return. Assert a chip reading `ISO >= 700` appears
-   and the header count == `$ISO` (10).
+   and the header count == `$ISO` (9).
 3. Click the chip's "x" (or equivalent remove control). Assert the chip
    disappears and the header restores to `$TOTAL` (24) — proving
    `LibraryQueryToken.remove(_:from:)`'s `minimumISOFilter = nil` actually
@@ -154,9 +157,9 @@ ISO=$(sqlite3 "$DB" "SELECT count(*) FROM assets WHERE (json_valid(technical_met
 PARTIALLY VERIFIED — round-trip and removal-isolation logic confirmed via
 existing unit tests (cited above, not re-run in this pass; re-run
 `swift test --filter LibraryQueryTokenTests` to confirm current green state).
-The AX spot-check (Steps 1-3) is NOT RUN — needs a live, human-present
-session; no host GUI launch was permitted for this authoring pass. The one
-piece of SQL in this card (`iso:700` -> 10 of 24) was dry-run headlessly
+The AX spot-check (Steps 1-3) PASSED in the VM (run-lib-iter1): chip
+"ISO >= 700", header 9, removal restored 24. The one
+piece of SQL in this card (`iso:700` -> 9 of 24) was dry-run headlessly
 against a freshly seeded `--smoke` catalog on 2026-07-10 via
 `script/build_and_run.sh --smoke` (`TeststripBench` seeding only), then the
 seeded process was quit and its throwaway `$TMPDIR/teststrip-app-support.*`

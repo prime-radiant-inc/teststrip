@@ -51,16 +51,19 @@ another card's run): `--smoke`'s 900-second seed spacing
 (`SmokeCatalogSeeder.swift:105`) is outside the 2-second
 `candidateStackMaximumCaptureGap` (`AppModel.swift:2184`), so `--smoke`
 produces **no auto-stacks and no persisted `work-stack-` sets** — this card
-needs `--faces` (or `--real-corpus`) with a burst tight enough to
-auto-group, and that formation is not guaranteed; verify before trusting any
-step below.
+uses the `burst` seed variant (`TeststripBench seed-burst-catalog`), whose
+capture times are 1s apart within each group, guaranteeing 4 multi-frame
+auto-stacks (3/4/3/4 frames) plus 4 singles.
 
 ## Pre-state
 ```bash
-./script/build_and_run.sh --faces
-ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-DB="$ISOLATED/Teststrip/catalog.sqlite"
-script/ax_drive.sh wait-vended Teststrip
+# The `burst` variant guarantees multi-frame auto-stacks (4 groups of
+# 3/4/3/4 frames with capture times 1s apart, inside AssetStackBuilder's
+# 2s gap) plus 4 singles:
+script/vm_scenario_run.sh sync burst && script/vm_scenario_run.sh launch burst
+script/vm_scenario_run.sh ax wait-vended
+# ground truth via: script/vm_scenario_run.sh sql burst "..."
+# (Host equivalent: swift run TeststripBench seed-burst-catalog <appsupport>.)
 ```
 
 ## Steps

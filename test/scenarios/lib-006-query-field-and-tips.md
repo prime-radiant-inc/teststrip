@@ -27,10 +27,14 @@ No seeding needed beyond `--smoke`. Confirmed against a seeded catalog
 1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for Library.
 2. `ax_drive.sh find --role AXTextField --contains "Search photos, people, places, or rating:3 camera:… "`
    confirms the field exists (placeholder text per line 559).
-3. `ax_drive.sh type --role AXTextField --contains "Search photos" --text "flag:pick"`,
+3. `ax_drive.sh type --role AXTextField --contains "Search photos" --text "pick"`,
    then press Return. Assert the result-count header reads `$PICKS`
-   (ground truth from Pre-state) and a "Pick" filter chip appears.
-4. Clear the field, retype `flag:pick`, and instead of Return, use
+   (ground truth from Pre-state) and a "Pick" filter chip appears. Note:
+   there is NO `flag:` field prefix — `LibrarySearchIntent`'s field list has
+   no `flag` entry, so `flag:pick` falls through to plain-text search and
+   matches 0; the flag filter is driven by the BARE tokens `pick`/`reject`
+   (and synonyms, see lib-004), verified live in run-lib-iter1.
+4. Clear the field, retype `pick`, and instead of Return, use
    `ax_drive.sh press --role AXButton --help "Search"` (the magnifying-glass
    icon) to confirm the icon button is an equivalent submit trigger — same
    `$PICKS` result.

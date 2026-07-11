@@ -5,7 +5,7 @@ buttons at `Sources/TeststripApp/LibraryGridView.swift:2495-2516`), gated by
 `model.hasPreviousAssets`/`model.hasMoreAssets` and disabled during import,
 against the offset/window math in `AppModel.swift`.
 
-## Prerequisite gap — this card is currently UNRUNNABLE with any existing seed fixture
+## Fixture (gap closed by the `smokebig` variant)
 
 `AppModel.assetPageSize = 120` (`Sources/TeststripApp/AppModel.swift:2174`).
 `hasMoreAssets` is `assetPageOffset + assets.count < totalAssetCount`
@@ -20,14 +20,11 @@ catalog holds **more than 120 assets**. Checked every existing seed source:
 | `sample-data/photos/loc-free-to-use` | 13 | No |
 | `--real-corpus` | not a static fixture — points at whatever real corpus dir is configured; size unknown/variable, not something this card can rely on being seeded to `>120` on demand |
 
-**No current seed command deterministically produces a catalog with more than
-`assetPageSize` (120) assets.** This card documents the gating logic and page
-math from source, and states honestly that Steps 3+ cannot be driven today.
-Closing this gap needs either: a new seed variant that imports >120 synthetic
-assets, or extending `--sample-photos`/`--faces` fixture directories past 120
-files. That decision belongs to whoever owns the seed scripts, not to this
-card — flagging it here per the fixture-status convention in
-`test/scenarios/README.md`.
+The `smokebig` VM variant (`vm_scenario_run.sh sync smokebig`) closes this
+gap: `TeststripBench seed-app-catalog <dir> 130` — 130 synthetic assets,
+10 past the page size (host: `TESTSTRIP_SMOKE_ASSET_COUNT=130
+./script/build_and_run.sh --smoke`). Live-verified 130 rows in a fresh
+`smokebig` catalog.
 
 ## What's verified from source (no live catalog needed)
 
@@ -56,19 +53,17 @@ card — flagging it here per the fixture-status convention in
   (`AppModel.swift:8804`) — Load Previous steps back by exactly one page,
   clamped at 0, not by the window size.
 
-## Pre-state (once a >120-asset fixture exists)
+## Pre-state
 ```bash
-# Needs a seed variant that imports > assetPageSize (120) assets — none
-# exists today. Placeholder for when one does:
-./script/build_and_run.sh --sample-photos   # currently only 24 assets; insufficient
-ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-DB="$ISOLATED/Teststrip/catalog.sqlite"
-TOTAL=$(sqlite3 "$DB" "SELECT count(*) FROM assets;")
-# TOTAL must be > 120 for this card to be drivable.
+# The `smokebig` variant seeds 130 assets — 10 past the 120-asset
+# assetPageSize (live-verified: sql smokebig count(*) -> 130):
+script/vm_scenario_run.sh sync smokebig && script/vm_scenario_run.sh launch smokebig
+TOTAL=$(script/vm_scenario_run.sh sql smokebig "SELECT count(*) FROM assets;")   # 130
+# Host equivalent: TESTSTRIP_SMOKE_ASSET_COUNT=130 ./script/build_and_run.sh --smoke
 ```
 
-## Steps (BLOCKED — fixture gap, not driven)
-1. Launch with a >120-asset fixture (does not exist yet). Confirm "Load More"
+## Steps
+1. Launch the `smokebig` variant (130 assets). Confirm "Load More"
    is visible and "Load Previous" is not (offset 0).
 2. Click "Load More". Confirm the grid's window advances by one page (offset
    increases by 120, or per whatever windowing `loadMoreAssets()` actually
@@ -97,8 +92,7 @@ TOTAL=$(sqlite3 "$DB" "SELECT count(*) FROM assets;")
 ```
 
 ## Sharp edges
-- This is the one card in this batch that cannot be executed against any
-  fixture that exists today — not a driving problem, a data problem. Don't
+- Don't
   let a runner "fix" this by seeding a smaller fake page size in test-only
   code; that would test a different constant than what ships.
 - `loadedAssetWindowSize` (240) suggests the grid may keep two pages loaded
@@ -108,8 +102,8 @@ TOTAL=$(sqlite3 "$DB" "SELECT count(*) FROM assets;")
   before running this card for real.
 
 ## Run status
-NOT RUN — blocked on a data-fixture gap (no seed produces >120 assets), not
-just the headless-only constraint for this task. Gating logic and page-size
+NOT RUN — the `smokebig` fixture now exists (130 assets, live-verified);
+the AX drive itself has not yet been executed. Gating logic and page-size
 constant verified by direct source read at
 `Sources/TeststripApp/AppModel.swift:2174-2175, 2302-2307, 8804` and
 `Sources/TeststripApp/LibraryGridView.swift:2495-2516`. The precise

@@ -20,17 +20,19 @@ ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APP
 DB="$ISOLATED/Teststrip/catalog.sqlite"
 TOTAL=$(sqlite3 "$DB" "SELECT count(*) FROM assets;")
 ```
-`--smoke` seeds 24 synthetic assets under folders, no saved sets and no
+`--smoke` seeds 24 synthetic assets under folders plus ONE starred saved
+set ("smoke-picks" / "Smoke Picks", `SmokeCatalogSeeder`), and no
 work-session rows beyond whatever the seeding import itself produced — check
 `asset_sets` and confirm the Recent Import / Recent Work rows come from the
 seeding import's own work-session record, not a separate seed:
 ```bash
-sqlite3 "$DB" "SELECT count(*) FROM asset_sets;"   # expect 0 -- see Sharp edges
+sqlite3 "$DB" "SELECT count(*) FROM asset_sets;"   # expect 1 ("Smoke Picks", starred)
 sqlite3 "$DB" "SELECT id, kind, status FROM work_sessions ORDER BY started_at DESC LIMIT 5;"
 ```
-This card cannot exercise the "starred saved sets in Collections" or "Saved
-Sets" section rows — `--smoke` creates no `asset_sets` rows — see Sharp
-edges for the fixture gap. Item 5 (matched-work rows) needs a plain-text
+The starred "Smoke Picks" set exercises the "starred saved sets in
+Collections" rendering directly (verified in run-lib-iter1: sidebar order
+"All Photographs" -> "Smoke Picks" -> "SmokeOriginals").
+Item 5 (matched-work rows) needs a plain-text
 Library query that matches a work-session title/detail; the seeding import's
 own session (kind `ingest`, title "Import photos") should match on a
 substring of its detail text.
@@ -107,12 +109,10 @@ substring of its detail text.
 ```
 
 ## Sharp edges
-- `--smoke` does not seed any `asset_sets` rows, so the "starred saved sets
-  render in Collections" and "Saved Sets section" behaviors (items 2-3 of
-  the inventory this card was asked to cover) are **not exercised here** —
-  see `lib-002-saved-set-context-menus.md`'s Pre-state for the same gap,
-  which needs a saved set created through the running app (no seed flag
-  creates one) before either card's Saved-Sets-specific assertions can run.
+- `--smoke` seeds exactly one saved set, the starred "Smoke Picks"
+  (`SmokeCatalogSeeder`), which covers the starred-set-in-Collections
+  rendering. A NON-starred set still has no seed and must be created live
+  through the app if a card needs the plain "Saved Sets" section row.
 - **Possible duplicate-ID bug**: a starred saved set's row is rendered twice
   when starred — once in the Collections section
   (`AppModel.swift:11615-11616`, via `Self.sidebarRow(for: $0, ...)`) and
