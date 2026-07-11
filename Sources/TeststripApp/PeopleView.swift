@@ -260,26 +260,18 @@ struct PeopleView: View {
     }
 
     private var nameSelectionSheet: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Name Selection")
-                .font(.headline.weight(.semibold))
+        SheetScaffold(
+            title: "Name Selection",
+            subtitle: "Groups the selected photos under a new named person.",
+            width: 320,
+            primaryLabel: "Create Person",
+            isPrimaryEnabled: !personName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            cancel: { isNamingSelection = false },
+            primary: confirmSelectedPerson
+        ) {
             TextField("Person name", text: $personName)
                 .textFieldStyle(.roundedBorder)
-
-            HStack {
-                Spacer()
-                Button("Cancel") {
-                    isNamingSelection = false
-                }
-                Button("Create") {
-                    confirmSelectedPerson()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(personName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
         }
-        .padding(18)
-        .frame(width: 320)
     }
 
     private func confirmSelectedPerson() {
@@ -338,26 +330,18 @@ struct PeopleView: View {
     }
 
     private func nameSuggestionSheet(_ suggestion: PeopleFaceSuggestion) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Name Face Group")
-                .font(.headline.weight(.semibold))
+        SheetScaffold(
+            title: "Name Face Group",
+            subtitle: "Groups this face group's photos under a new named person.",
+            width: 320,
+            primaryLabel: "Create Person",
+            isPrimaryEnabled: !suggestionPersonName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            cancel: { namingSuggestion = nil },
+            primary: { confirmNamedFaceSuggestion(suggestion) }
+        ) {
             TextField("Person name", text: $suggestionPersonName)
                 .textFieldStyle(.roundedBorder)
-
-            HStack {
-                Spacer()
-                Button("Cancel") {
-                    namingSuggestion = nil
-                }
-                Button("Create") {
-                    confirmNamedFaceSuggestion(suggestion)
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(suggestionPersonName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
         }
-        .padding(18)
-        .frame(width: 320)
     }
 
     private func confirmFaceSuggestion(_ card: PeopleFaceSuggestionCard) {

@@ -42,13 +42,13 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    **Fails if** either rose from mere selection.
 5. Press "Name selection" — opens the "Name Selection" sheet
    (`nameSelectionSheet`, `PeopleView.swift:261-282`). Assert the sheet's
-   "Create" button is `AXDisabled` while its text field is empty
-   (`.disabled(personName...isEmpty)`, line 277).
+   "Create Person" button is `AXDisabled` while its text field is empty
+   (`isPrimaryEnabled`, SheetScaffold).
 6. **Confirm-before-write on opening the sheet:** re-run step 4's queries —
    still `P0`/`L0`. Opening the sheet must not write.
 7. Type a name into the field (`script/ax_drive.sh type --contains "Person
-   name" --text "Test Person"`); press "Create" (or Return, which is bound to
-   `.keyboardShortcut(.defaultAction)` on the same button).
+   name" --text "Test Person"`); press "Create Person" (or Return, which is
+   bound to `.keyboardShortcut(.defaultAction)` on the same button).
 8. Assert the write:
    ```bash
    sqlite3 "$DB" "SELECT count(*) FROM people;"          # P0 + 1
@@ -79,7 +79,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 ## Expected
 - Steps 4 & 6: zero writes from selection or sheet-opening alone — the
   confirm-before-write invariant's negative assertion.
-- Step 5: "Create" disabled on empty name. **Fails if** it's press-able with
+- Step 5: "Create Person" disabled on empty name. **Fails if** it's press-able with
   an empty/whitespace-only name.
 - Step 8: exactly one new `people` row and `person_assets` rows matching the
   selection's asset count. **Fails if** the count is off by any amount, or no

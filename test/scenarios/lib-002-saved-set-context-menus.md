@@ -60,22 +60,22 @@ BLOCKED-TOOLING status.
    (or "Remove Star" if already starred) — `AppModel.swift:4382-4388`. There
    is no separate "Remove" action; see Sharp edges.
 6. Click "Rename Set" on the manual set. Assert a sheet titled "Rename Set"
-   appears (`SidebarView.swift:438-464`) pre-filled with the row's current
-   title (`assetSetRenameText = row.title`, `SidebarView.swift:202`). Clear
-   the field entirely; assert the "Rename" button is disabled
-   (`.disabled(name.trimmingCharacters(...).isEmpty)`,
-   `SidebarView.swift:459`). Type a new name and confirm; assert
-   `asset_sets.name` updates in `$DB` and the sidebar row's title updates.
+   appears (`SidebarView.swift:438-456`, now built on `SheetScaffold`)
+   pre-filled with the row's current title (`assetSetRenameText = row.title`,
+   `SidebarView.swift:202`). Clear the field entirely; assert the
+   "Rename Set" button is disabled (`isPrimaryEnabled`, `SidebarView.swift`).
+   Type a new name and confirm; assert `asset_sets.name` updates in `$DB`
+   and the sidebar row's title updates.
 7. Click "Duplicate Set..." on the manual set. Assert the sheet is titled
-   "Duplicate Set" with action "Create" (`SidebarView.swift:41`), and the
-   name field defaults to `"Copy of <original title>"`
+   "Duplicate Set" with action "Duplicate Set" (`SidebarView.swift:41`), and
+   the name field defaults to `"Copy of <original title>"`
    (`SidebarView.swift:207`). Confirm; assert a **new** `asset_sets` row
    appears with that name and the same `membership` as the source
    (`AppModel.swift:4494-4499`), and the new set becomes selected
    (`saveAndSelect`, `AppModel.swift:4711-4723`).
 8. Click "Freeze Snapshot..." on the dynamic set. Assert the sheet is titled
-   "Freeze Snapshot" with action "Create" (`SidebarView.swift:50`), and the
-   name field defaults to `"<original title> Snapshot"`
+   "Freeze Snapshot" with action "Freeze Snapshot" (`SidebarView.swift:51`),
+   and the name field defaults to `"<original title> Snapshot"`
    (`SidebarView.swift:213`). Confirm; assert a new `asset_sets` row appears
    with `membership` of kind `snapshot` containing the asset IDs the dynamic
    query matched *at freeze time* (`AppModel.swift:4508-...` resolves the

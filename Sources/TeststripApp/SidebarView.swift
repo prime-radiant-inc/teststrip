@@ -39,7 +39,8 @@ struct SidebarView: View {
         .sheet(isPresented: isDuplicatingAssetSet) {
             SaveAssetSetSheet(
                 title: "Duplicate Set",
-                actionTitle: "Create",
+                subtitle: "Creates an independent copy of this set's photos.",
+                actionTitle: "Duplicate Set",
                 name: $assetSetDuplicateName,
                 starred: $assetSetDuplicateStarred,
                 cancel: cancelAssetSetDuplicate,
@@ -49,7 +50,8 @@ struct SidebarView: View {
         .sheet(isPresented: isFreezingAssetSetSnapshot) {
             SaveAssetSetSheet(
                 title: "Freeze Snapshot",
-                actionTitle: "Create",
+                subtitle: "Locks in this set's current membership as a new saved set.",
+                actionTitle: "Freeze Snapshot",
                 name: $assetSetSnapshotName,
                 starred: $assetSetSnapshotStarred,
                 cancel: cancelAssetSetSnapshot,
@@ -441,30 +443,24 @@ private struct RenameAssetSetSheet: View {
     var rename: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Rename Set")
-                .font(.headline)
+        SheetScaffold(
+            title: "Rename Set",
+            subtitle: "Changes how this set appears everywhere in Teststrip.",
+            width: 320,
+            primaryLabel: "Rename Set",
+            isPrimaryEnabled: !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            cancel: cancel,
+            primary: rename
+        ) {
             TextField("Name", text: $name)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 260)
-            HStack {
-                Spacer()
-                Button("Cancel") {
-                    cancel()
-                }
-                Button("Rename") {
-                    rename()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
         }
-        .padding(16)
     }
 }
 
 private struct SaveAssetSetSheet: View {
     var title: String
+    var subtitle: String
     var actionTitle: String
     @Binding var name: String
     @Binding var starred: Bool
@@ -472,25 +468,21 @@ private struct SaveAssetSetSheet: View {
     var save: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.headline)
-            TextField("Name", text: $name)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 280)
-            Toggle("Starred", isOn: $starred)
-            HStack {
-                Spacer()
-                Button("Cancel") {
-                    cancel()
-                }
-                Button(actionTitle) {
-                    save()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        SheetScaffold(
+            title: title,
+            subtitle: subtitle,
+            width: 320,
+            primaryLabel: actionTitle,
+            isPrimaryEnabled: !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            cancel: cancel,
+            primary: save,
+            content: {
+                TextField("Name", text: $name)
+                    .textFieldStyle(.roundedBorder)
+            },
+            options: {
+                Toggle("Starred", isOn: $starred)
             }
-        }
-        .padding(16)
+        )
     }
 }
