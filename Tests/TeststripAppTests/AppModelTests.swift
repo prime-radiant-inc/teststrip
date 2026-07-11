@@ -6334,8 +6334,11 @@ final class AppModelTests: XCTestCase {
         // Review-queue rows are gone from the Library sidebar (Task 7); the
         // "only queues with catalog-backed counts" behavior now lives purely
         // in `reviewQueueCounts` (nil/absent entries for empty queues).
+        // Both assets carry evaluation signals and reload() refreshes counts,
+        // so "Not analyzed yet" is empty — it previously showed the stale
+        // pre-signal count (persona-7's sidebar drift).
         XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("Not analyzed yet", in: model), "2")
+        XCTAssertNil(reviewQueueCount("Not analyzed yet", in: model))
         XCTAssertNil(reviewQueueCount("Rejects", in: model))
     }
 
