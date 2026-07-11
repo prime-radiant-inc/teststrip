@@ -1946,7 +1946,7 @@ public final class CatalogRepository {
             bindings.append("\(limit)")
         }
         let rows = try database.rows(sql, bindings: bindings)
-        return try rows.map(decodePreviewGenerationItem)
+        return try decodePreviewGenerationItems(rows)
     }
 
     public func previewGenerationQueueState(assetID: AssetID, level: PreviewLevel) throws -> PreviewGenerationQueueState? {
@@ -1977,7 +1977,7 @@ public final class CatalogRepository {
             bindings.append("\(limit)")
         }
         let rows = try database.rows(sql, bindings: bindings)
-        return try rows.map(decodePreviewGenerationQueueState)
+        return try decodePreviewGenerationQueueStates(rows)
     }
 
     public func previewGenerationFailureAssetCount(assetIDs: [AssetID]) throws -> Int {
@@ -2935,6 +2935,48 @@ public final class CatalogRepository {
             throw CatalogError.sqlite("preview generation row is missing required columns")
         }
         return PreviewGenerationItem(assetID: AssetID(rawValue: assetID), level: level)
+    }
+
+    /// A malformed row (e.g. an unknown `level` value) must not fail catalog
+    /// open — that would fatalError the whole app on the next launch. Drop
+    /// the row and keep going instead of propagating the decode error.
+    private func decodePreviewGenerationItems(_ rows: [[String: String]]) throws -> [PreviewGenerationItem] {
+        var items: [PreviewGenerationItem] = []
+        items.reserveCapacity(rows.count)
+        for row in rows {
+            do {
+                items.append(try decodePreviewGenerationItem(row))
+            } catch {
+                try dropMalformedPreviewGenerationRow(row, reason: error)
+            }
+        }
+        return items
+    }
+
+    private func decodePreviewGenerationQueueStates(_ rows: [[String: String]]) throws -> [PreviewGenerationQueueState] {
+        var states: [PreviewGenerationQueueState] = []
+        states.reserveCapacity(rows.count)
+        for row in rows {
+            do {
+                states.append(try decodePreviewGenerationQueueState(row))
+            } catch {
+                try dropMalformedPreviewGenerationRow(row, reason: error)
+            }
+        }
+        return states
+    }
+
+    private func dropMalformedPreviewGenerationRow(_ row: [String: String], reason: Error) throws {
+        let assetID = row["asset_id"] ?? "?"
+        let level = row["level"] ?? "?"
+        FileHandle.standardError.write(Data(
+            "Teststrip: dropping malformed preview_generation_queue row (asset_id=\(assetID), level=\(level)): \(reason)\n".utf8
+        ))
+        guard row["asset_id"] != nil, row["level"] != nil else { return }
+        try database.execute(
+            "DELETE FROM preview_generation_queue WHERE asset_id = ? AND level = ?",
+            bindings: [assetID, level]
+        )
     }
 
     private func decodePreviewGenerationQueueState(_ row: [String: String]) throws -> PreviewGenerationQueueState {

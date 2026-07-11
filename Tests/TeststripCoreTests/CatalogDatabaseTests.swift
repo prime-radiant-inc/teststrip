@@ -1010,6 +1010,36 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(retryableItems.map(\.assetID.rawValue).sorted(), ["pending", "retryable"])
     }
 
+    func testPendingPreviewGenerationItemsDropsRowWithInvalidLevelInsteadOfThrowing() throws {
+        // Reproduces inspect-004: an invalid `level` rawValue in
+        // preview_generation_queue must not fail catalog open (which would
+        // fatalError the whole app). The malformed row is dropped and the
+        // rest of the queue decodes normally.
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-invalid-level")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let healthy = PreviewGenerationItem(assetID: AssetID(rawValue: "healthy"), level: .grid)
+        try repository.recordPreviewGenerationPending(healthy)
+        try database.execute(
+            """
+            INSERT INTO preview_generation_queue (asset_id, level, updated_at)
+            VALUES ('corrupt', 'full', ?)
+            """,
+            bindings: ["2"]
+        )
+
+        let items = try repository.pendingPreviewGenerationItems()
+        let states = try repository.previewGenerationQueueStates()
+
+        XCTAssertEqual(items, [healthy])
+        XCTAssertEqual(states.map(\.item), [healthy])
+        XCTAssertEqual(
+            try database.rows("SELECT asset_id FROM preview_generation_queue WHERE asset_id = 'corrupt'"),
+            []
+        )
+    }
+
     func testPendingPreviewGenerationItemsCanRequireAvailableOriginals() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-preview-queue-available-originals")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
