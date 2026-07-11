@@ -65,6 +65,25 @@ final class CullFilmstripPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.positionText, "5 frames")
     }
 
+    // Persona-7 count drift: with a 130-photo catalog and a 120-asset loaded
+    // page, the filmstrip said "frame 1 / 120" while the header said
+    // "Frame 1 of 130". When the loaded assets are a window into a larger
+    // scope, the caption must use the true frame number and total.
+    func testPositionTextUsesCatalogTotalWhenLoadedPageIsAWindow() {
+        let assets = Self.assets(count: 5)
+        let stacks = [AssetStack(assetIDs: assets.map(\.id))]
+
+        let presentation = CullFilmstripPresentation(
+            assets: assets,
+            stacks: stacks,
+            selectedAssetID: assets[1].id,
+            frameNumberOffset: 120,
+            totalFrameCount: 130
+        )
+
+        XCTAssertEqual(presentation.positionText, "frame 122 / 130 · stack 1 / 1")
+    }
+
     func testPositionTextWithEmptyAssets() {
         let presentation = CullFilmstripPresentation(assets: [], stacks: [], selectedAssetID: nil)
 

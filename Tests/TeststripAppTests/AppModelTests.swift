@@ -16378,6 +16378,31 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(entries.first?.originalTo.path)))
     }
 
+    // Persona-7 count drift: after trashing rejects the sidebar still said
+    // "Rejects 40" / "Not analyzed yet 130" while HUD and catalog said
+    // otherwise. Every bulk mutation funnels through reload(), so reload()
+    // must refresh the sidebar's review-queue/set/folder counts too.
+    func testMoveRejectsToTrashRefreshesSidebarCounts() throws {
+        let directory = try makeTemporaryDirectory(named: "trash-sidebar-counts")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let rejectOriginal = shoot.appendingPathComponent("reject.cr2")
+        let keptOriginal = shoot.appendingPathComponent("kept.cr2")
+        try Data("raw-reject".utf8).write(to: rejectOriginal)
+        try Data("raw-kept".utf8).write(to: keptOriginal)
+        let reject = makeAsset(id: "counts-reject", path: rejectOriginal.path, rating: 0, flag: .reject)
+        let kept = makeAsset(id: "counts-kept", path: keptOriginal.path, rating: 0, flag: nil)
+        let (model, _) = try makeModelWithCatalogAssets(named: "trash-sidebar-counts-model", assets: [reject, kept])
+        try model.reload()
+        XCTAssertEqual(model.reviewQueueCounts[.rejects], 1)
+        XCTAssertEqual(model.reviewQueueCounts[.needsEvaluation], 2)
+
+        _ = try model.moveRejectsToTrash(try model.rejectRelocationTrashPreflight())
+
+        XCTAssertEqual(model.reviewQueueCounts[.rejects], 0)
+        XCTAssertEqual(model.reviewQueueCounts[.needsEvaluation], 1)
+    }
+
     func testMoveBackFromTrashReinsertsIdenticalRowAndRestoresFile() throws {
         let directory = try makeTemporaryDirectory(named: "move-back-trash")
         let shoot = directory.appendingPathComponent("shoot", isDirectory: true)

@@ -2470,6 +2470,13 @@ public final class AppModel {
         return candidates?.isEmpty == false
     }
 
+    /// The loaded page's offset into the full catalog scope, for surfaces
+    /// (e.g. the cull filmstrip caption) that must report catalog-wide frame
+    /// numbers rather than window-local ones.
+    public var loadedAssetPageOffset: Int {
+        assetPageOffset
+    }
+
     public var selectedAssetPosition: Int? {
         guard let selectedAssetID,
               let selectedIndex = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
@@ -9417,6 +9424,13 @@ public final class AppModel {
         }
         isAutopilotReviewActive = false
         try refreshWorkHistorySearchResults(repository: catalog.repository)
+        // reload() is the single funnel after bulk mutations (trash, move
+        // back, relocation, deletes), so every count surface refreshes here
+        // together — otherwise the sidebar keeps stale review-queue/folder
+        // counts while the HUD and catalog already tell the new story
+        // (persona-7's "three surfaces, three stories").
+        try refreshCatalogSidebarCounts()
+        refreshCatalogFolders()
         if let explicitAssetIDs = selectedExplicitAssetIDs {
             let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: Self.assetPageSize)
             replaceAssets(loadedAssets, pageOffset: 0)

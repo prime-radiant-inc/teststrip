@@ -12,7 +12,17 @@ struct CullFilmstripPresentation: Equatable {
     var items: [Item]
     var positionText: String
 
-    init(assets: [Asset], stacks: [AssetStack], selectedAssetID: AssetID?) {
+    /// `frameNumberOffset`/`totalFrameCount` describe the loaded page's place
+    /// in the full scope when it's only a window into a larger catalog page
+    /// set — so the caption agrees with the header's "Frame X of Y" instead
+    /// of reporting the window size as the total (persona-7's 120-vs-130).
+    init(
+        assets: [Asset],
+        stacks: [AssetStack],
+        selectedAssetID: AssetID?,
+        frameNumberOffset: Int = 0,
+        totalFrameCount: Int? = nil
+    ) {
         var items: [Item] = []
         for (index, stack) in stacks.enumerated() {
             if index > 0 {
@@ -21,18 +31,30 @@ struct CullFilmstripPresentation: Equatable {
             items.append(contentsOf: stack.assetIDs.map(Item.frame))
         }
         self.items = items
-        self.positionText = Self.positionText(assets: assets, stacks: stacks, selectedAssetID: selectedAssetID)
+        self.positionText = Self.positionText(
+            assets: assets,
+            stacks: stacks,
+            selectedAssetID: selectedAssetID,
+            frameNumberOffset: frameNumberOffset,
+            totalFrameCount: totalFrameCount
+        )
     }
 
-    private static func positionText(assets: [Asset], stacks: [AssetStack], selectedAssetID: AssetID?) -> String {
-        let totalFrames = assets.count
+    private static func positionText(
+        assets: [Asset],
+        stacks: [AssetStack],
+        selectedAssetID: AssetID?,
+        frameNumberOffset: Int,
+        totalFrameCount: Int?
+    ) -> String {
+        let totalFrames = max(totalFrameCount ?? assets.count, assets.count)
         guard totalFrames > 0,
               let selectedAssetID,
               let frameIndex = assets.firstIndex(where: { $0.id == selectedAssetID }),
               let stackIndex = stacks.firstIndex(where: { $0.assetIDs.contains(selectedAssetID) }) else {
             return "\(totalFrames) \(totalFrames == 1 ? "frame" : "frames")"
         }
-        return "frame \(frameIndex + 1) / \(totalFrames) · stack \(stackIndex + 1) / \(stacks.count)"
+        return "frame \(frameNumberOffset + frameIndex + 1) / \(totalFrames) · stack \(stackIndex + 1) / \(stacks.count)"
     }
 }
 

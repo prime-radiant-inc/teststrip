@@ -4294,10 +4294,17 @@ private struct LoupeView: View {
             assets: scopedAssets,
             selectedAssetID: model.selectedAssetID
         )
+        // In the unscoped view the loaded assets are a page window into the
+        // full catalog scope, so the caption uses catalog-wide frame numbers
+        // to agree with the header's "Frame X of Y". Scoped views (picks/
+        // rejects/unrated) are scope-local by design.
+        let isUnscopedWindow = model.cullScope == .all
         let stackPresentation = CullFilmstripPresentation(
             assets: scopedAssets,
             stacks: model.allCullingStacks(for: scopedAssets),
-            selectedAssetID: model.selectedAssetID
+            selectedAssetID: model.selectedAssetID,
+            frameNumberOffset: isUnscopedWindow ? model.loadedAssetPageOffset : 0,
+            totalFrameCount: isUnscopedWindow ? model.totalAssetCount : nil
         )
         let stackIndexByAssetID = Self.stackIndexByAssetID(items: stackPresentation.items)
         return VStack(spacing: 6) {
