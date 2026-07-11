@@ -2848,6 +2848,16 @@ public final class AppModel {
         canRequestCurrentScopeAssetEvaluations
     }
 
+    /// True when any catalog source root is unreachable — its recorded path
+    /// no longer exists on this machine, or assets under it are offline.
+    /// The People workspace uses this to say "sources offline" instead of
+    /// advertising a scan that cannot enqueue any work.
+    public var hasUnavailableSourceRoots: Bool {
+        sourceRoots.contains { root in
+            root.unavailableAssetCount > 0 || !FileManager.default.fileExists(atPath: root.path)
+        }
+    }
+
     public var canRequestCompareAssetEvaluations: Bool {
         workerSupervisor != nil && compareAssets().contains { hasCachedPreview(for: $0.id) }
     }
@@ -3390,6 +3400,13 @@ public final class AppModel {
 
     public var canDismissSelectedFaceReviewAssets: Bool {
         catalog != nil && !selectedPeopleCandidateAssetIDs.isEmpty
+    }
+
+    /// How many photos "Name Selection" would attach to the new person —
+    /// surfaced in the sheet subtitle so a stale selection is visible
+    /// before the confirming click.
+    public var selectedPeopleCandidateAssetCount: Int {
+        selectedPeopleCandidateAssetIDs.count
     }
 
     private var selectedPeopleCandidateAssetIDs: [AssetID] {
