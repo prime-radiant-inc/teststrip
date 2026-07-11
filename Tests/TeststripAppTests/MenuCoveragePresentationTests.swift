@@ -63,6 +63,12 @@ final class MenuCoveragePresentationTests: XCTestCase {
         XCTAssertEqual(AppMenuCoveragePresentation.moveRejectsActionID, "Move Rejects…")
     }
 
+    // Trash Part 1: Culling ▸ Move Rejects to Trash… sits beside Move
+    // Rejects…, reusing the same request-token pattern.
+    func testCullingMenuCoversMoveRejectsToTrashAction() {
+        XCTAssertEqual(AppMenuCoveragePresentation.moveRejectsToTrashActionID, "Move Rejects to Trash…")
+    }
+
     // Support ▸ Check for Updates… drives the Sparkle updater.
     func testSupportMenuCoversCheckForUpdatesAction() {
         XCTAssertEqual(AppMenuCoveragePresentation.checkForUpdatesActionID, "Check for Updates…")

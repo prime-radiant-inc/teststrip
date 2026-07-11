@@ -83,7 +83,7 @@ final class CullCompletionTests: XCTestCase {
 
     // MARK: - Actions
 
-    func testActionsAreExportMoveRejectsReviewPicksInOrder() {
+    func testActionsAreExportMoveRejectsMoveRejectsToTrashReviewPicksInOrder() {
         let presentation = CullCompletionPresentation.presentation(
             pickCount: 1,
             rejectCount: 1,
@@ -91,7 +91,7 @@ final class CullCompletionTests: XCTestCase {
             undecidedCount: 0,
             scope: .all
         )
-        XCTAssertEqual(presentation?.actions, [.export, .moveRejects, .reviewPicks])
+        XCTAssertEqual(presentation?.actions, [.export, .moveRejects, .moveRejectsToTrash, .reviewPicks])
     }
 
     // MARK: - Undecided count on AppModel

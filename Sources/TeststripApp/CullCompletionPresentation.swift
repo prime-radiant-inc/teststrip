@@ -7,6 +7,7 @@ struct CullCompletionPresentation: Equatable {
     enum Action: Equatable, Hashable {
         case export
         case moveRejects
+        case moveRejectsToTrash
         case reviewPicks
     }
 
@@ -35,7 +36,7 @@ struct CullCompletionPresentation: Equatable {
         return CullCompletionPresentation(
             picks: pickCount,
             rejects: rejectCount,
-            actions: [.export, .moveRejects, .reviewPicks]
+            actions: [.export, .moveRejects, .moveRejectsToTrash, .reviewPicks]
         )
     }
 }

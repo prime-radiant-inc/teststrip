@@ -129,6 +129,10 @@ enum AppMenuCoveragePresentation {
     // path Task 20's end-of-set state already calls.
     static let moveRejectsActionID = "Move Rejects…"
 
+    // Culling ▸ Move Rejects to Trash… (trash-and-ux-coherence spec Part 1),
+    // a sibling of Move Rejects… reusing the same request-token pattern.
+    static let moveRejectsToTrashActionID = "Move Rejects to Trash…"
+
     // Support ▸ Check for Updates… (Sparkle auto-updater).
     static let checkForUpdatesActionID = "Check for Updates…"
 }
@@ -389,6 +393,11 @@ private struct CullingCommands: Commands {
 
             Button(AppMenuCoveragePresentation.moveRejectsActionID) {
                 model.requestMoveRejects()
+            }
+            .disabled(model.isImporting || model.assets.isEmpty || model.isRelocatingRejects)
+
+            Button(AppMenuCoveragePresentation.moveRejectsToTrashActionID) {
+                model.requestMoveRejectsToTrash()
             }
             .disabled(model.isImporting || model.assets.isEmpty || model.isRelocatingRejects)
 

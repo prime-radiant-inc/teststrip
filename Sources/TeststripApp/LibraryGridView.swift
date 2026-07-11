@@ -92,7 +92,8 @@ struct LibraryGridView: View {
                 LoupeView(
                     model: model,
                     beginExport: beginExport,
-                    beginMoveRejects: beginRejectRelocation
+                    beginMoveRejects: beginRejectRelocation,
+                    beginMoveRejectsToTrash: beginRejectRelocationToTrash
                 )
             } else if model.selectedView == .compare {
                 CompareView(model: model, focusCullingSurface: focusCullingSurface)
@@ -137,6 +138,9 @@ struct LibraryGridView: View {
         }
         .onChange(of: model.moveRejectsRequestToken) { _, _ in
             beginRejectRelocation()
+        }
+        .onChange(of: model.moveRejectsToTrashRequestToken) { _, _ in
+            beginRejectRelocationToTrash()
         }
         .toolbar {
             libraryToolbarContent
@@ -3129,11 +3133,27 @@ struct LibraryGridView: View {
         }
     }
 
+    // Trash has no destination to pick — no folder panel, no
+    // TESTSTRIP_REJECT_DESTINATION_DIR override (that env var only steers
+    // the folder flow's panel).
+    private func beginRejectRelocationToTrash() {
+        isRejectRelocationConfirmed = false
+        do {
+            rejectRelocationPreflight = try model.rejectRelocationTrashPreflight()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
     private func confirmRejectRelocation(_ preflight: RejectRelocationPreflight) {
         rejectRelocationPreflight = nil
         isRejectRelocationConfirmed = false
         do {
-            try model.moveRejectsToFolder(preflight)
+            if preflight.mode == .trash {
+                try model.moveRejectsToTrash(preflight)
+            } else {
+                try model.moveRejectsToFolder(preflight)
+            }
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -3491,6 +3511,7 @@ private struct LoupeView: View {
     var model: AppModel
     var beginExport: () -> Void
     var beginMoveRejects: () -> Void
+    var beginMoveRejectsToTrash: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var isDecisionToastVisible = false
@@ -3659,6 +3680,9 @@ private struct LoupeView: View {
                     .buttonStyle(.borderedProminent)
             case .moveRejects:
                 Button("Move Rejects…") { beginMoveRejects() }
+                    .buttonStyle(.bordered)
+            case .moveRejectsToTrash:
+                Button("Move Rejects to Trash…") { beginMoveRejectsToTrash() }
                     .buttonStyle(.bordered)
             case .reviewPicks:
                 Button("Review Picks") { model.applyCullCompletionReviewPicks() }
@@ -4675,13 +4699,28 @@ struct RejectRelocationSheetPresentation: Equatable {
     var isMoveEnabled: Bool
     var moveButtonTitle: String
 
+    // The Trash isn't a user-chosen folder: it gets its own title/button copy
+    // (spec Part 1 — primary button is the verb "Move N to Trash") and a
+    // standing warning that the move is destructive to the catalog row, not
+    // just a conditional one like the folder flow's unavailable/duplicate
+    // warnings.
+    private static let trashWarningText = "Files go to the macOS Trash and the catalog forgets them."
+
     init(preflight: RejectRelocationPreflight, isConfirmed: Bool) {
-        titleText = "Move rejects to \(preflight.destinationFolder.lastPathComponent)"
         summaryText = preflight.summaryText
-        warningText = preflight.warningText
         destinationPreviewRows = preflight.destinationPreview
         isMoveEnabled = preflight.hasMovableFiles && isConfirmed
-        moveButtonTitle = preflight.confirmationText
+        if preflight.mode == .trash {
+            titleText = "Move Rejects to Trash"
+            moveButtonTitle = "Move \(preflight.moveCount) to Trash"
+            warningText = [Self.trashWarningText, preflight.warningText]
+                .compactMap { $0 }
+                .joined(separator: " · ")
+        } else {
+            titleText = "Move rejects to \(preflight.destinationFolder.lastPathComponent)"
+            moveButtonTitle = preflight.confirmationText
+            warningText = preflight.warningText
+        }
     }
 }
 

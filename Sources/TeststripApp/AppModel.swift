@@ -2149,6 +2149,11 @@ public final class AppModel {
         moveRejectsRequestToken += 1
     }
 
+    public private(set) var moveRejectsToTrashRequestToken = 0
+    public func requestMoveRejectsToTrash() {
+        moveRejectsToTrashRequestToken += 1
+    }
+
     // Set at import start from the import's autopilotAfterImport decision; the
     // imported asset IDs land in armedAutopilotImportAssetIDs once the import
     // completes, and autopilot runs once their evaluations all resolve.
