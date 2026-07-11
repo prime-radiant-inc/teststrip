@@ -6334,8 +6334,11 @@ final class AppModelTests: XCTestCase {
         // Review-queue rows are gone from the Library sidebar (Task 7); the
         // "only queues with catalog-backed counts" behavior now lives purely
         // in `reviewQueueCounts` (nil/absent entries for empty queues).
+        // Both assets carry evaluation signals and reload() refreshes counts,
+        // so "Not analyzed yet" is empty — it previously showed the stale
+        // pre-signal count (persona-7's sidebar drift).
         XCTAssertEqual(reviewQueueCount("Picks", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("Not analyzed yet", in: model), "2")
+        XCTAssertNil(reviewQueueCount("Not analyzed yet", in: model))
         XCTAssertNil(reviewQueueCount("Rejects", in: model))
     }
 
@@ -16378,6 +16381,53 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(entries.first?.originalTo.path)))
     }
 
+    // Persona-7 count drift: after trashing rejects the sidebar still said
+    // "Rejects 40" / "Not analyzed yet 130" while HUD and catalog said
+    // otherwise. Every bulk mutation funnels through reload(), so reload()
+    // must refresh the sidebar's review-queue/set/folder counts too.
+    func testMoveRejectsToTrashRefreshesSidebarCounts() throws {
+        let directory = try makeTemporaryDirectory(named: "trash-sidebar-counts")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let rejectOriginal = shoot.appendingPathComponent("reject.cr2")
+        let keptOriginal = shoot.appendingPathComponent("kept.cr2")
+        try Data("raw-reject".utf8).write(to: rejectOriginal)
+        try Data("raw-kept".utf8).write(to: keptOriginal)
+        let reject = makeAsset(id: "counts-reject", path: rejectOriginal.path, rating: 0, flag: .reject)
+        let kept = makeAsset(id: "counts-kept", path: keptOriginal.path, rating: 0, flag: nil)
+        let (model, _) = try makeModelWithCatalogAssets(named: "trash-sidebar-counts-model", assets: [reject, kept])
+        try model.reload()
+        XCTAssertEqual(model.reviewQueueCounts[.rejects], 1)
+        XCTAssertEqual(model.reviewQueueCounts[.needsEvaluation], 2)
+
+        _ = try model.moveRejectsToTrash(try model.rejectRelocationTrashPreflight())
+
+        XCTAssertEqual(model.reviewQueueCounts[.rejects], 0)
+        XCTAssertEqual(model.reviewQueueCounts[.needsEvaluation], 1)
+    }
+
+    // Session scoping for completion banners: work restored from the
+    // persisted history on relaunch is not "this session's" work, so its
+    // completion panel must not resurrect; work recorded live is.
+    func testCurrentSessionActivityTracksOnlyThisSessionsWork() throws {
+        let assets = [makeAsset(id: "session-scope-asset", path: "/Photos/session-scope.jpg", rating: 0, flag: nil)]
+        let (model, _, _) = try makeModelWithCompletedImportSession(
+            named: "session-scope",
+            assets: assets,
+            outputAssetIDs: assets.map(\.id)
+        )
+        XCTAssertNotNil(model.latestImportCompletionSummary)
+        XCTAssertFalse(model.isCurrentSessionActivity(id: "latest-import-session"))
+
+        let liveDirectory = try makeTemporaryDirectory(named: "session-scope-live")
+        let original = liveDirectory.appendingPathComponent("reject.cr2")
+        try Data("raw".utf8).write(to: original)
+        let reject = makeAsset(id: "session-scope-reject", path: original.path, rating: 0, flag: .reject)
+        let (liveModel, _) = try makeModelWithCatalogAssets(named: "session-scope-live-model", assets: [reject])
+        let summary = try liveModel.moveRejectsToTrash(try liveModel.rejectRelocationTrashPreflight())
+        XCTAssertTrue(liveModel.isCurrentSessionActivity(id: summary.sessionID.rawValue))
+    }
+
     func testMoveBackFromTrashReinsertsIdenticalRowAndRestoresFile() throws {
         let directory = try makeTemporaryDirectory(named: "move-back-trash")
         let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
@@ -16432,10 +16482,60 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: kept.id).id, kept.id)
         XCTAssertThrowsError(try repository.asset(id: emptied.id))
         XCTAssertFalse(FileManager.default.fileExists(atPath: emptiedOriginal.path))
-        // The unrecoverable entry is reported, not silently dropped: it
-        // remains in the manifest (or the banner surfaces it) rather than
-        // the run reporting a clean full restore.
-        XCTAssertNotNil(model.errorMessage)
+        // The unrecoverable file is reported on the banner itself, not
+        // silently dropped: the summary says what restored and what is gone
+        // for good, and — with nothing left restorable — the Move back
+        // affordance retires and the manifest is cleared.
+        let updatedSummary = try XCTUnwrap(model.rejectRelocationSummary)
+        XCTAssertEqual(updatedSummary.restoredCount, 1)
+        XCTAssertEqual(updatedSummary.unrestorableCount, 1)
+        XCTAssertFalse(updatedSummary.canMoveBack)
+        XCTAssertEqual(
+            updatedSummary.detailText,
+            "Moved back 1 photo · 1 file is no longer in the Trash and can't be restored"
+        )
+        XCTAssertEqual(try repository.relocationManifestEntries(sessionID: summary.sessionID), [])
+    }
+
+    // Persona-7 Marcus's "THE APP LIES": trash rejects, empty the Trash in
+    // Finder, press Move back — the app must say the files are gone instead
+    // of silently doing nothing behind a still-live Move back button.
+    func testMoveBackFromTrashReportsWhenEveryTrashFileWasEmptied() throws {
+        let directory = try makeTemporaryDirectory(named: "move-back-trash-all-emptied")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let originalA = shoot.appendingPathComponent("a.cr2")
+        let originalB = shoot.appendingPathComponent("b.cr2")
+        try Data("raw-a".utf8).write(to: originalA)
+        try Data("raw-b".utf8).write(to: originalB)
+        let rejectA = makeAsset(id: "emptied-a", path: originalA.path, rating: 0, flag: .reject)
+        let rejectB = makeAsset(id: "emptied-b", path: originalB.path, rating: 0, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "move-back-trash-all-emptied-model",
+            assets: [rejectA, rejectB]
+        )
+        let preflight = try model.rejectRelocationTrashPreflight()
+        let summary = try model.moveRejectsToTrash(preflight)
+        for entry in try repository.relocationManifestEntries(sessionID: summary.sessionID) {
+            try FileManager.default.removeItem(at: entry.originalTo)
+        }
+
+        let restored = try model.moveBackRelocation(sessionID: summary.sessionID)
+
+        XCTAssertEqual(restored, 0)
+        let updatedSummary = try XCTUnwrap(model.rejectRelocationSummary)
+        XCTAssertEqual(updatedSummary.restoredCount, 0)
+        XCTAssertEqual(updatedSummary.unrestorableCount, 2)
+        XCTAssertFalse(updatedSummary.canMoveBack)
+        XCTAssertEqual(
+            updatedSummary.detailText,
+            "2 files are no longer in the Trash and can't be restored"
+        )
+        XCTAssertEqual(model.statusMessage, "2 files are no longer in the Trash and can't be restored")
+        // The manifest is retired: a second press (were the button still
+        // rendered) restores nothing and does not throw.
+        XCTAssertEqual(try repository.relocationManifestEntries(sessionID: summary.sessionID), [])
+        XCTAssertEqual(try model.moveBackRelocation(sessionID: summary.sessionID), 0)
     }
 
     func testLoadSurvivesDanglingPendingMetadataSyncRow() throws {

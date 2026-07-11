@@ -1497,24 +1497,59 @@ public struct RejectRelocationSummary: Equatable, Identifiable, Sendable {
     public var sidecarCount: Int
     public var skippedCount: Int
     public var destinationFolder: URL
+    /// Nil until a Move back ran for this session; then the banner reports
+    /// the restore outcome instead of the original move.
+    public var restoredCount: Int?
+    /// Files whose Trash copy no longer exists (the user emptied the Trash):
+    /// permanently unrecoverable, reported rather than silently skipped.
+    public var unrestorableCount: Int
+    /// Restore attempts that failed for transient reasons (still in the
+    /// Trash, retryable) — distinct from unrestorableCount's gone-for-good.
+    public var restoreFailureCount: Int
+    /// False once nothing restorable remains — the banner retires its
+    /// Move back button instead of inviting another no-op press.
+    public var canMoveBack: Bool
 
     public init(
         sessionID: WorkSessionID,
         movedCount: Int,
         sidecarCount: Int,
         skippedCount: Int,
-        destinationFolder: URL
+        destinationFolder: URL,
+        restoredCount: Int? = nil,
+        unrestorableCount: Int = 0,
+        restoreFailureCount: Int = 0,
+        canMoveBack: Bool = true
     ) {
         self.sessionID = sessionID
         self.movedCount = movedCount
         self.sidecarCount = sidecarCount
         self.skippedCount = skippedCount
         self.destinationFolder = destinationFolder
+        self.restoredCount = restoredCount
+        self.unrestorableCount = unrestorableCount
+        self.restoreFailureCount = restoreFailureCount
+        self.canMoveBack = canMoveBack
     }
 
     public var id: String { sessionID.rawValue }
 
     public var detailText: String {
+        if let restoredCount {
+            var parts: [String] = []
+            if restoredCount > 0 {
+                parts.append("Moved back \(restoredCount) \(restoredCount == 1 ? "photo" : "photos")")
+            }
+            if unrestorableCount > 0 {
+                parts.append(
+                    "\(unrestorableCount) \(unrestorableCount == 1 ? "file is" : "files are") no longer in the Trash and can't be restored"
+                )
+            }
+            if restoreFailureCount > 0 {
+                parts.append("\(restoreFailureCount) couldn't be restored")
+            }
+            return parts.joined(separator: " · ")
+        }
         let movedText = "Moved \(movedCount) reject \(movedCount == 1 ? "photo" : "photos") to \(destinationFolder.lastPathComponent)"
         guard skippedCount > 0 else { return movedText }
         return "\(movedText) · \(skippedCount) skipped"
@@ -2353,6 +2388,9 @@ public final class AppModel {
 
     private var previewCacheGenerationsByAssetID: [AssetID: Int]
     private var evaluationSignalGenerationsByAssetID: [AssetID: Int]
+    /// IDs of activities recorded live in this app session (vs. restored
+    /// from persisted history on launch) — see isCurrentSessionActivity.
+    private var currentSessionActivityIDs: Set<String> = []
     private var metadataUndoStack: [MetadataChangeGroup]
     private var metadataRedoStack: [MetadataChangeGroup]
     private var assetPageOffset: Int
@@ -2433,6 +2471,13 @@ public final class AppModel {
             limit: Self.metadataSyncStateDisplayLimit
         )
         return candidates?.isEmpty == false
+    }
+
+    /// The loaded page's offset into the full catalog scope, for surfaces
+    /// (e.g. the cull filmstrip caption) that must report catalog-wide frame
+    /// numbers rather than window-local ones.
+    public var loadedAssetPageOffset: Int {
+        assetPageOffset
     }
 
     public var selectedAssetPosition: Int? {
@@ -9382,6 +9427,13 @@ public final class AppModel {
         }
         isAutopilotReviewActive = false
         try refreshWorkHistorySearchResults(repository: catalog.repository)
+        // reload() is the single funnel after bulk mutations (trash, move
+        // back, relocation, deletes), so every count surface refreshes here
+        // together — otherwise the sidebar keeps stale review-queue/folder
+        // counts while the HUD and catalog already tell the new story
+        // (persona-7's "three surfaces, three stories").
+        try refreshCatalogSidebarCounts()
+        refreshCatalogFolders()
         if let explicitAssetIDs = selectedExplicitAssetIDs {
             let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: Self.assetPageSize)
             replaceAssets(loadedAssets, pageOffset: 0)
@@ -10849,7 +10901,13 @@ public final class AppModel {
         guard !entries.isEmpty else { return 0 }
         let service = RejectRelocationService()
         var restoredCount = 0
-        var skippedCount = 0
+        // The relocated copy no longer exists (the user emptied the Trash or
+        // deleted the moved file): permanently unrecoverable — reported on
+        // the banner, never a reason to keep a live Move back button.
+        var unrestorableCount = 0
+        // Transient failures (I/O, permissions): the manifest survives so a
+        // retry can still restore these.
+        var restoreFailureCount = 0
         // Reverse order so nested-directory recreations undo cleanly.
         for entry in entries.reversed() {
             do {
@@ -10880,22 +10938,39 @@ public final class AppModel {
                     // The Trash URL is gone (the user emptied the Trash): the
                     // asset is unrecoverable. Report it and continue restoring
                     // the rest rather than failing the whole batch.
-                    skippedCount += 1
-                    errorMessage = "Could not move back \(entry.originalFrom.lastPathComponent): its Trash file is gone"
+                    unrestorableCount += 1
                 }
             } catch {
-                skippedCount += 1
+                restoreFailureCount += 1
                 errorMessage = error.localizedDescription
             }
         }
-        if skippedCount == 0 {
+        // Only transient failures keep the manifest (a retry can still
+        // succeed). Unrecoverable files never come back, so they must not
+        // hold the manifest — and its Move back button — alive.
+        if restoreFailureCount == 0 {
             try catalog.repository.deleteRelocationManifest(sessionID: sessionID)
-            if rejectRelocationSummary?.sessionID == sessionID {
+        }
+        if rejectRelocationSummary?.sessionID == sessionID {
+            if unrestorableCount == 0 && restoreFailureCount == 0 {
+                // Clean full restore: the banner's job is done.
                 rejectRelocationSummary = nil
+            } else {
+                // Truthful banner update: report what restored, what is gone
+                // for good, and retire Move back once nothing restorable
+                // remains.
+                rejectRelocationSummary?.restoredCount = restoredCount
+                rejectRelocationSummary?.unrestorableCount = unrestorableCount
+                rejectRelocationSummary?.restoreFailureCount = restoreFailureCount
+                rejectRelocationSummary?.canMoveBack = restoreFailureCount > 0
             }
         }
         try reload()
-        statusMessage = "Moved back \(restoredCount) \(restoredCount == 1 ? "photo" : "photos")"
+        if unrestorableCount > 0 || restoreFailureCount > 0, let summary = rejectRelocationSummary {
+            statusMessage = summary.detailText
+        } else {
+            statusMessage = "Moved back \(restoredCount) \(restoredCount == 1 ? "photo" : "photos")"
+        }
         return restoredCount
     }
 
@@ -12183,6 +12258,14 @@ public final class AppModel {
         }
     }
 
+    /// Whether this activity was recorded live during the current app
+    /// session, as opposed to restored from the persisted work history on
+    /// launch. Completion banners/panels are session-scoped: only live
+    /// work may auto-show one (persona-7's relaunch-zombie panel).
+    public func isCurrentSessionActivity(id: String) -> Bool {
+        currentSessionActivityIDs.contains(id)
+    }
+
     private func recordRecentActivity(
         _ activity: AppWorkActivity,
         intent: String? = nil,
@@ -12192,6 +12275,7 @@ public final class AppModel {
         var recordedActivity = activity
         recordedActivity.inputSetIDs = inputSetIDs
         recordedActivity.outputSetIDs = outputSetIDs
+        currentSessionActivityIDs.insert(recordedActivity.id)
         recentWork.removeAll { $0.id == recordedActivity.id }
         recentWork.insert(recordedActivity, at: 0)
         refreshLatestImportPresentation()

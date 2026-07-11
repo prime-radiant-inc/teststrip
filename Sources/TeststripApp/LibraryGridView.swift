@@ -39,7 +39,6 @@ struct LibraryGridView: View {
     @State private var exportSizeEstimateText: String?
     @State private var rejectRelocationPreflight: RejectRelocationPreflight?
     @State private var isRejectRelocationConfirmed = false
-    @State private var isRejectRelocationMissingConfirmation = false
     @State private var isShowingDateFilters = false
     @State private var isShowingImportPathSheet = false
     @State private var isShowingImportCardPathSheet = false
@@ -743,7 +742,8 @@ struct LibraryGridView: View {
         guard LibraryGridChromePolicy.shouldShowImportCompletionSummary(
             isImporting: isImporting,
             summaryID: summary.id,
-            dismissedSummaryID: dismissedImportCompletionSummaryID
+            dismissedSummaryID: dismissedImportCompletionSummaryID,
+            isFromCurrentSession: model.isCurrentSessionActivity(id: summary.activityID)
         ) else {
             return nil
         }
@@ -3358,7 +3358,6 @@ struct LibraryGridView: View {
             panel: { FolderSelectionPanel.chooseRejectDestinationFolder() }
         ) else { return }
         isRejectRelocationConfirmed = false
-        isRejectRelocationMissingConfirmation = false
         do {
             rejectRelocationPreflight = try model.rejectRelocationPreflight(destinationFolder: destination)
         } catch {
@@ -3371,7 +3370,6 @@ struct LibraryGridView: View {
     // the folder flow's panel).
     private func beginRejectRelocationToTrash() {
         isRejectRelocationConfirmed = false
-        isRejectRelocationMissingConfirmation = false
         do {
             rejectRelocationPreflight = try model.rejectRelocationTrashPreflight()
         } catch {
@@ -3379,18 +3377,14 @@ struct LibraryGridView: View {
         }
     }
 
-    // The primary button stays enabled (disabled furniture is banned) even
-    // before the confirm toggle is checked, so pressing it unconfirmed must
-    // surface a visible reason instead of doing nothing — the exact trap
-    // that stranded Maya's rejects ("THE WALL", persona-1).
+    // The primary is genuinely disabled until the confirm toggle is checked
+    // (RejectRelocationSheetPresentation.isMoveEnabled), so an unconfirmed
+    // press can't happen through the UI; this guard is only a defensive
+    // backstop for programmatic callers.
     private func confirmRejectRelocation(_ preflight: RejectRelocationPreflight) {
-        guard isRejectRelocationConfirmed else {
-            isRejectRelocationMissingConfirmation = true
-            return
-        }
+        guard isRejectRelocationConfirmed else { return }
         rejectRelocationPreflight = nil
         isRejectRelocationConfirmed = false
-        isRejectRelocationMissingConfirmation = false
         do {
             if preflight.mode == .trash {
                 try model.moveRejectsToTrash(preflight)
@@ -3425,8 +3419,7 @@ struct LibraryGridView: View {
             cancel: {
                 rejectRelocationPreflight = nil
                 isRejectRelocationConfirmed = false
-                isRejectRelocationMissingConfirmation = false
-            },
+                    },
             primary: { confirmRejectRelocation(preflight) }
         ) {
             if let warningText = presentation.warningText {
@@ -3451,16 +3444,10 @@ struct LibraryGridView: View {
             // Destructive-adjacent: this confirm toggle stays visible outside
             // Options per spec §2c (files leave catalog tracking on move).
             if preflight.hasMovableFiles {
-                Toggle(preflight.confirmationText, isOn: Binding(
-                    get: { isRejectRelocationConfirmed },
-                    set: {
-                        isRejectRelocationConfirmed = $0
-                        if $0 { isRejectRelocationMissingConfirmation = false }
-                    }
-                ))
-                .font(.caption)
-                if isRejectRelocationMissingConfirmation {
-                    Label("Check the box above to confirm the move.", systemImage: "exclamationmark.circle")
+                Toggle(preflight.confirmationText, isOn: $isRejectRelocationConfirmed)
+                    .font(.caption)
+                if let confirmationHintText = presentation.confirmationHintText {
+                    Label(confirmationHintText, systemImage: "exclamationmark.circle")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
@@ -3747,12 +3734,17 @@ private struct RejectRelocationBannerView: View {
                 .font(.caption.weight(.medium))
                 .lineLimit(1)
             Spacer(minLength: 0)
-            Button("Move back") {
-                moveBack()
+            // Retired once nothing restorable remains (e.g. the user emptied
+            // the Trash): a live button that silently does nothing would lie
+            // about data loss.
+            if summary.canMoveBack {
+                Button("Move back") {
+                    moveBack()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .help("Move these photos back to where they came from")
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .help("Move these photos back to where they came from")
             Button("Dismiss") {
                 dismiss()
             }
@@ -4303,10 +4295,17 @@ private struct LoupeView: View {
             assets: scopedAssets,
             selectedAssetID: model.selectedAssetID
         )
+        // In the unscoped view the loaded assets are a page window into the
+        // full catalog scope, so the caption uses catalog-wide frame numbers
+        // to agree with the header's "Frame X of Y". Scoped views (picks/
+        // rejects/unrated) are scope-local by design.
+        let isUnscopedWindow = model.cullScope == .all
         let stackPresentation = CullFilmstripPresentation(
             assets: scopedAssets,
             stacks: model.allCullingStacks(for: scopedAssets),
-            selectedAssetID: model.selectedAssetID
+            selectedAssetID: model.selectedAssetID,
+            frameNumberOffset: isUnscopedWindow ? model.loadedAssetPageOffset : 0,
+            totalFrameCount: isUnscopedWindow ? model.totalAssetCount : nil
         )
         let stackIndexByAssetID = Self.stackIndexByAssetID(items: stackPresentation.items)
         return VStack(spacing: 6) {
@@ -5095,6 +5094,11 @@ struct RejectRelocationSheetPresentation: Equatable {
     var isMoveEnabled: Bool
     var moveButtonTitle: String
     var showsClearFiltersAffordance: Bool
+    /// Standing hint under the confirm toggle while it's unchecked, so the
+    /// disabled primary is never mystery furniture: it names exactly which
+    /// button the checkbox arms. Nil once confirmed or when nothing is
+    /// movable (no toggle renders then).
+    var confirmationHintText: String?
 
     // The Trash isn't a user-chosen folder: it gets its own title/button copy
     // (spec Part 1 — primary button is the verb "Move N to Trash") and a
@@ -5106,12 +5110,13 @@ struct RejectRelocationSheetPresentation: Equatable {
     init(preflight: RejectRelocationPreflight, isConfirmed: Bool) {
         summaryText = preflight.summaryText
         destinationPreviewRows = preflight.destinationPreview
-        // Disabled furniture is banned (spec): the primary stays enabled
-        // whenever there's something to move. The confirm toggle instead
-        // gates the action itself — pressing it unconfirmed surfaces an
-        // inline error rather than silently doing nothing (see
-        // LibraryGridView.confirmRejectRelocation).
-        isMoveEnabled = preflight.hasMovableFiles
+        // The confirm toggle gates the primary the way every other sheet in
+        // the template gates its verb (empty name → disabled button): AX
+        // reports the button disabled instead of swallowing presses on an
+        // armed-looking blue button (persona-7's "ghost"). The standing
+        // confirmationHintText below keeps the disabled state explained, so
+        // this never regresses into persona-1's unexplained dead button.
+        isMoveEnabled = preflight.hasMovableFiles && isConfirmed
         showsClearFiltersAffordance = !preflight.hasMovableFiles && preflight.outsideScopeCount > 0
         if preflight.mode == .trash {
             titleText = "Move Rejects to Trash"
@@ -5124,6 +5129,9 @@ struct RejectRelocationSheetPresentation: Equatable {
             moveButtonTitle = preflight.confirmationText
             warningText = preflight.warningText
         }
+        confirmationHintText = preflight.hasMovableFiles && !isConfirmed
+            ? "Check the box above to enable “\(moveButtonTitle)”."
+            : nil
     }
 }
 
@@ -7795,9 +7803,15 @@ enum LibraryGridChromePolicy {
     static func shouldShowImportCompletionSummary(
         isImporting: Bool,
         summaryID: String?,
-        dismissedSummaryID: String?
+        dismissedSummaryID: String?,
+        isFromCurrentSession: Bool
     ) -> Bool {
-        guard !isImporting, let summaryID else { return false }
+        // Session-scoped: a summary restored from the persisted work history
+        // (previous app session) never auto-shows again — otherwise a
+        // relaunch resurrects a stale completion panel the user already
+        // moved past (persona-7's zombie panel). The work stays reachable
+        // through Recent Work.
+        guard !isImporting, isFromCurrentSession, let summaryID else { return false }
         return summaryID != dismissedSummaryID
     }
 

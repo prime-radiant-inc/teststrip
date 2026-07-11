@@ -68,6 +68,41 @@ final class ImportDedupPreviewTests: XCTestCase {
         XCTAssertEqual(preview.existingContentCount, 1)
     }
 
+    // Persona-7's "Duplicates: 90 new" lie: re-importing a folder whose
+    // files are already cataloged *at those exact paths* — but whose rows
+    // carry no content hash (older or tool-seeded catalogs) — must not
+    // promise them as new. The importer treats a path-matched file as
+    // existing, so the preflight must too.
+    func testScanRecognizesPathMatchedAssetsWithoutContentHashes() throws {
+        let root = try makeDirectory(named: "path-matched")
+        let source = root.appendingPathComponent("originals", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        let cataloged = source.appendingPathComponent("cataloged.jpg")
+        try Data("in place".utf8).write(to: cataloged)
+        try Data("brand new".utf8).write(to: source.appendingPathComponent("fresh.jpg"))
+        let repository = try makeRepository(in: root)
+        try repository.upsert(Asset(
+            id: .new(),
+            originalURL: cataloged,
+            volumeIdentifier: nil,
+            fingerprint: FileFingerprint(
+                size: 8,
+                modificationDate: Date(timeIntervalSince1970: 1)
+            ),
+            availability: .online,
+            metadata: AssetMetadata()
+        ))
+
+        let preview = try XCTUnwrap(ImportDedupPreview.scan(
+            sourceURL: source,
+            supportedExtensions: ["jpg"],
+            repository: repository
+        ))
+
+        XCTAssertEqual(preview.newContentCount, 1)
+        XCTAssertEqual(preview.existingContentCount, 1)
+    }
+
     func testScanCollapsesWithinBatchDuplicates() throws {
         let root = try makeDirectory(named: "within-batch")
         let source = root.appendingPathComponent("card", isDirectory: true)

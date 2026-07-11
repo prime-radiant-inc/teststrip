@@ -46,8 +46,13 @@ end-to-end filesystem/catalog behavior a unit test can't reach.
    click) and AX-press **"Move Rejects to Trash…"**. A confirmation sheet
    appears — assert its primary button's title is **"Move N to Trash"** (N =
    the reject count) and it carries the warning copy "Files go to the macOS
-   Trash and the catalog forgets them." before confirming. Toggle the
-   confirmation checkbox on, then AX-press the primary button. `waitFor` the
+   Trash and the catalog forgets them." before confirming.
+   **Assert the confirm gate** (persona-7's ghost button): while the
+   confirmation checkbox is unchecked the primary must AX-report **disabled**
+   (AXEnabled false) — never an enabled-looking button that swallows
+   AXPress — and a standing hint "Check the box above to enable “Move N to
+   Trash”." must be present. Toggle the confirmation checkbox on (hint
+   disappears, primary enables), then AX-press the primary button. `waitFor` the
    **"Move back"** button (AXLabel "Move back", AXHelp "Move these photos
    back to where they came from") — this is the completion banner's only
    AX-exposed static content; the banner's own "Reject relocation complete"
@@ -64,6 +69,18 @@ end-to-end filesystem/catalog behavior a unit test can't reach.
    sqlite3 "$DB" "SELECT count(*) FROM relocation_manifest_entries WHERE asset_id='$ASSET_ID';"  # expect 1
    ls "$PREVIEWS/$ASSET_ID" 2>/dev/null; echo "exit=$?"                       # expect nonzero (dir gone)
    ```
+4b. **Assert every count surface tells the same story** (persona-7's
+   "three surfaces, three stories"): after the trash completes, dump the AX
+   tree and compare the sidebar's review-queue counts (e.g. "Rejects",
+   "Not analyzed yet") and the cull HUD's reject count against catalog
+   ground truth:
+   ```bash
+   sqlite3 "$DB" "SELECT count(*) FROM assets;"   # total after trash
+   sqlite3 "$DB" "SELECT count(*) FROM assets WHERE json_extract(metadata_json,'$.flag')='reject';"
+   ```
+   (Verify the real flag storage via `.schema assets` / a sample row first.)
+   **Fails if** any surface still shows the pre-trash counts (e.g. sidebar
+   "Rejects N" while the HUD shows 0 and the catalog agrees with the HUD).
 5. **Move back.** AX-press the **"Move back"** button (on the relocation
    completion surface). `waitFor` the completion state to clear.
 6. **Assert the original returned byte-identical and the row is back**:
@@ -89,6 +106,29 @@ end-to-end filesystem/catalog behavior a unit test can't reach.
   asset row count is back to 1. **Fails if** the checksum differs, the path
   differs, or the row wasn't re-inserted.
 
+7. **Empty the Trash out-of-band, then Move back — the app must tell the
+   truth** (persona-7's #1 friction). Re-flag a photo Reject and repeat the
+   trash flow (steps 2-3), then delete the trashed copies as the user would
+   when emptying the Trash, and press **Move back**:
+   ```bash
+   ROWS_BEFORE=$(sqlite3 "$DB" "SELECT count(*) FROM assets;")
+   # remove this run's trashed items (find them via the manifest)
+   sqlite3 "$DB" "SELECT original_to_path FROM relocation_manifest_entries;" | while read -r P; do rm -f "$P"; done
+   ```
+   AX-press **"Move back"**, then assert:
+   - the banner text updates to "N file(s) are no longer in the Trash and
+     can't be restored" (AX `waitFor` the substring "no longer in the
+     Trash");
+   - the **"Move back" button is gone** from the banner (retired — `ax find`
+     no longer matches it);
+   - the catalog row count is unchanged (`sqlite3 "$DB" "SELECT count(*)
+     FROM assets;"` equals `$ROWS_BEFORE` — nothing silently re-inserted);
+   - the manifest is cleared: `sqlite3 "$DB" "SELECT count(*) FROM
+     relocation_manifest_entries;"` returns 0.
+   **Fails if** the banner still claims "Moved N reject photos to Trash",
+   the Move back button remains pressable, or the press produces no visible
+   change — that is the exact silent-lie regression this step guards.
+
 ## Cleanup
 ```bash
 rm -f "$HOME/.Trash/$(basename "$SRC")"* 2>/dev/null
@@ -101,11 +141,12 @@ Quit the launched instance.
   `FileManager.trashItem`. Run this card in the VM per the spec (never against
   a real machine's Trash with real photos). Empty the VM's Trash in cleanup if
   disk space matters between runs.
-- **Move back can partially fail** if the Trash was emptied out-of-band
-  between trash and restore (the manifest's Trash URL is gone); that's a
-  documented skip-with-issue path, not a bug — this card's happy path doesn't
-  exercise it, but don't confuse a stale Trash URL from a prior run with a
-  regression.
+- **Move back after the Trash was emptied is a truth test, not a skip.**
+  Step 7 exercises it deliberately: the banner must update to a truthful
+  outcome and retire the button. A silent no-op on Move back (banner text
+  unchanged, button still pressable, catalog row count unchanged) is the
+  persona-7 regression this card now guards — report it as a failure, never
+  as "stale Trash URL from a prior run".
 - Don't assert on the grid re-appearing the asset — assert on `assets` row
   count and the filesystem, same discipline as app-010.
 - The end-of-set completion state also exposes "Move Rejects to Trash…" as a

@@ -170,7 +170,14 @@ public struct SmokeCatalogSeeder {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
         let modificationDate = attributes[.modificationDate] as? Date ?? Date(timeIntervalSince1970: 0)
-        return FileFingerprint(size: size, modificationDate: modificationDate)
+        // Store the real content hash, as the app's importer does: seeded
+        // catalogs must exercise the same content-dedup paths (import
+        // preflight, re-import skipping) as user-imported ones.
+        return FileFingerprint(
+            size: size,
+            modificationDate: modificationDate,
+            contentHash: try ContentHash.compute(forFileAt: url)
+        )
     }
 
     private static func writeSmokeJPEG(to url: URL, index: Int) throws {
