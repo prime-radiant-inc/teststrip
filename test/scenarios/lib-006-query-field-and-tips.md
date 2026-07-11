@@ -108,3 +108,12 @@ SQL in Pre-state was dry-run headlessly against a fresh `--smoke` catalog on
 `TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY` off the running process
 (`TOTAL=24`, `PICKS=6`); schema per
 `Sources/TeststripCore/Catalog/CatalogMigrations.swift`.
+
+## Fix notes (persona-fixes-5, 2026-07-11)
+PENDING-VM: search-field focus now releases on submit
+(`submitQueryTokenField()` sets `isQueryFieldFocused = false`), so a stray
+post-submit keystroke (e.g. a lone "1") can no longer land in the field and
+become a plain-text chip. Esc semantics added: Esc clears the field, Esc
+with an empty field clears all filters; documented in the tips popover and
+the field's help text. Unit-tested via `LibraryGridChromePolicy
+.queryFieldEscapeAction`; live AX keystroke verification pending VM.

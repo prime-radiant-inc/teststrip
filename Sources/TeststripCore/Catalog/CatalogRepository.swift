@@ -640,6 +640,21 @@ public final class CatalogRepository {
         return count
     }
 
+    // Unlike `geocodeQueueDepth()`, this counts only rows still eligible for a
+    // retry (attempt_count < maximumAttemptCount). Terminally-failed rows stay
+    // in `geocode_queue` (so their failure is visible) but must not keep a
+    // batch dispatch loop spinning forever.
+    public func pendingGeocodeQueueDepth(maximumAttemptCount: Int) throws -> Int {
+        let rows = try database.rows(
+            "SELECT COUNT(*) AS count FROM geocode_queue WHERE attempt_count < ?",
+            bindings: ["\(maximumAttemptCount)"]
+        )
+        guard let count = rows.first?["count"].flatMap(Int.init) else {
+            throw CatalogError.sqlite("geocode queue depth query returned no count")
+        }
+        return count
+    }
+
     public func assetsMissingCoordinates(limit: Int) throws -> [AssetID] {
         guard limit > 0 else { return [] }
         let rows = try database.rows(

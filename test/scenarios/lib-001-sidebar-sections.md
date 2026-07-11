@@ -135,3 +135,13 @@ above were read directly from `Sources/TeststripApp/SidebarView.swift` and
 `Sources/TeststripApp/AppModel.swift` on 2026-07-10; the `asset_sets` seed
 gap was confirmed by grepping `script/build_and_run.sh` for asset-set seeding
 (none found) rather than by running SQL against a live catalog.
+
+## Fix notes (persona-fixes-5, 2026-07-11)
+PENDING-VM: idle-catalog CPU runaway root-caused to the geocode dispatch
+loop — `enqueuePendingGeocoding()` gated on raw `geocodeQueueDepth()`, so a
+coordinate whose attempts were exhausted (CLGeocoder unreachable) kept the
+depth > 0 forever and each empty batch completion immediately redispatched
+another. Fixed by gating on `pendingGeocodeQueueDepth(maximumAttemptCount:)`
+(rows with attempt_count below the executor max). Unit-tested at AppModel
+level; live idle-soak verification on the VM is still pending (Tart VM
+stopped this session).

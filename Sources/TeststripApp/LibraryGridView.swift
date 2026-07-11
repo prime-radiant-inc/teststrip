@@ -124,6 +124,10 @@ struct LibraryGridView: View {
             }
         }
         .navigationTitle(model.catalogDisplayName)
+        .navigationSubtitle(LibraryGridChromePolicy.windowSubtitle(for: model.selectedView))
+        .onChange(of: model.statusMessage) { _, _ in
+            model.scheduleTransientStatusMessageAutoClear()
+        }
         .onChange(of: model.batchMetadataRequestToken) { _, _ in
             openBatchMetadataSheet()
         }
@@ -577,7 +581,11 @@ struct LibraryGridView: View {
             .onSubmit {
                 submitQueryTokenField()
             }
-            .help("Search your library, or type filter tokens like rating:3, camera:, keyword:. Click the info button for the full list.")
+            .onKeyPress(.escape) {
+                handleQueryFieldEscape()
+                return .handled
+            }
+            .help("Search your library, or type filter tokens like rating:3, camera:, keyword:. Click the info button for the full list. Esc clears the field; Esc again clears all filters.")
             .accessibilityLabel("Search Catalog")
             Button {
                 isShowingSearchTips = true
@@ -611,9 +619,24 @@ struct LibraryGridView: View {
         .liveMockupPlaceholder(.agenticSearch)
     }
 
+    private func handleQueryFieldEscape() {
+        switch LibraryGridChromePolicy.queryFieldEscapeAction(fieldText: model.librarySearchText) {
+        case .clearField:
+            model.librarySearchText = ""
+        case .clearFilters:
+            clearLibraryFilters()
+        }
+    }
+
     private func submitQueryTokenField() {
         LibraryQueryToken.parse(model.librarySearchText, applyingTo: model)
         applyLibraryFilters()
+        // Focus should hold the search field only while actively being
+        // edited; a submitted query commits its chip(s) and later keystrokes
+        // (e.g. rating shortcuts) are meant for the grid. Without this, a
+        // stray keystroke after submit silently lands in the still-focused
+        // field and becomes a new plain-text filter chip.
+        isQueryFieldFocused = false
     }
 
     private var searchTipsPopover: some View {
@@ -637,6 +660,10 @@ struct LibraryGridView: View {
                 }
             }
             Text("Repeat person: to require every name, e.g. person:\"Anna\" person:\"Ben\".")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Esc clears the field; Esc again (with an empty field) clears all filters.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -885,8 +912,15 @@ struct LibraryGridView: View {
                 .font(.system(size: 12, weight: .semibold))
         }
         .buttonStyle(.borderless)
-        .help("Sort")
-        .accessibilityLabel("Sort")
+        .help(librarySortButtonHelpText)
+        .accessibilityLabel(librarySortButtonHelpText)
+    }
+
+    // The menu already checkmarks the active row, but that's only visible
+    // once opened; the button itself must name the current order so "how is
+    // this sorted?" has an at-a-glance answer.
+    private var librarySortButtonHelpText: String {
+        LibraryGridChromePolicy.sortButtonHelpText(for: model.librarySortOption)
     }
 
     /// Covers every option the deleted rating/flag/color/source/signal/xmp
@@ -2312,6 +2346,10 @@ struct LibraryGridView: View {
         model.hasActiveLibraryFilters
     }
 
+    private var activeFilterChipTitles: [String] {
+        model.activeLibraryFilterChips
+    }
+
     private var assetGrid: some View {
         VStack(spacing: 0) {
             if let summary = model.autopilotRunSummary {
@@ -2492,6 +2530,27 @@ struct LibraryGridView: View {
                 } label: {
                     Label("Cancel Import", systemImage: "xmark.circle")
                 }
+            } else if hasActiveFilters {
+                Text("No photos match these filters")
+                    .font(.headline)
+                if activeFilterChipTitles.isEmpty {
+                    Text("Try adjusting or clearing the active filters.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                } else {
+                    Text("Active filters: \(activeFilterChipTitles.joined(separator: ", "))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                Button {
+                    clearLibraryFilters()
+                } label: {
+                    Label("Clear Filters", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
             } else {
                 Text("No photos yet")
                     .font(.headline)
@@ -7555,6 +7614,69 @@ enum LibraryGridChromePolicy {
     static func isPendingMetadataSyncRetryActionDisabled(isImporting: Bool, canRetry: Bool) -> Bool {
         isImporting || !canRetry
     }
+
+    /// The window subtitle names the active sub-view so "which view am I in?"
+    /// is answerable from the title bar and AX tree, not just the segmented
+    /// control highlight (the window title itself stays the catalog name).
+    static func windowSubtitle(for view: LibraryViewMode) -> String {
+        switch view {
+        case .grid: "Grid"
+        case .loupe, .libraryLoupe: "Loupe"
+        case .compare: "Compare"
+        case .abCompare: "A/B Compare"
+        case .timeline: "Timeline"
+        case .map: "Map"
+        case .people: "People"
+        case .cullGrid: "Cull"
+        }
+    }
+
+    /// Confirmation messages ("Saved X", "Renamed X") are transient and can
+    /// auto-clear; ongoing-work messages follow the codebase's trailing
+    /// ellipsis convention ("Importing …", "Exporting …") and must stay until
+    /// the work itself updates or replaces them.
+    static func isStatusMessageTransient(_ message: String?) -> Bool {
+        guard let message else { return false }
+        let trimmed = message.trimmingCharacters(in: .whitespaces)
+        return !trimmed.isEmpty && !trimmed.hasSuffix("…") && !trimmed.hasSuffix("...")
+    }
+
+    static func sortButtonHelpText(for option: LibrarySortOption) -> String {
+        guard let selected = LibrarySortOptionPresentation.options(selected: option).first(where: { $0.isSelected }) else {
+            return "Sort"
+        }
+        return "Sort: \(selected.title) \u{2014} \(selected.subtitle)"
+    }
+
+    /// Esc in the query field is context-sensitive: with text present it just
+    /// clears the field (a cheap "start over" while composing a query);
+    /// pressed again with the field already empty it clears the active
+    /// filters, so Esc, Esc is the fast path back to an unfiltered library
+    /// without reaching for the mouse.
+    static func queryFieldEscapeAction(fieldText: String) -> QueryFieldEscapeAction {
+        fieldText.isEmpty ? .clearFilters : .clearField
+    }
+
+    /// Which empty state to show for a zero-asset grid: a catalog with active
+    /// filters that happen to match nothing reads very differently from a
+    /// catalog nobody has imported into yet, and showing the first-run import
+    /// invitation for the former misleads the user into thinking their
+    /// catalog vanished.
+    static func emptyLibraryState(assetsIsEmpty: Bool, hasActiveLibraryFilters: Bool) -> LibraryEmptyState {
+        guard assetsIsEmpty else { return .none }
+        return hasActiveLibraryFilters ? .filteredToZero : .firstRun
+    }
+}
+
+enum LibraryEmptyState: Equatable {
+    case none
+    case firstRun
+    case filteredToZero
+}
+
+enum QueryFieldEscapeAction: Equatable {
+    case clearField
+    case clearFilters
 }
 
 struct LibrarySortOptionPresentation: Equatable {

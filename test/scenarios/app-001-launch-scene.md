@@ -109,3 +109,13 @@ isolated dir.
   probe — overwriting the SQLite file header with random bytes — still
   fails to open and still fatals as expected; that invariant (don't
   silently open/recreate a genuinely corrupt catalog) is unchanged.
+
+## Fix notes (persona-fixes-5, 2026-07-11)
+PENDING-VM: window title audit — the only `navigationTitle` in the app is
+`model.catalogDisplayName` (LibraryGridView.swift); the "Library View"
+string Sam saw is the sub-view Picker's control label, not a title
+override. Added `.navigationSubtitle` naming the active sub-view so the
+title bar reads "<catalog> — Grid/Loupe/…". Transient save-confirmation
+status messages now auto-clear after 4s (`scheduleTransientStatusMessage
+AutoClear`; ongoing "…"-suffixed work messages are exempt), unit-tested.
+Live title-bar verification on the VM pending.

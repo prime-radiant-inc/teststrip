@@ -43,6 +43,64 @@ final class LibraryGridChromeTests: XCTestCase {
         ))
     }
 
+    func testEmptyLibraryStateIsFilteredWhenFiltersAreActiveAndZeroAssetsAreShown() {
+        XCTAssertEqual(
+            LibraryGridChromePolicy.emptyLibraryState(assetsIsEmpty: true, hasActiveLibraryFilters: true),
+            .filteredToZero
+        )
+    }
+
+    func testEmptyLibraryStateIsFirstRunWhenNoFiltersAreActive() {
+        XCTAssertEqual(
+            LibraryGridChromePolicy.emptyLibraryState(assetsIsEmpty: true, hasActiveLibraryFilters: false),
+            .firstRun
+        )
+    }
+
+    func testSortButtonHelpTextNamesTheCurrentSortOrder() {
+        XCTAssertEqual(
+            LibraryGridChromePolicy.sortButtonHelpText(for: .captureTimeNewestFirst),
+            "Sort: Capture Time — Newest first"
+        )
+        XCTAssertEqual(
+            LibraryGridChromePolicy.sortButtonHelpText(for: .importOrder),
+            "Sort: Import Order — Oldest import first"
+        )
+    }
+
+    func testQueryFieldEscapeClearsFieldWhenTextIsPresent() {
+        XCTAssertEqual(
+            LibraryGridChromePolicy.queryFieldEscapeAction(fieldText: "rating:3"),
+            .clearField
+        )
+    }
+
+    func testQueryFieldEscapeClearsFiltersWhenFieldIsAlreadyEmpty() {
+        XCTAssertEqual(
+            LibraryGridChromePolicy.queryFieldEscapeAction(fieldText: ""),
+            .clearFilters
+        )
+    }
+
+    func testWindowSubtitleNamesTheActiveLibrarySubView() {
+        XCTAssertEqual(LibraryGridChromePolicy.windowSubtitle(for: .grid), "Grid")
+        XCTAssertEqual(LibraryGridChromePolicy.windowSubtitle(for: .timeline), "Timeline")
+        XCTAssertEqual(LibraryGridChromePolicy.windowSubtitle(for: .map), "Map")
+        XCTAssertEqual(LibraryGridChromePolicy.windowSubtitle(for: .libraryLoupe), "Loupe")
+    }
+
+    func testStatusMessageIsTransientUnlessItReadsAsOngoingWork() {
+        // Confirmation messages ("Saved X", "Renamed X") are transient and
+        // should auto-clear; ongoing-work messages use the codebase's
+        // existing "…" suffix convention (see "Importing …", "Exporting …")
+        // and must NOT be auto-cleared out from under an in-progress task.
+        XCTAssertTrue(LibraryGridChromePolicy.isStatusMessageTransient("Saved One-star picks"))
+        XCTAssertTrue(LibraryGridChromePolicy.isStatusMessageTransient("Renamed My Set"))
+        XCTAssertFalse(LibraryGridChromePolicy.isStatusMessageTransient("Importing Vacation…"))
+        XCTAssertFalse(LibraryGridChromePolicy.isStatusMessageTransient("Exporting 3 of 10 to Desktop..."))
+        XCTAssertFalse(LibraryGridChromePolicy.isStatusMessageTransient(nil))
+    }
+
     func testPendingMetadataSyncRetryActionDisablesDuringImportOrWithoutRetryableWork() {
         XCTAssertFalse(LibraryGridChromePolicy.isPendingMetadataSyncRetryActionDisabled(
             isImporting: false,

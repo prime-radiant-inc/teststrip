@@ -90,3 +90,12 @@ conditional-button logic confirmed by reading
 dry-run headlessly against a fresh `--smoke` catalog on 2026-07-10
 (`TOTAL=24`); the max-rating query in step 6 was not dry-run this session.
 Schema per `Sources/TeststripCore/Catalog/CatalogMigrations.swift`.
+
+## Fix notes (persona-fixes-5, 2026-07-11)
+PENDING-VM: sort control's `.help`/AX label now names the current order
+(e.g. "Sort: Capture Time — Newest first") via
+`LibraryGridChromePolicy.sortButtonHelpText(for:)`; unit-tested. Live
+tooltip/AX read on the VM pending. Filtered-to-zero empty state split from
+first-run: active filters now show "No photos match these filters" + the
+active filter names + a Clear Filters button; import invitation reserved
+for a truly empty catalog (`LibraryGridChromePolicy.emptyLibraryState`).

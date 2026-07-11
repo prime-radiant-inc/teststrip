@@ -116,6 +116,25 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAsset?.id, second.id)
     }
 
+    // Regression for the never-dismissing "Saved …" toast: confirmation
+    // messages auto-clear after their lifetime, ongoing-work messages
+    // (trailing ellipsis) persist until the work replaces them.
+    @MainActor
+    func testTransientStatusMessageAutoClearsButOngoingWorkMessagePersists() async throws {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        model.transientStatusMessageLifetime = .milliseconds(20)
+
+        model.statusMessage = "Saved One-star picks"
+        model.scheduleTransientStatusMessageAutoClear()
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNil(model.statusMessage)
+
+        model.statusMessage = "Importing Vacation…"
+        model.scheduleTransientStatusMessageAutoClear()
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(model.statusMessage, "Importing Vacation…")
+    }
+
     func testOpenAssetInLoupeSelectsAssetAndSwitchesView() {
         let first = makeAsset(id: "first", size: 1)
         let second = makeAsset(id: "second", size: 2)
@@ -17582,6 +17601,36 @@ final class AppModelTests: XCTestCase {
         try model.enqueuePendingGeocoding()
 
         XCTAssertEqual(try repository.geocodeQueueDepth(), 0)
+        XCTAssertTrue(try transport.commands().filter(\.isReverseGeocodeBatch).isEmpty)
+    }
+
+    // A coordinate whose geocode attempts are exhausted (attempt_count at the
+    // executor's max) must never be re-dispatched: geocode_queue rows aren't
+    // deleted on terminal failure, so a depth check that counts *all* rows
+    // (rather than only rows still eligible for retry) would keep seeing
+    // queueDepth > 0 forever and tight-loop redispatch a batch that always
+    // processes zero items. Regression for the CPU-runaway/hang bug.
+    func testEnqueuePendingGeocodingDoesNotRedispatchWhenAllItemsHaveExhaustedAttempts() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-geocoding-exhausted")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(geocodingLocatedAsset(id: "a", latitude: 48.8584, longitude: 2.2945))
+        let (model, transport) = makeGeocodingModel(directory: directory, repository: repository)
+
+        _ = try repository.enqueueMissingGeocodeCoordinates(limit: 100)
+        let key = GeocodeCoordinateKey.key(latitude: 48.8584, longitude: 2.2945)
+        for _ in 0..<WorkerCommandExecutor.reverseGeocodeMaximumAttemptCount {
+            try repository.recordGeocodeFailure(coordinateKey: key, errorMessage: "network unreachable")
+        }
+
+        try model.enqueuePendingGeocoding()
+
+        // The row is still sitting in geocode_queue (never deleted on terminal
+        // failure) ...
+        XCTAssertEqual(try repository.geocodeQueueDepth(), 1)
+        // ... but with no items left eligible for retry, no batch should be
+        // dispatched.
         XCTAssertTrue(try transport.commands().filter(\.isReverseGeocodeBatch).isEmpty)
     }
 

@@ -1993,6 +1993,11 @@ public final class AppModel {
     private var selectedBatchAssetIDOrder: [AssetID]
     private var selectedBatchAssetSortKeys: [AssetID: Int]
     public var statusMessage: String?
+    /// How long a transient confirmation toast ("Saved X") stays up before
+    /// auto-clearing. Ongoing-work messages ("Importing …") never auto-clear.
+    /// Injectable so tests don't wait out the real four seconds.
+    var transientStatusMessageLifetime: Duration = .seconds(4)
+    @ObservationIgnored private var transientStatusMessageClearTask: Task<Void, Never>?
     public var errorMessage: String?
     /// Import-scoped failures only, surfaced in the Activity Center's import
     /// row - unrelated model errors stay on `errorMessage` and never route here.
@@ -2501,6 +2506,25 @@ public final class AppModel {
             return statusMessage
         }
         return "\(statusMessage); \(previewStatus)"
+    }
+
+    // A transient confirmation left on screen indefinitely becomes noise
+    // ("Saved …" still visible ten minutes later); ongoing-work messages are
+    // left alone so an in-progress task's status is never yanked out from
+    // under it. Invoked from the view's `.onChange(of: statusMessage)` —
+    // `@Observable` and property observers don't mix under strict concurrency.
+    @MainActor
+    func scheduleTransientStatusMessageAutoClear() {
+        transientStatusMessageClearTask?.cancel()
+        transientStatusMessageClearTask = nil
+        guard LibraryGridChromePolicy.isStatusMessageTransient(statusMessage) else { return }
+        let message = statusMessage
+        let lifetime = transientStatusMessageLifetime
+        transientStatusMessageClearTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: lifetime)
+            guard !Task.isCancelled, let self, self.statusMessage == message else { return }
+            self.statusMessage = nil
+        }
     }
 
     private var activePreviewGenerationStatusText: String? {
@@ -7719,7 +7743,13 @@ public final class AppModel {
     func enqueuePendingGeocoding() throws {
         guard let catalog, let workerSupervisor else { return }
         _ = try catalog.repository.enqueueMissingGeocodeCoordinates(limit: Self.geocodeEnqueueScanLimit)
-        let queueDepth = try catalog.repository.geocodeQueueDepth()
+        // Gate on rows still eligible for a retry, not raw queue depth: a
+        // terminally-failed coordinate (attempt_count at the max) stays in
+        // geocode_queue for visibility but must never be redispatched, or a
+        // completed-but-empty batch would requeue itself in a tight loop.
+        let queueDepth = try catalog.repository.pendingGeocodeQueueDepth(
+            maximumAttemptCount: WorkerCommandExecutor.reverseGeocodeMaximumAttemptCount
+        )
         guard queueDepth > 0 else { return }
         if let existingItem = currentBackgroundWorkQueue.item(id: Self.geocodeWorkItemID),
            Self.isActiveBackgroundWorkStatus(existingItem.status) {

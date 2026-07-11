@@ -112,7 +112,7 @@ public struct WorkerCommandExecutor {
     // budget self-corrects, but this errs slow. Tunable.
     public static let reverseGeocodeRequestsPerMinuteBudget = 50
     public static let reverseGeocodeMinimumRequestInterval = 60.0 / Double(reverseGeocodeRequestsPerMinuteBudget)
-    static let reverseGeocodeMaximumAttemptCount = 5
+    public static let reverseGeocodeMaximumAttemptCount = 5
 
     private let repository: CatalogRepository
     private let previewCache: PreviewCache
