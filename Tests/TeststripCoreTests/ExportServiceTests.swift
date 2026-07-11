@@ -332,6 +332,100 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertEqual(preexistingDimensions, PreviewDimensions(width: 10, height: 10))
     }
 
+    // Jesse's ruling (2026-07-11): before writing, the export flow detects
+    // filename collisions in the destination and asks once — Replace All /
+    // Keep Both / Cancel. Keep Both is the existing suffixing; Replace All
+    // overwrites the colliding files in place.
+    func testCollidingFilenamesReportsOnlyPlannedOutputsAlreadyOnDisk() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-collision-detect")
+        let collidingSource = directory.appendingPathComponent("photo.jpg")
+        let freshSource = directory.appendingPathComponent("fresh.jpg")
+        try TestDirectories.writeTestJPEG(to: collidingSource, width: 100, height: 80)
+        try TestDirectories.writeTestJPEG(to: freshSource, width: 100, height: 80)
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        // Extension comes from the export format, so a RAW original collides
+        // with an existing photo.jpg output too.
+        try TestDirectories.writeTestJPEG(to: destination.appendingPathComponent("photo.jpg"), width: 10, height: 10)
+
+        let collisions = ExportService().collidingFilenames(
+            originalURLs: [collidingSource, freshSource],
+            format: .jpeg,
+            destinationDirectory: destination
+        )
+
+        XCTAssertEqual(collisions, ["photo.jpg"])
+    }
+
+    func testCollidingFilenamesIsEmptyForFreshDestination() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-collision-none")
+        let source = directory.appendingPathComponent("photo.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 100, height: 80)
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+
+        XCTAssertEqual(
+            ExportService().collidingFilenames(
+                originalURLs: [source],
+                format: .jpeg,
+                destinationDirectory: destination
+            ),
+            []
+        )
+    }
+
+    func testExportReplaceAllOverwritesCollidingFileInsteadOfSuffixing() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-replace-all")
+        let source = directory.appendingPathComponent("photo.jpg")
+        try TestDirectories.writeTestJPEG(to: source, width: 100, height: 80)
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try TestDirectories.writeTestJPEG(to: destination.appendingPathComponent("photo.jpg"), width: 10, height: 10)
+
+        let results = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportPreset.web2048.settings,
+            destinationDirectory: destination,
+            collisionResolution: .replaceAll
+        )
+
+        XCTAssertEqual(results, [
+            ExportFileResult(sourceURL: source, outcome: .exported(destinationURL: destination.appendingPathComponent("photo.jpg")))
+        ])
+        // The pre-existing 10x10 file was replaced by the real export.
+        let dimensions = try PreviewRenderer().dimensions(of: destination.appendingPathComponent("photo.jpg"))
+        XCTAssertEqual(dimensions, PreviewDimensions(width: 100, height: 80))
+        let writtenNames = try FileManager.default.contentsOfDirectory(atPath: destination.path).sorted()
+        XCTAssertEqual(writtenNames, ["photo.jpg"])
+    }
+
+    func testExportReplaceAllStillSuffixesWithinBatchDuplicates() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-replace-all-batch")
+        let firstFolder = directory.appendingPathComponent("a", isDirectory: true)
+        let secondFolder = directory.appendingPathComponent("b", isDirectory: true)
+        try FileManager.default.createDirectory(at: firstFolder, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondFolder, withIntermediateDirectories: true)
+        let firstSource = firstFolder.appendingPathComponent("photo.jpg")
+        let secondSource = secondFolder.appendingPathComponent("photo.jpg")
+        try TestDirectories.writeTestJPEG(to: firstSource, width: 100, height: 80)
+        try TestDirectories.writeTestJPEG(to: secondSource, width: 100, height: 80)
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+
+        let results = try ExportService().export(
+            originalURLs: [firstSource, secondSource],
+            settings: ExportPreset.web2048.settings,
+            destinationDirectory: destination,
+            collisionResolution: .replaceAll
+        )
+
+        // Replace All applies to files already on disk before the batch, not
+        // to two same-named frames inside the batch — the second must never
+        // clobber the first.
+        XCTAssertEqual(results, [
+            ExportFileResult(sourceURL: firstSource, outcome: .exported(destinationURL: destination.appendingPathComponent("photo.jpg"))),
+            ExportFileResult(sourceURL: secondSource, outcome: .exported(destinationURL: destination.appendingPathComponent("photo-2.jpg")))
+        ])
+    }
+
     func testExportSkipsMissingOriginalsAndReportsUndecodableOnesAsFailed() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "export-skip-fail")
         let goodSource = directory.appendingPathComponent("good.jpg")
