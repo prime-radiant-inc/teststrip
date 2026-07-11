@@ -213,6 +213,18 @@ struct ImportDedupPreview: Equatable {
                 break
             }
             scannedPhotoCount += 1
+            // A file cataloged at this exact path is already in the catalog
+            // no matter what its row's content hash says (older or
+            // tool-seeded rows may carry none) — the importer treats a path
+            // match as existing, so the preview must promise the same
+            // instead of announcing "N new" for an all-duplicate re-import.
+            // The enumerator may hand back symlink-resolved paths (e.g.
+            // /private/var vs /var) while the catalog stores the path the
+            // user imported with — check both spellings.
+            if (try? repository.asset(originalURL: fileURL)) != nil
+                || (try? repository.asset(originalURL: fileURL.resolvingSymlinksInPath())) != nil {
+                continue
+            }
             if let hash = try? ContentHash.compute(forFileAt: fileURL) {
                 contentHashes.append(hash)
             }
