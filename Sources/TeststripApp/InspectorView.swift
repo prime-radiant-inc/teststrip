@@ -1166,6 +1166,11 @@ struct InspectorView: View {
             HStack(spacing: 6) {
                 TextField(title, text: text)
                     .textFieldStyle(.roundedBorder)
+                    // Carve-in per spec §2c/Out-of-scope: these AXTextFields
+                    // were untargetable by role+label once populated (the
+                    // placeholder-derived title stops standing in for an
+                    // accessibility label), so they get an explicit one.
+                    .accessibilityLabel(title)
                     .onSubmit {
                         apply(commit)
                     }

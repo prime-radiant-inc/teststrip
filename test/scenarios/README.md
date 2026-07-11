@@ -55,7 +55,7 @@ keyboard cull, evaluate, import, card-import) is already driven live by
      value. Good for an unambiguous field (export long-edge); for the multi-field
      Import Path / Import Card sheets use **`script/submit_import_path.sh App
      DIR`** instead, which sheet-scopes the path field and drives the whole flow
-     (path → Review Import → Start Import).
+     (path → Review Import → the primary button, labeled "Import N Photos").
 
    It re-asserts frontmost through **System Events** on every poll iteration —
    the primitive macOS permits when another app holds focus. (The older

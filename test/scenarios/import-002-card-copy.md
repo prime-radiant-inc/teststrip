@@ -58,7 +58,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    From Card…, type `$CARD` as the source and `$DEST` as the destination,
    leave duplicate handling at the default (import-all — this card is not
    testing cross-card dedupe, see `import-004-new-only-dedupe.md` for that),
-   confirm, Start Import, wait for completion.
+   confirm, press the primary button ("Import N Photos"), wait for completion.
 3. **Ground-truth the copy and the source**:
    ```bash
    shasum -a 256 "$CARD"/*.jpg | sort > /tmp/import-002-card-after.sha256

@@ -39,12 +39,13 @@ fixture needed.)
 2. Open the card/folder import sheet (typed-path route, per
    `duplicate-detection-import-new-only.md`'s Sharp edges:
    `TESTSTRIP_CARD_IMPORT_ROUTE=typed-path`), type `$IMPORT_DIR`.
-3. In the confirmation sheet, assert the toggle exists with the exact label
-   **"Autopilot cull after reading"**
-   (`Sources/TeststripApp/LibraryGridView.swift:1846-1856`), defaults **off**
-   (`autopilotAfterImport ?? false`, :1849, and `ImportConfirmationDraft.swift:249`),
+3. In the confirmation sheet, expand the **"Options"** disclosure (these
+   toggles moved there under the SheetScaffold conversion,
+   `Sources/TeststripApp/LibraryGridView.swift`). Assert the toggle exists
+   with the exact label **"Autopilot cull after reading"**, defaults **off**
+   (`autopilotAfterImport ?? false`, and `ImportConfirmationDraft.swift:249`),
    and is `.disabled` whenever "Read imported frames automatically" is off
-   (:1855 — autopilot cannot run without the read pass that feeds it).
+   (autopilot cannot run without the read pass that feeds it).
    Turn **on** both "Read imported frames automatically" (default on) and
    "Autopilot cull after reading".
 4. Start the import; wait for it to complete, then wait for the read

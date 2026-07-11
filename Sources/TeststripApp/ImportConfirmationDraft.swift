@@ -364,13 +364,13 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
         secondCopyRootURL?.lastPathComponent
     }
 
+    // Verb + object + count per spec §2c ("Import 240 Photos"), matching the
+    // count the body already shows in `sourceSummary.countText`.
     var primaryActionTitle: String {
-        switch mode {
-        case .folder:
-            return "Start Import"
-        case .card:
-            return "Start Card Import"
-        }
+        let count = dedupPreview?.newContentCount ?? sourceSummary.photoCount
+        let suffix = (dedupPreview?.reachedLimit ?? sourceSummary.reachedLimit) ? "+" : ""
+        let noun = count == 1 ? "Photo" : "Photos"
+        return "Import \(count)\(suffix) \(noun)"
     }
 
     var canStartImport: Bool {

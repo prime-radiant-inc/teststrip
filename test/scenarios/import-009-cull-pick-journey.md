@@ -24,7 +24,10 @@ shows nothing), this card catches it where per-feature unit tests can't.
 1. **Import the folder.** `script/activate_app.sh Teststrip`. Use the typed
    **Import Path** entry (avoids the native panel — same approach as
    `script/verify_import_path.sh`), type `$IMP`, and in the confirmation sheet
-   leave **"Read imported frames automatically"** ON. Press **"Start Import"**.
+   leave **"Read imported frames automatically"** ON (default; it now lives
+   under the sheet's "Options" disclosure, unopened). Press the primary
+   button — labeled **"Import N Photos"** (N = the scanned count; match with
+   `--contains "Import"` or use Return, bound to `.keyboardShortcut(.defaultAction)`).
 2. **Wait for import + evaluation to drain.** `waitFor` the completion panel
    (an `AXStaticText` / button set including **"Start culling"** and
    **"Review imported frames"**). Watch the Activity panel drain if needed.

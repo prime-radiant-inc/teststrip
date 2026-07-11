@@ -1674,9 +1674,18 @@ struct LibraryGridView: View {
             isReviewing: isReviewingImportPath,
             isImporting: isImporting
         )
-        return VStack(alignment: .leading, spacing: 12) {
-            Text("Import Folder Path")
-                .font(.headline)
+        return SheetScaffold(
+            title: "Import Folder Path",
+            subtitle: "Catalogs photos from a folder path without moving the originals.",
+            primaryLabel: reviewPresentation.primaryActionTitle,
+            isPrimaryEnabled: reviewPresentation.isPrimaryActionEnabled,
+            cancel: {
+                importPathReviewID = nil
+                isReviewingImportPath = false
+                isShowingImportPathSheet = false
+            },
+            primary: importFolderPath
+        ) {
             TextField("Folder path", text: $importPathDraft.path)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 420)
@@ -1696,21 +1705,7 @@ struct LibraryGridView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
-            HStack {
-                Spacer()
-                Button("Cancel") {
-                    importPathReviewID = nil
-                    isReviewingImportPath = false
-                    isShowingImportPathSheet = false
-                }
-                Button(reviewPresentation.primaryActionTitle) {
-                    importFolderPath()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!reviewPresentation.isPrimaryActionEnabled)
-            }
         }
-        .padding(18)
         .onDisappear {
             importPathReviewID = nil
             isReviewingImportPath = false
@@ -1723,56 +1718,54 @@ struct LibraryGridView: View {
             isReviewing: isReviewingImportCardPath,
             isImporting: isImporting
         )
-        return VStack(alignment: .leading, spacing: 12) {
-            Text("Import Card Paths")
-                .font(.headline)
-            TextField("Card or source folder path", text: $importCardPathDraft.sourcePath)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 420)
-                .disabled(isReviewingImportCardPath)
-            TextField("Destination folder path", text: $importCardPathDraft.destinationPath)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 420)
-                .disabled(isReviewingImportCardPath)
-            Toggle("Organize into dated folders (YYYY/YYYY-MM-DD)", isOn: $importCardPathDraft.organizeIntoDatedFolders)
-                .toggleStyle(.checkbox)
-                .font(.caption)
-                .disabled(isReviewingImportCardPath)
-                .help("Files each copied original into year/date folders from its capture date; files without a capture date use their modification date.")
-            TextField("Second copy folder path (optional)", text: $importCardPathDraft.secondCopyPath)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 420)
-                .disabled(isReviewingImportCardPath)
-            importPlanView(steps: importCardPathDraft.planSteps, width: 420)
-            if reviewPresentation.showsProgress {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(reviewPresentation.statusText ?? "")
+        return SheetScaffold(
+            title: "Import Card Paths",
+            subtitle: "Copies photos from a card or source folder into your library.",
+            primaryLabel: reviewPresentation.primaryActionTitle,
+            isPrimaryEnabled: reviewPresentation.isPrimaryActionEnabled,
+            cancel: {
+                importCardPathReviewID = nil
+                isReviewingImportCardPath = false
+                isShowingImportCardPathSheet = false
+            },
+            primary: importCardPath,
+            content: {
+                TextField("Card or source folder path", text: $importCardPathDraft.sourcePath)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 420)
+                    .disabled(isReviewingImportCardPath)
+                TextField("Destination folder path", text: $importCardPathDraft.destinationPath)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 420)
+                    .disabled(isReviewingImportCardPath)
+                importPlanView(steps: importCardPathDraft.planSteps, width: 420)
+                if reviewPresentation.showsProgress {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(reviewPresentation.statusText ?? "")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let errorMessage = importCardPathDraft.errorMessage {
+                    Text(errorMessage)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.red)
                 }
-            }
-            if let errorMessage = importCardPathDraft.errorMessage {
-                Text(errorMessage)
+            },
+            options: {
+                Toggle("Organize into dated folders (YYYY/YYYY-MM-DD)", isOn: $importCardPathDraft.organizeIntoDatedFolders)
+                    .toggleStyle(.checkbox)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .disabled(isReviewingImportCardPath)
+                    .help("Files each copied original into year/date folders from its capture date; files without a capture date use their modification date.")
+                TextField("Second copy folder path (optional)", text: $importCardPathDraft.secondCopyPath)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 380)
+                    .disabled(isReviewingImportCardPath)
             }
-            HStack {
-                Spacer()
-                Button("Cancel") {
-                    importCardPathReviewID = nil
-                    isReviewingImportCardPath = false
-                    isShowingImportCardPathSheet = false
-                }
-                Button(reviewPresentation.primaryActionTitle) {
-                    importCardPath()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!reviewPresentation.isPrimaryActionEnabled)
-            }
-        }
-        .padding(18)
+        )
         .onDisappear {
             importCardPathReviewID = nil
             isReviewingImportCardPath = false
@@ -1780,111 +1773,109 @@ struct LibraryGridView: View {
     }
 
     private func importConfirmationSheet(_ draft: ImportConfirmationDraft) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(draft.title)
-                .font(.headline)
-            VStack(alignment: .leading, spacing: 6) {
-                LabeledContent("Source", value: draft.sourceName)
-                if let destinationName = draft.destinationName {
-                    LabeledContent("Destination", value: destinationName)
+        SheetScaffold(
+            title: draft.title,
+            subtitle: draft.mode == .card
+                ? "Copies photos into your library and catalogs the copies."
+                : "Catalogs photos in place without moving the originals.",
+            width: 480,
+            primaryLabel: draft.primaryActionTitle,
+            isPrimaryEnabled: !isImporting && draft.canStartImport,
+            cancel: { importConfirmationDraft = nil },
+            primary: { confirmImport(draft) },
+            content: {
+                VStack(alignment: .leading, spacing: 6) {
+                    LabeledContent("Source", value: draft.sourceName)
+                    if let destinationName = draft.destinationName {
+                        LabeledContent("Destination", value: destinationName)
+                    }
+                    if draft.mode == .card {
+                        LabeledContent("Second copy", value: draft.secondCopyName ?? "None")
+                    }
+                    LabeledContent("Photos", value: draft.sourceSummary.countText)
+                    if let dedupCountText = draft.dedupCountText {
+                        LabeledContent("Duplicates", value: dedupCountText)
+                    }
+                    LabeledContent("Size", value: draft.sourceSummary.byteCountText)
+                    Text(draft.sourceSummary.detailText)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let destinationUnavailableReason = draft.destinationUnavailableReason {
+                        Text(destinationUnavailableReason)
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let secondCopyUnavailableReason = draft.secondCopyUnavailableReason {
+                        Text(secondCopyUnavailableReason)
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                importPlanView(steps: draft.planSteps, width: 440)
+            },
+            options: {
                 if draft.mode == .card {
-                    LabeledContent("Second copy", value: draft.secondCopyName ?? "None")
+                    Toggle(
+                        "Organize into dated folders (YYYY/YYYY-MM-DD)",
+                        isOn: Binding(
+                            get: { (importConfirmationDraft?.destinationPolicy ?? .capturedDate) == .capturedDate },
+                            set: { importConfirmationDraft?.destinationPolicy = $0 ? .capturedDate : .flat }
+                        )
+                    )
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                    .help("Files each copied original into year/date folders from its capture date; files without a capture date use their modification date.")
+                    HStack(spacing: 8) {
+                        Button(draft.secondCopyRootURL == nil ? "Second copy to..." : "Change second copy...") {
+                            chooseImportSecondCopyDestination()
+                        }
+                        .font(.caption)
+                        if draft.secondCopyRootURL != nil {
+                            Button("Remove second copy") {
+                                importConfirmationDraft?.setSecondCopyRoot(nil)
+                            }
+                            .font(.caption)
+                        }
+                    }
                 }
-                LabeledContent("Photos", value: draft.sourceSummary.countText)
-                if let dedupCountText = draft.dedupCountText {
-                    LabeledContent("Duplicates", value: dedupCountText)
-                }
-                LabeledContent("Size", value: draft.sourceSummary.byteCountText)
-                Text(draft.sourceSummary.detailText)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let destinationUnavailableReason = draft.destinationUnavailableReason {
-                    Text(destinationUnavailableReason)
-                        .font(.caption2)
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if let secondCopyUnavailableReason = draft.secondCopyUnavailableReason {
-                    Text(secondCopyUnavailableReason)
-                        .font(.caption2)
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            if draft.mode == .card {
                 Toggle(
-                    "Organize into dated folders (YYYY/YYYY-MM-DD)",
+                    "Import new photos only",
                     isOn: Binding(
-                        get: { (importConfirmationDraft?.destinationPolicy ?? .capturedDate) == .capturedDate },
-                        set: { importConfirmationDraft?.destinationPolicy = $0 ? .capturedDate : .flat }
+                        get: { importConfirmationDraft?.importNewOnly ?? true },
+                        set: { importConfirmationDraft?.importNewOnly = $0 }
                     )
                 )
                 .toggleStyle(.checkbox)
                 .font(.caption)
-                .help("Files each copied original into year/date folders from its capture date; files without a capture date use their modification date.")
-                HStack(spacing: 8) {
-                    Button(draft.secondCopyRootURL == nil ? "Second copy to..." : "Change second copy...") {
-                        chooseImportSecondCopyDestination()
-                    }
-                    .font(.caption)
-                    if draft.secondCopyRootURL != nil {
-                        Button("Remove second copy") {
-                            importConfirmationDraft?.setSecondCopyRoot(nil)
-                        }
-                        .font(.caption)
-                    }
-                }
+                .help("Skips source files whose content is already in the catalog — re-inserting a card copies only the new frames. Turn off to import everything, keeping intentional duplicates.")
+                Toggle(
+                    "Read imported frames automatically",
+                    isOn: Binding(
+                        get: { importConfirmationDraft?.evaluateAfterImport ?? true },
+                        set: { importConfirmationDraft?.evaluateAfterImport = $0 }
+                    )
+                )
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .help("Queues the standard evaluation passes over the imported set's cached previews as previews complete. Reads stay provisional; nothing is written without your action.")
+                Toggle(
+                    "Autopilot cull after reading",
+                    isOn: Binding(
+                        get: { importConfirmationDraft?.autopilotAfterImport ?? false },
+                        set: { importConfirmationDraft?.autopilotAfterImport = $0 }
+                    )
+                )
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .disabled(!(importConfirmationDraft?.evaluateAfterImport ?? true))
+                .help("Once the imported reads finish, Autopilot proposes keeps and cuts for review. Proposals stay provisional; nothing is written until you commit.")
             }
-            importPlanView(steps: draft.planSteps, width: 440)
-            Toggle(
-                "Import new photos only",
-                isOn: Binding(
-                    get: { importConfirmationDraft?.importNewOnly ?? true },
-                    set: { importConfirmationDraft?.importNewOnly = $0 }
-                )
-            )
-            .toggleStyle(.checkbox)
-            .font(.caption)
-            .help("Skips source files whose content is already in the catalog — re-inserting a card copies only the new frames. Turn off to import everything, keeping intentional duplicates.")
-            Toggle(
-                "Read imported frames automatically",
-                isOn: Binding(
-                    get: { importConfirmationDraft?.evaluateAfterImport ?? true },
-                    set: { importConfirmationDraft?.evaluateAfterImport = $0 }
-                )
-            )
-            .toggleStyle(.checkbox)
-            .font(.caption)
-            .help("Queues the standard evaluation passes over the imported set's cached previews as previews complete. Reads stay provisional; nothing is written without your action.")
-            Toggle(
-                "Autopilot cull after reading",
-                isOn: Binding(
-                    get: { importConfirmationDraft?.autopilotAfterImport ?? false },
-                    set: { importConfirmationDraft?.autopilotAfterImport = $0 }
-                )
-            )
-            .toggleStyle(.checkbox)
-            .font(.caption)
-            .disabled(!(importConfirmationDraft?.evaluateAfterImport ?? true))
-            .help("Once the imported reads finish, Autopilot proposes keeps and cuts for review. Proposals stay provisional; nothing is written until you commit.")
-            HStack {
-                Spacer()
-                Button("Cancel") {
-                    importConfirmationDraft = nil
-                }
-                Button(draft.primaryActionTitle) {
-                    confirmImport(draft)
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(isImporting || !draft.canStartImport)
-            }
-        }
-        .padding(18)
-        .frame(width: 480)
+        )
     }
 
     private func importIssueReviewSheet(_ review: ImportIssueReview) -> some View {
@@ -3177,12 +3168,18 @@ struct LibraryGridView: View {
             preflight: preflight,
             isConfirmed: isRejectRelocationConfirmed
         )
-        VStack(alignment: .leading, spacing: 12) {
-            Text(presentation.titleText)
-                .font(.headline)
-            Text(presentation.summaryText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        SheetScaffold(
+            title: presentation.titleText,
+            subtitle: presentation.summaryText,
+            width: 420,
+            primaryLabel: presentation.moveButtonTitle,
+            isPrimaryEnabled: presentation.isMoveEnabled,
+            cancel: {
+                rejectRelocationPreflight = nil
+                isRejectRelocationConfirmed = false
+            },
+            primary: { confirmRejectRelocation(preflight) }
+        ) {
             if let warningText = presentation.warningText {
                 Label(warningText, systemImage: "exclamationmark.triangle")
                     .font(.caption)
@@ -3202,25 +3199,13 @@ struct LibraryGridView: View {
                 }
                 .frame(maxHeight: 140)
             }
+            // Destructive-adjacent: this confirm toggle stays visible outside
+            // Options per spec §2c (files leave catalog tracking on move).
             if preflight.hasMovableFiles {
                 Toggle(preflight.confirmationText, isOn: $isRejectRelocationConfirmed)
                     .font(.caption)
             }
-            HStack {
-                Button("Cancel") {
-                    rejectRelocationPreflight = nil
-                    isRejectRelocationConfirmed = false
-                }
-                Spacer()
-                Button(presentation.moveButtonTitle) {
-                    confirmRejectRelocation(preflight)
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!presentation.isMoveEnabled)
-            }
         }
-        .padding(16)
-        .frame(width: 420)
     }
 
     private func saveNewExportPreset() {

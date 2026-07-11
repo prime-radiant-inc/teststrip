@@ -81,9 +81,9 @@ warm
 "$AX" press "$APP" --role AXButton --help "Name this face group" >/dev/null 2>&1
 sleep 1
 warm
-# The "Name Face Group" sheet: a field with placeholder "Person name" + Create.
+# The "Name Face Group" sheet: a field with placeholder "Person name" + Create Person.
 "$AX" type "$APP" --role AXTextField --contains "Person name" --text "Scenario Person" >/dev/null 2>&1
-"$AX" press "$APP" --role AXButton --label "Create" >/dev/null 2>&1
+"$AX" press "$APP" --role AXButton --label "Create Person" >/dev/null 2>&1
 sleep 2
 
 if [ "$(count_people)" -ge 1 ] && [ "$(count_person_assets)" -ge 1 ]; then

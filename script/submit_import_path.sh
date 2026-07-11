@@ -137,6 +137,22 @@ func button(named label: String, insideSheet: Bool? = nil) -> AXUIElement? {
     }
 }
 
+// The confirmation sheet's primary button now bakes the scanned count into
+// its label ("Import N Photos", per spec §2c's verb+object+count rule), so
+// it can't be matched by an exact title.
+func button(titlePrefix prefix: String, insideSheet: Bool? = nil) -> AXUIElement? {
+    walk(root) { element in
+        guard stringAttribute(element, kAXRoleAttribute) == kAXButtonRole,
+              let text = accessibleText(element), text.hasPrefix(prefix) else {
+            return false
+        }
+        if let insideSheet {
+            return hasAncestor(element, role: kAXSheetRole) == insideSheet
+        }
+        return true
+    }
+}
+
 func focusedSheetTextField() -> AXUIElement? {
     guard let focused = elementAttribute(root, kAXFocusedUIElementAttribute),
           stringAttribute(focused, kAXRoleAttribute) == kAXTextFieldRole,
@@ -182,15 +198,15 @@ guard reviewImportResult == .success else {
     exit(1)
 }
 
-guard waitFor({ button(named: "Start Import", insideSheet: true) != nil }),
-      let startImportButton = button(named: "Start Import", insideSheet: true) else {
-    fputs("Start Import button not found in confirmation sheet\n", stderr)
+guard waitFor({ button(titlePrefix: "Import ", insideSheet: true) != nil }),
+      let startImportButton = button(titlePrefix: "Import ", insideSheet: true) else {
+    fputs("\"Import N Photos\" button not found in confirmation sheet\n", stderr)
     exit(1)
 }
 
 let startImportResult = AXUIElementPerformAction(startImportButton, kAXPressAction as CFString)
 guard startImportResult == .success else {
-    fputs("AXPress failed for Start Import: \(startImportResult.rawValue)\n", stderr)
+    fputs("AXPress failed for \"Import N Photos\": \(startImportResult.rawValue)\n", stderr)
     exit(1)
 }
 

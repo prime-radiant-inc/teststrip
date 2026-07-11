@@ -54,7 +54,7 @@ After you pick a folder, a confirmation sheet appears before anything happens. I
 - **Use the managed background queue** — preview and metadata work stays visible, pausable, and cancellable.
 - Follow-up setup: prepare imported-set culling, detect likely stacks, prepare keyword/face review.
 
-Click **Start Import** to proceed, or Cancel.
+Click **Import N Photos** to proceed, or Cancel.
 
 **What actually gets written to your photo tree:** nothing to the original image bytes, ever. The only new files are `.xmp` sidecars, written next to each original, and only once you set a rating/flag/keyword/caption/creator/copyright — Teststrip doesn't write a sidecar just from importing or browsing. The default sidecar name is `<original-filename>.xmp` (e.g. `IMG_1234.CR2.xmp`). If a folder already has an Adobe-style sidecar (`IMG_1234.xmp`, no extension before `.xmp`) and no other file shares that basename, Teststrip reads and updates that one instead of creating a second file; if that basename is ambiguous (e.g. a RAW+JPEG pair), it falls back to its own collision-safe name rather than guessing which original the ambiguous sidecar belongs to. Existing unrelated XMP properties in a sidecar are preserved — only the fields above are ever touched.
 

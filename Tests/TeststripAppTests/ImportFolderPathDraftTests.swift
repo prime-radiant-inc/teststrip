@@ -193,7 +193,7 @@ final class ImportFolderPathDraftTests: XCTestCase {
 
         XCTAssertEqual(confirmation.mode, .folder)
         XCTAssertEqual(confirmation.sourceURL.standardizedFileURL, directory.standardizedFileURL)
-        XCTAssertEqual(confirmation.primaryActionTitle, "Start Import")
+        XCTAssertEqual(confirmation.primaryActionTitle, "Import 0 Photos")
         XCTAssertNil(draft.errorMessage)
     }
 
@@ -209,7 +209,7 @@ final class ImportFolderPathDraftTests: XCTestCase {
         XCTAssertEqual(confirmation.mode, .card)
         XCTAssertEqual(confirmation.sourceURL.standardizedFileURL, source.standardizedFileURL)
         XCTAssertEqual(confirmation.destinationRootURL?.standardizedFileURL, destination.standardizedFileURL)
-        XCTAssertEqual(confirmation.primaryActionTitle, "Start Card Import")
+        XCTAssertEqual(confirmation.primaryActionTitle, "Import 1 Photo")
         XCTAssertTrue(confirmation.canStartImport)
         XCTAssertNil(draft.errorMessage)
     }

@@ -9,7 +9,7 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(draft.title, "Import Folder")
         XCTAssertEqual(draft.sourceName, "Decades")
         XCTAssertEqual(draft.destinationName, nil)
-        XCTAssertEqual(draft.primaryActionTitle, "Start Import")
+        XCTAssertEqual(draft.primaryActionTitle, "Import 0 Photos")
         XCTAssertEqual(draft.planSteps, [
             ImportPlanStep(
                 title: "Catalog originals in place",
@@ -121,7 +121,7 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(draft.title, "Import Card")
         XCTAssertEqual(draft.sourceName, "DCIM")
         XCTAssertEqual(draft.destinationName, "Incoming")
-        XCTAssertEqual(draft.primaryActionTitle, "Start Card Import")
+        XCTAssertEqual(draft.primaryActionTitle, "Import 0 Photos")
         XCTAssertEqual(draft.destinationPolicy, .capturedDate)
         XCTAssertNil(draft.secondCopyRootURL)
         XCTAssertEqual(draft.planSteps.first, ImportPlanStep(

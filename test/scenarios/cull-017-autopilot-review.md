@@ -46,7 +46,7 @@ and Undo all must return the catalog to its pre-run state.
    sqlite3 "$DB" "SELECT COALESCE(SUM(catalog_generation),0) FROM assets;"          # GEN0 (write signal)
    ```
 2. **Import the fixture** (drives the whole Import Path flow — path field →
-   Review Import → Start Import; Autopilot-after-import is seeded from the armed
+   Review Import → the primary button ("Import N Photos"); Autopilot-after-import is seeded from the armed
    setting):
    ```bash
    ./script/submit_import_path.sh Teststrip "$IMP"

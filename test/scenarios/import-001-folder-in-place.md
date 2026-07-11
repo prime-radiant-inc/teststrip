@@ -45,7 +45,9 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    ```bash
    script/submit_import_path.sh Teststrip "$FIXTURE"
    ```
-   This drives Import Path → types the path → Review Import → Start Import.
+   This drives Import Path → types the path → Review Import → the primary
+   button (labeled "Import N Photos", matched by the driver's title-prefix
+   helper since N varies with the scan).
 3. Wait for the import to complete (`ax_drive.sh wait --role AXStaticText --contains "Import"` or
    poll `model.isImporting` indirectly via the toolbar Import button re-enabling —
    `ax_drive.sh find --role AXButton --label "Import"` once no longer disabled).
