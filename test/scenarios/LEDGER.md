@@ -63,43 +63,43 @@ Status flow: Spec'd → Tested-Pass | Tested-Fail → Fixed → Verified.
 | inspect-007-ai-verdicts | inspect-007-ai-verdicts.md | Tested-Pass | VM e2e | — | PASS |  |
 | inspect-008-sidecar-write-semantics | inspect-008-sidecar-write-semantics.md | Tested-Pass | VM e2e | — | PASS | adopts rate-writes-xmp-happy-path |
 | inspect-009-metadata-undo | inspect-009-metadata-undo.md | Tested-Pass | VM e2e | — | PASS |  |
-| import-001-folder-in-place | import-001-folder-in-place.md | Spec'd | — | — | — |  |
-| import-002-card-copy | import-002-card-copy.md | Spec'd | — | — | — | open q: per-file skip vs whole-batch failure on collision — card accepts either, confirm live |
-| import-003-menu-and-dev-path | import-003-menu-and-dev-path.md | Spec'd | — | — | — |  |
-| import-004-new-only-dedupe | import-004-new-only-dedupe.md | Spec'd | — | — | — | adopts duplicate-detection-import-new-only |
-| import-005-sidecar-on-import | import-005-sidecar-on-import.md | Spec'd | — | — | — | first-import conflict unreachable (planner folds unconditionally); second-import framing used |
-| import-006-availability-badges | import-006-availability-badges.md | Spec'd | — | — | — |  |
-| import-007-refresh-reconnect | import-007-refresh-reconnect.md | Spec'd | — | — | — |  |
-| import-008-auto-cull-toggle | import-008-auto-cull-toggle.md | Spec'd | — | — | — |  |
-| import-009-cull-pick-journey | import-009-cull-pick-journey.md | Spec'd | — | — | — | adopts import-cull-pick-happy-path (cross-area journey) |
-| activity-001-icon-states | activity-001-icon-states.md | Spec'd | — | — | — | adopts activity-icon-states + quiet-activity-badge; known gap: no UI rescan trigger |
-| activity-002-popover-import | activity-002-popover-import.md | Spec'd | — | — | — | suspected bug: completed-with-errors import surfacing gap in popover |
-| activity-003-jobs-controls | activity-003-jobs-controls.md | Spec'd | — | — | — | fixture gap: >4 concurrent jobs may not be exercisable (smoke drains fast) |
-| activity-004-sources-conflicts-quiet | activity-004-sources-conflicts-quiet.md | Spec'd | — | — | — |  |
-| activity-005-conflict-deep-link | activity-005-conflict-deep-link.md | Spec'd | — | — | — |  |
-| activity-006-xmp-lifecycle | activity-006-xmp-lifecycle.md | Spec'd | — | — | — |  |
-| worker-001-preview-lifecycle | worker-001-preview-lifecycle.md | Spec'd | — | — | — |  |
-| worker-002-evaluation-verdicts | worker-002-evaluation-verdicts.md | Spec'd | — | — | — |  |
-| worker-003-face-pipeline | worker-003-face-pipeline.md | Spec'd | — | — | — | 2000-observation cap source-grounded only; no fixture reaches it |
-| worker-004-death-recovery | worker-004-death-recovery.md | Spec'd | — | — | — |  |
-| worker-005-offline-reconnect | worker-005-offline-reconnect.md | Spec'd | — | — | — | open q: no confirmed UI trigger for post-reconnect availability re-probe |
-| worker-006-geocode-backfill | worker-006-geocode-backfill.md | Spec'd | — | — | — | network-dependent; SKIP offline |
-| app-001-launch-scene | app-001-launch-scene.md | Spec'd | — | — | — |  |
-| app-002-window-floors | app-002-window-floors.md | Spec'd | — | — | — | adopts workspace-minimum-width-floors |
-| app-003-workspace-switching | app-003-workspace-switching.md | Spec'd | — | — | — | adopts workspace-switching |
-| app-004-subview-menus | app-004-subview-menus.md | Spec'd | — | — | — |  |
-| app-005-chrome-policy | app-005-chrome-policy.md | Spec'd | — | — | — | adopts ux-simplification-chrome |
-| app-006-session-restore | app-006-session-restore.md | Spec'd | — | — | — | harness note: launch mints fresh state dir per call — relaunch must reuse run dir; a relaunch verb would simplify |
-| app-007-go-history | app-007-go-history.md | Spec'd | — | — | — |  |
-| app-008-batch-metadata | app-008-batch-metadata.md | Spec'd | — | — | — |  |
-| app-009-export | app-009-export.md | Spec'd | — | — | — | adopts export-presets-with-exif |
-| app-010-move-rejects | app-010-move-rejects.md | Spec'd | — | — | — | adopts reject-relocation-move-and-back |
-| app-011-find-best-shots | app-011-find-best-shots.md | Spec'd | — | — | — | outcome C (nothing-ranked) needs a zero-rank fixture; mark NOT-RUN if unproducible |
-| app-012-autopilot-evaluate-commands | app-012-autopilot-evaluate-commands.md | Spec'd | — | — | — |  |
-| app-013-diagnostics | app-013-diagnostics.md | Spec'd | — | — | — |  |
-| app-014-updater | app-014-updater.md | Spec'd | — | — | — | Sparkle e2e untestable pre-release; static-only cap; Sparkle e2e untestable pre-release; static-only cap. Defaults key names unverified until first live run |
-| app-015-preferences | app-015-preferences.md | Spec'd | — | — | — |  |
-| app-016-menu-coverage-invariants | app-016-menu-coverage-invariants.md | Tested-Pass | unit tests (MenuCoveragePresentationTests 8/0) | — | — | unit-test method; gap: Run Autopilot/Scan for Faces/Evaluate Photo/Scope not enumerated — renames uncatchable; DRY-RUN PASSED (8 tests) during authoring; all coverage invariants pass |
+| import-001-folder-in-place | import-001-folder-in-place.md | Tested-Pass | VM e2e | — | PASS — originals untouched (checksums) |  |
+| import-002-card-copy | import-002-card-copy.md | Tested-Pass | VM e2e | — | PASS | open q: per-file skip vs whole-batch failure on collision — card accepts either, confirm live |
+| import-003-menu-and-dev-path | import-003-menu-and-dev-path.md | Tested-Pass | VM e2e | — | PASS |  |
+| import-004-new-only-dedupe | import-004-new-only-dedupe.md | Tested-Pass | VM e2e | — | PASS; card-doc formula contradiction noted — card fix queued | adopts duplicate-detection-import-new-only |
+| import-005-sidecar-on-import | import-005-sidecar-on-import.md | Tested-Fail | VM e2e | Testability | a/c PASS; b: planner conflict branch unreachable on re-import (re-sync semantics) — card expectation fix queued; corroborates no-rescan gap | first-import conflict unreachable (planner folds unconditionally); second-import framing used |
+| import-006-availability-badges | import-006-availability-badges.md | Tested-Pass | VM e2e | — | PASS |  |
+| import-007-refresh-reconnect | import-007-refresh-reconnect.md | Tested-Pass | VM e2e | Environment | PASS core; repair-row leg blocked-env; sourceScan rows never persist (observability gap) |  |
+| import-008-auto-cull-toggle | import-008-auto-cull-toggle.md | Tested-Fail | VM e2e | Functional | APP BUG: sheet autopilot opt-in no-ops when global autopilotEnabled=false (AppModel:8161) — fix queued |  |
+| import-009-cull-pick-journey | import-009-cull-pick-journey.md | Tested-Pass | VM e2e | — | journey PASS | adopts import-cull-pick-happy-path (cross-area journey) |
+| activity-001-icon-states | activity-001-icon-states.md | Tested-Pass | VM e2e | — | PASS | adopts activity-icon-states + quiet-activity-badge; known gap: no UI rescan trigger |
+| activity-002-popover-import | activity-002-popover-import.md | Tested-Fail | VM e2e | Testability | import-row window closes before AX walk under VM churn | suspected bug: completed-with-errors import surfacing gap in popover |
+| activity-003-jobs-controls | activity-003-jobs-controls.md | Tested-Fail | VM e2e | Testability | no sustainable job rows on smoke; popover render screenshot-proven | fixture gap: >4 concurrent jobs may not be exercisable (smoke drains fast) |
+| activity-004-sources-conflicts-quiet | activity-004-sources-conflicts-quiet.md | Tested-Fail | VM e2e | Testability | quiet-floor + repair rows unexercised |  |
+| activity-005-conflict-deep-link | activity-005-conflict-deep-link.md | Tested-Pass | VM e2e | — | conflict deep-link fully verified |  |
+| activity-006-xmp-lifecycle | activity-006-xmp-lifecycle.md | Tested-Fail | VM e2e | Functional | PRODUCT GAP: no sync-rescan path — out-of-band sidecar edit after clean sync stays synced forever (Jesse decision: add rescan trigger?) |  |
+| worker-001-preview-lifecycle | worker-001-preview-lifecycle.md | Tested-Pass | VM e2e | — | PASS |  |
+| worker-002-evaluation-verdicts | worker-002-evaluation-verdicts.md | Tested-Pass | VM e2e | — | PASS; work_sessions observability gap |  |
+| worker-003-face-pipeline | worker-003-face-pipeline.md | Tested-Pass | VM e2e | — | PASS — rescan replaces not appends | 2000-observation cap source-grounded only; no fixture reaches it |
+| worker-004-death-recovery | worker-004-death-recovery.md | Tested-Pass | VM e2e | — | PASS — kill -9 → respawn ~5s, queue intact |  |
+| worker-005-offline-reconnect | worker-005-offline-reconnect.md | Tested-Pass | VM e2e | — | PASS — no retry storm | open q: no confirmed UI trigger for post-reconnect availability re-probe |
+| worker-006-geocode-backfill | worker-006-geocode-backfill.md | Tested-Fail | VM e2e | Environment | SKIP-offline (CLGeocoder unreachable in VM); trigger+enqueue verified | network-dependent; SKIP offline |
+| app-001-launch-scene | app-001-launch-scene.md | Tested-Fail | VM e2e | Functional | APP BUG: ⌘N mints second catalog window — fix queued; other legs PASS |  |
+| app-002-window-floors | app-002-window-floors.md | Tested-Fail | VM e2e | Testability | PARTIAL-tooling | adopts workspace-minimum-width-floors |
+| app-003-workspace-switching | app-003-workspace-switching.md | Tested-Pass | VM e2e | — | PASS | adopts workspace-switching |
+| app-004-subview-menus | app-004-subview-menus.md | Tested-Pass | VM e2e | — | PASS |  |
+| app-005-chrome-policy | app-005-chrome-policy.md | Tested-Fail | VM e2e | Documentation | script/card drift: stale Review row + Potential Picks breadcrumb in verify_ux_simplification_chrome.sh — fix queued | adopts ux-simplification-chrome |
+| app-006-session-restore | app-006-session-restore.md | Tested-Pass | VM e2e | — | PASS | harness note: launch mints fresh state dir per call — relaunch must reuse run dir; a relaunch verb would simplify |
+| app-007-go-history | app-007-go-history.md | Tested-Pass | VM e2e | — | PASS |  |
+| app-008-batch-metadata | app-008-batch-metadata.md | Tested-Pass | VM e2e | — | PASS; double-⌘-click nit |  |
+| app-009-export | app-009-export.md | Tested-Pass | VM e2e | — | PASS | adopts export-presets-with-exif |
+| app-010-move-rejects | app-010-move-rejects.md | Tested-Pass | VM e2e | — | PASS — double-confirm gate verified | adopts reject-relocation-move-and-back |
+| app-011-find-best-shots | app-011-find-best-shots.md | Tested-Pass | VM e2e | — | PASS core | outcome C (nothing-ranked) needs a zero-rank fixture; mark NOT-RUN if unproducible |
+| app-012-autopilot-evaluate-commands | app-012-autopilot-evaluate-commands.md | Tested-Pass | VM e2e | — | PASS |  |
+| app-013-diagnostics | app-013-diagnostics.md | Tested-Pass | VM e2e | — | PASS |  |
+| app-014-updater | app-014-updater.md | Tested-Pass | static + AX | — | static-cap holds | Sparkle e2e untestable pre-release; static-only cap; Sparkle e2e untestable pre-release; static-only cap. Defaults key names unverified until first live run |
+| app-015-preferences | app-015-preferences.md | Tested-Pass | VM e2e | — | PASS |  |
+| app-016-menu-coverage-invariants | app-016-menu-coverage-invariants.md | Tested-Pass | unit tests | — | 8/0 cited | unit-test method; gap: Run Autopilot/Scan for Faces/Evaluate Photo/Scope not enumerated — renames uncatchable; DRY-RUN PASSED (8 tests) during authoring; all coverage invariants pass |
 | dev-001-build-and-run-modes | dev-001-build-and-run-modes.md | Tested-Pass | host CLI e2e | — | all assertions pass incl. exit codes | usage drift: --real-corpus undocumented; CONFIRMED Documentation defect: usage() omits --real-corpus (live-verified) |
 | dev-002-seed-variants | dev-002-seed-variants.md | Tested-Pass | host CLI e2e | — | pass; 1 flake retry (catalog-init race) |  |
 | dev-003-vm-harness | dev-003-vm-harness.md | Spec'd | — | Environment | BLOCKED-CONCURRENT iter1 (VM held); re-run iter2 | CONFIRMED Documentation defect: --reseed hint names a flag with no dispatch path; sync smoke --reseed would error |
