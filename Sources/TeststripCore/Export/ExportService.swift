@@ -130,6 +130,7 @@ public struct ExportService: Sendable {
         originalURLs: [URL],
         settings: ExportSettings,
         destinationDirectory: URL,
+        catalogMetadataBySourceURL: [URL: AssetMetadata] = [:],
         collisionResolution: ExportCollisionResolution = .keepBoth,
         progress: ExportProgressHandler? = nil
     ) throws -> [ExportFileResult] {
@@ -146,6 +147,7 @@ public struct ExportService: Sendable {
                 sourceURL: sourceURL,
                 outcome: exportOutcome(
                     sourceURL: sourceURL,
+                    catalogMetadata: catalogMetadataBySourceURL[sourceURL],
                     settings: settings,
                     destinationDirectory: destinationDirectory,
                     collisionResolution: collisionResolution,
@@ -169,6 +171,7 @@ public struct ExportService: Sendable {
 
     private func exportOutcome(
         sourceURL: URL,
+        catalogMetadata: AssetMetadata?,
         settings: ExportSettings,
         destinationDirectory: URL,
         collisionResolution: ExportCollisionResolution,
@@ -181,7 +184,14 @@ public struct ExportService: Sendable {
             return .failed(message: "could not read \(sourceURL.lastPathComponent)")
         case .undecodable:
             return .failed(message: "could not decode \(sourceURL.lastPathComponent)")
-        case .ready(let image, let destinationProperties):
+        case .ready(let image, var destinationProperties):
+            // "Include EXIF/IPTC metadata" means the catalog's authored
+            // fields (keywords/caption/creator/copyright/rating) ride along
+            // as IPTC/TIFF, not just pass-through of the source EXIF
+            // (persona-6: exports arrived stripped of everything Priya typed).
+            if settings.includeSourceMetadata, let catalogMetadata {
+                destinationProperties = Self.embeddingCatalogMetadata(catalogMetadata, into: destinationProperties)
+            }
             let destinationURL = availableDestinationURL(
                 for: sourceURL,
                 destinationDirectory: destinationDirectory,
@@ -325,6 +335,43 @@ public struct ExportService: Sendable {
             exif.removeValue(forKey: kCGImagePropertyExifPixelXDimension)
             exif.removeValue(forKey: kCGImagePropertyExifPixelYDimension)
             properties[kCGImagePropertyExifDictionary] = exif
+        }
+        return properties
+    }
+
+    /// Merges catalog-authored metadata into the destination property tree
+    /// as IPTC (plus the matching TIFF fields for broad reader support).
+    /// Empty catalog fields leave any carried source values untouched.
+    static func embeddingCatalogMetadata(
+        _ metadata: AssetMetadata,
+        into properties: [CFString: Any]
+    ) -> [CFString: Any] {
+        var properties = properties
+        var iptc = properties[kCGImagePropertyIPTCDictionary] as? [CFString: Any] ?? [:]
+        var tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
+        if !metadata.keywords.isEmpty {
+            iptc[kCGImagePropertyIPTCKeywords] = metadata.keywords
+        }
+        if let caption = metadata.caption, !caption.isEmpty {
+            iptc[kCGImagePropertyIPTCCaptionAbstract] = caption
+            tiff[kCGImagePropertyTIFFImageDescription] = caption
+        }
+        if let creator = metadata.creator, !creator.isEmpty {
+            iptc[kCGImagePropertyIPTCByline] = [creator]
+            tiff[kCGImagePropertyTIFFArtist] = creator
+        }
+        if let copyright = metadata.copyright, !copyright.isEmpty {
+            iptc[kCGImagePropertyIPTCCopyrightNotice] = copyright
+            tiff[kCGImagePropertyTIFFCopyright] = copyright
+        }
+        if metadata.rating > 0 {
+            iptc[kCGImagePropertyIPTCStarRating] = metadata.rating
+        }
+        if !iptc.isEmpty {
+            properties[kCGImagePropertyIPTCDictionary] = iptc
+        }
+        if !tiff.isEmpty {
+            properties[kCGImagePropertyTIFFDictionary] = tiff
         }
         return properties
     }

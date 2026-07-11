@@ -567,6 +567,86 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertNil(properties[kCGImagePropertyGPSDictionary])
     }
 
+    // Priya (persona-6): exported JPEGs carried none of the catalog's
+    // keywords/caption/creator/copyright despite "Include EXIF/IPTC
+    // metadata" being checked — the deliverable was stripped of the work.
+    // Catalog-authored metadata must be embedded as IPTC/TIFF in the export.
+    func testExportEmbedsCatalogMetadataWhenMetadataIncluded() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-catalog-metadata")
+        let source = directory.appendingPathComponent("ride-sts7.jpg")
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try writeMetadataFixtureJPEG(to: source, width: 400, height: 300)
+        let metadata = AssetMetadata(
+            rating: 4,
+            keywords: ["STS-7", "astronaut"],
+            caption: "Sally Ride, official NASA portrait, 1984",
+            creator: "NASA Photo Office",
+            copyright: "Public Domain"
+        )
+
+        let results = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.8, includeSourceMetadata: true),
+            destinationDirectory: destination,
+            catalogMetadataBySourceURL: [source: metadata]
+        )
+        XCTAssertEqual(results.first?.outcome, .exported(destinationURL: destination.appendingPathComponent("ride-sts7.jpg")))
+
+        let properties = try imageProperties(of: destination.appendingPathComponent("ride-sts7.jpg"))
+        let iptc = try XCTUnwrap(properties[kCGImagePropertyIPTCDictionary] as? [CFString: Any], "export carries an IPTC block")
+        XCTAssertEqual(iptc[kCGImagePropertyIPTCKeywords] as? [String], ["STS-7", "astronaut"])
+        XCTAssertEqual(iptc[kCGImagePropertyIPTCCaptionAbstract] as? String, "Sally Ride, official NASA portrait, 1984")
+        XCTAssertEqual(iptc[kCGImagePropertyIPTCByline] as? [String], ["NASA Photo Office"])
+        XCTAssertEqual(iptc[kCGImagePropertyIPTCCopyrightNotice] as? String, "Public Domain")
+        XCTAssertEqual((iptc[kCGImagePropertyIPTCStarRating] as? NSNumber)?.intValue, 4)
+        let tiff = try XCTUnwrap(properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any])
+        XCTAssertEqual(tiff[kCGImagePropertyTIFFArtist] as? String, "NASA Photo Office")
+        XCTAssertEqual(tiff[kCGImagePropertyTIFFCopyright] as? String, "Public Domain")
+        XCTAssertEqual(tiff[kCGImagePropertyTIFFImageDescription] as? String, "Sally Ride, official NASA portrait, 1984")
+        // Source EXIF still carried through alongside the catalog fields.
+        let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any]
+        XCTAssertEqual(exif?[kCGImagePropertyExifDateTimeOriginal] as? String, "2020:01:02 03:04:05")
+    }
+
+    func testExportOmitsCatalogMetadataWhenMetadataToggleIsOff() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-catalog-metadata-off")
+        let source = directory.appendingPathComponent("source.jpg")
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try writeMetadataFixtureJPEG(to: source, width: 400, height: 300)
+
+        _ = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.8, includeSourceMetadata: false),
+            destinationDirectory: destination,
+            catalogMetadataBySourceURL: [source: AssetMetadata(rating: 5, keywords: ["secret"], creator: "Someone")]
+        )
+
+        let properties = try imageProperties(of: destination.appendingPathComponent("source.jpg"))
+        let iptc = properties[kCGImagePropertyIPTCDictionary] as? [CFString: Any]
+        XCTAssertNil(iptc?[kCGImagePropertyIPTCKeywords])
+        XCTAssertNil(iptc?[kCGImagePropertyIPTCByline])
+        XCTAssertNil(properties[kCGImagePropertyTIFFDictionary].flatMap { ($0 as? [CFString: Any])?[kCGImagePropertyTIFFArtist] })
+    }
+
+    func testExportEmbedsCatalogMetadataIntoPngExports() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "export-catalog-metadata-png")
+        let source = directory.appendingPathComponent("source.jpg")
+        let destination = directory.appendingPathComponent("out", isDirectory: true)
+        try writeMetadataFixtureJPEG(to: source, width: 400, height: 300)
+
+        _ = try ExportService().export(
+            originalURLs: [source],
+            settings: ExportSettings(jpegQuality: 0.8, includeSourceMetadata: true, format: .png),
+            destinationDirectory: destination,
+            catalogMetadataBySourceURL: [source: AssetMetadata(keywords: ["Mercury Program"], copyright: "Public Domain")]
+        )
+
+        let properties = try imageProperties(of: destination.appendingPathComponent("source.png"))
+        let iptc = try XCTUnwrap(properties[kCGImagePropertyIPTCDictionary] as? [CFString: Any])
+        XCTAssertEqual(iptc[kCGImagePropertyIPTCKeywords] as? [String], ["Mercury Program"])
+        XCTAssertEqual(iptc[kCGImagePropertyIPTCCopyrightNotice] as? String, "Public Domain")
+    }
+
     private func writeMetadataFixtureJPEG(to url: URL, width: Int, height: Int) throws {
         try TestDirectories.writeTestJPEG(to: url, width: width, height: height)
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),

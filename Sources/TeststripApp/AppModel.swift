@@ -6763,9 +6763,15 @@ public final class AppModel {
         }
         var seenAssetIDs: Set<AssetID> = []
         var originalURLs: [URL] = []
+        // Catalog-authored metadata rides into the exported files when
+        // "Include EXIF/IPTC metadata" is on (persona-6 defect: exports
+        // used to carry only the source file's EXIF, stripping the work).
+        var catalogMetadataBySourceURL: [URL: AssetMetadata] = [:]
         for assetID in assetIDs {
             guard seenAssetIDs.insert(assetID).inserted else { continue }
-            originalURLs.append(try catalog.repository.asset(id: assetID).originalURL)
+            let asset = try catalog.repository.asset(id: assetID)
+            originalURLs.append(asset.originalURL)
+            catalogMetadataBySourceURL[asset.originalURL] = asset.metadata
         }
         guard !originalURLs.isEmpty else {
             throw TeststripError.invalidState("no photos to export")
@@ -6785,6 +6791,7 @@ public final class AppModel {
                     originalURLs: urls,
                     settings: settings,
                     destinationDirectory: destination,
+                    catalogMetadataBySourceURL: catalogMetadataBySourceURL,
                     collisionResolution: collisionResolution
                 ) { completedCount, totalCount in
                     sink.handle(completedCount: completedCount, totalCount: totalCount)
