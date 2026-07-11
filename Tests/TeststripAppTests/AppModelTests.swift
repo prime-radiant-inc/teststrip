@@ -6421,6 +6421,45 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.assetIDs(personID: "person-maya"), [batchA.id, batchB.id])
     }
 
+    func testConfirmSelectedAssetsAsPersonWithExactNameMatchAttachesToExistingPerson() throws {
+        let first = makeAsset(id: "first-face", path: "/Volumes/NAS/Wedding/first-face.jpg", rating: 4)
+        let second = makeAsset(id: "second-face", path: "/Volumes/NAS/Wedding/second-face.jpg", rating: 4)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-confirm-person-attach-existing",
+            assets: [first, second]
+        )
+        model.selectedAssetID = first.id
+        _ = try model.confirmSelectedAssetsAsPerson(named: "Maya", id: "person-maya")
+
+        model.selectedAssetID = second.id
+        // Same name (case-insensitive, matching showPersonPhotos's
+        // COLLATE NOCASE filter), different requested id — must attach to
+        // the existing person, not mint a duplicate.
+        let person = try model.confirmSelectedAssetsAsPerson(named: "MAYA", id: "person-maya-2")
+
+        XCTAssertEqual(person.id, "person-maya")
+        XCTAssertEqual(model.catalogPeople.count, 1)
+        XCTAssertEqual(person.assetCount, 2)
+        XCTAssertEqual(Set(try repository.assetIDs(personID: "person-maya")), [first.id, second.id])
+    }
+
+    func testConfirmSelectedAssetsAsPersonWithDistinctNameCreatesNewPerson() throws {
+        let first = makeAsset(id: "first-face", path: "/Volumes/NAS/Wedding/first-face.jpg", rating: 4)
+        let second = makeAsset(id: "second-face", path: "/Volumes/NAS/Wedding/second-face.jpg", rating: 4)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-confirm-person-distinct-name",
+            assets: [first, second]
+        )
+        model.selectedAssetID = first.id
+        _ = try model.confirmSelectedAssetsAsPerson(named: "Maya", id: "person-maya")
+
+        model.selectedAssetID = second.id
+        let person = try model.confirmSelectedAssetsAsPerson(named: "Robert", id: "person-robert")
+
+        XCTAssertEqual(person.id, "person-robert")
+        XCTAssertEqual(model.catalogPeople.count, 2)
+    }
+
     func testMergePersonPersistsAndRefreshesCatalogPeople() throws {
         let targetAsset = makeAsset(id: "target-asset", path: "/Volumes/NAS/Wedding/target.jpg", rating: 4)
         let sourceAsset = makeAsset(id: "source-asset", path: "/Volumes/NAS/Wedding/source.jpg", rating: 4)
@@ -6516,6 +6555,23 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(person, CatalogPerson(id: "person-lee", name: "Lee", assetCount: 2))
         XCTAssertEqual(try repository.assetIDs(personID: "person-lee"), [groupA.id, groupB.id])
         XCTAssertNil(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
+    }
+
+    func testConfirmClusterSuggestionWithExactNameMatchAttachesToExistingPerson() throws {
+        let (model, repository, _, groupA, groupB) = try makeFaceSuggestionModel(named: "app-model-face-confirm-cluster-attach")
+        try repository.upsertPerson(id: "person-lee", name: "Lee")
+        model.catalogPeople = try repository.people()
+        model.refreshPeopleFaceSuggestions()
+        let cluster = try XCTUnwrap(model.peopleFaceSuggestions.first { $0.kind == .newPerson })
+
+        // Same name as an already-existing person, but a *different*
+        // requested personID — must attach to person-lee, not mint a
+        // duplicate "person-new-lee".
+        let person = try model.confirmPeopleFaceSuggestion(cluster, personName: "Lee", personID: "person-new-lee")
+
+        XCTAssertEqual(person.id, "person-lee")
+        XCTAssertEqual(model.catalogPeople.filter { $0.name == "Lee" }.count, 1)
+        XCTAssertEqual(try repository.assetIDs(personID: "person-lee"), [groupA.id, groupB.id])
     }
 
     func testMergePersonRefreshesFaceSuggestions() throws {

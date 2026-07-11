@@ -101,8 +101,22 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   identical gating logic (`catalog != nil && !selectedPeopleCandidateAssetIDs.isEmpty`)
   — neither checks that the selection actually has unnamed face signals. A
   selection of already-confirmed photos can still open "Name Selection" and
-  create a duplicate/overlapping person link; this card doesn't probe that
-  edge, but it's worth flagging if seen live.
+  confirm again; this card doesn't probe that edge, but it's worth flagging
+  if seen live.
+- **Attach-to-existing ruling (2026-07-10, Jesse):** typing a name that
+  exactly matches (trimmed, case-insensitive — same `COLLATE NOCASE`
+  normalization `showPersonPhotos`'s `person:` filter uses) an existing
+  `people.name` attaches the selection to that existing person instead of
+  minting a new one — `confirmSelectedAssetsAsPerson` now resolves the
+  target person ID via `existingPersonID(matchingName:)`
+  (`AppModel.swift`) before falling back to the caller-supplied `id`. Step
+  9's "distinct name" assumption still holds (new name -> new person), but a
+  step reusing a name from step 8 would now grow `person_assets` for the
+  *existing* row rather than adding a `people` row — covered at the unit
+  level by
+  `AppModelTests.testConfirmSelectedAssetsAsPersonWithExactNameMatchAttachesToExistingPerson`
+  and `testConfirmClusterSuggestionWithExactNameMatchAttachesToExistingPerson`;
+  not re-driven live here.
 - `dismissFaceAssets` (the model call behind "Dismiss face review") also
   deletes matching `person_assets`/`person_faces` rows for the dismissed
   asset (`CatalogRepository.swift:904-917`) — so if step 10's selected photo

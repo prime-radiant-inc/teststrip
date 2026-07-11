@@ -103,6 +103,15 @@ Quit the launched instance.
   the code has drifted from this description.
 - Cross-check the rendered person against the `people` row: the UI must not show
   a named person the table doesn't back (name fabricated in the view).
+- **Attach-to-existing ruling (2026-07-10, Jesse):** in the "Who is this?"
+  name-sheet path, typing a name that exactly matches (trimmed,
+  case-insensitive) an existing `people.name` attaches the cluster's faces to
+  that existing person instead of creating a second `people` row with the
+  same name — `confirmPeopleFaceSuggestion(_:personName:personID:)` resolves
+  the target ID via `AppModel.existingPersonID(matchingName:)` before
+  falling back to the caller-supplied `personID`. Covered at the unit level
+  by `AppModelTests.testConfirmClusterSuggestionWithExactNameMatchAttachesToExistingPerson`;
+  not re-driven live here.
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Card-kind gating and

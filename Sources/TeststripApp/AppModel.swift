@@ -3224,16 +3224,25 @@ public final class AppModel {
             throw TeststripError.invalidState("select photos before naming a person")
         }
 
-        try catalog.repository.upsertPerson(id: id, name: trimmedName)
-        try catalog.repository.assignAssets(assetIDs, toPersonID: id)
+        let targetID = existingPersonID(matchingName: trimmedName) ?? id
+        try catalog.repository.upsertPerson(id: targetID, name: trimmedName)
+        try catalog.repository.assignAssets(assetIDs, toPersonID: targetID)
         catalogPeople = try catalog.repository.people()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
         try loadCatalogPage(preferredSelection: nil)
-        guard let person = catalogPeople.first(where: { $0.id == id }) else {
-            throw CatalogError.notFound(id)
+        guard let person = catalogPeople.first(where: { $0.id == targetID }) else {
+            throw CatalogError.notFound(targetID)
         }
         return person
+    }
+
+    /// An exact name match (trimmed, case-insensitive — the same
+    /// normalization `showPersonPhotos`'s `person:` filter uses via
+    /// `COLLATE NOCASE`) attaches confirmed assets/faces to the existing
+    /// person instead of minting a duplicate.
+    private func existingPersonID(matchingName trimmedName: String) -> String? {
+        catalogPeople.first { $0.name.caseInsensitiveCompare(trimmedName) == .orderedSame }?.id
     }
 
     public func mergePerson(sourceID: String, into targetID: String) throws {
@@ -3319,14 +3328,15 @@ public final class AppModel {
         guard !trimmedName.isEmpty else {
             throw TeststripError.invalidState("person name is required")
         }
-        try catalog.repository.upsertPerson(id: personID, name: trimmedName)
-        try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: personID)
+        let targetID = existingPersonID(matchingName: trimmedName) ?? personID
+        try catalog.repository.upsertPerson(id: targetID, name: trimmedName)
+        try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: targetID)
         catalogPeople = try catalog.repository.people()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
         try loadCatalogPage(preferredSelection: nil)
-        guard let person = catalogPeople.first(where: { $0.id == personID }) else {
-            throw CatalogError.notFound(personID)
+        guard let person = catalogPeople.first(where: { $0.id == targetID }) else {
+            throw CatalogError.notFound(targetID)
         }
         return person
     }
