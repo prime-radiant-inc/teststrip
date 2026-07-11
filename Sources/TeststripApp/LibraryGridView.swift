@@ -768,8 +768,9 @@ struct LibraryGridView: View {
     private var libraryResultHeader: some View {
         let presentation = libraryResultHeaderPresentation
         return HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(presentation.matchCount == 1 ? "1 photo" : "\(presentation.matchCount) photos")
+            Text(presentation.matchSummary)
                 .font(.caption.weight(.semibold))
+                .foregroundStyle(presentation.isZeroMatchSearch ? Color.orange : Color.primary)
             if let interpretation = presentation.interpretation {
                 Text(interpretation)
                     .font(.caption)

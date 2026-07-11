@@ -43,6 +43,11 @@ public struct LibraryResultHeaderPresentation: Equatable {
     public var interpretation: String?
     public var suggestedTokens: [LibraryQueryToken]
     public var saveActions: [SaveAction]
+    /// True when a non-empty search produced zero results (persona-2 item 4:
+    /// the reload is synchronous, but a search that finds nothing looks
+    /// identical to any other "0 photos" state — a bare match, catalog-loaded
+    /// empty catalog, etc — unless it's called out explicitly).
+    public let isZeroMatchSearch: Bool
 
     public init(
         totalAssetCount: Int,
@@ -61,6 +66,9 @@ public struct LibraryResultHeaderPresentation: Equatable {
             evaluationKindSummaries: evaluationKindSummaries,
             activeTokens: activeTokens
         )
+        let trimmedSearchText = librarySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        isZeroMatchSearch = totalAssetCount == 0 && !trimmedSearchText.isEmpty
+        searchTextForSummary = trimmedSearchText
 
         var actions: [SaveAction] = []
         if canSaveDynamicSet { actions.append(.dynamicSearch) }
@@ -69,13 +77,24 @@ public struct LibraryResultHeaderPresentation: Equatable {
         saveActions = actions
     }
 
+    /// The header's headline text: an explicit "No matches for …" when a
+    /// search ran and found nothing, otherwise the plain match count.
+    public var matchSummary: String {
+        guard isZeroMatchSearch else {
+            return matchCount == 1 ? "1 photo" : "\(matchCount) photos"
+        }
+        return "No matches for \u{201c}\(searchTextForSummary)\u{201d}"
+    }
+
+    private var searchTextForSummary: String = ""
+
     /// spec §2b: the row renders only when it has content — active tokens
     /// (`suggestedTokens`, the catalog-backed chips this row draws), a
     /// residual-text interpretation, or save-worthy state. A bare match
     /// count is not, on its own, reason to show the row (the footer already
     /// carries the count).
     public var hasContent: Bool {
-        interpretation != nil || !suggestedTokens.isEmpty || !saveActions.isEmpty
+        interpretation != nil || !suggestedTokens.isEmpty || !saveActions.isEmpty || isZeroMatchSearch
     }
 
     /// Non-nil only when plain text remains after `LibrarySearchIntent`
