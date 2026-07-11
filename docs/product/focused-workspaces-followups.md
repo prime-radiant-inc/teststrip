@@ -58,3 +58,9 @@ is deliberately deferred, not forgotten — resolve during dogfooding.
   relocation (e.g. into the Tart VM's per-launch directory) must rewrite the
   prefix or every file-fidelity assertion (sidecars, Move Rejects) silently
   breaks. `script/vm_scenario_run.sh`'s launch verb does this.
+
+## Watch items (persona loop)
+
+- **Inert trash-confirm ghost** (2 sightings, different signatures): persona-1 was the disabled-primary trap (fixed dd60a59e); persona-4 reported an enabled-looking primary with no inline error and no action on a post-fix build — NOT reproduced by two follow-up live sessions. If it recurs, instrument the moveRejects* entry points (note: the app currently has no logging framework — adding one is its own decision).
+- **On-canvas cull controls in Loupe for mouse users** — spec tension with minimal-chrome; Jesse call.
+- **Export overwrite prompting** vs silent -2/-3 suffixing — Jesse call.
