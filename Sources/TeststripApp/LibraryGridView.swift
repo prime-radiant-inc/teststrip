@@ -2054,7 +2054,11 @@ struct LibraryGridView: View {
 
         private var builderPanel: some View {
             VStack(alignment: .leading, spacing: 16) {
-                Label("New Smart Collection", systemImage: "sparkles")
+                // Not DesignGlyph.ai ("sparkles"): a Smart Collection is a
+                // saved user query, not a machine-derived suggestion, and
+                // DesignGlyph.filterMenu already denotes the filter-menu
+                // button elsewhere on screen.
+                Label("New Smart Collection", systemImage: "rectangle.stack.badge.plus")
                     .font(.headline)
 
                 VStack(alignment: .leading, spacing: 6) {

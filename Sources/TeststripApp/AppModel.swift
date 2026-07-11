@@ -7960,9 +7960,20 @@ public final class AppModel {
 
         var changes: [MetadataChange] = []
         var committedProposalIDs: [AutopilotProposalID] = []
+        var staleProposalIDs: [AutopilotProposalID] = []
         for assetID in orderedTargetAssetIDs {
             guard let assetProposals = proposalsByAsset[assetID] else { continue }
-            let originalAsset = try catalog.repository.asset(id: assetID)
+            let originalAsset: Asset
+            do {
+                originalAsset = try catalog.repository.asset(id: assetID)
+            } catch CatalogError.notFound {
+                // The asset was trashed/deleted after the proposal was
+                // generated. Its cascade should already have removed the
+                // proposal row, but mark it stale defensively and keep
+                // committing the rest of the batch rather than aborting.
+                staleProposalIDs.append(contentsOf: assetProposals.map(\.id))
+                continue
+            }
             var updatedMetadata = originalAsset.metadata
             for proposal in assetProposals {
                 switch proposal.kind {
@@ -7990,10 +8001,15 @@ public final class AppModel {
 
         recordMetadataChangeGroup(label: "Autopilot", changes: changes)
         try catalog.repository.updateAutopilotProposalStatus(ids: committedProposalIDs, to: .committed)
+        if !staleProposalIDs.isEmpty {
+            try catalog.repository.updateAutopilotProposalStatus(ids: staleProposalIDs, to: .dismissed)
+        }
         lastCommittedAutopilotRunID = targetProposals.first?.runID
         pendingAutopilotProposals = (try? catalog.repository.autopilotProposals(status: .pending)) ?? []
         try refreshCatalogSidebarCounts()
-        statusMessage = "Committed \(committedProposalIDs.count) autopilot decisions"
+        statusMessage = staleProposalIDs.isEmpty
+            ? "Committed \(committedProposalIDs.count) autopilot decisions"
+            : "Committed \(committedProposalIDs.count) autopilot decisions (\(staleProposalIDs.count) skipped — asset no longer available)"
         return committedProposalIDs.count
     }
 
@@ -10427,7 +10443,13 @@ public final class AppModel {
 
     private func currentAssetScopeIDs(repository: CatalogRepository) throws -> [AssetID] {
         if let explicitAssetIDs = selectedExplicitAssetIDs {
-            return explicitAssetIDs
+            // A manual/snapshot AssetSet's membership_json can retain a
+            // trashed asset's ID (deleteAsset doesn't rewrite it). Filter
+            // on read rather than cascade-editing the JSON, matching how
+            // assets(ids:)/assetCount(ids:) already resolve ghosts away —
+            // otherwise a batch op here hits notFound and aborts entirely.
+            guard !explicitAssetIDs.isEmpty else { return [] }
+            return try repository.assets(ids: explicitAssetIDs, limit: explicitAssetIDs.count).map(\.id)
         }
         if let query = currentLibraryQuery() {
             return try repository.assetIDs(matching: query)

@@ -3085,6 +3085,33 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.faceObservations(assetID: trashed.id).count, 1)
     }
 
+    func testDeleteAssetRemovesPendingAutopilotProposal() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "delete-asset-cascade-autopilot")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset.testAsset(id: AssetID(rawValue: "autopilot-trashed"), path: "/Shoot/autopilot-trashed.jpg", rating: 0)
+        try repository.upsert(asset)
+        let runID = AutopilotRunID(rawValue: "run-1")
+        let proposal = AutopilotProposal(
+            id: AutopilotProposalID(rawValue: "proposal-1"),
+            runID: runID,
+            assetID: asset.id,
+            kind: .pick,
+            keyword: nil,
+            rationale: "sharpest of stack",
+            confidence: 0.9,
+            status: .pending,
+            createdAt: Date(timeIntervalSince1970: 0),
+            updatedAt: Date(timeIntervalSince1970: 0)
+        )
+        try repository.save([proposal])
+
+        try repository.deleteAsset(id: asset.id)
+
+        XCTAssertEqual(try repository.autopilotProposals(runID: runID), [])
+    }
+
     func testPersonIDsForAssetListsEveryLinkedPerson() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "person-ids-for-asset")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

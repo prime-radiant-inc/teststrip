@@ -1349,6 +1349,7 @@ public final class CatalogRepository {
             try database.execute("DELETE FROM dismissed_faces WHERE asset_id = ?", bindings: [id.rawValue])
             try database.execute("DELETE FROM evaluation_signals WHERE asset_id = ?", bindings: [id.rawValue])
             try database.execute("DELETE FROM evaluation_failures WHERE asset_id = ?", bindings: [id.rawValue])
+            try database.execute("DELETE FROM autopilot_proposals WHERE asset_id = ?", bindings: [id.rawValue])
         }
     }
 

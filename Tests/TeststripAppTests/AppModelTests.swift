@@ -2042,6 +2042,57 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: outsideAsset.originalURL.appendingPathExtension("xmp").path))
     }
 
+    func testCurrentScopeBatchMetadataSkipsGhostAssetIDLeftInSetMembership() throws {
+        // membership_json can retain a trashed asset's ID (deleteAsset
+        // doesn't rewrite asset_sets); the current-scope batch path must
+        // filter it out on read instead of throwing notFound and aborting
+        // the whole batch.
+        let directory = try makeTemporaryDirectory(named: "app-model-current-scope-batch-metadata-ghost")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let keptURL = photosDirectory.appendingPathComponent("kept.cr2")
+        try Data("kept original".utf8).write(to: keptURL)
+        let kept = Asset(
+            id: AssetID(rawValue: "ghost-set-kept"),
+            originalURL: keptURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try repository.upsert(kept)
+        let ghostID = AssetID(rawValue: "ghost-set-trashed")
+        let assetSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "ghost-scope-set"),
+            name: "Ghost Scope Set",
+            assetIDs: [kept.id, ghostID]
+        )
+        try repository.upsert(assetSet)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        try model.applyAssetSet(id: assetSet.id)
+
+        let appliedCount = try model.applyCurrentScopeBatchMetadata(
+            keywordText: "portfolio",
+            caption: "",
+            creator: "",
+            copyright: ""
+        )
+
+        XCTAssertEqual(appliedCount, 1)
+        XCTAssertEqual(try repository.asset(id: kept.id).metadata.keywords, ["portfolio"])
+    }
+
     @MainActor
     func testExportVisibleAssetsWritesJpegCopiesAndReportsCompletionSummary() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-export-visible")
@@ -4929,6 +4980,49 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
         XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
         XCTAssertFalse(model.canUndoMetadataChange)
+    }
+
+    func testCommitAllAutopilotProposalsSkipsDanglingProposalForMissingAsset() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "dangling-lead", path: "/Photos/Job/dangling-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "dangling-alt", path: "/Photos/Job/dangling-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let directory = try makeTemporaryDirectory(named: "commit-autopilot-dangling")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert([lead, alternate])
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ])
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog)
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+        XCTAssertEqual(model.pendingAutopilotProposals.count, 2)
+
+        // Simulate a proposal left dangling by data corruption or a bypassed
+        // cascade: delete the asset row directly (not via repository.deleteAsset,
+        // which would clean up the proposal) so the proposal row survives with
+        // no matching asset.
+        try database.execute("DELETE FROM assets WHERE id = ?", bindings: [lead.id.rawValue])
+
+        let committed = try model.commitAllAutopilotProposals()
+
+        XCTAssertEqual(committed, 1)
+        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.autopilotProposals(status: .pending), [])
+        XCTAssertEqual(try repository.autopilotProposals(status: .dismissed).count, 1)
     }
 
     func testUndoAutopilotRunRevertsMetadataAndRestoresPendingProposals() throws {
