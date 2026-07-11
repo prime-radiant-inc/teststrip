@@ -44,6 +44,67 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.namedPeopleEmptyText, "No confirmed people yet. Review face queues, select photos, then name the selection.")
     }
 
+    // persona-6 Priya: the workspace said "Scan ready" forever while the
+    // scan could never actually run because the catalog's photo sources were
+    // offline. When sources are unavailable the status line must say so
+    // instead of advertising a scan that will silently do nothing.
+    func testOfflineSourcesReplaceScanReadyStatus() {
+        let presentation = PeoplePresentation(
+            totalAssetCount: 11,
+            evaluationSummaries: [],
+            canRequestCurrentScopeFaceScan: true,
+            hasUnavailableSources: true
+        )
+
+        XCTAssertEqual(presentation.reviewStripStatusText, "Photo sources offline — reconnect to scan")
+    }
+
+    func testOfflineSourcesReplaceZeroQueuesStatusWhenScanCannotStart() {
+        let presentation = PeoplePresentation(
+            totalAssetCount: 11,
+            evaluationSummaries: [],
+            canRequestCurrentScopeFaceScan: false,
+            hasUnavailableSources: true
+        )
+
+        XCTAssertEqual(presentation.reviewStripStatusText, "Photo sources offline — reconnect to scan")
+    }
+
+    func testScanReadyStatusStandsWhenSourcesAreAvailable() {
+        let presentation = PeoplePresentation(
+            totalAssetCount: 11,
+            evaluationSummaries: [],
+            canRequestCurrentScopeFaceScan: true
+        )
+
+        XCTAssertEqual(presentation.reviewStripStatusText, "Scan ready")
+    }
+
+    // persona-6 Priya: "Name Selection" gave no hint of what was selected,
+    // so a leftover Library selection attached "Sally K. Ride" to a Buzz
+    // Aldrin portrait. The sheet's subtitle now carries the count.
+    func testNameSelectionSubtitleCountsTheSelectedPhotos() {
+        XCTAssertEqual(
+            PeoplePresentation.nameSelectionSubtitle(selectedPhotoCount: 1),
+            "Groups the 1 selected photo under a new named person."
+        )
+        XCTAssertEqual(
+            PeoplePresentation.nameSelectionSubtitle(selectedPhotoCount: 3),
+            "Groups the 3 selected photos under a new named person."
+        )
+    }
+
+    func testNameFaceGroupSubtitleCountsTheGroupsFacesAndPhotos() {
+        XCTAssertEqual(
+            PeoplePresentation.nameFaceGroupSubtitle(faceCount: 1, photoCount: 1),
+            "Groups this face group's 1 face across 1 photo under a new named person."
+        )
+        XCTAssertEqual(
+            PeoplePresentation.nameFaceGroupSubtitle(faceCount: 4, photoCount: 3),
+            "Groups this face group's 4 faces across 3 photos under a new named person."
+        )
+    }
+
     func testFaceReviewStatusPointsToManualNamingAction() {
         let presentation = PeoplePresentation(
             totalAssetCount: 1204,

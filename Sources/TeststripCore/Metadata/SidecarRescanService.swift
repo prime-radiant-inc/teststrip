@@ -1,6 +1,9 @@
 import Foundation
 
 public struct SidecarRescanSummary: Equatable, Sendable {
+    /// Every synced row the rescan walked (including those the cheap mtime
+    /// gate skipped without reading) — the "Checked N sidecars" number.
+    public var scannedCount: Int
     /// Synced rows whose sidecar passed the cheap mtime gate and were read.
     public var checkedCount: Int
     /// Rows re-marked pending (sidecar changed out-of-band, or vanished).
@@ -8,7 +11,8 @@ public struct SidecarRescanSummary: Equatable, Sendable {
     /// Rows marked conflict (sidecar and catalog both changed since sync).
     public var conflictCount: Int
 
-    public init(checkedCount: Int = 0, pendingCount: Int = 0, conflictCount: Int = 0) {
+    public init(scannedCount: Int = 0, checkedCount: Int = 0, pendingCount: Int = 0, conflictCount: Int = 0) {
+        self.scannedCount = scannedCount
         self.checkedCount = checkedCount
         self.pendingCount = pendingCount
         self.conflictCount = conflictCount
@@ -39,6 +43,7 @@ public struct SidecarRescanService: Sendable {
         var summary = SidecarRescanSummary()
         for item in try repository.syncedMetadataSyncItems() {
             if let assetIDs, !assetIDs.contains(item.assetID) { continue }
+            summary.scannedCount += 1
             let attributes = try? FileManager.default.attributesOfItem(atPath: item.sidecarURL.path)
             let modificationDate = attributes?[.modificationDate] as? Date
             if let modificationDate,

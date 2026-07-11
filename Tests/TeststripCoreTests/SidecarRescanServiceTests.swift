@@ -54,7 +54,7 @@ final class SidecarRescanServiceTests: XCTestCase {
 
         let summary = try SidecarRescanService().rescanSyncedSidecars(repository: fixture.repository)
 
-        XCTAssertEqual(summary, SidecarRescanSummary())
+        XCTAssertEqual(summary, SidecarRescanSummary(scannedCount: 1))
         XCTAssertEqual(try fixture.repository.syncedMetadataSyncItems().count, 1)
         XCTAssertNil(try fixture.repository.pendingMetadataSyncItem(assetID: fixture.assetID))
     }

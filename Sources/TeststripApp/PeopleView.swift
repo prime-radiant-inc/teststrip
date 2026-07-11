@@ -22,7 +22,8 @@ struct PeopleView: View {
             evaluationSummaries: model.catalogEvaluationKindSummaries,
             canRequestCurrentScopeFaceScan: model.canRequestPeopleFaceScan,
             faceSuggestions: model.peopleFaceSuggestions,
-            faceObservationAssetCount: model.peopleFaceObservationAssetCount
+            faceObservationAssetCount: model.peopleFaceObservationAssetCount,
+            hasUnavailableSources: model.hasUnavailableSourceRoots
         )
     }
 
@@ -266,7 +267,12 @@ struct PeopleView: View {
     private var nameSelectionSheet: some View {
         SheetScaffold(
             title: "Name Selection",
-            subtitle: "Groups the selected photos under a new named person.",
+            // The count keeps a stale cross-workspace selection visible
+            // before the confirming click (persona-6: a leftover Library
+            // selection misfiled a person with no hint of what it covered).
+            subtitle: PeoplePresentation.nameSelectionSubtitle(
+                selectedPhotoCount: model.selectedPeopleCandidateAssetCount
+            ),
             width: 320,
             primaryLabel: "Create Person",
             isPrimaryEnabled: !personName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -336,7 +342,10 @@ struct PeopleView: View {
     private func nameSuggestionSheet(_ suggestion: PeopleFaceSuggestion) -> some View {
         SheetScaffold(
             title: "Name Face Group",
-            subtitle: "Groups this face group's photos under a new named person.",
+            subtitle: PeoplePresentation.nameFaceGroupSubtitle(
+                faceCount: suggestion.faceIDs.count,
+                photoCount: suggestion.assetIDs.count
+            ),
             width: 320,
             primaryLabel: "Create Person",
             isPrimaryEnabled: !suggestionPersonName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -527,6 +536,11 @@ struct PeoplePresentation: Equatable {
     var scanAction: PeopleScanAction?
     var faceSuggestions: [PeopleFaceSuggestion]
     var faceObservationAssetCount: Int
+    /// True when any catalog source root is offline/unreachable — a face
+    /// scan requested now cannot enqueue work, so the status line must say
+    /// so instead of "Scan ready" (persona-6: the banner sat on "Scan
+    /// ready" forever while nothing could ever start).
+    var hasUnavailableSources: Bool
     private var faceSignalKind: EvaluationKind?
 
     init(
@@ -535,8 +549,10 @@ struct PeoplePresentation: Equatable {
         evaluationSummaries: [CatalogEvaluationKindSummary],
         canRequestCurrentScopeFaceScan: Bool = false,
         faceSuggestions: [PeopleFaceSuggestion] = [],
-        faceObservationAssetCount: Int = 0
+        faceObservationAssetCount: Int = 0,
+        hasUnavailableSources: Bool = false
     ) {
+        self.hasUnavailableSources = hasUnavailableSources
         self.totalAssetCount = totalAssetCount
         self.namedPeople = namedPeople.map { NamedPersonPresentation(person: $0) }
         let faceCountSignals = evaluationSummaries.first { $0.kind == .faceCount }?.assetCount ?? 0
@@ -552,6 +568,21 @@ struct PeoplePresentation: Equatable {
         ) : nil
         self.faceSuggestions = faceSuggestions
         self.faceObservationAssetCount = faceObservationAssetCount
+    }
+
+    /// "Name Selection" sheet subtitle: names how many photos the confirming
+    /// click will attach, so a stale cross-workspace selection is visible
+    /// before the write.
+    static func nameSelectionSubtitle(selectedPhotoCount: Int) -> String {
+        let noun = selectedPhotoCount == 1 ? "photo" : "photos"
+        return "Groups the \(selectedPhotoCount) selected \(noun) under a new named person."
+    }
+
+    /// "Name Face Group" sheet subtitle with the group's face and photo counts.
+    static func nameFaceGroupSubtitle(faceCount: Int, photoCount: Int) -> String {
+        let faceNoun = faceCount == 1 ? "face" : "faces"
+        let photoNoun = photoCount == 1 ? "photo" : "photos"
+        return "Groups this face group's \(faceCount) \(faceNoun) across \(photoCount) \(photoNoun) under a new named person."
     }
 
     var headerSummary: String {
@@ -602,6 +633,9 @@ struct PeoplePresentation: Equatable {
         let reviewQueueCount = reviewCards.count
         if reviewQueueCount > 0 {
             return reviewQueueCount == 1 ? "1 queue" : "\(reviewQueueCount) queues"
+        }
+        if hasUnavailableSources {
+            return "Photo sources offline — reconnect to scan"
         }
         if scanAction != nil {
             return "Scan ready"

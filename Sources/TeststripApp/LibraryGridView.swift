@@ -1246,8 +1246,16 @@ struct LibraryGridView: View {
                     }
                 }
                 TextField("Caption", text: $batchMetadataDraft.caption)
-                TextField("Creator", text: $batchMetadataDraft.creator)
-                TextField("Copyright", text: $batchMetadataDraft.copyright)
+                TextField(
+                    "Creator",
+                    text: $batchMetadataDraft.creator,
+                    prompt: Text(BatchMetadataDraft.creatorPrompt(defaultCreator: model.defaultCreator))
+                )
+                TextField(
+                    "Copyright",
+                    text: $batchMetadataDraft.copyright,
+                    prompt: Text(BatchMetadataDraft.copyrightPrompt(defaultCopyright: model.defaultCopyright))
+                )
             }
             .textFieldStyle(.roundedBorder)
 
@@ -3212,10 +3220,12 @@ struct LibraryGridView: View {
     }
 
     private func openBatchMetadataSheet() {
-        batchMetadataDraft = BatchMetadataDraft(
-            creator: model.defaultCreator,
-            copyright: model.defaultCopyright
-        )
+        // The sheet's contract is "blank means leave alone" — so every field
+        // starts blank. The preference defaults surface as placeholder
+        // prompts on the Creator/Copyright fields, never as prefilled values
+        // (persona-6: a prefilled default silently overwrote per-photo
+        // provenance on a keyword-only pass).
+        batchMetadataDraft = BatchMetadataDraft()
         batchMetadataScope = model.selectedBatchAssetCount > 0 ? .selected : .visible
         isAllCatalogBatchMetadataConfirmed = false
         isReviewingBatchMetadata = true
@@ -4910,6 +4920,21 @@ struct BatchMetadataDraft: Equatable {
 
     var keywordChips: [String] {
         Self.keywordChips(from: keywords)
+    }
+
+    /// Placeholder text for the Creator field: the preference default when
+    /// one is set, otherwise the field label. Prompt text only — the draft
+    /// value stays empty until the user types, and empty never writes.
+    static func creatorPrompt(defaultCreator: String) -> String {
+        let trimmed = defaultCreator.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Creator" : trimmed
+    }
+
+    /// Placeholder text for the Copyright field; same contract as
+    /// `creatorPrompt(defaultCreator:)`.
+    static func copyrightPrompt(defaultCopyright: String) -> String {
+        let trimmed = defaultCopyright.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Copyright" : trimmed
     }
 
     mutating func appendKeyword(_ keyword: String) {

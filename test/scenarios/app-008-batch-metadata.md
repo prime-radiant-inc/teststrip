@@ -38,6 +38,20 @@ sqlite3 "$DB" "SELECT count(*) FROM assets WHERE metadata_json LIKE '%scenario-k
    Also assert an `.xmp` sidecar now exists next to those 2 originals (and
    only those) containing the keyword, and the originals' bytes are
    unchanged (compare a pre-captured hash of one original).
+4b. **Blank-means-leave-alone: Creator/Copyright are never prefilled
+   (persona-6 defect).** With non-empty Preferences defaults for Creator/
+   Copyright set, give one selected photo a distinct creator (e.g. `Real
+   Provenance`) via the inspector. Reopen ⌥⌘M and assert via AX value that
+   the Creator and Copyright fields are EMPTY — the preference defaults may
+   appear only as gray placeholder text (`prompt:`), never as field values
+   (`BatchMetadataDraft.creatorPrompt`/`copyrightPrompt`). Apply a
+   keyword-only pass (type a keyword, touch nothing else) and assert:
+   ```bash
+   sqlite3 "$DB" "SELECT json_extract(metadata_json,'$.creator') FROM assets WHERE metadata_json LIKE '%Real Provenance%';"
+   ```
+   still returns `Real Provenance` — the keyword-only pass must not stamp
+   the defaults over per-photo creator/copyright, in catalog or sidecar.
+   **Fails if** the fields open non-empty or the pass rewrote either field.
 5. **All-catalog scope requires explicit confirmation.** Clear filters,
    reopen the sheet, pick the current-scope segment. Because no filters are
    active this targets the whole catalog: assert a confirmation affordance

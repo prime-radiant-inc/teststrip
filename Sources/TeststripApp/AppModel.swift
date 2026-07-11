@@ -2848,6 +2848,16 @@ public final class AppModel {
         canRequestCurrentScopeAssetEvaluations
     }
 
+    /// True when any catalog source root is unreachable — its recorded path
+    /// no longer exists on this machine, or assets under it are offline.
+    /// The People workspace uses this to say "sources offline" instead of
+    /// advertising a scan that cannot enqueue any work.
+    public var hasUnavailableSourceRoots: Bool {
+        sourceRoots.contains { root in
+            root.unavailableAssetCount > 0 || !FileManager.default.fileExists(atPath: root.path)
+        }
+    }
+
     public var canRequestCompareAssetEvaluations: Bool {
         workerSupervisor != nil && compareAssets().contains { hasCachedPreview(for: $0.id) }
     }
@@ -3390,6 +3400,13 @@ public final class AppModel {
 
     public var canDismissSelectedFaceReviewAssets: Bool {
         catalog != nil && !selectedPeopleCandidateAssetIDs.isEmpty
+    }
+
+    /// How many photos "Name Selection" would attach to the new person —
+    /// surfaced in the sheet subtitle so a stale selection is visible
+    /// before the confirming click.
+    public var selectedPeopleCandidateAssetCount: Int {
+        selectedPeopleCandidateAssetIDs.count
     }
 
     private var selectedPeopleCandidateAssetIDs: [AssetID] {
@@ -6763,9 +6780,15 @@ public final class AppModel {
         }
         var seenAssetIDs: Set<AssetID> = []
         var originalURLs: [URL] = []
+        // Catalog-authored metadata rides into the exported files when
+        // "Include EXIF/IPTC metadata" is on (persona-6 defect: exports
+        // used to carry only the source file's EXIF, stripping the work).
+        var catalogMetadataBySourceURL: [URL: AssetMetadata] = [:]
         for assetID in assetIDs {
             guard seenAssetIDs.insert(assetID).inserted else { continue }
-            originalURLs.append(try catalog.repository.asset(id: assetID).originalURL)
+            let asset = try catalog.repository.asset(id: assetID)
+            originalURLs.append(asset.originalURL)
+            catalogMetadataBySourceURL[asset.originalURL] = asset.metadata
         }
         guard !originalURLs.isEmpty else {
             throw TeststripError.invalidState("no photos to export")
@@ -6785,6 +6808,7 @@ public final class AppModel {
                     originalURLs: urls,
                     settings: settings,
                     destinationDirectory: destination,
+                    catalogMetadataBySourceURL: catalogMetadataBySourceURL,
                     collisionResolution: collisionResolution
                 ) { completedCount, totalCount in
                     sink.handle(completedCount: completedCount, totalCount: totalCount)
@@ -7928,24 +7952,21 @@ public final class AppModel {
             try enqueuePendingMetadataSync()
             statusMessage = Self.sidecarRescanStatusText(summary)
         } else if announceWhenUnchanged {
-            statusMessage = "Sidecars match the catalog — no changes found"
+            statusMessage = Self.sidecarRescanStatusText(summary)
         }
         return summary
     }
 
     /// Metadata ▸ Check Sidecars for Changes: on-demand rescan over the
-    /// current scope's assets.
+    /// whole catalog. Deliberately not filter-scoped — persona-6 Priya's
+    /// still-active Pick chip silently excluded the edited asset and a real
+    /// out-of-band edit went unnoticed; an integrity check must not depend
+    /// on whatever library filters happen to be stacked. Always reports a
+    /// completion summary ("Checked N sidecars — …").
     @MainActor
     public func checkSidecarsForChangesInCurrentScope() async {
         do {
-            guard let catalog else {
-                throw TeststripError.invalidState("app model has no catalog")
-            }
-            let scopeAssetIDs = try currentAssetScopeIDs(repository: catalog.repository)
-            _ = try await checkSidecarsForChanges(
-                scopeAssetIDs: scopeAssetIDs,
-                announceWhenUnchanged: true
-            )
+            _ = try await checkSidecarsForChanges(announceWhenUnchanged: true)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -7960,14 +7981,18 @@ public final class AppModel {
     }
 
     static func sidecarRescanStatusText(_ summary: SidecarRescanSummary) -> String {
+        let checked = "Checked \(summary.scannedCount) sidecar\(summary.scannedCount == 1 ? "" : "s")"
         var parts: [String] = []
         if summary.pendingCount > 0 {
-            parts.append("\(summary.pendingCount) sidecar\(summary.pendingCount == 1 ? "" : "s") changed on disk — queued to re-sync")
+            parts.append("\(summary.pendingCount) changed on disk, queued to re-sync")
         }
         if summary.conflictCount > 0 {
             parts.append("\(summary.conflictCount) conflict\(summary.conflictCount == 1 ? "" : "s")")
         }
-        return parts.joined(separator: " · ")
+        guard !parts.isEmpty else {
+            return "\(checked) — no changes"
+        }
+        return "\(checked) — \(parts.joined(separator: " · "))"
     }
 
     private func enqueuePendingMetadataSync() throws {
