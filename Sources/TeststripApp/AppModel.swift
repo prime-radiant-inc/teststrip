@@ -7148,7 +7148,8 @@ public final class AppModel {
                 assetID: pendingItem.assetID,
                 catalogGeneration: pendingItem.catalogGeneration
             )
-            if currentBackgroundWorkQueue.item(id: itemID) != nil {
+            if let existingItem = currentBackgroundWorkQueue.item(id: itemID),
+               [.queued, .running, .paused].contains(existingItem.status) {
                 continue
             }
             let item = BackgroundWorkItem(
@@ -7543,7 +7544,8 @@ public final class AppModel {
                 assetID: pendingItem.assetID,
                 catalogGeneration: pendingItem.catalogGeneration
             )
-            if currentBackgroundWorkQueue.item(id: itemID) != nil {
+            if let existingItem = currentBackgroundWorkQueue.item(id: itemID),
+               [.queued, .running, .paused].contains(existingItem.status) {
                 continue
             }
             try enqueueMetadataSyncWork(pendingItem: pendingItem)

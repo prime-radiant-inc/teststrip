@@ -3173,6 +3173,51 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: pending.sidecarURL.path))
     }
 
+    @MainActor
+    func testRetrySelectedPendingMetadataSyncReenqueuesAfterAPriorFailure() async throws {
+        // Reproduces inspect-003: a first sync write failed (e.g. the sidecar
+        // folder was briefly unwritable) and left a terminal `.failed` item in
+        // the queue under the same asset+generation ID. Pressing Retry must
+        // enqueue a fresh write, not silently no-op because an item with that
+        // ID already exists.
+        let (model, repository, asset, originalURL, transport) = try makeWorkerMetadataSyncModel(
+            named: "retry-selected-pending-worker-xmp-after-failure",
+            assetID: "retry-selected-pending-worker-xmp-after-failure"
+        )
+        let generation = try repository.catalogGeneration(assetID: asset.id)
+        let pending = MetadataSyncItem(
+            assetID: asset.id,
+            sidecarURL: originalURL.appendingPathExtension("xmp"),
+            catalogGeneration: generation,
+            lastSyncedFingerprint: nil
+        )
+        try repository.recordMetadataSyncPending(pending)
+        model.pendingMetadataSyncItems = [pending]
+
+        // Drive an initial write attempt through the real path so it lands in
+        // the worker supervisor's own queue (the one dedup checks read), then
+        // fail it — simulating a transient failure like an unwritable folder.
+        try model.retrySelectedMetadataSync()
+        let staleItemID = WorkSessionID(rawValue: "xmp-\(asset.id.rawValue)-\(generation)")
+        XCTAssertEqual(try transport.commands(), [.syncMetadata(assetID: asset.id)])
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.failed(
+            itemID: staleItemID,
+            message: "XMP sidecar folder is not writable"
+        )))
+        try await waitForBackgroundWorkStatus(.failed, itemID: staleItemID, in: model)
+
+        XCTAssertTrue(model.canRetrySelectedMetadataSync)
+        try model.retrySelectedMetadataSync()
+
+        XCTAssertEqual(try transport.commands(), [
+            .syncMetadata(assetID: asset.id),
+            .syncMetadata(assetID: asset.id),
+        ])
+        XCTAssertTrue(model.backgroundWorkQueue.items.contains {
+            $0.id == staleItemID && [.queued, .running].contains($0.status)
+        })
+    }
+
     func testRetryPendingMetadataSyncInCurrentScopeQueuesOnlyRetryableItems() throws {
         let fixture = try makePendingMetadataSyncScopeModel(named: "retry-pending-xmp-scope")
         fixture.model.metadataSyncPendingFilter = true
