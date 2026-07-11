@@ -2039,8 +2039,17 @@ public final class AppModel {
     public var metadataSyncConflictCount: Int
     public var previewGenerationQueueStates: [PreviewGenerationQueueState]
     public var backgroundWorkQueue: BackgroundWorkQueue
+    /// The query field's in-progress text. Committed filter state lives in
+    /// `librarySearchText`; the field edits this draft so typing — and the
+    /// first Esc, which clears only the field — never disturbs the active
+    /// filter chips. In-memory only; programmatic changes to
+    /// `librarySearchText` re-sync it via that property's didSet.
+    public var librarySearchDraft: String = ""
     public var librarySearchText: String {
-        didSet { persistSessionState() }
+        didSet {
+            librarySearchDraft = librarySearchText
+            persistSessionState()
+        }
     }
     public var keywordFilterText: String {
         didSet { persistSessionState() }
