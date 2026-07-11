@@ -1974,6 +1974,10 @@ public final class AppModel {
     public var exifOverlayLevel: ExifOverlayLevel = .off
     // Drives the ? key-map overlay, dismissed by Esc or a repeated ?.
     public var isKeyMapOverlayVisible = false
+    /// Bumped on every culling keystroke so transient hover chrome (the cull
+    /// loupe's hover-revealed decision controls) can hide when the user goes
+    /// back to the keyboard.
+    public private(set) var cullingKeystrokeToken = 0
     /// Which `CullingCommandMenuPresentation` section the ? overlay is
     /// scrolled to (item 3): keyboard-driven since the overlay owns
     /// navigation keys while visible and native NSScrollView keyboard
@@ -5564,14 +5568,28 @@ public final class AppModel {
         }
         let context = try selectedCullingStackDecisionContext()
         let originalAsset = selectedAsset
-        try applyCullingStackDecision(context: context, pickedAssetIDs: [context.selectedAssetID])
-        // Return silently overrides any explicit pick among the siblings
-        // (Maya's persona-1 scare) — the toast must name the full effect so
-        // the user can tell what just happened without reading the catalog.
+        // Jesse's ruling (2026-07-11): a sibling the user already picked is
+        // protected — promote never reflags a pick to reject. Flag provenance
+        // isn't recorded (autopilot commits write plain picks), so ALL picked
+        // siblings are protected: the simple, safe reading. The toast
+        // discloses the kept picks so the full effect is visible without
+        // reading the catalog (Maya's persona-1 scare).
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let protectedPickedSiblings: [Asset] = try context.stack.assetIDs
+            .filter { $0 != context.selectedAssetID }
+            .compactMap { assetID in
+                let asset = try catalog.repository.asset(id: assetID)
+                return asset.metadata.flag == .pick ? asset : nil
+            }
+        let pickedAssetIDs = Set([context.selectedAssetID] + protectedPickedSiblings.map(\.id))
+        try applyCullingStackDecision(context: context, pickedAssetIDs: pickedAssetIDs)
         if let originalAsset {
             lastCullingMetadataDecision = Self.promoteDecisionFeedback(
                 asset: originalAsset,
-                siblingCount: context.stack.assetIDs.count - 1
+                siblingCount: context.stack.assetIDs.count - 1 - protectedPickedSiblings.count,
+                protectedPickedSiblings: protectedPickedSiblings
             )
         }
     }
@@ -5588,14 +5606,21 @@ public final class AppModel {
 
     private static func promoteDecisionFeedback(
         asset: Asset,
-        siblingCount: Int
+        siblingCount: Int,
+        protectedPickedSiblings: [Asset] = []
     ) -> CullingMetadataDecisionFeedback {
-        let decisionText: String
+        var components: [String] = ["Picked"]
         if siblingCount > 0 {
-            decisionText = "Picked · \(siblingCount) sibling\(siblingCount == 1 ? "" : "s") rejected"
-        } else {
-            decisionText = cullingMetadataDecisionText(.pick)
+            components.append("\(siblingCount) sibling\(siblingCount == 1 ? "" : "s") rejected")
         }
+        if protectedPickedSiblings.count == 1, let kept = protectedPickedSiblings.first {
+            components.append("kept your pick of \(kept.originalURL.lastPathComponent)")
+        } else if protectedPickedSiblings.count > 1 {
+            components.append("kept your picks of \(protectedPickedSiblings.count) siblings")
+        }
+        let decisionText = components.count > 1
+            ? components.joined(separator: " · ")
+            : cullingMetadataDecisionText(.pick)
         return CullingMetadataDecisionFeedback(
             assetID: asset.id,
             filename: asset.originalURL.lastPathComponent,
@@ -5655,6 +5680,13 @@ public final class AppModel {
         } else if let nextAssetID = context.nextAssetID {
             selectAssetID(nextAssetID)
         }
+    }
+
+    /// Called from the key-capture path (not from clicks on the hover
+    /// controls themselves) so hover chrome hides when the user goes back
+    /// to the keyboard.
+    public func noteCullingKeystroke() {
+        cullingKeystrokeToken &+= 1
     }
 
     public func applyCullingShortcut(_ shortcut: CullingShortcut) throws {
@@ -6598,34 +6630,97 @@ public final class AppModel {
 
     @discardableResult
     @MainActor
-    public func exportVisibleAssets(settings: ExportSettings, destinationFolder: URL) async throws -> ExportCompletionSummary {
-        try await exportAssets(assetIDs: assets.map(\.id), settings: settings, destinationFolder: destinationFolder)
+    public func exportVisibleAssets(
+        settings: ExportSettings,
+        destinationFolder: URL,
+        collisionResolution: ExportCollisionResolution = .keepBoth
+    ) async throws -> ExportCompletionSummary {
+        try await exportAssets(
+            assetIDs: assets.map(\.id),
+            settings: settings,
+            destinationFolder: destinationFolder,
+            collisionResolution: collisionResolution
+        )
     }
 
     @discardableResult
     @MainActor
-    public func exportSelectedAssets(settings: ExportSettings, destinationFolder: URL) async throws -> ExportCompletionSummary {
-        try await exportAssets(assetIDs: selectedBatchAssetIDsInCatalogOrder, settings: settings, destinationFolder: destinationFolder)
+    public func exportSelectedAssets(
+        settings: ExportSettings,
+        destinationFolder: URL,
+        collisionResolution: ExportCollisionResolution = .keepBoth
+    ) async throws -> ExportCompletionSummary {
+        try await exportAssets(
+            assetIDs: selectedBatchAssetIDsInCatalogOrder,
+            settings: settings,
+            destinationFolder: destinationFolder,
+            collisionResolution: collisionResolution
+        )
     }
 
     @discardableResult
     @MainActor
-    public func exportCurrentScopeAssets(settings: ExportSettings, destinationFolder: URL) async throws -> ExportCompletionSummary {
+    public func exportCurrentScopeAssets(
+        settings: ExportSettings,
+        destinationFolder: URL,
+        collisionResolution: ExportCollisionResolution = .keepBoth
+    ) async throws -> ExportCompletionSummary {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
         return try await exportAssets(
             assetIDs: try currentAssetScopeIDs(repository: catalog.repository),
             settings: settings,
-            destinationFolder: destinationFolder
+            destinationFolder: destinationFolder,
+            collisionResolution: collisionResolution
         )
+    }
+
+    /// Filenames the export would write that already exist in the
+    /// destination — checked before writing so the export flow can ask once
+    /// (Replace All / Keep Both / Cancel) instead of silently suffixing
+    /// (Jesse's ruling 2026-07-11).
+    @MainActor
+    public func exportCollisionFilenames(
+        assetIDs: [AssetID],
+        format: ExportFormat,
+        destinationFolder: URL
+    ) throws -> [String] {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        var seenAssetIDs: Set<AssetID> = []
+        var originalURLs: [URL] = []
+        for assetID in assetIDs {
+            guard seenAssetIDs.insert(assetID).inserted else { continue }
+            originalURLs.append(try catalog.repository.asset(id: assetID).originalURL)
+        }
+        return ExportService().collidingFilenames(
+            originalURLs: originalURLs,
+            format: format,
+            destinationDirectory: destinationFolder
+        )
+    }
+
+    @MainActor
+    public func visibleExportAssetIDs() -> [AssetID] {
+        assets.map(\.id)
+    }
+
+    @MainActor
+    public func currentScopeExportAssetIDs() throws -> [AssetID] {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        return try currentAssetScopeIDs(repository: catalog.repository)
     }
 
     @MainActor
     private func exportAssets(
         assetIDs: [AssetID],
         settings: ExportSettings,
-        destinationFolder: URL
+        destinationFolder: URL,
+        collisionResolution: ExportCollisionResolution = .keepBoth
     ) async throws -> ExportCompletionSummary {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
@@ -6656,7 +6751,8 @@ public final class AppModel {
                 try service.export(
                     originalURLs: urls,
                     settings: settings,
-                    destinationDirectory: destination
+                    destinationDirectory: destination,
+                    collisionResolution: collisionResolution
                 ) { completedCount, totalCount in
                     sink.handle(completedCount: completedCount, totalCount: totalCount)
                 }
