@@ -72,6 +72,7 @@ struct TeststripApplication: App {
                 FileCommands(model: model)
                 WorkspaceCommands(model: model)
                 MetadataHistoryCommands(model: model)
+                SearchCommands(model: model)
                 NavigationCommands(model: model)
                 MetadataActionCommands(model: model)
             }
@@ -292,6 +293,26 @@ private struct MetadataHistoryCommands: Commands {
     }
 }
 
+// Edit ▸ Find ⌘F: the standard macOS Find placement (below Paste/Select,
+// same slot AppKit text views use for their own Find item), not a
+// CommandGroup(replacing: .textEditing) — that would blow away Cut/Copy/
+// Paste/Select All for every text field in the app. Focuses the Library
+// query field; from Cull/People it switches to Library first (see
+// AppModel.requestFocusSearch).
+private struct SearchCommands: Commands {
+    var model: AppModel
+
+    var body: some Commands {
+        CommandGroup(after: .textEditing) {
+            Divider()
+            Button("Find") {
+                model.requestFocusSearch()
+            }
+            .keyboardShortcut("f", modifiers: [.command])
+        }
+    }
+}
+
 private struct NavigationCommands: Commands {
     var model: AppModel
 
@@ -429,7 +450,7 @@ private struct CullingCommands: Commands {
 
             ForEach(Array(CullingCommandMenuPresentation.sections.enumerated()), id: \.element.id) { index, section in
                 ForEach(section.items.filter { !$0.isMonitorOnly }) { item in
-                    Button(item.title) {
+                    Button(item.menuDisplayTitle) {
                         applyShortcut(item.shortcut)
                     }
                     .keyboardShortcut(item.key.menuKeyboardShortcut)

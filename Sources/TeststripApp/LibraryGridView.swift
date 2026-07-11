@@ -22,6 +22,8 @@ struct LibraryGridView: View {
     @State private var cullingSessionName = ""
     @State private var cullingSessionIntent = ""
     @State private var isShowingSearchTips = false
+    /// Driven by Edit ▸ Find ⌘F via AppModel.focusSearchRequestToken.
+    @FocusState private var isQueryFieldFocused: Bool
     @State private var batchMetadataDraft = BatchMetadataDraft()
     @State private var batchMetadataScope: BatchScopeMode = .visible
     @State private var isAllCatalogBatchMetadataConfirmed = false
@@ -124,6 +126,9 @@ struct LibraryGridView: View {
         .navigationTitle(model.catalogDisplayName)
         .onChange(of: model.batchMetadataRequestToken) { _, _ in
             openBatchMetadataSheet()
+        }
+        .onChange(of: model.focusSearchRequestToken) { _, _ in
+            isQueryFieldFocused = true
         }
         .onChange(of: model.importFolderRequestToken) { _, _ in
             showImportFolderPanel()
@@ -568,6 +573,7 @@ struct LibraryGridView: View {
                 set: { model.librarySearchText = $0 }
             ))
             .textFieldStyle(.plain)
+            .focused($isQueryFieldFocused)
             .onSubmit {
                 submitQueryTokenField()
             }
@@ -1103,20 +1109,21 @@ struct LibraryGridView: View {
             suggestions: batchMetadataSuggestions(),
             draft: batchMetadataDraft
         )
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Batch Metadata")
-                        .font(.headline)
-                    Text(presentation.countText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "tag")
-                    .foregroundStyle(.orange)
-            }
+        return SheetScaffold(
+            title: "Batch Metadata",
+            subtitle: presentation.countText,
+            primaryLabel: presentation.applyTitle,
+            isPrimaryEnabled: presentation.isApplyEnabled,
+            cancel: { isReviewingBatchMetadata = false },
+            primary: { applyVisibleBatchMetadataDraft() }
+        ) {
+            batchMetadataPopoverContent(presentation)
+        }
+    }
 
+    @ViewBuilder
+    private func batchMetadataPopoverContent(_ presentation: BatchMetadataReviewPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
             Picker("Batch selection", selection: $batchMetadataScope) {
                 ForEach(BatchScopeMode.allCases) { scope in
                     Text(scope.title).tag(scope)
@@ -1188,21 +1195,7 @@ struct LibraryGridView: View {
                 Toggle(confirmationText, isOn: $isAllCatalogBatchMetadataConfirmed)
                     .font(.caption)
             }
-
-            HStack {
-                Button("Cancel") {
-                    isReviewingBatchMetadata = false
-                }
-                Spacer()
-                Button(presentation.applyTitle) {
-                    applyVisibleBatchMetadataDraft()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!presentation.isApplyEnabled)
-            }
         }
-        .padding(14)
-        .frame(width: 360)
         .liveMockupPlaceholder(.keywordingBatch)
     }
 

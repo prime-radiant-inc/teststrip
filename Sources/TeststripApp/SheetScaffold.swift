@@ -93,6 +93,19 @@ struct SheetScaffold<Content: View, Options: View>: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(!isPrimaryEnabled)
             }
+            // Bare Return is usually consumed by whichever text field has
+            // focus (its field editor's insertNewline: swallows it before it
+            // can reach the sheet's default-action button), so a keyword/
+            // caption field's Return never reaches the primary action —
+            // persona-3 saw this dead-end in Batch Metadata. A second,
+            // invisible button bound to ⌘Return gives every sheet a commit
+            // key that works regardless of which field is focused.
+            Button(primaryLabel, action: primary)
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(!isPrimaryEnabled)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
         }
         .padding(SheetScaffoldMetrics.padding)
         .frame(width: width)

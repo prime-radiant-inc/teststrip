@@ -477,6 +477,18 @@ public struct CullingCommandMenuItem: Equatable, Identifiable, Sendable {
         self.key = key
         self.isMonitorOnly = isMonitorOnly
     }
+
+    /// Menu-item label with the key advertised as a title suffix, e.g.
+    /// "Pick (P)". The key is display-only here — no `.keyboardShortcut`
+    /// binding accompanies it (see `menuKeyboardShortcut` in main.swift for
+    /// why bare culling keys can't be bound in the menu without double-
+    /// firing against the in-view key monitors). This is the one place the
+    /// key glyph is derived from `CullingShortcutKey.displayText` for menu
+    /// advertisement, so every culling menu item stays in sync with the
+    /// same source the `?` key-map overlay uses.
+    public var menuDisplayTitle: String {
+        "\(title) (\(key.displayText))"
+    }
 }
 
 public struct CullingCommandMenuSection: Equatable, Identifiable, Sendable {
@@ -2210,6 +2222,19 @@ public final class AppModel {
     public private(set) var batchMetadataRequestToken = 0
     public func requestBatchMetadataSheet() {
         batchMetadataRequestToken += 1
+    }
+
+    // Bumped by Edit ▸ Find ⌘F so LibraryGridView's @FocusState can move
+    // keyboard focus into the query field. The query field only exists in
+    // Library, so from Cull/People this also switches workspace first (the
+    // same pattern ⌘I's inspector toggle would need if it ever gained a
+    // Library-only tab) rather than silently doing nothing.
+    public private(set) var focusSearchRequestToken = 0
+    public func requestFocusSearch() {
+        if selectedWorkspace != .library {
+            selectWorkspace(.library)
+        }
+        focusSearchRequestToken += 1
     }
 
     // Bumped by the File ▸ Import Folder…/Import From Card…/Import Path…/
