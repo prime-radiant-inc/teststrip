@@ -910,7 +910,7 @@ struct InspectorView: View {
                 Button {
                     apply { try model.setRatingForSelectedAssets(rating) }
                 } label: {
-                    Image(systemName: "star.fill")
+                    Image(systemName: DesignGlyph.rating.symbolName)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(rating <= asset.metadata.rating ? .yellow : .secondary)
                 }
@@ -936,7 +936,7 @@ struct InspectorView: View {
             Button {
                 apply { try model.setFlagForSelectedAssets(.pick) }
             } label: {
-                Image(systemName: "flag.fill")
+                Image(systemName: DesignGlyph.pick.symbolName)
                     .foregroundStyle(asset.metadata.flag == .pick ? .green : .secondary)
             }
             .buttonStyle(.plain)
@@ -1063,7 +1063,7 @@ struct InspectorView: View {
     private func suggestedKeywordChips(_ suggestions: [KeywordSuggestion]) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 5) {
-                Image(systemName: "sparkles")
+                Image(systemName: DesignGlyph.ai.symbolName)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.orange)
                 Text("Suggestions")
@@ -1214,7 +1214,7 @@ struct InspectorView: View {
         let groups = InspectorEvaluationSignalGroup.groups(for: signals)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "sparkles")
+                Image(systemName: DesignGlyph.ai.symbolName)
                     .foregroundStyle(.orange)
                 Text("What Teststrip sees")
                     .font(.caption.weight(.semibold))

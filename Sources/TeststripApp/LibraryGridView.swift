@@ -406,7 +406,7 @@ struct LibraryGridView: View {
                     .controlSize(.small)
                     .frame(width: 16, height: 16)
             } else {
-                Image(systemName: "bell")
+                Image(systemName: DesignGlyph.activityIdle.symbolName)
             }
             if case .problems(let count) = presentation.badge {
                 Text("\(count)")
@@ -585,7 +585,7 @@ struct LibraryGridView: View {
             Button {
                 submitQueryTokenField()
             } label: {
-                Image(systemName: "magnifyingglass")
+                Image(systemName: DesignGlyph.searchSubmit.symbolName)
                     .font(.system(size: 12, weight: .semibold))
             }
             .buttonStyle(.plain)
@@ -1197,7 +1197,7 @@ struct LibraryGridView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Image(systemName: "square.and.arrow.up")
+                Image(systemName: DesignGlyph.exportPhotos.symbolName)
                     .foregroundStyle(.orange)
             }
 
@@ -1575,7 +1575,7 @@ struct LibraryGridView: View {
                     applyLibraryFilters()
                     isShowingDateFilters = false
                 } label: {
-                    Image(systemName: "magnifyingglass")
+                    Image(systemName: DesignGlyph.searchSubmit.symbolName)
                 }
                 .keyboardShortcut(.defaultAction)
                 .help("Apply date filters")
@@ -3865,7 +3865,7 @@ private struct LoupeView: View {
     private func cullHUDRatingStars(_ rating: Int) -> some View {
         HStack(spacing: 1) {
             ForEach(0..<5, id: \.self) { index in
-                Image(systemName: "star.fill")
+                Image(systemName: DesignGlyph.rating.symbolName)
                     .font(.system(size: 9))
                     .foregroundStyle(index < rating ? .yellow : .secondary.opacity(0.35))
             }
@@ -4216,7 +4216,7 @@ private struct LoupeView: View {
         if asset.metadata.flag != nil || asset.metadata.rating > 0 {
             HStack(spacing: 4) {
                 if let flag = asset.metadata.flag {
-                    Image(systemName: flag == .pick ? "flag.fill" : "xmark.circle.fill")
+                    Image(systemName: flag == .pick ? DesignGlyph.pick.symbolName : "xmark.circle.fill")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(flag == .pick ? .green : .red)
                 }
@@ -6351,7 +6351,7 @@ private struct CompareView: View {
 
     private func comparativeVerdictStrip(_ text: String) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "sparkles")
+            Image(systemName: DesignGlyph.ai.symbolName)
                 .foregroundStyle(.orange)
             Text(text)
                 .font(.caption)

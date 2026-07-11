@@ -254,7 +254,7 @@ struct ActivityCenterView: View {
                         Button {
                             showSourceReconnectSheet(oldRootPath: reconnectActionID)
                         } label: {
-                            Image(systemName: "externaldrive.badge.exclamationmark")
+                            Image(systemName: DesignGlyph.availabilityStale.symbolName)
                         }
                         .buttonStyle(.plain)
                         .help("Reconnect \(source.name)")

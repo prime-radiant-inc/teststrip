@@ -130,7 +130,7 @@ struct PeopleView: View {
     private var recognitionStatusPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 7) {
-                Image(systemName: "sparkles")
+                Image(systemName: DesignGlyph.ai.symbolName)
                     .foregroundStyle(.orange)
                 Text(presentation.reviewStripTitle)
                     .font(.caption2.monospaced().weight(.semibold))
