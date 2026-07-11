@@ -4,4 +4,4 @@
 # commercial redistribution (unlike InsightFace's research-only weights).
 # TODO(host): upload auraface-v1.mlpackage.zip to a stable URL and replace the
 # placeholder below. md5/size are the real values of the locally converted artifact.
-auraface-v1.mlpackage.zip	https://REPLACE-ME.example.com/teststrip/auraface-v1.mlpackage.zip	54595ccaae2402a581e70d4694cc82d0	120414232	https://huggingface.co/fal/AuraFace-v1
+auraface-v1.mlpackage.zip	https://github.com/prime-radiant-inc/teststrip/releases/download/models-v1/auraface-v1.mlpackage.zip	39ba7121e96683caeb4e799a18be9b43	120416404	https://huggingface.co/fal/AuraFace-v1
