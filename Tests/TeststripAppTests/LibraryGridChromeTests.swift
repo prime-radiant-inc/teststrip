@@ -305,6 +305,39 @@ final class LibraryGridChromeTests: XCTestCase {
         XCTAssertEqual(presentation.accessibilityValue, "Rated 5, frame-0.dng")
     }
 
+    // persona-6 Priya: the sheet used to open with the preference defaults
+    // prefilled into Creator/Copyright, styled so they read as placeholders —
+    // a keyword-only second pass silently stamped them over per-photo
+    // provenance on every photo in scope. Blank-means-leave-alone only works
+    // if the fields actually start blank; defaults are prompt text only,
+    // written solely when the user types (or accepts) them.
+    func testBatchMetadataCreatorAndCopyrightPromptsShowDefaultsWithoutPrefilling() {
+        XCTAssertEqual(BatchMetadataDraft.creatorPrompt(defaultCreator: "Scenario Tester"), "Scenario Tester")
+        XCTAssertEqual(BatchMetadataDraft.creatorPrompt(defaultCreator: "   "), "Creator")
+        XCTAssertEqual(BatchMetadataDraft.creatorPrompt(defaultCreator: ""), "Creator")
+        XCTAssertEqual(BatchMetadataDraft.copyrightPrompt(defaultCopyright: "© 2026 Scenario"), "© 2026 Scenario")
+        XCTAssertEqual(BatchMetadataDraft.copyrightPrompt(defaultCopyright: ""), "Copyright")
+    }
+
+    func testFreshBatchMetadataDraftStartsEmptyAndAppliesNothing() {
+        let draft = BatchMetadataDraft()
+        XCTAssertEqual(draft.creator, "")
+        XCTAssertEqual(draft.copyright, "")
+        XCTAssertFalse(draft.hasContentToApply)
+
+        let presentation = BatchMetadataReviewPresentation(
+            visibleAssetCount: 12,
+            selectedAssetCount: 0,
+            currentScopeAssetCount: 121,
+            selectedScope: .visible,
+            requiresAllCatalogConfirmation: false,
+            isAllCatalogConfirmed: false,
+            suggestions: [],
+            draft: draft
+        )
+        XCTAssertFalse(presentation.isApplyEnabled, "an all-blank draft must not be applyable")
+    }
+
     func testBatchMetadataReviewPresentationSummarizesVisibleBatchAndDraft() {
         var draft = BatchMetadataDraft()
         draft.caption = "  Patagonia selects  "
