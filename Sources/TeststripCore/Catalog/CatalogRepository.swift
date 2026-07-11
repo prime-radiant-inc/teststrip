@@ -1836,6 +1836,12 @@ public final class CatalogRepository {
         try metadataSyncItems(status: "pending", limit: limit)
     }
 
+    /// Rows whose sidecar was cleanly synced — the population the sidecar
+    /// rescan (out-of-band edit detection) walks.
+    public func syncedMetadataSyncItems(limit: Int? = nil) throws -> [MetadataSyncItem] {
+        try metadataSyncItems(status: "synced", limit: limit)
+    }
+
     public func pendingMetadataSyncItemCount() throws -> Int {
         try metadataSyncItemCount(status: "pending")
     }

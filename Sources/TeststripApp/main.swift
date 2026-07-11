@@ -58,6 +58,10 @@ struct TeststripApplication: App {
                 minHeight: AppWindowLayoutMetrics.minimumHeight
             )
             .preferredColorScheme(.dark)
+            // Catalog-open sidecar rescan (Jesse's ruling 2026-07-11):
+            // detect out-of-band sidecar edits made while the app was
+            // closed; batched off the main actor, quiet when clean.
+            .task { await model.performLaunchSidecarRescan() }
         }
         .defaultSize(
             width: AppWindowLayoutMetrics.defaultWidth,
@@ -358,6 +362,13 @@ private struct MetadataActionCommands: Commands {
                 model.requestBatchMetadataSheet()
             }
             .keyboardShortcut("m", modifiers: [.command, .option])
+            .disabled(model.isImporting || model.assets.isEmpty)
+
+            // On-demand sidecar rescan over the current scope (Jesse's
+            // ruling 2026-07-11) — same check the app runs at launch.
+            Button("Check Sidecars for Changes") {
+                Task { await model.checkSidecarsForChangesInCurrentScope() }
+            }
             .disabled(model.isImporting || model.assets.isEmpty)
         }
     }

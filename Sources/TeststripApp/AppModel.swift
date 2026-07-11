@@ -7860,6 +7860,77 @@ public final class AppModel {
         syncBackgroundWorkQueueFromSupervisor()
     }
 
+    // MARK: - Sidecar rescan (out-of-band edit detection, Jesse's ruling 2026-07-11)
+
+    /// Fingerprint-checks synced sidecars for out-of-band edits and re-enters
+    /// changed ones into the existing planner flow (pending or conflict).
+    /// Runs the file walk off the main actor on its own catalog connection,
+    /// then refreshes sync counts and hands new pending rows to the worker.
+    @MainActor
+    @discardableResult
+    public func checkSidecarsForChanges(
+        scopeAssetIDs: [AssetID]? = nil,
+        announceWhenUnchanged: Bool = false
+    ) async throws -> SidecarRescanSummary {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let paths = catalog.paths
+        let scope = scopeAssetIDs.map(Set.init)
+        let summary = try await Task.detached(priority: .utility) {
+            let backgroundCatalog = try AppCatalog.open(paths: paths)
+            return try SidecarRescanService().rescanSyncedSidecars(
+                repository: backgroundCatalog.repository,
+                assetIDs: scope
+            )
+        }.value
+        if summary.pendingCount > 0 || summary.conflictCount > 0 {
+            try refreshMetadataSyncState()
+            try enqueuePendingMetadataSync()
+            statusMessage = Self.sidecarRescanStatusText(summary)
+        } else if announceWhenUnchanged {
+            statusMessage = "Sidecars match the catalog — no changes found"
+        }
+        return summary
+    }
+
+    /// Metadata ▸ Check Sidecars for Changes: on-demand rescan over the
+    /// current scope's assets.
+    @MainActor
+    public func checkSidecarsForChangesInCurrentScope() async {
+        do {
+            guard let catalog else {
+                throw TeststripError.invalidState("app model has no catalog")
+            }
+            let scopeAssetIDs = try currentAssetScopeIDs(repository: catalog.repository)
+            _ = try await checkSidecarsForChanges(
+                scopeAssetIDs: scopeAssetIDs,
+                announceWhenUnchanged: true
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Launch-time rescan (catalog open): whole-catalog, quiet when nothing
+    /// changed, never blocks the UI. Failures are non-fatal — the menu
+    /// command re-runs the same check on demand.
+    @MainActor
+    public func performLaunchSidecarRescan() async {
+        _ = try? await checkSidecarsForChanges()
+    }
+
+    static func sidecarRescanStatusText(_ summary: SidecarRescanSummary) -> String {
+        var parts: [String] = []
+        if summary.pendingCount > 0 {
+            parts.append("\(summary.pendingCount) sidecar\(summary.pendingCount == 1 ? "" : "s") changed on disk — queued to re-sync")
+        }
+        if summary.conflictCount > 0 {
+            parts.append("\(summary.conflictCount) conflict\(summary.conflictCount == 1 ? "" : "s")")
+        }
+        return parts.joined(separator: " · ")
+    }
+
     private func enqueuePendingMetadataSync() throws {
         guard let catalog, workerSupervisor != nil else { return }
         var enqueuedCount = 0
