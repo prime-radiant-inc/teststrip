@@ -51,6 +51,21 @@ unchecked strips it.
    sips -g hasAlpha "$F" >/dev/null && echo "readable jpeg"
    /usr/bin/mdls -name kMDItemExifApertureValue -name kMDItemISOSpeed "$F"   # metadata present
    ```
+4b. **Assert catalog-authored metadata is embedded (persona-6 defect).**
+   Before this export, give at least one in-scope photo catalog metadata via
+   the inspector or Batch Metadata: keywords (e.g. `STS-7, astronaut`),
+   caption, creator (`NASA Photo Office`), copyright (`Public Domain`), and a
+   rating. Then, on that photo's export:
+   ```bash
+   /usr/bin/mdls -name kMDItemKeywords -name kMDItemAuthors \
+                 -name kMDItemCopyright -name kMDItemDescription "$F"
+   ```
+   Every field set in the catalog must read back non-null and match what was
+   typed (IPTC Keywords / Byline / CopyrightNotice / CaptionAbstract are
+   embedded by `ExportService.embeddingCatalogMetadata`). **Fails if** any
+   catalog-authored field is `(null)` while the checkbox was checked — that
+   is the persona-6 "deliverables stripped of the work" defect. Quote the
+   `mdls` output.
 5. **Export again with metadata OFF.** Re-open Export, same 1024 long edge,
    UNCHECK "Include EXIF/IPTC metadata", export to `OUT2=$(mktemp -d)/export`.
 6. **Assert the stripped copy dropped metadata**:
@@ -84,7 +99,12 @@ unchecked strips it.
   the file (valid JPEG); at least one EXIF field is present. **Fails if** the
   file is full-size (resize ignored), unreadable, or carries no EXIF when the
   box was checked. Quote the actual `sips` dimensions.
-- Step 6: the same EXIF field reads `(null)` / absent. **Fails if** metadata
+- Step 4b: `kMDItemKeywords`/`kMDItemAuthors`/`kMDItemCopyright`/
+  `kMDItemDescription` match the catalog values field-for-field. **Fails if**
+  any is null with the box checked.
+- Step 6: the same EXIF field reads `(null)` / absent, and the catalog-
+  authored fields from step 4b are also absent (the toggle governs both
+  carries). **Fails if** metadata
   survived with the box unchecked — the checkbox is not governing the carry.
   Quote both `mdls` outputs (checked vs unchecked) side by side.
 

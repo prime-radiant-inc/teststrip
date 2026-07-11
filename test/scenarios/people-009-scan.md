@@ -18,6 +18,16 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 ```
 
 ## Steps
+0b. **Offline sources are named, not "Scan ready" (persona-6 defect).** With
+   a catalog whose `source_roots` path does not exist on this machine (e.g.
+   a seed built elsewhere: `sqlite3 "$DB" "SELECT path FROM source_roots;"`
+   points at a nonexistent directory), open People (⌘3) and assert the
+   review-strip status text reads **"Photo sources offline — reconnect to
+   scan"** — NOT "Scan ready" (`PeoplePresentation.hasUnavailableSources`,
+   fed by `AppModel.hasUnavailableSourceRoots`). **Fails if** the strip
+   advertises "Scan ready" while a scan could never enqueue work. When all
+   roots resolve, the normal "Scan ready" text stands (assert that leg on a
+   healthy seed).
 1. **No canvas button.** With People open (⌘3), scan the AX tree for any
    `AXButton` whose title/help mentions "Scan" — assert none exists in the
    canvas (only the review-strip's static `scanAction.detail` caption text

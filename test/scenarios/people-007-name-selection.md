@@ -41,9 +41,15 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    ```
    **Fails if** either rose from mere selection.
 5. Press "Name selection" — opens the "Name Selection" sheet
-   (`nameSelectionSheet`, `PeopleView.swift:261-282`). Assert the sheet's
+   (`nameSelectionSheet`, `PeopleView.swift`). Assert the sheet's
    "Create Person" button is `AXDisabled` while its text field is empty
-   (`isPrimaryEnabled`, SheetScaffold).
+   (`isPrimaryEnabled`, SheetScaffold). **Selection count is visible
+   (persona-6 defect):** assert the sheet subtitle reads "Groups the 1
+   selected photo under a new named person." — the count must match the
+   actual selection (`PeoplePresentation.nameSelectionSubtitle`), so a stale
+   cross-workspace selection is visible before the confirming click.
+   **Fails if** the subtitle is the old countless "Groups the selected
+   photos…" text.
 6. **Confirm-before-write on opening the sheet:** re-run step 4's queries —
    still `P0`/`L0`. Opening the sheet must not write.
 7. Type a name into the field (`script/ax_drive.sh type --contains "Person

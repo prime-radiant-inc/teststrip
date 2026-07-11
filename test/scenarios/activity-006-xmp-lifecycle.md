@@ -130,7 +130,12 @@ Quit the launched instance.
      rescan (`AppModel.performLaunchSidecarRescan`, wired via `.task` in
      `Sources/TeststripApp/main.swift`), batched off the main actor.
   2. **Metadata ▸ Check Sidecars for Changes** — the same rescan on demand
-     over the current scope (`checkSidecarsForChangesInCurrentScope`).
+     over the **whole catalog**, regardless of any active library filters
+     (`checkSidecarsForChangesInCurrentScope`). persona-6 regression guard:
+     with a Pick chip (or any filter) active that excludes the edited asset,
+     the menu command must STILL flag the edit — it previously scoped to the
+     filter and missed real out-of-band edits silently. Assert this leg with
+     a filter active.
   Both walk `metadata_sync_state` rows with `status='synced'`, cheap-gate on
   sidecar mtime vs the recorded sync instant, fingerprint-compare changed
   files, and re-enter the existing planner semantics: sidecar-only change →
@@ -139,9 +144,12 @@ Quit the launched instance.
   `updated_at` already record what the check needs. Core logic:
   `Sources/TeststripCore/Metadata/SidecarRescanService.swift`; unit coverage:
   `SidecarRescanServiceTests` (pending/conflict/cheap-gate/missing/scope) +
-  `SidecarRescanAppTests` (model plumbing, status line). A changed sidecar
-  surfaces as "N sidecars changed on disk — queued to re-sync" in the status
-  line. PENDING-VM: the live-driven legs (menu click, relaunch trigger, AX
+  `SidecarRescanAppTests` (model plumbing, status line, filter-independence).
+  The menu command **always** reports completion in the status line —
+  "Checked N sidecars — M changed on disk, queued to re-sync" when it found
+  edits, "Checked N sidecars — no changes" when it did not; silence after
+  the menu click is a failure. The launch rescan reports only when it found
+  changes. PENDING-VM: the live-driven legs (menu click, relaunch trigger, AX
   assertions) have not been re-run — VM unavailable this pass.
 - Sub-case A requires *not* letting a sync scan run between steps 1-2 and
   step 3 (or the catalog-only divergence would resolve to `writeCatalog`
