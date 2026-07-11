@@ -1,23 +1,30 @@
 # lib-010-result-header-save: result count, plain-text interpretation, catalog-backed suggested chips (active-field suppressed), and the 3-way Save menu
 
 **What this covers**: `libraryResultHeader`
-(`Sources/TeststripApp/LibraryGridView.swift:762-790`) built from
+(`Sources/TeststripApp/LibraryGridView.swift`) built from
 `LibraryResultHeaderPresentation` (`Sources/TeststripApp/LibraryResultHeaderPresentation.swift`):
 a match-count line ("N photos" / "1 photo"), an optional grey
 "read as plain text: …" interpretation line shown only when
 `LibrarySearchIntent.parse` leaves residual free text after stripping
-structured tokens (`interpretation(for:)`, lines 75-80), a horizontally
-scrolling row of catalog-backed suggested chips whose *fields already
-active* are suppressed (`addIfNeeded`, lines 94-97, keyed by `token.field`),
-and a "Save ▾" menu (`saveMenu`, `LibraryGridView.swift:808-828`) with
-exactly the 3 `SaveAction` cases — "Save Search…", "Save as Snapshot…",
-"Save Selection as Set…" — each present only if its gating bool is true:
-`canSaveDynamicSet` = `model.canSaveCurrentLibraryQuery` =
-`currentLibraryQuery() != nil` (`AppModel.swift:2728-2730`),
-`canSaveSnapshotSet` = `model.canSaveCurrentAssetScopeSnapshot` = `catalog
-!= nil && !assets.isEmpty` (`AppModel.swift:2851-2853`), `canSaveManualSet`
-= `model.canSaveSelectedAssetAsManualSet` = `catalog != nil &&
-!currentManualSelectionAssetIDs.isEmpty` (`AppModel.swift:2847-2849`).
+structured tokens (`interpretation(for:)`), a horizontally scrolling row of
+catalog-backed suggested chips whose *fields already active* are suppressed
+(`addIfNeeded`, keyed by `token.field`), and a "Save ▾" menu (`saveMenu`)
+with exactly the 3 `SaveAction` cases — "Save Search…", "Save as
+Snapshot…", "Save Selection as Set…" — each present only if its gating bool
+is true: `canSaveDynamicSet` = `model.canSaveCurrentLibraryQuery` =
+`currentLibraryQuery() != nil`, `canSaveSnapshotSet` =
+`model.canSaveCurrentAssetScopeSnapshot` = `catalog != nil &&
+!assets.isEmpty`, `canSaveManualSet` = `model.canSaveSelectedAssetAsManualSet`
+= `catalog != nil && !currentManualSelectionAssetIDs.isEmpty`.
+
+**Task 8 change (spec §2b)**: the whole row is now gated on
+`LibraryResultHeaderPresentation.hasContent` (interpretation present, OR
+suggested tokens non-empty, OR save actions non-empty) — an empty second
+row no longer renders. On the `--smoke` fixture, `canSaveSnapshotSet` is
+true whenever the catalog is non-empty, so `saveActions` is never empty and
+the row (including the match count) still renders in every step below; the
+row would only disappear on a genuinely empty catalog with no query and no
+suggestions (not exercised by this card's fixture).
 
 ## Pre-state
 ```bash

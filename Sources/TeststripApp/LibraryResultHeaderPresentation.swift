@@ -69,6 +69,15 @@ public struct LibraryResultHeaderPresentation: Equatable {
         saveActions = actions
     }
 
+    /// spec §2b: the row renders only when it has content — active tokens
+    /// (`suggestedTokens`, the catalog-backed chips this row draws), a
+    /// residual-text interpretation, or save-worthy state. A bare match
+    /// count is not, on its own, reason to show the row (the footer already
+    /// carries the count).
+    public var hasContent: Bool {
+        interpretation != nil || !suggestedTokens.isEmpty || !saveActions.isEmpty
+    }
+
     /// Non-nil only when plain text remains after `LibrarySearchIntent`
     /// pulls out every structured filter it recognizes — the same condition
     /// `SearchWorkspaceView`'s "Ask interpretation" row used to gate on. When

@@ -1,14 +1,17 @@
 # lib-007-add-filter-menu: the "Add filter" menu covers enum fields with fixed option lists; free-text fields stay typed-only
 
-**What this covers**: the "+" `addFilterMenu`
-(`Sources/TeststripApp/LibraryGridView.swift:859-945`) is a `Menu` with six
-submenus plus one direct action, each writing straight to an `AppModel`
-structured filter property and calling `applyLibraryFilters()`. It exists
-*only* for enum/menu-driven fields that have a fixed, enumerable option set;
-free-text fields (`camera`, `lens`, `keyword`, `folder`, `iso`) have **no**
-entry in this menu at all — the comment at lines 854-858 states this
-explicitly ("Free-text fields ... stay reachable via typed tokens in the
-query field itself"), and grepping the menu body confirms no
+**What this covers**: `addFilterMenu`
+(`Sources/TeststripApp/LibraryGridView.swift`) is a `Menu` with six submenus
+plus one direct action, each writing straight to an `AppModel` structured
+filter property and calling `applyLibraryFilters()`. Per spec §2b it is now
+the query field's **leading accessory** (rendered as `DesignGlyph.filterMenu`
+= `line.3.horizontal.decrease`), not a separate trailing plus-circle button
+— the query field and the filter menu are one control. It exists *only* for
+enum/menu-driven fields that have a fixed, enumerable option set; free-text
+fields (`camera`, `lens`, `keyword`, `folder`, `iso`) have **no** entry in
+this menu at all — the doc comment above it states this explicitly
+("Free-text fields ... stay reachable via typed tokens in the query field
+itself"), and grepping the menu body confirms no
 camera/lens/keyword/folder/iso submenu exists.
 
 ## Pre-state
@@ -22,8 +25,9 @@ Confirmed against a seeded `--smoke` catalog 2026-07-10: `PICKS=6`.
 
 ## Steps
 1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for Library.
-2. `ax_drive.sh press --role AXButton --help "Add a filter"` (the plus-circle
-   icon, line 940) to open the menu.
+2. `ax_drive.sh press --role AXButton --help "Add a filter"` (the
+   `line.3.horizontal.decrease` filter-menu icon, now the query field's
+   leading accessory) to open the menu.
 3. Assert exactly these six submenu titles are present, each an `AXMenuItem`
    with children (a nested `Menu`, not a leaf `Button`): "Rating", "Flag",
    "Color Label", "Source", "AI Signal", "Metadata Sync", plus one leaf

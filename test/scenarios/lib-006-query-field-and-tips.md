@@ -1,16 +1,19 @@
 # lib-006-query-field-and-tips: the query field's icons drive parse+submit, and the tips popover lists the token groups
 
 **What this covers**: the Library token query field (`queryTokenField`,
-`Sources/TeststripApp/LibraryGridView.swift:554-599`) has a leading sparkles
-glyph (decorative), a text field whose Return/submit action runs
-`submitQueryTokenField()` (parses `LibraryQueryToken` tokens out of the typed
-text and applies them to `AppModel`, then re-runs `applyLibraryFilters()`),
-an info-circle button that opens the "Search tips" popover
-(`searchTipsPopover`, lines 606-633), and a magnifying-glass button that is a
-second trigger for the same submit action. The tips popover must list exactly
-the 8 token groups baked into `Self.searchTokenTips` (lines 635-644) — the
-task brief guessed 8 without confirming; source-reading confirms it is
-in fact 8, not by assumption.
+`Sources/TeststripApp/LibraryGridView.swift:554-...`) has a leading
+"Add a filter" menu accessory (`addFilterMenu`, rendered as
+`DesignGlyph.filterMenu` = `line.3.horizontal.decrease`, per spec §2b —
+`sparkles` no longer doubles as the query icon and the old standalone
+plus-circle button is gone; see lib-007 for the menu's own contents), a text
+field whose Return/submit action runs `submitQueryTokenField()` (parses
+`LibraryQueryToken` tokens out of the typed text and applies them to
+`AppModel`, then re-runs `applyLibraryFilters()`), an info-circle button
+that opens the "Search tips" popover (`searchTipsPopover`), and a
+magnifying-glass button that is a second trigger for the same submit
+action. The tips popover must list exactly the 8 token groups baked into
+`Self.searchTokenTips` — the task brief guessed 8 without confirming;
+source-reading confirms it is in fact 8, not by assumption.
 
 ## Pre-state
 ```bash
@@ -26,7 +29,11 @@ No seeding needed beyond `--smoke`. Confirmed against a seeded catalog
 ## Steps
 1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for Library.
 2. `ax_drive.sh find --role AXTextField --contains "Search photos, people, places, or rating:3 camera:… "`
-   confirms the field exists (placeholder text per line 559).
+   confirms the field exists (placeholder text). Also
+   `ax_drive.sh find --role AXButton --help "Add a filter"` confirms the
+   filter-menu leading accessory sits inside the same field group (see
+   lib-007 for its contents) and no `sparkles`-icon element remains inside
+   the query field.
 3. `ax_drive.sh type --role AXTextField --contains "Search photos" --text "pick"`,
    then press Return. Assert the result-count header reads `$PICKS`
    (ground truth from Pre-state) and a "Pick" filter chip appears. Note:

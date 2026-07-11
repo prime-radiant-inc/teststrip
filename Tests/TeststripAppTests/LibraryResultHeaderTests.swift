@@ -116,6 +116,62 @@ final class LibraryResultHeaderTests: XCTestCase {
         XCTAssertTrue(presentation.suggestedTokens.contains { $0.field == .signal })
     }
 
+    // spec §2b: the chip/result row renders only when it has content (active
+    // tokens, a residual-text interpretation, or save-worthy state) — no
+    // empty second row for a default, filter-free, unselected library view.
+    func testHasContentIsFalseWithNoInterpretationNoSuggestionsNoSaveActions() {
+        let presentation = LibraryResultHeaderPresentation(
+            totalAssetCount: 0,
+            librarySearchText: "",
+            canSaveDynamicSet: false,
+            canSaveSnapshotSet: false,
+            canSaveManualSet: false
+        )
+
+        XCTAssertTrue(presentation.suggestedTokens.isEmpty)
+        XCTAssertNil(presentation.interpretation)
+        XCTAssertTrue(presentation.saveActions.isEmpty)
+        XCTAssertFalse(presentation.hasContent)
+    }
+
+    func testHasContentIsTrueWhenInterpretationPresent() {
+        let presentation = LibraryResultHeaderPresentation(
+            totalAssetCount: 3,
+            librarySearchText: "sunset",
+            canSaveDynamicSet: false,
+            canSaveSnapshotSet: false,
+            canSaveManualSet: false
+        )
+
+        XCTAssertTrue(presentation.hasContent)
+    }
+
+    func testHasContentIsTrueWhenSuggestedTokensPresent() {
+        let presentation = LibraryResultHeaderPresentation(
+            totalAssetCount: 5,
+            librarySearchText: "",
+            canSaveDynamicSet: false,
+            canSaveSnapshotSet: false,
+            canSaveManualSet: false,
+            reviewQueueCounts: [.fiveStars: 3]
+        )
+
+        XCTAssertFalse(presentation.suggestedTokens.isEmpty)
+        XCTAssertTrue(presentation.hasContent)
+    }
+
+    func testHasContentIsTrueWhenSaveActionsPresent() {
+        let presentation = LibraryResultHeaderPresentation(
+            totalAssetCount: 5,
+            librarySearchText: "",
+            canSaveDynamicSet: false,
+            canSaveSnapshotSet: true,
+            canSaveManualSet: false
+        )
+
+        XCTAssertTrue(presentation.hasContent)
+    }
+
     func testSuggestedTokensOmitFieldsAlreadyActive() {
         let activeRatingToken = LibraryQueryToken(field: .rating, display: "Rating >= 5", value: .int(5))
         let presentation = LibraryResultHeaderPresentation(

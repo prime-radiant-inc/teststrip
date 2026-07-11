@@ -1,18 +1,19 @@
-# lib-009-sort-and-bar-extras: the sort picker's 6 options, and the query bar's conditional sync-retry/refresh-source buttons
+# lib-009-sort-and-bar-extras: the sort menu's 6 options, and the query bar's conditional sync-retry/refresh-source buttons
 
 **What this covers**: `librarySortPicker`
-(`Sources/TeststripApp/LibraryGridView.swift:843-852`) always shows all 6
-`LibrarySortOption` cases via `LibrarySortOptionPresentation.options(...)`
-(`LibraryGridView.swift:7322-7368`), each rendered as `"<title>: <subtitle>"`.
-Next to it, two icon buttons in `libraryQueryBar`
-(`LibraryGridView.swift:695-718`) are conditionally shown/enabled: the
-sync-retry button (`arrow.triangle.2.circlepath`) renders only when
-`LibraryGridChromePolicy.shouldShowPendingMetadataSyncRetryAction(...)` is
-true, which is just `isPendingFilterActive` — i.e. `model.metadataSyncPendingFilter`
-(`LibraryGridChromePolicy` at line 7313); the refresh-source button
+(`Sources/TeststripApp/LibraryGridView.swift`) is, per spec §2b, a compact
+icon `Menu` (`DesignGlyph.sort` = `arrow.up.arrow.down`, AXHelp "Sort") —
+not the old wide labeled `Picker`. It always lists all 6 `LibrarySortOption`
+cases via `LibrarySortOptionPresentation.options(...)`, each rendered as
+`"<title>: <subtitle>"`, with the current sort's row showing a leading
+checkmark (`option.isSelected`) instead of occupying a fixed-width control.
+Next to it, two icon buttons in `libraryQueryBar` are conditionally
+shown/enabled: the sync-retry button (`arrow.triangle.2.circlepath`) renders
+only when `LibraryGridChromePolicy.shouldShowPendingMetadataSyncRetryAction(...)`
+is true, which is just `isPendingFilterActive` — i.e.
+`model.metadataSyncPendingFilter`; the refresh-source button
 (`arrow.clockwise`) always renders but is `.disabled` unless
-`model.canRefreshVisibleAssetAvailability` (`catalog != nil && !assets.isEmpty`,
-`AppModel.swift:2643-2645`).
+`model.canRefreshVisibleAssetAvailability` (`catalog != nil && !assets.isEmpty`).
 
 ## Pre-state
 ```bash
@@ -27,15 +28,17 @@ true by default).
 
 ## Steps
 1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for Library.
-2. `ax_drive.sh press --role AXButton --help "Sort library"` (or find the
-   `Picker` by its `AXPopUpButton`/menu items) and assert exactly these 6
-   entries, in `LibrarySortOption.allCases` order:
+2. `ax_drive.sh press --role AXButton --help "Sort"` (the compact
+   `arrow.up.arrow.down` icon menu) and assert exactly these 6 entries, in
+   `LibrarySortOption.allCases` order:
    - "Import Order: Oldest import first"
    - "Capture Time: Newest first"
    - "Capture Time: Oldest first"
    - "Rating: Highest first"
    - "Rating: Lowest first"
    - "Filename: A to Z"
+   Assert "Import Order: Oldest import first" (the default sort) shows a
+   leading checkmark and no other row does.
 3. Assert the sync-retry icon (`--help "Retry pending metadata sync in
    current results"`) is **absent** initially (no `metadataSyncPendingFilter`
    active on a fresh launch).
@@ -43,7 +46,7 @@ true by default).
    the sync-retry icon now **appears**.
 5. Assert the refresh-source icon (`--help "Refresh source status"`) is
    present and enabled throughout (catalog is non-empty per `$TOTAL=24`).
-6. Select "Rating: Highest first" from the sort picker. Scroll the grid and
+6. Select "Rating: Highest first" from the sort menu. Scroll the grid and
    assert the first visible asset has the highest rating in the catalog
    (cross-check against `SELECT max(json_extract(metadata_json,'$.rating'))
    FROM assets;` on `$DB`).

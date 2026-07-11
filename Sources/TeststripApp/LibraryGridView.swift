@@ -257,19 +257,13 @@ struct LibraryGridView: View {
             }
         }
 
-        if WorkspaceChromePolicy.showsFindBestShotsButton(model.selectedWorkspace) {
-            ToolbarItem {
-                Button {
-                    findBestShots()
-                } label: {
-                    Label("Find Best Shots", systemImage: "wand.and.stars")
-                }
-                .disabled(isImporting || !model.canFindBestShots)
-                .accessibilityLabel("Find Best Shots")
-                .help("Evaluate the photos in view and show you your best shots, ranked. Nothing is saved until you keep them.")
-            }
-        }
-
+        // spec §2b: "Find Best Shots" moves into the Culling menu only
+        // (CullingCommands in main.swift already has it, ⇧⌘B) — the toolbar
+        // keeps Import, the view toggle, search, sort, Activity. "Cull"
+        // stays here: it's the only reachable trigger for the whole-scope
+        // "Start Culling" naming popover when nothing is batch-selected (no
+        // Culling-menu or context-menu equivalent exists for that path —
+        // "Cull These" only covers the batch-selection fast path).
         if WorkspaceChromePolicy.showsCullButton(model.selectedWorkspace) {
             ToolbarItem {
                 Button {
@@ -554,12 +548,13 @@ struct LibraryGridView: View {
     /// The token query field: one text field that both free-text searches and,
     /// via `LibraryQueryToken`, writes recognized filter tokens (rating:,
     /// camera:, etc.) into AppModel's structured filter properties. Replaces
-    /// the old compact top-bar search box and the 13-picker filter bar.
+    /// the old compact top-bar search box and the 13-picker filter bar. The
+    /// leading accessory is `addFilterMenu` (spec §2b: one query control
+    /// instead of a separate field + plus-circle menu; `sparkles` no longer
+    /// doubles as the query icon — it marks machine reads only).
     private var queryTokenField: some View {
         HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.orange)
+            addFilterMenu
             TextField("Search photos, people, places, or rating:3 camera:… ", text: Binding(
                 get: { model.librarySearchText },
                 set: { model.librarySearchText = $0 }
@@ -663,7 +658,12 @@ struct LibraryGridView: View {
             }
             if WorkspaceChromePolicy.showsFilterTokens(model.selectedWorkspace) {
                 libraryQueryBar
-                libraryResultHeader
+                // spec §2b: no empty second row — the header renders only
+                // when it has content (active tokens, a residual-text
+                // interpretation, or save-worthy state).
+                if libraryResultHeaderPresentation.hasContent {
+                    libraryResultHeader
+                }
             }
             if let summary = visibleImportCompletionSummary {
                 importCompletionSummary(summary)
@@ -693,8 +693,6 @@ struct LibraryGridView: View {
                 librarySortPicker
 
                 queryTokenField
-
-                addFilterMenu
 
                 if LibraryGridChromePolicy.shouldShowPendingMetadataSyncRetryAction(
                     isPendingFilterActive: model.metadataSyncPendingFilter
@@ -844,15 +842,29 @@ struct LibraryGridView: View {
         }
     }
 
+    /// spec §2b: a compact icon menu (`DesignGlyph.sort`, AXHelp "Sort")
+    /// replacing the wide labeled picker; the current sort shows as the
+    /// menu's checked item rather than occupying a fixed-width control.
     private var librarySortPicker: some View {
-        Picker("Sort", selection: librarySortBinding) {
+        Menu {
             ForEach(LibrarySortOptionPresentation.options(selected: model.librarySortOption), id: \.option) { option in
-                Text("\(option.title): \(option.subtitle)").tag(option.option)
+                Button {
+                    applyLibrarySort(option.option)
+                } label: {
+                    if option.isSelected {
+                        Label("\(option.title): \(option.subtitle)", systemImage: "checkmark")
+                    } else {
+                        Text("\(option.title): \(option.subtitle)")
+                    }
+                }
             }
+        } label: {
+            Image(systemName: DesignGlyph.sort.symbolName)
+                .font(.system(size: 12, weight: .semibold))
         }
-        .frame(width: 158)
-        .controlSize(.small)
-        .help("Sort library")
+        .buttonStyle(.borderless)
+        .help("Sort")
+        .accessibilityLabel("Sort")
     }
 
     /// Covers every option the deleted rating/flag/color/source/signal/xmp
@@ -938,7 +950,8 @@ struct LibraryGridView: View {
                 isShowingDateFilters = true
             }
         } label: {
-            Image(systemName: "plus.circle")
+            Image(systemName: DesignGlyph.filterMenu.symbolName)
+                .font(.system(size: 12, weight: .semibold))
         }
         .buttonStyle(.borderless)
         .help("Add a filter")
@@ -2281,15 +2294,6 @@ struct LibraryGridView: View {
         }
     }
 
-    private var librarySortBinding: Binding<LibrarySortOption> {
-        Binding(
-            get: { model.librarySortOption },
-            set: { option in
-                applyLibrarySort(option)
-            }
-        )
-    }
-
     private var hasActiveFilters: Bool {
         model.hasActiveLibraryFilters
     }
@@ -2496,25 +2500,25 @@ struct LibraryGridView: View {
             Spacer()
             thumbnailDensityControl
             thumbnailSizeControl
+            // spec §2b: quiet text buttons, not icon-and-label controls —
+            // pagination is a secondary, occasional action.
             if model.hasPreviousAssets {
-                Button {
+                Button("Load Previous") {
                     loadPreviousAssets()
-                } label: {
-                    Label("Load Previous", systemImage: "arrow.up.circle")
                 }
                 .font(.caption)
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
                 .disabled(isImporting)
                 .help("Load previous photo page")
             }
             if model.hasMoreAssets {
-                Button {
+                Button("Load More") {
                     loadMoreAssets()
-                } label: {
-                    Label("Load More", systemImage: "arrow.down.circle")
                 }
                 .font(.caption)
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
                 .disabled(isImporting)
                 .help("Load next photo page")
             }
@@ -3277,14 +3281,6 @@ struct LibraryGridView: View {
     private func evaluateSelectedAsset() {
         do {
             try model.requestSelectedAssetEvaluations()
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func findBestShots() {
-        do {
-            try model.findBestShots()
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -7345,14 +7341,12 @@ enum WorkspaceChromePolicy {
     }
 
     /// Toolbar-level import/search/export chrome (Import ▾, Import Path,
-    /// Find Best Shots, Cull, Export, More): spec §3 gives Cull no import or
-    /// search chrome, and People has no browse chrome either — only Library
-    /// carries these actions. Activity stays global and isn't gated here.
+    /// Cull, Export, More): spec §3 gives Cull no import or search chrome,
+    /// and People has no browse chrome either — only Library carries these
+    /// actions. Activity stays global and isn't gated here. "Find Best
+    /// Shots" moved into the Culling menu only (spec §2b) and has no
+    /// toolbar presence to gate.
     static func showsImportMenu(_ workspace: Workspace) -> Bool {
-        workspace == .library
-    }
-
-    static func showsFindBestShotsButton(_ workspace: Workspace) -> Bool {
         workspace == .library
     }
 

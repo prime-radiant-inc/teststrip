@@ -27,14 +27,14 @@ final class WorkspaceChromePolicyTests: XCTestCase {
         XCTAssertTrue(WorkspaceChromePolicy.showsInspector(.people))
     }
 
-    // I2: Import ▾/Import Path/Find Best Shots/Cull/Export/More toolbar
-    // items belong to Library only — Cull has no import/search chrome
-    // (spec §3) and People has no browse chrome either.
+    // I2: Import ▾/Import Path/Cull/Export/More toolbar items belong to
+    // Library only — Cull has no import/search chrome (spec §3) and People
+    // has no browse chrome either. "Find Best Shots" moved into the Culling
+    // menu only (spec §2b) and has no toolbar chrome to test here.
     func testToolbarActionChromeMatrix() {
         for workspace in Workspace.allCases {
             let expected = workspace == .library
             XCTAssertEqual(WorkspaceChromePolicy.showsImportMenu(workspace), expected, "\(workspace)")
-            XCTAssertEqual(WorkspaceChromePolicy.showsFindBestShotsButton(workspace), expected, "\(workspace)")
             XCTAssertEqual(WorkspaceChromePolicy.showsCullButton(workspace), expected, "\(workspace)")
             XCTAssertEqual(WorkspaceChromePolicy.showsExportButton(workspace), expected, "\(workspace)")
             XCTAssertEqual(WorkspaceChromePolicy.showsMoreMenu(workspace), expected, "\(workspace)")
