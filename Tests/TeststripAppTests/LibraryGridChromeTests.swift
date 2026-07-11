@@ -229,7 +229,7 @@ final class LibraryGridChromeTests: XCTestCase {
         XCTAssertEqual(presentation.countText, "12 visible photos")
         XCTAssertEqual(presentation.suggestionRows.map(\.keyword), ["mountain"])
         XCTAssertTrue(presentation.isApplyEnabled)
-        XCTAssertEqual(presentation.applyTitle, "Apply to visible batch")
+        XCTAssertEqual(presentation.applyTitle, "Apply to Visible Batch")
     }
 
     func testBatchMetadataReviewPresentationSummarizesSelectedBatch() {
@@ -258,7 +258,7 @@ final class LibraryGridChromeTests: XCTestCase {
         XCTAssertEqual(presentation.countText, "2 selected photos")
         XCTAssertEqual(presentation.suggestionRows.map(\.keyword), ["mountain"])
         XCTAssertTrue(presentation.isApplyEnabled)
-        XCTAssertEqual(presentation.applyTitle, "Apply to selected batch")
+        XCTAssertEqual(presentation.applyTitle, "Apply to Selected Batch")
         XCTAssertNil(presentation.confirmationText)
         XCTAssertEqual(presentation.draftKeywordChips, ["keepers", "Portfolio"])
         XCTAssertEqual(presentation.draftKeywordCountText, "2 keywords to add")
@@ -306,10 +306,10 @@ final class LibraryGridChromeTests: XCTestCase {
             draft: draft
         )
 
-        XCTAssertEqual(presentation.countText, "121 photos in current scope")
+        XCTAssertEqual(presentation.countText, "121 matching photos")
         XCTAssertEqual(presentation.suggestionRows.map(\.keyword), ["mountain"])
         XCTAssertTrue(presentation.isApplyEnabled)
-        XCTAssertEqual(presentation.applyTitle, "Apply to current scope")
+        XCTAssertEqual(presentation.applyTitle, "Apply to All Matches")
     }
 
     func testBatchMetadataReviewPresentationRequiresConfirmationForAllCatalogScope() {

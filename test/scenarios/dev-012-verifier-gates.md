@@ -106,7 +106,7 @@ instance was launched by this card directly.
   superseded by the VM scenario cards (this card, lib-\*/people-\* cards
   driving current chrome), so removing them loses no real coverage. Their
   legs were removed from `verify_app_workflows.sh` accordingly.
-- `verify_people_clustering.sh`'s "Evaluate Scope" `AXButton` press (also
+- `verify_people_clustering.sh`'s "Evaluate Matches" `AXButton` press (also
   `|| true`-masked, also stale — the control is now a People-menu item, not a
   top-level button) was dropped rather than guessed at; `people-009-scan.md`
   is the card that drives the current People-menu scan path live.

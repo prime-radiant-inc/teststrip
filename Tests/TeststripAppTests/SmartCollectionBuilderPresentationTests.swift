@@ -286,7 +286,7 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
                 "Focus signals",
                 "Object signals",
                 "Likely issues",
-                "Provider failures",
+                "Analysis failures",
                 "XMP pending",
                 "XMP conflicts"
             ]

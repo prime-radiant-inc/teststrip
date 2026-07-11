@@ -176,7 +176,7 @@ public struct LibraryQueryToken: Equatable, Identifiable {
             tokens.append(LibraryQueryToken(field: .likelyIssues, display: "Likely Issues", value: .int(0)))
         }
         if model.providerFailuresFilter {
-            tokens.append(LibraryQueryToken(field: .providerFailures, display: "Provider Failures", value: .int(0)))
+            tokens.append(LibraryQueryToken(field: .providerFailures, display: "Analysis Failures", value: .int(0)))
         }
 
         return tokens
@@ -365,7 +365,7 @@ public struct LibraryQueryToken: Equatable, Identifiable {
         case .likelyIssue:
             return LibraryQueryToken(field: .likelyIssues, display: "Likely Issues", value: .int(0))
         case .evaluationFailure:
-            return LibraryQueryToken(field: .providerFailures, display: "Provider Failures", value: .int(0))
+            return LibraryQueryToken(field: .providerFailures, display: "Analysis Failures", value: .int(0))
         default:
             return nil
         }

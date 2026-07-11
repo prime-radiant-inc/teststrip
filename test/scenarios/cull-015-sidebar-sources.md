@@ -20,7 +20,7 @@ visibleSources`/`.isEmpty` at `Sources/TeststripApp/AppModel.swift`.
 (`.diagnostics`) inside the same `"Cull From"` section as every other
 group, filtered by the same zero-count-omission rule — because they are
 click-to-cull review queues (Rejects/Five Stars/Needs Keywords/Faces
-Found/OCR Found/Provider Failures), not background-job status, they were
+Found/OCR Found/Analysis Failures), not background-job status, they were
 **not** moved into the Activity popover (see `activity-003` for why: the
 popover's jobs/sources/conflicts sections have no equivalent for
 catalog-content review queues — moving them there would have silently
@@ -113,7 +113,7 @@ script/ax_drive.sh press --role AXButton --help "Cull" # ⌘1
    it renders directly in the list (`Rejects`, `Five Stars` or whatever
    `.fiveStars.presentation.title` actually renders as — read
    `ReviewQueue.presentation` before asserting literal titles, `Needs
-   Keywords`, `Faces Found`, `OCR Found`, `Provider Failures` — use the real
+   Keywords`, `Faces Found`, `OCR Found`, `Analysis Failures` — use the real
    `.presentation.title` strings from source, not these English glosses).
    If every diagnostics predicate is 0 on this fixture, assert none of the
    six appear and note that as the honest untestable-without-fixture outcome

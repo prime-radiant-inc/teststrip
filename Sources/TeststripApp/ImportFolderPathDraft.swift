@@ -75,7 +75,7 @@ enum ImportPlanSteps {
     private static let followUpSetupSteps = [
         ImportPlanStep(
             title: "Prepare imported-set culling",
-            detail: "The imported output set is kept as a working scope so Open and Cull can resume it immediately.",
+            detail: "These photos stay selected so Open and Cull can resume them immediately.",
             stage: .followUpSetup
         ),
         ImportPlanStep(

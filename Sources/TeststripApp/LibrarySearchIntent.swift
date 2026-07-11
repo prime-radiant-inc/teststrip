@@ -341,7 +341,7 @@ public struct LibrarySearchIntent: Equatable, Sendable {
         case ("likely", "issues"), ("likely", "issue"):
             return (.likelyIssue, "Likely Issues", "Likely Issues", 2)
         case ("provider", "failures"), ("provider", "failure"):
-            return (.evaluationFailure, "Provider Failures", "Provider Failures", 2)
+            return (.evaluationFailure, "Analysis Failures", "Analysis Failures", 2)
         case ("xmp", "pending"):
             return (.metadataSyncPending, "XMP Pending", "XMP Pending", 2)
         case ("xmp", "conflicts"), ("xmp", "conflict"):

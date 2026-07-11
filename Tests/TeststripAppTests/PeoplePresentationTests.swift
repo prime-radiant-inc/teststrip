@@ -85,8 +85,8 @@ final class PeoplePresentationTests: XCTestCase {
             canRequestCurrentScopeFaceScan: true
         )
 
-        XCTAssertEqual(presentation.scanAction?.title, "Scan current scope")
-        XCTAssertEqual(presentation.scanAction?.detail, "Runs local Apple Vision on cached previews for the current catalog or search scope. If a photo's detected faces change, its confirmed and dismissed faces are cleared for re-review.")
+        XCTAssertEqual(presentation.scanAction?.title, "Scan for Faces")
+        XCTAssertEqual(presentation.scanAction?.detail, "Runs local Apple Vision on cached previews for these photos. If a photo's detected faces change, its confirmed and dismissed faces are cleared for re-review.")
         XCTAssertEqual(presentation.scanAction?.systemImage, "viewfinder")
         XCTAssertEqual(presentation.reviewStripStatusText, "Scan ready")
     }
@@ -202,7 +202,7 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.suggestionCards, [])
         XCTAssertEqual(
             presentation.reviewStripDetail,
-            "Face signals predate grouping; run Scan current scope to compute face embeddings."
+            "Face signals predate grouping; run Scan for Faces to compute face embeddings."
         )
     }
 }

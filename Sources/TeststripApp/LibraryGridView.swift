@@ -353,7 +353,7 @@ struct LibraryGridView: View {
                     Button {
                         evaluateCurrentScopeAssets()
                     } label: {
-                        Label("Evaluate Scope", systemImage: "sparkles.rectangle.stack")
+                        Label("Evaluate Matches", systemImage: "sparkles.rectangle.stack")
                     }
                     .disabled(isImporting || !model.canRequestCurrentScopeAssetEvaluations)
                 } label: {
@@ -941,7 +941,7 @@ struct LibraryGridView: View {
                     model.likelyIssuesFilter = true
                     applyLibraryFilters()
                 }
-                Button("Provider Failures") {
+                Button("Analysis Failures") {
                     model.providerFailuresFilter = true
                     applyLibraryFilters()
                 }
@@ -1101,7 +1101,7 @@ struct LibraryGridView: View {
                     .foregroundStyle(.orange)
             }
 
-            Picker("Batch scope", selection: $batchMetadataScope) {
+            Picker("Batch selection", selection: $batchMetadataScope) {
                 ForEach(BatchScopeMode.allCases) { scope in
                     Text(scope.title).tag(scope)
                 }
@@ -1214,7 +1214,7 @@ struct LibraryGridView: View {
                     .foregroundStyle(.orange)
             }
 
-            Picker("Export scope", selection: $exportScope) {
+            Picker("Export selection", selection: $exportScope) {
                 ForEach(BatchScopeMode.allCases) { scope in
                     Text(scope.title).tag(scope)
                 }
@@ -3857,7 +3857,7 @@ private struct LoupeView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(Capsule().fill(Color.secondary.opacity(0.18)))
-            .accessibilityLabel("Cull scope: \(scope.label)")
+            .accessibilityLabel("Cull filter: \(scope.label)")
     }
 
     private func cullHUDRatingStars(_ rating: Int) -> some View {
@@ -4595,7 +4595,7 @@ enum BatchScopeMode: String, CaseIterable, Identifiable {
         case .visible:
             return "Visible"
         case .currentScope:
-            return "Current Scope"
+            return "All Matches"
         }
     }
 }
@@ -4628,16 +4628,16 @@ struct BatchMetadataReviewPresentation: Equatable {
             countText = "\(selectedAssetCount) selected \(selectedAssetCount == 1 ? "photo" : "photos")"
             suggestionRows = BatchKeywordSuggestionPresentation.rows(for: suggestions, limit: 6)
             isApplyEnabled = selectedAssetCount > 0 && draft.hasContentToApply
-            applyTitle = "Apply to selected batch"
+            applyTitle = "Apply to Selected Batch"
             confirmationText = nil
         case .visible:
             countText = "\(visibleAssetCount) visible \(visibleAssetCount == 1 ? "photo" : "photos")"
             suggestionRows = BatchKeywordSuggestionPresentation.rows(for: suggestions, limit: 6)
             isApplyEnabled = visibleAssetCount > 0 && draft.hasContentToApply
-            applyTitle = "Apply to visible batch"
+            applyTitle = "Apply to Visible Batch"
             confirmationText = nil
         case .currentScope:
-            countText = "\(currentScopeAssetCount) \(currentScopeAssetCount == 1 ? "photo" : "photos") in current scope"
+            countText = "\(currentScopeAssetCount) matching \(currentScopeAssetCount == 1 ? "photo" : "photos")"
             suggestionRows = BatchKeywordSuggestionPresentation.rows(for: suggestions, limit: 6)
             confirmationText = requiresAllCatalogConfirmation
                 ? "Confirm applying metadata to all \(currentScopeAssetCount) catalog \(currentScopeAssetCount == 1 ? "photo" : "photos")."
@@ -4645,7 +4645,7 @@ struct BatchMetadataReviewPresentation: Equatable {
             isApplyEnabled = currentScopeAssetCount > 0
                 && draft.hasContentToApply
                 && (!requiresAllCatalogConfirmation || isAllCatalogConfirmed)
-            applyTitle = "Apply to current scope"
+            applyTitle = "Apply to All Matches"
         }
     }
 }
@@ -4670,21 +4670,21 @@ struct ExportReviewPresentation: Equatable {
             countText = "\(selectedAssetCount) selected \(selectedAssetCount == 1 ? "photo" : "photos")"
             confirmationText = nil
             isExportEnabled = selectedAssetCount > 0 && !isExporting
-            exportTitle = "Export selected batch"
+            exportTitle = "Export Selected Batch"
         case .visible:
             countText = "\(visibleAssetCount) visible \(visibleAssetCount == 1 ? "photo" : "photos")"
             confirmationText = nil
             isExportEnabled = visibleAssetCount > 0 && !isExporting
-            exportTitle = "Export visible batch"
+            exportTitle = "Export Visible Batch"
         case .currentScope:
-            countText = "\(currentScopeAssetCount) \(currentScopeAssetCount == 1 ? "photo" : "photos") in current scope"
+            countText = "\(currentScopeAssetCount) matching \(currentScopeAssetCount == 1 ? "photo" : "photos")"
             confirmationText = requiresAllCatalogConfirmation
                 ? "Confirm exporting all \(currentScopeAssetCount) catalog \(currentScopeAssetCount == 1 ? "photo" : "photos")."
                 : nil
             isExportEnabled = currentScopeAssetCount > 0
                 && !isExporting
                 && (!requiresAllCatalogConfirmation || isAllCatalogConfirmed)
-            exportTitle = "Export current scope"
+            exportTitle = "Export All Matches"
         }
     }
 }
@@ -7558,7 +7558,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
             (.needsKeywords, .needsKeywords, "Needs keywords", "tag.circle"),
             (.needsEvaluation, .needsEvaluation, "Needs evaluation", "wand.and.stars.inverse"),
             (.likelyIssues, .likelyIssues, "Likely issues", "exclamationmark.triangle"),
-            (.providerFailures, .providerFailures, "Provider failures", "bolt.horizontal.circle")
+            (.providerFailures, .providerFailures, "Analysis failures", "bolt.horizontal.circle")
         ]
         for candidate in candidates {
             guard rows.count < rowLimit else { break }
@@ -7609,7 +7609,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
         case .faceCount:
             return count == 1 ? "1 photo has people signals" : "\(count) photos have people signals"
         default:
-            return count == 1 ? "1 photo has provider signals" : "\(count) photos have provider signals"
+            return count == 1 ? "1 photo has analysis signals" : "\(count) photos have analysis signals"
         }
     }
 
@@ -7624,7 +7624,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
         case .likelyIssues:
             return count == 1 ? "1 photo has likely issues" : "\(count) photos have likely issues"
         case .providerFailures:
-            return count == 1 ? "1 provider failure" : "\(count) provider failures"
+            return count == 1 ? "1 analysis failure" : "\(count) analysis failures"
         default:
             return count == 1 ? "1 matching photo" : "\(count) matching photos"
         }
@@ -7661,7 +7661,7 @@ struct SmartCollectionBuilderPresentation: Equatable {
             case .likelyIssues:
                 return chip == "Likely Issues"
             case .providerFailures:
-                return chip == "Provider Failures"
+                return chip == "Analysis Failures"
             case .xmpPending:
                 return chip == "XMP Pending"
             case .xmpConflicts:
@@ -8241,7 +8241,7 @@ struct ImportCompletionPresentation: Equatable {
             return ImportCompletionMetricRow(
                 id: "cull-scope",
                 value: "Unavailable",
-                label: "Cull scope",
+                label: "Cull Set",
                 detail: "No imported set",
                 systemImage: "slash.circle",
                 tone: .yellow
@@ -8251,7 +8251,7 @@ struct ImportCompletionPresentation: Equatable {
             return ImportCompletionMetricRow(
                 id: "cull-scope",
                 value: "Ready",
-                label: "Cull scope",
+                label: "Cull Set",
                 detail: isExistingOnlyImport(summary) ? "Uses the matched set" : "Uses the imported set",
                 systemImage: "checkmark.seal.fill",
                 tone: .orange
@@ -8260,7 +8260,7 @@ struct ImportCompletionPresentation: Equatable {
         return ImportCompletionMetricRow(
             id: "cull-scope",
             value: stackCountText(summary.stackCount),
-            label: "Cull scope",
+            label: "Cull Set",
             detail: "\(photoCountText(summary.stackedPhotoCount)) in time-adjacent stacks",
             systemImage: "square.stack.3d.up.fill",
             tone: .orange

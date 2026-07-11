@@ -18,7 +18,7 @@ final class ImportCompletionPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.title, "12 photos imported")
         XCTAssertEqual(presentation.detail, "Imported 12 photos from Card A")
-        XCTAssertEqual(presentation.metricRows.map(\.label), ["Imported set", "Previews", "Cull scope"])
+        XCTAssertEqual(presentation.metricRows.map(\.label), ["Imported set", "Previews", "Cull Set"])
         XCTAssertEqual(presentation.metricRows.map(\.value), ["12 photos", "Ready", "3 stacks"])
         XCTAssertEqual(presentation.enabledActions.map(\.kind), [.startCulling, .reviewImportedFrames, .openInLibrary, .stackGrouping])
         XCTAssertEqual(presentation.placeholderActions.map(\.kind), [])

@@ -15,7 +15,7 @@ final class ExportReviewPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.countText, "3 selected photos")
         XCTAssertTrue(presentation.isExportEnabled)
-        XCTAssertEqual(presentation.exportTitle, "Export selected batch")
+        XCTAssertEqual(presentation.exportTitle, "Export Selected Batch")
         XCTAssertNil(presentation.confirmationText)
     }
 
@@ -47,7 +47,7 @@ final class ExportReviewPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.countText, "1 visible photo")
         XCTAssertTrue(presentation.isExportEnabled)
-        XCTAssertEqual(presentation.exportTitle, "Export visible batch")
+        XCTAssertEqual(presentation.exportTitle, "Export Visible Batch")
     }
 
     func testCurrentScopeWithoutFiltersRequiresAllCatalogConfirmation() {
@@ -70,11 +70,11 @@ final class ExportReviewPresentationTests: XCTestCase {
             isExporting: false
         )
 
-        XCTAssertEqual(unconfirmed.countText, "500 photos in current scope")
+        XCTAssertEqual(unconfirmed.countText, "500 matching photos")
         XCTAssertEqual(unconfirmed.confirmationText, "Confirm exporting all 500 catalog photos.")
         XCTAssertFalse(unconfirmed.isExportEnabled)
         XCTAssertTrue(confirmed.isExportEnabled)
-        XCTAssertEqual(confirmed.exportTitle, "Export current scope")
+        XCTAssertEqual(confirmed.exportTitle, "Export All Matches")
     }
 
     func testRunningExportDisablesAnotherExport() {

@@ -134,7 +134,7 @@ public struct LibraryResultHeaderPresentation: Equatable {
             addIfNeeded(LibraryQueryToken(field: .likelyIssues, display: "Likely Issues", value: .int(0)))
         }
         if hasResults(.providerFailures) {
-            addIfNeeded(LibraryQueryToken(field: .providerFailures, display: "Provider Failures", value: .int(0)))
+            addIfNeeded(LibraryQueryToken(field: .providerFailures, display: "Analysis Failures", value: .int(0)))
         }
 
         let summariesByKind = Dictionary(uniqueKeysWithValues: evaluationKindSummaries.map { ($0.kind, $0) })

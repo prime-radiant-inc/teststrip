@@ -24,7 +24,7 @@ Source:
 - `Sources/TeststripApp/AppModel.swift:480-521` — `CullingCommandMenuPresentation.sections`,
   the single source of truth for what the overlay lists. Real section
   titles: `"Navigation"`, `"Ratings"`, `"Color Labels"`, `"Flags"`,
-  `"Loupe"`, `"Scope"`. Real monitor-only items (`isMonitorOnly: true`,
+  `"Loupe"`, `"Filter"`. Real monitor-only items (`isMonitorOnly: true`,
   `:488-489`): `"Previous Stack (Option)"` (key `"⌥←"`) and `"Next Stack
   (Option)"` (key `"⌥→"`) — the only two `isMonitorOnly` entries in the
   whole list; they exist purely for `?`-overlay discoverability since a menu
@@ -113,7 +113,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   (`LibraryGridView.swift:8587-8609`); if the section/item list grows past
   what fits, later sections may be off-screen in the AX tree until scrolled
   — mirror the grid's lazy-virtualization caveat from `test/scenarios/README.md`
-  if an assertion for a late section (e.g. `"Scope"`) ever flakes.
+  if an assertion for a late section (e.g. `"Filter"`) ever flakes.
 - This card only drives from the loupe (`CullingKeyCaptureGate.isActive`
   requires `workspace == .cull && selectedView != .cullGrid` — see
   `cull-008-subview-keys-gcb.md`); `?` is not wired while `.cullGrid` is

@@ -74,7 +74,7 @@ CREATE TABLE evaluation_failures (
    sqlite3 "$DB" "INSERT INTO evaluation_failures (asset_id, provider, message, failed_at, updated_at) VALUES ('$ASSET_ID', 'apple-vision', 'synthetic provider error for inspect-004', strftime('%s','now'), strftime('%s','now'));"
    ```
 8. Relaunch; select `$SRC`; ⌥⌘3 for AI tab.
-9. Assert "Provider retry needed" alert renders (`providerFailureAlert`,
+9. Assert "Analysis retry needed" alert renders (`providerFailureAlert`,
    `InspectorView.swift:740-746`) with "apple-vision failed: synthetic
    provider error..." text and a **"Retry apple-vision"** button
    (`InspectorProviderFailurePresentation.actionLabel`,

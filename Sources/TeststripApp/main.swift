@@ -386,7 +386,7 @@ private struct CullingCommands: Commands {
             .keyboardShortcut("e", modifiers: [.command, .shift])
             .disabled(model.isImporting || !model.canRequestVisibleAssetEvaluations)
 
-            Button("Evaluate Scope") {
+            Button("Evaluate Matches") {
                 evaluateCurrentScope()
             }
             .disabled(model.isImporting || !model.canRequestCurrentScopeAssetEvaluations)

@@ -200,7 +200,7 @@ final class InspectorViewTests: XCTestCase {
         let presentation = InspectorProviderFailurePresentation(failures: [failure])
 
         XCTAssertTrue(presentation.isVisible)
-        XCTAssertEqual(presentation.title, "Provider retry needed")
+        XCTAssertEqual(presentation.title, "Analysis retry needed")
         XCTAssertEqual(presentation.detailText(for: failure), "local-http-model failed: model timed out")
         XCTAssertEqual(presentation.actionLabel(for: failure), "Retry local-http-model")
     }

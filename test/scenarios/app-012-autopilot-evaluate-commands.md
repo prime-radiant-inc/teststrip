@@ -6,7 +6,7 @@ menu; the commands must be honest about why they can't run. Inventory items
 **Run Autopilot** (no key equivalent) needs evaluated photos in view, else it
 sets the status "Autopilot: no evaluated photos in view to run on"
 (`AppModel.runAutopilotOnCurrentScope`); **Evaluate Photo / Evaluate Visible
-(⇧⌘E) / Evaluate Scope** are gated by worker liveness + cached previews
+(⇧⌘E) / Evaluate Matches** are gated by worker liveness + cached previews
 (`canRequestSelectedAssetEvaluation` etc.); and the Culling menu mirrors
 `CullingCommandMenuPresentation.sections` with arrow/Return keys deliberately
 NOT menu-bound (the double-fire guard, `menuKeyboardShortcut`).
@@ -22,7 +22,7 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 1. `script/ax_drive.sh wait-vended Teststrip`.
 2. **Menu inventory (item 42).** Open the Culling menu via System Events.
    Assert it contains, in order: Find Best Shots (⇧⌘B), Run Autopilot (no
-   key), divider, Evaluate Photo, Evaluate Visible (⇧⌘E), Evaluate Scope,
+   key), divider, Evaluate Photo, Evaluate Visible (⇧⌘E), Evaluate Matches,
    Move Rejects…, the Auto-cull After Import toggle, divider, then the
    culling-shortcut sections. Assert no menu item shows a bare arrow/Return
    key equivalent (double-fire guard).

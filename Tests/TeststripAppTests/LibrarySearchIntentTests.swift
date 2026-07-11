@@ -65,7 +65,7 @@ final class LibrarySearchIntentTests: XCTestCase {
             "Faces Found",
             "OCR Found",
             "Likely Issues",
-            "Provider Failures",
+            "Analysis Failures",
             "XMP Pending",
             "XMP Conflicts"
         ])

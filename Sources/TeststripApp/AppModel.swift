@@ -515,8 +515,8 @@ public enum CullingCommandMenuPresentation {
             CullingCommandMenuItem(title: "Cycle EXIF Overlay", shortcut: .cycleExifOverlay, key: .character("i")),
             CullingCommandMenuItem(title: "Show Key Map", shortcut: .showKeyMap, key: .character("?"))
         ]),
-        CullingCommandMenuSection(title: "Scope", items: [
-            CullingCommandMenuItem(title: "Cycle Scope", shortcut: .cycleScope, key: .character("s"))
+        CullingCommandMenuSection(title: "Filter", items: [
+            CullingCommandMenuItem(title: "Cycle Filter", shortcut: .cycleScope, key: .character("s"))
         ])
     ]
 }
@@ -581,7 +581,7 @@ public extension ReviewQueue {
         case .likelyIssues:
             return ReviewQueuePresentation(title: "Likely Issues", systemImage: "exclamationmark.triangle")
         case .providerFailures:
-            return ReviewQueuePresentation(title: "Provider Failures", systemImage: "bolt.horizontal.circle")
+            return ReviewQueuePresentation(title: "Analysis Failures", systemImage: "bolt.horizontal.circle")
         }
     }
 }
@@ -740,7 +740,7 @@ public enum SmartCollectionRulePreset: String, CaseIterable, Identifiable, Senda
         case .likelyIssues:
             "Likely issues"
         case .providerFailures:
-            "Provider failures"
+            "Analysis failures"
         case .xmpPending:
             "XMP pending"
         case .xmpConflicts:
@@ -2879,7 +2879,7 @@ public final class AppModel {
             Self.append(ActiveLibraryFilterRow(title: "Potential Picks", target: .reviewQueue(.potentialPicks)), to: &rows)
         }
         if providerFailuresFilter {
-            Self.append(ActiveLibraryFilterRow(title: "Provider Failures", target: .reviewQueue(.providerFailures)), to: &rows)
+            Self.append(ActiveLibraryFilterRow(title: "Analysis Failures", target: .reviewQueue(.providerFailures)), to: &rows)
         }
         if metadataSyncPendingFilter {
             Self.append(ActiveLibraryFilterRow(title: "XMP Pending", target: .metadataSyncPending), to: &rows)
@@ -3169,7 +3169,7 @@ public final class AppModel {
             Self.append("Potential Picks", to: &parts)
         }
         if providerFailuresFilter {
-            Self.append("Provider Failures", to: &parts)
+            Self.append("Analysis Failures", to: &parts)
         }
         if metadataSyncPendingFilter {
             Self.append("XMP Pending", to: &parts)
@@ -9446,7 +9446,7 @@ public final class AppModel {
         case .likelyPick:
             ActiveLibraryFilterRow(title: "Potential Picks", target: sidebarTarget(for: predicate))
         case .evaluationFailure:
-            ActiveLibraryFilterRow(title: "Provider Failures", target: sidebarTarget(for: predicate))
+            ActiveLibraryFilterRow(title: "Analysis Failures", target: sidebarTarget(for: predicate))
         case .metadataSyncPending:
             ActiveLibraryFilterRow(title: "XMP Pending", target: sidebarTarget(for: predicate))
         case .metadataSyncConflict:

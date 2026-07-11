@@ -75,7 +75,7 @@ struct InspectorProviderFailurePresentation: Equatable {
     }
 
     var title: String {
-        "Provider retry needed"
+        "Analysis retry needed"
     }
 
     func detailText(for failure: CatalogEvaluationFailure) -> String {

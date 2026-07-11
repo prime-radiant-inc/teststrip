@@ -540,8 +540,8 @@ struct PeoplePresentation: Equatable {
         self.photosWithFaceQualitySignals = faceQualitySignals
         self.faceSignalKind = faceCountSignals > 0 ? .faceCount : (faceQualitySignals > 0 ? .faceQuality : nil)
         self.scanAction = canRequestCurrentScopeFaceScan ? PeopleScanAction(
-            title: "Scan current scope",
-            detail: "Runs local Apple Vision on cached previews for the current catalog or search scope. If a photo's detected faces change, its confirmed and dismissed faces are cleared for re-review.",
+            title: "Scan for Faces",
+            detail: "Runs local Apple Vision on cached previews for these photos. If a photo's detected faces change, its confirmed and dismissed faces are cleared for re-review.",
             systemImage: "viewfinder"
         ) : nil
         self.faceSuggestions = faceSuggestions
@@ -611,7 +611,7 @@ struct PeoplePresentation: Equatable {
             return "Run evaluation on catalog photos to populate local face review queues."
         }
         if faceObservationAssetCount == 0 {
-            return "Face signals predate grouping; run Scan current scope to compute face embeddings."
+            return "Face signals predate grouping; run Scan for Faces to compute face embeddings."
         }
         if photosWithFaceQualitySignals > 0 {
             return "\(Self.photoCountDescription(photosWithFaceQualitySignals)) have face-quality signals; review queues can be named from selected photos."

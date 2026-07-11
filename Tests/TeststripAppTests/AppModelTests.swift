@@ -5849,7 +5849,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(reviewQueueCount("Faces Found", in: model), "1")
         XCTAssertEqual(reviewQueueCount("OCR Found", in: model), "1")
         XCTAssertEqual(reviewQueueCount("Likely Issues", in: model), "1")
-        XCTAssertEqual(reviewQueueCount("Provider Failures", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("Analysis Failures", in: model), "1")
 
         try model.selectSidebarTarget(.reviewQueue(.picks))
 
@@ -12040,7 +12040,7 @@ final class AppModelTests: XCTestCase {
 
         try await waitForBackgroundWorkStatus(.failed, itemID: itemID, in: model)
         XCTAssertEqual(try repository.assetCount(matching: SetQuery(predicates: [.evaluationFailure])), 1)
-        XCTAssertEqual(reviewQueueCount("Provider Failures", in: model), "1")
+        XCTAssertEqual(reviewQueueCount("Analysis Failures", in: model), "1")
 
         try model.selectSidebarTarget(.reviewQueue(.providerFailures))
 
