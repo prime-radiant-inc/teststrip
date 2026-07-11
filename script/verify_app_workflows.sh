@@ -26,15 +26,8 @@ emit_app_workflow_snapshot "after_grid_activation"
 emit_app_workflow_snapshot "after_grid_selection_feedback"
 "$SCRIPT_DIR/verify_keyboard_culling.sh" "$APP_NAME" smoke-0.jpg
 emit_app_workflow_snapshot "after_keyboard_culling"
-# KNOWN-STALE (post-UX-simplification sweep): verify_evaluation drives the
-# top-level "Evaluate" button and verify_card_import_path drives "Import Card",
-# both of which the sweep intentionally demoted into menus (More ▾ → Analyze ▾ →
-# Evaluate; Import ▾ → From Card…). Reconcile them to the current chrome — likely
-# via the ⇧⌘B "Find Best Shots" menu command and/or a dedicated automation-controls
-# flag — once the persona-pass UI settles. The headless gate does not use these.
-"$SCRIPT_DIR/verify_evaluation.sh" "$APP_NAME"
-emit_app_workflow_snapshot "after_evaluation"
+# verify_evaluation.sh and verify_card_import_path.sh were removed
+# (superseded by the VM scenario cards; see dev-012). Evaluation and card
+# import coverage now lives there, not in this headless gate.
 "$SCRIPT_DIR/verify_import_path.sh" "$APP_NAME"
 emit_app_workflow_snapshot "after_import_path"
-"$SCRIPT_DIR/verify_card_import_path.sh" "$APP_NAME"
-emit_app_workflow_snapshot "after_card_import_path"

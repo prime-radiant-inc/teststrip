@@ -37,9 +37,7 @@ write_fake_script build_and_run.sh
 write_fake_script verify_grid_activation.sh
 write_fake_script verify_grid_selection_feedback.sh
 write_fake_script verify_keyboard_culling.sh
-write_fake_script verify_evaluation.sh
 write_fake_script verify_import_path.sh
-write_fake_script verify_card_import_path.sh
 
 "$SCRIPT_DIR/verify_app_workflows.sh" Teststrip
 
@@ -55,14 +53,5 @@ assert_called() {
 
 assert_called '^build_and_run.sh --verify-smoke card_route=typed-path$' "typed card smoke launch"
 assert_called '^verify_import_path.sh Teststrip$' "folder import path verifier"
-assert_called '^verify_card_import_path.sh Teststrip$' "card import path verifier"
-
-folder_line="$(grep -n '^verify_import_path.sh Teststrip$' "$CALL_LOG" | head -n1 | cut -d: -f1)"
-card_line="$(grep -n '^verify_card_import_path.sh Teststrip$' "$CALL_LOG" | head -n1 | cut -d: -f1)"
-if [[ "$card_line" -le "$folder_line" ]]; then
-  echo "expected card import path verifier after folder import path verifier" >&2
-  cat "$CALL_LOG" >&2
-  exit 1
-fi
 
 echo "verify_app_workflows tests passed"

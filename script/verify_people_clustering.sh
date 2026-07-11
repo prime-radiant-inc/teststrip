@@ -40,7 +40,10 @@ count_people() { sqlite3 "$DB" "SELECT count(*) FROM people;" 2>/dev/null || ech
 count_person_assets() { sqlite3 "$DB" "SELECT count(*) FROM person_assets;" 2>/dev/null || echo 0; }
 
 echo "== trigger evaluation over the scope =="
-"$AX" press "$APP" --role AXButton --contains "Evaluate Scope" >/dev/null 2>&1 || true
+# "Evaluate Scope" is no longer a top-level AXButton — it moved into a menu
+# item (People menu). This step was already || true-masked (never actually
+# gating), so it's dropped rather than guessed at; people-009-scan.md is the
+# card that drives the current People-menu scan path live.
 
 echo "== wait for the worker to embed faces (staying warm so AX never parks) =="
 target=8

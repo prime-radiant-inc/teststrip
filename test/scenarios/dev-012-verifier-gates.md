@@ -82,9 +82,10 @@ exists to prevent.
 `verify_app_workflows.sh` legs (read, not executed): launches via
 `build_and_run.sh --verify-smoke` with `TESTSTRIP_CARD_IMPORT_ROUTE=typed-path`,
 then in order: `verify_grid_activation.sh`, `verify_grid_selection_feedback.sh`,
-`verify_keyboard_culling.sh`, `verify_evaluation.sh`, `verify_import_path.sh`,
-`verify_card_import_path.sh`, with a resource-usage snapshot
-(`emit_app_workflow_snapshot`) after each step.
+`verify_keyboard_culling.sh`, `verify_import_path.sh`, with a resource-usage
+snapshot (`emit_app_workflow_snapshot`) after each step. `verify_evaluation.sh`
+and `verify_card_import_path.sh` were **removed** (2026-07-10) — see Sharp
+edges.
 
 ## Cleanup
 ```bash
@@ -96,17 +97,19 @@ workspace); no `--delete` reset needed since no `build_and_run.sh --smoke`
 instance was launched by this card directly.
 
 ## Sharp edges
-- **`verify_evaluation.sh` and `verify_card_import_path.sh` are KNOWN-STALE**
-  per an inline comment in `verify_app_workflows.sh` (lines 29-34): the
+- **`verify_evaluation.sh` and `verify_card_import_path.sh` were deleted**
+  (2026-07-10, this fix round): they were KNOWN-STALE — the
   post-UX-simplification sweep demoted the top-level "Evaluate" button and
   "Import Card" entry into menus (More ▾ → Analyze ▾ → Evaluate; Import ▾ →
-  From Card…), and these two verifiers still drive the old top-level
-  controls. They are **expected to fail** if actually run against current
-  chrome. The comment explicitly notes "The headless gate does not use
-  these" — i.e. `verify_headless_workflows.sh` has no dependency on them, so
-  their staleness doesn't block the headless gate. This card does not attempt
-  to reconcile them to current chrome, per its documentation-and-observation
-  scope.
+  From Card…), and these two verifiers drove the old top-level controls,
+  masked with `|| true` so they never actually gated anything. They're
+  superseded by the VM scenario cards (this card, lib-\*/people-\* cards
+  driving current chrome), so removing them loses no real coverage. Their
+  legs were removed from `verify_app_workflows.sh` accordingly.
+- `verify_people_clustering.sh`'s "Evaluate Scope" `AXButton` press (also
+  `|| true`-masked, also stale — the control is now a People-menu item, not a
+  top-level button) was dropped rather than guessed at; `people-009-scan.md`
+  is the card that drives the current People-menu scan path live.
 - The headless gate's leg-1 failure in this run means this card cannot
   honestly report legs 2-13 (`verify_metadata_write.sh` through
   `verify_worker_recovery.sh`) as passing, skipped, or failing — they simply
