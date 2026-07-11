@@ -58,8 +58,10 @@ script/vm_scenario_run.sh sync burst && script/vm_scenario_run.sh launch burst
      FROM asset_sets s, json_each(s.membership_json,'\$.manual._0') m
      WHERE s.id = '<work-stack-set-id>';"
    ```
-   confirms exactly one `pick` (the Return target) and every other member
-   `reject`. (Query shape verified against a seeded `--smoke` catalog
+   confirms the Return target reads `pick`, any sibling that was *already*
+   `pick` before Return stays `pick` (pick protection, Jesse's ruling
+   2026-07-11 — see cull-004), and every other member reads `reject`. On a
+   stack with no pre-picked siblings that means exactly one `pick`. (Query shape verified against a seeded `--smoke` catalog
    2026-07-10; if the set was stored as a snapshot, use `$.snapshot._0` —
    the two paths mirror `CatalogRepository.workSessionAssetMembershipSelector`.)
 6. Note the flagged count after step 5 (`AFTER_STACK`). Press ⌘Z once.

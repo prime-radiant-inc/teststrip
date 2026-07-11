@@ -91,13 +91,46 @@ public struct ExportFileResult: Equatable, Sendable {
 
 public typealias ExportProgressHandler = @Sendable (_ completedCount: Int, _ totalCount: Int) -> Void
 
+/// How an export treats destination files whose names collide with planned
+/// outputs (Jesse's ruling 2026-07-11: one batch-level prompt — Replace All /
+/// Keep Both / Cancel; Cancel simply never starts the export).
+public enum ExportCollisionResolution: Sendable, Equatable {
+    /// Existing files keep their bytes; colliding outputs get -2/-3 suffixes.
+    case keepBoth
+    /// Colliding outputs overwrite the existing files in place. Same-named
+    /// frames *within* the batch still suffix — Replace All is about files
+    /// that predate the batch, never about one frame clobbering another.
+    case replaceAll
+}
+
 public struct ExportService: Sendable {
     public init() {}
+
+    /// The planned output filenames (source base name + format extension)
+    /// that already exist in the destination, in batch order. Used to decide
+    /// whether to show the collision prompt before writing anything.
+    public func collidingFilenames(
+        originalURLs: [URL],
+        format: ExportFormat,
+        destinationDirectory: URL
+    ) -> [String] {
+        var seen: Set<String> = []
+        var collisions: [String] = []
+        for sourceURL in originalURLs {
+            let candidateName = "\(sourceURL.deletingPathExtension().lastPathComponent).\(format.fileExtension)"
+            guard seen.insert(candidateName.lowercased()).inserted else { continue }
+            if FileManager.default.fileExists(atPath: destinationDirectory.appendingPathComponent(candidateName).path) {
+                collisions.append(candidateName)
+            }
+        }
+        return collisions
+    }
 
     public func export(
         originalURLs: [URL],
         settings: ExportSettings,
         destinationDirectory: URL,
+        collisionResolution: ExportCollisionResolution = .keepBoth,
         progress: ExportProgressHandler? = nil
     ) throws -> [ExportFileResult] {
         do {
@@ -115,6 +148,7 @@ public struct ExportService: Sendable {
                     sourceURL: sourceURL,
                     settings: settings,
                     destinationDirectory: destinationDirectory,
+                    collisionResolution: collisionResolution,
                     claimedFilenames: &claimedFilenames
                 )
             ))
@@ -137,6 +171,7 @@ public struct ExportService: Sendable {
         sourceURL: URL,
         settings: ExportSettings,
         destinationDirectory: URL,
+        collisionResolution: ExportCollisionResolution,
         claimedFilenames: inout Set<String>
     ) -> ExportOutcome {
         switch decodeThumbnail(from: sourceURL, settings: settings) {
@@ -151,6 +186,7 @@ public struct ExportService: Sendable {
                 for: sourceURL,
                 destinationDirectory: destinationDirectory,
                 format: settings.format,
+                collisionResolution: collisionResolution,
                 claimedFilenames: &claimedFilenames
             )
             guard let data = encodedData(image: image, settings: settings, destinationProperties: destinationProperties) else {
@@ -297,14 +333,18 @@ public struct ExportService: Sendable {
         for sourceURL: URL,
         destinationDirectory: URL,
         format: ExportFormat,
+        collisionResolution: ExportCollisionResolution,
         claimedFilenames: inout Set<String>
     ) -> URL {
         let baseName = sourceURL.deletingPathExtension().lastPathComponent
         let extensionSuffix = format.fileExtension
         var candidateName = "\(baseName).\(extensionSuffix)"
         var suffix = 2
+        // Replace All overwrites pre-existing files, so only within-batch
+        // claims force a suffix; Keep Both also steps past files on disk.
         while claimedFilenames.contains(candidateName.lowercased())
-            || FileManager.default.fileExists(atPath: destinationDirectory.appendingPathComponent(candidateName).path) {
+            || (collisionResolution == .keepBoth
+                && FileManager.default.fileExists(atPath: destinationDirectory.appendingPathComponent(candidateName).path)) {
             candidateName = "\(baseName)-\(suffix).\(extensionSuffix)"
             suffix += 1
         }

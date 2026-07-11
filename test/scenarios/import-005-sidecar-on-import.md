@@ -153,15 +153,16 @@ gated by the **import-new-only** toggle:
   `'conflict'` (would mean `localChanged` was somehow true, contradicting the
   write-time re-sync this sub-scenario documents) or the rating didn't
   change (the fold didn't run).
-- **Product gap, not a card failure**: neither 6a nor 6b ever produces
-  `metadata_sync_state.status = 'conflict'` for this recipe. Out-of-band
-  sidecar edits/corruption on already-synced content are invisible to the
-  app — new-only ON never looks at the sidecar again, and new-only OFF
-  silently overwrites the catalog with the sidecar's value with no dual-
-  divergence detection. There is no UI-reachable rescan trigger that stages
-  the `(localChanged, sidecarChanged)` = `(true, true)` conflict branch; see
-  `activity-006-xmp-lifecycle.md` sub-case A/B (same finding, confirmed twice)
-  for the cross-referenced product gap.
+- **Product gap CLOSED (Jesse's ruling 2026-07-11)**: the re-import path
+  itself still behaves as documented in 6a/6b, but out-of-band sidecar edits
+  on already-synced content are no longer invisible — a sidecar rescan now
+  runs on catalog open and via Metadata ▸ **Check Sidecars for Changes**
+  (`SidecarRescanService`; see `activity-006-xmp-lifecycle.md` Sharp edges
+  for the mechanics). A changed sidecar goes `pending`; sidecar + catalog
+  both changed stages the `(localChanged, sidecarChanged) = (true, true)`
+  conflict branch that this card previously called unreachable. Use the menu
+  command (not a re-import) when you need to stage that state. PENDING-VM:
+  live re-run of this leg.
 - (c) Step 8: all three of `valid-frame.jpg`, `corrupt-frame.jpg`, and
   `plain-frame.jpg` appear as cataloged assets — the corrupt sidecar did not
   abort the batch. `corrupt-frame.jpg`'s `metadata_sync_state.status` is

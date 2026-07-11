@@ -151,6 +151,21 @@ script/ax_drive.sh press --role AXButton --help "Cull" # or ⌘1 per workspace-s
    ```bash
    script/ax_drive.sh find --role AXStaticText --contains "read " # then read its exact text
    ```
+8. **Hover-reveal decision controls (Jesse's ruling 2026-07-11; cull loupe
+   only — the library loupe stays chrome-free).** With the cull loupe open,
+   move the pointer over the stage: a P/X/star control cluster (AX label
+   "Cull decision controls") fades in near the bottom edge. Assert:
+   - it appears on pointer movement and disappears after ~1.5s of pointer
+     idle (poll near 1.0s and again near 2.0s — same slack rationale as the
+     rating-echo timing);
+   - pressing any culling key (e.g. →) hides it immediately;
+   - clicking its Pick control writes `flag='pick'` for the focused asset in
+     the catalog, identical to pressing `P` (same
+     `applyCullingShortcut(.pick)` path);
+   - in the **library** loupe the cluster never appears on hover.
+   State machine unit coverage: `CullLoupeHoverControlsTests`; presentation:
+   `Sources/TeststripApp/CullLoupeHoverControlsPresentation.swift`.
+   PENDING-VM: not yet driven live (VM unavailable this pass).
 
 ## Expected
 - Step 2: session cluster == sqlite-derived `✓ PICKS · ✕ REJECTS · UNDECIDED
@@ -176,6 +191,10 @@ script/ax_drive.sh press --role AXButton --help "Cull" # or ⌘1 per workspace-s
   `title` fallback instead of the synthesized read (i.e. fewer than 2 quality
   kinds were actually present, invalidating the fixture choice — re-pick an
   asset, don't weaken the assertion).
+- Step 8: controls appear on hover, hide on 1.5s idle and on any keystroke,
+  and the Pick click writes the same catalog flag as `P`. **Fails if** the
+  cluster appears in the library loupe, never hides, or its buttons write
+  through a different code path than the keys.
 
 ## Cleanup
 ```bash
@@ -188,7 +207,13 @@ script/ax_drive.sh press --role AXButton --help "Cull" # or ⌘1 per workspace-s
   when you record `TOTAL`/`PICKS`/`REJECTS`, the HUD numbers won't match a
   naive `SELECT count(*) FROM assets` baseline. Force scope to `all` first
   (press `S` until the scope chip is absent, since `all` no longer renders a
-  chip at all — check `CullScope` default).
+  chip at all — check `CullScope` default). Jesse ruled (2026-07-11) the
+  session-cluster counts stay set totals as-is — resolved, no longer an open
+  question.
+- The hover-reveal controls (step 8) share the loupe stage's hover surface
+  with zoom/pan gestures — any pointer movement over the stage re-reveals
+  the cluster; that's by design. Reduced-motion users get no fade animation
+  (`.identity` transition); visibility timing is identical.
 - The exact table/column names for `EvaluationSignal` persistence (steps
   6/7) were not verified against `CatalogMigrations.swift` in this pass —
   read the migration file's evaluation-signals table before writing the real

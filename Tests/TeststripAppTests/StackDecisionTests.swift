@@ -146,6 +146,135 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertEqual(feedback.decisionText, "Picked · 1 sibling rejected")
     }
 
+    // Jesse's ruling (2026-07-11): promoting must never reflag a sibling the
+    // user already picked. Picked siblings are protected (flag provenance is
+    // not recorded, so ALL picked siblings are protected — the safe reading),
+    // only undecided/rejected siblings get rejected, and the toast discloses
+    // the kept pick by filename.
+    func testPromoteProtectsPickedSiblingAndDisclosesInToast() throws {
+        let capturedAt = Date(timeIntervalSince1970: 600)
+        let frameA = makeAsset(
+            id: "protect-frame-a",
+            path: "/Photos/Job/protect-frame-a.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt),
+            metadata: AssetMetadata(flag: .pick)
+        )
+        let frameB = makeAsset(
+            id: "protect-frame-b",
+            path: "/Photos/Job/protect-frame-b.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let frameC = makeAsset(
+            id: "protect-frame-c",
+            path: "/Photos/Job/protect-frame-c.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1.8))
+        )
+        let frameD = makeAsset(
+            id: "protect-frame-d",
+            path: "/Photos/Job/protect-frame-d.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(2.6))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "promote-protects-pick",
+            assets: [frameA, frameB, frameC, frameD]
+        )
+        model.select(frameB.id)
+
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        // Both picks stand; only the undecided siblings were rejected.
+        XCTAssertEqual(try repository.asset(id: frameA.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: frameB.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: frameC.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: frameD.id).metadata.flag, .reject)
+
+        let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
+        XCTAssertEqual(feedback.assetID, frameB.id)
+        XCTAssertEqual(
+            feedback.decisionText,
+            "Picked · 2 siblings rejected · kept your pick of protect-frame-a.cr2"
+        )
+
+        // Undo is still one group: reverts the promote's writes (B/C/D) and
+        // leaves the protected pick untouched (it was never written).
+        try model.undoMetadataChange()
+        XCTAssertEqual(try repository.asset(id: frameA.id).metadata.flag, .pick)
+        XCTAssertNil(try repository.asset(id: frameB.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: frameC.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: frameD.id).metadata.flag)
+    }
+
+    func testPromoteProtectsMultiplePickedSiblingsWithPluralToast() throws {
+        let capturedAt = Date(timeIntervalSince1970: 700)
+        let frameA = makeAsset(
+            id: "plural-frame-a",
+            path: "/Photos/Job/plural-frame-a.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt),
+            metadata: AssetMetadata(flag: .pick)
+        )
+        let frameB = makeAsset(
+            id: "plural-frame-b",
+            path: "/Photos/Job/plural-frame-b.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)),
+            metadata: AssetMetadata(flag: .pick)
+        )
+        let frameC = makeAsset(
+            id: "plural-frame-c",
+            path: "/Photos/Job/plural-frame-c.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1.8))
+        )
+        let frameD = makeAsset(
+            id: "plural-frame-d",
+            path: "/Photos/Job/plural-frame-d.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(2.6))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "promote-protects-picks-plural",
+            assets: [frameA, frameB, frameC, frameD]
+        )
+        model.select(frameC.id)
+
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        XCTAssertEqual(try repository.asset(id: frameA.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: frameB.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: frameC.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: frameD.id).metadata.flag, .reject)
+
+        let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
+        XCTAssertEqual(
+            feedback.decisionText,
+            "Picked · 1 sibling rejected · kept your picks of 2 siblings"
+        )
+    }
+
+    func testPromoteStillRejectsPreviouslyRejectedAndUndecidedSiblings() throws {
+        let capturedAt = Date(timeIntervalSince1970: 800)
+        let frameA = makeAsset(
+            id: "rereject-frame-a",
+            path: "/Photos/Job/rereject-frame-a.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt),
+            metadata: AssetMetadata(flag: .reject)
+        )
+        let frameB = makeAsset(
+            id: "rereject-frame-b",
+            path: "/Photos/Job/rereject-frame-b.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "promote-rejects-rejected",
+            assets: [frameA, frameB]
+        )
+        model.select(frameB.id)
+
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        XCTAssertEqual(try repository.asset(id: frameA.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: frameB.id).metadata.flag, .pick)
+        let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
+        XCTAssertEqual(feedback.decisionText, "Picked · 1 sibling rejected")
+    }
+
     // Persona-3 item 4: Return on a frame with no siblings at all used to be
     // a genuine silent no-op (the guard returned before anything fired) —
     // three presses read as the app hanging. Now it shows decision feedback
@@ -185,7 +314,8 @@ final class StackDecisionTests: XCTestCase {
     private func makeAsset(
         id: String,
         path: String,
-        technicalMetadata: AssetTechnicalMetadata? = nil
+        technicalMetadata: AssetTechnicalMetadata? = nil,
+        metadata: AssetMetadata = AssetMetadata()
     ) -> Asset {
         Asset(
             id: AssetID(rawValue: id),
@@ -193,7 +323,7 @@ final class StackDecisionTests: XCTestCase {
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: 1, modificationDate: Date(timeIntervalSince1970: 1)),
             availability: .online,
-            metadata: AssetMetadata(),
+            metadata: metadata,
             technicalMetadata: technicalMetadata
         )
     }

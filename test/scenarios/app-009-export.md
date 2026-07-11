@@ -58,6 +58,24 @@ unchecked strips it.
    G=$(ls "$OUT2"/*.jpg "$OUT2"/*.jpeg 2>/dev/null | head -1)
    /usr/bin/mdls -name kMDItemExifApertureValue "$G"   # should be (null)
    ```
+7. **Collision prompt (Jesse's ruling 2026-07-11).** Re-export the same scope
+   into `$OUT` again (names now collide). Assert ONE batch-level
+   confirmation dialog appears — title "Replace existing files?", buttons
+   **Replace All / Keep Both / Cancel** — *before* any file is written
+   (snapshot `ls -l "$OUT"` mtimes first; they must be unchanged while the
+   dialog is up).
+   - **Keep Both**: new copies land as `-2` suffixed names; originals'
+     bytes/mtimes untouched.
+   - **Replace All** (run a third export): colliding files are overwritten in
+     place (mtime changes, no new `-3` names for the colliding set).
+   - **Cancel**: nothing written at all.
+   Detection/resolution plumbing:
+   `ExportService.collidingFilenames`/`ExportCollisionResolution`
+   (`Sources/TeststripCore/Export/ExportService.swift`),
+   `AppModel.exportCollisionFilenames`, `ExportCollisionPrompt` in
+   `Sources/TeststripApp/LibraryGridView.swift`. Unit coverage:
+   `ExportServiceTests` collision tests + `ExportCollisionPromptTests`.
+   PENDING-VM: dialog leg not yet driven live (VM unavailable this pass).
 
 ## Expected
 - Step 3: an export completion signal within 30s. **Fails if** none appears or
@@ -90,3 +108,7 @@ Quit the launched instance.
 - `sips` reports the *stored* pixel dimensions; `includeSourceMetadata` resets
   orientation to 1 and drops pixel-dimension tags on export, so trust `sips`
   geometry over any EXIF dimension tag.
+- The collision prompt is batch-level and fires once per export run; two
+  same-named frames *within* one batch still suffix even under Replace All
+  (one frame never clobbers another — see
+  `testExportReplaceAllStillSuffixesWithinBatchDuplicates`).
