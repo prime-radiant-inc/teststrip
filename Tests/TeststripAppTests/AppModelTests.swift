@@ -6719,6 +6719,51 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
+    func testNamedPeoplePersistAcrossCatalogRelaunch() throws {
+        // Regression test for a persona report (Ruth, persona-2): after naming two
+        // people, an app freeze + quit + relaunch appeared to show "0 people" even
+        // though the catalog rows were confirmed present beforehand. AppModel.load
+        // re-reads people from the catalog on every launch (no caching layer), so
+        // this proves catalog-backed people survive a fresh load against the same
+        // database file, simulating a relaunch.
+        let directory = try makeTemporaryDirectory(named: "app-model-people-relaunch")
+        let catalogURL = directory.appendingPathComponent("catalog.sqlite")
+        let asset = makeAsset(id: "rose-frame", path: "/Volumes/NAS/Family/rose.jpg", rating: 4)
+
+        do {
+            let database = try CatalogDatabase.open(at: catalogURL)
+            try database.migrate()
+            let repository = CatalogRepository(database: database)
+            try repository.upsert(asset)
+            try repository.upsertPerson(id: "person-rose", name: "Grandma Rose")
+            try repository.assignAssets([asset.id], toPersonID: "person-rose")
+            // `database` (and its underlying sqlite3 handle) goes out of scope here,
+            // closing the connection the way process exit/kill would.
+        }
+
+        // Simulate relaunch: open a brand-new database/repository/AppModel against
+        // the same catalog file, as `AppModel.load(catalog:)` does on every launch.
+        let reopenedDatabase = try CatalogDatabase.open(at: catalogURL)
+        try reopenedDatabase.migrate()
+        let reopenedRepository = CatalogRepository(database: reopenedDatabase)
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: reopenedRepository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+
+        let relaunchedModel = try AppModel.load(catalog: catalog)
+
+        XCTAssertEqual(relaunchedModel.catalogPeople, [
+            CatalogPerson(id: "person-rose", name: "Grandma Rose", assetCount: 1)
+        ])
+    }
+
     func testConfirmSelectedAssetAsPersonPersistsNamedGroup() throws {
         let asset = makeAsset(id: "selected-face", path: "/Volumes/NAS/Wedding/selected-face.jpg", rating: 4)
         let (model, repository) = try makeModelWithCatalogAssets(
