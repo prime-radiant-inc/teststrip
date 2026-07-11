@@ -12803,6 +12803,119 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testAutopilotArmedImportRunsEvenWhenGlobalAutopilotIsDisabled() async throws {
+        let directory = try makeTemporaryDirectory(named: "autopilot-armed-import-global-off")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 8), transport: transport)
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+        // The sheet's explicit per-import opt-in must run autopilot regardless
+        // of the standing global default (which only seeds the toggle's
+        // initial checked state, not a second gate).
+        model.autopilotEnabled = false
+
+        model.beginImportFolder(photoFolder, autopilotAfterImport: true)
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "autopilot-armed-imported-global-off"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try catalog.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: importedAsset.id, kind: .focus, value: .score(0.8), confidence: 0.9, provenance: provenance)
+        ])
+        try writePreviewPlaceholder(to: catalog.previewCache.url(for: PreviewCacheKey(assetID: importedAsset.id, level: .grid)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+        try await waitForRecognitionItemCount(AppModel.defaultEvaluationProviderNames.count, in: model)
+
+        for provider in AppModel.defaultEvaluationProviderNames {
+            transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+                itemID: WorkSessionID(rawValue: "evaluation-\(importedAsset.id.rawValue)-\(provider)"),
+                message: "evaluated"
+            )))
+        }
+
+        for _ in 0..<200 {
+            if model.autopilotRunSummary != nil { break }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertNotNil(model.autopilotRunSummary, "sheet-armed autopilot must run even when the global default is off")
+        XCTAssertNil(try catalog.repository.asset(id: importedAsset.id).metadata.flag)
+    }
+
+    @MainActor
+    func testUnarmedImportDoesNotRunAutopilotEvenWhenGlobalAutopilotIsEnabled() async throws {
+        let directory = try makeTemporaryDirectory(named: "autopilot-unarmed-import-global-on")
+        let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
+        let image = photoFolder.appendingPathComponent("one.png")
+        try writeTestPNG(to: image)
+        let paths = AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true))
+        let catalog = try AppCatalog.open(paths: paths)
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(queue: BackgroundWorkQueue(maxRunningCount: 8), transport: transport)
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+        model.autopilotEnabled = true
+
+        // Sheet's opt-in explicitly left unchecked for this import.
+        model.beginImportFolder(photoFolder, autopilotAfterImport: false)
+        let importItem = try XCTUnwrap(model.backgroundWorkQueue.runningItems.first)
+        let importedAsset = Asset(
+            id: AssetID(rawValue: "autopilot-unarmed-imported-global-on"),
+            originalURL: image,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata()
+        )
+        try catalog.repository.upsert(importedAsset)
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try catalog.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: importedAsset.id, kind: .focus, value: .score(0.8), confidence: 0.9, provenance: provenance)
+        ])
+        try writePreviewPlaceholder(to: catalog.previewCache.url(for: PreviewCacheKey(assetID: importedAsset.id, level: .grid)))
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 1 photo from photos",
+            importedAssetIDs: [importedAsset.id],
+            newAssetCount: 1,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+        try await waitForRecognitionItemCount(AppModel.defaultEvaluationProviderNames.count, in: model)
+
+        for provider in AppModel.defaultEvaluationProviderNames {
+            transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+                itemID: WorkSessionID(rawValue: "evaluation-\(importedAsset.id.rawValue)-\(provider)"),
+                message: "evaluated"
+            )))
+        }
+
+        // Give any (incorrect) autopilot run a chance to fire.
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertNil(model.autopilotRunSummary, "unarmed import must not run autopilot even though the global default is on")
+    }
+
+    @MainActor
     func testPreviewCompletionQueuesEvaluationsForPendingImportedAsset() async throws {
         let directory = try makeTemporaryDirectory(named: "auto-eval-preview-drain")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)

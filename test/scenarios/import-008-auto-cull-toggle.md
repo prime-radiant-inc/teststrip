@@ -125,13 +125,18 @@ Quit the launched instance.
   imports' assets, not two separate runs. This card only exercises a single
   import, so it doesn't hit that path, but a future card should if the union
   behavior needs its own verification.
-- `runImportAutopilotIfEnabled` additionally guards on `autopilotEnabled`
-  (`Sources/TeststripApp/AppModel.swift:8023-8029`), a separate top-level
-  Autopilot feature flag distinct from the per-import toggle — if that flag
-  is off, the per-import toggle silently does nothing. Confirm
-  `model.autopilotEnabled` is true in Pre-state (it seeds true by default per
-  `LibraryGridView.swift:2532`, which pre-fills the toggle from
-  `model.autopilotEnabled`, but verify live).
+- The per-import toggle runs regardless of the standing global
+  `autopilotEnabled` default (`runArmedImportAutopilot`,
+  `Sources/TeststripApp/AppModel.swift`): once the sheet's "Autopilot cull
+  after reading" is armed for an import, it fires on that import's assets
+  even if `model.autopilotEnabled` is false. `autopilotEnabled` only seeds the
+  toggle's *initial* checked state when the sheet opens
+  (`LibraryGridView.swift:2531`); it is not a second gate. (Previously the
+  armed run additionally guarded on the global flag, so an explicit per-import
+  opt-in silently no-op'd whenever the global default was off — fixed;
+  see `testAutopilotArmedImportRunsEvenWhenGlobalAutopilotIsDisabled` and
+  `testUnarmedImportDoesNotRunAutopilotEvenWhenGlobalAutopilotIsEnabled` in
+  `AppModelTests.swift`.)
 
 ## Run status
 SQL-GROUNDED, AX-UNRUN. Toggle label, default state, disabled-gating, the

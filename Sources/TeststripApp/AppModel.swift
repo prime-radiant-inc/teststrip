@@ -8178,11 +8178,15 @@ public final class AppModel {
         if armed.contains(where: { inFlightEvaluationAssetIDs.contains($0) }) { return }
         armedAutopilotImportAssetIDs = nil
         autopilotArmedForActiveImport = false
-        runImportAutopilotIfEnabled(importedAssetIDs: Array(armed))
+        runArmedImportAutopilot(importedAssetIDs: Array(armed))
     }
 
-    private func runImportAutopilotIfEnabled(importedAssetIDs: [AssetID]) {
-        guard autopilotEnabled else { return }
+    private func runArmedImportAutopilot(importedAssetIDs: [AssetID]) {
+        // No global-preference guard here: reaching this point means the
+        // import was explicitly armed (see runImportAutopilotIfArmedAndResolved),
+        // an explicit per-import opt-in that must run regardless of the
+        // standing `autopilotEnabled` default. That default only seeds the
+        // sheet toggle's initial checked state, not a second gate.
         do {
             _ = try runAutopilot(scope: .assetIDs(importedAssetIDs))
         } catch {
