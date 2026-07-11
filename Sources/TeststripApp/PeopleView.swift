@@ -8,6 +8,10 @@ struct PeopleView: View {
     @State private var personName = ""
     @State private var namingSuggestion: PeopleFaceSuggestion?
     @State private var suggestionPersonName = ""
+    // persona-2 item 3: the naming field didn't visually announce itself as
+    // typeable — Ruth had to hunt before typing blindly. Auto-focus it so
+    // typing works immediately and a focus ring is visible on appear.
+    @FocusState private var isSuggestionNameFieldFocused: Bool
     @State private var queueFocusedIndex = 0
     @State private var keyCaptureFocusRequest = 0
 
@@ -341,6 +345,8 @@ struct PeopleView: View {
         ) {
             TextField("Person name", text: $suggestionPersonName)
                 .textFieldStyle(.roundedBorder)
+                .focused($isSuggestionNameFieldFocused)
+                .onAppear { isSuggestionNameFieldFocused = true }
         }
     }
 
