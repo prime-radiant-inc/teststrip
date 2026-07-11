@@ -194,12 +194,17 @@ ground truth or to keep this card's Steps bounded:
   (`LibrarySearchIntent`'s quote-aware splitter, unit-tested in
   `testParsesQuotedFieldValuesAndImportBatch`) treats an unquoted space as a
   token boundary, so `camera:SmokeCam 1` commits as `camera:SmokeCam`
-  (matching every SmokeCam-N) and **silently drops the trailing " 1"** into
-  a separate bare token. Confirmed live in run-lib-iter1. Whether that
-  silent truncation is acceptable UX (vs. an error, or auto-quoting) is an
-  open product question pending Jesse's ruling — until then, cards must use
-  the quoted form and must NOT treat the unquoted behavior as a pass/fail
-  assertion.
+  (matching every SmokeCam-N) and the trailing " 1" becomes a separate bare
+  residual token — **not dropped**. Confirmed live in run-lib-iter1. Ruling
+  (2026-07-10, Jesse): keep the quoted grammar as-is, but the split must be
+  visible rather than silent. `LibraryResultHeaderPresentation.interpretation`
+  now names both halves whenever residual text coexists with parsed tokens:
+  `camera:SmokeCam 1` renders as `read as Camera: SmokeCam + plain text "1"`
+  (`LibraryResultHeaderTests.testUnquotedMultiWordTokenSplitExposesStructuredTokenAndResidual`).
+  Cards must still use the quoted form to get the intended narrowing (the
+  unquoted form narrows to the field's prefix match plus a no-op residual
+  text search, not to the full multi-word value) but can now assert the
+  interpretation line explicitly instead of treating it as unobservable.
 - The grid is lazily virtualized — off-screen rows aren't in the AX tree, so
   don't rely on scanning for a filename; use the result-count header instead.
 - Keep the app frontmost/warm while typing multi-character tokens — an

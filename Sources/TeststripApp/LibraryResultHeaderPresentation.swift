@@ -71,12 +71,18 @@ public struct LibraryResultHeaderPresentation: Equatable {
 
     /// Non-nil only when plain text remains after `LibrarySearchIntent`
     /// pulls out every structured filter it recognizes — the same condition
-    /// `SearchWorkspaceView`'s "Ask interpretation" row used to gate on.
+    /// `SearchWorkspaceView`'s "Ask interpretation" row used to gate on. When
+    /// the parse also produced structured tokens (e.g. an unquoted multi-word
+    /// value like `camera:SmokeCam 1` splits into a `camera:` token plus a
+    /// residual `"1"`), the line names the split explicitly rather than
+    /// silently hiding where the structured part went.
     private static func interpretation(for searchText: String) -> String? {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        guard let residual = LibrarySearchIntent.parse(trimmed).residualText else { return nil }
-        return "read as plain text: \(residual)"
+        let intent = LibrarySearchIntent.parse(trimmed)
+        guard let residual = intent.residualText else { return nil }
+        guard !intent.chips.isEmpty else { return "read as plain text: \(residual)" }
+        return "read as \(intent.chips.joined(separator: " + ")) + plain text \"\(residual)\""
     }
 
     /// Absorbs `SearchWorkspaceView`'s "Generated Refinements" and "Related

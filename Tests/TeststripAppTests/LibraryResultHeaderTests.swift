@@ -40,7 +40,37 @@ final class LibraryResultHeaderTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.matchCount, 12)
+        // "rating:4" is a structured token, so the interpretation names it
+        // alongside the residual plain text rather than hiding the split.
+        XCTAssertEqual(presentation.interpretation, "read as Rating >= 4 + plain text \"sunset\"")
+    }
+
+    func testPlainTextOnlyQueryReadsAsPlainTextWithoutTokenPrefix() {
+        // No structured tokens parsed at all — the original, simpler phrasing.
+        let presentation = LibraryResultHeaderPresentation(
+            totalAssetCount: 3,
+            librarySearchText: "sunset",
+            canSaveDynamicSet: true,
+            canSaveSnapshotSet: true,
+            canSaveManualSet: false
+        )
+
         XCTAssertEqual(presentation.interpretation, "read as plain text: sunset")
+    }
+
+    func testUnquotedMultiWordTokenSplitExposesStructuredTokenAndResidual() {
+        // "camera:SmokeCam 1" commits as a `camera:SmokeCam` token plus a
+        // residual bare word "1" — the interpretation line must name both,
+        // not just the residual, so the silent split is visible to the user.
+        let presentation = LibraryResultHeaderPresentation(
+            totalAssetCount: 8,
+            librarySearchText: "camera:SmokeCam 1",
+            canSaveDynamicSet: true,
+            canSaveSnapshotSet: true,
+            canSaveManualSet: false
+        )
+
+        XCTAssertEqual(presentation.interpretation, "read as Camera: SmokeCam + plain text \"1\"")
     }
 
     func testSaveActionsMapToTheThreeDistinctSaveSemantics() {
