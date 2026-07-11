@@ -10202,7 +10202,9 @@ public final class AppModel {
     /// and — unlike folder relocation, which just repoints the catalog row's
     /// path — the catalog row and cached previews are removed entirely. The
     /// manifest entry snapshots the removed row so Move Back can re-insert it
-    /// verbatim.
+    /// verbatim. Machine-derived face/evaluation rows are removed with the
+    /// row and deliberately NOT restored by Move Back — re-detection and
+    /// re-evaluation regenerate them for the restored asset.
     @discardableResult
     public func moveRejectsToTrash(_ preflight: RejectRelocationPreflight) throws -> RejectRelocationSummary {
         guard let catalog else {
@@ -10326,7 +10328,9 @@ public final class AppModel {
                         // (same asset ID and metadata) rather than repointing it,
                         // along with the person assignments captured at trash
                         // time. A person deleted since then is reported, not a
-                        // reason to fail the asset's restore.
+                        // reason to fail the asset's restore. Face/evaluation
+                        // rows are not restored: they're machine-derived and
+                        // regenerate via re-detection/re-evaluation.
                         try catalog.repository.upsert(assetSnapshot)
                         for personID in entry.personIDs {
                             do {

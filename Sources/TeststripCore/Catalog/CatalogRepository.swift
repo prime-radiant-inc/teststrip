@@ -1328,8 +1328,15 @@ public final class CatalogRepository {
 
     /// Removes an asset row together with the dependent rows that reference
     /// its ID, so a deleted asset can't leave orphans that inflate person
-    /// counts or crash lookups (e.g. the pending-metadata-sync scan resolves
-    /// each pending row's asset at launch).
+    /// counts, surface ghost People suggestion cards, pad evaluation-kind
+    /// sidebar counts, or crash lookups (e.g. the pending-metadata-sync scan
+    /// resolves each pending row's asset at launch).
+    ///
+    /// Face and evaluation rows are machine-derived and are NOT restored by
+    /// a relocation Move Back — re-detection/re-evaluation regenerate them
+    /// for the re-inserted row. Only the asset row itself (and, in trash
+    /// relocation, person-asset assignments captured in the manifest) come
+    /// back.
     public func deleteAsset(id: AssetID) throws {
         try database.transaction {
             try database.execute("DELETE FROM assets WHERE id = ?", bindings: [id.rawValue])
@@ -1337,6 +1344,11 @@ public final class CatalogRepository {
             try database.execute("DELETE FROM person_assets WHERE asset_id = ?", bindings: [id.rawValue])
             try database.execute("DELETE FROM dismissed_face_assets WHERE asset_id = ?", bindings: [id.rawValue])
             try database.execute("DELETE FROM preview_generation_queue WHERE asset_id = ?", bindings: [id.rawValue])
+            try database.execute("DELETE FROM face_observations WHERE asset_id = ?", bindings: [id.rawValue])
+            try database.execute("DELETE FROM person_faces WHERE asset_id = ?", bindings: [id.rawValue])
+            try database.execute("DELETE FROM dismissed_faces WHERE asset_id = ?", bindings: [id.rawValue])
+            try database.execute("DELETE FROM evaluation_signals WHERE asset_id = ?", bindings: [id.rawValue])
+            try database.execute("DELETE FROM evaluation_failures WHERE asset_id = ?", bindings: [id.rawValue])
         }
     }
 

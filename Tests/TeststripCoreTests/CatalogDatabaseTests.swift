@@ -3004,6 +3004,57 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(try repository.dismissedFaceAssetIDs(), [])
     }
 
+    func testDeleteAssetCascadesFaceAndEvaluationRows() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "delete-asset-cascade-faces-evals")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "face-crop-pad-25")
+        let trashed = Asset.testAsset(id: AssetID(rawValue: "cascade-face"), path: "/Shoot/cascade-face.jpg", rating: 0)
+        let kept = Asset.testAsset(id: AssetID(rawValue: "kept-face"), path: "/Shoot/kept-face.jpg", rating: 0)
+        try repository.upsert([trashed, kept])
+        func face(_ asset: Asset, _ index: Int) -> CatalogFaceObservation {
+            CatalogFaceObservation(
+                assetID: asset.id,
+                faceIndex: index,
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.2, width: 0.2, height: 0.2),
+                captureQuality: 0.5,
+                embedding: [Double(index), 1, 0],
+                provenance: provenance
+            )
+        }
+        try repository.replaceFaceObservations(assetID: trashed.id, provenance: provenance, with: [
+            face(trashed, 0), face(trashed, 1), face(trashed, 2)
+        ])
+        try repository.replaceFaceObservations(assetID: kept.id, provenance: provenance, with: [face(kept, 0)])
+        try repository.upsertPerson(id: "person-1", name: "Person One")
+        try repository.assignFaces([FaceID(assetID: trashed.id, faceIndex: 1)], toPersonID: "person-1")
+        try repository.dismissFaces([FaceID(assetID: trashed.id, faceIndex: 2)])
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: trashed.id, kind: .object, value: .label("ghost"), confidence: 0.9, provenance: provenance)
+        ])
+        try repository.recordEvaluationFailure(assetID: trashed.id, provider: "apple-vision", message: "boom")
+
+        try repository.deleteAsset(id: trashed.id)
+
+        // No ghost People suggestion cards: the trashed asset's observations
+        // are gone, so only the kept asset's face remains unassigned.
+        let unassigned = try repository.unassignedFaceObservations(provenance: provenance, limit: 10)
+        XCTAssertEqual(unassigned.map(\.assetID), [kept.id])
+        XCTAssertEqual(try repository.faceObservations(assetID: trashed.id), [])
+        XCTAssertEqual(try repository.confirmedFaceEmbeddingsByPerson(provenance: provenance), [:])
+        XCTAssertEqual(try repository.evaluationSignals(assetID: trashed.id), [])
+        XCTAssertEqual(try repository.evaluationFailures(assetID: trashed.id), [])
+        // Sidebar counts drop with the signals.
+        XCTAssertTrue(try repository.evaluationKindSummaries().isEmpty)
+
+        // Re-detection after a Move Back starts clean: observations for the
+        // restored asset ID are insertable again.
+        try repository.upsert(trashed)
+        try repository.replaceFaceObservations(assetID: trashed.id, provenance: provenance, with: [face(trashed, 0)])
+        XCTAssertEqual(try repository.faceObservations(assetID: trashed.id).count, 1)
+    }
+
     func testPersonIDsForAssetListsEveryLinkedPerson() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "person-ids-for-asset")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
