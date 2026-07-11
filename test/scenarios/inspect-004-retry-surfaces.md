@@ -45,7 +45,7 @@ CREATE TABLE evaluation_failures (
    next launch (the running instance's in-memory `assets`/queue state
    wouldn't reflect a row inserted underneath it):
    ```bash
-   sqlite3 "$DB" "INSERT INTO preview_generation_queue (asset_id, level, attempt_count, last_error, last_attempted_at, updated_at) VALUES ('$ASSET_ID', 'full', 2, 'synthetic I/O error for inspect-004', strftime('%s','now'), strftime('%s','now'));"
+   sqlite3 "$DB" "INSERT INTO preview_generation_queue (asset_id, level, attempt_count, last_error, last_attempted_at, updated_at) VALUES ('$ASSET_ID', 'grid', 2, 'synthetic I/O error for inspect-004', strftime('%s','now'), strftime('%s','now'));"
    ```
 3. Relaunch against the same isolated dir
    (`TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY="$ISOLATED" open dist/Teststrip.app`
@@ -60,11 +60,11 @@ CREATE TABLE evaluation_failures (
    tab has only one Retry button unless the sync-pending state is also
    showing; disambiguate by position/help if both are present).
 6. Assert on disk: the `preview_generation_queue` row for
-   `('$ASSET_ID','full')` is gone or its `attempt_count`/`last_attempted_at`
+   `('$ASSET_ID','grid')` is gone or its `attempt_count`/`last_attempted_at`
    changed (re-queued and, once the worker actually regenerates the preview,
    deleted) — poll:
    ```bash
-   sqlite3 "$DB" "SELECT * FROM preview_generation_queue WHERE asset_id='$ASSET_ID' AND level='full';"
+   sqlite3 "$DB" "SELECT * FROM preview_generation_queue WHERE asset_id='$ASSET_ID' AND level='grid';"
    ```
 
 ### Provider-failure retry (AI tab)
@@ -129,6 +129,18 @@ CREATE TABLE evaluation_failures (
 - Step 3's relaunch invocation needs verifying against `script/build_and_run.sh`'s
   actual flag for reattaching to an existing isolated dir vs. minting a new
   one — read the script before running this card for real.
+- **Use a valid `level` value in the synthetic INSERT.** An earlier run of
+  this card used `level='full'`, which is not a `PreviewLevel` case
+  (`micro`/`grid`/`medium`/`large`/`original`) — that made
+  `decodePreviewGenerationItem` throw on the next catalog open, which
+  propagated into `TeststripApplication.init`'s `fatalError`, hard-crash-
+  looping the app. This is now fixed:
+  `CatalogRepository.decodePreviewGenerationItems`/`decodePreviewGenerationQueueStates`
+  drop and log a malformed row instead of throwing, so catalog open no longer
+  fails on bad queue data. Use `level='grid'` (as above) for this card's own
+  fixture; if you want to re-probe the tolerant-decode behavior itself, see
+  `CatalogDatabaseTests.testPendingPreviewGenerationItemsDropsRowWithInvalidLevelInsteadOfThrowing`
+  rather than repeating the crash live.
 
 ## Run status
 BLOCKED-CONSOLE — locked console prevents any AX step. Wiring confirmed
@@ -146,3 +158,13 @@ Needs a human-present re-run. All SQL and schema in this card were run
 headlessly against a seeded --smoke catalog on 2026-07-10 (schema per
 Sources/TeststripCore/Catalog/CatalogMigrations.swift); both failure tables
 confirmed empty on a fresh smoke seed.
+
+**2026-07-11 update**: the prior run's `level='full'` fixture is a card bug
+(fixed above to `'grid'`) and it also uncovered a real crash-loop —
+malformed `preview_generation_queue` rows made catalog open throw, fataling
+the app on every subsequent launch. Root-caused and fixed in
+`CatalogRepository` (malformed rows are now dropped/logged, not thrown);
+covered by `CatalogDatabaseTests.testPendingPreviewGenerationItemsDropsRowWithInvalidLevelInsteadOfThrowing`.
+This card's preview-retry leg still needs a live re-run with the corrected
+`'grid'` fixture to observe the actual retry-surfaces behavior (the crash
+was a fixture-triggered side effect, not what this card set out to test).

@@ -97,3 +97,12 @@ isolated dir.
   the sharp-eyed inventory note says production always shows "Teststrip"
   (the app-support folder name). Record the actual value; the assertion is
   "equals the catalog root's name", not a specific literal.
+- **Step 7's fatalError is now narrower than "any bad catalog data."** It
+  originally also fired for a single malformed `preview_generation_queue`
+  row (e.g. an unknown `level` value from `inspect-004`'s earlier fixture
+  bug), hard-crash-looping the app on a recoverable data issue. That's
+  fixed: `CatalogRepository` now drops/logs malformed preview-queue rows
+  instead of throwing, so catalog open survives them. Step 7's own
+  probe — overwriting the SQLite file header with random bytes — still
+  fails to open and still fatals as expected; that invariant (don't
+  silently open/recreate a genuinely corrupt catalog) is unchanged.
