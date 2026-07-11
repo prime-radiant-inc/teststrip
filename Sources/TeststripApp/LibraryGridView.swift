@@ -3805,51 +3805,68 @@ private struct LoupeView: View {
             colorLabel: asset.metadata.colorLabel,
             summary: model.cullingProgressSummary,
             verdict: verdict,
-            scope: model.cullScope
+            scope: model.cullScope,
+            isRatingEchoActive: isRatingEchoActive(for: asset)
         )
+    }
+
+    // True during the same 2s decision-toast echo window, but only for
+    // rating (not pick/reject/label) keystrokes on the given asset — reuses
+    // isDecisionToastVisible as the timing source rather than duplicating it.
+    private func isRatingEchoActive(for asset: Asset) -> Bool {
+        guard isDecisionToastVisible,
+              let feedback = model.lastCullingMetadataDecision,
+              feedback.assetID == asset.id else { return false }
+        return feedback.decisionText == "Cleared rating" || feedback.decisionText.hasPrefix("Rated ")
     }
 
     private func cullHUD(for asset: Asset, stackPresentation: CullingStackRailPresentation) -> some View {
         let presentation = cullHUDPresentation(for: asset, stackPresentation: stackPresentation)
-        return HStack(spacing: 10) {
-            Text(presentation.filename)
-                .font(.caption.weight(.medium))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: 180, alignment: .leading)
-            cullHUDRatingStars(presentation.rating)
-            cullHUDScopeChip(presentation.scope)
-            if let colorLabel = presentation.colorLabel {
-                Circle()
-                    .fill(color(for: colorLabel))
-                    .frame(width: 10, height: 10)
-                    .accessibilityLabel("\(colorLabel.rawValue.capitalized) label")
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Text(presentation.filename)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 180, alignment: .leading)
+                if presentation.showsRating {
+                    cullHUDRatingStars(presentation.rating)
+                }
+                if presentation.showsScopeChip {
+                    cullHUDScopeChip(presentation.scope)
+                }
+                if presentation.showsLabelDot, let colorLabel = presentation.colorLabel {
+                    Circle()
+                        .fill(color(for: colorLabel))
+                        .frame(width: 10, height: 10)
+                        .accessibilityLabel("\(colorLabel.rawValue.capitalized) label")
+                }
+                Text(presentation.sessionClusterText)
+                    .font(.caption.monospacedDigit().weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .accessibilityLabel(
+                        "\(presentation.pickCount) picks, \(presentation.rejectCount) rejects, \(presentation.undecidedCount) left"
+                    )
+                Spacer(minLength: 0)
+                if let verdict = presentation.verdict {
+                    Text(verdict)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: 220, alignment: .trailing)
+                        .liveMockupPlaceholder(.cullingAssistVerdict)
+                }
             }
             if presentation.undecidedCount + presentation.pickCount + presentation.rejectCount > 0 {
                 ProgressView(value: presentation.progressFraction)
                     .tint(.orange)
-                    .frame(width: 96)
                     .accessibilityLabel("Culling Progress")
-            }
-            Text("\(presentation.undecidedCount) left")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Spacer(minLength: 0)
-            cullingCountPill(title: "Picks", count: presentation.pickCount, color: .green, systemImage: "flag.fill")
-            cullingCountPill(title: "Rejects", count: presentation.rejectCount, color: .red, systemImage: "xmark.circle.fill")
-            if let verdict = presentation.verdict {
-                Text(verdict)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: 220, alignment: .trailing)
-                    .liveMockupPlaceholder(.cullingAssistVerdict)
             }
         }
         .padding(.horizontal, 14)
-        .frame(height: 48)
+        .padding(.vertical, 8)
         .background(.bar)
     }
 
@@ -3871,15 +3888,6 @@ private struct LoupeView: View {
             }
         }
         .accessibilityLabel("Rating \(rating)")
-    }
-
-    private func cullingCountPill(title: String, count: Int, color: Color, systemImage: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: systemImage)
-            Text("\(count) \(title.lowercased())")
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(color)
     }
 
     private func loupeStage(for asset: Asset) -> some View {

@@ -113,4 +113,83 @@ final class CullHUDPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.verdict, "Keep")
     }
+
+    // MARK: - Progressive disclosure visibility matrix
+
+    private func makePresentation(
+        rating: Int = 0,
+        colorLabel: ColorLabel? = nil,
+        scope: CullScope = .all,
+        isRatingEchoActive: Bool = false,
+        pickCount: Int = 0,
+        rejectCount: Int = 0,
+        totalCount: Int = 0
+    ) -> CullHUDPresentation {
+        let summary = CullingProgressSummary(
+            selectedPosition: nil,
+            positionText: nil,
+            pickCount: pickCount,
+            rejectCount: rejectCount,
+            totalCount: totalCount
+        )
+        return CullHUDPresentation(
+            filename: "IMG_0001.CR2",
+            rating: rating,
+            colorLabel: colorLabel,
+            summary: summary,
+            verdict: nil,
+            scope: scope,
+            isRatingEchoActive: isRatingEchoActive
+        )
+    }
+
+    func testScopeChipHiddenWhenScopeIsAll() {
+        XCTAssertFalse(makePresentation(scope: .all).showsScopeChip)
+    }
+
+    func testScopeChipShownWhenScopeIsNotAll() {
+        XCTAssertTrue(makePresentation(scope: .picks).showsScopeChip)
+    }
+
+    func testRatingHiddenWhenZeroAndNoEcho() {
+        XCTAssertFalse(makePresentation(rating: 0, isRatingEchoActive: false).showsRating)
+    }
+
+    func testRatingShownWhenGreaterThanZero() {
+        XCTAssertTrue(makePresentation(rating: 3, isRatingEchoActive: false).showsRating)
+    }
+
+    func testRatingShownDuringEchoWindowEvenWhenZero() {
+        XCTAssertTrue(makePresentation(rating: 0, isRatingEchoActive: true).showsRating)
+    }
+
+    func testLabelDotHiddenWhenNoColorLabel() {
+        XCTAssertFalse(makePresentation(colorLabel: nil).showsLabelDot)
+    }
+
+    func testLabelDotShownWhenColorLabelSet() {
+        XCTAssertTrue(makePresentation(colorLabel: .green).showsLabelDot)
+    }
+
+    func testSessionClusterTextFormatsPicksRejectsAndUndecided() {
+        let presentation = makePresentation(pickCount: 38, rejectCount: 71, totalCount: 318)
+        // undecided = 318 - 38 - 71 = 209
+        XCTAssertEqual(presentation.sessionClusterText, "\u{2713} 38 \u{00B7} \u{2715} 71 \u{00B7} 209 left")
+    }
+
+    func testUndecidedDefaultScopeFrameShowsOnlyFilenameAndCluster() {
+        let presentation = makePresentation(
+            rating: 0,
+            colorLabel: nil,
+            scope: .all,
+            isRatingEchoActive: false,
+            pickCount: 3,
+            rejectCount: 2,
+            totalCount: 10
+        )
+        XCTAssertFalse(presentation.showsScopeChip)
+        XCTAssertFalse(presentation.showsRating)
+        XCTAssertFalse(presentation.showsLabelDot)
+        XCTAssertEqual(presentation.sessionClusterText, "\u{2713} 3 \u{00B7} \u{2715} 2 \u{00B7} 5 left")
+    }
 }
