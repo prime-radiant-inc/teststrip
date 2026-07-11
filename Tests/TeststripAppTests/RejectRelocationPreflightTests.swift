@@ -129,4 +129,52 @@ final class RejectRelocationPreflightTests: XCTestCase {
         XCTAssertEqual(presentation.moveButtonTitle, "Move 1 reject photo to Rejects")
         XCTAssertNil(presentation.warningText)
     }
+
+    // MARK: - Scope disclosure (spec's honesty principle): a filtered view
+    // that hides all rejects must say so, not silently report "0 files".
+
+    func testSummaryDisclosesFilesOutsideCurrentFilterWhenNothingInScope() {
+        let empty = RejectRelocationPreflight(
+            assetIDs: [],
+            originalURLs: [],
+            plans: [],
+            sidecarCount: 0,
+            totalByteCount: 0,
+            unavailableCount: 0,
+            alreadyInDestinationCount: 0,
+            destinationFolder: RejectRelocationPreflight.trashDisplayFolder,
+            mode: .trash,
+            outsideScopeCount: 6
+        )
+        let presentation = RejectRelocationSheetPresentation(preflight: empty, isConfirmed: true)
+        XCTAssertEqual(
+            presentation.summaryText,
+            "0 in current view — 6 more outside filters"
+        )
+        XCTAssertTrue(presentation.showsClearFiltersAffordance)
+    }
+
+    func testSummaryStaysPlainWhenScopeMatchesWholeCatalog() {
+        let presentation = RejectRelocationSheetPresentation(preflight: makeTrashPreflight(), isConfirmed: true)
+        XCTAssertEqual(presentation.summaryText, "2 files · 0 sidecars · 200 bytes")
+        XCTAssertFalse(presentation.showsClearFiltersAffordance)
+    }
+
+    func testSummaryStaysPlainWhenNothingMovableAndNothingOutsideScopeEither() {
+        let empty = RejectRelocationPreflight(
+            assetIDs: [],
+            originalURLs: [],
+            plans: [],
+            sidecarCount: 0,
+            totalByteCount: 0,
+            unavailableCount: 0,
+            alreadyInDestinationCount: 0,
+            destinationFolder: RejectRelocationPreflight.trashDisplayFolder,
+            mode: .trash,
+            outsideScopeCount: 0
+        )
+        let presentation = RejectRelocationSheetPresentation(preflight: empty, isConfirmed: true)
+        XCTAssertEqual(presentation.summaryText, "0 files · 0 sidecars · Zero KB")
+        XCTAssertFalse(presentation.showsClearFiltersAffordance)
+    }
 }

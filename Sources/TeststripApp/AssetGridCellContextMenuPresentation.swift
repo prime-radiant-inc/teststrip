@@ -26,4 +26,11 @@ public enum AssetGridCellContextMenuPresentation {
 
     /// The Label submenu's items: one per `ColorLabel` plus "Clear Label".
     public static let labelMenuTitles: [String] = ColorLabel.allCases.map(\.rawValue.capitalized) + ["Clear Label"]
+
+    /// The top-level items in the grid cell's context menu, in order.
+    /// "Open in Loupe" (persona-4 Gloria: double-click opens the loupe but
+    /// has no discoverable affordance — a mouse-only user found no button
+    /// and no "Open" in this menu) leads the menu, matching how every other
+    /// Mac photo app's context menu opens with a way to view the item.
+    public static let topLevelMenuTitles: [String] = ["Open in Loupe", "Cull These", "Rate", "Flag", "Label"]
 }

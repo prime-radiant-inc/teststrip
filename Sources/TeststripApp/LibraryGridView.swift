@@ -1349,6 +1349,7 @@ struct LibraryGridView: View {
                         .foregroundStyle(.secondary)
                 }
                 Slider(value: $exportSettings.jpegQuality, in: 0...1)
+                    .accessibilityLabel("Quality")
             }
             .disabled(exportSettings.format == .png)
             .opacity(exportSettings.format == .png ? 0.4 : 1)
@@ -1362,10 +1363,19 @@ struct LibraryGridView: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 90)
                     .multilineTextAlignment(.trailing)
+                    .accessibilityLabel("Long edge")
             }
 
             Toggle("Include EXIF/IPTC metadata", isOn: $exportSettings.includeSourceMetadata)
                 .font(.caption)
+
+            // Collision policy note (persona-4 Gloria: re-exporting into the
+            // same folder silently suffixed -2/-3 with no warning). Full
+            // overwrite-prompt UX is a Jesse question (see report); this is
+            // the honesty-principle minimum — state the policy up front.
+            Text("Re-exporting into the same folder appends -2, -3, … rather than overwriting.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -2329,7 +2339,12 @@ struct LibraryGridView: View {
                     .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
                         selectAssetFromGrid(assetID)
                     }
+                    .help("Double-click to open in Loupe")
                     .contextMenu {
+                        Button("Open in Loupe") {
+                            model.openAssetInLoupe(asset.id)
+                        }
+                        Divider()
                         Button("Cull These") {
                             cullSelection(anchoredOn: asset.id)
                         }
@@ -3316,6 +3331,25 @@ struct LibraryGridView: View {
                         .foregroundStyle(.orange)
                 }
             }
+            if presentation.showsClearFiltersAffordance {
+                Button("Clear Filters") { clearFiltersAndRescanRejectRelocation(preflight) }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+            }
+        }
+    }
+
+    // Re-runs whichever preflight mode was showing (trash vs. folder) after
+    // dropping the active filters, so the sheet's file list updates in place
+    // instead of leaving the user to close and reopen it.
+    private func clearFiltersAndRescanRejectRelocation(_ preflight: RejectRelocationPreflight) {
+        do {
+            try model.clearLibraryFilters()
+            rejectRelocationPreflight = preflight.mode == .trash
+                ? try model.rejectRelocationTrashPreflight()
+                : try model.rejectRelocationPreflight(destinationFolder: preflight.destinationFolder)
+        } catch {
+            model.errorMessage = error.localizedDescription
         }
     }
 
@@ -4807,6 +4841,7 @@ struct RejectRelocationSheetPresentation: Equatable {
     var destinationPreviewRows: [String]
     var isMoveEnabled: Bool
     var moveButtonTitle: String
+    var showsClearFiltersAffordance: Bool
 
     // The Trash isn't a user-chosen folder: it gets its own title/button copy
     // (spec Part 1 — primary button is the verb "Move N to Trash") and a
@@ -4824,6 +4859,7 @@ struct RejectRelocationSheetPresentation: Equatable {
         // inline error rather than silently doing nothing (see
         // LibraryGridView.confirmRejectRelocation).
         isMoveEnabled = preflight.hasMovableFiles
+        showsClearFiltersAffordance = !preflight.hasMovableFiles && preflight.outsideScopeCount > 0
         if preflight.mode == .trash {
             titleText = "Move Rejects to Trash"
             moveButtonTitle = "Move \(preflight.moveCount) to Trash"

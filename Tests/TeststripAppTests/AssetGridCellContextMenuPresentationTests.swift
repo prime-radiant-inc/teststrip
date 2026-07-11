@@ -64,4 +64,14 @@ final class AssetGridCellContextMenuPresentationTests: XCTestCase {
             ["Red", "Yellow", "Green", "Blue", "Purple", "Clear Label"]
         )
     }
+
+    // persona-4 Gloria: right-clicked a thumbnail looking for a way to view
+    // it large and found no "Open"/"View Larger" entry — double-click is the
+    // only gesture and it has no menu affordance. "Open in Loupe" must lead.
+    func testTopLevelMenuLeadsWithOpenInLoupe() {
+        XCTAssertEqual(
+            AssetGridCellContextMenuPresentation.topLevelMenuTitles,
+            ["Open in Loupe", "Cull These", "Rate", "Flag", "Label"]
+        )
+    }
 }

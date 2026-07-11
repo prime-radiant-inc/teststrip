@@ -1415,6 +1415,11 @@ public struct RejectRelocationPreflight: Equatable, Identifiable, Sendable {
     public var alreadyInDestinationCount: Int
     public var destinationFolder: URL
     public var mode: RelocationMode
+    // Rejects that exist in the catalog but are excluded by the active
+    // library filter/scope (e.g. a Picks filter hiding all rejects) — the
+    // sheet must disclose these rather than silently reporting "0 files"
+    // (persona-4 Gloria's "THE WALL" scope-disclosure finding).
+    public var outsideScopeCount: Int
 
     // The Trash isn't a single user-chosen folder, so a trash-mode preflight
     // carries this placeholder purely for display (title text, sheet id)
@@ -1430,7 +1435,8 @@ public struct RejectRelocationPreflight: Equatable, Identifiable, Sendable {
         unavailableCount: Int,
         alreadyInDestinationCount: Int,
         destinationFolder: URL,
-        mode: RelocationMode? = nil
+        mode: RelocationMode? = nil,
+        outsideScopeCount: Int = 0
     ) {
         self.assetIDs = assetIDs
         self.originalURLs = originalURLs
@@ -1441,6 +1447,7 @@ public struct RejectRelocationPreflight: Equatable, Identifiable, Sendable {
         self.alreadyInDestinationCount = alreadyInDestinationCount
         self.destinationFolder = destinationFolder
         self.mode = mode ?? .folder(destinationFolder)
+        self.outsideScopeCount = outsideScopeCount
     }
 
     public var moveCount: Int { plans.count }
@@ -1452,6 +1459,12 @@ public struct RejectRelocationPreflight: Equatable, Identifiable, Sendable {
     }
 
     public var summaryText: String {
+        // Nothing in the current view, but rejects exist elsewhere in the
+        // catalog: say so explicitly rather than reading as "there are no
+        // rejects" (persona-4 Gloria's "but I have rejects?!" moment).
+        if moveCount == 0 && outsideScopeCount > 0 {
+            return "0 in current view — \(outsideScopeCount) more outside filters"
+        }
         let sidecarText = "\(sidecarCount) \(sidecarCount == 1 ? "sidecar" : "sidecars")"
         let sizeText = ByteCountFormatter.string(fromByteCount: totalByteCount, countStyle: .file)
         return "\(moveCount) \(moveCount == 1 ? "file" : "files") · \(sidecarText) · \(sizeText)"
@@ -10316,7 +10329,8 @@ public final class AppModel {
             totalByteCount: scope.totalByteCount,
             unavailableCount: scope.unavailableCount,
             alreadyInDestinationCount: scope.alreadyInDestinationCount,
-            destinationFolder: destinationFolder
+            destinationFolder: destinationFolder,
+            outsideScopeCount: scope.outsideScopeCount
         )
     }
 
@@ -10337,7 +10351,8 @@ public final class AppModel {
             unavailableCount: scope.unavailableCount,
             alreadyInDestinationCount: 0,
             destinationFolder: RejectRelocationPreflight.trashDisplayFolder,
-            mode: .trash
+            mode: .trash,
+            outsideScopeCount: scope.outsideScopeCount
         )
     }
 
@@ -10348,6 +10363,7 @@ public final class AppModel {
         var totalByteCount: Int64 = 0
         var unavailableCount = 0
         var alreadyInDestinationCount = 0
+        var outsideScopeCount = 0
     }
 
     /// Counts the rejects in the current scope that can be moved: on-disk
@@ -10363,6 +10379,10 @@ public final class AppModel {
             ids: scopeIDs,
             matching: SetQuery(predicates: [.flag(.reject)])
         )
+        // Rejects that exist catalog-wide but fall outside the active
+        // filter/scope — the sheet discloses this count instead of reading
+        // as "there are no rejects" when a filter like Picks hides them all.
+        let allRejectCount = try catalog.repository.assetCount(matching: SetQuery(predicates: [.flag(.reject)]))
         let sidecarStore = XMPSidecarStore()
         let destinationRootPath = destinationFolder?.standardizedFileURL.path
         var scope = RejectRelocationScope()
@@ -10385,6 +10405,7 @@ public final class AppModel {
                 scope.totalByteCount += Self.fileByteCount(at: sidecarURL)
             }
         }
+        scope.outsideScopeCount = max(0, allRejectCount - rejectIDs.count)
         return scope
     }
 
