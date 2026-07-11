@@ -69,6 +69,20 @@ No seeding needed beyond `--smoke`. Confirmed against a seeded catalog
   xmpPending, xmpConflict, needsKeywords, needsEvaluation, likelyIssues,
   providerFailures — all covered by the 8 grouped rows).
 
+7. **⌘F focus (persona-3 item 2).** From the Cull workspace, press ⌘F.
+   Assert the app switches to Library (⌘I-style route: `AppModel
+   .requestFocusSearch` calls `selectWorkspace(.library)` before bumping
+   `focusSearchRequestToken`) and the query text field gains keyboard
+   focus (`ax_drive.sh find --role AXTextField --contains "Search photos"`
+   reports it as the focused element). Type immediately without clicking;
+   assert the typed text lands in the field.
+8. **Cycle Filter gating.** In Library, open the Culling menu and confirm
+   "Cycle Filter (S)" is disabled/grayed (`CullingKeyCaptureGate.isActive`
+   requires workspace `.cull` and a non-grid sub-view — Library is neither,
+   so the item is correctly inert there, not a bug). Switch to Cull ▸
+   Loupe and confirm the same item is enabled and pressing `s` cycles the
+   filter scope.
+
 ## Cleanup
 ```bash
 ./script/reset_isolated_test_data.sh --delete

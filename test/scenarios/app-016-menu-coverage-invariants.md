@@ -46,6 +46,16 @@ None (read-only test run).
 - The test enumerates presentation constants against enums, so it catches
   *missing* coverage, not *inert* menu items — pair with app-004/app-012's
   live routing checks; neither substitutes for the other.
+- Culling menu items no longer carry a real `.keyboardShortcut` (removed to
+  fix a double-fire bug — see `menuKeyboardShortcut` in `main.swift`), so
+  the key is advertised as a title suffix instead: `Pick (P)`, `1 Star (1)`,
+  `Promote Frame & Reject Siblings (⏎)`, etc., built by
+  `CullingCommandMenuItem.menuDisplayTitle` (`AppModel.swift`) from the same
+  `CullingShortcutKey.displayText` the `?` overlay uses. Covered by
+  `testCullingMenuItemsAdvertiseTheirKeyInTheTitle`. If a live menu walk
+  (app-012) sees a Culling item with no `(key)` suffix, that's a
+  regression, not a design choice — every non-monitor-only item must have
+  one.
 - Known gap (inventory): Run Autopilot, Scan for Faces, Evaluate Photo/Scope
   are NOT enumerated in `AppMenuCoveragePresentation` — they're rename-
   fragile. If a run of app-012 finds one missing from the live menu, this
