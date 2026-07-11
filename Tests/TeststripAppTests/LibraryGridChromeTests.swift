@@ -82,6 +82,50 @@ final class LibraryGridChromeTests: XCTestCase {
         )
     }
 
+    // The two-stage Esc is only observable if committed filter state
+    // survives edits to the field: the field binds `librarySearchDraft`,
+    // while chips/banner derive from the committed `librarySearchText`.
+    func testTypingInQueryFieldDraftLeavesCommittedFilterChipsVisible() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        model.librarySearchText = "sunset"
+        XCTAssertEqual(model.librarySearchDraft, "sunset")
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Search: sunset"])
+
+        // Typing edits the draft only; committed filters (and their chips)
+        // must not collapse mid-keystroke.
+        model.librarySearchDraft = "sunset gold"
+        XCTAssertEqual(model.librarySearchText, "sunset")
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Search: sunset"])
+    }
+
+    func testEscapeStageOneClearsDraftOnlyThenStageTwoClearsFilters() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        model.librarySearchText = "sunset"
+
+        // Esc #1: text present in the field — clear the draft only.
+        XCTAssertEqual(
+            LibraryGridChromePolicy.queryFieldEscapeAction(fieldText: model.librarySearchDraft),
+            .clearField
+        )
+        model.librarySearchDraft = ""
+        XCTAssertEqual(model.librarySearchText, "sunset")
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Search: sunset"])
+
+        // Esc #2: field already empty — now clear the active filters.
+        XCTAssertEqual(
+            LibraryGridChromePolicy.queryFieldEscapeAction(fieldText: model.librarySearchDraft),
+            .clearFilters
+        )
+    }
+
+    func testProgrammaticSearchTextChangesResyncTheQueryFieldDraft() {
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [])
+        model.librarySearchText = "person:Ada"
+        XCTAssertEqual(model.librarySearchDraft, "person:Ada")
+        model.librarySearchText = ""
+        XCTAssertEqual(model.librarySearchDraft, "")
+    }
+
     func testWindowSubtitleNamesTheActiveLibrarySubView() {
         XCTAssertEqual(LibraryGridChromePolicy.windowSubtitle(for: .grid), "Grid")
         XCTAssertEqual(LibraryGridChromePolicy.windowSubtitle(for: .timeline), "Timeline")

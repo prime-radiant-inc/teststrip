@@ -597,8 +597,8 @@ struct LibraryGridView: View {
         HStack(spacing: 8) {
             addFilterMenu
             TextField("Search photos, people, places, or rating:3 camera:… ", text: Binding(
-                get: { model.librarySearchText },
-                set: { model.librarySearchText = $0 }
+                get: { model.librarySearchDraft },
+                set: { model.librarySearchDraft = $0 }
             ))
             .textFieldStyle(.plain)
             .focused($isQueryFieldFocused)
@@ -644,16 +644,18 @@ struct LibraryGridView: View {
     }
 
     private func handleQueryFieldEscape() {
-        switch LibraryGridChromePolicy.queryFieldEscapeAction(fieldText: model.librarySearchText) {
+        switch LibraryGridChromePolicy.queryFieldEscapeAction(fieldText: model.librarySearchDraft) {
         case .clearField:
-            model.librarySearchText = ""
+            // Draft only: the committed search (and its chips) must survive
+            // the first Esc so the second-stage "clear filters" is visible.
+            model.librarySearchDraft = ""
         case .clearFilters:
             clearLibraryFilters()
         }
     }
 
     private func submitQueryTokenField() {
-        LibraryQueryToken.parse(model.librarySearchText, applyingTo: model)
+        LibraryQueryToken.parse(model.librarySearchDraft, applyingTo: model)
         applyLibraryFilters()
         // Focus should hold the search field only while actively being
         // edited; a submitted query commits its chip(s) and later keystrokes

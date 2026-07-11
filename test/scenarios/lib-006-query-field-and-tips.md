@@ -117,3 +117,15 @@ become a plain-text chip. Esc semantics added: Esc clears the field, Esc
 with an empty field clears all filters; documented in the tips popover and
 the field's help text. Unit-tested via `LibraryGridChromePolicy
 .queryFieldEscapeAction`; live AX keystroke verification pending VM.
+
+## Fix notes (2026-07-11, Esc staging observable)
+PENDING-VM: live VM driving showed the two-stage Esc was unobservable — the
+field bound `librarySearchText` directly, so typing mutated the committed
+filter chips and Esc #1 wiped the committed search (chips collapsed with
+the field). The field now edits `AppModel.librarySearchDraft`; committed
+filter state stays in `librarySearchText` (re-synced to the draft on
+programmatic changes via didSet). Esc #1 clears the draft only — chips
+stay visible — and Esc #2 (empty field) clears the active filters.
+Unit-tested in `LibraryGridChromeTests`
+(`testTypingInQueryFieldDraftLeavesCommittedFilterChipsVisible`,
+`testEscapeStageOneClearsDraftOnlyThenStageTwoClearsFilters`).

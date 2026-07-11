@@ -1416,6 +1416,36 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try repository.pendingGeocodeItems(limit: 10, maximumAttemptCount: 5).count, 1)
     }
 
+    func testReverseGeocodeBatchRecordsFailureWhenGeocoderHangsPastTimeout() throws {
+        let root = try TestDirectories.makeTemporaryDirectory(named: "worker-reverse-geocode-hang")
+        let database = try CatalogDatabase.open(at: root.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        try repository.upsert(locatedAsset(id: "x", latitude: 10.0, longitude: 10.0))
+        _ = try repository.enqueueMissingGeocodeCoordinates(limit: 10)
+        // A CLGeocoder lookup that never returns: the bounded wait must turn
+        // the hang into a recorded per-item failure so attempt_count advances,
+        // instead of blocking until the supervisor kills the worker with the
+        // queue row still at attempt_count=0 (perpetual redispatch).
+        let geocoder = CLGeocoderReverseGeocoder(timeout: 0.05) { _, _ in
+            try await Task.sleep(nanoseconds: 60_000_000_000)
+            return nil
+        }
+        let previewCache = PreviewCache(root: root.appendingPathComponent("previews", isDirectory: true))
+        let executor = WorkerCommandExecutor(
+            repository: repository, previewCache: previewCache,
+            reverseGeocoder: geocoder, reverseGeocodeRequestInterval: 0
+        )
+
+        _ = try executor.execute(.reverseGeocodeBatch(limit: 10))
+
+        XCTAssertNil(try repository.placeName(coordinateKey: GeocodeCoordinateKey.key(latitude: 10.0, longitude: 10.0)))
+        // attempt_count advanced past 0, so the row no longer redispatches forever…
+        XCTAssertEqual(try repository.pendingGeocodeItems(limit: 10, maximumAttemptCount: 1).count, 0)
+        // …but stays eligible for the existing bounded-retry/backoff logic.
+        XCTAssertEqual(try repository.pendingGeocodeItems(limit: 10, maximumAttemptCount: 5).count, 1)
+    }
+
     func testBackfillCoordinatesReReadsGPSFromOnlineOriginal() throws {
         let root = try TestDirectories.makeTemporaryDirectory(named: "worker-backfill-coordinates")
         let source = root.appendingPathComponent("geo.jpg")

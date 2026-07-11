@@ -142,3 +142,18 @@ or live driving was run. Needs a human-present re-run, on a network-connected
 machine, with real GPS-tagged sample photos, and needs the actual
 geocode-trigger UI/timing confirmed against the running app before the card
 can be trusted as written.
+
+## Fix notes (2026-07-11, hung-lookup timeout)
+A live VM run showed a hung `CLGeocoder` lookup blocked
+`CLGeocoderReverseGeocoder`'s untimed `semaphore.wait()` until the
+supervisor's 120s command timeout killed the worker — so
+`recordGeocodeFailure` never ran and the row stayed at `attempt_count=0` /
+`last_attempted_at NULL`, redispatched once per launch/import forever. The
+bridge's wait is now bounded at 30s
+(`CLGeocoderReverseGeocoder.defaultTimeout`); a timeout throws through the
+existing per-item failure path, so `attempt_count`/`last_attempted_at`
+advance and the retry cap/backoff apply. When asserting against
+`geocode_queue` after a hang, expect `attempt_count >= 1` and a
+`last_error` containing "timed out", not a row frozen at 0 attempts.
+Unit-tested in `ReverseGeocoderTests` and `WorkerCommandExecutorTests
+.testReverseGeocodeBatchRecordsFailureWhenGeocoderHangsPastTimeout`.
