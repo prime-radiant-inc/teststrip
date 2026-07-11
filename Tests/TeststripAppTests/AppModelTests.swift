@@ -9070,6 +9070,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.suggestedManualSetName, "2 Selected Photos")
     }
 
+    // persona-2 item 2: File ▸ New Set from Selection… (and the Saved Sets
+    // sidebar "+") bump this token the same way Move Rejects… does, so
+    // LibraryGridView's onChange can open the existing manual-set popover
+    // without FileCommands needing direct access to that view's @State.
+    func testRequestNewSetFromSelectionBumpsToken() throws {
+        let (model, _, _) = try makeModelWithCatalogAsset(named: "new-set-from-selection-token")
+
+        XCTAssertEqual(model.newSetFromSelectionRequestToken, 0)
+
+        model.requestNewSetFromSelection()
+
+        XCTAssertEqual(model.newSetFromSelectionRequestToken, 1)
+    }
+
     func testBeginningCullingSessionUsesSelectedAssetSetAsInput() throws {
         let directory = try makeTemporaryDirectory(named: "culling-session-selected-set")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

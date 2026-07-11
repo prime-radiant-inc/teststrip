@@ -2179,6 +2179,15 @@ public final class AppModel {
         moveRejectsRequestToken += 1
     }
 
+    // Bumped by File ▸ New Set from Selection… and the Saved Sets sidebar
+    // "+" (persona-2 item 2: set creation had no menu/sidebar discovery
+    // path, only the result-header "Save ▾" control). Both reuse the same
+    // manual-set save popover LibraryGridView's own Save ▾ control opens.
+    public private(set) var newSetFromSelectionRequestToken = 0
+    public func requestNewSetFromSelection() {
+        newSetFromSelectionRequestToken += 1
+    }
+
     public private(set) var moveRejectsToTrashRequestToken = 0
     public func requestMoveRejectsToTrash() {
         moveRejectsToTrashRequestToken += 1

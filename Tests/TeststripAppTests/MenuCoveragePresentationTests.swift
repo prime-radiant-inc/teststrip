@@ -69,6 +69,13 @@ final class MenuCoveragePresentationTests: XCTestCase {
         XCTAssertEqual(AppMenuCoveragePresentation.moveRejectsToTrashActionID, "Move Rejects to Trash…")
     }
 
+    // persona-2 item 2: File ▸ New Set from Selection… is the only File/
+    // sidebar-menu path to discover set creation; it reuses the manual-set
+    // save flow behind the same request-token pattern as Move Rejects….
+    func testFileMenuCoversNewSetFromSelectionAction() {
+        XCTAssertEqual(AppMenuCoveragePresentation.newSetFromSelectionActionID, "New Set from Selection…")
+    }
+
     // Support ▸ Check for Updates… drives the Sparkle updater.
     func testSupportMenuCoversCheckForUpdatesAction() {
         XCTAssertEqual(AppMenuCoveragePresentation.checkForUpdatesActionID, "Check for Updates…")

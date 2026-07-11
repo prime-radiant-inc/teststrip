@@ -129,6 +129,12 @@ enum AppMenuCoveragePresentation {
     static let exportActionID = "Export…"
     static let fileMenuActionIDs: [String] = [importFolderActionID, importFromCardActionID, exportActionID]
 
+    // File ▸ New Set from Selection… (persona-2 item 2): the only prior path
+    // to save-as-set was the result-header "Save ▾" control, undiscoverable
+    // without an existing selection already visible. Reuses the manual-set
+    // save popover via the same request-token pattern as Move Rejects….
+    static let newSetFromSelectionActionID = "New Set from Selection…"
+
     // Culling ▸ Move Rejects… (spec §6), reusing the same beginRejectRelocation
     // path Task 20's end-of-set state already calls.
     static let moveRejectsActionID = "Move Rejects…"
@@ -239,6 +245,13 @@ private struct FileCommands: Commands {
                 model.requestExport()
             }
             .disabled(model.isImporting || model.assets.isEmpty || model.isExporting)
+
+            Divider()
+
+            Button(AppMenuCoveragePresentation.newSetFromSelectionActionID) {
+                model.requestNewSetFromSelection()
+            }
+            .disabled(!model.canSaveSelectedAssetAsManualSet)
         }
     }
 }

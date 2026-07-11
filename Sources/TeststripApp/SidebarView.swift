@@ -13,17 +13,30 @@ struct SidebarView: View {
     @State private var assetSetSnapshotStarred = false
     @State private var deletingAssetSetID: AssetSetID?
     @State private var deletingAssetSetName = ""
+    @State private var isShowingSavedSetsNoSelectionHint = false
+
+    // Saved Sets is the only sidebar section with its own creation
+    // affordance (persona-2 item 2): saving a set previously required
+    // already having a selection and using the result-header "Save ▾"
+    // control, with no menu or sidebar path to discover it.
+    private static let savedSetsSectionTitle = "Saved Sets"
 
     var body: some View {
         List {
             ForEach(model.sidebarSections) { section in
-                Section(section.title) {
+                Section {
                     ForEach(section.rows) { row in
                         sidebarRowContent(row)
                             .contextMenu {
                                 sidebarContextMenu(for: row)
                             }
                             .liveMockupPlaceholder(row.liveMockupPlaceholder)
+                    }
+                } header: {
+                    if section.title == Self.savedSetsSectionTitle {
+                        savedSetsSectionHeader(title: section.title)
+                    } else {
+                        Text(section.title)
                     }
                 }
             }
@@ -67,6 +80,38 @@ struct SidebarView: View {
             }
         } message: {
             Text(assetSetDeleteMessage)
+        }
+    }
+
+    private func savedSetsSectionHeader(title: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Button {
+                addSavedSetTapped()
+            } label: {
+                Image(systemName: "plus.circle")
+            }
+            .buttonStyle(.plain)
+            .help("New Set from Selection…")
+            .accessibilityLabel("New Set from Selection")
+            .popover(isPresented: $isShowingSavedSetsNoSelectionHint) {
+                VStack(spacing: 12) {
+                    Text("Select photos, then save them as a set")
+                    Button("OK") {
+                        isShowingSavedSetsNoSelectionHint = false
+                    }
+                }
+                .padding()
+            }
+        }
+    }
+
+    private func addSavedSetTapped() {
+        if model.canSaveSelectedAssetAsManualSet {
+            model.requestNewSetFromSelection()
+        } else {
+            isShowingSavedSetsNoSelectionHint = true
         }
     }
 

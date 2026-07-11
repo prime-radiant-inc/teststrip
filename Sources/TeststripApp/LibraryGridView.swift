@@ -140,6 +140,9 @@ struct LibraryGridView: View {
         .onChange(of: model.moveRejectsRequestToken) { _, _ in
             beginRejectRelocation()
         }
+        .onChange(of: model.newSetFromSelectionRequestToken) { _, _ in
+            showManualSetPopover()
+        }
         .onChange(of: model.moveRejectsToTrashRequestToken) { _, _ in
             beginRejectRelocationToTrash()
         }
@@ -837,10 +840,17 @@ struct LibraryGridView: View {
         case .frozenSnapshot:
             showSaveSnapshotSetPopover()
         case .manualSet:
-            manualSetName = model.suggestedManualSetName
-            manualSetStarred = false
-            isSavingManualSet = true
+            showManualSetPopover()
         }
+    }
+
+    // Shared by the result-header "Save ▾" control, File ▸ New Set from
+    // Selection…, and the Saved Sets sidebar "+" — all three open the same
+    // manual-set save popover.
+    private func showManualSetPopover() {
+        manualSetName = model.suggestedManualSetName
+        manualSetStarred = false
+        isSavingManualSet = true
     }
 
     /// spec §2b: a compact icon menu (`DesignGlyph.sort`, AXHelp "Sort")
