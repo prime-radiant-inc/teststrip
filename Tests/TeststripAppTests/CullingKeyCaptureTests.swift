@@ -182,6 +182,43 @@ final class CullingKeyCaptureTests: XCTestCase {
         XCTAssertFalse(CullingKeyCaptureGate.isActive(workspace: .library, selectedView: .libraryLoupe))
     }
 
+    func testCullingShortcutMapsPageUpAndPageDownKeyEvents() throws {
+        let pageUp = try makeKeyEvent(characters: "", charactersIgnoringModifiers: "", keyCode: 116)
+        let pageDown = try makeKeyEvent(characters: "", charactersIgnoringModifiers: "", keyCode: 121)
+
+        XCTAssertEqual(CullingShortcut(event: pageUp), .keyMapPageUp)
+        XCTAssertEqual(CullingShortcut(event: pageDown), .keyMapPageDown)
+    }
+
+    // Persona-3 item 1: Esc only exits the A/B-compare modal trap in
+    // .compare/.abCompare — .loupe keeps its own (untouched) Escape path via
+    // GridKeyCaptureView, so this view must let Esc pass through there.
+    @MainActor
+    func testEscapeExitsCompareLikeModeAsExitCullSubViewShortcut() throws {
+        let view = CullingKeyCaptureNSView()
+        view.isCompareLikeMode = true
+        var shortcuts: [CullingShortcut] = []
+        view.onShortcut = { shortcuts.append($0) }
+
+        let event = try makeKeyEvent(characters: "\u{1B}", charactersIgnoringModifiers: "\u{1B}", keyCode: 53, windowNumber: 42)
+
+        XCTAssertNil(view.handleLocalKeyDown(event, targetWindowNumber: 42, targetWindowIsKey: true, firstResponder: nil))
+        XCTAssertEqual(shortcuts, [.exitCullSubView])
+    }
+
+    @MainActor
+    func testEscapePassesThroughWhenNotCompareLikeMode() throws {
+        let view = CullingKeyCaptureNSView()
+        view.isCompareLikeMode = false
+        var shortcuts: [CullingShortcut] = []
+        view.onShortcut = { shortcuts.append($0) }
+
+        let event = try makeKeyEvent(characters: "\u{1B}", charactersIgnoringModifiers: "\u{1B}", keyCode: 53, windowNumber: 42)
+
+        XCTAssertIdentical(view.handleLocalKeyDown(event, targetWindowNumber: 42, targetWindowIsKey: true, firstResponder: nil), event)
+        XCTAssertEqual(shortcuts, [])
+    }
+
     func testCullingKeyCaptureGateActiveInCullSubViewsExceptGrid() {
         XCTAssertTrue(CullingKeyCaptureGate.isActive(workspace: .cull, selectedView: .loupe))
         XCTAssertTrue(CullingKeyCaptureGate.isActive(workspace: .cull, selectedView: .compare))

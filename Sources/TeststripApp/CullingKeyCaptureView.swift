@@ -17,17 +17,23 @@ enum CullingKeyCaptureGate {
 struct CullingKeyCaptureView: NSViewRepresentable {
     var focusRequest: Int
     var isActive: Bool = true
+    // Esc only exits .compare/.abCompare (item 1's modal-trap fix); it's left
+    // alone in .loupe, which already has its own (differently-scoped)
+    // Escape-to-library-grid behavior via GridKeyCaptureView.
+    var isCompareLikeMode: Bool = false
     var onShortcut: (CullingShortcut) -> Void
 
     func makeNSView(context: Context) -> CullingKeyCaptureNSView {
         let view = CullingKeyCaptureNSView()
         view.isActive = isActive
+        view.isCompareLikeMode = isCompareLikeMode
         view.onShortcut = onShortcut
         return view
     }
 
     func updateNSView(_ nsView: CullingKeyCaptureNSView, context: Context) {
         nsView.isActive = isActive
+        nsView.isCompareLikeMode = isCompareLikeMode
         nsView.onShortcut = onShortcut
         guard nsView.lastFocusRequest != focusRequest else { return }
         nsView.lastFocusRequest = focusRequest
@@ -41,6 +47,7 @@ struct CullingKeyCaptureView: NSViewRepresentable {
 final class CullingKeyCaptureNSView: NSView {
     var lastFocusRequest = 0
     var isActive = true
+    var isCompareLikeMode = false
     var onShortcut: ((CullingShortcut) -> Void)?
     private var localKeyMonitor: Any?
 
@@ -73,8 +80,18 @@ final class CullingKeyCaptureNSView: NSView {
     ) -> NSEvent? {
         guard isActive,
               eventTargetsWindow(event, targetWindowNumber: targetWindowNumber, targetWindowIsKey: targetWindowIsKey),
-              !firstResponder.isTextEditor,
-              let shortcut = CullingShortcut(event: event) else {
+              !firstResponder.isTextEditor else {
+            return event
+        }
+        // Esc is a modal-trap escape hatch scoped to .compare/.abCompare
+        // (item 1); .loupe keeps its existing Escape-to-library-grid path via
+        // GridKeyCaptureView, so this view must not swallow Esc there.
+        if event.keyCode == MacKeyCode.escape {
+            guard isCompareLikeMode else { return event }
+            onShortcut?(.exitCullSubView)
+            return nil
+        }
+        guard let shortcut = CullingShortcut(event: event) else {
             return event
         }
         onShortcut?(shortcut)
@@ -158,6 +175,10 @@ extension CullingShortcut {
             self = .nextPhoto
         case MacKeyCode.returnKey, MacKeyCode.keypadEnter:
             self = .promoteAndRejectSiblings
+        case MacKeyCode.pageUp:
+            self = .keyMapPageUp
+        case MacKeyCode.pageDown:
+            self = .keyMapPageDown
         default:
             guard
                 let character = event.charactersIgnoringModifiers,
@@ -172,8 +193,11 @@ extension CullingShortcut {
 
 private enum MacKeyCode {
     static let returnKey: UInt16 = 36
+    static let escape: UInt16 = 53
     static let space: UInt16 = 49
     static let keypadEnter: UInt16 = 76
+    static let pageUp: UInt16 = 116
+    static let pageDown: UInt16 = 121
     static let leftArrow: UInt16 = 123
     static let rightArrow: UInt16 = 124
     static let downArrow: UInt16 = 125

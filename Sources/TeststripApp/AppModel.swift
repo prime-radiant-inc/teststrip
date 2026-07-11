@@ -211,6 +211,18 @@ public enum CullingShortcut: Equatable, Sendable {
     case showCullGrid
     case showCompare
     case showABCompare
+    /// Esc in `.compare`/`.abCompare` (item 1's modal-trap fix): decoded
+    /// directly by CullingKeyCaptureNSView, mode-gated there rather than
+    /// through `init(key:)` — see that view for why `.loupe` is excluded.
+    case exitCullSubView
+    /// A/B Compare's keyboard verdicts (item 2), monitor-only like the
+    /// ⌥←/⌥→ stack-navigation alternates.
+    case keepAOverB
+    case keepBOverA
+    /// PgUp/PgDn while the ? key-map overlay is visible (item 3); a no-op
+    /// otherwise. Monitor-only — decoded directly from the raw keycode.
+    case keyMapPageUp
+    case keyMapPageDown
 
     public init?(key: CullingShortcutKey) {
         switch key {
@@ -258,6 +270,8 @@ public enum CullingShortcut: Equatable, Sendable {
             case "g": self = .showCullGrid
             case "c": self = .showCompare
             case "b": self = .showABCompare
+            case ",": self = .keepAOverB
+            case ".": self = .keepBOverA
             default: return nil
             }
         }
@@ -517,8 +531,40 @@ public enum CullingCommandMenuPresentation {
         ]),
         CullingCommandMenuSection(title: "Filter", items: [
             CullingCommandMenuItem(title: "Cycle Filter", shortcut: .cycleScope, key: .character("s"))
+        ]),
+        CullingCommandMenuSection(title: "Compare", items: [
+            CullingCommandMenuItem(title: "Keep A · Reject B", shortcut: .keepAOverB, key: .character(",")),
+            CullingCommandMenuItem(title: "Keep B · Reject A", shortcut: .keepBOverA, key: .character("."))
         ])
     ]
+}
+
+/// Direction of a keyboard scroll through the ? key-map overlay (item 3).
+public enum KeyMapOverlayScrollDirection: Equatable, Sendable {
+    case up
+    case down
+    case pageUp
+    case pageDown
+}
+
+/// Pure index arithmetic for scrolling the ? overlay by section, clamped at
+/// its edges — kept free of `AppModel` state so it's directly testable.
+public enum KeyMapOverlayScrolling {
+    public static func nextIndex(
+        current: Int,
+        direction: KeyMapOverlayScrollDirection,
+        sectionCount: Int
+    ) -> Int {
+        guard sectionCount > 0 else { return 0 }
+        let step: Int
+        switch direction {
+        case .up: step = -1
+        case .down: step = 1
+        case .pageUp: step = -3
+        case .pageDown: step = 3
+        }
+        return min(max(current + step, 0), sectionCount - 1)
+    }
 }
 
 private enum CullingStackNavigationDirection {
@@ -1700,12 +1746,24 @@ public struct CullingMetadataDecisionFeedback: Equatable, Sendable {
     public var filename: String
     public var command: CullingCommand
     public var decisionText: String
+    /// True for feedback that didn't write any metadata (item 4's
+    /// single-frame-stack notice) — the toast shows `decisionText` verbatim,
+    /// skipping the ✓/✕/★ symbol and "— ⌘Z undoes" suffix that would
+    /// misleadingly imply something changed.
+    public var isInformational: Bool
 
-    public init(assetID: AssetID, filename: String, command: CullingCommand, decisionText: String) {
+    public init(
+        assetID: AssetID,
+        filename: String,
+        command: CullingCommand,
+        decisionText: String,
+        isInformational: Bool = false
+    ) {
         self.assetID = assetID
         self.filename = filename
         self.command = command
         self.decisionText = decisionText
+        self.isInformational = isInformational
     }
 
     /// True when the decision was a rating keystroke (including clear-to-zero),
@@ -1801,7 +1859,16 @@ public final class AppModel {
     public var sidebarSections: [SidebarSection]
     public var selectedView: LibraryViewMode {
         didSet {
-            lastSubView[selectedView.workspace] = selectedView
+            // .compare/.abCompare aren't sticky restore targets (item 1's
+            // ⌘1 root cause): they're transient comparator overlays, not a
+            // "home" sub-view. Without this, re-pressing ⌘1 while already in
+            // Cull workspace but trapped in A/B Compare set
+            // `selectedView = lastSubView[.cull]`, which *was* `.abCompare`
+            // (recorded on the way in) — a silent no-op that read as ⌘1
+            // being dead, when it was actually just restoring the trap.
+            if selectedView != .compare && selectedView != .abCompare {
+                lastSubView[selectedView.workspace] = selectedView
+            }
             updateCompareSetAfterViewChange(from: oldValue)
             persistSessionState()
             if selectedView.workspace != oldValue.workspace {
@@ -1882,6 +1949,12 @@ public final class AppModel {
     public var exifOverlayLevel: ExifOverlayLevel = .off
     // Drives the ? key-map overlay, dismissed by Esc or a repeated ?.
     public var isKeyMapOverlayVisible = false
+    /// Which `CullingCommandMenuPresentation` section the ? overlay is
+    /// scrolled to (item 3): keyboard-driven since the overlay owns
+    /// navigation keys while visible and native NSScrollView keyboard
+    /// scrolling never gets a first responder in this NSViewRepresentable
+    /// overlay stack.
+    public var keyMapOverlayScrollIndex = 0
     /// The subset of frames the loupe/filmstrip/grid navigate through while
     /// culling. `.all` means unfiltered. Cycled with the `s` shortcut.
     public private(set) var cullScope: CullScope = .all
@@ -5438,9 +5511,17 @@ public final class AppModel {
     }
 
     public func promoteCurrentFrameAndRejectSiblings() throws {
-        guard let selectedAssetID,
-              selectedWorkStackAssetIDs?.contains(selectedAssetID) == true
-                || cullingStacks().contains(where: { $0.assetIDs.contains(selectedAssetID) }) else {
+        guard let selectedAssetID else { return }
+        let isInMultiFrameStack = selectedWorkStackAssetIDs?.contains(selectedAssetID) == true
+            || cullingStacks().contains(where: { $0.assetIDs.contains(selectedAssetID) })
+        // Item 4: Return on a frame with no siblings used to silently do
+        // nothing at all — three presses read as the app hanging. Show
+        // decision feedback instead; no metadata write happens (there are no
+        // siblings to reject).
+        guard isInMultiFrameStack else {
+            if let originalAsset = selectedAsset {
+                lastCullingMetadataDecision = Self.singleFrameStackFeedback(asset: originalAsset)
+            }
             return
         }
         let context = try selectedCullingStackDecisionContext()
@@ -5455,6 +5536,16 @@ public final class AppModel {
                 siblingCount: context.stack.assetIDs.count - 1
             )
         }
+    }
+
+    private static func singleFrameStackFeedback(asset: Asset) -> CullingMetadataDecisionFeedback {
+        CullingMetadataDecisionFeedback(
+            assetID: asset.id,
+            filename: asset.originalURL.lastPathComponent,
+            command: .clearFlag,
+            decisionText: "No stack to promote — P picks this frame",
+            isInformational: true
+        )
     }
 
     private static func promoteDecisionFeedback(
@@ -5529,6 +5620,27 @@ public final class AppModel {
     }
 
     public func applyCullingShortcut(_ shortcut: CullingShortcut) throws {
+        // While the ? key-map overlay is visible it owns navigation entirely
+        // (item 3): arrows/PgUp/PgDn scroll the overlay instead of moving the
+        // deck underneath, and every other shortcut is swallowed. Esc/? are
+        // the only ways out.
+        if isKeyMapOverlayVisible {
+            switch shortcut {
+            case .showKeyMap, .exitCullSubView:
+                isKeyMapOverlayVisible = false
+            case .previousStack:
+                scrollKeyMapOverlay(.up)
+            case .nextStack:
+                scrollKeyMapOverlay(.down)
+            case .keyMapPageUp:
+                scrollKeyMapOverlay(.pageUp)
+            case .keyMapPageDown:
+                scrollKeyMapOverlay(.pageDown)
+            default:
+                break
+            }
+            return
+        }
         switch shortcut {
         case .previousPhoto:
             clearCullingMetadataDecisionFeedback()
@@ -5562,6 +5674,7 @@ public final class AppModel {
         case .cycleExifOverlay:
             exifOverlayLevel = exifOverlayLevel.next()
         case .showKeyMap:
+            keyMapOverlayScrollIndex = 0
             isKeyMapOverlayVisible.toggle()
         case .cycleScope:
             cycleCullScope()
@@ -5570,7 +5683,54 @@ public final class AppModel {
         case .showCompare:
             selectedView = .compare
         case .showABCompare:
-            selectedView = .abCompare
+            // "b" toggles (item 1): pressed again from inside .abCompare, it
+            // exits back to .loupe instead of re-entering a no-op.
+            selectedView = selectedView == .abCompare ? .loupe : .abCompare
+        case .exitCullSubView:
+            selectedView = .loupe
+        case .keepAOverB:
+            try keepCurrentABPair(preferPrimary: true)
+        case .keepBOverA:
+            try keepCurrentABPair(preferPrimary: false)
+        case .keyMapPageUp, .keyMapPageDown:
+            break
+        }
+    }
+
+    private func scrollKeyMapOverlay(_ direction: KeyMapOverlayScrollDirection) {
+        keyMapOverlayScrollIndex = KeyMapOverlayScrolling.nextIndex(
+            current: keyMapOverlayScrollIndex,
+            direction: direction,
+            sectionCount: CullingCommandMenuPresentation.sections.count
+        )
+    }
+
+    /// A/B Compare's keyboard verdicts (item 2): recomputes the same
+    /// primary/contender pairing `ABCompareView` renders, from the same
+    /// model state, so the key path and the button path always agree.
+    private func keepCurrentABPair(preferPrimary: Bool) throws {
+        guard selectedView == .abCompare else {
+            throw TeststripError.invalidState("Keep A/Keep B only apply in A/B Compare")
+        }
+        let recommendedAssetID = CullingStackRailPresentation(
+            assets: assets,
+            selectedAssetID: selectedAssetID,
+            evaluationSignalsByAssetID: selectedCullingStackEvaluationSignals(),
+            explicitStackScope: selectedCullingStackScope
+        ).recommendedAssetID
+        let presentation = ABComparePresentation(
+            assets: assets,
+            selectedAssetID: selectedAssetID,
+            recommendedAssetID: recommendedAssetID,
+            contenderOverrideID: abContenderAssetID
+        )
+        guard let primary = presentation.primaryAsset, let contender = presentation.contenderAsset else {
+            throw TeststripError.invalidState("A/B compare needs two loaded frames")
+        }
+        if preferPrimary {
+            try keepABFrame(keeping: primary.id, over: contender.id)
+        } else {
+            try keepABFrame(keeping: contender.id, over: primary.id)
         }
     }
 

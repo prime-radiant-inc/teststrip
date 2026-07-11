@@ -637,6 +637,137 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(try repository.asset(id: assets[3].id).metadata.flag)
     }
 
+    // Persona-3 item 2: `,`/`.` are A/B Compare's keyboard verdicts, wired
+    // through the same monitor path as every other culling shortcut.
+    func testCommaAndPeriodMapToABKeepShortcuts() {
+        XCTAssertEqual(CullingShortcut(key: .character(",")), .keepAOverB)
+        XCTAssertEqual(CullingShortcut(key: .character(".")), .keepBOverA)
+    }
+
+    func testKeepAOverBShortcutKeepsPrimaryAndRejectsContender() throws {
+        let assets = (0..<4).map { makeAsset(id: "ab-key-comma-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(named: "ab-key-comma-group", assets: assets)
+        model.selectedView = .abCompare
+        model.select(assets[0].id)
+
+        try model.applyCullingShortcut(.keepAOverB)
+
+        XCTAssertEqual(try repository.asset(id: assets[0].id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: assets[1].id).metadata.flag, .reject)
+    }
+
+    func testKeepBOverAShortcutKeepsContenderAndRejectsPrimary() throws {
+        let assets = (0..<4).map { makeAsset(id: "ab-key-period-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(named: "ab-key-period-group", assets: assets)
+        model.selectedView = .abCompare
+        model.select(assets[0].id)
+
+        try model.applyCullingShortcut(.keepBOverA)
+
+        XCTAssertEqual(try repository.asset(id: assets[0].id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: assets[1].id).metadata.flag, .pick)
+    }
+
+    func testABKeepShortcutsThrowOutsideABCompare() throws {
+        let assets = (0..<2).map { makeAsset(id: "ab-key-wrong-mode-\($0)", size: Int64($0 + 1)) }
+        let (model, _) = try makeModelWithCatalogAssets(named: "ab-key-wrong-mode-group", assets: assets)
+        model.selectedView = .loupe
+        model.select(assets[0].id)
+
+        XCTAssertThrowsError(try model.applyCullingShortcut(.keepAOverB))
+    }
+
+    // Persona-3 item 1: "b" toggles — pressed again from inside .abCompare it
+    // exits back to .loupe instead of re-entering a no-op.
+    func testShowABCompareShortcutTogglesBackToLoupeWhenAlreadyInABCompare() throws {
+        let model = AppModel.demo()
+        model.selectedView = .abCompare
+
+        try model.applyCullingShortcut(.showABCompare)
+
+        XCTAssertEqual(model.selectedView, .loupe)
+    }
+
+    func testShowABCompareShortcutEntersABCompareFromLoupe() throws {
+        let model = AppModel.demo()
+        model.selectedView = .loupe
+
+        try model.applyCullingShortcut(.showABCompare)
+
+        XCTAssertEqual(model.selectedView, .abCompare)
+    }
+
+    // Esc exits .compare/.abCompare back to .loupe (the modal-trap fix).
+    func testExitCullSubViewShortcutReturnsToLoupeFromCompare() throws {
+        let model = AppModel.demo()
+        model.selectedView = .compare
+
+        try model.applyCullingShortcut(.exitCullSubView)
+
+        XCTAssertEqual(model.selectedView, .loupe)
+    }
+
+    func testExitCullSubViewShortcutReturnsToLoupeFromABCompare() throws {
+        let model = AppModel.demo()
+        model.selectedView = .abCompare
+
+        try model.applyCullingShortcut(.exitCullSubView)
+
+        XCTAssertEqual(model.selectedView, .loupe)
+    }
+
+    // ⌘1's root cause: lastSubView[.cull] was recorded as .abCompare on the
+    // way in, so re-selecting the already-active Cull workspace round-tripped
+    // right back into the trap. .compare/.abCompare must not be sticky.
+    func testReselectingCullWorkspaceEscapesABCompareTrap() throws {
+        let model = AppModel.demo()
+        model.selectedView = .cullGrid
+        model.selectedView = .loupe
+        model.selectedView = .abCompare
+
+        model.selectWorkspace(.cull)
+
+        XCTAssertEqual(model.selectedView, .loupe)
+    }
+
+    // Persona-3 item 3: while the ? overlay is visible it owns navigation —
+    // arrows scroll the overlay's section index; the deck's selection must
+    // not move.
+    func testArrowShortcutsScrollKeyMapOverlayInsteadOfNavigatingWhileVisible() throws {
+        let model = AppModel.demo()
+        model.selectedView = .loupe
+        model.isKeyMapOverlayVisible = true
+        let selectionBefore = model.selectedAssetID
+
+        try model.applyCullingShortcut(.nextStack)
+        XCTAssertEqual(model.keyMapOverlayScrollIndex, 1)
+        XCTAssertEqual(model.selectedAssetID, selectionBefore)
+
+        try model.applyCullingShortcut(.previousStack)
+        XCTAssertEqual(model.keyMapOverlayScrollIndex, 0)
+    }
+
+    func testPickShortcutIsSwallowedWhileKeyMapOverlayVisible() throws {
+        let assets = (0..<2).map { makeAsset(id: "overlay-swallow-\($0)", size: Int64($0 + 1)) }
+        let (model, repository) = try makeModelWithCatalogAssets(named: "overlay-swallow-group", assets: assets)
+        model.selectedView = .loupe
+        model.select(assets[0].id)
+        model.isKeyMapOverlayVisible = true
+
+        try model.applyCullingShortcut(.pick)
+
+        XCTAssertNil(try repository.asset(id: assets[0].id).metadata.flag)
+    }
+
+    func testShowKeyMapDismissesOverlayEvenWhileVisible() throws {
+        let model = AppModel.demo()
+        model.isKeyMapOverlayVisible = true
+
+        try model.applyCullingShortcut(.showKeyMap)
+
+        XCTAssertFalse(model.isKeyMapOverlayVisible)
+    }
+
     func testKeepRecommendedCompareAssetRejectsCurrentCompareAlternatesOnly() throws {
         let assets = (0..<9).map { makeAsset(id: "compare-recommended-action-\($0)", size: Int64($0 + 1)) }
         let (model, repository) = try makeModelWithCatalogAssets(

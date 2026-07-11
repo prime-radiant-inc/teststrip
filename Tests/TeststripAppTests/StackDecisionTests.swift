@@ -146,6 +146,40 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertEqual(feedback.decisionText, "Picked · 1 sibling rejected")
     }
 
+    // Persona-3 item 4: Return on a frame with no siblings at all used to be
+    // a genuine silent no-op (the guard returned before anything fired) —
+    // three presses read as the app hanging. Now it shows decision feedback
+    // and writes nothing.
+    func testPromoteOnSingleFrameShowsNoticeAndWritesNoMetadata() throws {
+        let capturedAt = Date(timeIntervalSince1970: 500)
+        let lonely = makeAsset(
+            id: "lonely-frame",
+            path: "/Photos/Job/lonely-frame.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let farAway = makeAsset(
+            id: "far-away-frame",
+            path: "/Photos/Job/far-away-frame.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(600))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "promote-single-frame",
+            assets: [lonely, farAway]
+        )
+        model.select(lonely.id)
+
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
+        XCTAssertEqual(feedback.assetID, lonely.id)
+        XCTAssertEqual(feedback.decisionText, "No stack to promote — P picks this frame")
+        XCTAssertTrue(feedback.isInformational)
+        XCTAssertNil(try repository.asset(id: lonely.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: farAway.id).metadata.flag)
+        // Stays put — nothing to advance past.
+        XCTAssertEqual(model.selectedAssetID, lonely.id)
+    }
+
     // MARK: - Fixtures (mirrors AppModelTests' private helpers; kept local per file)
 
     private func makeAsset(

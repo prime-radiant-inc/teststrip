@@ -43,6 +43,12 @@ struct CullDecisionToastPresentation: Equatable {
     var text: String
 
     init(feedback: CullingMetadataDecisionFeedback) {
+        if feedback.isInformational {
+            // No metadata changed, so no ✓/✕/★ symbol and no "⌘Z undoes" —
+            // there's nothing to undo (item 4).
+            text = feedback.decisionText
+            return
+        }
         let symbol = Self.symbol(for: feedback.decisionText)
         let lowercasedDecision = feedback.decisionText.prefix(1).lowercased() + feedback.decisionText.dropFirst()
         text = "\(symbol) \(feedback.filename) \(lowercasedDecision) — ⌘Z undoes"

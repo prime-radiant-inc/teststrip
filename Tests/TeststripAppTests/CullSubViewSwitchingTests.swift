@@ -62,4 +62,16 @@ final class CullSubViewSwitchingTests: XCTestCase {
     func testCullGridBelongsToCullWorkspace() {
         XCTAssertEqual(LibraryViewMode.cullGrid.workspace, .cull)
     }
+
+    // Persona-3 item 3: pure index arithmetic for scrolling the ? overlay,
+    // clamped at both edges.
+    func testKeyMapOverlayScrollingClampsAtEdges() {
+        XCTAssertEqual(KeyMapOverlayScrolling.nextIndex(current: 0, direction: .up, sectionCount: 6), 0)
+        XCTAssertEqual(KeyMapOverlayScrolling.nextIndex(current: 5, direction: .down, sectionCount: 6), 5)
+        XCTAssertEqual(KeyMapOverlayScrolling.nextIndex(current: 2, direction: .down, sectionCount: 6), 3)
+        XCTAssertEqual(KeyMapOverlayScrolling.nextIndex(current: 2, direction: .up, sectionCount: 6), 1)
+        XCTAssertEqual(KeyMapOverlayScrolling.nextIndex(current: 1, direction: .pageDown, sectionCount: 6), 4)
+        XCTAssertEqual(KeyMapOverlayScrolling.nextIndex(current: 4, direction: .pageUp, sectionCount: 6), 1)
+        XCTAssertEqual(KeyMapOverlayScrolling.nextIndex(current: 0, direction: .up, sectionCount: 0), 0)
+    }
 }

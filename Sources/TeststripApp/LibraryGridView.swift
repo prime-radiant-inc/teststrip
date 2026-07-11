@@ -194,6 +194,7 @@ struct LibraryGridView: View {
                 // .libraryLoupe), where these shortcuts would write metadata
                 // or navigate behind hidden chrome.
                 isActive: CullingKeyCaptureGate.isActive(workspace: model.selectedWorkspace, selectedView: model.selectedView),
+                isCompareLikeMode: model.selectedView == .compare || model.selectedView == .abCompare,
                 onShortcut: handleCullingShortcut
             )
             .frame(width: 1, height: 1)
@@ -210,8 +211,11 @@ struct LibraryGridView: View {
         }
         .overlay {
             if model.isKeyMapOverlayVisible {
-                KeyMapOverlayView(dismiss: { model.isKeyMapOverlayVisible = false })
-                    .onExitCommand { model.isKeyMapOverlayVisible = false }
+                KeyMapOverlayView(
+                    scrollToSectionIndex: model.keyMapOverlayScrollIndex,
+                    dismiss: { model.isKeyMapOverlayVisible = false }
+                )
+                .onExitCommand { model.isKeyMapOverlayVisible = false }
             }
         }
     }
@@ -8771,6 +8775,9 @@ struct LoupeExifOverlayPresentation: Equatable {
 /// menu also reads) — including monitor-only entries like ⌥←/⌥→ that have no
 /// menu equivalent. View-only; Esc or a repeated `?` dismisses it.
 struct KeyMapOverlayView: View {
+    // Item 3: which section AppModel.keyMapOverlayScrollIndex currently
+    // points at, driven by ↑/↓/PgUp/PgDn while this overlay owns navigation.
+    var scrollToSectionIndex: Int = 0
     var dismiss: () -> Void
 
     var body: some View {
@@ -8789,23 +8796,32 @@ struct KeyMapOverlayView: View {
                 .accessibilityLabel("Dismiss key map")
             }
             .padding(.bottom, 12)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    ForEach(CullingCommandMenuPresentation.sections) { section in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(section.title.uppercased())
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            ForEach(section.items) { item in
-                                HStack {
-                                    Text(item.title)
-                                    Spacer()
-                                    Text(item.key.displayText)
-                                        .font(.caption.monospaced())
-                                        .foregroundStyle(.secondary)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        ForEach(CullingCommandMenuPresentation.sections) { section in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(section.title.uppercased())
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                ForEach(section.items) { item in
+                                    HStack {
+                                        Text(item.title)
+                                        Spacer()
+                                        Text(item.key.displayText)
+                                            .font(.caption.monospaced())
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
                             }
+                            .id(section.id)
                         }
+                    }
+                }
+                .onChange(of: scrollToSectionIndex, initial: true) {
+                    guard CullingCommandMenuPresentation.sections.indices.contains(scrollToSectionIndex) else { return }
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo(CullingCommandMenuPresentation.sections[scrollToSectionIndex].id, anchor: .top)
                     }
                 }
             }

@@ -37,10 +37,26 @@ final class WorkspacePresentationTests: XCTestCase {
         model.selectedView = .timeline
         model.selectWorkspace(.cull)
         XCTAssertEqual(model.selectedView, .loupe)
-        model.selectedView = .compare
+        model.selectedView = .cullGrid
         model.selectWorkspace(.library)
         XCTAssertEqual(model.selectedView, .timeline) // remembered
         model.selectWorkspace(.cull)
-        XCTAssertEqual(model.selectedView, .compare) // remembered
+        XCTAssertEqual(model.selectedView, .cullGrid) // remembered
+    }
+
+    // Persona-3 item 1's ⌘1 root cause: .compare/.abCompare are transient
+    // comparator overlays, not "home" sub-views — they must not become the
+    // sticky restore target, or re-selecting the already-active workspace
+    // (⌘1) silently re-enters the trap instead of escaping it.
+    func testSelectWorkspaceDoesNotRestoreIntoCompareOrABCompare() {
+        let model = AppModel.demo()
+        model.selectedView = .loupe
+        model.selectedView = .compare
+        model.selectWorkspace(.cull)
+        XCTAssertEqual(model.selectedView, .loupe)
+
+        model.selectedView = .abCompare
+        model.selectWorkspace(.cull)
+        XCTAssertEqual(model.selectedView, .loupe)
     }
 }
