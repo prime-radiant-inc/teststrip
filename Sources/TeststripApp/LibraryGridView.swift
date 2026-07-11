@@ -2336,6 +2336,38 @@ struct LibraryGridView: View {
                         Button("Cull These") {
                             cullSelection(anchoredOn: asset.id)
                         }
+                        Divider()
+                        Menu("Rate") {
+                            ForEach(1...5, id: \.self) { rating in
+                                Button("Rate \(rating)") {
+                                    applyGridContextMenuRating(rating, anchoredOn: asset.id)
+                                }
+                            }
+                            Button("Clear Rating") {
+                                applyGridContextMenuRating(0, anchoredOn: asset.id)
+                            }
+                        }
+                        Menu("Flag") {
+                            Button("Pick") {
+                                applyGridContextMenuFlag(.pick, anchoredOn: asset.id)
+                            }
+                            Button("Reject") {
+                                applyGridContextMenuFlag(.reject, anchoredOn: asset.id)
+                            }
+                            Button("Unflag") {
+                                applyGridContextMenuFlag(nil, anchoredOn: asset.id)
+                            }
+                        }
+                        Menu("Label") {
+                            ForEach(ColorLabel.allCases, id: \.self) { label in
+                                Button(label.rawValue.capitalized) {
+                                    applyGridContextMenuLabel(label, anchoredOn: asset.id)
+                                }
+                            }
+                            Button("Clear Label") {
+                                applyGridContextMenuLabel(nil, anchoredOn: asset.id)
+                            }
+                        }
                     }
                     .id(asset.id.rawValue)
                     .task(id: asset.id.rawValue) {
@@ -2911,6 +2943,49 @@ struct LibraryGridView: View {
             model.select(assetID)
         }
         cullCurrentBatchSelection()
+    }
+
+    // Grid cell right-click context menu (persona-2 item 5): star ratings,
+    // Pick/Reject/Unflag, and color labels were previously only reachable
+    // via keyboard shortcuts (0-5/p/x/u, gated to the Cull workspace) or the
+    // hidden Inspector (⌘I) — a mouse-only user had no path to them from the
+    // Library grid. Anchors the same way "Cull These" does: applies to the
+    // whole batch selection if the right-clicked cell is part of it,
+    // otherwise selects just the clicked cell first. This is architecturally
+    // independent of GridKeyCaptureView's key monitor (a SwiftUI .contextMenu
+    // fires from AppKit's right-click/AXShowMenu handling, not a character
+    // key event), so there's no double-fire risk with the 0-5/p/x/u shortcuts.
+    private func anchorGridContextMenuSelection(on assetID: AssetID) {
+        if !model.isBatchSelected(assetID) {
+            model.select(assetID)
+        }
+    }
+
+    private func applyGridContextMenuRating(_ rating: Int, anchoredOn assetID: AssetID) {
+        anchorGridContextMenuSelection(on: assetID)
+        do {
+            try model.setRatingForSelectedAssets(rating)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyGridContextMenuFlag(_ flag: PickFlag?, anchoredOn assetID: AssetID) {
+        anchorGridContextMenuSelection(on: assetID)
+        do {
+            try model.setFlagForSelectedAssets(flag)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyGridContextMenuLabel(_ label: ColorLabel?, anchoredOn assetID: AssetID) {
+        anchorGridContextMenuSelection(on: assetID)
+        do {
+            try model.setColorLabelForSelectedAssets(label)
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     private func cullCurrentBatchSelection() {
