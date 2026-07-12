@@ -1951,6 +1951,14 @@ public final class AppModel {
             if selectedView.workspace != oldValue.workspace {
                 rebuildSidebarSections()
             }
+            // The loupe's toast task re-fires whenever the view reappears,
+            // re-rendering whatever feedback is still stored here — so a
+            // stale decision toast (including the once-per-session hint
+            // below) replayed on every re-entry to Cull. Expire it when the
+            // workspace is left.
+            if oldValue.workspace == .cull, selectedView.workspace != .cull {
+                lastCullingMetadataDecision = nil
+            }
             // The ? keymap overlay is the loupe's whole manual, but nothing
             // advertised it (persona-8) — announce it once per session on
             // first entry to the Cull workspace, via the decision toast.
