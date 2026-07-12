@@ -81,9 +81,31 @@ final class CullScopeTests: XCTestCase {
         XCTAssertEqual(hint.decisionText, "Press ? for keyboard shortcuts")
 
         model.selectedView = .grid
-        model.lastCullingMetadataDecision = nil
+        XCTAssertNil(
+            model.lastCullingMetadataDecision,
+            "leaving Cull must clear the toast — the loupe re-renders whatever is left here on re-entry"
+        )
         model.selectedView = .loupe
         XCTAssertNil(model.lastCullingMetadataDecision, "hint is once per session")
+    }
+
+    func testLeavingCullWorkspaceClearsStaleDecisionToast() throws {
+        // Final-verify FAIL (cull-009): the once-per-session hint reappeared on
+        // every re-entry to Cull. The gate was on emission, but the loupe's
+        // toast task re-fires on view reappearance with whatever feedback is
+        // still in lastCullingMetadataDecision — so ANY stale decision toast
+        // (hint, scope, pick) re-renders on workspace re-entry unless the
+        // model clears it on the way out.
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .loupe,
+            assets: [Self.asset(id: "a", flag: nil)]
+        )
+        model.cycleCullScope()
+        XCTAssertNotNil(model.lastCullingMetadataDecision)
+
+        model.selectedView = .grid
+        XCTAssertNil(model.lastCullingMetadataDecision, "workspace exit expires the decision toast")
     }
 
     func testFilteredAssetIDsOnlyContainsMatchingFrames() {

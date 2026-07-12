@@ -349,14 +349,22 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     }
 
     // "2,310 new · 418 already in catalog" — the new count alone when nothing is
-    // recognized, with a "+" when the preview stopped at its scan cap.
+    // recognized, with a "+" when the preview stopped at its scan cap. With
+    // "Import new photos only" off, already-cataloged files are processed too:
+    // the catalog keeps one row per original path, so they re-import in place
+    // (rows refresh, missing destination copies are restored) — never as
+    // duplicate rows, and the line must say so.
     var dedupCountText: String? {
         guard let dedupPreview else { return nil }
         let newText = "\(Self.grouped(dedupPreview.newContentCount))\(dedupPreview.reachedLimit ? "+" : "") new"
         guard dedupPreview.existingContentCount > 0 else {
             return newText
         }
-        return "\(newText) · \(Self.grouped(dedupPreview.existingContentCount)) already in catalog"
+        let existingText = "\(newText) · \(Self.grouped(dedupPreview.existingContentCount)) already in catalog"
+        guard importNewOnly else {
+            return "\(existingText) — re-imported in place"
+        }
+        return existingText
     }
 
     private static func grouped(_ value: Int) -> String {
@@ -377,10 +385,18 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
     }
 
     // Verb + object + count per spec §2c ("Import 240 Photos"), matching the
-    // count the body already shows in `sourceSummary.countText`.
+    // count the body already shows in `sourceSummary.countText`. The new-only
+    // count applies only while the dedupe toggle is on; with it off every
+    // scanned photo is processed (already-cataloged ones re-import in place),
+    // so the button counts them all instead of promising "Import 0 Photos"
+    // for an all-duplicate source.
     var primaryActionTitle: String {
-        let count = dedupPreview?.newContentCount ?? sourceSummary.photoCount
-        let suffix = (dedupPreview?.reachedLimit ?? sourceSummary.reachedLimit) ? "+" : ""
+        let count = importNewOnly
+            ? (dedupPreview?.newContentCount ?? sourceSummary.photoCount)
+            : sourceSummary.photoCount
+        let suffix = importNewOnly
+            ? ((dedupPreview?.reachedLimit ?? sourceSummary.reachedLimit) ? "+" : "")
+            : (sourceSummary.reachedLimit ? "+" : "")
         let noun = count == 1 ? "Photo" : "Photos"
         return "Import \(count)\(suffix) \(noun)"
     }

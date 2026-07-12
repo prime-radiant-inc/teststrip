@@ -1951,6 +1951,14 @@ public final class AppModel {
             if selectedView.workspace != oldValue.workspace {
                 rebuildSidebarSections()
             }
+            // The loupe's toast task re-fires whenever the view reappears,
+            // re-rendering whatever feedback is still stored here — so a
+            // stale decision toast (including the once-per-session hint
+            // below) replayed on every re-entry to Cull. Expire it when the
+            // workspace is left.
+            if oldValue.workspace == .cull, selectedView.workspace != .cull {
+                lastCullingMetadataDecision = nil
+            }
             // The ? keymap overlay is the loupe's whole manual, but nothing
             // advertised it (persona-8) — announce it once per session on
             // first entry to the Cull workspace, via the decision toast.
@@ -6214,16 +6222,33 @@ public final class AppModel {
         ).first?.assetID
     }
 
+    // The one stack the culling surfaces (rail, A/B compare) and the promote
+    // gesture agree on. Persisted work-stack sets win; otherwise this resolves
+    // the same auto-grouped stack `promoteCurrentFrameAndRejectSiblings` uses
+    // (full-catalog similarity vectors). The rail must never rebuild stacks
+    // from partial inputs and display a membership promote won't write —
+    // that made the rail's Keep button a silent no-op (cull-004/cull-014).
     public var selectedCullingStackScope: CullingStackScope? {
-        guard let selectedWorkStackAssetIDs else {
+        if let selectedWorkStackAssetIDs {
+            let position = try? selectedPersistedCullingStackPosition()
+            return CullingStackScope(
+                assetIDs: selectedWorkStackAssetIDs,
+                stackIndex: position?.index,
+                stackCount: position?.count,
+                rationaleText: "Saved stack from culling session"
+            )
+        }
+        guard let selectedAssetID else { return nil }
+        let stacks = cullingStacks()
+        guard let stackIndex = stacks.firstIndex(where: { $0.assetIDs.contains(selectedAssetID) }) else {
             return nil
         }
-        let position = try? selectedPersistedCullingStackPosition()
+        let stack = stacks[stackIndex]
         return CullingStackScope(
-            assetIDs: selectedWorkStackAssetIDs,
-            stackIndex: position?.index,
-            stackCount: position?.count,
-            rationaleText: "Saved stack from culling session"
+            assetIDs: stack.assetIDs,
+            stackIndex: stackIndex + 1,
+            stackCount: stacks.count,
+            rationaleText: stack.rationale
         )
     }
 

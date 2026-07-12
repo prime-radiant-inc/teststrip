@@ -309,6 +309,66 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, lonely.id)
     }
 
+    // Final-verify FAIL finding (cull-004/cull-014): the rail's "Keep frame 1
+    // · cut 2" button could silently no-op while Return worked. The view
+    // built the rail's stack from vectors scoped to the selected stack while
+    // promote re-resolved membership from full-catalog vectors — two
+    // different partitions. The model must expose its own resolved stack
+    // scope for auto-grouped stacks (not just persisted work-stack sets) so
+    // the rail displays, and the button acts on, exactly the stack promote
+    // will write.
+    func testSelectedCullingStackScopeResolvesAutoGroupedStack() throws {
+        let capturedAt = Date(timeIntervalSince1970: 900)
+        let frame1 = makeAsset(
+            id: "scope-frame-1",
+            path: "/Photos/Job/scope-frame-1.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let frame2 = makeAsset(
+            id: "scope-frame-2",
+            path: "/Photos/Job/scope-frame-2.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let frame3 = makeAsset(
+            id: "scope-frame-3",
+            path: "/Photos/Job/scope-frame-3.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1.8))
+        )
+        let single = makeAsset(
+            id: "scope-single",
+            path: "/Photos/Job/scope-single.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(900))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "auto-stack-scope",
+            assets: [frame1, frame2, frame3, single]
+        )
+        model.select(frame1.id)
+
+        let scope = try XCTUnwrap(model.selectedCullingStackScope)
+        XCTAssertEqual(scope.assetIDs, [frame1.id, frame2.id, frame3.id])
+
+        // The rail built the way the view builds it must promise exactly what
+        // promote then writes.
+        let presentation = CullingStackRailPresentation(
+            assets: model.assets,
+            selectedAssetID: model.selectedAssetID,
+            evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals(),
+            explicitStackScope: model.selectedCullingStackScope
+        )
+        XCTAssertEqual(presentation.keepActionTitle, "Keep frame 1 · cut 2")
+        try model.promoteCurrentFrameAndRejectSiblings()
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: frame3.id).metadata.flag, .reject)
+        XCTAssertNil(try repository.asset(id: single.id).metadata.flag)
+
+        // A frame outside any multi-frame stack resolves no scope, so the
+        // rail hides exactly when promote would take its informational path.
+        model.select(single.id)
+        XCTAssertNil(model.selectedCullingStackScope)
+    }
+
     // MARK: - Fixtures (mirrors AppModelTests' private helpers; kept local per file)
 
     private func makeAsset(
