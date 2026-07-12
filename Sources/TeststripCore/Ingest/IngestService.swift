@@ -36,19 +36,28 @@ public typealias IngestSkippedSourceFileHandler = (IngestSkippedSourceFile) -> V
 public struct IngestService: Sendable {
     private static let eagerCatalogPersistenceLimit = 10
     private static let catalogPersistenceBatchSize = 500
+    // A copy import must never run a destination volume to exactly zero; this
+    // margin keeps headroom for the SQLite catalog and other system writes.
+    private static let spaceSafetyMarginBytes: Int64 = 256 * 1024 * 1024
 
     public var scanner: FolderScanner
     public var decodeRegistry: DecodeRegistry?
     public var contentHasher: @Sendable (URL) throws -> String
+    public var availableCapacityForImportantUsage: @Sendable (URL) -> Int64?
 
     public init(
         scanner: FolderScanner,
         decodeRegistry: DecodeRegistry? = nil,
-        contentHasher: @escaping @Sendable (URL) throws -> String = { try ContentHash.compute(forFileAt: $0) }
+        contentHasher: @escaping @Sendable (URL) throws -> String = { try ContentHash.compute(forFileAt: $0) },
+        availableCapacityForImportantUsage: @escaping @Sendable (URL) -> Int64? = { url in
+            (try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+                .volumeAvailableCapacityForImportantUsage
+        }
     ) {
         self.scanner = scanner
         self.decodeRegistry = decodeRegistry
         self.contentHasher = contentHasher
+        self.availableCapacityForImportantUsage = availableCapacityForImportantUsage
     }
 
     public func files(
@@ -76,6 +85,7 @@ public struct IngestService: Sendable {
         progress: IngestProgressHandler? = nil
     ) throws -> [Asset] {
         try validate(plan: plan)
+        try validateAvailableSpace(sourceFiles: sourceFiles, plan: plan)
         var assets: [Asset] = []
         var pendingCatalogAssets: [Asset] = []
         var importedSidecars: [ImportedSidecarSync] = []
@@ -258,6 +268,47 @@ public struct IngestService: Sendable {
                secondCopyDestination: secondCopyDestination
            ) {
             throw TeststripError.invalidState(blockingReason)
+        }
+    }
+
+    // A copy import that runs its destination volume out of space mid-copy can
+    // brick the app: once the volume hits zero free bytes, the SQLite catalog
+    // can no longer even open. Checking every source file's size against the
+    // destination's free space before the first byte is copied fails fast
+    // instead, so a full card never leaves a half-copied import behind.
+    private func validateAvailableSpace(sourceFiles: [URL], plan: IngestPlan) throws {
+        guard plan.mode == .copyToDestination, let destinationRoot = plan.destinationRoot else { return }
+        let requiredBytes = requiredBytes(for: sourceFiles)
+        try validateVolumeHasRoom(requiredBytes: requiredBytes, destination: destinationRoot)
+        if let secondCopyDestination = plan.secondCopyDestination {
+            try validateVolumeHasRoom(requiredBytes: requiredBytes, destination: secondCopyDestination)
+        }
+    }
+
+    // An upper bound on the bytes a copy import will write: dedup may skip
+    // some source files, but never more than this, so this sum is always
+    // safe to check against free space. An unreadable size counts as zero
+    // rather than aborting the preflight itself.
+    private func requiredBytes(for sourceFiles: [URL]) -> Int64 {
+        sourceFiles.reduce(into: Int64(0)) { total, sourceFile in
+            let size = (try? sourceFile.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            total += Int64(size)
+        }
+    }
+
+    private func validateVolumeHasRoom(requiredBytes: Int64, destination: URL) throws {
+        guard let available = availableCapacityForImportantUsage(destination) else { return }
+        guard available >= requiredBytes + Self.spaceSafetyMarginBytes else {
+            let volumeName = (try? destination.resourceValues(forKeys: [.volumeNameKey]))?.volumeName
+                ?? destination.lastPathComponent
+            let formatter = ByteCountFormatter()
+            formatter.countStyle = .file
+            let requiredText = formatter.string(fromByteCount: requiredBytes)
+            let availableText = formatter.string(fromByteCount: available)
+            throw TeststripError.io(
+                "Not enough space to import: needs about \(requiredText) on \(volumeName), only \(availableText) free. "
+                    + "Free space or choose a different destination."
+            )
         }
     }
 
