@@ -41,6 +41,22 @@ final class AppModelSessionRestoreTests: XCTestCase {
         XCTAssertEqual(modelB.defaultCopyright, "© 2026 Jesse Vincent")
     }
 
+    func testRestoresDefaultCardImportDestination() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-card-import-destination")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        XCTAssertEqual(modelA.defaultCardImportDestination, "")
+
+        modelA.defaultCardImportDestination = "/Volumes/Photos"
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(modelB.defaultCardImportDestination, "/Volumes/Photos")
+    }
+
     func testRestoresSelectedAssetSetScope() throws {
         let directory = try makeTemporaryDirectory(named: "restore-scope")
         let defaults = try makeIsolatedDefaults()
