@@ -180,6 +180,11 @@ final class WorkerSupervisorTests: XCTestCase {
         })
     }
 
+    // This is the integration-level watchdog coverage that
+    // IngestProgressCoalescer/ScanProgressCoalescer's time-based heartbeat
+    // (see ProgressCoalescerTests) relies on: a command that keeps emitting
+    // progress under `commandTimeout` never trips the watchdog, while one
+    // that goes silent for a full `commandTimeout` does.
     func testProgressWorkerEventReschedulesCommandTimeout() throws {
         let transport = RecordingWorkerTransport()
         let timeoutScheduler = ManualWorkerTimeoutScheduler()
