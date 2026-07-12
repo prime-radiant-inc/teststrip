@@ -50,8 +50,11 @@ then `vm_scenario_run.sh ax ...` / `sql smoke ...`.
    Record these four counts (`N_UNRATED`, `N_PICKS`, `N_REJECTS`, `N_ALL` —
    `N_ALL` should be 24).
 3. Note the currently-selected asset's flag state (`SELECTED0`).
-4. Press `S`. Assert the scope chip now reads "Unrated"
-   (`script/ax_drive.sh find --contains "Unrated"`) and the filmstrip/grid's
+4. Press `S`. Assert the transient decision toast announces the change with
+   "Scope: Unrated only" (`script/ax_drive.sh find --contains "Scope: Unrated only"`
+   within the 2s toast window — the scope change must not be silent;
+   persona-8 defect), that the scope chip now reads "Unrated"
+   (`script/ax_drive.sh find --contains "Unrated"`), and the filmstrip/grid's
    visible frame count matches `N_UNRATED` (via the filmstrip position text
    `"frame X / N_UNRATED"` from `CullFilmstripPresentation.positionText`, or
    by counting visible tiles). Because the starting scope is `.all`, every
@@ -59,7 +62,8 @@ then `vm_scenario_run.sh ax ...` / `sql smoke ...`.
    flag was NULL, assert selection stayed on it, otherwise assert
    reselection landed on some unrated asset (confirm its flag via SQL,
    don't assume a specific id).
-5. Press `S` again. Assert the chip reads "Picks", the visible count
+5. Press `S` again. Assert the toast reads "Scope: Picks only", the chip
+   reads "Picks", the visible count
    matches `N_PICKS`, and reselection (if needed) landed on a `pick`-
    flagged asset.
 6. Press `S` again. Assert the chip reads "Rejects", the visible count
@@ -74,7 +78,10 @@ then `vm_scenario_run.sh ax ...` / `sql smoke ...`.
    drift.
 
 ## Expected
-- Steps 4-7: scope chip text cycles exactly `All -> Unrated -> Picks ->
+- Steps 4-7: every `S` press shows a transient toast naming the new scope
+  ("Scope: Unrated only" / "Scope: Picks only" / "Scope: Rejects only" /
+  "Scope: All frames") — a silent scope change is a failure. The scope chip
+  text cycles exactly `All -> Unrated -> Picks ->
   Rejects -> All`, and each step's visible/filmstrip count matches the SQL
   ground truth recorded in step 2. **Fails if** the order differs, or if a
   visible count is off by even one from the corresponding SQL count (scope

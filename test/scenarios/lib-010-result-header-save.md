@@ -4,7 +4,8 @@
 (`Sources/TeststripApp/LibraryGridView.swift`) built from
 `LibraryResultHeaderPresentation` (`Sources/TeststripApp/LibraryResultHeaderPresentation.swift`):
 a match-count line ("N photos" / "1 photo"), an optional grey
-"read as plain text: …" interpretation line shown only when
+"No filter matched — searching file names and photo text for “…”"
+interpretation line shown only when
 `LibrarySearchIntent.parse` leaves residual free text after stripping
 structured tokens (`interpretation(for:)`), a horizontally scrolling row of
 catalog-backed suggested chips whose *fields already active* are suppressed
@@ -50,7 +51,7 @@ below.
 2. Assert the header reads "`$TOTAL` photos" with no interpretation line
    (empty query).
 3. Type free text only, e.g. `sunset`, and Return. Assert the header shows
-   "read as plain text: sunset" (fully residual, no structured tokens).
+   "No filter matched — searching file names and photo text for “sunset”" (fully residual, no structured tokens).
 4. Clear and type `rating:4` alone, Return. Assert **no** interpretation
    line (fully structured, no residual per the
    `LibraryResultHeaderTests.swift` unit-test contract already covering

@@ -162,7 +162,10 @@ script/ax_drive.sh press --role AXButton --help "Cull" # or ⌘1 per workspace-s
    - clicking its Pick control writes `flag='pick'` for the focused asset in
      the catalog, identical to pressing `P` (same
      `applyCullingShortcut(.pick)` path);
-   - in the **library** loupe the cluster never appears on hover.
+   - in the **library** loupe the cluster never appears on hover;
+   - the buttons' AXHelp/tooltips teach the keys (persona-8): the Pick
+     button's help is "Pick this photo (P)" and Reject's is
+     "Reject this photo (X)" (`script/ax_drive.sh find --help "Pick this photo (P)"`).
    State machine unit coverage: `CullLoupeHoverControlsTests`; presentation:
    `Sources/TeststripApp/CullLoupeHoverControlsPresentation.swift`.
    PENDING-VM: not yet driven live (VM unavailable this pass).

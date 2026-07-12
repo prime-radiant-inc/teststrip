@@ -101,7 +101,23 @@ calls below.
    - If `hasMoreAssets` was false: assert the selection simply stays on the
      last asset (no crash, no wraparound, no error alert).
 
+9. **Non-destructive invariant (persona-8 defect)**: after all the pure
+   navigation above — arrows, Space, stack keys, pagination, with NO
+   rating/flag/keyword/caption gesture in this card — assert that **zero**
+   `.xmp` sidecars exist next to the originals and no metadata write was
+   queued:
+   ```bash
+   SRC_DIR=$(sqlite3 "$DB" "SELECT original_path FROM assets LIMIT 1;" | xargs dirname)
+   find "$SRC_DIR" -name '*.xmp' | wc -l    # must be 0
+   sqlite3 "$DB" "SELECT count(*) FROM metadata_sync_state WHERE state='pending';"  # must be 0
+   ```
+   (Adjust table/column names against `CatalogMigrations.swift` before
+   running; do not weaken to "few" — the count is exactly 0.)
+
 ## Expected
+- Step 9: browsing writes nothing — zero sidecars, zero pending metadata
+  syncs after pure navigation. **Fails if** even one `.xmp` appears for a
+  merely-visited photo (the Rating=0 sidecar-spray defect).
 - Steps 3-5: filename changes forward/backward/forward exactly as Left/
   Right/Space dictate; toast clears on every navigation keystroke. **Fails
   if** the toast survives a navigation press (stale decision feedback shown

@@ -40,7 +40,20 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    (the per-person detail surface; covered in depth by
    `people-008-person-cards-merge.md`).
 
+6. **Empty-catalog copy variant (persona-8 defect)**: relaunch with
+   `./script/build_and_run.sh --isolated` (empty catalog), ⌘3 for People.
+   Assert the review strip's empty-state detail reads
+   "These photos haven’t been scanned for faces yet. Scan for faces to see
+   who’s in your photos." and that NO empty-state text contains internal
+   jargon — assert `ax_drive.sh find --contains` FAILS for each of:
+   "evaluation", "review queues", "deferred", "face-box". The face-actions
+   status line must read "Confirm a suggested group, name faces yourself,
+   or merge people. Nothing is saved until you confirm."
+   (Unit coverage: `PeoplePresentationTests.testEmptyStateCopySpeaksUserLanguage`.)
+
 ## Expected
+- Step 6: empty-state copy is user language exactly as quoted; **fails if**
+  any banned jargon term renders in the People empty state.
 - Step 4: header text is exactly `"\(P) people · \(max(FC,FQ)) photos with face signals"`
   when `P > 0`, or `"0 people · \(max(FC,FQ)) photos with face signals"` when
   `P == 0` but `max(FC,FQ) > 0`, or `"0 people · \(total asset count) photos"`
