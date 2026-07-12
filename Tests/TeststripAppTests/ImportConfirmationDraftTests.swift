@@ -444,6 +444,64 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(draft.destinationUnavailableReason, "Card source cannot be inside the destination")
     }
 
+    // Per-import "Change…" destination override (confirmation sheet): the
+    // sheet must be able to redirect a single import without touching the
+    // saved default (AppModel.defaultCardImportDestination lives outside this
+    // type entirely — setDestinationRoot only ever has a URL to work with).
+    func testSetDestinationRootUpdatesNameAndRecomputesAvailability() throws {
+        let source = try makeTemporaryDirectory(named: "import-card-draft-change-destination-source")
+        let originalDestination = try makeTemporaryDirectory(named: "import-card-draft-change-destination-original")
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
+
+        var draft = ImportConfirmationDraft.card(
+            source: source,
+            destinationRoot: originalDestination,
+            supportedExtensions: ["jpg"]
+        )
+        XCTAssertEqual(draft.destinationName, originalDestination.lastPathComponent)
+        XCTAssertNil(draft.destinationUnavailableReason)
+
+        draft.setDestinationRoot(URL(fileURLWithPath: "/Volumes/Other", isDirectory: true))
+
+        XCTAssertEqual(draft.destinationRootURL, URL(fileURLWithPath: "/Volumes/Other", isDirectory: true))
+        XCTAssertEqual(draft.destinationName, "Other")
+        XCTAssertEqual(draft.destinationUnavailableReason, "Destination folder is missing")
+    }
+
+    func testSetDestinationRootRecomputesReasonWhenNewDestinationBecomesAvailable() throws {
+        let source = try makeTemporaryDirectory(named: "import-card-draft-change-destination-recover-source")
+        let missingDestination = source.deletingLastPathComponent()
+            .appendingPathComponent("missing-destination", isDirectory: true)
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
+
+        var draft = ImportConfirmationDraft.card(
+            source: source,
+            destinationRoot: missingDestination,
+            supportedExtensions: ["jpg"]
+        )
+        XCTAssertEqual(draft.destinationUnavailableReason, "Destination folder is missing")
+        XCTAssertFalse(draft.canStartImport)
+
+        let availableDestination = try makeTemporaryDirectory(named: "import-card-draft-change-destination-recover-target")
+        draft.setDestinationRoot(availableDestination)
+
+        XCTAssertEqual(draft.destinationRootURL, availableDestination)
+        XCTAssertEqual(draft.destinationName, availableDestination.lastPathComponent)
+        XCTAssertNil(draft.destinationUnavailableReason)
+        XCTAssertTrue(draft.canStartImport)
+    }
+
+    func testSetDestinationRootIsNoOpForFolderDrafts() throws {
+        let directory = try makeTemporaryDirectory(named: "import-folder-draft-change-destination")
+        var draft = ImportConfirmationDraft.folder(directory)
+
+        draft.setDestinationRoot(URL(fileURLWithPath: "/Volumes/Other", isDirectory: true))
+
+        XCTAssertNil(draft.destinationRootURL)
+        XCTAssertNil(draft.destinationName)
+        XCTAssertNil(draft.destinationUnavailableReason)
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-import-confirmation-\(UUID().uuidString)", isDirectory: true)

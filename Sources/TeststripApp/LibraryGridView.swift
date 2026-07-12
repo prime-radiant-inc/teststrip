@@ -1873,7 +1873,17 @@ struct LibraryGridView: View {
             content: {
                 VStack(alignment: .leading, spacing: 6) {
                     LabeledContent("Source", value: draft.sourceName)
-                    if let destinationName = draft.destinationName {
+                    if draft.mode == .card, let destinationName = draft.destinationName {
+                        LabeledContent("Destination") {
+                            HStack(spacing: 8) {
+                                Text(destinationName)
+                                Button("Change…") {
+                                    chooseImportDestinationOverride()
+                                }
+                                .help("Choose a different destination for this import")
+                            }
+                        }
+                    } else if let destinationName = draft.destinationName {
                         LabeledContent("Destination", value: destinationName)
                     }
                     if draft.mode == .card {
@@ -2828,6 +2838,14 @@ struct LibraryGridView: View {
     private func chooseImportSecondCopyDestination() {
         guard let secondCopyRootURL = FolderSelectionPanel.chooseCardSecondCopyFolder() else { return }
         importConfirmationDraft?.setSecondCopyRoot(secondCopyRootURL)
+    }
+
+    // Redirects a single import to a different destination without touching
+    // the saved default (model.defaultCardImportDestination) — the draft is
+    // the only thing mutated here.
+    private func chooseImportDestinationOverride() {
+        guard let destinationRootURL = FolderSelectionPanel.chooseCardDestinationFolder() else { return }
+        importConfirmationDraft?.setDestinationRoot(destinationRootURL)
     }
 
     private func reconnectSourceRoot() {
