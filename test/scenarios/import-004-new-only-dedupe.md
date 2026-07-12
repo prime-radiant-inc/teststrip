@@ -54,8 +54,12 @@ folder, and never drops a distinct frame that merely shares a hash prefix.
    ```bash
    sqlite3 "$DB" "SELECT count(*) FROM assets;"                 # call it A2
    ```
-5. **Re-import CARD2 with import-new-only OFF** (intentional duplicates kept):
-   same route, toggle OFF, start, wait.
+5. **Re-import CARD2 with import-new-only OFF** (re-import in place): same
+   route, toggle OFF. **Assert the preflight tells the truth about dedupe-off
+   first**: the primary button must read "Import 6 Photos" (all N+M scanned
+   files are processed — never "Import 0 Photos" for a source it will fully
+   process) and the Duplicates line must read exactly
+   "0 new · 6 already in catalog — re-imported in place". Start, wait.
    ```bash
    sqlite3 "$DB" "SELECT count(*) FROM assets;"                 # call it A3
    ```
@@ -71,13 +75,17 @@ folder, and never drops a distinct frame that merely shares a hash prefix.
   matches what the importer then actually does. **Fails if** the preflight's
   "new" count exceeds the rows actually added — the sheet must say what will
   happen, not scare the user into cancelling (or lull them into importing).
-- Step 5: `A3 == A2 + (N + M)` — with import-new-only OFF, *every* file in
-  CARD2 (both the N frames shared with CARD1 and the M frames already
-  cataloged from step 3) re-imports as an intentional copy; toggling dedupe
-  off skips nothing regardless of what's already cataloged. (Not `A2 + N`:
-  by step 5 all N+M CARD2 files are already in the catalog, not just the N
-  shared ones, so the whole CARD2 folder — N+M files — re-imports.) **Fails
-  if** any of CARD2's files were still skipped (toggle ignored).
+- Step 5: `A3 == A2` exactly — the catalog keeps one row per original path
+  (`idx_assets_original_path_unique`), and CARD2's copies land at the same
+  destination paths as before, so dedupe-off re-imports every file **in
+  place** (rows refresh; a deleted destination copy would be restored) and
+  never creates duplicate rows. The honest contract is in the preflight:
+  primary "Import 6 Photos" + Duplicates "0 new · 6 already in catalog —
+  re-imported in place" (asserted in step 5), and the completion panel
+  reporting all N+M as already in catalog. **Fails if** the preflight
+  claims "Import 0 Photos" with the toggle off, omits the "re-imported in
+  place" qualifier, or `A3 != A2` (duplicate rows appeared — the
+  path-uniqueness invariant broke).
 
 ## Cleanup
 ```bash

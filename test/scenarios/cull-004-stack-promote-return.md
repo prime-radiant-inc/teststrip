@@ -145,14 +145,18 @@ its 900s spacing never stacks.)
   pushed. **Fails if** Return picks the lone frame anyway (would contradict
   the double guard read in source — a real regression worth flagging, not
   silently accepting).
-- Rail-Keep-equals-Return claim: verified by reading source
-  (`LibraryGridView.swift:4313-4318` calls the identical
-  `model.promoteCurrentFrameAndRejectSiblings()`), not independently driven
-  live in this card — `cull-pass-scope-and-undo.md` already exercises the
-  Return path's multi-sibling atomicity; a live run of *this* card should
-  additionally click the rail's "Keep frame N · cut M" button once (on any
-  multi-frame stack it can find, if `--smoke` or a future seed ever produces
-  one) and spot-check the resulting write matches Return's.
+- Rail-Keep-equals-Return: the button calls the identical
+  `model.promoteCurrentFrameAndRejectSiblings()`, and since the final-verify
+  FAIL fix the rail also *displays* the model's own resolved stack
+  (`AppModel.selectedCullingStackScope` falls back to the auto-grouped stack
+  promote resolves — previously the view rebuilt stacks from vectors scoped
+  to the selected stack, so the rail could promise a membership promote
+  would not write, a silent no-op click). A live run of this card must
+  click the rail's "Keep frame N · cut M" button once on a multi-frame
+  stack (the `burst` seed guarantees them) and assert the write matches
+  Return's exactly: same pick/reject set, same single-⌘Z undo group.
+  **Fails if** the click writes nothing while the button is visible — the
+  rail may only render for a stack promote will actually write.
 
 ## Cleanup
 ```bash

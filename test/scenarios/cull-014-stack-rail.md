@@ -99,7 +99,14 @@ script/vm_scenario_run.sh ax wait-vended
    (`script/ax_drive.sh press --role AXButton --contains "Keep frame"`).
    Assert it kept the **selected** frame (from step 2), not the recommended
    one — i.e. it applied `keepSelectedAndRejectAlternates` semantics on the
-   currently-focused asset:
+   currently-focused asset. **A silent no-op is a hard failure** (the
+   final-verify FAIL: the rail rendered a stack the model would not
+   promote because the view rebuilt stacks from partially-scoped
+   similarity vectors; the rail now renders the model's own
+   `selectedCullingStackScope`, so a visible Keep button must always
+   write). Also assert the frames written are exactly the rail's displayed
+   membership — the button title's "cut M" count must equal the number of
+   siblings whose flags changed to reject plus protected picks left alone:
    ```bash
    sqlite3 "$DB" "SELECT id, json_extract(metadata_json,'\$.flag') FROM assets WHERE id IN (<stack member ids>);"
    ```
