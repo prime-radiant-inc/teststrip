@@ -202,6 +202,24 @@ final class LibraryGridChromeTests: XCTestCase {
         )
     }
 
+    func testCardDestinationResolutionUsesSavedDefaultWhenPresent() {
+        XCTAssertEqual(
+            LibraryGridChromePolicy.cardDestinationResolution(savedDefault: "/Volumes/Photos"),
+            .useSaved(URL(fileURLWithPath: "/Volumes/Photos", isDirectory: true))
+        )
+    }
+
+    func testCardDestinationResolutionPromptsPanelWhenNoDefaultIsSaved() {
+        XCTAssertEqual(
+            LibraryGridChromePolicy.cardDestinationResolution(savedDefault: ""),
+            .promptPanel
+        )
+        XCTAssertEqual(
+            LibraryGridChromePolicy.cardDestinationResolution(savedDefault: "   "),
+            .promptPanel
+        )
+    }
+
     func testRejectDestinationOverrideUsesEnvironmentPathWhenSet() {
         let override = LibraryGridChromePolicy.rejectDestinationDirectoryOverride(environment: [
             "TESTSTRIP_REJECT_DESTINATION_DIR": "/tmp/reject-target"

@@ -2325,6 +2325,16 @@ public final class AppModel {
     static let defaultCreatorDefaultsKey = "AppModel.defaultCreator"
     static let defaultCopyrightDefaultsKey = "AppModel.defaultCopyright"
 
+    // The folder a wire shooter dumps a card into is usually the same shoot
+    // after shoot. This persists across sessions and pre-fills (never
+    // auto-writes) the card-import destination picker.
+    public var defaultCardImportDestination = "" {
+        didSet {
+            sessionRestoreDefaults?.set(defaultCardImportDestination, forKey: Self.defaultCardImportDestinationDefaultsKey)
+        }
+    }
+    static let defaultCardImportDestinationDefaultsKey = "AppModel.defaultCardImportDestination"
+
     // Bumped by the Metadata ▸ Batch Metadata… menu command so the library view
     // can open the batch-metadata sheet from the keyboard without the action
     // having to live as a top-level toolbar button.
@@ -4122,6 +4132,7 @@ public final class AppModel {
             model.autopilotEnabled = sessionRestoreDefaults.bool(forKey: autopilotEnabledDefaultsKey)
             model.defaultCreator = sessionRestoreDefaults.string(forKey: defaultCreatorDefaultsKey) ?? ""
             model.defaultCopyright = sessionRestoreDefaults.string(forKey: defaultCopyrightDefaultsKey) ?? ""
+            model.defaultCardImportDestination = sessionRestoreDefaults.string(forKey: defaultCardImportDestinationDefaultsKey) ?? ""
         }
         return model
     }

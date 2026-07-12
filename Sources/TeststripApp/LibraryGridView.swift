@@ -1873,7 +1873,17 @@ struct LibraryGridView: View {
             content: {
                 VStack(alignment: .leading, spacing: 6) {
                     LabeledContent("Source", value: draft.sourceName)
-                    if let destinationName = draft.destinationName {
+                    if draft.mode == .card, let destinationName = draft.destinationName {
+                        LabeledContent("Destination") {
+                            HStack(spacing: 8) {
+                                Text(destinationName)
+                                Button("Change…") {
+                                    chooseImportDestinationOverride()
+                                }
+                                .help("Choose a different destination for this import")
+                            }
+                        }
+                    } else if let destinationName = draft.destinationName {
                         LabeledContent("Destination", value: destinationName)
                     }
                     if draft.mode == .card {
@@ -2694,6 +2704,7 @@ struct LibraryGridView: View {
 
     private func showImportCardPathSheet() {
         importCardPathDraft.reset()
+        importCardPathDraft.applyDefaultDestination(model.defaultCardImportDestination)
         importCardPathReviewID = nil
         isReviewingImportCardPath = false
         isShowingImportCardPathSheet = true
@@ -2715,8 +2726,13 @@ struct LibraryGridView: View {
 
     private func showImportCardPanel() {
         guard let source = FolderSelectionPanel.chooseCardSourceFolder() else { return }
-        guard let destinationRoot = FolderSelectionPanel.chooseCardDestinationFolder() else { return }
-        presentImportConfirmation(.card(source: source, destinationRoot: destinationRoot))
+        switch LibraryGridChromePolicy.cardDestinationResolution(savedDefault: model.defaultCardImportDestination) {
+        case .useSaved(let destinationRoot):
+            presentImportConfirmation(.card(source: source, destinationRoot: destinationRoot))
+        case .promptPanel:
+            guard let destinationRoot = FolderSelectionPanel.chooseCardDestinationFolder() else { return }
+            presentImportConfirmation(.card(source: source, destinationRoot: destinationRoot))
+        }
     }
 
     private func importFolderPath() {
@@ -2822,6 +2838,14 @@ struct LibraryGridView: View {
     private func chooseImportSecondCopyDestination() {
         guard let secondCopyRootURL = FolderSelectionPanel.chooseCardSecondCopyFolder() else { return }
         importConfirmationDraft?.setSecondCopyRoot(secondCopyRootURL)
+    }
+
+    // Redirects a single import to a different destination without touching
+    // the saved default (model.defaultCardImportDestination) — the draft is
+    // the only thing mutated here.
+    private func chooseImportDestinationOverride() {
+        guard let destinationRootURL = FolderSelectionPanel.chooseCardDestinationFolder() else { return }
+        importConfirmationDraft?.setDestinationRoot(destinationRootURL)
     }
 
     private func reconnectSourceRoot() {
@@ -7706,6 +7730,11 @@ enum ImportCardEntryRoute: Equatable {
     case typedPathSheet
 }
 
+enum CardDestinationResolution: Equatable {
+    case useSaved(URL)
+    case promptPanel
+}
+
 /// Which browse-oriented chrome (search, filters, footer, inspector) a
 /// workspace shows. Views branch on this policy, never on raw `Workspace`
 /// cases, so the test matrix pins the behavior. Library shows all of it;
@@ -7771,6 +7800,13 @@ enum LibraryGridChromePolicy {
         default:
             return .userGrantedPanel
         }
+    }
+
+    static func cardDestinationResolution(savedDefault: String) -> CardDestinationResolution {
+        guard !savedDefault.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .promptPanel
+        }
+        return .useSaved(URL(fileURLWithPath: savedDefault, isDirectory: true))
     }
 
     /// The typed-path "Import Path" control is a dev/automation entry, not part

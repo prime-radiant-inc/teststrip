@@ -310,6 +310,25 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
         )
     }
 
+    // Per-import "Change…" override on the confirmation sheet: redirects this
+    // draft's destination without touching any saved default — the draft
+    // holds no reference to AppModel, so there is nothing else to mutate.
+    // A no-op outside card mode: folder (add-in-place) drafts have no
+    // destination to change.
+    mutating func setDestinationRoot(_ url: URL) {
+        guard mode == .card else { return }
+        destinationRootURL = url
+        destinationUnavailableReason = CardImportDestinationPreflight.blockingReason(
+            source: sourceURL,
+            destinationRoot: url
+        )
+        secondCopyUnavailableReason = Self.secondCopyBlockingReason(
+            source: sourceURL,
+            destinationRoot: url,
+            secondCopyRootURL: secondCopyRootURL
+        )
+    }
+
     mutating func setSecondCopyRoot(_ secondCopyRootURL: URL?) {
         self.secondCopyRootURL = secondCopyRootURL
         secondCopyUnavailableReason = Self.secondCopyBlockingReason(
