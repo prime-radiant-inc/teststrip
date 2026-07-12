@@ -502,6 +502,28 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertNil(draft.destinationUnavailableReason)
     }
 
+    // Changing the primary destination onto the existing second-copy folder
+    // must surface the "differ from primary" violation inline immediately,
+    // not just at IngestService.validate time when the import is started.
+    func testSetDestinationRootRecomputesSecondCopyReasonWhenItNowMatchesPrimary() throws {
+        let source = try makeTemporaryDirectory(named: "import-card-draft-change-destination-matches-second-copy-source")
+        let originalDestination = try makeTemporaryDirectory(named: "import-card-draft-change-destination-matches-second-copy-original")
+        let secondCopy = try makeTemporaryDirectory(named: "import-card-draft-change-destination-matches-second-copy-backup")
+        try Data([1, 2, 3]).write(to: source.appendingPathComponent("frame.jpg"))
+
+        var draft = ImportConfirmationDraft.card(
+            source: source,
+            destinationRoot: originalDestination,
+            secondCopyRootURL: secondCopy,
+            supportedExtensions: ["jpg"]
+        )
+        XCTAssertNil(draft.secondCopyUnavailableReason)
+
+        draft.setDestinationRoot(secondCopy)
+
+        XCTAssertEqual(draft.secondCopyUnavailableReason, "Second copy destination must be different from the primary destination")
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let parent = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-import-confirmation-\(UUID().uuidString)", isDirectory: true)

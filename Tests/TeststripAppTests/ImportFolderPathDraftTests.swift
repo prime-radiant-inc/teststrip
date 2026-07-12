@@ -383,6 +383,14 @@ final class ImportFolderPathDraftTests: XCTestCase {
         XCTAssertEqual(draft.destinationPath, "/Photos/Incoming")
     }
 
+    func testApplyDefaultDestinationLeavesExistingDestinationPathUntouchedWhenWhitespaceOnly() {
+        var draft = ImportCardPathDraft(sourcePath: "/Volumes/CARD/DCIM", destinationPath: "/Photos/Incoming")
+
+        draft.applyDefaultDestination("   ")
+
+        XCTAssertEqual(draft.destinationPath, "/Photos/Incoming")
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-import-path-draft-\(name)-\(UUID().uuidString)", isDirectory: true)

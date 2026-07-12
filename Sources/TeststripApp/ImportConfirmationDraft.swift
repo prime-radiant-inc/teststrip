@@ -322,6 +322,11 @@ struct ImportConfirmationDraft: Equatable, Identifiable {
             source: sourceURL,
             destinationRoot: url
         )
+        secondCopyUnavailableReason = Self.secondCopyBlockingReason(
+            source: sourceURL,
+            destinationRoot: url,
+            secondCopyRootURL: secondCopyRootURL
+        )
     }
 
     mutating func setSecondCopyRoot(_ secondCopyRootURL: URL?) {

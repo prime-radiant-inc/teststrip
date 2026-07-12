@@ -214,7 +214,7 @@ struct ImportCardPathDraft: Equatable {
     // A saved default only pre-fills an unset field; it never clobbers a
     // destination the caller already provided (e.g. restored from a draft).
     mutating func applyDefaultDestination(_ path: String) {
-        guard !path.isEmpty else { return }
+        guard !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         destinationPath = path
     }
 
