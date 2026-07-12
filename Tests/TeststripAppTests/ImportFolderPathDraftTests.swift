@@ -367,6 +367,22 @@ final class ImportFolderPathDraftTests: XCTestCase {
         XCTAssertNil(draft.errorMessage)
     }
 
+    func testApplyDefaultDestinationSetsDestinationPathWhenNonEmpty() {
+        var draft = ImportCardPathDraft(sourcePath: "/Volumes/CARD/DCIM")
+
+        draft.applyDefaultDestination("/Volumes/Photos")
+
+        XCTAssertEqual(draft.destinationPath, "/Volumes/Photos")
+    }
+
+    func testApplyDefaultDestinationLeavesExistingDestinationPathUntouchedWhenEmpty() {
+        var draft = ImportCardPathDraft(sourcePath: "/Volumes/CARD/DCIM", destinationPath: "/Photos/Incoming")
+
+        draft.applyDefaultDestination("")
+
+        XCTAssertEqual(draft.destinationPath, "/Photos/Incoming")
+    }
+
     private func makeTemporaryDirectory(named name: String) throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("teststrip-import-path-draft-\(name)-\(UUID().uuidString)", isDirectory: true)
