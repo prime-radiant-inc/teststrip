@@ -84,6 +84,44 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(draft.dedupCountText, "2,310 new · 418 already in catalog")
     }
 
+    // Final-verify FAIL (import-004 step 5): with "Import new photos only"
+    // unchecked on an all-already-imported card, the primary still read
+    // "Import 0 Photos" — promising a re-import while counting only new
+    // content. The catalog keeps one row per original path
+    // (idx_assets_original_path_unique) and card copies land at deterministic
+    // destination paths, so dedupe-off re-imports files IN PLACE (rows
+    // refresh, missing destination copies are restored) — the preflight must
+    // count every scanned photo and say so.
+    func testDedupeOffCountsAllScannedPhotosAndSaysReimportInPlace() throws {
+        let directory = try makeTemporaryDirectory(named: "import-dedupe-off")
+        for index in 0..<6 {
+            try Data([UInt8(index)]).write(to: directory.appendingPathComponent("frame-\(index).jpg"))
+        }
+        var draft = ImportConfirmationDraft.folder(directory, supportedExtensions: ["jpg"])
+        draft.dedupPreview = ImportDedupPreview(newContentCount: 0, existingContentCount: 6, reachedLimit: false)
+
+        XCTAssertEqual(draft.primaryActionTitle, "Import 0 Photos")
+        XCTAssertEqual(draft.dedupCountText, "0 new · 6 already in catalog")
+
+        draft.importNewOnly = false
+
+        XCTAssertEqual(draft.primaryActionTitle, "Import 6 Photos")
+        XCTAssertEqual(draft.dedupCountText, "0 new · 6 already in catalog — re-imported in place")
+    }
+
+    func testDedupeOffWithNothingInCatalogKeepsPlainNewCount() throws {
+        let directory = try makeTemporaryDirectory(named: "import-dedupe-off-all-new")
+        for index in 0..<2 {
+            try Data([UInt8(index)]).write(to: directory.appendingPathComponent("frame-\(index).jpg"))
+        }
+        var draft = ImportConfirmationDraft.folder(directory, supportedExtensions: ["jpg"])
+        draft.dedupPreview = ImportDedupPreview(newContentCount: 2, existingContentCount: 0, reachedLimit: false)
+        draft.importNewOnly = false
+
+        XCTAssertEqual(draft.primaryActionTitle, "Import 2 Photos")
+        XCTAssertEqual(draft.dedupCountText, "2 new")
+    }
+
     func testDedupCountTextIsNilWithoutPreview() {
         let draft = ImportConfirmationDraft.folder(URL(fileURLWithPath: "/Volumes/Archive/Decades", isDirectory: true))
 

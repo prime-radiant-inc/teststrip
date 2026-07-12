@@ -1939,7 +1939,7 @@ struct LibraryGridView: View {
                 )
                 .toggleStyle(.checkbox)
                 .font(.caption)
-                .help("Skips source files whose content is already in the catalog — re-inserting a card copies only the new frames. Turn off to import everything, keeping intentional duplicates.")
+                .help("Skips source files whose content is already in the catalog — re-inserting a card copies only the new frames. Turn off to process everything: already-cataloged files re-import in place (one catalog row per file path — never duplicate rows).")
                 Toggle(
                     "Read imported frames automatically",
                     isOn: Binding(
