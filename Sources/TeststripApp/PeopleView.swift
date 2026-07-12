@@ -242,7 +242,7 @@ struct PeopleView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Text(presentation.deferredFaceActionStatus)
+                        Text(presentation.faceActionStatus)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .liveMockupPlaceholder(.peopleFaceActions)
@@ -648,7 +648,7 @@ struct PeoplePresentation: Equatable {
             return "Face groups are provisional until you confirm. Confirming writes people to the catalog; dismissing hides the group."
         }
         guard photosWithFaceSignals > 0 else {
-            return "Run evaluation on catalog photos to populate local face review queues."
+            return "These photos haven’t been scanned for faces yet. Scan for faces to see who’s in your photos."
         }
         if faceObservationAssetCount == 0 {
             return "Face signals predate grouping; run Scan for Faces to compute face embeddings."
@@ -760,8 +760,8 @@ struct PeoplePresentation: Equatable {
         []
     }
 
-    var deferredFaceActionStatus: String {
-        "Split person and face-box naming are deferred; automatic grouping suggestions, one-tap confirm, manual naming, and merge are available now."
+    var faceActionStatus: String {
+        "Confirm a suggested group, name faces yourself, or merge people. Nothing is saved until you confirm."
     }
 
     private static func photoCountDescription(_ count: Int) -> String {

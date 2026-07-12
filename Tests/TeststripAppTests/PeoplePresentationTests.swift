@@ -198,13 +198,37 @@ final class PeoplePresentationTests: XCTestCase {
         XCTAssertTrue(presentation.visibleDeferredFaceActionTitles.isEmpty)
     }
 
-    func testPresentationTracksDeferredFaceActionsAsStatusCopyInsteadOfDisabledButtons() {
+    func testPresentationTracksUnavailableFaceActionsAsStatusCopyInsteadOfDisabledButtons() {
         let presentation = PeoplePresentation(totalAssetCount: 42, evaluationSummaries: [])
 
         XCTAssertTrue(presentation.visibleDeferredFaceActionTitles.isEmpty)
-        XCTAssertTrue(presentation.deferredFaceActionStatus.localizedCaseInsensitiveContains("automatic grouping"))
-        XCTAssertTrue(presentation.deferredFaceActionStatus.localizedCaseInsensitiveContains("split"))
-        XCTAssertTrue(presentation.deferredFaceActionStatus.localizedCaseInsensitiveContains("face-box naming"))
+        XCTAssertEqual(
+            presentation.faceActionStatus,
+            "Confirm a suggested group, name faces yourself, or merge people. Nothing is saved until you confirm."
+        )
+    }
+
+    func testEmptyStateCopySpeaksUserLanguage() {
+        // The first-run People screen must not speak developer: no internal
+        // jargon or release-notes phrasing in the empty state.
+        let presentation = PeoplePresentation(totalAssetCount: 42, evaluationSummaries: [])
+        let bannedTerms = [
+            "evaluation", "queue", "deferred", "face-box", "catalog photos",
+            "embedding", "provisional", "signal"
+        ]
+
+        XCTAssertEqual(
+            presentation.reviewStripDetail,
+            "These photos haven’t been scanned for faces yet. Scan for faces to see who’s in your photos."
+        )
+        for copy in [presentation.reviewStripDetail, presentation.faceActionStatus] {
+            for term in bannedTerms {
+                XCTAssertFalse(
+                    copy.localizedCaseInsensitiveContains(term),
+                    "empty-state copy contains internal jargon '\(term)': \(copy)"
+                )
+            }
+        }
     }
 
     private func matchSuggestion() -> PeopleFaceSuggestion {
