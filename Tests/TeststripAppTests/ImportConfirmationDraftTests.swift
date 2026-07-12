@@ -326,6 +326,45 @@ final class ImportConfirmationDraftTests: XCTestCase {
         XCTAssertEqual(summary.detailText, "Preview counted the first 2 recognized photo files")
     }
 
+    func testSourceSummaryScansAllPhotosWithinDefaultLimits() throws {
+        let directory = try makeTemporaryDirectory(named: "import-source-summary-default-limits")
+        for index in 0..<400 {
+            try Data([UInt8(index % 256)]).write(to: directory.appendingPathComponent("frame-\(index).jpg"))
+        }
+
+        let summary = ImportSourceSummary.scan(sourceURL: directory, supportedExtensions: ["jpg"])
+
+        XCTAssertEqual(summary.photoCount, 400)
+        XCTAssertFalse(summary.reachedLimit)
+        XCTAssertEqual(summary.countText, "400 recognized photo files")
+    }
+
+    func testSourceSummaryStopsAtTimeBudget() throws {
+        let directory = try makeTemporaryDirectory(named: "import-source-summary-time-budget")
+        for index in 0..<20 {
+            try Data([UInt8(index)]).write(to: directory.appendingPathComponent("frame-\(index).jpg"))
+        }
+
+        // A fake clock stays at `start` for the first few calls (letting a few
+        // entries scan normally) then jumps well past the budget, so the scan
+        // stops early without any real waiting.
+        let start = Date()
+        var callCount = 0
+        let summary = ImportSourceSummary.scan(
+            sourceURL: directory,
+            supportedExtensions: ["jpg"],
+            budget: 1.0,
+            now: {
+                defer { callCount += 1 }
+                return callCount < 4 ? start : start.addingTimeInterval(5)
+            }
+        )
+
+        XCTAssertTrue(summary.reachedLimit)
+        XCTAssertLessThan(summary.photoCount, 20)
+        XCTAssertTrue(summary.countText.contains("+"))
+    }
+
     func testSourceSummaryStopsAtEntryLimitBeforeExhaustingUnsupportedFiles() throws {
         let directory = try makeTemporaryDirectory(named: "import-source-summary-entry-limit")
         for index in 0..<3 {
