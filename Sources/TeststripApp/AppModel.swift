@@ -293,6 +293,17 @@ public enum CullScope: String, CaseIterable, Equatable, Sendable {
         return cases[(index + 1) % cases.count]
     }
 
+    /// Full user-facing name for the scope-change toast ("Scope: Unrated
+    /// only"); the HUD chip uses the shorter `label`.
+    public var displayName: String {
+        switch self {
+        case .unrated: return "Unrated only"
+        case .picks: return "Picks only"
+        case .rejects: return "Rejects only"
+        case .all: return "All frames"
+        }
+    }
+
     public func matches(_ flag: PickFlag?) -> Bool {
         switch self {
         case .unrated: return flag == nil
@@ -5906,6 +5917,17 @@ public final class AppModel {
             scope: cullScope,
             currentSelection: selectedAssetID
         ))
+        // Scope is an easy-to-miss mode change (the filmstrip just renumbers);
+        // announce it through the same toast the rating keys use. It writes
+        // no metadata, so the toast is informational (no ⌘Z suffix).
+        let toastAsset = selectedAsset ?? assets.first
+        lastCullingMetadataDecision = CullingMetadataDecisionFeedback(
+            assetID: toastAsset?.id ?? AssetID(rawValue: "cull-scope"),
+            filename: toastAsset?.originalURL.lastPathComponent ?? "",
+            command: .clearFlag,
+            decisionText: "Scope: \(cullScope.displayName)",
+            isInformational: true
+        )
     }
 
     /// Count of unflagged (undecided) frames in the session, for driving

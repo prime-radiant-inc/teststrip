@@ -34,6 +34,35 @@ final class CullScopeTests: XCTestCase {
         XCTAssertTrue(CullScope.all.matches(.reject))
     }
 
+    func testScopeDisplayNamesAreUserFacing() {
+        XCTAssertEqual(CullScope.unrated.displayName, "Unrated only")
+        XCTAssertEqual(CullScope.picks.displayName, "Picks only")
+        XCTAssertEqual(CullScope.rejects.displayName, "Rejects only")
+        XCTAssertEqual(CullScope.all.displayName, "All frames")
+    }
+
+    func testCycleCullScopeAnnouncesNewScopeThroughDecisionToast() throws {
+        // Pressing S silently renumbered the filmstrip (persona-8); the
+        // scope change must announce itself through the same toast the
+        // rating keys use.
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .loupe,
+            assets: [Self.asset(id: "a", flag: nil), Self.asset(id: "b", flag: .pick)]
+        )
+
+        model.cycleCullScope()
+
+        XCTAssertEqual(model.cullScope, .unrated)
+        let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
+        XCTAssertTrue(feedback.isInformational, "scope change writes no metadata; toast must not imply an undoable edit")
+        XCTAssertEqual(feedback.decisionText, "Scope: Unrated only")
+        XCTAssertEqual(CullDecisionToastPresentation(feedback: feedback).text, "Scope: Unrated only")
+
+        model.cycleCullScope()
+        XCTAssertEqual(model.lastCullingMetadataDecision?.decisionText, "Scope: Picks only")
+    }
+
     func testFilteredAssetIDsOnlyContainsMatchingFrames() {
         let assets = [
             Self.asset(id: "a", flag: nil),
