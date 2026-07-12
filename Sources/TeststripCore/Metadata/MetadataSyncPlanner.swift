@@ -18,7 +18,12 @@ public struct MetadataSyncPlanner: Sendable {
         sidecarModificationDate: Date? = nil
     ) throws -> MetadataSyncDecision {
         guard let sidecarData else {
-            return .writeCatalog
+            // Non-destructive invariant: a sidecar exists only after the user
+            // sets a portable field. Untouched metadata (rating 0, nothing
+            // else set) with no sidecar on disk must never trigger a write —
+            // otherwise merely browsing an asset would spray Rating=0
+            // sidecars next to the originals.
+            return catalogMetadata.hasWrittenPortableMetadata ? .writeCatalog : .upToDate
         }
 
         guard let lastSynced, let lastSyncedFingerprint = lastSynced.lastSyncedFingerprint else {
