@@ -8458,6 +8458,10 @@ final class AppModelTests: XCTestCase {
         try model.applyLibraryFilters()
         let fallbackRow = try XCTUnwrap(model.activeLibraryFilterRows.first { $0.isPlainSearchFallback })
         XCTAssertEqual(fallbackRow.title, "Search: ceremony")
+        // The chip explains what the leftover text does in user language,
+        // not "Plain search fallback" (persona-8).
+        XCTAssertEqual(fallbackRow.subtitle, "Not a filter — matching file names and photo text")
+        XCTAssertTrue(model.activeLibraryFilterRows.filter { !$0.isPlainSearchFallback }.allSatisfy { $0.subtitle == nil })
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
 
         try model.removeActiveLibraryFilter(fallbackRow)

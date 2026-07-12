@@ -293,6 +293,17 @@ public enum CullScope: String, CaseIterable, Equatable, Sendable {
         return cases[(index + 1) % cases.count]
     }
 
+    /// Full user-facing name for the scope-change toast ("Scope: Unrated
+    /// only"); the HUD chip uses the shorter `label`.
+    public var displayName: String {
+        switch self {
+        case .unrated: return "Unrated only"
+        case .picks: return "Picks only"
+        case .rejects: return "Rejects only"
+        case .all: return "All frames"
+        }
+    }
+
     public func matches(_ flag: PickFlag?) -> Bool {
         switch self {
         case .unrated: return flag == nil
@@ -1004,6 +1015,12 @@ public struct ActiveLibraryFilterRow: Identifiable, Equatable, Sendable {
     public var isPlainSearchFallback: Bool
 
     public var id: String { title }
+
+    /// Second line on the filter chip explaining unusual rows in user
+    /// language; nil for ordinary structured filters.
+    public var subtitle: String? {
+        isPlainSearchFallback ? "Not a filter — matching file names and photo text" : nil
+    }
 
     public init(title: String, target: SidebarRowTarget? = nil, isPlainSearchFallback: Bool = false) {
         self.title = title
@@ -1934,8 +1951,26 @@ public final class AppModel {
             if selectedView.workspace != oldValue.workspace {
                 rebuildSidebarSections()
             }
+            // The ? keymap overlay is the loupe's whole manual, but nothing
+            // advertised it (persona-8) — announce it once per session on
+            // first entry to the Cull workspace, via the decision toast.
+            if selectedView.workspace == .cull,
+               oldValue.workspace != .cull,
+               !hasShownCullKeyboardHint {
+                hasShownCullKeyboardHint = true
+                lastCullingMetadataDecision = CullingMetadataDecisionFeedback(
+                    assetID: selectedAsset?.id ?? assets.first?.id ?? AssetID(rawValue: "cull-keyboard-hint"),
+                    filename: "",
+                    command: .clearFlag,
+                    decisionText: "Press ? for keyboard shortcuts",
+                    isInformational: true
+                )
+            }
         }
     }
+
+    /// Once per session: the keymap-overlay hint shown on first entry to Cull.
+    private var hasShownCullKeyboardHint = false
     /// Which workspace `selectedView` currently belongs to.
     public var selectedWorkspace: Workspace {
         selectedView.workspace
@@ -5906,6 +5941,17 @@ public final class AppModel {
             scope: cullScope,
             currentSelection: selectedAssetID
         ))
+        // Scope is an easy-to-miss mode change (the filmstrip just renumbers);
+        // announce it through the same toast the rating keys use. It writes
+        // no metadata, so the toast is informational (no ⌘Z suffix).
+        let toastAsset = selectedAsset ?? assets.first
+        lastCullingMetadataDecision = CullingMetadataDecisionFeedback(
+            assetID: toastAsset?.id ?? AssetID(rawValue: "cull-scope"),
+            filename: toastAsset?.originalURL.lastPathComponent ?? "",
+            command: .clearFlag,
+            decisionText: "Scope: \(cullScope.displayName)",
+            isInformational: true
+        )
     }
 
     /// Count of unflagged (undecided) frames in the session, for driving

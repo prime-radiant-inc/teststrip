@@ -45,8 +45,10 @@ final class LibraryResultHeaderTests: XCTestCase {
         XCTAssertEqual(presentation.interpretation, "read as Rating >= 4 + plain text \"sunset\"")
     }
 
-    func testPlainTextOnlyQueryReadsAsPlainTextWithoutTokenPrefix() {
-        // No structured tokens parsed at all — the original, simpler phrasing.
+    func testPlainTextOnlyQueryExplainsWhatIsBeingMatched() {
+        // No structured tokens parsed at all — say what the search is doing
+        // in user language, not parser language (persona-8: "read as plain
+        // text" explained nothing).
         let presentation = LibraryResultHeaderPresentation(
             totalAssetCount: 3,
             librarySearchText: "sunset",
@@ -55,7 +57,7 @@ final class LibraryResultHeaderTests: XCTestCase {
             canSaveManualSet: false
         )
 
-        XCTAssertEqual(presentation.interpretation, "read as plain text: sunset")
+        XCTAssertEqual(presentation.interpretation, "No filter matched — searching file names and photo text for “sunset”")
     }
 
     func testUnquotedMultiWordTokenSplitExposesStructuredTokenAndResidual() {

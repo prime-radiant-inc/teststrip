@@ -8,6 +8,14 @@ import Foundation
 struct CullLoupeHoverControlsPresentation: Equatable {
     static let idleTimeout: TimeInterval = 1.5
 
+    /// Tooltip/AXHelp copy for the click targets. Each names its keyboard
+    /// key — the loupe itself is where P/X have to be taught (persona-8).
+    static let pickHelp = "Pick this photo (P)"
+    static let rejectHelp = "Reject this photo (X)"
+    static func ratingHelp(star: Int) -> String {
+        "Rate \(star) star\(star == 1 ? "" : "s") (\(star))"
+    }
+
     private(set) var isVisible = false
     /// The instant after which idle hiding kicks in; nil while hidden.
     private(set) var hideDeadline: Date?

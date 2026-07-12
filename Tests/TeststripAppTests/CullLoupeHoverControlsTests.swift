@@ -57,6 +57,15 @@ final class CullLoupeHoverControlsTests: XCTestCase {
         XCTAssertFalse(state.isVisible)
     }
 
+    func testControlTooltipsTeachTheKeyboardKeys() {
+        // Persona-8: P/X are the whole workflow but nothing on the loupe
+        // taught them. The hover controls' tooltips must name the keys.
+        XCTAssertEqual(CullLoupeHoverControlsPresentation.pickHelp, "Pick this photo (P)")
+        XCTAssertEqual(CullLoupeHoverControlsPresentation.rejectHelp, "Reject this photo (X)")
+        XCTAssertEqual(CullLoupeHoverControlsPresentation.ratingHelp(star: 1), "Rate 1 star (1)")
+        XCTAssertEqual(CullLoupeHoverControlsPresentation.ratingHelp(star: 3), "Rate 3 stars (3)")
+    }
+
     func testIdleCheckWhileHiddenStaysHidden() {
         var state = CullLoupeHoverControlsPresentation()
         state.idleCheck(at: Date(timeIntervalSince1970: 5000))

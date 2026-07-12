@@ -44,7 +44,13 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
 ```
 
 ## Steps
-1. ⌘1 for Cull; select a frame and open the loupe (Return).
+1. ⌘1 for Cull; select a frame and open the loupe (Return). On this FIRST
+   entry to the Cull workspace in the session, assert the one-time
+   discoverability hint appears via the decision toast:
+   `script/ax_drive.sh find --contains "Press ? for keyboard shortcuts"`
+   (within its 2s window). Leave Cull (⌘2) and return (⌘1): assert the hint
+   does NOT reappear — it is once per session (persona-8 defect: the ?
+   overlay was undiscoverable).
 2. Press `?`. Assert the overlay appears:
    `script/ax_drive.sh wait --role AXStaticText --contains "Keyboard Shortcuts"`.
 3. Assert at least three real section headings render (quoting the actual

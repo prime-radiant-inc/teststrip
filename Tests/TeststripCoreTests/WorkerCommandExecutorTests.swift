@@ -564,6 +564,22 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try setup.repository.pendingMetadataSyncItems(), [])
     }
 
+    func testSyncMetadataCommandWritesNoSidecarForUntouchedAsset() throws {
+        // Loupe navigation enqueues a sync check per visited asset; an asset
+        // the user never rated/flagged/tagged must not gain a sidecar from
+        // being looked at.
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-untouched", metadata: AssetMetadata())
+
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("metadata up to date for asset.raw"))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: setup.sidecarURL.path),
+            "browsing an untouched asset must never create a sidecar"
+        )
+        XCTAssertEqual(try setup.repository.pendingMetadataSyncItems(), [])
+    }
+
     func testSyncMetadataCommandReportsFilenameWhenSidecarIsUpToDate() throws {
         let setup = try makeMetadataSyncSetup(named: "worker-sync-up-to-date", metadata: AssetMetadata(rating: 4))
         let write = try XMPSidecarStore().write(metadata: setup.asset.metadata, forOriginalAt: setup.asset.originalURL)

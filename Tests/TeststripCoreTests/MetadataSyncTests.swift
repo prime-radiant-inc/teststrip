@@ -495,6 +495,42 @@ final class MetadataSyncTests: XCTestCase {
         XCTAssertEqual(decision, .writeCatalog)
     }
 
+    func testPlannerDoesNotWriteSidecarForUntouchedMetadataWhenNoSidecarExists() throws {
+        // Browsing must never create a sidecar: an asset the user has only
+        // looked at (rating 0, no flag/keywords/caption/creator/copyright)
+        // with no sidecar on disk is up to date, not a pending write.
+        let decision = try MetadataSyncPlanner().decision(
+            catalogMetadata: AssetMetadata(),
+            catalogGeneration: 1,
+            lastSynced: nil,
+            sidecarData: nil
+        )
+
+        XCTAssertEqual(decision, .upToDate)
+    }
+
+    func testPlannerWritesSidecarForEditedMetadataWhenNoSidecarExists() throws {
+        let decision = try MetadataSyncPlanner().decision(
+            catalogMetadata: AssetMetadata(rating: 3),
+            catalogGeneration: 2,
+            lastSynced: nil,
+            sidecarData: nil
+        )
+
+        XCTAssertEqual(decision, .writeCatalog)
+    }
+
+    func testPlannerWritesSidecarForFlagOnlyEditWhenNoSidecarExists() throws {
+        let decision = try MetadataSyncPlanner().decision(
+            catalogMetadata: AssetMetadata(flag: .pick),
+            catalogGeneration: 2,
+            lastSynced: nil,
+            sidecarData: nil
+        )
+
+        XCTAssertEqual(decision, .writeCatalog)
+    }
+
     func testPlannerImportsSidecarWhenOnlySidecarChanged() throws {
         let catalogMetadata = AssetMetadata(rating: 2)
         let sidecarMetadata = AssetMetadata(rating: 5, keywords: ["external"])

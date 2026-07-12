@@ -8,7 +8,7 @@ sources back to back — structured `LibraryQueryToken` chips (from
 deduplicated against the structured tokens by
 `LibraryQueryToken.legacyRows(_:notCoveredBy:)` (identity = title AND
 `SidebarRowTarget`, per `LibraryQueryTokenField.swift`). One legacy chip kind
-carries a "Plain search fallback" subtitle
+carries a "Not a filter — matching file names and photo text" subtitle
 (`filterChip(isPlainSearchFallback:)`, lines 981-1016): it is set `true`
 exactly once, in `AppModel.swift:2758`, for the row titled
 `"Search: \(residualSearch)"` — i.e. whatever free text is left over after
@@ -57,7 +57,7 @@ Confirmed against a seeded `--smoke` catalog 2026-07-10: `TOTAL=24`,
    the rating property, leaving `flagFilter` untouched).
 7. Type a query mixing structured and free text, e.g. `rating:4 sunset`,
    and Return. Assert a chip titled "Search: sunset" appears with the
-   "Plain search fallback" subtitle beneath it, alongside a separate
+   "Not a filter — matching file names and photo text" subtitle beneath it, alongside a separate
    "Rating >= 4" chip with no subtitle.
 8. Click "Clear filters". Assert all chips disappear, the count restores to
    `$TOTAL`, and the button itself disappears (since `hasActiveFilters` is
@@ -72,7 +72,7 @@ Confirmed against a seeded `--smoke` catalog 2026-07-10: `TOTAL=24`,
   intact. **Fails if** removing one chip clears both filters (would mean
   `LibraryQueryToken.remove`'s per-property scoping regressed), or if the
   removed chip's filter effect persists (stale filter application).
-- Step 7: exactly one chip carries "Plain search fallback", and it's the
+- Step 7: exactly one chip carries the "Not a filter — matching file names and photo text" subtitle, and it's the
   free-text residual, not the structured `rating:4` token. **Fails if** the
   subtitle appears on the wrong chip or on none/both.
 - Step 8: all chips and the Clear button vanish, count restores. **Fails
