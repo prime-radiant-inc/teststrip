@@ -73,20 +73,39 @@ in the model factory. Empty string means unset.
 
 The value is pre-fill only; setting it writes nothing to any photo or catalog.
 
-### 3. Pre-fill
+### 3. Applying the default across both entry routes
 
-When the card-import sheet's `ImportCardPathDraft` is created, initialize
-`destinationPath` from `defaultCardImportDestination` when it is non-empty.
-`ImportCardPathDraft` is `@State`-initialized in `LibraryGridView`; the pre-fill
-must apply when the card-import flow is *opened* (so a default set after launch
-is honored), and must not clobber a destination the user has already typed in an
-open sheet. The field stays fully editable; editing it does not write back to
-the default.
+Card import has two entry routes (`LibraryGridChromePolicy.primaryCardImportRoute`):
+
+- **`.userGrantedPanel`** — the real-user route on macOS. Opens a source panel,
+  then a **destination panel**, then a read-only confirmation sheet. This is
+  where Jesse's "retype the destination every import" friction lives.
+- **`.typedPathSheet`** — automation only (`TESTSTRIP_CARD_IMPORT_ROUTE=typed-path`,
+  set by the VM/scenario launcher). Has an editable destination text field.
+
+The default must remove the friction in **both**:
+
+- **Panel route:** when `defaultCardImportDestination` is set, the source panel
+  still opens (the card changes every import), but the **destination panel is
+  skipped** and the saved default is used — the "standard setting, don't ask me"
+  behavior. Per-import override: the confirmation sheet's Destination row (card
+  mode only) gains a small trailing **Change…** button that opens the
+  destination panel (seeded at the current destination) and updates the draft's
+  `destinationRoot`, re-running the existing destination availability check. When
+  no default is set, the route is unchanged (destination panel as today).
+- **Typed-path sheet route:** `ImportCardPathDraft.destinationPath` is pre-filled
+  from the default when the sheet is opened (after its `reset()`), non-empty
+  only. The field stays fully editable; editing it does not write back to the
+  default.
+
+Editing the destination for one import (Change… or the typed field) never
+mutates the saved default — the "editable per import, no sticky override" choice.
 
 A stale default (folder unplugged/missing) needs no special handling: the
-existing `CardImportDestinationPreflight.blockingReason` already blocks review
-with "Destination folder is missing," so a stale default fails safe at review
-rather than copying anywhere wrong.
+existing `CardImportDestinationPreflight.blockingReason` and the confirmation
+sheet's `destinationUnavailableReason` already surface "Destination folder is
+missing" and block the import, so a stale default fails safe rather than copying
+anywhere wrong. The Change… button lets the user point at a reachable folder.
 
 ## Non-goals
 
@@ -101,19 +120,29 @@ rather than copying anywhere wrong.
 - **Unit (persistence):** `defaultCardImportDestination` round-trips through an
   injected `UserDefaults` and loads on model construction — mirror the existing
   byline persistence tests.
-- **Presentation (pre-fill):** an `ImportCardPathDraft` opened with a non-empty
-  default pre-fills `destinationPath`; an empty default leaves it blank; a
-  user-entered destination is not overwritten when the flow re-evaluates.
+- **Presentation (typed-sheet pre-fill):** an `ImportCardPathDraft` opened with a
+  non-empty default pre-fills `destinationPath`; an empty default leaves it
+  blank; a user-entered destination is not overwritten when the flow
+  re-evaluates.
+- **Unit (panel-route selection):** a helper decides "skip destination panel and
+  use the default" vs. "open the destination panel" from the saved default —
+  test both branches (default set → use it; default unset → open panel).
+- **Presentation (confirmation Change… affordance):** the confirmation sheet
+  exposes a destination-change control in card mode only, and applying a new
+  folder updates the draft's `destinationRoot` (and its availability reason)
+  without touching the saved default.
 - **Presentation (Preferences):** the Card-import section binds to the model
   value and carries the footer copy; Choose/Clear update the bound value.
 - **E2E scenario card (run live in the Tart VM):** new
   `test/scenarios/app-018-default-card-destination.md` — in ⌘, Settings set a
   card-import destination; assert `defaults read com.teststrip.app
   AppModel.defaultCardImportDestination` shows it; ⌘Q and relaunch against the
-  same run dir; open the card-import flow and assert the destination field is
-  pre-filled with the saved value; assert the value is pre-fill only (no catalog
-  write). Add a ledger row. The card is the spec; it must be executed, not just
-  authored.
+  same run dir; drive the automation (`typed-path`) card-import route and assert
+  the destination field is pre-filled with the saved value; assert the value is
+  pre-fill only (no catalog write). Add a ledger row. The card is the spec; it
+  must be executed, not just authored. (The panel-route skip/Change… behavior is
+  not AX-drivable through native open panels — it is covered by the unit and
+  presentation tests above and noted in the card's Sharp edges.)
 
 ## Out of scope
 
