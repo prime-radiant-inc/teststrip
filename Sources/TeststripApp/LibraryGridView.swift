@@ -4214,13 +4214,13 @@ private struct LoupeView: View {
             } label: {
                 Label("Pick", systemImage: "checkmark.circle")
             }
-            .help("Pick this photo (P)")
+            .help(CullLoupeHoverControlsPresentation.pickHelp)
             Button {
                 applyHoverCullingShortcut(.reject)
             } label: {
                 Label("Reject", systemImage: "xmark.circle")
             }
-            .help("Reject this photo (X)")
+            .help(CullLoupeHoverControlsPresentation.rejectHelp)
             Divider().frame(height: 16)
             let rating = asset.metadata.rating
             ForEach(1...5, id: \.self) { star in
@@ -4231,7 +4231,7 @@ private struct LoupeView: View {
                 } label: {
                     Image(systemName: star <= rating ? "star.fill" : "star")
                 }
-                .help("Rate \(star) star\(star == 1 ? "" : "s") (\(star))")
+                .help(CullLoupeHoverControlsPresentation.ratingHelp(star: star))
             }
         }
         .buttonStyle(.borderless)

@@ -1951,8 +1951,26 @@ public final class AppModel {
             if selectedView.workspace != oldValue.workspace {
                 rebuildSidebarSections()
             }
+            // The ? keymap overlay is the loupe's whole manual, but nothing
+            // advertised it (persona-8) — announce it once per session on
+            // first entry to the Cull workspace, via the decision toast.
+            if selectedView.workspace == .cull,
+               oldValue.workspace != .cull,
+               !hasShownCullKeyboardHint {
+                hasShownCullKeyboardHint = true
+                lastCullingMetadataDecision = CullingMetadataDecisionFeedback(
+                    assetID: selectedAsset?.id ?? assets.first?.id ?? AssetID(rawValue: "cull-keyboard-hint"),
+                    filename: "",
+                    command: .clearFlag,
+                    decisionText: "Press ? for keyboard shortcuts",
+                    isInformational: true
+                )
+            }
         }
     }
+
+    /// Once per session: the keymap-overlay hint shown on first entry to Cull.
+    private var hasShownCullKeyboardHint = false
     /// Which workspace `selectedView` currently belongs to.
     public var selectedWorkspace: Workspace {
         selectedView.workspace

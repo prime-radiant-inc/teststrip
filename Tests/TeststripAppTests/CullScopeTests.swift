@@ -63,6 +63,29 @@ final class CullScopeTests: XCTestCase {
         XCTAssertEqual(model.lastCullingMetadataDecision?.decisionText, "Scope: Picks only")
     }
 
+    func testFirstEntryToCullShowsKeyboardShortcutHintOncePerSession() throws {
+        // Persona-8: the ? keymap overlay is great but nothing advertises it.
+        // The first entry to the Cull workspace shows a one-time hint through
+        // the decision toast; later entries stay quiet.
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .grid,
+            assets: [Self.asset(id: "a", flag: nil)]
+        )
+        XCTAssertNil(model.lastCullingMetadataDecision)
+
+        model.selectedView = .loupe
+
+        let hint = try XCTUnwrap(model.lastCullingMetadataDecision)
+        XCTAssertTrue(hint.isInformational)
+        XCTAssertEqual(hint.decisionText, "Press ? for keyboard shortcuts")
+
+        model.selectedView = .grid
+        model.lastCullingMetadataDecision = nil
+        model.selectedView = .loupe
+        XCTAssertNil(model.lastCullingMetadataDecision, "hint is once per session")
+    }
+
     func testFilteredAssetIDsOnlyContainsMatchingFrames() {
         let assets = [
             Self.asset(id: "a", flag: nil),
