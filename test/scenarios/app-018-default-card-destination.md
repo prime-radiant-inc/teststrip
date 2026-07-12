@@ -37,7 +37,11 @@ script/vm_scenario_run.sh ax wait-vended Teststrip
    reads it. In the VM shell pick a real folder and set it:
    ```bash
    DEST="/Users/admin/CardDest"; mkdir -p "$DEST"
-   defaults write com.teststrip.app AppModel.defaultCardImportDestination "$DEST"
+   # Explicit-path form — see Sharp edges: a stale ~/Library/Containers/
+   # com.teststrip.app redirects the bare `defaults com.teststrip.app` CLI to a
+   # container plist the (non-sandboxed) app ignores. This targets the same
+   # store UserDefaults.standard uses.
+   defaults write "$HOME/Library/Preferences/com.teststrip.app" AppModel.defaultCardImportDestination "$DEST"
    ```
    (The button's only effect is `model.defaultCardImportDestination = url.path`,
    whose `didSet` writes this same key — this step exercises the persistence
@@ -77,7 +81,7 @@ script/vm_scenario_run.sh ax wait-vended Teststrip
 ## Cleanup
 ```bash
 script/vm_scenario_run.sh shell
-# then: defaults delete com.teststrip.app AppModel.defaultCardImportDestination
+# then: defaults delete "$HOME/Library/Preferences/com.teststrip.app" AppModel.defaultCardImportDestination
 #       rm -rf /Users/admin/CardDest "$RUN"
 ```
 
@@ -87,6 +91,16 @@ script/vm_scenario_run.sh shell
   the button's effect (`model.defaultCardImportDestination = url.path` →
   `didSet` persists). The button wiring itself is covered by
   `CardImportPreferencePresentationTests`.
+- **`defaults` store redirect on this VM (verified 2026-07-12):** the app is
+  not sandboxed, so it reads/writes `~/Library/Preferences/com.teststrip.app.plist`
+  via `UserDefaults.standard`, but a stale `~/Library/Containers/com.teststrip.app/`
+  dir makes the bare `defaults <domain>` CLI redirect to the container plist
+  the app ignores. Always use the explicit-path form
+  (`defaults write "$HOME/Library/Preferences/com.teststrip.app" KEY VALUE`)
+  for both write and read/delete, or Steps 3-4 read stale "None". A quick
+  differential probe (write `AppModel.defaultCreator` the same way and confirm
+  app-015's known-good byline path behaves identically) isolates this store
+  mismatch from any real regression.
 - **Typed-path route (Step 4)** needs the app launched with
   `TESTSTRIP_CARD_IMPORT_ROUTE=typed-path`. `vm_scenario_run.sh launch` does
   not pass it, so relaunch manually in the VM shell mirroring the verb's own
