@@ -109,7 +109,9 @@ public struct LibraryResultHeaderPresentation: Equatable {
         guard !trimmed.isEmpty else { return nil }
         let intent = LibrarySearchIntent.parse(trimmed)
         guard let residual = intent.residualText else { return nil }
-        guard !intent.chips.isEmpty else { return "read as plain text: \(residual)" }
+        guard !intent.chips.isEmpty else {
+            return "No filter matched — searching file names and photo text for “\(residual)”"
+        }
         return "read as \(intent.chips.joined(separator: " + ")) + plain text \"\(residual)\""
     }
 

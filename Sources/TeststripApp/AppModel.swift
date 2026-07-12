@@ -1016,6 +1016,12 @@ public struct ActiveLibraryFilterRow: Identifiable, Equatable, Sendable {
 
     public var id: String { title }
 
+    /// Second line on the filter chip explaining unusual rows in user
+    /// language; nil for ordinary structured filters.
+    public var subtitle: String? {
+        isPlainSearchFallback ? "Not a filter — matching file names and photo text" : nil
+    }
+
     public init(title: String, target: SidebarRowTarget? = nil, isPlainSearchFallback: Bool = false) {
         self.title = title
         self.target = target

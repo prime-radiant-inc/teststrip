@@ -1062,13 +1062,13 @@ struct LibraryGridView: View {
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.orange)
                 ForEach(tokens) { token in
-                    filterChip(title: token.display, isPlainSearchFallback: false) {
+                    filterChip(title: token.display, subtitle: nil) {
                         LibraryQueryToken.remove(token, from: model)
                         applyLibraryFilters()
                     }
                 }
                 ForEach(legacyRows) { row in
-                    filterChip(title: row.title, isPlainSearchFallback: row.isPlainSearchFallback) {
+                    filterChip(title: row.title, subtitle: row.subtitle) {
                         removeActiveLibraryFilter(row)
                     }
                 }
@@ -1079,7 +1079,7 @@ struct LibraryGridView: View {
 
     private func filterChip(
         title: String,
-        isPlainSearchFallback: Bool,
+        subtitle: String?,
         remove: @escaping () -> Void
     ) -> some View {
         Button(action: remove) {
@@ -1087,8 +1087,8 @@ struct LibraryGridView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
                         .lineLimit(1)
-                    if isPlainSearchFallback {
-                        Text("Plain search fallback")
+                    if let subtitle {
+                        Text(subtitle)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -1107,9 +1107,9 @@ struct LibraryGridView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            isPlainSearchFallback
-                ? "Remove plain search fallback filter \(title)"
-                : "Remove filter \(title)"
+            subtitle == nil
+                ? "Remove filter \(title)"
+                : "Remove filter \(title) (\(subtitle ?? ""))"
         )
         .help("Remove \(title) filter")
     }
