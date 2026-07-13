@@ -12956,7 +12956,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertNotEqual(model.statusMessage, "Cancelled import")
     }
 
-    func testCancellingRunningLocalHTTPModelEvaluationRestartsWorkerAndStartsNextQueuedWork() throws {
+    @MainActor
+    func testCancellingRunningLocalHTTPModelEvaluationSoftCancelsAndStartsNextQueuedWorkOnTerminal() async throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
             queue: BackgroundWorkQueue(maxRunningCount: 1),
@@ -12977,11 +12978,26 @@ final class AppModelTests: XCTestCase {
 
         model.cancelBackgroundWork(id: evaluationID)
 
-        XCTAssertEqual(model.backgroundWorkQueue.item(id: evaluationID)?.status, .cancelled)
-        XCTAssertEqual(model.backgroundWorkQueue.item(id: previewID)?.status, .running)
+        // Per-item cancel is soft: the dispatched evaluation keeps its lane until its
+        // natural terminal, so no cancelAll is broadcast and the queued preview waits.
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: evaluationID)?.status, .running)
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: previewID)?.status, .queued)
+        XCTAssertEqual(try transport.commands(), [
+            .runEvaluation(assetID: evaluationAsset.id, provider: "local-http-model")
+        ])
+
+        // The worker's terminal finalizes the cancelled evaluation as cancelled and
+        // frees the lane for the queued preview — without terminating the worker.
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: evaluationID,
+            message: "evaluated running-evaluation"
+        )))
+
+        try await waitForBackgroundWorkStatus(.cancelled, itemID: evaluationID, in: model)
+        try await waitForBackgroundWorkStatus(.running, itemID: previewID, in: model)
+        XCTAssertEqual(transport.terminateCount, 0)
         XCTAssertEqual(try transport.commands(), [
             .runEvaluation(assetID: evaluationAsset.id, provider: "local-http-model"),
-            .cancelAll,
             .generatePreview(assetID: previewAsset.id, level: .medium)
         ])
     }
@@ -15044,7 +15060,7 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testCancellingVisibleWorkerImportPreservesOtherBackgroundWork() throws {
+    func testCancellingVisibleWorkerImportPreservesOtherBackgroundWork() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-worker-import-targeted-cancel")
         let photoFolder = directory.appendingPathComponent("photos", isDirectory: true)
         try FileManager.default.createDirectory(at: photoFolder, withIntermediateDirectories: true)
@@ -15065,13 +15081,33 @@ final class AppModelTests: XCTestCase {
 
         model.cancelImportWork()
 
-        XCTAssertFalse(model.isImporting)
-        XCTAssertEqual(model.backgroundWorkQueue.item(id: importItem.id)?.status, .cancelled)
-        XCTAssertEqual(model.backgroundWorkQueue.item(id: previewItem.id)?.status, .running)
+        // Per-item cancel is soft: the running import keeps its lane until its natural
+        // terminal, so the worker is not terminated and the queued preview waits.
         XCTAssertEqual(model.statusMessage, "Cancelled import")
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: importItem.id)?.status, .running)
+        XCTAssertEqual(model.backgroundWorkQueue.item(id: previewItem.id)?.status, .queued)
+        XCTAssertEqual(try transport.commands(), [
+            .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent)
+        ])
+
+        // The worker's import terminal finalizes the cancelled import, records the
+        // cancelled import activity, and frees the lane for the queued preview.
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completedImport(
+            itemID: importItem.id,
+            message: "imported 0 photos from photos",
+            importedAssetIDs: [],
+            newAssetCount: 0,
+            existingAssetCount: 0,
+            skippedSourceFileCount: 0,
+            skippedSourceFiles: []
+        )))
+
+        try await waitForBackgroundWorkStatus(.cancelled, itemID: importItem.id, in: model)
+        try await waitForBackgroundWorkStatus(.running, itemID: previewItem.id, in: model)
+        XCTAssertFalse(model.isImporting)
+        XCTAssertEqual(transport.terminateCount, 0)
         XCTAssertEqual(try transport.commands(), [
             .importFolder(root: photoFolder, duplicateHandling: .skipCatalogedContent),
-            .cancelAll,
             previewCommand
         ])
         XCTAssertEqual(model.recentWork.first?.id, importItem.id.rawValue)
