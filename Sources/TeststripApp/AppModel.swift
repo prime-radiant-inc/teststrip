@@ -2776,14 +2776,13 @@ public final class AppModel {
         return Self.isActiveBackgroundWorkStatus(item.status)
     }
 
-    /// All active background work rolled up into one aggregate row per kind,
-    /// for the Activity Center's per-kind progress bars.
+    /// All active work rolled up into one aggregate row per kind, for the
+    /// Activity Center's per-kind progress bars. Folds in the foreground
+    /// local import (`activeWork`, kind `.ingest`) alongside the background
+    /// queue so import surfaces as the `.ingest` kind row.
     public var activeWorkKindRows: [ActivityKindRow] {
-        ActivityKindRow.rows(
-            from: visibleActiveBackgroundWorkItems.map(AppWorkActivity.init),
-            canPause: canPauseBackgroundWork,
-            canResume: canResumeBackgroundWork
-        )
+        let items = ([activeWork].compactMap { $0 }) + visibleActiveBackgroundWorkItems.map(AppWorkActivity.init)
+        return ActivityKindRow.rows(from: items, canPause: canPauseBackgroundWork, canResume: canResumeBackgroundWork)
     }
 
     /// Aggregates background work, import progress, source availability, and
@@ -2793,15 +2792,6 @@ public final class AppModel {
     /// sections, the inspector-pinned Activity panel, and the footer/top-inset
     /// import surfaces.
     public var activityCenterPresentation: ActivityCenterPresentation {
-        let jobs = visibleWorkActivities.map { activity in
-            ActivityJobRow(
-                activity: activity,
-                canStar: canToggleWorkSessionStarred(activity),
-                canPause: canPauseBackgroundWork,
-                canResume: canResumeBackgroundWork,
-                canCancel: canCancelBackgroundWorkActivity(activity)
-            )
-        }
         // Two independent row families, matching the retired sidebar's
         // "Sources" section: catalog-wide availability counts (no root
         // registration required) and bookmark-repair rows for registered
@@ -2836,7 +2826,6 @@ public final class AppModel {
             )
         }
         return ActivityCenterPresentation(
-            jobs: jobs,
             kindRows: activeWorkKindRows,
             importActivity: visibleImportActivity,
             importError: importError,

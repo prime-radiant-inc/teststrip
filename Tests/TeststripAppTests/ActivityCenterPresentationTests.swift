@@ -5,7 +5,6 @@ import TeststripCore
 final class ActivityCenterPresentationTests: XCTestCase {
     func testHealthyIdleShowsNoBadgeAndNotWorking() {
         let presentation = ActivityCenterPresentation(
-            jobs: [],
             kindRows: [],
             importActivity: nil,
             importError: nil,
@@ -20,26 +19,23 @@ final class ActivityCenterPresentationTests: XCTestCase {
         XCTAssertNil(presentation.importError)
     }
 
-    func testRunningJobsSetWorkingButNoBadge() {
-        let runningJob = ActivityJobRow(
-            activity: AppWorkActivity(
-                kind: .previewGeneration,
-                status: .running,
-                title: "Building previews",
-                detail: "Generated 2 of 10 previews",
-                completedUnitCount: 2,
-                totalUnitCount: 10,
-                failureCount: 0
-            ),
-            canStar: true,
+    func testRunningKindRowsSetWorkingButNoBadge() {
+        let runningRow = ActivityKindRow(
+            id: WorkSessionKind.previewGeneration.rawValue,
+            kind: .previewGeneration,
+            title: "Generate previews",
+            detail: "Generated 2 of 10 previews",
+            completedUnitCount: 2,
+            totalUnitCount: 10,
+            status: .running,
+            activeItemCount: 1,
             canPause: true,
             canResume: false,
             canCancel: true
         )
 
         let presentation = ActivityCenterPresentation(
-            jobs: [runningJob],
-            kindRows: [],
+            kindRows: [runningRow],
             importActivity: nil,
             importError: nil,
             sources: [],
@@ -61,7 +57,6 @@ final class ActivityCenterPresentationTests: XCTestCase {
         ]
 
         let presentation = ActivityCenterPresentation(
-            jobs: [],
             kindRows: [],
             importActivity: nil,
             importError: nil,
@@ -76,7 +71,6 @@ final class ActivityCenterPresentationTests: XCTestCase {
     func testEveryNonOnlineSourceAvailabilityCountsTowardProblemBadge() {
         for availability in [SourceAvailability.offline, .missing, .moved, .stale] {
             let presentation = ActivityCenterPresentation(
-                jobs: [],
                 kindRows: [],
                 importActivity: nil,
                 importError: nil,
@@ -108,7 +102,6 @@ final class ActivityCenterPresentationTests: XCTestCase {
         )
 
         let presentation = ActivityCenterPresentation(
-            jobs: [],
             kindRows: [],
             importActivity: importActivity,
             importError: "Import failed: disk full",

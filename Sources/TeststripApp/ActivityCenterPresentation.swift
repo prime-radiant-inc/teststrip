@@ -1,32 +1,5 @@
 import TeststripCore
 
-/// A background work row in the Activity Center, wrapping an `AppWorkActivity`
-/// with the control availability flags that gate the star/pause/resume/cancel
-/// buttons in `ActivityView`.
-public struct ActivityJobRow: Equatable, Identifiable, Sendable {
-    public var id: String
-    public var activity: AppWorkActivity
-    public var canStar: Bool
-    public var canPause: Bool
-    public var canResume: Bool
-    public var canCancel: Bool
-
-    public init(
-        activity: AppWorkActivity,
-        canStar: Bool,
-        canPause: Bool,
-        canResume: Bool,
-        canCancel: Bool
-    ) {
-        self.id = activity.id
-        self.activity = activity
-        self.canStar = canStar
-        self.canPause = canPause
-        self.canResume = canResume
-        self.canCancel = canCancel
-    }
-}
-
 /// Presentation for the active import's progress, surfaced in the Activity
 /// Center's import row.
 public struct ImportProgressRow: Equatable, Sendable {
@@ -178,7 +151,6 @@ public struct ActivityCenterPresentation: Equatable {
 
     public var badge: Badge
     public var isWorking: Bool
-    public var jobs: [ActivityJobRow]
     public var kindRows: [ActivityKindRow]
     public var importProgress: ImportProgressRow?
     public var importError: String?
@@ -186,7 +158,6 @@ public struct ActivityCenterPresentation: Equatable {
     public var xmpConflicts: [ConflictRow]
 
     public init(
-        jobs: [ActivityJobRow],
         kindRows: [ActivityKindRow],
         importActivity: AppWorkActivity?,
         importError: String?,
@@ -194,7 +165,6 @@ public struct ActivityCenterPresentation: Equatable {
         xmpConflicts: [ConflictRow],
         providerFailureCount: Int
     ) {
-        self.jobs = jobs
         self.kindRows = kindRows
         self.importProgress = importActivity.map(ImportProgressRow.init(activity:))
         self.importError = importError
@@ -208,8 +178,8 @@ public struct ActivityCenterPresentation: Equatable {
         func isActive(_ status: WorkSessionStatus) -> Bool {
             status == .running || status == .queued
         }
-        let hasActiveJob = jobs.contains { isActive($0.activity.status) }
+        let hasActiveKindRow = kindRows.contains { isActive($0.status) }
         let hasActiveImport = importActivity.map { isActive($0.status) } ?? false
-        self.isWorking = hasActiveJob || hasActiveImport
+        self.isWorking = hasActiveKindRow || hasActiveImport
     }
 }
