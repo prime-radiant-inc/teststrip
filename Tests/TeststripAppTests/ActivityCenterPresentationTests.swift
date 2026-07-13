@@ -6,6 +6,7 @@ final class ActivityCenterPresentationTests: XCTestCase {
     func testHealthyIdleShowsNoBadgeAndNotWorking() {
         let presentation = ActivityCenterPresentation(
             jobs: [],
+            kindRows: [],
             importActivity: nil,
             importError: nil,
             sources: [],
@@ -38,6 +39,7 @@ final class ActivityCenterPresentationTests: XCTestCase {
 
         let presentation = ActivityCenterPresentation(
             jobs: [runningJob],
+            kindRows: [],
             importActivity: nil,
             importError: nil,
             sources: [],
@@ -60,6 +62,7 @@ final class ActivityCenterPresentationTests: XCTestCase {
 
         let presentation = ActivityCenterPresentation(
             jobs: [],
+            kindRows: [],
             importActivity: nil,
             importError: nil,
             sources: sources,
@@ -74,6 +77,7 @@ final class ActivityCenterPresentationTests: XCTestCase {
         for availability in [SourceAvailability.offline, .missing, .moved, .stale] {
             let presentation = ActivityCenterPresentation(
                 jobs: [],
+                kindRows: [],
                 importActivity: nil,
                 importError: nil,
                 sources: [
@@ -105,6 +109,7 @@ final class ActivityCenterPresentationTests: XCTestCase {
 
         let presentation = ActivityCenterPresentation(
             jobs: [],
+            kindRows: [],
             importActivity: importActivity,
             importError: "Import failed: disk full",
             sources: [],

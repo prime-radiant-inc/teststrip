@@ -179,6 +179,7 @@ public struct ActivityCenterPresentation: Equatable {
     public var badge: Badge
     public var isWorking: Bool
     public var jobs: [ActivityJobRow]
+    public var kindRows: [ActivityKindRow]
     public var importProgress: ImportProgressRow?
     public var importError: String?
     public var sources: [SourceStatusRow]
@@ -186,6 +187,7 @@ public struct ActivityCenterPresentation: Equatable {
 
     public init(
         jobs: [ActivityJobRow],
+        kindRows: [ActivityKindRow],
         importActivity: AppWorkActivity?,
         importError: String?,
         sources: [SourceStatusRow],
@@ -193,6 +195,7 @@ public struct ActivityCenterPresentation: Equatable {
         providerFailureCount: Int
     ) {
         self.jobs = jobs
+        self.kindRows = kindRows
         self.importProgress = importActivity.map(ImportProgressRow.init(activity:))
         self.importError = importError
         self.sources = sources

@@ -41,4 +41,27 @@ final class ActivityKindRowTests: XCTestCase {
             XCTAssertFalse(ActivityKindRow.title(for: kind).isEmpty)
         }
     }
+
+    func testTotalUnitCountIsNilWhenAnyItemHasNoTotal() {
+        let rows = ActivityKindRow.rows(
+            from: [
+                activity(.previewGeneration, .running, done: 3, total: 10),
+                activity(.previewGeneration, .queued, done: 0, total: nil),
+            ],
+            canPause: true, canResume: false
+        )
+        XCTAssertEqual(rows.first?.totalUnitCount, nil)
+    }
+
+    func testCanCancelIsFalseWhenEveryItemIsTerminal() {
+        let rows = ActivityKindRow.rows(
+            from: [
+                activity(.previewGeneration, .completed, done: 10, total: 10),
+                activity(.previewGeneration, .failed, done: 3, total: 10),
+                activity(.previewGeneration, .cancelled, done: 0, total: 10),
+            ],
+            canPause: true, canResume: false
+        )
+        XCTAssertEqual(rows.first?.canCancel, false)
+    }
 }

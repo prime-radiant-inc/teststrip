@@ -2776,6 +2776,16 @@ public final class AppModel {
         return Self.isActiveBackgroundWorkStatus(item.status)
     }
 
+    /// All active background work rolled up into one aggregate row per kind,
+    /// for the Activity Center's per-kind progress bars.
+    public var activeWorkKindRows: [ActivityKindRow] {
+        ActivityKindRow.rows(
+            from: visibleActiveBackgroundWorkItems.map(AppWorkActivity.init),
+            canPause: canPauseBackgroundWork,
+            canResume: canResumeBackgroundWork
+        )
+    }
+
     /// Aggregates background work, import progress, source availability, and
     /// XMP sync conflicts for the Activity Center toolbar popover - the single
     /// place a caller reads to render the toolbar's badge/progress and the
@@ -2827,6 +2837,7 @@ public final class AppModel {
         }
         return ActivityCenterPresentation(
             jobs: jobs,
+            kindRows: activeWorkKindRows,
             importActivity: visibleImportActivity,
             importError: importError,
             sources: sources,
