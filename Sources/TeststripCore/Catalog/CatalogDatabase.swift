@@ -5,6 +5,9 @@ public final class CatalogDatabase: @unchecked Sendable {
     private static let busyTimeoutMilliseconds: Int32 = 5_000
 
     private let handle: OpaquePointer
+    // Concurrent worker lanes share one CatalogDatabase; recursive because
+    // transaction() calls execute() while already holding the lock.
+    private let handleLock = NSRecursiveLock()
     var rowQueryObserver: ((String) -> Void)?
 
     private init(handle: OpaquePointer) {
@@ -58,6 +61,8 @@ public final class CatalogDatabase: @unchecked Sendable {
     }
 
     func execute(_ sql: String, bindings: [String] = []) throws {
+        handleLock.lock()
+        defer { handleLock.unlock() }
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
             throw CatalogError.sqlite(lastError)
@@ -70,6 +75,8 @@ public final class CatalogDatabase: @unchecked Sendable {
     }
 
     func transaction(_ work: () throws -> Void) throws {
+        handleLock.lock()
+        defer { handleLock.unlock() }
         try execute("BEGIN IMMEDIATE TRANSACTION")
         do {
             try work()
@@ -81,6 +88,8 @@ public final class CatalogDatabase: @unchecked Sendable {
     }
 
     func rows(_ sql: String, bindings: [String] = []) throws -> [[String: String]] {
+        handleLock.lock()
+        defer { handleLock.unlock() }
         rowQueryObserver?(sql)
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
