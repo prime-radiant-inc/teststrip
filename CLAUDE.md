@@ -49,6 +49,13 @@ and face embedding over a JSON-lines protocol.
   section of test/scenarios/README.md). Local launches steal focus and hit the
   locked-console wall. Building, unit tests, and launch-and-quit smoke checks
   (no driving, no focus needed) stay on the host.
+- **`make` is the task-runner entry point for the host-safe workflows.** `make`
+  (or `make help`) lists the targets: `build`, `test` (unit tests), `verify`
+  (the full headless gate — unit tests + sandboxed build + all headless
+  verifiers), `run`/`smoke` (dogfood / isolated seeded launch), and
+  `package`/`package-dry`. Each is a thin delegation to `script/` (or `swift`
+  for `build`/`test`). Interactive AX scenario driving is deliberately *not* a
+  target — it's VM-bound; drive it with `script/vm_scenario_run.sh`.
 - **Launch isolated, never against the real catalog.** `build_and_run.sh
   --smoke` seeds 24 synthetic photos into a throwaway app-support dir;
   `--isolated` alone is *empty*; `--sample-photos`/`--faces` seed real photos.
