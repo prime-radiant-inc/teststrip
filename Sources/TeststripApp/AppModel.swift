@@ -2776,6 +2776,15 @@ public final class AppModel {
         return Self.isActiveBackgroundWorkStatus(item.status)
     }
 
+    /// All active work rolled up into one aggregate row per kind, for the
+    /// Activity Center's per-kind progress bars. Folds in the foreground
+    /// local import (`activeWork`, kind `.ingest`) alongside the background
+    /// queue so import surfaces as the `.ingest` kind row.
+    public var activeWorkKindRows: [ActivityKindRow] {
+        let items = ([activeWork].compactMap { $0 }) + visibleActiveBackgroundWorkItems.map(AppWorkActivity.init)
+        return ActivityKindRow.rows(from: items, canPause: canPauseBackgroundWork, canResume: canResumeBackgroundWork)
+    }
+
     /// Aggregates background work, import progress, source availability, and
     /// XMP sync conflicts for the Activity Center toolbar popover - the single
     /// place a caller reads to render the toolbar's badge/progress and the
@@ -2783,15 +2792,6 @@ public final class AppModel {
     /// sections, the inspector-pinned Activity panel, and the footer/top-inset
     /// import surfaces.
     public var activityCenterPresentation: ActivityCenterPresentation {
-        let jobs = visibleWorkActivities.map { activity in
-            ActivityJobRow(
-                activity: activity,
-                canStar: canToggleWorkSessionStarred(activity),
-                canPause: canPauseBackgroundWork,
-                canResume: canResumeBackgroundWork,
-                canCancel: canCancelBackgroundWorkActivity(activity)
-            )
-        }
         // Two independent row families, matching the retired sidebar's
         // "Sources" section: catalog-wide availability counts (no root
         // registration required) and bookmark-repair rows for registered
@@ -2826,7 +2826,7 @@ public final class AppModel {
             )
         }
         return ActivityCenterPresentation(
-            jobs: jobs,
+            kindRows: activeWorkKindRows,
             importActivity: visibleImportActivity,
             importError: importError,
             sources: sources,
@@ -4659,10 +4659,6 @@ public final class AppModel {
             keyword,
             assetIDs: currentAssetScopeIDs(repository: catalog.repository)
         )
-    }
-
-    public func canToggleWorkSessionStarred(_ activity: AppWorkActivity) -> Bool {
-        catalog != nil && persistedWorkActivityIDs.contains(activity.id)
     }
 
     public func canToggleWorkSessionStarred(_ row: SidebarRow) -> Bool {
@@ -7842,6 +7838,25 @@ public final class AppModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    public func cancelWork(kind: WorkSessionKind) {
+        let ids = backgroundWorkQueue.items
+            .filter { $0.kind == kind && Self.isActiveBackgroundWorkStatus($0.status) }
+            .map(\.id)
+        for id in ids { cancelBackgroundWork(id: id) }
+    }
+
+    // Intentionally delegate to the queue-wide pause/resume: true per-kind
+    // pause (suspending only this kind's lane while others keep running) is
+    // deferred, so `kind` is currently unused.
+    public func pauseWork(kind: WorkSessionKind) {
+        pauseBackgroundWork()
+    }
+
+    // See pauseWork(kind:) above — same queue-wide delegation, `kind` unused.
+    public func resumeWork(kind: WorkSessionKind) {
+        resumeBackgroundWork()
     }
 
     @MainActor

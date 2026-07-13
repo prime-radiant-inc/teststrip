@@ -14,16 +14,13 @@ struct ActivityCenterView: View {
     var body: some View {
         let presentation = model.activityCenterPresentation
         VStack(alignment: .leading, spacing: 14) {
-            if let importProgress = presentation.importProgress {
-                importSection(importProgress)
-            }
             if let importError = presentation.importError {
                 Text(importError)
                     .font(.caption)
                     .foregroundStyle(.red)
             }
-            if !presentation.jobs.isEmpty {
-                jobsSection(presentation.jobs)
+            if !presentation.kindRows.isEmpty {
+                kindRowsSection(presentation.kindRows)
             }
             if let pauseNotice = model.backgroundWorkPauseNotice {
                 Text(pauseNotice)
@@ -57,121 +54,76 @@ struct ActivityCenterView: View {
     }
 
     private func isQuiet(_ presentation: ActivityCenterPresentation) -> Bool {
-        presentation.jobs.isEmpty
-            && presentation.importProgress == nil
+        presentation.kindRows.isEmpty
             && presentation.sources.allSatisfy { $0.availability == .online }
             && presentation.xmpConflicts.isEmpty
     }
 
-    // MARK: - Import
+    // MARK: - Kind rows
 
-    private func importSection(_ progress: ImportProgressRow) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                ProgressView(value: progress.fraction)
-                    .controlSize(.small)
-                Text(progress.phaseLabel)
-                    .font(.caption.weight(.semibold))
-                Spacer(minLength: 0)
-                Button {
-                    model.cancelImportWork()
-                } label: {
-                    Image(systemName: "xmark.circle")
-                }
-                .buttonStyle(.plain)
-                .help("Cancel import")
-            }
-        }
-    }
-
-    // MARK: - Jobs
-
-    private func jobsSection(_ jobs: [ActivityJobRow]) -> some View {
+    private func kindRowsSection(_ rows: [ActivityKindRow]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Activity")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            ForEach(Array(jobs.prefix(4).enumerated()), id: \.element.id) { index, job in
-                jobRow(job, showsQueueControls: index == 0)
-            }
-            if jobs.count > 4 {
-                Text("\(jobs.count - 4) more queued")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            ForEach(rows) { row in
+                kindRow(row)
             }
         }
     }
 
-    private func jobRow(_ job: ActivityJobRow, showsQueueControls: Bool) -> some View {
+    private func kindRow(_ row: ActivityKindRow) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
-                if job.activity.status == .running {
+                if let total = row.totalUnitCount {
+                    ProgressView(value: Double(row.completedUnitCount), total: Double(max(total, 1)))
+                        .controlSize(.small)
+                } else {
                     ProgressView()
                         .controlSize(.small)
                 }
-                Text(job.activity.title)
+                Text(row.title)
                     .font(.caption.weight(.semibold))
                 Spacer(minLength: 0)
-                Text(label(for: job.activity.status))
+                Text(label(for: row.status))
                     .font(.caption2)
-                    .foregroundStyle(color(for: job.activity.status))
-                if job.canStar {
+                    .foregroundStyle(color(for: row.status))
+                if row.canPause {
                     Button {
-                        toggleStarred(job.activity)
+                        model.pauseWork(kind: row.kind)
                     } label: {
-                        Image(systemName: job.activity.starred ? "star.fill" : "star")
+                        Image(systemName: "pause.circle")
                     }
                     .buttonStyle(.plain)
-                    .help(job.activity.starred ? "Unstar work" : "Star work")
+                    .help("Pause background work")
                 }
-                if model.activeWork?.id == job.activity.id && job.activity.status == .running {
+                if row.canResume {
                     Button {
-                        model.cancelActiveWork()
+                        model.resumeWork(kind: row.kind)
+                    } label: {
+                        Image(systemName: "play.circle")
+                    }
+                    .buttonStyle(.plain)
+                    .help("Resume background work")
+                }
+                if row.canCancel {
+                    Button {
+                        if row.kind == .ingest {
+                            model.cancelImportWork()
+                        } else {
+                            model.cancelWork(kind: row.kind)
+                        }
                     } label: {
                         Image(systemName: "xmark.circle")
                     }
                     .buttonStyle(.plain)
-                    .help("Cancel work")
-                } else {
-                    if showsQueueControls {
-                        if job.canPause {
-                            Button {
-                                model.pauseBackgroundWork()
-                            } label: {
-                                Image(systemName: "pause.circle")
-                            }
-                            .buttonStyle(.plain)
-                            .help("Pause background work")
-                        }
-                        if job.canResume {
-                            Button {
-                                model.resumeBackgroundWork()
-                            } label: {
-                                Image(systemName: "play.circle")
-                            }
-                            .buttonStyle(.plain)
-                            .help("Resume background work")
-                        }
-                    }
-                    if job.canCancel {
-                        Button {
-                            model.cancelBackgroundWork(id: WorkSessionID(rawValue: job.activity.id))
-                        } label: {
-                            Image(systemName: "xmark.circle")
-                        }
-                        .buttonStyle(.plain)
-                        .help("Cancel this work item")
-                    }
+                    .help(row.kind == .ingest ? "Cancel import" : "Cancel this work item")
                 }
             }
-            Text(job.activity.detail)
+            Text(row.detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
-            if job.activity.showsProgress, let total = job.activity.totalUnitCount {
-                ProgressView(value: Double(job.activity.completedUnitCount), total: Double(max(total, 1)))
-                    .controlSize(.small)
-            }
         }
     }
 
@@ -194,14 +146,6 @@ struct ActivityCenterView: View {
             .green
         case .failed, .cancelled:
             .red
-        }
-    }
-
-    private func toggleStarred(_ activity: AppWorkActivity) {
-        do {
-            try model.toggleWorkSessionStarred(id: WorkSessionID(rawValue: activity.id))
-        } catch {
-            model.errorMessage = error.localizedDescription
         }
     }
 

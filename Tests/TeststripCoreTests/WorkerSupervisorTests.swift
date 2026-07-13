@@ -519,18 +519,33 @@ final class WorkerSupervisorTests: XCTestCase {
 
         try supervisor.cancel(id: importItem.id)
 
-        XCTAssertEqual(supervisor.queue.item(id: importItem.id)?.status, .cancelled)
-        XCTAssertEqual(supervisor.queue.item(id: previewItem.id)?.status, .running)
-        XCTAssertEqual(transport.launchCount, 2)
-        XCTAssertEqual(transport.terminateCount, 1)
-        XCTAssertEqual(try transport.commands(), [importCommand, .cancelAll, previewCommand])
+        // The dispatched import keeps its lane occupied until its natural terminal;
+        // the queued preview waits and the worker is never terminated.
+        XCTAssertEqual(supervisor.queue.item(id: importItem.id)?.status, .running)
+        XCTAssertEqual(supervisor.queue.item(id: previewItem.id)?.status, .queued)
+        XCTAssertEqual(transport.launchCount, 1)
+        XCTAssertEqual(transport.terminateCount, 0)
+        XCTAssertEqual(try transport.commands(), [importCommand])
+
+        // The worker's terminal for the cancelled item finalizes it and frees the lane.
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: importItem.id,
+            message: "imported"
+        )))
+        XCTAssertTrue(waitUntil {
+            supervisor.queue.item(id: importItem.id)?.status == .cancelled &&
+                supervisor.queue.item(id: previewItem.id)?.status == .running
+        })
+        XCTAssertEqual(transport.terminateCount, 0)
+        XCTAssertEqual(try transport.commands(), [importCommand, previewCommand])
     }
 
-    func testCancellingOneOfMultipleDispatchedItemsFailsOtherStoppedDispatchedWork() throws {
+    func testCancellingOneOfMultipleDispatchedItemsLeavesOtherDispatchedWorkRunning() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
             queue: BackgroundWorkQueue(maxRunningCount: 3),
             transport: transport,
+            commandTimeout: nil,
             maxDispatchedCommandCount: 2
         )
         let importItem = BackgroundWorkItem.testItem(id: "import")
@@ -545,19 +560,32 @@ final class WorkerSupervisorTests: XCTestCase {
 
         try supervisor.cancel(id: importItem.id)
 
-        XCTAssertEqual(supervisor.queue.item(id: importItem.id)?.status, .cancelled)
-        XCTAssertEqual(supervisor.queue.item(id: previewItem.id)?.status, .failed)
-        XCTAssertEqual(
-            supervisor.queue.item(id: previewItem.id)?.detail,
-            "Worker stopped because another command was cancelled: generate grid preview for asset-1"
-        )
-        XCTAssertEqual(supervisor.queue.item(id: queuedItem.id)?.status, .running)
+        // The cancelled command keeps its dispatch slot until its natural terminal;
+        // the sibling command is untouched and no third command dispatches yet.
+        XCTAssertEqual(supervisor.queue.item(id: importItem.id)?.status, .running)
+        XCTAssertEqual(supervisor.queue.item(id: previewItem.id)?.status, .running)
+        XCTAssertTrue(supervisor.isCommandDispatched(for: importItem.id))
+        XCTAssertTrue(supervisor.isCommandDispatched(for: previewItem.id))
+        XCTAssertFalse(supervisor.isCommandDispatched(for: queuedItem.id))
+        XCTAssertEqual(transport.terminateCount, 0)
+        XCTAssertEqual(try transport.commands(), [importCommand, previewCommand])
+
+        // The worker's terminal for the cancelled command frees its slot and the
+        // queued command finally dispatches; the sibling is still running.
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: importItem.id,
+            message: "imported"
+        )))
+        XCTAssertTrue(waitUntil {
+            supervisor.queue.item(id: importItem.id)?.status == .cancelled &&
+                supervisor.isCommandDispatched(for: queuedItem.id)
+        })
+        XCTAssertEqual(supervisor.queue.item(id: previewItem.id)?.status, .running)
+        XCTAssertTrue(supervisor.isCommandDispatched(for: previewItem.id))
         XCTAssertFalse(supervisor.isCommandDispatched(for: importItem.id))
-        XCTAssertFalse(supervisor.isCommandDispatched(for: previewItem.id))
-        XCTAssertTrue(supervisor.isCommandDispatched(for: queuedItem.id))
-        XCTAssertEqual(transport.launchCount, 2)
-        XCTAssertEqual(transport.terminateCount, 1)
-        XCTAssertEqual(try transport.commands(), [importCommand, previewCommand, .cancelAll, queuedCommand])
+        XCTAssertEqual(transport.launchCount, 1)
+        XCTAssertEqual(transport.terminateCount, 0)
+        XCTAssertEqual(try transport.commands(), [importCommand, previewCommand, queuedCommand])
     }
 
     func testUnexpectedWorkerTerminationRetriesInFlightItemOnce() throws {
@@ -799,7 +827,7 @@ final class WorkerSupervisorTests: XCTestCase {
     }
 }
 
-private final class RecordingWorkerTransport: WorkerTransport {
+final class RecordingWorkerTransport: WorkerTransport {
     var outputHandler: ((String) -> Void)?
     var errorHandler: ((String) -> Void)?
     var terminationHandler: (() -> Void)?

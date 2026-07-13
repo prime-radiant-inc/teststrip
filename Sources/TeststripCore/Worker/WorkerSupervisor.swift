@@ -46,6 +46,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
     private var dispatchedItemIDs: [WorkSessionID]
     private var timeoutsByItemID: [WorkSessionID: any WorkerTimeoutCancellation]
     private var terminationRetriedItemIDs: Set<WorkSessionID>
+    private var cancellingItemIDs: Set<WorkSessionID> = []
 
     public init(
         queue: BackgroundWorkQueue = BackgroundWorkQueue(maxRunningCount: 2),
@@ -140,6 +141,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         commandsByItemID[id] = nil
         dispatchedItemIDs.removeAll { $0 == id }
         terminationRetriedItemIDs.remove(id)
+        cancellingItemIDs.remove(id)
         cancelTimeout(for: id)
         queue.markCompleted(id: id)
         try dispatchRunnableItems()
@@ -182,6 +184,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         commandsByItemID.removeAll()
         dispatchedItemIDs.removeAll()
         terminationRetriedItemIDs.removeAll()
+        cancellingItemIDs.removeAll()
         cancelAllTimeouts()
         notifyQueueChanged()
         if let sendError {
@@ -191,42 +194,20 @@ public final class WorkerSupervisor: @unchecked Sendable {
 
     public func cancel(id itemID: WorkSessionID) throws {
         guard queue.item(id: itemID) != nil else { return }
-        var sendError: Error?
-        let stoppedDispatchedItemIDs: [WorkSessionID]
         if dispatchedItemIDs.contains(itemID) {
-            stoppedDispatchedItemIDs = dispatchedItemIDs
-            if transport.isRunning {
-                do {
-                    try send(.cancelAll)
-                } catch {
-                    sendError = error
-                }
-                transport.terminate()
-            }
-            dispatchedItemIDs.removeAll()
+            // The command is in flight in the worker. Mark it for cancellation and
+            // leave its lane occupied (status stays .running, still dispatched) so no
+            // second same-kind command dispatches into a concurrent worker command.
+            // Its natural terminal event finalizes it as .cancelled and frees the lane.
+            cancellingItemIDs.insert(itemID)
         } else {
-            stoppedDispatchedItemIDs = []
+            // Never dispatched (queued/paused): cancel it directly.
+            commandsByItemID[itemID] = nil
+            cancellingItemIDs.remove(itemID)
+            queue.cancel(id: itemID)
         }
-
-        commandsByItemID[itemID] = nil
-        terminationRetriedItemIDs.remove(itemID)
-        for stoppedItemID in stoppedDispatchedItemIDs {
-            cancelTimeout(for: stoppedItemID)
-            terminationRetriedItemIDs.remove(stoppedItemID)
-            guard stoppedItemID != itemID else { continue }
-            let command = commandsByItemID[stoppedItemID]
-            commandsByItemID[stoppedItemID] = nil
-            queue.markFailed(
-                id: stoppedItemID,
-                detail: Self.stoppedBecauseAnotherCommandWasCancelledDetail(command: command)
-            )
-        }
-        queue.cancel(id: itemID)
         try dispatchRunnableItems()
         notifyQueueChanged()
-        if let sendError {
-            throw sendError
-        }
     }
 
     private func dispatchRunnableItems() throws {
@@ -297,6 +278,10 @@ public final class WorkerSupervisor: @unchecked Sendable {
 
     private func completeDispatchedItem(id itemID: WorkSessionID, detail: String, event: WorkerEvent) {
         guard dispatchedItemIDs.contains(itemID) else { return }
+        if cancellingItemIDs.remove(itemID) != nil {
+            finalizeCancelledDispatchedItem(id: itemID)
+            return
+        }
         dispatchedItemIDs.removeAll { $0 == itemID }
         commandsByItemID[itemID] = nil
         terminationRetriedItemIDs.remove(itemID)
@@ -309,11 +294,28 @@ public final class WorkerSupervisor: @unchecked Sendable {
 
     private func failDispatchedItem(id itemID: WorkSessionID, detail: String) {
         guard dispatchedItemIDs.contains(itemID) else { return }
+        if cancellingItemIDs.remove(itemID) != nil {
+            finalizeCancelledDispatchedItem(id: itemID)
+            return
+        }
         dispatchedItemIDs.removeAll { $0 == itemID }
         commandsByItemID[itemID] = nil
         terminationRetriedItemIDs.remove(itemID)
         cancelTimeout(for: itemID)
         queue.markFailed(id: itemID, detail: detail)
+        try? dispatchRunnableItems()
+        notifyQueueChanged()
+    }
+
+    /// A user cancelled this item while it was in flight; the worker has now sent
+    /// its natural terminal (completed/failed). Finalize it as cancelled and free
+    /// its lane so the lane's next queued item can dispatch.
+    private func finalizeCancelledDispatchedItem(id itemID: WorkSessionID) {
+        dispatchedItemIDs.removeAll { $0 == itemID }
+        commandsByItemID[itemID] = nil
+        terminationRetriedItemIDs.remove(itemID)
+        cancelTimeout(for: itemID)
+        queue.cancel(id: itemID)
         try? dispatchRunnableItems()
         notifyQueueChanged()
     }
@@ -327,6 +329,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         dispatchedItemIDs.removeAll()
         cancelAllTimeouts()
         for itemID in affectedItemIDs {
+            cancellingItemIDs.remove(itemID)
             if terminationRetriedItemIDs.contains(itemID) {
                 terminationRetriedItemIDs.remove(itemID)
                 let command = commandsByItemID[itemID]
@@ -347,6 +350,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         let itemID = dispatchedItemIDs.removeFirst()
         commandsByItemID[itemID] = nil
         terminationRetriedItemIDs.remove(itemID)
+        cancellingItemIDs.remove(itemID)
         cancelTimeout(for: itemID)
         queue.markFailed(id: itemID, detail: line)
         try? dispatchRunnableItems()
@@ -390,6 +394,7 @@ public final class WorkerSupervisor: @unchecked Sendable {
         dispatchedItemIDs.removeAll()
         for timedOutItemID in timedOutItemIDs {
             terminationRetriedItemIDs.remove(timedOutItemID)
+            cancellingItemIDs.remove(timedOutItemID)
         }
         cancelAllTimeouts()
         transport.terminate()
@@ -419,12 +424,6 @@ public final class WorkerSupervisor: @unchecked Sendable {
 
     private static func workerExitedUnexpectedlyDetail(command: WorkerCommand?) -> String {
         let detail = "Worker exited unexpectedly"
-        guard let command else { return detail }
-        return "\(detail): \(command.operationDescription)"
-    }
-
-    private static func stoppedBecauseAnotherCommandWasCancelledDetail(command: WorkerCommand?) -> String {
-        let detail = "Worker stopped because another command was cancelled"
         guard let command else { return detail }
         return "\(detail): \(command.operationDescription)"
     }

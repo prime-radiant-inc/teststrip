@@ -32,10 +32,20 @@ public struct AppCatalog {
     public static let localHTTPModelNameEnvironmentKey = "TESTSTRIP_LOCAL_HTTP_MODEL"
     public static let localHTTPModelTimeoutEnvironmentKey = "TESTSTRIP_LOCAL_HTTP_MODEL_TIMEOUT"
     public static let requiredSecurityScopedImportAccessEnvironmentKey = "TESTSTRIP_REQUIRE_SECURITY_SCOPED_IMPORTS"
+    // INVARIANT: every worker-dispatched WorkSessionKind MUST be capped at 1
+    // here. WorkerCommandLoop keeps no per-lane state and relies entirely on
+    // the supervisor never dispatching two same-kind commands concurrently;
+    // a limit above 1 for any of these kinds would let the worker interleave
+    // two commands of the same kind with no way to tell them apart. Adding a
+    // worker command for a new kind REQUIRES adding that kind here too.
     static let managedWorkerKindRunningLimits: [WorkSessionKind: Int] = [
-        .sourceScan: 1,
+        .ingest: 1,
+        .previewGeneration: 1,
+        .recognition: 1,
         .xmpSync: 1,
-        .recognition: 1
+        .sourceScan: 1,
+        .geocoding: 1,
+        .locationBackfill: 1
     ]
 
     public var paths: AppCatalogPaths
@@ -119,11 +129,12 @@ public struct AppCatalog {
                 return nil
             }
             return WorkerSupervisor(
-                queue: BackgroundWorkQueue(maxRunningCount: 2, kindRunningLimits: managedWorkerKindRunningLimits),
+                queue: BackgroundWorkQueue(maxRunningCount: 8, kindRunningLimits: managedWorkerKindRunningLimits),
                 transport: FoundationWorkerTransport(
                     executableURL: executableURL,
                     arguments: workerArguments(paths: paths, environment: environment)
-                )
+                ),
+                maxDispatchedCommandCount: 8
             )
         }
         return try AppModel.load(

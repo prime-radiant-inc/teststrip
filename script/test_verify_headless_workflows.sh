@@ -39,6 +39,7 @@ write_fake_script verify_local_http_model_smoke.sh
 write_fake_script verify_real_local_http_model_smoke.sh
 write_fake_script verify_raw_fixtures.sh
 write_fake_script verify_worker_recovery.sh
+write_fake_script verify_lane_overlap.sh
 write_fake_script verify_real_corpus_smoke.sh
 
 PATH="$SCRIPT_DIR/bin:$PATH" "$SCRIPT_DIR/verify_headless_workflows.sh"

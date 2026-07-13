@@ -14,6 +14,7 @@ public enum BenchmarkCommand: Equatable {
     case sourceAvailability(count: Int)
     case previewRender(count: Int)
     case workerRecoverySmoke(count: Int)
+    case laneOverlapSmoke(count: Int)
     case realCorpusSmoke(photoDirectory: URL)
     case seedGeoFixtures(directory: URL, count: Int)
     case seedDupFixtures(directory: URL)
@@ -65,6 +66,9 @@ public enum BenchmarkCommand: Equatable {
         }
         if firstArgument == "worker-recovery-smoke" {
             return .workerRecoverySmoke(count: Int(userArguments.dropFirst().first ?? "24") ?? 24)
+        }
+        if firstArgument == "lane-overlap" {
+            return .laneOverlapSmoke(count: Int(userArguments.dropFirst().first ?? "24") ?? 24)
         }
         if firstArgument == "real-corpus-smoke" {
             let directory = userArguments.dropFirst().first ?? FileManager.default.currentDirectoryPath

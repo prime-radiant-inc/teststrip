@@ -30,6 +30,8 @@ case .previewRender(let count):
     try runPreviewRenderBenchmark(count: count, root: root)
 case .workerRecoverySmoke(let count):
     try runWorkerRecoverySmoke(count: count, root: root)
+case .laneOverlapSmoke(let count):
+    try runLaneOverlapSmoke(count: count, root: root)
 case .realCorpusSmoke(let photoDirectory):
     try runRealCorpusSmoke(photoDirectory: photoDirectory, root: root)
 case .seedGeoFixtures(let directory, let count):
@@ -271,6 +273,43 @@ private func runWorkerRecoverySmoke(count: Int, root: URL) throws {
     print("queued work: \(result.queuedWorkCount)")
     print("dispatched commands: \(result.dispatchedCommandCount)")
     print("pending previews: \(result.pendingPreviewCount)")
+    print("worker process started: \(result.workerProcessStarted ? "yes" : "no")")
+    try printMachineReadableSummary(recorder.summary)
+}
+
+private func runLaneOverlapSmoke(count: Int, root: URL) throws {
+    var recorder = BenchmarkSummaryRecorder(benchmark: "lane_overlap_smoke", count: count)
+
+    print("TeststripBench lane overlap smoke")
+    print("count: \(count)")
+    let result = try measure("lane overlap smoke", recorder: &recorder, key: "lane_overlap_smoke") {
+        try LaneOverlapSmoke(count: count, root: root).run()
+    }
+    recorder.recordMetric("catalog_assets", result.catalogAssetCount)
+    recorder.recordMetric("previewed_assets", result.previewedAssetCount)
+    recorder.recordMetric("deferred_assets", result.deferredAssetCount)
+    recorder.recordMetric("preview_work_items", result.previewWorkItemCount)
+    recorder.recordMetric("evaluation_work_items", result.evaluationWorkItemCount)
+    recorder.recordMetric("overlap_observed", result.overlapObserved ? 1 : 0)
+    recorder.recordMetric("overlap_sample_count", result.overlapSampleCount)
+    recorder.recordMetric("sample_count", result.sampleCount)
+    recorder.recordMetric("pending_previews_after_drain", result.pendingPreviewCountAfterDrain)
+    recorder.recordMetric("cached_previews", result.cachedPreviewCount)
+    recorder.recordMetric("evaluation_signal_assets", result.evaluationSignalAssetCount)
+    recorder.recordMetric("evaluation_signals", result.evaluationSignalCount)
+    recorder.recordMetric("worker_process_started", result.workerProcessStarted ? 1 : 0)
+    print("catalog assets: \(result.catalogAssetCount)")
+    print("previewed assets: \(result.previewedAssetCount)")
+    print("deferred assets: \(result.deferredAssetCount)")
+    print("preview work items: \(result.previewWorkItemCount)")
+    print("evaluation work items: \(result.evaluationWorkItemCount)")
+    print("overlap observed: \(result.overlapObserved ? "yes" : "no")")
+    print("overlap sample count: \(result.overlapSampleCount)")
+    print("sample count: \(result.sampleCount)")
+    print("pending previews after drain: \(result.pendingPreviewCountAfterDrain)")
+    print("cached previews: \(result.cachedPreviewCount)")
+    print("evaluation signal assets: \(result.evaluationSignalAssetCount)")
+    print("evaluation signals: \(result.evaluationSignalCount)")
     print("worker process started: \(result.workerProcessStarted ? "yes" : "no")")
     try printMachineReadableSummary(recorder.summary)
 }

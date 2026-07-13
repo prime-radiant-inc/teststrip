@@ -137,9 +137,11 @@ func button(named label: String, insideSheet: Bool? = nil) -> AXUIElement? {
     }
 }
 
-// The confirmation sheet's primary button now bakes the scanned count into
-// its label ("Import N Photos", per spec §2c's verb+object+count rule), so
-// it can't be matched by an exact title.
+// The confirmation sheet primary button now bakes the scanned count into
+// its label ("Import N Photos", per spec 2c verb+object+count rule), so
+// it cannot be matched by an exact title. (No apostrophes in this comment:
+// the whole program is a single-quoted `swift -e '...'` argument, and an
+// apostrophe here would close that string under the shell.)
 func button(titlePrefix prefix: String, insideSheet: Bool? = nil) -> AXUIElement? {
     walk(root) { element in
         guard stringAttribute(element, kAXRoleAttribute) == kAXButtonRole,
