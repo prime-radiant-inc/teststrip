@@ -244,7 +244,35 @@ dir and the two hash-snapshot temp files are throwaway.
   without taking a position on the adoption question.
 
 ## Run status
-NOT RUN — authored 2026-07-13, source-cited against the
+PARTIALLY RUN in the Tart VM 2026-07-13 (`vm_scenario_run.sh`, smoke launch +
+`submit_import_path.sh` typed-path import of the synced `faces` fixture, 11
+photos — `jesse-pictures` could not be synced: its RAW files fill the VM
+disk). Verified live, reproduced across two fresh-catalog imports:
+- **Both lanes execute on a real import** — the preview lane landed cached
+  previews for every imported asset (35 preview dirs = 24 smoke + 11 faces)
+  AND the evaluation lane landed 145 `evaluation_signals` across all 11
+  imported assets plus 11 `face_observations`. (Steps 4/7 output.)
+- **Confirm-before-write holds live** — `people` and `person_assets` both
+  read 0 after the import despite `runEvaluation`'s face detection executing.
+  (Step 8.)
+- **Not caught live: the two lanes in the same sampled instant** (Step 3/4's
+  simultaneous "both bars advancing"). An 11-photo batch drains its
+  preview+evaluation pipeline in ~1–2s, inside ssh-per-sample latency and
+  below the confirmation-sheet scan/ingest start delay; a wider fixture was
+  blocked by VM disk space. This transient overlap IS proven by this branch's
+  headless `lane-overlap` verifier (`script/verify_lane_overlap.sh`,
+  RED-tested by forcing `maxDispatchedCommandCount: 1`) which drives the real
+  worker binary + supervisor + catalog. Re-run with a larger synced fixture
+  (free VM disk first) to catch it live.
+- **Not run: per-kind cancel (Step 5)** — the 11-photo drain finishes before
+  the cancel can be issued; needs the wider fixture. Covered by unit tests
+  (`SupervisorPerItemCancelTests`).
+- Harness fix made during this run: `script/submit_import_path.sh` embedded
+  the Swift AX driver as a single-quoted `swift -e '...'` argument, and
+  recently-added comments contained apostrophes that closed the string
+  (parse error under any shell) — rephrased apostrophe-free.
+
+Authored 2026-07-13, source-cited against the
 `feat/parallel-worker-lanes` branch: lane-concurrency construction
 (`Sources/TeststripApp/AppCatalog.swift:35-43,125-132`), per-item cancel
 semantics (`Sources/TeststripCore/Worker/WorkerSupervisor.swift:195-211`),
