@@ -378,7 +378,9 @@ public struct WorkerCommandExecutor {
                 } else {
                     asset.technicalMetadata = reRead
                 }
-                try repository.upsert(asset)
+                // Targeted column write: a full-row upsert here would clobber a
+                // concurrent .sourceScan lane's updateAvailability (lost update).
+                try repository.updateTechnicalMetadata(assetID: assetID, technicalMetadata: asset.technicalMetadata!)
                 updatedCount += 1
             }
             let completedCount = index + 1

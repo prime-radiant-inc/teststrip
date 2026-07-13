@@ -83,6 +83,41 @@ final class SourceAvailabilityTests: XCTestCase {
         XCTAssertEqual(try repository.catalogGeneration(assetID: asset.id), 1)
     }
 
+    func testUpdateTechnicalMetadataDoesNotClobberConcurrentAvailabilityUpdate() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "source-technical-metadata-lost-update")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let originalMetadata = AssetTechnicalMetadata(
+            pixelWidth: 6000,
+            pixelHeight: 4000,
+            provenance: ProviderProvenance(provider: "ImageIO", model: "ImageIO", version: "1", settingsHash: "default")
+        )
+        let asset = Asset(
+            id: AssetID(rawValue: "source-technical-metadata-lost-update"),
+            originalURL: directory.appendingPathComponent("frame.jpg"),
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata(),
+            technicalMetadata: originalMetadata
+        )
+        try repository.upsert(asset)
+
+        // Simulate a concurrent .sourceScan lane's single-column availability
+        // write racing the .locationBackfill lane's technical-metadata write.
+        try repository.updateAvailability(assetID: asset.id, availability: .offline)
+        var backfilledMetadata = originalMetadata
+        backfilledMetadata.latitude = 37.7749
+        backfilledMetadata.longitude = -122.4194
+        try repository.updateTechnicalMetadata(assetID: asset.id, technicalMetadata: backfilledMetadata)
+
+        let updated = try repository.asset(id: asset.id)
+        XCTAssertEqual(updated.availability, .offline, "targeted technical-metadata write must not clobber a concurrent availability update")
+        XCTAssertEqual(updated.technicalMetadata?.latitude, 37.7749)
+        XCTAssertEqual(updated.technicalMetadata?.longitude, -122.4194)
+    }
+
     func testRepositoryReconnectsSourceRootWhenRelativeFileFingerprintMatches() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "source-reconnect-root")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

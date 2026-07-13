@@ -4661,10 +4661,6 @@ public final class AppModel {
         )
     }
 
-    public func canToggleWorkSessionStarred(_ activity: AppWorkActivity) -> Bool {
-        catalog != nil && persistedWorkActivityIDs.contains(activity.id)
-    }
-
     public func canToggleWorkSessionStarred(_ row: SidebarRow) -> Bool {
         guard catalog != nil,
               case .workSession(let id) = row.target else {
@@ -7851,10 +7847,14 @@ public final class AppModel {
         for id in ids { cancelBackgroundWork(id: id) }
     }
 
+    // Intentionally delegate to the queue-wide pause/resume: true per-kind
+    // pause (suspending only this kind's lane while others keep running) is
+    // deferred, so `kind` is currently unused.
     public func pauseWork(kind: WorkSessionKind) {
         pauseBackgroundWork()
     }
 
+    // See pauseWork(kind:) above — same queue-wide delegation, `kind` unused.
     public func resumeWork(kind: WorkSessionKind) {
         resumeBackgroundWork()
     }

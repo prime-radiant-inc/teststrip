@@ -1715,6 +1715,27 @@ public final class CatalogRepository {
         )
     }
 
+    // Targeted single-column write so a concurrent worker lane's single-column
+    // update (e.g. updateAvailability) is never clobbered by a full-row upsert
+    // racing it — see backfillCoordinates in WorkerCommandExecutor.
+    public func updateTechnicalMetadata(assetID: AssetID, technicalMetadata: AssetTechnicalMetadata) throws {
+        _ = try asset(id: assetID)
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            UPDATE assets
+            SET technical_metadata_json = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            bindings: [
+                try encode(technicalMetadata),
+                now,
+                assetID.rawValue
+            ]
+        )
+    }
+
     public func reconnectSourceRoot(from oldRoot: URL, to newRoot: URL) throws -> SourceRootReconnectResult {
         let oldRootPath = Self.normalizedDirectoryPath(oldRoot)
         let newRootPath = Self.normalizedDirectoryPath(newRoot)

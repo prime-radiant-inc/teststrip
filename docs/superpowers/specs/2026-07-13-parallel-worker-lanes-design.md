@@ -178,6 +178,18 @@ accepted fallback) — it still overlaps other lanes.
   failure/cancel mid-command leaves no half-written state for a concurrent lane
   to observe.
 
+  > **Implementation note**: blanket per-command transaction wrapping was
+  > dropped during implementation — wrapping an entire command in one
+  > transaction would starve other lanes (and serialize import) for the
+  > command's full duration. Instead, each *repository method* is
+  > individually atomic (e.g. `recordEvaluationSignals`,
+  > `replaceFaceObservations` each wrap their own writes), and
+  > `CatalogDatabase`'s lock prevents corruption from concurrent access. The
+  > only non-atomic grouping is *across* repository calls within one command
+  > (e.g. `runEvaluation`'s signals-then-faces sequence). That's harmless: the
+  > intermediate state is provisional and self-healing on retry, not a
+  > correctness hazard for concurrent lanes.
+
 ## Testing
 
 TDD throughout; every user-facing surface gets an automated end-to-end scenario.
