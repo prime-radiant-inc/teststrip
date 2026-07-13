@@ -7855,6 +7855,21 @@ public final class AppModel {
         }
     }
 
+    public func cancelWork(kind: WorkSessionKind) {
+        let ids = backgroundWorkQueue.items
+            .filter { $0.kind == kind && Self.isActiveBackgroundWorkStatus($0.status) }
+            .map(\.id)
+        for id in ids { cancelBackgroundWork(id: id) }
+    }
+
+    public func pauseWork(kind: WorkSessionKind) {
+        pauseBackgroundWork()
+    }
+
+    public func resumeWork(kind: WorkSessionKind) {
+        resumeBackgroundWork()
+    }
+
     @MainActor
     public func cancelImportWork() {
         if activeWork?.kind == .ingest || activeImportTask != nil {
