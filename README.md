@@ -33,12 +33,15 @@ to `.xmp` sidecars.
 ## Building
 
 ```sh
-swift build
-./script/build_and_run.sh          # build and launch against your library
-./script/build_and_run.sh --smoke  # isolated throwaway library with seeded photos
+make            # list available targets
+make build      # compile
+make test       # run the unit tests
+make run        # build and launch against your library
+make smoke      # isolated throwaway library with seeded photos
 ```
 
-See `docs/dogfooding.md` for the real-session guide and
+Each target is a thin wrapper over the underlying `swift` and `script/`
+commands. See `docs/dogfooding.md` for the real-session guide and
 `test/scenarios/README.md` for the end-to-end test harness.
 
 ## License
