@@ -57,6 +57,10 @@ final class BenchmarkCommandTests: XCTestCase {
         XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "worker-recovery-smoke", "12"]), .workerRecoverySmoke(count: 12))
     }
 
+    func testLaneOverlapSmokeCommandParsesCount() throws {
+        XCTAssertEqual(BenchmarkCommand.parse(["TeststripBench", "lane-overlap", "12"]), .laneOverlapSmoke(count: 12))
+    }
+
     func testRealCorpusSmokeCommandParsesPhotoDirectory() throws {
         XCTAssertEqual(
             BenchmarkCommand.parse(["TeststripBench", "real-corpus-smoke", "/tmp/teststrip-real-corpus"]),

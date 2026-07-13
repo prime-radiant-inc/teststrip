@@ -16,3 +16,4 @@ swift test
 "$SCRIPT_DIR/verify_real_corpus_smoke.sh"
 "$SCRIPT_DIR/verify_raw_fixtures.sh"
 "$SCRIPT_DIR/verify_worker_recovery.sh" "${TESTSTRIP_HEADLESS_WORKER_RECOVERY_COUNT:-24}" "${TESTSTRIP_HEADLESS_WORKER_RECOVERY_MAX_SECONDS:-5}"
+"$SCRIPT_DIR/verify_lane_overlap.sh" "${TESTSTRIP_HEADLESS_LANE_OVERLAP_COUNT:-24}" "${TESTSTRIP_HEADLESS_LANE_OVERLAP_MAX_SECONDS:-30}"
