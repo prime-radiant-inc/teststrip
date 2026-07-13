@@ -107,6 +107,12 @@ public struct LibraryImportService: Sendable {
     private static let scanProgressInterval = 100
     private static let ingestProgressInterval = 500
     private static let eagerIngestProgressLimit = 10
+    // Comfortably under WorkerSupervisor's 120s per-command watchdog (~8x
+    // margin) so a healthy, progressing scan/import always feeds it, even
+    // when the count-based coalescing above stays quiet for a slow phase
+    // (e.g. copying files off a card).
+    private static let scanProgressHeartbeat: TimeInterval = 15
+    private static let ingestProgressHeartbeat: TimeInterval = 15
     private static let importPreviewLevels: [PreviewLevel] = [.micro, .grid]
 
     public var ingestService: IngestService
@@ -186,7 +192,10 @@ public struct LibraryImportService: Sendable {
             totalUnitCount: nil,
             detail: "Scanning \(scanRootName)"
         ))
-        let scanProgressCoalescer = ScanProgressCoalescer(interval: Self.scanProgressInterval)
+        let scanProgressCoalescer = ScanProgressCoalescer(
+            interval: Self.scanProgressInterval,
+            heartbeat: Self.scanProgressHeartbeat
+        )
         var scanSkippedFiles: [FolderScanSkippedFile] = []
         let scannedSourceFiles = try ingestService.files(
             for: plan,
@@ -234,7 +243,8 @@ public struct LibraryImportService: Sendable {
         ))
         let ingestProgressCoalescer = IngestProgressCoalescer(
             interval: Self.ingestProgressInterval,
-            eagerLimit: Self.eagerIngestProgressLimit
+            eagerLimit: Self.eagerIngestProgressLimit,
+            heartbeat: Self.ingestProgressHeartbeat
         )
         // Copy imports need per-file skips as much as add-in-place: without a
         // handler one dated-folder name collision aborts the whole import and
@@ -468,21 +478,41 @@ private struct ExistingGridPreviewState {
     var hasCachedPreview: Bool
 }
 
-private final class ScanProgressCoalescer: @unchecked Sendable {
+// Both coalescers below gate progress reports on a count schedule, but a
+// count schedule alone can go silent far longer than WorkerSupervisor's
+// per-command watchdog on a slow phase (e.g. copying files off a card),
+// killing a healthy import. `heartbeat` guarantees a report at least every
+// `heartbeat` seconds whenever the count has actually advanced since the
+// last report, without weakening the count-based coalescing that keeps fast
+// imports from flooding progress updates.
+final class ScanProgressCoalescer: @unchecked Sendable {
     private let interval: Int
+    private let heartbeat: TimeInterval
+    private let now: @Sendable () -> Date
     private let lock = NSLock()
     private var lastReportedCount = 0
+    private var lastReportedAt: Date
 
-    init(interval: Int) {
+    init(interval: Int, heartbeat: TimeInterval, now: @escaping @Sendable () -> Date = { Date() }) {
         self.interval = interval
+        self.heartbeat = heartbeat
+        self.now = now
+        self.lastReportedAt = now()
     }
 
     func shouldReportScanCount(_ count: Int) -> Bool {
         lock.withLock {
-            guard count == 1 || count.isMultiple(of: interval) else {
+            guard count != lastReportedCount else {
+                return false
+            }
+            let currentTime = now()
+            let countConditionMet = count == 1 || count.isMultiple(of: interval)
+            let heartbeatElapsed = currentTime.timeIntervalSince(lastReportedAt) >= heartbeat
+            guard countConditionMet || heartbeatElapsed else {
                 return false
             }
             lastReportedCount = count
+            lastReportedAt = currentTime
             return true
         }
     }
@@ -493,33 +523,44 @@ private final class ScanProgressCoalescer: @unchecked Sendable {
                 return false
             }
             lastReportedCount = count
+            lastReportedAt = now()
             return true
         }
     }
 }
 
-private final class IngestProgressCoalescer: @unchecked Sendable {
+final class IngestProgressCoalescer: @unchecked Sendable {
     private let interval: Int
     private let eagerLimit: Int
+    private let heartbeat: TimeInterval
+    private let now: @Sendable () -> Date
     private let lock = NSLock()
     private var lastReportedCount = 0
+    private var lastReportedAt: Date
 
-    init(interval: Int, eagerLimit: Int) {
+    init(interval: Int, eagerLimit: Int, heartbeat: TimeInterval, now: @escaping @Sendable () -> Date = { Date() }) {
         self.interval = interval
         self.eagerLimit = eagerLimit
+        self.heartbeat = heartbeat
+        self.now = now
+        self.lastReportedAt = now()
     }
 
     func shouldReport(completedCount: Int, totalCount: Int) -> Bool {
         lock.withLock {
-            guard totalCount <= eagerLimit ||
-                completedCount.isMultiple(of: interval) ||
-                completedCount == totalCount else {
-                return false
-            }
             guard completedCount != lastReportedCount else {
                 return false
             }
+            let currentTime = now()
+            let countConditionMet = totalCount <= eagerLimit ||
+                completedCount.isMultiple(of: interval) ||
+                completedCount == totalCount
+            let heartbeatElapsed = currentTime.timeIntervalSince(lastReportedAt) >= heartbeat
+            guard countConditionMet || heartbeatElapsed else {
+                return false
+            }
             lastReportedCount = completedCount
+            lastReportedAt = currentTime
             return true
         }
     }

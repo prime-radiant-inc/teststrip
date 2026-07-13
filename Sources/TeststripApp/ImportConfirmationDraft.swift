@@ -39,8 +39,9 @@ enum ImportSourcePreflight {
 }
 
 struct ImportSourceSummary: Equatable {
-    static let defaultScanLimit = 300
-    static let defaultEntryLimit = 2_000
+    static let defaultScanLimit = 100_000
+    static let defaultEntryLimit = 1_000_000
+    static let defaultScanBudget: TimeInterval = 2.0
 
     var sourceURL: URL
     var photoCount: Int
@@ -55,7 +56,9 @@ struct ImportSourceSummary: Equatable {
         sourceURL: URL,
         supportedExtensions: Set<String> = ImageIODecodeProvider.catalogableExtensions,
         limit: Int = defaultScanLimit,
-        entryLimit: Int = defaultEntryLimit
+        entryLimit: Int = defaultEntryLimit,
+        budget: TimeInterval = defaultScanBudget,
+        now: () -> Date = { Date() }
     ) -> ImportSourceSummary {
         let boundedLimit = max(1, limit)
         let boundedEntryLimit = max(1, entryLimit)
@@ -75,12 +78,17 @@ struct ImportSourceSummary: Equatable {
             )
         }
 
+        let startTime = now()
         var photoCount = 0
         var byteCount: Int64 = 0
         var reachedLimit = false
         var reachedEntryLimit = false
         var scannedEntryCount = 0
         for case let fileURL as URL in enumerator {
+            if now().timeIntervalSince(startTime) > budget {
+                reachedLimit = true
+                break
+            }
             if scannedEntryCount == boundedEntryLimit {
                 reachedEntryLimit = true
                 break
