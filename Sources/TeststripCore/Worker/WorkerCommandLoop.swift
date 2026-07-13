@@ -3,8 +3,10 @@ import Foundation
 /// Runs worker commands received on stdin concurrently and serializes their
 /// output. Each submitted command is dispatched onto a background queue that runs
 /// commands in parallel, so a slow command (a long preview render, a rate-limited
-/// geocode) never blocks a command in another lane. The supervisor guarantees at
-/// most one in-flight command per lane, so the loop needs no per-lane bookkeeping.
+/// geocode) never blocks a command in another lane. This loop keeps no per-lane
+/// state; it relies on the supervisor dispatching at most one command per lane
+/// (guaranteed by `kindRunningLimits = 1` for every worker kind in AppCatalog).
+/// If that ever changes, per-lane serialization must be added here.
 ///
 /// `writeLine` is the single serialized sink every stdout line must pass through
 /// (both the terminal event returned here and the `.progress` events the `execute`

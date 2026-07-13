@@ -109,10 +109,16 @@ final class AppCatalogTests: XCTestCase {
 
         let model = try AppCatalog.loadModel(paths: paths, workerExecutableURL: workerScriptURL)
 
-        XCTAssertEqual(model.backgroundWorkQueue.kindRunningLimits[.sourceScan], 1)
-        XCTAssertEqual(model.backgroundWorkQueue.kindRunningLimits[.xmpSync], 1)
+        // Every worker-dispatched kind must be capped at 1: WorkerCommandLoop keeps no
+        // per-lane bookkeeping, so the supervisor must never dispatch two same-kind
+        // commands concurrently (see Task B3).
+        XCTAssertEqual(model.backgroundWorkQueue.kindRunningLimits[.ingest], 1)
+        XCTAssertEqual(model.backgroundWorkQueue.kindRunningLimits[.previewGeneration], 1)
         XCTAssertEqual(model.backgroundWorkQueue.kindRunningLimits[.recognition], 1)
-        XCTAssertNil(model.backgroundWorkQueue.kindRunningLimits[.previewGeneration])
+        XCTAssertEqual(model.backgroundWorkQueue.kindRunningLimits[.xmpSync], 1)
+        XCTAssertEqual(model.backgroundWorkQueue.kindRunningLimits[.sourceScan], 1)
+        XCTAssertEqual(model.backgroundWorkQueue.kindRunningLimits[.geocoding], 1)
+        XCTAssertEqual(model.backgroundWorkQueue.kindRunningLimits[.locationBackfill], 1)
     }
 
     func testLoadModelWithWorkerExecutableDispatchesPreviewRequestThroughWorkerProcess() throws {

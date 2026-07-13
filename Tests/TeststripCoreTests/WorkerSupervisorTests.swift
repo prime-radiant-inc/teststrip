@@ -799,7 +799,7 @@ final class WorkerSupervisorTests: XCTestCase {
     }
 }
 
-private final class RecordingWorkerTransport: WorkerTransport {
+final class RecordingWorkerTransport: WorkerTransport {
     var outputHandler: ((String) -> Void)?
     var errorHandler: ((String) -> Void)?
     var terminationHandler: (() -> Void)?

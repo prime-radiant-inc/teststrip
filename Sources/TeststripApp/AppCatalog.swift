@@ -33,9 +33,13 @@ public struct AppCatalog {
     public static let localHTTPModelTimeoutEnvironmentKey = "TESTSTRIP_LOCAL_HTTP_MODEL_TIMEOUT"
     public static let requiredSecurityScopedImportAccessEnvironmentKey = "TESTSTRIP_REQUIRE_SECURITY_SCOPED_IMPORTS"
     static let managedWorkerKindRunningLimits: [WorkSessionKind: Int] = [
-        .sourceScan: 1,
+        .ingest: 1,
+        .previewGeneration: 1,
+        .recognition: 1,
         .xmpSync: 1,
-        .recognition: 1
+        .sourceScan: 1,
+        .geocoding: 1,
+        .locationBackfill: 1
     ]
 
     public var paths: AppCatalogPaths
@@ -119,11 +123,12 @@ public struct AppCatalog {
                 return nil
             }
             return WorkerSupervisor(
-                queue: BackgroundWorkQueue(maxRunningCount: 2, kindRunningLimits: managedWorkerKindRunningLimits),
+                queue: BackgroundWorkQueue(maxRunningCount: 8, kindRunningLimits: managedWorkerKindRunningLimits),
                 transport: FoundationWorkerTransport(
                     executableURL: executableURL,
                     arguments: workerArguments(paths: paths, environment: environment)
-                )
+                ),
+                maxDispatchedCommandCount: 8
             )
         }
         return try AppModel.load(
