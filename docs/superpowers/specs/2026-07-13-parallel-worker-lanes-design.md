@@ -210,9 +210,11 @@ TDD throughout; every user-facing surface gets an automated end-to-end scenario.
 - **Transaction granularity**: confirm each worker command's writes are wrapped
   so concurrent lanes can't observe a partial command; add wrapping where a
   command currently writes in multiple un-batched steps (e.g. `syncMetadata`).
-- **`.recognition` label**: evaluation work is filed under `.recognition`.
-  Confirm no non-evaluation work also uses that kind before labeling the bar
-  "Evaluate photos"; if it does, split the label by title or a sub-kind.
+- **`.recognition` label** (resolved): the `.recognition` kind is constructed in
+  exactly one place — the "Evaluate photo" enqueue in `AppModel`. Face
+  detection/embedding rides inside `runEvaluation` (provider `core-image-faces`);
+  people-clustering is app-side, not a worker lane. So the lane is unambiguously
+  evaluation and "Evaluate photos" is correct.
 - **Pause/resume across lanes**: per-kind pause must gate future dispatch for
   that kind only, consistent with the existing queue pause semantics.
 
