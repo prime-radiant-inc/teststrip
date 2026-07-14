@@ -1676,12 +1676,12 @@ final class CatalogDatabaseTests: XCTestCase {
 
         XCTAssertEqual(try repository.confirmedFaceEmbeddingsByPerson(provenance: provenance), [:])
         let unassigned = try repository.unassignedFaceObservations(provenance: provenance, limit: 10)
-        // Unassigned is face-level: confirmed-frame's stale person_assets link (below)
-        // does not blanket-hide its faces now that neither index has a current
-        // person_faces/dismissed_faces link, so both faces of both photos surface.
+        // confirmed-frame's stale person_assets link (below) now has no surviving
+        // person_faces rows at all for that asset, which reads as a coarse
+        // whole-asset link ("this whole photo is Maya") and blanket-suppresses
+        // both of its faces. dismissed-frame never had an asset-level link, so
+        // both its faces surface once their stale dismissed_faces rows are cleared.
         XCTAssertEqual(Set(unassigned.map(\.faceID)), [
-            FaceID(assetID: confirmed.id, faceIndex: 0),
-            FaceID(assetID: confirmed.id, faceIndex: 1),
             FaceID(assetID: dismissed.id, faceIndex: 0),
             FaceID(assetID: dismissed.id, faceIndex: 1)
         ])
@@ -1933,6 +1933,52 @@ final class CatalogDatabaseTests: XCTestCase {
             try repository.unassignedFaceObservations(provenance: provenance, limit: 10).map(\.faceID),
             [FaceID(assetID: frame.id, faceIndex: 1)]
         )
+    }
+
+    func testUnassignedFaceObservationsExcludesAssignedFacesAndCoarseWholeAssetLinks() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-unassigned-faces-coarse-whole-asset")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "face-crop-pad-25")
+        let aiMatch = Asset.testAsset(id: AssetID(rawValue: "ai-match"), path: "/Volumes/NAS/Job/ai-match.jpg", rating: 0)
+        let perFaceConfirm = Asset.testAsset(id: AssetID(rawValue: "per-face-confirm"), path: "/Volumes/NAS/Job/per-face-confirm.jpg", rating: 0)
+        let wholeAsset = Asset.testAsset(id: AssetID(rawValue: "whole-asset"), path: "/Volumes/NAS/Job/whole-asset.jpg", rating: 0)
+        try repository.upsert([aiMatch, perFaceConfirm, wholeAsset])
+        try repository.upsertPerson(id: "person-x", name: "X")
+        func face(_ asset: Asset, _ index: Int) -> CatalogFaceObservation {
+            CatalogFaceObservation(
+                assetID: asset.id,
+                faceIndex: index,
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                captureQuality: 0.5,
+                embedding: [1, 0, 0],
+                provenance: provenance
+            )
+        }
+        try repository.replaceFaceObservations(assetID: aiMatch.id, provenance: provenance, with: [face(aiMatch, 0), face(aiMatch, 1)])
+        try repository.replaceFaceObservations(assetID: perFaceConfirm.id, provenance: provenance, with: [face(perFaceConfirm, 0), face(perFaceConfirm, 1)])
+        try repository.replaceFaceObservations(assetID: wholeAsset.id, provenance: provenance, with: [face(wholeAsset, 0), face(wholeAsset, 1)])
+
+        // AI auto-match: person_faces only, no person_assets. The matched face is
+        // excluded but its co-occurring, still-unidentified face stays reviewable.
+        try repository.insertAIFace(assetID: aiMatch.id, faceIndex: 0, personID: "person-x")
+
+        // Per-face user confirm: person_faces + person_assets. The confirmed face
+        // is excluded but the asset's other unnamed face stays reviewable — the
+        // asset has person_faces rows, so the coarse whole-asset clause must not fire.
+        try repository.assignFaces([FaceID(assetID: perFaceConfirm.id, faceIndex: 0)], toPersonID: "person-x")
+
+        // Whole-asset user assignment via assignAssets: person_assets only, no
+        // person_faces at all for this asset. Every face on the asset is suppressed.
+        try repository.assignAssets([wholeAsset.id], toPersonID: "person-x")
+
+        let unassigned = Set(try repository.unassignedFaceObservations(provenance: provenance, limit: 10).map(\.faceID))
+
+        XCTAssertEqual(unassigned, [
+            FaceID(assetID: aiMatch.id, faceIndex: 1),
+            FaceID(assetID: perFaceConfirm.id, faceIndex: 1)
+        ])
     }
 
     func testAssignAssetsToMissingPersonThrowsNotFound() throws {

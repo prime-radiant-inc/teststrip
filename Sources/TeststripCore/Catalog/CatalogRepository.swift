@@ -1145,6 +1145,14 @@ public final class CatalogRepository {
                     AND person_faces.face_index = face_observations.face_index
               )
               AND NOT EXISTS (
+                  SELECT 1 FROM person_assets
+                  WHERE person_assets.asset_id = face_observations.asset_id
+                    AND NOT EXISTS (
+                        SELECT 1 FROM person_faces
+                        WHERE person_faces.asset_id = face_observations.asset_id
+                    )
+              )
+              AND NOT EXISTS (
                   SELECT 1 FROM dismissed_faces
                   WHERE dismissed_faces.asset_id = face_observations.asset_id
                     AND dismissed_faces.face_index = face_observations.face_index
