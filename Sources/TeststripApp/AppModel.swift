@@ -3657,6 +3657,52 @@ public final class AppModel {
         refreshPeopleFaceSuggestions()
     }
 
+    /// Names one face as an existing person. A positive identification
+    /// overrides any prior "not them" rejection recorded for this exact
+    /// (face, person) pair.
+    public func nameFace(_ faceID: FaceID, personID: String) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        try catalog.repository.assignFaces([faceID], toPersonID: personID)
+        try catalog.repository.clearRejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: personID)
+        refreshPeopleFaceSuggestions()
+    }
+
+    /// Names one face as a brand-new person.
+    public func nameFace(_ faceID: FaceID, newPersonName: String) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let trimmedName = newPersonName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw TeststripError.invalidState("person name is required")
+        }
+        let personID = "person-\(UUID().uuidString)"
+        try catalog.repository.upsertPerson(id: personID, name: trimmedName)
+        try catalog.repository.assignFaces([faceID], toPersonID: personID)
+        refreshPeopleFaceSuggestions()
+    }
+
+    /// Clears one face's confirmed identity.
+    public func removeFacePerson(_ faceID: FaceID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        try catalog.repository.unassignFaces([faceID])
+        refreshPeopleFaceSuggestions()
+    }
+
+    /// Records that a suggested identity is wrong for one face ("not
+    /// them"), so recognition stops re-proposing that person for it.
+    public func rejectFaceSuggestion(_ faceID: FaceID, personID: String) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        try catalog.repository.recordRejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: personID)
+        refreshPeopleFaceSuggestions()
+    }
+
     public func showPersonPhotos(named name: String) throws {
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
