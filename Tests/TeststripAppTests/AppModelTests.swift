@@ -4992,7 +4992,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .pick)
     }
 
-    func testRunAutopilotProducesPendingProposalsWithoutWritingMetadata() throws {
+    func testRunAutopilotAppliesTentativeFlagsOnRun() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let lead = makeAsset(id: "ap-lead", path: "/Photos/Job/ap-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
         let alternate = makeAsset(id: "ap-alt", path: "/Photos/Job/ap-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
@@ -5013,13 +5013,107 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary.bannerText, "1 keepers · 1 rejects · dupes→stacks")
         XCTAssertEqual(model.autopilotProposalDecision(for: alternate.id), .pick)
         XCTAssertEqual(model.autopilotProposalDecision(for: lead.id), .reject)
-        // Provisional only: nothing written.
-        XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
-        XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
+        // The run applies its proposed flags to metadata immediately, tentatively.
+        let leadMetadata = try repository.asset(id: lead.id).metadata
+        let alternateMetadata = try repository.asset(id: alternate.id).metadata
+        XCTAssertEqual(leadMetadata.flag, .reject)
+        XCTAssertTrue(leadMetadata.aiUnconfirmedFields.contains(.flag))
+        XCTAssertEqual(alternateMetadata.flag, .pick)
+        XCTAssertTrue(alternateMetadata.aiUnconfirmedFields.contains(.flag))
         XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
     }
 
-    func testRunAutopilotOnCurrentScopeProducesProposalsWithoutWritingMetadata() throws {
+    func testRunAutopilotAppliesTentativeFlagsCatalogOnlyNoSidecar() throws {
+        let directory = try makeTemporaryDirectory(named: "autopilot-tentative-no-sidecar")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let leadURL = photosDirectory.appendingPathComponent("ap-lead.cr2")
+        let alternateURL = photosDirectory.appendingPathComponent("ap-alt.cr2")
+        try Data("lead raw bytes".utf8).write(to: leadURL)
+        try Data("alt raw bytes".utf8).write(to: alternateURL)
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "sidecar-ap-lead", path: leadURL.path, rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "sidecar-ap-alt", path: alternateURL.path, rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "run-autopilot-no-sidecar", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.30), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: lead.id, kind: .object, value: .label("dog"), confidence: 0.8, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        let leadSidecarURL = leadURL.appendingPathExtension("xmp")
+        let alternateSidecarURL = alternateURL.appendingPathExtension("xmp")
+
+        _ = try model.runAutopilot(scope: .visible)
+
+        let leadMetadata = try repository.asset(id: lead.id).metadata
+        XCTAssertEqual(leadMetadata.flag, .reject)
+        XCTAssertTrue(leadMetadata.aiUnconfirmedFields.contains(.flag))
+        XCTAssertTrue(leadMetadata.keywords.contains("dog"))
+        XCTAssertTrue(leadMetadata.aiUnconfirmedKeywords.contains("dog"))
+        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .pick)
+        // Catalog-only tentative write: no sidecar written for either asset.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: leadSidecarURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: alternateSidecarURL.path))
+    }
+
+    func testRunAutopilotSkipsAssetWithUserConfirmedFlag() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        // lead already carries a user-confirmed pick; the planner will
+        // propose it as the *reject* (it's the weaker frame) — that proposal
+        // must be skipped rather than clobbering the user's decision.
+        let lead = makeAsset(id: "confirmed-lead", path: "/Photos/Job/confirmed-lead.cr2", rating: 0, flag: .pick, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "confirmed-alt", path: "/Photos/Job/confirmed-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "run-autopilot-confirmed-flag", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.30), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+
+        _ = try model.runAutopilot(scope: .visible)
+
+        XCTAssertEqual(model.autopilotProposalDecision(for: lead.id), .reject)
+        let leadMetadata = try repository.asset(id: lead.id).metadata
+        XCTAssertEqual(leadMetadata.flag, .pick)
+        XCTAssertFalse(leadMetadata.aiUnconfirmedFields.contains(.flag))
+        // The other asset in the stack is unaffected by the skip.
+        let alternateMetadata = try repository.asset(id: alternate.id).metadata
+        XCTAssertEqual(alternateMetadata.flag, .pick)
+        XCTAssertTrue(alternateMetadata.aiUnconfirmedFields.contains(.flag))
+    }
+
+    func testUndoAutopilotRunRevertsTentativeWrites() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "undo-tentative-lead", path: "/Photos/Job/undo-tentative-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "undo-tentative-alt", path: "/Photos/Job/undo-tentative-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "undo-tentative-autopilot", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+        XCTAssertTrue(model.canUndoAutopilotRun)
+        XCTAssertEqual(try repository.asset(id: lead.id).metadata.flag, .reject)
+
+        try model.undoAutopilotRun()
+
+        XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
+        XCTAssertTrue(try repository.asset(id: lead.id).metadata.aiUnconfirmedFields.isEmpty)
+        XCTAssertTrue(try repository.asset(id: alternate.id).metadata.aiUnconfirmedFields.isEmpty)
+        XCTAssertFalse(model.canUndoAutopilotRun)
+        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
+    }
+
+    func testRunAutopilotOnCurrentScopeAppliesTentativeFlagsOnRun() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let lead = makeAsset(id: "ondemand-lead", path: "/Photos/Job/ondemand-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
         let alternate = makeAsset(id: "ondemand-alt", path: "/Photos/Job/ondemand-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
@@ -5040,11 +5134,11 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary?.rejectCount, 1)
         XCTAssertNotNil(model.autopilotRunSummary)
         XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
-        // Provisional only: nothing written, so no catalog generation bump.
-        XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
-        XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
-        XCTAssertEqual(try repository.catalogGeneration(assetID: lead.id), leadGenerationBefore)
-        XCTAssertEqual(try repository.catalogGeneration(assetID: alternate.id), alternateGenerationBefore)
+        // The run applies its proposals tentatively, so the catalog generation bumps.
+        XCTAssertEqual(try repository.asset(id: lead.id).metadata.flag, .reject)
+        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .pick)
+        XCTAssertNotEqual(try repository.catalogGeneration(assetID: lead.id), leadGenerationBefore)
+        XCTAssertNotEqual(try repository.catalogGeneration(assetID: alternate.id), alternateGenerationBefore)
     }
 
     func testRunAutopilotOnFlatDistinctLibrarySurfacesKeywordOutcomeNotBareZero() throws {
@@ -5072,11 +5166,16 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary.bannerText, "No clear cuts to propose — 2 keyword suggestions ready to review")
         XCTAssertEqual(model.statusMessage?.contains("0 keepers"), false)
         XCTAssertEqual(model.statusMessage, "Autopilot: No clear cuts to propose — 2 keyword suggestions ready to review")
-        // Confirm-before-write: nothing committed to metadata by the run itself.
         XCTAssertNil(try repository.asset(id: first.id).metadata.flag)
         XCTAssertNil(try repository.asset(id: second.id).metadata.flag)
-        XCTAssertTrue(try repository.asset(id: first.id).metadata.keywords.isEmpty)
-        XCTAssertTrue(try repository.asset(id: second.id).metadata.keywords.isEmpty)
+        // Keyword proposals route through the same tentative-apply path as a
+        // pick/reject: applied immediately, marked AI-unconfirmed.
+        let firstMetadata = try repository.asset(id: first.id).metadata
+        let secondMetadata = try repository.asset(id: second.id).metadata
+        XCTAssertTrue(firstMetadata.keywords.contains("beach"))
+        XCTAssertTrue(firstMetadata.aiUnconfirmedKeywords.contains("beach"))
+        XCTAssertTrue(secondMetadata.keywords.contains("mountain"))
+        XCTAssertTrue(secondMetadata.aiUnconfirmedKeywords.contains("mountain"))
     }
 
     func testRunAutopilotOnCurrentScopeWithoutEvaluationsSetsStatusMessage() throws {
@@ -5122,7 +5221,8 @@ final class AppModelTests: XCTestCase {
             let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
             try repository.recordEvaluationSignals([
                 EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.30), confidence: 0.9, provenance: provenance),
-                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: lead.id, kind: .object, value: .label("dog"), confidence: 0.8, provenance: provenance)
             ])
         }
         try model.selectSidebarTarget(.allPhotographs)
@@ -5130,10 +5230,18 @@ final class AppModelTests: XCTestCase {
         _ = try model.runAutopilot(scope: .visible)
         _ = try model.runAutopilot(scope: .visible)
 
-        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 2)
+        // A re-run on the identical scope doesn't accumulate duplicate
+        // proposals, and the still-tentative keyword from the first run
+        // doesn't get filtered out of the second run's candidates (it isn't
+        // "already there" in the sense that would block re-proposing it —
+        // it's this same mechanism's own unconfirmed proposal).
+        XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 3)
+        let leadMetadata = try repository.asset(id: lead.id).metadata
+        XCTAssertEqual(leadMetadata.keywords.filter { $0 == "dog" }.count, 1)
+        XCTAssertTrue(leadMetadata.aiUnconfirmedKeywords.contains("dog"))
     }
 
-    func testCommitAllAutopilotProposalsWritesFlagsAndKeywordsAsOneUndoGroup() throws {
+    func testCommitAllAutopilotProposalsConfirmsTentativeFlagsAsOneUndoGroup() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let lead = makeAsset(id: "commit-lead", path: "/Photos/Job/commit-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
         let alternate = makeAsset(id: "commit-alt", path: "/Photos/Job/commit-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
@@ -5146,20 +5254,52 @@ final class AppModelTests: XCTestCase {
         }
         try model.selectSidebarTarget(.allPhotographs)
         _ = try model.runAutopilot(scope: .visible)
+        // Tentative immediately after the run.
+        XCTAssertTrue(try repository.asset(id: alternate.id).metadata.aiUnconfirmedFields.contains(.flag))
+        XCTAssertTrue(try repository.asset(id: lead.id).metadata.aiUnconfirmedFields.contains(.flag))
 
         let committed = try model.commitAllAutopilotProposals()
 
         XCTAssertEqual(committed, 2)
-        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .pick)
-        XCTAssertEqual(try repository.asset(id: lead.id).metadata.flag, .reject)
+        let confirmedAlternate = try repository.asset(id: alternate.id).metadata
+        let confirmedLead = try repository.asset(id: lead.id).metadata
+        XCTAssertEqual(confirmedAlternate.flag, .pick)
+        XCTAssertFalse(confirmedAlternate.aiUnconfirmedFields.contains(.flag))
+        XCTAssertEqual(confirmedLead.flag, .reject)
+        XCTAssertFalse(confirmedLead.aiUnconfirmedFields.contains(.flag))
         XCTAssertEqual(try repository.pendingAutopilotProposalCount(), 0)
         XCTAssertEqual(model.lastUndoableActionLabel, "Autopilot")
 
-        // Exactly one undo group reverts the whole batch.
+        // Exactly one undo group reverts the confirm step (back to tentative
+        // — reverting all the way to pre-run is undoAutopilotRun's job).
         try model.undoMetadataChange()
-        XCTAssertNil(try repository.asset(id: alternate.id).metadata.flag)
-        XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
+        let revertedAlternate = try repository.asset(id: alternate.id).metadata
+        let revertedLead = try repository.asset(id: lead.id).metadata
+        XCTAssertEqual(revertedAlternate.flag, .pick)
+        XCTAssertTrue(revertedAlternate.aiUnconfirmedFields.contains(.flag))
+        XCTAssertEqual(revertedLead.flag, .reject)
+        XCTAssertTrue(revertedLead.aiUnconfirmedFields.contains(.flag))
         XCTAssertFalse(model.canUndoMetadataChange)
+    }
+
+    func testCommitAutopilotProposalsConfirmsTentativeKeyword() throws {
+        let asset = makeAsset(id: "commit-keyword", path: "/Photos/Job/commit-keyword.cr2", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(named: "commit-autopilot-keyword", assets: [asset]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "objects", version: "1", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: asset.id, kind: .object, value: .label("dog"), confidence: 0.8, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+        XCTAssertTrue(try repository.asset(id: asset.id).metadata.aiUnconfirmedKeywords.contains("dog"))
+
+        let committed = try model.commitAllAutopilotProposals()
+
+        XCTAssertEqual(committed, 1)
+        let confirmed = try repository.asset(id: asset.id).metadata
+        XCTAssertTrue(confirmed.keywords.contains("dog"))
+        XCTAssertFalse(confirmed.aiUnconfirmedKeywords.contains("dog"))
     }
 
     func testCommitAllAutopilotProposalsSkipsDanglingProposalForMissingAsset() throws {
@@ -5230,7 +5370,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.canUndoAutopilotRun)
     }
 
-    func testDismissAutopilotProposalsLeavesMetadataUntouched() throws {
+    func testDismissAutopilotProposalsClearsTheirTentativeMetadata() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let lead = makeAsset(id: "dismiss-lead", path: "/Photos/Job/dismiss-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
         let alternate = makeAsset(id: "dismiss-alt", path: "/Photos/Job/dismiss-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
@@ -5243,13 +5383,19 @@ final class AppModelTests: XCTestCase {
         }
         try model.selectSidebarTarget(.allPhotographs)
         _ = try model.runAutopilot(scope: .visible)
+        XCTAssertEqual(try repository.asset(id: lead.id).metadata.flag, .reject)
 
         let dismissed = try model.dismissAutopilotProposals(assetIDs: [lead.id])
 
         XCTAssertEqual(dismissed, 1)
-        XCTAssertNil(try repository.asset(id: lead.id).metadata.flag)
+        // Dismissing a proposal clears the tentative write it contributed —
+        // nothing left stuck in limbo once it's no longer reviewable.
+        let leadMetadata = try repository.asset(id: lead.id).metadata
+        XCTAssertNil(leadMetadata.flag)
+        XCTAssertTrue(leadMetadata.aiUnconfirmedFields.isEmpty)
         XCTAssertEqual(model.autopilotProposalDecision(for: lead.id), nil)
         XCTAssertEqual(model.autopilotProposalDecision(for: alternate.id), .pick)
+        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .pick)
         XCTAssertFalse(model.canUndoMetadataChange)
     }
 
@@ -13672,7 +13818,8 @@ final class AppModelTests: XCTestCase {
             try await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTAssertNotNil(model.autopilotRunSummary)
-        // Provisional only: import autopilot never writes catalog metadata.
+        // No stack forms for a lone imported asset, so the planner proposes
+        // no pick/reject for it — nothing tentative to write here either way.
         XCTAssertNil(try catalog.repository.asset(id: importedAsset.id).metadata.flag)
     }
 

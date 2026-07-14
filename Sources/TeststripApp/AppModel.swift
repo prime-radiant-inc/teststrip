@@ -2091,7 +2091,16 @@ public final class AppModel {
     public private(set) var autopilotRunSummary: AutopilotRunSummary?
     public private(set) var pendingAutopilotProposals: [AutopilotProposal] = []
     public private(set) var isAutopilotReviewActive = false
-    public private(set) var lastCommittedAutopilotRunID: AutopilotRunID?
+    // The run-time metadata undo group for the most recent autopilot run's
+    // tentative pick/reject/keyword writes (see `applyTentativeAutopilotProposals`)
+    // and the run it belongs to, so `undoAutopilotRun` can revert the whole
+    // batch and flip that run's proposals back to `pending` — independent of
+    // the shared `metadataUndoStack` (which `commitAutopilotProposals`'
+    // confirm step uses instead; reverting a catalog-only tentative write
+    // through that generic, sidecar-syncing path would spuriously create a
+    // sidecar for an asset that never had one). In-memory only.
+    private var lastAutopilotRunUndoGroup: MetadataChangeGroup?
+    private var lastAutopilotRunUndoRunID: AutopilotRunID?
     // Opt-in natural-language Ask translator. nil (default) keeps the Ask on
     // the always-available deterministic parser with byte-identical behavior.
     public var autopilotQueryTranslator: (any AutopilotQueryTranslator)?
@@ -8633,10 +8642,15 @@ public final class AppModel {
 
     /// Runs autopilot over a scope: gathers already-computed signals, plans
     /// provisional pick/reject/keyword proposals with the pure planner,
-    /// replaces any prior pending proposals for the identical scope, and
-    /// persists the new set. NOTHING is written to catalog metadata or XMP —
-    /// only `pending` proposal rows. Committing (a separate explicit gesture)
-    /// is the only path that writes metadata.
+    /// replaces any prior pending proposals for the identical scope, persists
+    /// the new set for run tracking/rationale, and immediately applies each
+    /// proposal's pick/reject/keyword to `metadata_json` as AI-unconfirmed
+    /// (tentative) — see `applyTentativeAutopilotProposals`. Catalog-only: an
+    /// unconfirmed write never syncs to the XMP sidecar
+    /// (`AssetMetadata.confirmedProjection`) and (Task 13) never drives
+    /// destructive/committing operations. A later `commitAutopilotProposals`
+    /// confirms them (portable, sidecar-synced); `undoAutopilotRun` reverts
+    /// this run's whole tentative batch in one gesture.
     @discardableResult
     public func runAutopilot(scope: AutopilotScope = .visible) throws -> AutopilotRunSummary {
         guard let catalog else {
@@ -8649,9 +8663,18 @@ public final class AppModel {
         for asset in scopeAssets {
             let signals = (try? catalog.repository.evaluationSignals(assetID: asset.id)) ?? []
             signalsByAssetID[asset.id] = signals
+            // Only a *confirmed* existing keyword should block re-proposing
+            // it: an unconfirmed one is still this same tentative mechanism's
+            // own prior proposal, and excluding it here would silently drop
+            // its proposal row (and thus its reviewability) on a re-run of
+            // the identical scope, even though the tentative keyword stays
+            // stuck in metadata forever.
+            let confirmedKeywords = asset.metadata.keywords.filter {
+                !asset.metadata.aiUnconfirmedKeywords.contains($0)
+            }
             let candidates = Self.autopilotKeywordCandidates(
                 from: signals,
-                existingKeywords: asset.metadata.keywords
+                existingKeywords: confirmedKeywords
             )
             if !candidates.isEmpty {
                 keywordCandidatesByAssetID[asset.id] = candidates
@@ -8673,6 +8696,7 @@ public final class AppModel {
         let proposals = planner.proposals(for: input, runID: runID, now: Date())
         try catalog.repository.save(proposals)
         lastAutopilotRunIDByScopeKey[scopeKey] = runID
+        try applyTentativeAutopilotProposals(proposals, runID: runID)
 
         let summary = AutopilotRunSummary(
             runID: runID,
@@ -8687,6 +8711,57 @@ public final class AppModel {
         return summary
     }
 
+    /// Applies one run's `.pick`/`.reject`/`.keyword` proposals to
+    /// `metadata_json` immediately, marked AI-unconfirmed — the fold-in of
+    /// autopilot into the auto-apply provenance model (`promoteMetadataLabels`,
+    /// Task 7). Skips a proposal whose asset already carries a *confirmed*
+    /// flag (the user decided already) or whose specific value the user
+    /// previously removed (`removed_ai_labels`) — same skip rule
+    /// `promoteMetadataLabels` uses for captions/keywords. Catalog-only write
+    /// (`updateMetadata`, not `applyMetadataSnapshot`) since an AI-unconfirmed
+    /// delta never has a portable projection to sync. Records the touched
+    /// assets' pre-run/post-run snapshots as one run-time undo group so
+    /// `undoAutopilotRun` can revert the whole batch.
+    private func applyTentativeAutopilotProposals(_ proposals: [AutopilotProposal], runID: AutopilotRunID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        var changes: [MetadataChange] = []
+        let proposalsByAssetID = Dictionary(grouping: proposals, by: { $0.assetID })
+        for (assetID, assetProposals) in proposalsByAssetID {
+            let removedLabels = try catalog.repository.removedAILabels(assetID: assetID)
+            let originalAsset = try catalog.repository.asset(id: assetID)
+            var updatedMetadata = originalAsset.metadata
+            for proposal in assetProposals {
+                switch proposal.kind {
+                case .pick, .reject:
+                    let flagValue: PickFlag = proposal.kind == .pick ? .pick : .reject
+                    let hasConfirmedFlag = updatedMetadata.flag != nil && !updatedMetadata.aiUnconfirmedFields.contains(.flag)
+                    guard !hasConfirmedFlag,
+                          !removedLabels.contains(RemovedAILabel(field: .flag, value: flagValue.rawValue)) else {
+                        continue
+                    }
+                    updatedMetadata.flag = flagValue
+                    updatedMetadata.aiUnconfirmedFields.insert(.flag)
+                case .keyword:
+                    guard let keyword = proposal.keyword,
+                          !Self.keywordList(updatedMetadata.keywords, contains: keyword),
+                          !removedLabels.contains(RemovedAILabel(field: .keyword, value: keyword)) else {
+                        continue
+                    }
+                    updatedMetadata.keywords.append(keyword)
+                    updatedMetadata.aiUnconfirmedKeywords.insert(keyword)
+                }
+            }
+            guard updatedMetadata != originalAsset.metadata else { continue }
+            try catalog.repository.updateMetadata(assetID: assetID) { $0 = updatedMetadata }
+            try refreshInMemoryAsset(assetID)
+            changes.append(MetadataChange(assetID: assetID, before: originalAsset.metadata, after: updatedMetadata))
+        }
+        lastAutopilotRunUndoGroup = changes.isEmpty ? nil : MetadataChangeGroup(label: "Autopilot", changes: changes)
+        lastAutopilotRunUndoRunID = changes.isEmpty ? nil : runID
+    }
+
     /// On-demand autopilot entry point for the assets currently loaded in the
     /// library grid. This is a new *entry point* into `runAutopilot(scope:)`:
     /// it reuses the same run→banner→review→commit/undo machinery as the
@@ -8694,8 +8769,9 @@ public final class AppModel {
     /// static catalog rather than by an armed import finishing. Autopilot
     /// proposes only from evaluation signals, so if none of the visible frames
     /// carry evaluations there is nothing to propose from; in that case it
-    /// surfaces a status message rather than creating an empty run. Provisional
-    /// only: nothing is written to catalog metadata until the user commits.
+    /// surfaces a status message rather than creating an empty run. Tentative
+    /// only: the run applies its proposals to catalog metadata as
+    /// AI-unconfirmed; the user commits to confirm them (portable, synced).
     @discardableResult
     public func runAutopilotOnCurrentScope() throws -> AutopilotRunSummary? {
         guard let catalog else {
@@ -8782,11 +8858,17 @@ public final class AppModel {
         return orderedIDs
     }
 
-    /// Commits the pending proposals for the given assets by writing their
-    /// flags/keywords through the grouped-undo metadata path as ONE undo group
-    /// labeled "Autopilot", then marks those proposals `committed`. This is the
-    /// ONLY autopilot path that writes catalog metadata/XMP, and it happens
-    /// only on this explicit user gesture.
+    /// Confirms the pending proposals for the given assets: each one's
+    /// pick/reject/keyword is already sitting in `metadata_json` as
+    /// AI-unconfirmed (`applyTentativeAutopilotProposals`, run time) — commit
+    /// graduates it to confirmed by clearing `aiUnconfirmedFields`/
+    /// `aiUnconfirmedKeywords`, through the grouped-undo, sidecar-syncing
+    /// metadata path (`applyMetadataSnapshot`) as ONE undo group labeled
+    /// "Autopilot" (the same generic Cmd+Z path `confirmAIField`/
+    /// `confirmAIKeyword` feed for a single asset — batched here since
+    /// committing is a multi-asset gesture), then marks those proposals
+    /// `committed`. This is the explicit user gesture that makes a tentative
+    /// autopilot decision portable to the XMP sidecar.
     @discardableResult
     public func commitAutopilotProposals(assetIDs: [AssetID]) throws -> Int {
         guard let catalog else {
@@ -8824,14 +8906,11 @@ public final class AppModel {
             var updatedMetadata = originalAsset.metadata
             for proposal in assetProposals {
                 switch proposal.kind {
-                case .pick:
-                    updatedMetadata.flag = .pick
-                case .reject:
-                    updatedMetadata.flag = .reject
+                case .pick, .reject:
+                    updatedMetadata.aiUnconfirmedFields.remove(.flag)
                 case .keyword:
-                    if let keyword = proposal.keyword,
-                       !Self.keywordList(updatedMetadata.keywords, contains: keyword) {
-                        updatedMetadata.keywords.append(keyword)
+                    if let keyword = proposal.keyword {
+                        updatedMetadata.aiUnconfirmedKeywords.remove(keyword)
                     }
                 }
                 committedProposalIDs.append(proposal.id)
@@ -8851,7 +8930,6 @@ public final class AppModel {
         if !staleProposalIDs.isEmpty {
             try catalog.repository.updateAutopilotProposalStatus(ids: staleProposalIDs, to: .dismissed)
         }
-        lastCommittedAutopilotRunID = targetProposals.first?.runID
         pendingAutopilotProposals = (try? catalog.repository.autopilotProposals(status: .pending)) ?? []
         try refreshCatalogSidebarCounts()
         statusMessage = staleProposalIDs.isEmpty
@@ -8865,6 +8943,13 @@ public final class AppModel {
         try commitAutopilotProposals(assetIDs: distinctPendingAutopilotProposalAssetIDs())
     }
 
+    /// Dismisses the pending proposals for the given assets. Since the
+    /// proposal's pick/reject/keyword was already written to `metadata_json`
+    /// as AI-unconfirmed at run time, dismissing it also clears that specific
+    /// tentative value — but only if it's still unconfirmed, never touching a
+    /// value the user has since confirmed — so nothing is left stuck in limbo
+    /// once it's no longer reviewable. Catalog-only, same as the original
+    /// tentative write.
     @discardableResult
     public func dismissAutopilotProposals(assetIDs: [AssetID]) throws -> Int {
         guard let catalog else {
@@ -8873,6 +8958,26 @@ public final class AppModel {
         let targetAssetIDs = Set(assetIDs)
         let targetProposals = pendingAutopilotProposals.filter { targetAssetIDs.contains($0.assetID) }
         guard !targetProposals.isEmpty else { return 0 }
+
+        let proposalsByAsset = Dictionary(grouping: targetProposals, by: { $0.assetID })
+        for (assetID, assetProposals) in proposalsByAsset {
+            try catalog.repository.updateMetadata(assetID: assetID) { metadata in
+                for proposal in assetProposals {
+                    switch proposal.kind {
+                    case .pick, .reject:
+                        guard metadata.aiUnconfirmedFields.contains(.flag) else { continue }
+                        metadata.flag = nil
+                        metadata.aiUnconfirmedFields.remove(.flag)
+                    case .keyword:
+                        guard let keyword = proposal.keyword,
+                              metadata.aiUnconfirmedKeywords.contains(keyword) else { continue }
+                        metadata.keywords.removeAll { $0 == keyword }
+                        metadata.aiUnconfirmedKeywords.remove(keyword)
+                    }
+                }
+            }
+            try refreshInMemoryAsset(assetID)
+        }
         try catalog.repository.updateAutopilotProposalStatus(ids: targetProposals.map(\.id), to: .dismissed)
         pendingAutopilotProposals = (try? catalog.repository.autopilotProposals(status: .pending)) ?? []
         statusMessage = "Dismissed \(targetProposals.count) proposals"
@@ -8880,28 +8985,61 @@ public final class AppModel {
     }
 
     public var canUndoAutopilotRun: Bool {
-        metadataUndoStack.last?.label == "Autopilot"
+        lastAutopilotRunUndoGroup != nil
     }
 
-    /// Reverses the last committed autopilot batch in one gesture: reverts the
-    /// "Autopilot" undo group and returns that run's committed proposals to
-    /// `pending` so they are reviewable (and their KEEP/CUT badges reappear).
+    /// Reverses the last autopilot run's tentative writes in one gesture:
+    /// reverts the run-time metadata undo group captured when the run first
+    /// applied its pick/reject/keyword proposals
+    /// (`applyTentativeAutopilotProposals`) — independent of the shared
+    /// `metadataUndoStack`/Cmd+Z, which `commitAutopilotProposals`'s confirm
+    /// step uses instead — then returns that run's proposals (including any
+    /// since committed) to `pending` so they are reviewable again (and their
+    /// KEEP/CUT badges reappear).
     public func undoAutopilotRun() throws {
-        guard canUndoAutopilotRun else { return }
+        guard let group = lastAutopilotRunUndoGroup else { return }
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        let runID = lastCommittedAutopilotRunID
-        try undoMetadataChange()
-        if let runID {
+        for change in group.changes.reversed() {
+            try revertAutopilotTentativeChange(change)
+        }
+        if let runID = lastAutopilotRunUndoRunID {
             let committedProposalIDs = try catalog.repository.autopilotProposals(runID: runID)
                 .filter { $0.status == .committed }
                 .map(\.id)
             try catalog.repository.updateAutopilotProposalStatus(ids: committedProposalIDs, to: .pending)
             pendingAutopilotProposals = (try? catalog.repository.autopilotProposals(status: .pending)) ?? []
         }
-        lastCommittedAutopilotRunID = nil
+        lastAutopilotRunUndoGroup = nil
+        lastAutopilotRunUndoRunID = nil
         statusMessage = "Undid autopilot batch"
+    }
+
+    /// Reverts one asset from a run-time tentative change's `after` back to
+    /// its `before` snapshot, catalog-only — mirroring how it was written.
+    /// The one case that needs a real sidecar fix-up is when the tentative
+    /// value was since *confirmed* (`commitAutopilotProposals`, which does
+    /// sync): the asset's current confirmed projection then differs from
+    /// `before`'s, and leaving the sidecar alone would strand a stale
+    /// confirmed value on disk after the catalog reverts underneath it.
+    private func revertAutopilotTentativeChange(_ change: MetadataChange) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let currentMetadata: AssetMetadata
+        do {
+            currentMetadata = try catalog.repository.asset(id: change.assetID).metadata
+        } catch CatalogError.notFound {
+            return
+        }
+        try catalog.repository.updateMetadata(assetID: change.assetID) { $0 = change.before }
+        if currentMetadata.confirmedProjection != change.before.confirmedProjection {
+            let updatedAsset = try catalog.repository.asset(id: change.assetID)
+            try syncMetadataSidecar(for: updatedAsset)
+            try refreshCatalogSidebarCounts()
+        }
+        try refreshInMemoryAsset(change.assetID)
     }
 
     private func autopilotScopeAssets(_ scope: AutopilotScope, repository: CatalogRepository) throws -> [Asset] {
