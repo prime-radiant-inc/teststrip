@@ -76,15 +76,19 @@ final class MetadataTests: XCTestCase {
         // when the catalog still marks it AI-unconfirmed, an external tool's
         // (or human's) sidecar value wins and the field graduates to
         // confirmed rather than being clobbered by the stale AI value.
-        var catalogMetadata = AssetMetadata(keywords: ["people"], caption: "ai guess")
-        catalogMetadata.aiUnconfirmedFields = [.caption]
+        var catalogMetadata = AssetMetadata(rating: 2, flag: .pick, keywords: ["people"], caption: "ai guess")
+        catalogMetadata.aiUnconfirmedFields = [.caption, .flag, .rating]
         catalogMetadata.aiUnconfirmedKeywords = ["people"]
-        let sidecarMetadata = AssetMetadata(keywords: ["people"], caption: "human caption")
+        let sidecarMetadata = AssetMetadata(rating: 5, flag: .reject, keywords: ["people"], caption: "human caption")
 
         let merged = catalogMetadata.mergingConfirmedSidecar(sidecarMetadata)
 
         XCTAssertEqual(merged.caption, "human caption")
         XCTAssertFalse(merged.aiUnconfirmedFields.contains(.caption))
+        XCTAssertEqual(merged.flag, .reject)
+        XCTAssertFalse(merged.aiUnconfirmedFields.contains(.flag))
+        XCTAssertEqual(merged.rating, 5)
+        XCTAssertFalse(merged.aiUnconfirmedFields.contains(.rating))
         XCTAssertTrue(merged.keywords.contains("people"))
         XCTAssertFalse(merged.aiUnconfirmedKeywords.contains("people"))
 
