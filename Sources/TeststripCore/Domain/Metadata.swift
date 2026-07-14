@@ -13,6 +13,12 @@ public enum PickFlag: String, Codable, Sendable {
     case reject
 }
 
+public enum MetadataField: String, Codable, Sendable, CaseIterable {
+    case flag
+    case caption
+    case rating
+}
+
 public struct AssetMetadata: Codable, Equatable, Sendable {
     public var rating: Int {
         didSet {
@@ -25,22 +31,39 @@ public struct AssetMetadata: Codable, Equatable, Sendable {
     public var caption: String?
     public var creator: String?
     public var copyright: String?
+    public var aiUnconfirmedKeywords: Set<String>
+    public var aiUnconfirmedFields: Set<MetadataField>
 
     private static let validRatingRange = 0...5
     private static let invalidRatingMessage = "rating must be between 0 and 5"
+
+    /// A copy with every AI-unconfirmed label dropped — what is exported to the
+    /// XMP sidecar and what "portable metadata exists" is judged against.
+    public var confirmedProjection: AssetMetadata {
+        AssetMetadata(
+            rating: aiUnconfirmedFields.contains(.rating) ? 0 : rating,
+            colorLabel: colorLabel,
+            flag: aiUnconfirmedFields.contains(.flag) ? nil : flag,
+            keywords: keywords.filter { !aiUnconfirmedKeywords.contains($0) },
+            caption: aiUnconfirmedFields.contains(.caption) ? nil : caption,
+            creator: creator,
+            copyright: copyright
+        )
+    }
 
     /// True once the user has set any portable field that mirrors to an XMP
     /// sidecar. A sidecar is written only after such a set (non-destructive), so
     /// this doubles as "a sidecar exists for this asset" — used to show a
     /// positive "Saved to sidecar" confirmation when nothing is pending.
     public var hasWrittenPortableMetadata: Bool {
-        rating > 0
-            || flag != nil
-            || colorLabel != nil
-            || !keywords.isEmpty
-            || !(caption ?? "").isEmpty
-            || !(creator ?? "").isEmpty
-            || !(copyright ?? "").isEmpty
+        let c = confirmedProjection
+        return c.rating > 0
+            || c.flag != nil
+            || c.colorLabel != nil
+            || !c.keywords.isEmpty
+            || !(c.caption ?? "").isEmpty
+            || !(c.creator ?? "").isEmpty
+            || !(c.copyright ?? "").isEmpty
     }
 
     public init(
@@ -50,7 +73,9 @@ public struct AssetMetadata: Codable, Equatable, Sendable {
         keywords: [String] = [],
         caption: String? = nil,
         creator: String? = nil,
-        copyright: String? = nil
+        copyright: String? = nil,
+        aiUnconfirmedKeywords: Set<String> = [],
+        aiUnconfirmedFields: Set<MetadataField> = []
     ) {
         precondition(Self.isValidRating(rating), Self.invalidRatingMessage)
 
@@ -61,6 +86,8 @@ public struct AssetMetadata: Codable, Equatable, Sendable {
         self.caption = caption
         self.creator = creator
         self.copyright = copyright
+        self.aiUnconfirmedKeywords = aiUnconfirmedKeywords
+        self.aiUnconfirmedFields = aiUnconfirmedFields
     }
 
     public init(from decoder: Decoder) throws {
@@ -81,6 +108,8 @@ public struct AssetMetadata: Codable, Equatable, Sendable {
         self.caption = try container.decodeIfPresent(String.self, forKey: .caption)
         self.creator = try container.decodeIfPresent(String.self, forKey: .creator)
         self.copyright = try container.decodeIfPresent(String.self, forKey: .copyright)
+        self.aiUnconfirmedKeywords = try container.decodeIfPresent(Set<String>.self, forKey: .aiUnconfirmedKeywords) ?? []
+        self.aiUnconfirmedFields = try container.decodeIfPresent(Set<MetadataField>.self, forKey: .aiUnconfirmedFields) ?? []
     }
 
     public static func validated(
