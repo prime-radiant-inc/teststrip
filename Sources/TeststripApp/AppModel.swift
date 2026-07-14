@@ -1698,13 +1698,11 @@ public struct AppImportOutput: Sendable {
     public var result: LibraryImportResult
     public var assets: [Asset]
     public var totalAssetCount: Int
-    public var assetPageOffset: Int
 
-    public init(result: LibraryImportResult, assets: [Asset], totalAssetCount: Int, assetPageOffset: Int = 0) {
+    public init(result: LibraryImportResult, assets: [Asset], totalAssetCount: Int) {
         self.result = result
         self.assets = assets
         self.totalAssetCount = totalAssetCount
-        self.assetPageOffset = assetPageOffset
     }
 }
 
@@ -2444,7 +2442,6 @@ public final class AppModel {
     private var currentSessionActivityIDs: Set<String> = []
     private var metadataUndoStack: [MetadataChangeGroup]
     private var metadataRedoStack: [MetadataChangeGroup]
-    private var assetPageOffset: Int
     private var compareAssetIDs: [AssetID]?
     /// The frame the user explicitly pinned as contender B in the A/B
     /// comparator. Nil means B follows the recommendation or the anchor's
@@ -2453,8 +2450,6 @@ public final class AppModel {
 
     public static let defaultEvaluationProviderName = "local-image-metrics"
     public static let defaultEvaluationProviderNames = [defaultEvaluationProviderName, "apple-vision", "core-image-faces"]
-    private static let assetPageSize = 120
-    private static let loadedAssetWindowSize = assetPageSize * 2
     private static let pendingPreviewRecoveryBatchSize = 40
     static let previewGenerationQueueStateDisplayLimit = pendingPreviewRecoveryBatchSize
     private static let pendingMetadataSyncRecoveryBatchSize = 200
@@ -2524,19 +2519,12 @@ public final class AppModel {
         return candidates?.isEmpty == false
     }
 
-    /// The loaded page's offset into the full catalog scope, for surfaces
-    /// (e.g. the cull filmstrip caption) that must report catalog-wide frame
-    /// numbers rather than window-local ones.
-    public var loadedAssetPageOffset: Int {
-        assetPageOffset
-    }
-
     public var selectedAssetPosition: Int? {
         guard let selectedAssetID,
               let selectedIndex = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
             return nil
         }
-        return assetPageOffset + selectedIndex + 1
+        return selectedIndex + 1
     }
 
     public var selectedAssetPositionText: String? {
@@ -2588,24 +2576,8 @@ public final class AppModel {
         )
     }
 
-    public var hasMoreAssets: Bool {
-        assetPageOffset + assets.count < totalAssetCount
-    }
-
-    public var hasPreviousAssets: Bool {
-        assetPageOffset > 0
-    }
-
     public var libraryCountText: String {
-        if assetPageOffset == 0, totalAssetCount > assets.count {
-            return "Showing \(assets.count) of \(totalAssetCount) photos"
-        }
-        if assetPageOffset > 0 {
-            let start = assetPageOffset + 1
-            let end = assetPageOffset + assets.count
-            return "Showing \(start)-\(end) of \(totalAssetCount) photos"
-        }
-        return "\(assets.count) \(assets.count == 1 ? "photo" : "photos")"
+        "\(assets.count) \(assets.count == 1 ? "photo" : "photos")"
     }
 
     public var libraryStatusText: String? {
@@ -3976,7 +3948,6 @@ public final class AppModel {
         }
         self.metadataUndoStack = []
         self.metadataRedoStack = []
-        self.assetPageOffset = 0
         self.compareAssetIDs = nil
         self.workerImportContextsByItemID = [:]
         self.activeSecurityScopedSourceRootURLs = []
@@ -4064,7 +4035,7 @@ public final class AppModel {
 
     public static func load(repository: CatalogRepository) throws -> AppModel {
         try reconcileInterruptedIngestWorkSessions(repository: repository)
-        let assets = try repository.allAssets(limit: Self.assetPageSize)
+        let assets = try repository.allAssets()
         let savedAssetSets = try repository.assetSets()
         let assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: repository)
         let catalogFolders = try repository.folders()
@@ -4142,7 +4113,7 @@ public final class AppModel {
         sessionRestoreDefaults: UserDefaults? = nil
     ) throws -> AppModel {
         try reconcileInterruptedIngestWorkSessions(repository: catalog.repository)
-        let assets = try catalog.repository.allAssets(limit: Self.assetPageSize)
+        let assets = try catalog.repository.allAssets()
         let savedAssetSets = try catalog.repository.assetSets()
         let assetSetCounts = try Self.assetSetCounts(savedAssetSets, repository: catalog.repository)
         let catalogFolders = try catalog.repository.folders()
@@ -4323,7 +4294,7 @@ public final class AppModel {
             guard let loadedIndex = assets.firstIndex(where: { $0.id == assetID }) else { return }
             if selectedBatchAssetIDs.insert(assetID).inserted {
                 selectedBatchAssetIDOrder.append(assetID)
-                selectedBatchAssetSortKeys[assetID] = assetPageOffset + loadedIndex
+                selectedBatchAssetSortKeys[assetID] = loadedIndex
             }
         } else {
             if selectedBatchAssetIDs.remove(assetID) != nil {
@@ -5676,9 +5647,6 @@ public final class AppModel {
         }
         let groupAssetIDs = Set(previousGroup.map(\.id))
         guard let lastGroupIndex = assets.lastIndex(where: { groupAssetIDs.contains($0.id) }) else { return }
-        if lastGroupIndex == assets.count - 1, hasMoreAssets {
-            try loadMoreAssets()
-        }
         let nextIndex = lastGroupIndex + 1
         guard assets.indices.contains(nextIndex) else { return }
         selectAssetID(assets[nextIndex].id)
@@ -6069,12 +6037,10 @@ public final class AppModel {
     /// `cullScope`: the `.picks`/`.rejects` review scopes exclude unflagged
     /// frames by definition, so a scope-filtered count would be trivially
     /// zero there and falsely report completion. Computed from the in-memory
-    /// `assets` page (the same array `CullScopeOrdering` navigates), not a
-    /// full-catalog query: cheap, and consistent with how scope-based nav
-    /// already treats `assets` as the session's universe elsewhere in this
-    /// file. On a paginated library this undercounts undecided items on
-    /// pages not yet loaded, matching the pagination caveat scope-nav
-    /// already has (see `hasMoreAssets`/`hasPreviousAssets`).
+    /// `assets` array (the same array `CullScopeOrdering` navigates, and which
+    /// now holds the whole catalog), not a full-catalog query: cheap, and
+    /// consistent with how scope-based nav already treats `assets` as the
+    /// session's universe elsewhere in this file.
     public var cullUndecidedCount: Int {
         assets.filter { $0.metadata.flag == nil }.count
     }
@@ -6186,18 +6152,9 @@ public final class AppModel {
             selectAssetID(nil)
             return
         }
-        guard let currentSelection = selectedAssetID,
-              let index = assets.firstIndex(where: { $0.id == currentSelection }) else {
+        guard let selectedAssetID,
+              let index = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
             selectAssetID(CullScopeOrdering.filteredAssets(assets, scope: cullScope).first?.id)
-            return
-        }
-        if cullScope == .all, index == assets.count - 1, hasMoreAssets {
-            try loadMoreAssets()
-            guard let reloadedIndex = assets.firstIndex(where: { $0.id == currentSelection }) else {
-                selectAssetID(assets.first?.id)
-                return
-            }
-            selectAssetID(assets[min(reloadedIndex + 1, assets.count - 1)].id)
             return
         }
         if let nextID = Self.assetID(in: assets, after: index, matching: cullScope) {
@@ -6397,19 +6354,11 @@ public final class AppModel {
     private func selectFirstCullingStackIfAvailable() throws -> Bool {
         if let explicitAssetIDs = selectedExplicitAssetIDs,
            let catalog,
-           let target = try firstCullingStackTarget(
+           let targetAssetID = try firstCullingStackTarget(
             assetIDs: explicitAssetIDs,
             repository: catalog.repository
            ) {
-            if assets.contains(where: { $0.id == target.assetID }) {
-                selectAssetID(target.assetID)
-            } else {
-                try loadExplicitAssetPage(
-                    assetIDs: explicitAssetIDs,
-                    pageOffset: target.pageOffset,
-                    preferredSelection: target.assetID
-                )
-            }
+            selectAssetID(targetAssetID)
             return true
         }
 
@@ -6424,30 +6373,19 @@ public final class AppModel {
     private func firstCullingStackTarget(
         assetIDs: [AssetID],
         repository: CatalogRepository
-    ) throws -> (assetID: AssetID, pageOffset: Int)? {
+    ) throws -> AssetID? {
         guard assetIDs.count > 1 else { return nil }
 
         let stackBuilder = AssetStackBuilder(maximumCaptureGap: Self.candidateStackMaximumCaptureGap)
+        let orderedAssets = try repository.assets(ids: assetIDs, limit: assetIDs.count)
         var previousAsset: Asset?
-        var previousIndex: Int?
 
-        for pageOffset in stride(from: 0, to: assetIDs.count, by: Self.assetPageSize) {
-            let pageAssets = try repository.assets(
-                ids: assetIDs,
-                limit: Self.assetPageSize,
-                offset: pageOffset
-            )
-
-            for (pageIndex, asset) in pageAssets.enumerated() {
-                if let previousAsset,
-                   let previousIndex,
-                   stackBuilder.stacks(from: [previousAsset, asset]).contains(where: { $0.assetIDs.count > 1 }) {
-                    return (previousAsset.id, previousIndex)
-                }
-
-                previousAsset = asset
-                previousIndex = pageOffset + pageIndex
+        for asset in orderedAssets {
+            if let previousAsset,
+               stackBuilder.stacks(from: [previousAsset, asset]).contains(where: { $0.assetIDs.count > 1 }) {
+                return previousAsset.id
             }
+            previousAsset = asset
         }
 
         return nil
@@ -6550,18 +6488,9 @@ public final class AppModel {
             selectAssetID(nil)
             return
         }
-        guard let currentSelection = selectedAssetID,
-              let index = assets.firstIndex(where: { $0.id == currentSelection }) else {
+        guard let selectedAssetID,
+              let index = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
             selectAssetID(CullScopeOrdering.filteredAssets(assets, scope: cullScope).first?.id)
-            return
-        }
-        if cullScope == .all, index == 0, hasPreviousAssets {
-            try loadPreviousAssets()
-            guard let reloadedIndex = assets.firstIndex(where: { $0.id == currentSelection }) else {
-                selectAssetID(assets.last?.id)
-                return
-            }
-            selectAssetID(assets[max(reloadedIndex - 1, 0)].id)
             return
         }
         if let previousID = Self.assetID(in: assets, before: index, matching: cullScope) {
@@ -8666,8 +8595,8 @@ public final class AppModel {
         let assetIDs = distinctPendingAutopilotProposalAssetIDs()
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
-        let loadedAssets = try catalog.repository.assets(ids: assetIDs, limit: Self.assetPageSize)
-        replaceAssets(loadedAssets, pageOffset: 0)
+        let loadedAssets = try catalog.repository.assets(ids: assetIDs, limit: assetIDs.count)
+        replaceAssets(loadedAssets)
         totalAssetCount = try catalog.repository.assetCount(ids: assetIDs)
         isAutopilotReviewActive = true
         selectedView = .grid
@@ -9662,8 +9591,8 @@ public final class AppModel {
         try refreshCatalogSidebarCounts()
         refreshCatalogFolders()
         if let explicitAssetIDs = selectedExplicitAssetIDs {
-            let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: Self.assetPageSize)
-            replaceAssets(loadedAssets, pageOffset: 0)
+            let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: explicitAssetIDs.count)
+            replaceAssets(loadedAssets)
             totalAssetCount = try catalog.repository.assetCount(ids: explicitAssetIDs, flag: flagFilter)
             pruneBatchSelection(retaining: Set(explicitAssetIDs))
             if selectedView == .map {
@@ -9674,13 +9603,13 @@ public final class AppModel {
         let loadedAssets: [Asset]
         let count: Int
         if let query = currentLibraryQuery() {
-            loadedAssets = try catalog.repository.allAssets(matching: query, limit: Self.assetPageSize)
+            loadedAssets = try catalog.repository.allAssets(matching: query)
             count = try catalog.repository.assetCount(matching: query)
         } else {
-            loadedAssets = try catalog.repository.allAssets(limit: Self.assetPageSize)
+            loadedAssets = try catalog.repository.allAssets()
             count = try catalog.repository.assetCount()
         }
-        replaceAssets(loadedAssets, pageOffset: 0)
+        replaceAssets(loadedAssets)
         totalAssetCount = count
         try pruneBatchSelectionToCurrentLibraryQuery(repository: catalog.repository)
         // Map is a view of the current filtered result set (spec §4): keep its
@@ -9705,63 +9634,6 @@ public final class AppModel {
         // while a query is active, so a result change re-renders the sidebar.
         if workHistorySearchResults != previousResults {
             rebuildSidebarSections()
-        }
-    }
-
-    public func loadMoreAssets() throws {
-        guard let catalog else {
-            throw TeststripError.invalidState("app model has no catalog")
-        }
-        guard hasMoreAssets else { return }
-        let offset = assetPageOffset + assets.count
-        let loadedAssets: [Asset]
-        if let explicitAssetIDs = selectedExplicitAssetIDs {
-            loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: Self.assetPageSize, offset: offset)
-        } else if let query = currentLibraryQuery() {
-            loadedAssets = try catalog.repository.allAssets(matching: query, limit: Self.assetPageSize, offset: offset)
-        } else {
-            loadedAssets = try catalog.repository.allAssets(limit: Self.assetPageSize, offset: offset)
-        }
-        assets.append(contentsOf: loadedAssets)
-        enforceLoadedAssetWindow(dropping: .leading)
-        totalAssetCount = try currentLibraryAssetCount(repository: catalog.repository)
-        if selectedAssetID == nil {
-            selectedAssetID = assets.first?.id
-        }
-    }
-
-    public func loadPreviousAssets() throws {
-        guard let catalog else {
-            throw TeststripError.invalidState("app model has no catalog")
-        }
-        guard hasPreviousAssets else { return }
-        let previousOffset = max(0, assetPageOffset - Self.assetPageSize)
-        let filteredPreviousAssets: [Asset]
-        if let explicitAssetIDs = selectedExplicitAssetIDs {
-            filteredPreviousAssets = try catalog.repository.assets(
-                ids: explicitAssetIDs,
-                flag: flagFilter,
-                limit: assetPageOffset - previousOffset,
-                offset: previousOffset
-            )
-        } else if let query = currentLibraryQuery() {
-            filteredPreviousAssets = try catalog.repository.allAssets(
-                matching: query,
-                limit: assetPageOffset - previousOffset,
-                offset: previousOffset
-            )
-        } else {
-            filteredPreviousAssets = try catalog.repository.allAssets(
-                limit: assetPageOffset - previousOffset,
-                offset: previousOffset
-            )
-        }
-        assets.insert(contentsOf: filteredPreviousAssets, at: 0)
-        assetPageOffset = previousOffset
-        enforceLoadedAssetWindow(dropping: .trailing)
-        totalAssetCount = try currentLibraryAssetCount(repository: catalog.repository)
-        if selectedAssetID == nil {
-            selectedAssetID = assets.first?.id
         }
     }
 
@@ -10066,37 +9938,12 @@ public final class AppModel {
         return availability
     }
 
-    private enum LoadedAssetWindowDropEdge {
-        case leading
-        case trailing
-    }
-
-    private func enforceLoadedAssetWindow(dropping edge: LoadedAssetWindowDropEdge) {
-        let overflowCount = assets.count - Self.loadedAssetWindowSize
-        guard overflowCount > 0 else { return }
-
-        switch edge {
-        case .leading:
-            assets.removeFirst(overflowCount)
-            assetPageOffset += overflowCount
-        case .trailing:
-            assets.removeLast(overflowCount)
-        }
-
-        if let selectedAssetID, assets.contains(where: { $0.id == selectedAssetID }) {
-            return
-        }
-        selectedAssetID = assets.first?.id
-    }
-
     private func replaceAssets(
         _ loadedAssets: [Asset],
-        pageOffset: Int = 0,
         preferredSelection: AssetID? = nil
     ) {
         let previousSelection = selectedAssetID
         assets = loadedAssets
-        assetPageOffset = pageOffset
         if let preferredSelection, assets.contains(where: { $0.id == preferredSelection }) {
             selectedAssetID = preferredSelection
         } else if let previousSelection, assets.contains(where: { $0.id == previousSelection }) {
@@ -10131,31 +9978,13 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        let page = try Self.catalogPage(
-            containing: preferredSelection,
+        let contents = try Self.catalogContents(
             repository: catalog.repository,
             query: currentLibraryQuery(),
             sort: librarySortOption
         )
-        replaceAssets(page.assets, pageOffset: page.offset, preferredSelection: preferredSelection)
-        totalAssetCount = page.totalAssetCount
-    }
-
-    private func loadExplicitAssetPage(
-        assetIDs: [AssetID],
-        pageOffset: Int,
-        preferredSelection: AssetID
-    ) throws {
-        guard let catalog else {
-            throw TeststripError.invalidState("app model has no catalog")
-        }
-        let loadedAssets = try catalog.repository.assets(
-            ids: assetIDs,
-            limit: Self.assetPageSize,
-            offset: pageOffset
-        )
-        replaceAssets(loadedAssets, pageOffset: pageOffset, preferredSelection: preferredSelection)
-        totalAssetCount = try catalog.repository.assetCount(ids: assetIDs)
+        replaceAssets(contents.assets, preferredSelection: preferredSelection)
+        totalAssetCount = contents.totalAssetCount
     }
 
     private static func append(_ predicate: SetQuery.Predicate, to predicates: inout [SetQuery.Predicate]) {
@@ -10702,31 +10531,17 @@ public final class AppModel {
 
         try refreshWorkHistorySearchResults(repository: catalog.repository)
         if let explicitAssetIDs = selectedExplicitAssetIDs {
-            let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: Self.assetPageSize)
-            replaceAssets(loadedAssets, pageOffset: 0, preferredSelection: state.selectedAssetID)
+            let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: explicitAssetIDs.count)
+            replaceAssets(loadedAssets, preferredSelection: state.selectedAssetID)
             totalAssetCount = try catalog.repository.assetCount(ids: explicitAssetIDs, flag: flagFilter)
         } else {
-            // A persisted selectedAssetID that no longer exists (deleted since last
-            // run) makes catalogPage's import-order offset lookup throw notFound;
-            // fall back to the unscoped first page rather than surfacing an error.
-            let page: (assets: [Asset], offset: Int, totalAssetCount: Int)
-            do {
-                page = try Self.catalogPage(
-                    containing: state.selectedAssetID,
-                    repository: catalog.repository,
-                    query: currentLibraryQuery(),
-                    sort: librarySortOption
-                )
-            } catch CatalogError.notFound {
-                page = try Self.catalogPage(
-                    containing: nil,
-                    repository: catalog.repository,
-                    query: currentLibraryQuery(),
-                    sort: librarySortOption
-                )
-            }
-            replaceAssets(page.assets, pageOffset: page.offset, preferredSelection: state.selectedAssetID)
-            totalAssetCount = page.totalAssetCount
+            let contents = try Self.catalogContents(
+                repository: catalog.repository,
+                query: currentLibraryQuery(),
+                sort: librarySortOption
+            )
+            replaceAssets(contents.assets, preferredSelection: state.selectedAssetID)
+            totalAssetCount = contents.totalAssetCount
         }
     }
 
@@ -11898,7 +11713,6 @@ public final class AppModel {
             ).value
             replaceAssets(
                 output.assets,
-                pageOffset: output.assetPageOffset,
                 preferredSelection: output.result.importedAssets.first?.id
             )
             totalAssetCount = output.totalAssetCount
@@ -11946,7 +11760,6 @@ public final class AppModel {
             ).value
             replaceAssets(
                 output.assets,
-                pageOffset: output.assetPageOffset,
                 preferredSelection: output.result.importedAssets.first?.id
             )
             totalAssetCount = output.totalAssetCount
@@ -12025,7 +11838,6 @@ public final class AppModel {
                 guard let self, self.activeWork?.id == activityID else { return }
                 self.replaceAssets(
                     output.assets,
-                    pageOffset: output.assetPageOffset,
                     preferredSelection: output.result.importedAssets.first?.id
                 )
                 self.totalAssetCount = output.totalAssetCount
@@ -12161,7 +11973,6 @@ public final class AppModel {
                 guard let self, self.activeWork?.id == activityID else { return }
                 self.replaceAssets(
                     output.assets,
-                    pageOffset: output.assetPageOffset,
                     preferredSelection: output.result.importedAssets.first?.id
                 )
                 self.totalAssetCount = output.totalAssetCount
@@ -12545,16 +12356,14 @@ public final class AppModel {
                 progress: progress
             )
             try Task.checkCancellation()
-            let page = try Self.catalogPage(
-                containing: result.importedAssets.first?.id,
+            let contents = try Self.catalogContents(
                 repository: backgroundCatalog.repository,
                 query: nil
             )
             return AppImportOutput(
                 result: result,
-                assets: page.assets,
-                totalAssetCount: page.totalAssetCount,
-                assetPageOffset: page.offset
+                assets: contents.assets,
+                totalAssetCount: contents.totalAssetCount
             )
         }
     }
@@ -12583,42 +12392,33 @@ public final class AppModel {
                 progress: progress
             )
             try Task.checkCancellation()
-            let page = try Self.catalogPage(
-                containing: result.importedAssets.first?.id,
+            let contents = try Self.catalogContents(
                 repository: backgroundCatalog.repository,
                 query: nil
             )
             return AppImportOutput(
                 result: result,
-                assets: page.assets,
-                totalAssetCount: page.totalAssetCount,
-                assetPageOffset: page.offset
+                assets: contents.assets,
+                totalAssetCount: contents.totalAssetCount
             )
         }
     }
 
-    private static func catalogPage(
-        containing preferredAssetID: AssetID?,
+    // Loads the whole catalog (optionally filtered by `query`) for the library
+    // grid, which relies on display-level windowing rather than a load window.
+    private static func catalogContents(
         repository: CatalogRepository,
         query: SetQuery?,
         sort: LibrarySortOption = .importOrder
-    ) throws -> (assets: [Asset], offset: Int, totalAssetCount: Int) {
+    ) throws -> (assets: [Asset], totalAssetCount: Int) {
         if let query {
-            let assets = try repository.allAssets(matching: query, limit: assetPageSize, sort: sort)
+            let assets = try repository.allAssets(matching: query, sort: sort)
             let totalAssetCount = try repository.assetCount(matching: query)
-            return (assets, 0, totalAssetCount)
+            return (assets, totalAssetCount)
         }
-
-        let offset: Int
-        if sort == .importOrder, let preferredAssetID {
-            let assetOffset = try repository.assetOffset(id: preferredAssetID)
-            offset = (assetOffset / assetPageSize) * assetPageSize
-        } else {
-            offset = 0
-        }
-        let assets = try repository.allAssets(limit: assetPageSize, offset: offset, sort: sort)
+        let assets = try repository.allAssets(sort: sort)
         let totalAssetCount = try repository.assetCount()
-        return (assets, offset, totalAssetCount)
+        return (assets, totalAssetCount)
     }
 
     private static func commonAncestorPath(for paths: [String]) -> String? {
