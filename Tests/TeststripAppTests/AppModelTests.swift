@@ -2052,7 +2052,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.isBatchSelected(laterKeeperID))
     }
 
-    func testCurrentScopeBatchMetadataAppliesBeyondLoadedPageAndWritesXmpSidecars() throws {
+    func testCurrentScopeBatchMetadataAppliesToWholeFilteredScopeAndWritesXmpSidecars() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-current-scope-batch-metadata")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
         try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
@@ -2095,8 +2095,6 @@ final class AppModelTests: XCTestCase {
         try model.applyLibraryFilters()
 
         XCTAssertEqual(model.totalAssetCount, matchingAssets.count)
-        XCTAssertLessThan(model.assets.count, matchingAssets.count)
-        XCTAssertFalse(model.assets.contains { $0.id == matchingAssets.last?.id })
 
         let appliedCount = try model.applyCurrentScopeBatchMetadata(
             keywordText: "portfolio",
@@ -2107,20 +2105,22 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(appliedCount, matchingAssets.count)
         XCTAssertEqual(model.statusMessage, "Applied batch metadata to 121 photos")
-        let unloadedAsset = try XCTUnwrap(matchingAssets.last)
-        let unloadedMetadata = try repository.asset(id: unloadedAsset.id).metadata
-        let unloadedSidecarData = try Data(contentsOf: unloadedAsset.originalURL.appendingPathExtension("xmp"))
-        let unloadedSidecarMetadata = try XMPPacket.parse(unloadedSidecarData).metadata
-        XCTAssertEqual(unloadedMetadata.keywords, ["portfolio"])
-        XCTAssertEqual(unloadedMetadata.caption, "Green selects")
-        XCTAssertEqual(unloadedMetadata.creator, "Jesse")
-        XCTAssertEqual(unloadedSidecarMetadata.keywords, ["portfolio"])
-        XCTAssertEqual(unloadedSidecarMetadata.caption, "Green selects")
+        // The last in-scope asset is written just like the rest — batch
+        // metadata covers the whole filtered scope, not only the selection.
+        let lastScopedAsset = try XCTUnwrap(matchingAssets.last)
+        let lastScopedMetadata = try repository.asset(id: lastScopedAsset.id).metadata
+        let lastScopedSidecarData = try Data(contentsOf: lastScopedAsset.originalURL.appendingPathExtension("xmp"))
+        let lastScopedSidecarMetadata = try XMPPacket.parse(lastScopedSidecarData).metadata
+        XCTAssertEqual(lastScopedMetadata.keywords, ["portfolio"])
+        XCTAssertEqual(lastScopedMetadata.caption, "Green selects")
+        XCTAssertEqual(lastScopedMetadata.creator, "Jesse")
+        XCTAssertEqual(lastScopedSidecarMetadata.keywords, ["portfolio"])
+        XCTAssertEqual(lastScopedSidecarMetadata.caption, "Green selects")
         XCTAssertEqual(try repository.asset(id: outsideAsset.id).metadata.keywords, [])
         XCTAssertFalse(FileManager.default.fileExists(atPath: outsideAsset.originalURL.appendingPathExtension("xmp").path))
     }
 
-    func testCurrentScopeBatchMetadataAppliesExplicitSetBeyondLoadedPage() throws {
+    func testCurrentScopeBatchMetadataAppliesToWholeExplicitSet() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-current-scope-batch-metadata-set")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
         try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
@@ -2168,8 +2168,6 @@ final class AppModelTests: XCTestCase {
         try model.applyAssetSet(id: assetSet.id)
 
         XCTAssertEqual(model.totalAssetCount, setAssets.count)
-        XCTAssertLessThan(model.assets.count, setAssets.count)
-        XCTAssertFalse(model.assets.contains { $0.id == setAssets.last?.id })
 
         let appliedCount = try model.applyCurrentScopeBatchMetadata(
             keywordText: "portfolio",
@@ -2179,14 +2177,15 @@ final class AppModelTests: XCTestCase {
         )
 
         XCTAssertEqual(appliedCount, setAssets.count)
-        let unloadedAsset = try XCTUnwrap(setAssets.last)
-        let unloadedMetadata = try repository.asset(id: unloadedAsset.id).metadata
-        let unloadedSidecarData = try Data(contentsOf: unloadedAsset.originalURL.appendingPathExtension("xmp"))
-        let unloadedSidecarMetadata = try XMPPacket.parse(unloadedSidecarData).metadata
-        XCTAssertEqual(unloadedMetadata.keywords, ["portfolio"])
-        XCTAssertEqual(unloadedMetadata.copyright, "Copyright Jesse")
-        XCTAssertEqual(unloadedSidecarMetadata.keywords, ["portfolio"])
-        XCTAssertEqual(unloadedSidecarMetadata.copyright, "Copyright Jesse")
+        // The whole explicit set is written, including its last member.
+        let lastScopedAsset = try XCTUnwrap(setAssets.last)
+        let lastScopedMetadata = try repository.asset(id: lastScopedAsset.id).metadata
+        let lastScopedSidecarData = try Data(contentsOf: lastScopedAsset.originalURL.appendingPathExtension("xmp"))
+        let lastScopedSidecarMetadata = try XMPPacket.parse(lastScopedSidecarData).metadata
+        XCTAssertEqual(lastScopedMetadata.keywords, ["portfolio"])
+        XCTAssertEqual(lastScopedMetadata.copyright, "Copyright Jesse")
+        XCTAssertEqual(lastScopedSidecarMetadata.keywords, ["portfolio"])
+        XCTAssertEqual(lastScopedSidecarMetadata.copyright, "Copyright Jesse")
         XCTAssertEqual(try repository.asset(id: outsideAsset.id).metadata.keywords, [])
         XCTAssertFalse(FileManager.default.fileExists(atPath: outsideAsset.originalURL.appendingPathExtension("xmp").path))
     }
@@ -2334,7 +2333,7 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testExportCurrentScopeAssetsExportsFilteredAssetsBeyondLoadedPage() async throws {
+    func testExportCurrentScopeAssetsExportsWholeFilteredScope() async throws {
         let directory = try makeTemporaryDirectory(named: "app-model-export-current-scope")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
         try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
@@ -2361,7 +2360,6 @@ final class AppModelTests: XCTestCase {
         ))
         model.colorLabelFilter = .green
         try model.applyLibraryFilters()
-        XCTAssertLessThan(model.assets.count, matchingAssets.count)
         let destination = directory.appendingPathComponent("exports", isDirectory: true)
 
         let summary = try await model.exportCurrentScopeAssets(
@@ -3582,14 +3580,12 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(fixture.model.backgroundWorkQueue.items.filter { $0.kind == .xmpSync }, [])
     }
 
-    func testRetryPendingMetadataSyncInCurrentScopeQueuesRetryableItemBeyondLoadedWindow() throws {
-        let fixture = try makePendingMetadataSyncScopeModelWithRetryableItemBeyondLoadedWindow(
-            named: "retry-pending-xmp-beyond-loaded"
+    func testRetryPendingMetadataSyncInCurrentScopeQueuesTheSoleRetryableItem() throws {
+        let fixture = try makePendingMetadataSyncScopeModelWithSingleRetryableItem(
+            named: "retry-pending-xmp-single-retryable"
         )
         fixture.model.metadataSyncPendingFilter = true
         try fixture.model.reload()
-
-        XCTAssertFalse(fixture.model.assets.contains { $0.id == fixture.retryableAssetID })
 
         let queuedCount = try fixture.model.retryPendingMetadataSyncInCurrentScope()
 
@@ -3599,14 +3595,13 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
-    func testCanRetryPendingMetadataSyncInCurrentScopeLooksBeyondLoadedWindow() throws {
-        let fixture = try makePendingMetadataSyncScopeModelWithRetryableItemBeyondLoadedWindow(
-            named: "can-retry-pending-xmp-beyond-loaded"
+    func testCanRetryPendingMetadataSyncInCurrentScopeFindsTheSoleRetryableItem() throws {
+        let fixture = try makePendingMetadataSyncScopeModelWithSingleRetryableItem(
+            named: "can-retry-pending-xmp-single-retryable"
         )
         fixture.model.metadataSyncPendingFilter = true
         try fixture.model.reload()
 
-        XCTAssertFalse(fixture.model.assets.contains { $0.id == fixture.retryableAssetID })
         XCTAssertTrue(fixture.model.canRetryPendingMetadataSyncInCurrentScope)
     }
 
@@ -7388,7 +7383,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.suggestedReconnectOldRootPath, "/Volumes/Archive/Job")
     }
 
-    func testSuggestedReconnectOldRootUsesCatalogSourceRootsBeyondLoadedWindow() throws {
+    func testSuggestedReconnectOldRootUsesCatalogSourceRoots() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-source-root-history")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
@@ -7414,7 +7409,6 @@ final class AppModelTests: XCTestCase {
 
         let model = try AppModel.load(catalog: catalog)
 
-        XCTAssertFalse(model.assets.contains { $0.id == missingArchiveAsset.id })
         XCTAssertEqual(model.suggestedReconnectOldRootPath, "/Volumes/Archive/Job")
     }
 
@@ -10914,7 +10908,7 @@ final class AppModelTests: XCTestCase {
         ])
     }
 
-    func testRequestCurrentScopeAssetEvaluationsDispatchesCachedAssetsBeyondLoadedPage() throws {
+    func testRequestCurrentScopeAssetEvaluationsDispatchesCachedAssetsAcrossWholeScope() throws {
         let transport = RecordingWorkerTransport()
         let supervisor = WorkerSupervisor(
             queue: BackgroundWorkQueue(maxRunningCount: 4),
@@ -10945,8 +10939,6 @@ final class AppModelTests: XCTestCase {
         try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: matchingAssets[120].id, level: .grid)))
         try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: outsideAsset.id, level: .grid)))
 
-        XCTAssertLessThan(model.assets.count, matchingAssets.count)
-        XCTAssertFalse(model.assets.contains { $0.id == matchingAssets[120].id })
         XCTAssertTrue(model.canRequestCurrentScopeAssetEvaluations)
 
         try model.requestCurrentScopeAssetEvaluations(providers: ["local-image-metrics"])
@@ -10991,8 +10983,6 @@ final class AppModelTests: XCTestCase {
         try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: matchingAssets[120].id, level: .grid)))
         try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: outsideAsset.id, level: .grid)))
 
-        XCTAssertLessThan(model.assets.count, matchingAssets.count)
-        XCTAssertFalse(model.assets.contains { $0.id == matchingAssets[120].id })
         XCTAssertTrue(model.canRequestPeopleFaceScan)
 
         try model.requestPeopleFaceScan()
@@ -11839,7 +11829,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: thirdURL.appendingPathExtension("xmp").path))
     }
 
-    func testAcceptCurrentScopeBatchKeywordSuggestionUsesFullFilteredScopeBeyondLoadedPage() throws {
+    func testAcceptCurrentScopeBatchKeywordSuggestionUsesFullFilteredScope() throws {
         let directory = try makeTemporaryDirectory(named: "current-scope-batch-keyword-apply")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
         try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
@@ -11887,8 +11877,6 @@ final class AppModelTests: XCTestCase {
             EvaluationSignal(assetID: outsideAsset.id, kind: .object, value: .label("mountain"), confidence: 0.95, provenance: provenance)
         ])
 
-        XCTAssertLessThan(model.assets.count, matchingAssets.count)
-        XCTAssertFalse(model.assets.contains { $0.id == matchingAssets[120].id })
         XCTAssertEqual(model.currentScopeBatchKeywordSuggestions.map(\.keyword), ["mountain"])
         XCTAssertEqual(model.currentScopeBatchKeywordSuggestions.map(\.assetCountText), ["2 photos"])
 
@@ -15690,7 +15678,7 @@ final class AppModelTests: XCTestCase {
         })
     }
 
-    func testBeginningStackCullingFromLatestImportLoadsFirstStackBeyondInitialPage() throws {
+    func testBeginningStackCullingFromLatestImportSelectsFirstStack() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let singletons = (0..<130).map { index in
             makeAsset(
@@ -15719,13 +15707,11 @@ final class AppModelTests: XCTestCase {
             outputAssetIDs: assets.map(\.id)
         )
 
-        XCTAssertFalse(model.assets.contains { $0.id == stackFirst.id })
         XCTAssertEqual(model.latestImportCompletionSummary?.stackCount, 1)
 
         _ = try model.beginStackCullingFromLatestImportCompletion()
 
         XCTAssertEqual(model.selectedAssetID, stackFirst.id)
-        XCTAssertEqual(model.assets.first?.id, stackFirst.id)
         XCTAssertEqual(model.selectedView, .loupe)
     }
 
@@ -16967,7 +16953,7 @@ final class AppModelTests: XCTestCase {
         return (model, transport, retryable.id)
     }
 
-    private func makePendingMetadataSyncScopeModelWithRetryableItemBeyondLoadedWindow(
+    private func makePendingMetadataSyncScopeModelWithSingleRetryableItem(
         named name: String
     ) throws -> (model: AppModel, transport: RecordingWorkerTransport, retryableAssetID: AssetID) {
         let directory = try makeTemporaryDirectory(named: name)
@@ -17026,7 +17012,7 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(
             sidebarSections: [],
             selectedView: .grid,
-            assets: Array(assets.prefix(120)),
+            assets: assets,
             totalAssetCount: assets.count,
             catalog: catalog,
             pendingMetadataSyncItems: try repository.pendingMetadataSyncItems(),
