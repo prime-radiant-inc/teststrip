@@ -2207,6 +2207,10 @@ public final class AppModel {
     public var catalogPeople: [CatalogPerson]
     public private(set) var peopleFaceSuggestions: [PeopleFaceSuggestion] = []
     public private(set) var peopleFaceObservationAssetCount = 0
+    /// The face row currently focused in the People inspector section (hover),
+    /// so the loupe's face-box overlay (Task 8) can highlight the matching
+    /// box, and vice versa — hovering a box focuses the list row.
+    public var focusedFaceID: FaceID?
     public var reviewQueueCounts: [ReviewQueue: Int]
     public var selectedAssetSetID: AssetSetID? {
         didSet { persistSessionState() }
@@ -3664,6 +3668,41 @@ public final class AppModel {
         refreshPeopleFaceSuggestions()
     }
 
+    /// Assembles the per-photo People inspector section (Task 7): one row
+    /// per detected face, confirmed identity (`person_faces`) winning over a
+    /// suggested match for the same face index.
+    func photoFacesPresentation(for assetID: AssetID) -> PhotoFacesPresentation {
+        guard let catalog else {
+            return PhotoFacesPresentation(
+                assetID: assetID,
+                observations: [],
+                confirmedByFaceIndex: [:],
+                suggestionsByFaceIndex: [:]
+            )
+        }
+        let observations = (try? catalog.repository.faceObservations(assetID: assetID)) ?? []
+        let personIDsByFaceIndex = (try? catalog.repository.personFaceAssignments(assetID: assetID)) ?? [:]
+        let personNamesByID = Dictionary(uniqueKeysWithValues: catalogPeople.map { ($0.id, $0.name) })
+        var confirmedByFaceIndex: [Int: (personID: String, name: String)] = [:]
+        for (faceIndex, personID) in personIDsByFaceIndex {
+            guard let name = personNamesByID[personID] else { continue }
+            confirmedByFaceIndex[faceIndex] = (personID: personID, name: name)
+        }
+        var suggestionsByFaceIndex: [Int: (personID: String, name: String)] = [:]
+        for suggestion in peopleFaceSuggestions {
+            guard case .matchExisting(let personID, let personName) = suggestion.kind else { continue }
+            for faceID in suggestion.faceIDs where faceID.assetID == assetID {
+                suggestionsByFaceIndex[faceID.faceIndex] = (personID: personID, name: personName)
+            }
+        }
+        return PhotoFacesPresentation(
+            assetID: assetID,
+            observations: observations,
+            confirmedByFaceIndex: confirmedByFaceIndex,
+            suggestionsByFaceIndex: suggestionsByFaceIndex
+        )
+    }
+
     /// Names one face as an existing person. A positive identification
     /// overrides any prior "not them" rejection recorded for this exact
     /// (face, person) pair.
@@ -3688,6 +3727,7 @@ public final class AppModel {
         let personID = "person-\(UUID().uuidString)"
         try catalog.repository.upsertPerson(id: personID, name: trimmedName)
         try catalog.repository.assignFaces([faceID], toPersonID: personID)
+        catalogPeople = try catalog.repository.people()
         refreshPeopleFaceSuggestions()
     }
 

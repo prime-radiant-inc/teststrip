@@ -649,12 +649,8 @@ struct InspectorView: View {
         }
     }
 
-    @ViewBuilder
     private func peopleSectionBody(for asset: Asset) -> some View {
-        // Task 7: face-crop list.
-        Text("Faces")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+        PhotoFacesSectionView(model: model, asset: asset)
     }
 
     /// Read-only rating/flag/label summary for the Info tab. The interactive

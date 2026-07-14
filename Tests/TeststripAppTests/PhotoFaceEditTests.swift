@@ -20,6 +20,21 @@ final class PhotoFaceEditTests: XCTestCase {
         XCTAssertEqual(try personFaceRows(db, assetID: "a").count, 1)
     }
 
+    /// Task 7: `nameFace(newPersonName:)` creates a person via the repo, but
+    /// only `refreshPeopleFaceSuggestions()` used to run afterward — leaving
+    /// `catalogPeople` stale, so the freshly created person couldn't resolve
+    /// its own name (e.g. in the People inspector row that just created it).
+    func testNameFaceWithNewPersonNameRefreshesCatalogPeopleList() throws {
+        let (model, _, _) = try makeModelWithOneFace(named: "name-face-refreshes-people")
+        let faceID = FaceID(assetID: AssetID(rawValue: "a"), faceIndex: 0)
+
+        XCTAssertTrue(model.catalogPeople.isEmpty)
+
+        try model.nameFace(faceID, newPersonName: "Jesse")
+
+        XCTAssertTrue(model.catalogPeople.contains { $0.name == "Jesse" })
+    }
+
     func testRejectRecordsNegativeThenNameClearsItAndRemoveClearsPerson() throws {
         let (model, repository, db) = try makeModelWithOneFace(named: "reject-name-remove")
         let faceID = FaceID(assetID: AssetID(rawValue: "a"), faceIndex: 0)

@@ -1075,6 +1075,25 @@ public final class CatalogRepository {
         return try rows.map(decodeFaceObservation)
     }
 
+    /// One photo's confirmed face identities, keyed by face index. Backs the
+    /// per-photo People inspector section's "confirmed" rows.
+    public func personFaceAssignments(assetID: AssetID) throws -> [Int: String] {
+        let rows = try database.rows(
+            "SELECT face_index, person_id FROM person_faces WHERE asset_id = ?",
+            bindings: [assetID.rawValue]
+        )
+        var result: [Int: String] = [:]
+        for row in rows {
+            guard let faceIndexValue = row["face_index"],
+                  let faceIndex = Int(faceIndexValue),
+                  let personID = row["person_id"] else {
+                throw CatalogError.sqlite("person face row is missing required columns")
+            }
+            result[faceIndex] = personID
+        }
+        return result
+    }
+
     private func decodeFaceObservation(_ row: [String: String]) throws -> CatalogFaceObservation {
         guard let assetID = row["asset_id"],
               let faceIndexValue = row["face_index"],
