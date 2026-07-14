@@ -750,20 +750,36 @@ final class AppModelTests: XCTestCase {
     }
 
     // Persona-3 item 3: while the ? overlay is visible it owns navigation —
-    // arrows scroll the overlay's section index; the deck's selection must
-    // not move.
+    // ↑/↓ (within-stack candidate nav) scroll the overlay's section index;
+    // the deck's selection must not move. ←/→ (stack nav) are swallowed and
+    // must not scroll the overlay, since it's a vertical list.
     func testArrowShortcutsScrollKeyMapOverlayInsteadOfNavigatingWhileVisible() throws {
         let model = AppModel.demo()
         model.selectedView = .loupe
         model.isKeyMapOverlayVisible = true
         let selectionBefore = model.selectedAssetID
 
-        try model.applyCullingShortcut(.nextStack)
+        try model.applyCullingShortcut(.nextCandidateInStack)
         XCTAssertEqual(model.keyMapOverlayScrollIndex, 1)
+        XCTAssertEqual(model.selectedAssetID, selectionBefore)
+
+        try model.applyCullingShortcut(.previousCandidateInStack)
+        XCTAssertEqual(model.keyMapOverlayScrollIndex, 0)
+    }
+
+    func testStackShortcutsDoNotScrollKeyMapOverlayWhileVisible() throws {
+        let model = AppModel.demo()
+        model.selectedView = .loupe
+        model.isKeyMapOverlayVisible = true
+        let selectionBefore = model.selectedAssetID
+
+        try model.applyCullingShortcut(.nextStack)
+        XCTAssertEqual(model.keyMapOverlayScrollIndex, 0)
         XCTAssertEqual(model.selectedAssetID, selectionBefore)
 
         try model.applyCullingShortcut(.previousStack)
         XCTAssertEqual(model.keyMapOverlayScrollIndex, 0)
+        XCTAssertEqual(model.selectedAssetID, selectionBefore)
     }
 
     func testPickShortcutIsSwallowedWhileKeyMapOverlayVisible() throws {

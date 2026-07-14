@@ -221,8 +221,11 @@ public enum CullingShortcut: Equatable, Sendable {
     /// directly by CullingKeyCaptureNSView, mode-gated there rather than
     /// through `init(key:)` — see that view for why `.loupe` is excluded.
     case exitCullSubView
-    /// A/B Compare's keyboard verdicts (item 2), monitor-only like the
-    /// ⌥←/⌥→ stack-navigation alternates.
+    /// A/B Compare's keyboard verdicts (item 2): recognized only by the
+    /// culling key-capture monitor — the Culling menu and `?` overlay list
+    /// "," and "." for discoverability, but (like every bare culling key)
+    /// carry no actual `.keyboardShortcut` binding, so there's no
+    /// double-dispatch risk (see `CullingCommandMenuItem.menuDisplayTitle`).
     case keepAOverB
     case keepBOverA
     /// PgUp/PgDn while the ? key-map overlay is visible (item 3); a no-op
@@ -5830,9 +5833,9 @@ public final class AppModel {
             switch shortcut {
             case .showKeyMap, .exitCullSubView:
                 isKeyMapOverlayVisible = false
-            case .previousStack:
+            case .previousCandidateInStack:
                 scrollKeyMapOverlay(.up)
-            case .nextStack:
+            case .nextCandidateInStack:
                 scrollKeyMapOverlay(.down)
             case .keyMapPageUp:
                 scrollKeyMapOverlay(.pageUp)
