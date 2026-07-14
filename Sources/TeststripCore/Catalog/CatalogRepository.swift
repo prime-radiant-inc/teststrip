@@ -1216,6 +1216,49 @@ public final class CatalogRepository {
         }
     }
 
+    public func recordRejectedFacePerson(assetID: AssetID, faceIndex: Int, personID: String) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT OR IGNORE INTO rejected_face_people (asset_id, face_index, person_id, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            bindings: [assetID.rawValue, "\(faceIndex)", personID, now]
+        )
+    }
+
+    public func clearRejectedFacePerson(assetID: AssetID, faceIndex: Int, personID: String) throws {
+        try database.execute(
+            "DELETE FROM rejected_face_people WHERE asset_id = ? AND face_index = ? AND person_id = ?",
+            bindings: [assetID.rawValue, "\(faceIndex)", personID]
+        )
+    }
+
+    public func rejectedFacePeople() throws -> Set<RejectedFacePerson> {
+        let rows = try database.rows("SELECT asset_id, face_index, person_id FROM rejected_face_people")
+        return try Set(rows.map { row in
+            guard let assetID = row["asset_id"],
+                  let faceIndexValue = row["face_index"],
+                  let faceIndex = Int(faceIndexValue),
+                  let personID = row["person_id"] else {
+                throw CatalogError.sqlite("rejected face person row is missing required columns")
+            }
+            return RejectedFacePerson(assetID: AssetID(rawValue: assetID), faceIndex: faceIndex, personID: personID)
+        })
+    }
+
+    public func unassignFaces(_ faceIDs: [FaceID]) throws {
+        guard !faceIDs.isEmpty else { return }
+        try database.transaction {
+            for faceID in faceIDs {
+                try database.execute(
+                    "DELETE FROM person_faces WHERE asset_id = ? AND face_index = ?",
+                    bindings: [faceID.assetID.rawValue, "\(faceID.faceIndex)"]
+                )
+            }
+        }
+    }
+
     public func save(_ session: WorkSession) throws {
         try database.execute(
             """

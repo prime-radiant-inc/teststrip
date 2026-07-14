@@ -171,6 +171,16 @@ enum CatalogMigrations {
         """,
         "CREATE INDEX IF NOT EXISTS idx_person_faces_person ON person_faces(person_id)",
         """
+        CREATE TABLE IF NOT EXISTS rejected_face_people (
+            asset_id TEXT NOT NULL,
+            face_index INTEGER NOT NULL,
+            person_id TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            PRIMARY KEY (asset_id, face_index, person_id)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_rejected_face_people_asset ON rejected_face_people(asset_id)",
+        """
         CREATE TABLE IF NOT EXISTS dismissed_faces (
             asset_id TEXT NOT NULL,
             face_index INTEGER NOT NULL,
