@@ -11624,7 +11624,10 @@ public final class AppModel {
         let inputAssetIDs = try cullingInputAssetIDs(in: session, repository: catalog.repository)
         let totalUnitCount = session.totalUnitCount ?? inputAssetIDs.count
         let completedUnitCount = try inputAssetIDs.reduce(into: 0) { count, assetID in
-            if try catalog.repository.asset(id: assetID).metadata.flag != nil {
+            // A TENTATIVE (unconfirmed autopilot) flag doesn't count as decided —
+            // it's still awaiting a user confirm gesture, matching Task 13's
+            // undecided semantics.
+            if try catalog.repository.asset(id: assetID).metadata.confirmedProjection.flag != nil {
                 count += 1
             }
         }
@@ -11756,13 +11759,17 @@ public final class AppModel {
         rebuildSidebarSections()
     }
 
+    // Only CONFIRMED picks — never a TENTATIVE (unconfirmed autopilot)
+    // proposal — feed the persisted output set. That set is reachable to
+    // Export (openCullingSessionPicks -> applyAssetSet -> exportVisibleAssets),
+    // so an unconfirmed AI pick must never flow into it (confirm-before-write).
     private func pickedAssetIDs(
         in session: WorkSession,
         repository: CatalogRepository
     ) throws -> [AssetID] {
         var pickedAssetIDs: [AssetID] = []
         for assetID in try cullingInputAssetIDs(in: session, repository: repository) {
-            if try repository.asset(id: assetID).metadata.flag == .pick {
+            if try repository.asset(id: assetID).metadata.confirmedProjection.flag == .pick {
                 pickedAssetIDs.append(assetID)
             }
         }

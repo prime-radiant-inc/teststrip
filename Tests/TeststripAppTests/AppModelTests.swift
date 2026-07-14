@@ -9732,6 +9732,50 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), [keeper.id, reject.id])
     }
 
+    // SAFETY: a TENTATIVE (unconfirmed autopilot) pick must never land in the
+    // persisted "Picks" output set — that set is exactly what Export reads
+    // (openCullingSessionPicks -> applyAssetSet -> exportVisibleAssets), so
+    // leaking an unconfirmed AI proposal into it would export a pick the user
+    // never confirmed. The tentative pick also must not count as a decided
+    // unit, so a session can't auto-complete (and surface Export) on
+    // autopilot proposals alone.
+    func testTentativeAIPickIsNotInPersistedPicksSetOrExport() throws {
+        let confirmedPick = makeAsset(id: "confirmed-pick", path: "/Photos/Cull/confirmed-pick.jpg", rating: 5)
+        let tentativePick = makeAsset(id: "tentative-pick", path: "/Photos/Cull/tentative-pick.jpg", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "tentative-pick-not-in-output-set",
+            assets: [confirmedPick, tentativePick],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: tentativePick.id) { metadata in
+                    metadata.flag = .pick
+                    metadata.aiUnconfirmedFields = [.flag]
+                }
+            }
+        )
+        let inputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "tentative-pick-input-set"),
+            name: "Tentative Pick Input Set",
+            assetIDs: [confirmedPick.id, tentativePick.id]
+        )
+        try repository.upsert(inputSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: inputSet.id)
+
+        let startedSession = try model.beginCullingSession(named: "Tentative Pick Cull")
+
+        model.select(confirmedPick.id)
+        try model.applyCullingCommand(.pick)
+
+        let session = try repository.session(id: startedSession.id)
+        // Only the confirmed pick counts as decided — the tentative one is
+        // still undecided, so the session (2 units) can't have completed yet.
+        XCTAssertEqual(session.completedUnitCount, 1)
+        XCTAssertEqual(session.status, .running)
+
+        let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
+        XCTAssertEqual(assetIDs(in: try repository.assetSet(id: outputSetID)), [confirmedPick.id])
+    }
+
     func testClearingCullingPickRemovesEmptyPicksOutputSet() throws {
         let keeper = makeAsset(id: "keeper", path: "/Photos/Cull/keeper.jpg", rating: 5)
         let (model, repository) = try makeModelWithCatalogAssets(
