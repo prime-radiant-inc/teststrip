@@ -367,21 +367,6 @@ public final class CatalogRepository {
         return count
     }
 
-    public func assetOffset(id: AssetID) throws -> Int {
-        let rowIDRows = try database.rows("SELECT rowid FROM assets WHERE id = ?", bindings: [id.rawValue])
-        guard let rowID = rowIDRows.first?["rowid"] else {
-            throw CatalogError.notFound(id.rawValue)
-        }
-        let offsetRows = try database.rows(
-            "SELECT COUNT(*) AS offset FROM assets WHERE rowid < ?",
-            bindings: [rowID]
-        )
-        guard let offsetString = offsetRows.first?["offset"], let offset = Int(offsetString) else {
-            throw CatalogError.sqlite("asset offset query returned no count")
-        }
-        return offset
-    }
-
     public func assetCount() throws -> Int {
         let rows = try database.rows("SELECT COUNT(*) AS count FROM assets")
         guard let countString = rows.first?["count"], let count = Int(countString) else {

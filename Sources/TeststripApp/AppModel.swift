@@ -6350,47 +6350,6 @@ public final class AppModel {
         selectAssetID(stackAssetIDs[targetIndex])
     }
 
-    @discardableResult
-    private func selectFirstCullingStackIfAvailable() throws -> Bool {
-        if let explicitAssetIDs = selectedExplicitAssetIDs,
-           let catalog,
-           let targetAssetID = try firstCullingStackTarget(
-            assetIDs: explicitAssetIDs,
-            repository: catalog.repository
-           ) {
-            selectAssetID(targetAssetID)
-            return true
-        }
-
-        guard let firstStack = cullingStacks().first,
-              let firstAssetID = firstStack.assetIDs.first else {
-            return false
-        }
-        selectAssetID(firstAssetID)
-        return true
-    }
-
-    private func firstCullingStackTarget(
-        assetIDs: [AssetID],
-        repository: CatalogRepository
-    ) throws -> AssetID? {
-        guard assetIDs.count > 1 else { return nil }
-
-        let stackBuilder = AssetStackBuilder(maximumCaptureGap: Self.candidateStackMaximumCaptureGap)
-        let orderedAssets = try repository.assets(ids: assetIDs, limit: assetIDs.count)
-        var previousAsset: Asset?
-
-        for asset in orderedAssets {
-            if let previousAsset,
-               stackBuilder.stacks(from: [previousAsset, asset]).contains(where: { $0.assetIDs.count > 1 }) {
-                return previousAsset.id
-            }
-            previousAsset = asset
-        }
-
-        return nil
-    }
-
     private func selectedCullingStackDecisionContext() throws -> (
         stack: AssetStack,
         selectedAssetID: AssetID,
