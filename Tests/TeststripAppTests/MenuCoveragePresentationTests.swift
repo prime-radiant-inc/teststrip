@@ -32,10 +32,12 @@ final class MenuCoveragePresentationTests: XCTestCase {
         }
     }
 
-    func testViewMenuCoversEveryInspectorTabAndTheInspectorToggle() {
+    // Task 6: the inspector stacks Info/Describe/AI as one continuous
+    // scroll instead of tabs, so these menu items scroll to a section.
+    func testViewMenuCoversEveryInspectorSectionScrollActionAndTheInspectorToggle() {
         XCTAssertEqual(
-            AppMenuCoveragePresentation.inspectorTabActionIDs,
-            InspectorTab.allCases.map { "\($0.title) Tab" }
+            AppMenuCoveragePresentation.inspectorSectionScrollActionIDs,
+            InspectorTab.allCases.map { "Scroll to \($0.title)" }
         )
         XCTAssertEqual(AppMenuCoveragePresentation.showInspectorActionID, "Show Inspector")
     }

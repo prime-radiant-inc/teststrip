@@ -256,8 +256,31 @@ struct LoupeZoomStageView: View {
                 let geometry = zoomGeometry(viewportSize: viewportSize, image: image)
                 model.zoomLoupe(to: geometry.focus(atFittedViewportPoint: location))
             }
+            .overlay {
+                faceBoxOverlay(viewportSize: viewportSize, image: image)
+            }
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel("Zoom to 100%")
+    }
+
+    // Gated to when the inspector (and so its People section) is actually
+    // visible: boxes are a People-inspector companion, not default culling
+    // chrome, so they stay out of the way of plain culling unless the
+    // inspector is open. Only drawn over the aspect-fitted image — the 1:1
+    // zoomed view doesn't track pan/zoom for boxes (out of scope for now).
+    @ViewBuilder
+    private func faceBoxOverlay(viewportSize: CGSize, image: NSImage) -> some View {
+        if WorkspaceChromePolicy.showsInspector(model.selectedWorkspace), model.isInspectorVisible {
+            let rows = model.photoFacesPresentation(for: asset.id).rows
+            if !rows.isEmpty {
+                FaceBoxOverlayView(
+                    model: model,
+                    rows: rows,
+                    imagePixelSize: zoomGeometry(viewportSize: viewportSize, image: image).imagePixelSize,
+                    containerSize: viewportSize
+                )
+            }
+        }
     }
 
     private func zoomedImage(_ image: NSImage, focus: LoupeZoomFocus, viewportSize: CGSize) -> some View {

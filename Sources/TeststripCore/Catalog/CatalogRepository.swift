@@ -1075,6 +1075,25 @@ public final class CatalogRepository {
         return try rows.map(decodeFaceObservation)
     }
 
+    /// One photo's confirmed face identities, keyed by face index. Backs the
+    /// per-photo People inspector section's "confirmed" rows.
+    public func personFaceAssignments(assetID: AssetID) throws -> [Int: String] {
+        let rows = try database.rows(
+            "SELECT face_index, person_id FROM person_faces WHERE asset_id = ?",
+            bindings: [assetID.rawValue]
+        )
+        var result: [Int: String] = [:]
+        for row in rows {
+            guard let faceIndexValue = row["face_index"],
+                  let faceIndex = Int(faceIndexValue),
+                  let personID = row["person_id"] else {
+                throw CatalogError.sqlite("person face row is missing required columns")
+            }
+            result[faceIndex] = personID
+        }
+        return result
+    }
+
     private func decodeFaceObservation(_ row: [String: String]) throws -> CatalogFaceObservation {
         guard let assetID = row["asset_id"],
               let faceIndexValue = row["face_index"],
@@ -1214,6 +1233,81 @@ public final class CatalogRepository {
                 )
             }
         }
+    }
+
+    public func recordRejectedFacePerson(assetID: AssetID, faceIndex: Int, personID: String) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT OR IGNORE INTO rejected_face_people (asset_id, face_index, person_id, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            bindings: [assetID.rawValue, "\(faceIndex)", personID, now]
+        )
+    }
+
+    public func clearRejectedFacePerson(assetID: AssetID, faceIndex: Int, personID: String) throws {
+        try database.execute(
+            "DELETE FROM rejected_face_people WHERE asset_id = ? AND face_index = ? AND person_id = ?",
+            bindings: [assetID.rawValue, "\(faceIndex)", personID]
+        )
+    }
+
+    public func rejectedFacePeople() throws -> Set<RejectedFacePerson> {
+        let rows = try database.rows("SELECT asset_id, face_index, person_id FROM rejected_face_people")
+        return try Set(rows.map { row in
+            guard let assetID = row["asset_id"],
+                  let faceIndexValue = row["face_index"],
+                  let faceIndex = Int(faceIndexValue),
+                  let personID = row["person_id"] else {
+                throw CatalogError.sqlite("rejected face person row is missing required columns")
+            }
+            return RejectedFacePerson(assetID: AssetID(rawValue: assetID), faceIndex: faceIndex, personID: personID)
+        })
+    }
+
+    public func unassignFaces(_ faceIDs: [FaceID]) throws {
+        guard !faceIDs.isEmpty else { return }
+        try database.transaction {
+            var affectedPersonAssets: Set<PersonAssetKey> = []
+            for faceID in faceIDs {
+                let ownerRows = try database.rows(
+                    "SELECT person_id FROM person_faces WHERE asset_id = ? AND face_index = ?",
+                    bindings: [faceID.assetID.rawValue, "\(faceID.faceIndex)"]
+                )
+                if let personID = ownerRows.first?["person_id"] {
+                    affectedPersonAssets.insert(PersonAssetKey(personID: personID, assetID: faceID.assetID))
+                }
+                try database.execute(
+                    "DELETE FROM person_faces WHERE asset_id = ? AND face_index = ?",
+                    bindings: [faceID.assetID.rawValue, "\(faceID.faceIndex)"]
+                )
+            }
+            // person_assets is also written directly by assignAssets(...) (whole-asset
+            // People-workspace naming), which has no person_faces row and no provenance
+            // column distinguishing it from a face-derived link. So in the rare case
+            // where the same (person, asset) pair was both whole-asset-assigned and
+            // face-assigned, dropping the last confirmed face here also drops the
+            // whole-asset link. Accepted as a documented edge; a provenance column on
+            // person_assets is the proper fix, and is out of scope for this change.
+            for key in affectedPersonAssets {
+                let remaining = try database.rows(
+                    "SELECT 1 AS present FROM person_faces WHERE person_id = ? AND asset_id = ? LIMIT 1",
+                    bindings: [key.personID, key.assetID.rawValue]
+                )
+                if remaining.isEmpty {
+                    try database.execute(
+                        "DELETE FROM person_assets WHERE person_id = ? AND asset_id = ?",
+                        bindings: [key.personID, key.assetID.rawValue]
+                    )
+                }
+            }
+        }
+    }
+
+    private struct PersonAssetKey: Hashable {
+        let personID: String
+        let assetID: AssetID
     }
 
     public func save(_ session: WorkSession) throws {

@@ -10,12 +10,14 @@ final class WorkspaceChromePolicyTests: XCTestCase {
         XCTAssertTrue(WorkspaceChromePolicy.showsInspector(.library))
     }
 
-    func testCullHidesAllBrowseChromeIncludingInspector() {
+    func testCullHidesBrowseChromeButAllowsTheOnDemandInspector() {
         XCTAssertFalse(WorkspaceChromePolicy.showsSearchField(.cull))
         XCTAssertFalse(WorkspaceChromePolicy.showsFilterTokens(.cull))
         XCTAssertFalse(WorkspaceChromePolicy.showsImportButton(.cull))
         XCTAssertFalse(WorkspaceChromePolicy.showsFooter(.cull))
-        XCTAssertFalse(WorkspaceChromePolicy.showsInspector(.cull))
+        // Task 5: the single-image inspector is reachable from the Cull
+        // loupe too, not just Library/People.
+        XCTAssertTrue(WorkspaceChromePolicy.showsInspector(.cull))
     }
 
     func testPeopleHidesBrowseChromeButAllowsTheOnDemandInspector() {
@@ -23,7 +25,7 @@ final class WorkspaceChromePolicyTests: XCTestCase {
         XCTAssertFalse(WorkspaceChromePolicy.showsFilterTokens(.people))
         XCTAssertFalse(WorkspaceChromePolicy.showsImportButton(.people))
         XCTAssertFalse(WorkspaceChromePolicy.showsFooter(.people))
-        // ⌘I is reachable in People (Task 11); only Cull has no inspector.
+        // ⌘I is reachable in People (Task 11) and Cull (Task 5).
         XCTAssertTrue(WorkspaceChromePolicy.showsInspector(.people))
     }
 

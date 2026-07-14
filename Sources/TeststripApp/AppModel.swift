@@ -2059,9 +2059,13 @@ public final class AppModel {
     /// Whether the on-demand inspector (⌘I) is shown, presented via
     /// `.inspector()` and gated by `WorkspaceChromePolicy.showsInspector`.
     public var isInspectorVisible = false
-    /// Which inspector tab is active. Selected by the segmented picker in
-    /// the inspector itself, or the ⌥⌘1..3 menu items.
-    public var inspectorTab: InspectorTab = .info
+    /// Which stacked inspector section the ⌥⌘1..3 menu items (or a
+    /// conflict deep-link) most recently asked to scroll to. Read alongside
+    /// `inspectorScrollRequestToken`, which bumps on every request — even a
+    /// repeat of the same section — so `InspectorView`'s `onChange` fires
+    /// even when the user has since scrolled away and back.
+    public private(set) var inspectorScrollTarget: InspectorTab = .info
+    public private(set) var inspectorScrollRequestToken = 0
     private var selectedBatchAssetIDOrder: [AssetID]
     private var selectedBatchAssetSortKeys: [AssetID: Int]
     public var statusMessage: String?
@@ -2203,6 +2207,10 @@ public final class AppModel {
     public var catalogPeople: [CatalogPerson]
     public private(set) var peopleFaceSuggestions: [PeopleFaceSuggestion] = []
     public private(set) var peopleFaceObservationAssetCount = 0
+    /// The face row currently focused in the People inspector section (hover),
+    /// so the loupe's face-box overlay (Task 8) can highlight the matching
+    /// box, and vice versa — hovering a box focuses the list row.
+    public var focusedFaceID: FaceID?
     public var reviewQueueCounts: [ReviewQueue: Int]
     public var selectedAssetSetID: AssetSetID? {
         didSet { persistSessionState() }
@@ -2842,7 +2850,10 @@ public final class AppModel {
         for assetID in assetIDs {
             setBatchSelection(assetID, isSelected: true)
         }
-        inspectorTab = .info
+        // The conflict resolver lives in the Info section (Task 11); scroll
+        // there so the deep-link lands on it instead of wherever the
+        // inspector was last scrolled.
+        scrollInspector(to: .info)
         isInspectorVisible = true
     }
 
@@ -3595,10 +3606,12 @@ public final class AppModel {
             let personNamesByID = Dictionary(
                 uniqueKeysWithValues: catalogPeople.map { ($0.id, $0.name) }
             )
+            let rejectedPairs = try catalog.repository.rejectedFacePeople()
             peopleFaceSuggestions = Self.peopleFaceSuggestions(
                 from: suggestions,
                 observationsByFaceID: observationsByFaceID,
-                personNamesByID: personNamesByID
+                personNamesByID: personNamesByID,
+                rejectedPairs: rejectedPairs
             )
             peopleFaceObservationAssetCount = try catalog.repository.faceObservationAssetCount(provenance: provenance)
         } catch {
@@ -3655,6 +3668,89 @@ public final class AppModel {
         refreshPeopleFaceSuggestions()
     }
 
+    /// Assembles the per-photo People inspector section (Task 7): one row
+    /// per detected face, confirmed identity (`person_faces`) winning over a
+    /// suggested match for the same face index.
+    func photoFacesPresentation(for assetID: AssetID) -> PhotoFacesPresentation {
+        guard let catalog else {
+            return PhotoFacesPresentation(
+                assetID: assetID,
+                observations: [],
+                confirmedByFaceIndex: [:],
+                suggestionsByFaceIndex: [:]
+            )
+        }
+        let observations = (try? catalog.repository.faceObservations(assetID: assetID)) ?? []
+        let personIDsByFaceIndex = (try? catalog.repository.personFaceAssignments(assetID: assetID)) ?? [:]
+        let personNamesByID = Dictionary(uniqueKeysWithValues: catalogPeople.map { ($0.id, $0.name) })
+        var confirmedByFaceIndex: [Int: (personID: String, name: String)] = [:]
+        for (faceIndex, personID) in personIDsByFaceIndex {
+            guard let name = personNamesByID[personID] else { continue }
+            confirmedByFaceIndex[faceIndex] = (personID: personID, name: name)
+        }
+        var suggestionsByFaceIndex: [Int: (personID: String, name: String)] = [:]
+        for suggestion in peopleFaceSuggestions {
+            guard case .matchExisting(let personID, let personName) = suggestion.kind else { continue }
+            for faceID in suggestion.faceIDs where faceID.assetID == assetID {
+                suggestionsByFaceIndex[faceID.faceIndex] = (personID: personID, name: personName)
+            }
+        }
+        return PhotoFacesPresentation(
+            assetID: assetID,
+            observations: observations,
+            confirmedByFaceIndex: confirmedByFaceIndex,
+            suggestionsByFaceIndex: suggestionsByFaceIndex
+        )
+    }
+
+    /// Names one face as an existing person. A positive identification
+    /// overrides any prior "not them" rejection recorded for this exact
+    /// (face, person) pair.
+    public func nameFace(_ faceID: FaceID, personID: String) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        try catalog.repository.assignFaces([faceID], toPersonID: personID)
+        try catalog.repository.clearRejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: personID)
+        catalogPeople = try catalog.repository.people()
+        refreshPeopleFaceSuggestions()
+    }
+
+    /// Names one face as a brand-new person.
+    public func nameFace(_ faceID: FaceID, newPersonName: String) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let trimmedName = newPersonName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw TeststripError.invalidState("person name is required")
+        }
+        let personID = "person-\(UUID().uuidString)"
+        try catalog.repository.upsertPerson(id: personID, name: trimmedName)
+        try catalog.repository.assignFaces([faceID], toPersonID: personID)
+        catalogPeople = try catalog.repository.people()
+        refreshPeopleFaceSuggestions()
+    }
+
+    /// Clears one face's confirmed identity.
+    public func removeFacePerson(_ faceID: FaceID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        try catalog.repository.unassignFaces([faceID])
+        refreshPeopleFaceSuggestions()
+    }
+
+    /// Records that a suggested identity is wrong for one face ("not
+    /// them"), so recognition stops re-proposing that person for it.
+    public func rejectFaceSuggestion(_ faceID: FaceID, personID: String) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        try catalog.repository.recordRejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: personID)
+        refreshPeopleFaceSuggestions()
+    }
+
     public func showPersonPhotos(named name: String) throws {
         selectedAssetSetID = nil
         clearLibraryQueryFilters()
@@ -3675,20 +3771,26 @@ public final class AppModel {
     private static func peopleFaceSuggestions(
         from suggestions: FaceSuggestions,
         observationsByFaceID: [FaceID: CatalogFaceObservation],
-        personNamesByID: [String: String]
+        personNamesByID: [String: String],
+        rejectedPairs: Set<RejectedFacePerson>
     ) -> [PeopleFaceSuggestion] {
         var result: [PeopleFaceSuggestion] = []
         for match in suggestions.matches {
+            let acceptedFaceIDs = match.faceIDs.filter { faceID in
+                !rejectedPairs.contains(
+                    RejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: match.personID)
+                )
+            }
             guard let personName = personNamesByID[match.personID],
-                  let representative = match.faceIDs.first,
+                  let representative = acceptedFaceIDs.first,
                   let observation = observationsByFaceID[representative] else { continue }
             result.append(PeopleFaceSuggestion(
                 id: "face-match-\(match.personID)",
                 kind: .matchExisting(personID: match.personID, personName: personName),
-                faceIDs: match.faceIDs,
+                faceIDs: acceptedFaceIDs,
                 representativeFace: representative,
                 representativeBoundingBox: observation.boundingBox,
-                assetIDs: Self.uniqueAssetIDs(match.faceIDs)
+                assetIDs: Self.uniqueAssetIDs(acceptedFaceIDs)
             ))
         }
         for cluster in suggestions.clusters {
@@ -4343,21 +4445,18 @@ public final class AppModel {
         selectedView = lastSubView[workspace] ?? workspace.defaultSubView
     }
 
-    /// ⌘I. Toggles the on-demand inspector in Library/People; Cull has no
-    /// inspector column, so there it switches to Library and shows it.
+    /// ⌘I. Toggles the on-demand inspector, reachable in every workspace
+    /// (Task 5 unified it onto the Cull loupe alongside Library/People).
     public func toggleInspector() {
-        if selectedWorkspace == .cull {
-            selectWorkspace(.library)
-            isInspectorVisible = true
-        } else {
-            isInspectorVisible.toggle()
-        }
+        isInspectorVisible.toggle()
     }
 
-    /// ⌥⌘1..3. Selects an inspector tab, and presents the inspector if the
-    /// current workspace can show one.
-    public func selectInspectorTab(_ tab: InspectorTab) {
-        inspectorTab = tab
+    /// ⌥⌘1..3 (or a conflict deep-link). Scrolls the on-demand inspector to
+    /// a stacked section, presenting the inspector if the current workspace
+    /// can show one.
+    public func scrollInspector(to section: InspectorTab) {
+        inspectorScrollTarget = section
+        inspectorScrollRequestToken += 1
         if WorkspaceChromePolicy.showsInspector(selectedWorkspace) {
             isInspectorVisible = true
         }

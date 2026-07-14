@@ -447,8 +447,11 @@ struct InspectorMetadataSyncStatus: Equatable {
     }
 }
 
-/// The three on-demand inspector tabs (Task 11). Selected via the segmented
-/// picker in the inspector, or the ⌥⌘1..3 menu items.
+/// Identifies the three inspector sections that carry a ⌥⌘1..3 menu
+/// shortcut (Task 11). Task 6 restacked the inspector from tabs into one
+/// continuous scroll, but these enumerate the sections' menu-driven
+/// scroll-to targets and (via `InspectorTabPresentation`) their element
+/// coverage; People has no shortcut and so isn't a case here.
 public enum InspectorTab: String, CaseIterable, Identifiable, Sendable {
     case info
     case describe
@@ -546,47 +549,45 @@ struct InspectorView: View {
     @State private var metadataDraft = InspectorMetadataDraft()
     @State private var isShowingSignalDetails = false
 
-    private var tabBinding: Binding<InspectorTab> {
-        Binding(
-            get: { model.inspectorTab },
-            set: { model.selectInspectorTab($0) }
-        )
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             if let asset = model.selectedAsset {
-                Picker("Inspector tab", selection: tabBinding) {
-                    ForEach(InspectorTab.allCases) { tab in
-                        Text(tab.title).tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-                .padding(.bottom, 8)
-                Divider()
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            inspectorSection(InspectorTab.info.title) {
+                                infoTabBody(for: asset)
+                            }
+                            .id(InspectorTab.info)
 
-                ScrollView {
-                    Group {
-                        switch model.inspectorTab {
-                        case .info:
-                            infoTabBody(for: asset)
-                        case .describe:
-                            describeTabBody(for: asset)
-                                .onAppear {
-                                    metadataDraft.sync(to: asset)
-                                }
-                                .onChange(of: asset.id) { _, _ in
-                                    metadataDraft.sync(to: asset)
-                                }
-                        case .ai:
-                            aiTabBody(for: asset)
+                            inspectorSection(InspectorTab.describe.title) {
+                                describeTabBody(for: asset)
+                            }
+                            .id(InspectorTab.describe)
+                            .onAppear {
+                                metadataDraft.sync(to: asset)
+                            }
+                            .onChange(of: asset.id) { _, _ in
+                                metadataDraft.sync(to: asset)
+                            }
+
+                            inspectorSection(InspectorTab.ai.title) {
+                                aiTabBody(for: asset)
+                            }
+                            .id(InspectorTab.ai)
+
+                            inspectorSection("People") {
+                                peopleSectionBody(for: asset)
+                            }
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .onChange(of: model.inspectorScrollRequestToken) { _, _ in
+                        withAnimation {
+                            proxy.scrollTo(model.inspectorScrollTarget, anchor: .top)
                         }
                     }
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
                 ScrollView {
@@ -598,6 +599,22 @@ struct InspectorView: View {
             }
         }
         .frame(width: InspectorPreviewLayout.columnWidth)
+    }
+
+    /// One stacked inspector section: a header label above its content, and
+    /// a trailing divider against whatever follows it in the stack.
+    @ViewBuilder
+    private func inspectorSection(
+        _ title: String,
+        @ViewBuilder _ content: () -> some View
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            content()
+            Divider()
+        }
     }
 
     @ViewBuilder
@@ -630,6 +647,10 @@ struct InspectorView: View {
                 evaluationSignals(signals)
             }
         }
+    }
+
+    private func peopleSectionBody(for asset: Asset) -> some View {
+        PhotoFacesSectionView(model: model, asset: asset)
     }
 
     /// Read-only rating/flag/label summary for the Info tab. The interactive

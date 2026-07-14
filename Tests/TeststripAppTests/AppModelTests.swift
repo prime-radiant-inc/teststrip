@@ -2580,7 +2580,7 @@ final class AppModelTests: XCTestCase {
         model.selectWorkspace(.cull)
         XCTAssertEqual(model.selectedWorkspace, .cull)
         XCTAssertFalse(model.isInspectorVisible)
-        model.inspectorTab = .describe
+        model.scrollInspector(to: .describe)
 
         try model.revealConflicts([first.id, second.id])
 
@@ -2589,8 +2589,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.isInspectorVisible)
         XCTAssertTrue(model.metadataSyncConflictFilter)
         // The deep-link always lands on the conflict resolver, which lives
-        // on the Info tab (Task 11).
-        XCTAssertEqual(model.inspectorTab, .info)
+        // in the Info section (Task 11) — scrolling there confirms it.
+        XCTAssertEqual(model.inspectorScrollTarget, .info)
 
         // Conflicted assets are only visible in the Grid subview, so a reveal
         // must land there even when Library last showed another subview.
