@@ -9271,6 +9271,7 @@ public final class AppModel {
                 errorMessage = error.localizedDescription
             }
         }
+        promoteEvaluationResults(for: assetID)
         evaluationSignalGenerationsByAssetID[assetID, default: 0] += 1
         refreshCatalogEvaluationKindSummaries()
         if providerFailuresFilter {
@@ -9279,6 +9280,31 @@ public final class AppModel {
             } catch {
                 errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    /// Auto-applies the machine-label-provenance promoters for one
+    /// just-evaluated asset, then refreshes the in-memory `assets` cache
+    /// (and, transitively, `selectedAsset`, which is derived from it) and
+    /// face-suggestion state so the promoted labels/faces are visible right
+    /// away — the fetch-and-splice half mirrors
+    /// `refreshLoadedAssetMetadataIfNeeded`'s pattern after other
+    /// catalog-mutating background work completes; the suggestion refresh
+    /// mirrors what runs after every other face-table mutation (confirm/
+    /// dismiss a face suggestion, dismiss face review). Bounded to the one
+    /// asset that just finished evaluating — never scans the whole catalog.
+    private func promoteEvaluationResults(for assetID: AssetID) {
+        guard let catalog else { return }
+        do {
+            try promoteMetadataLabels(for: assetID)
+            try promoteFaceMatches(for: assetID)
+            let updatedAsset = try catalog.repository.asset(id: assetID)
+            if let index = assets.firstIndex(where: { $0.id == assetID }) {
+                assets[index] = updatedAsset
+            }
+            refreshPeopleFaceSuggestions()
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

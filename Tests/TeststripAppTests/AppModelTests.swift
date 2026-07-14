@@ -6256,6 +6256,97 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(reviewQueueCount("Not analyzed yet", in: model))
     }
 
+    /// Task 9: once an asset's evaluation lands (object-label signal +
+    /// face observations recorded, as the worker's `runEvaluation` does
+    /// before it reports `.completed`), the post-eval hook must auto-apply
+    /// both promoters for that asset — the ✨ AI keyword shows up in
+    /// `keywords`/`aiUnconfirmedKeywords`, a guarded AI face match lands in
+    /// `person_faces`, and the in-memory `assets` cache reflects it without
+    /// a manual reload.
+    @MainActor
+    func testEvaluationCompletionPromotesMetadataLabelsAndFaceMatches() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-post-eval-promotion")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let provenance = AppleVisionEvaluationProvider.faceProvenance
+        let known = makeAsset(id: "post-eval-known", path: "/Photos/post-eval-known.jpg", rating: 0)
+        let incoming = makeAsset(id: "post-eval-incoming", path: "/Photos/post-eval-incoming.jpg", rating: 0)
+        try repository.upsert([known, incoming])
+        func observation(_ asset: Asset, _ faceIndex: Int, _ embedding: [Double]) -> CatalogFaceObservation {
+            CatalogFaceObservation(
+                assetID: asset.id,
+                faceIndex: faceIndex,
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                captureQuality: 0.9,
+                embedding: embedding,
+                provenance: provenance
+            )
+        }
+        try repository.replaceFaceObservations(assetID: known.id, provenance: provenance, with: [observation(known, 0, [1, 0, 0])])
+        try repository.upsertPerson(id: "person-maya", name: "Maya")
+        try repository.assignFaces([FaceID(assetID: known.id, faceIndex: 0)], toPersonID: "person-maya")
+
+        let transport = RecordingWorkerTransport()
+        let supervisor = WorkerSupervisor(
+            queue: BackgroundWorkQueue(maxRunningCount: 1),
+            transport: transport
+        )
+        let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        let catalog = AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: previewCache,
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: previewCache
+            )
+        )
+        let model = try AppModel.load(catalog: catalog, workerSupervisor: supervisor)
+
+        try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: incoming.id, level: .grid)))
+        try model.requestEvaluation(assetID: incoming.id, provider: "apple-vision")
+
+        // Simulate the worker's runEvaluation: it records signals and face
+        // observations before it ever reports `.completed`.
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(
+                assetID: incoming.id,
+                kind: .object,
+                value: .label("Dog"),
+                confidence: 0.9,
+                provenance: ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+            )
+        ])
+        // face 0 sits near the Maya centroid (a match); face 1 is far away (unmatched).
+        try repository.replaceFaceObservations(assetID: incoming.id, provenance: provenance, with: [
+            observation(incoming, 0, [0.99, 0.1, 0]),
+            observation(incoming, 1, [0, 1, 0])
+        ])
+        transport.emitOutputLine(try WorkerProtocolEncoder.encode(.completed(
+            itemID: WorkSessionID(rawValue: "evaluation-\(incoming.id.rawValue)-apple-vision"),
+            message: "evaluated \(incoming.id.rawValue) with apple-vision"
+        )))
+
+        try await waitForEvaluationSignalGeneration(1, for: incoming.id, in: model)
+
+        let promoted = try repository.asset(id: incoming.id).metadata
+        XCTAssertEqual(promoted.keywords, ["Dog"])
+        XCTAssertEqual(promoted.aiUnconfirmedKeywords, ["Dog"])
+
+        // The in-memory cache must reflect the promotion without a manual reload.
+        XCTAssertEqual(model.assets.first { $0.id == incoming.id }?.metadata.keywords, ["Dog"])
+        XCTAssertEqual(model.assets.first { $0.id == incoming.id }?.metadata.aiUnconfirmedKeywords, ["Dog"])
+
+        XCTAssertEqual(
+            try database.rows(
+                "SELECT origin FROM person_faces WHERE asset_id = ? AND face_index = ?",
+                bindings: [incoming.id.rawValue, "0"]
+            ).first?["origin"],
+            "ai"
+        )
+    }
+
     func testTechnicalFiltersCountAsActiveLibraryFiltersAndClear() throws {
         let (model, _, _) = try makeModelWithCatalogAsset(named: "active-technical-filter")
 
