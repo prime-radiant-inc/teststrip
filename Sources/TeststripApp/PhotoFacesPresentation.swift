@@ -6,6 +6,20 @@ enum PhotoFaceState: Equatable {
     case confirmed(personID: String, name: String)
     case suggested(personID: String, name: String)
     case unnamed
+
+    /// The label shown for this face's naming state — shared by the People
+    /// inspector rows (`PhotoFacesSectionView`) and the loupe's face-box
+    /// overlay (Task 8) so they always agree.
+    var displayLabel: String {
+        switch self {
+        case .confirmed(_, let name):
+            "\(name) \u{2713}"
+        case .suggested(_, let name):
+            "guess: \(name)"
+        case .unnamed:
+            "Unnamed"
+        }
+    }
 }
 
 /// One row in the People inspector section: a detected face plus whatever

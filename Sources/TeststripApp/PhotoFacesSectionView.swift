@@ -50,7 +50,7 @@ struct PhotoFacesSectionView: View {
         HStack(alignment: .top, spacing: 10) {
             FaceCropAvatar(previewURL: previewURL, boundingBox: row.boundingBox)
             VStack(alignment: .leading, spacing: 5) {
-                Text(stateLabel(row.state))
+                Text(row.state.displayLabel)
                     .font(.caption.weight(.semibold))
                 controls(for: row)
             }
@@ -67,17 +67,6 @@ struct PhotoFacesSectionView: View {
             } else if model.focusedFaceID == row.faceID {
                 model.focusedFaceID = nil
             }
-        }
-    }
-
-    private func stateLabel(_ state: PhotoFaceState) -> String {
-        switch state {
-        case .confirmed(_, let name):
-            "\(name) \u{2713}"
-        case .suggested(_, let name):
-            "guess: \(name)"
-        case .unnamed:
-            "Unnamed"
         }
     }
 
