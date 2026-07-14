@@ -73,7 +73,13 @@ public struct AssetMetadata: Codable, Equatable, Sendable {
     /// synced) while carrying this metadata's AI-unconfirmed state forward:
     /// unconfirmed keywords are added back into the merged keyword list, and
     /// an unconfirmed caption/flag/rating is restored from the catalog side
-    /// (the sidecar never had it to begin with).
+    /// only when the sidecar doesn't already carry that field/keyword — a
+    /// confirmed sidecar value (e.g. set by an external tool like Lightroom)
+    /// always wins over a stale unconfirmed AI one, and the field/keyword
+    /// graduates to confirmed rather than staying marked unconfirmed.
+    ///
+    /// This assumes `XMPPacket` round-trips domain values losslessly — the
+    /// `localChanged` no-op-detection in `MetadataSyncPlanner` depends on it.
     public func mergingConfirmedSidecar(_ sidecarMetadata: AssetMetadata) -> AssetMetadata {
         var merged = sidecarMetadata
         var keywords = sidecarMetadata.keywords
@@ -81,17 +87,34 @@ public struct AssetMetadata: Codable, Equatable, Sendable {
             keywords.append(keyword)
         }
         merged.keywords = keywords
-        merged.aiUnconfirmedKeywords = aiUnconfirmedKeywords
-        merged.aiUnconfirmedFields = aiUnconfirmedFields
+        // A keyword the sidecar already carries is confirmed now, even if
+        // the catalog still marked it unconfirmed; only catalog-only
+        // proposals stay unconfirmed.
+        merged.aiUnconfirmedKeywords = aiUnconfirmedKeywords.subtracting(sidecarMetadata.keywords)
+
+        var unconfirmedFields = aiUnconfirmedFields
         if aiUnconfirmedFields.contains(.caption) {
-            merged.caption = caption
+            if merged.caption == nil {
+                merged.caption = caption
+            } else {
+                unconfirmedFields.remove(.caption)
+            }
         }
         if aiUnconfirmedFields.contains(.flag) {
-            merged.flag = flag
+            if merged.flag == nil {
+                merged.flag = flag
+            } else {
+                unconfirmedFields.remove(.flag)
+            }
         }
         if aiUnconfirmedFields.contains(.rating) {
-            merged.rating = rating
+            if merged.rating == 0 {
+                merged.rating = rating
+            } else {
+                unconfirmedFields.remove(.rating)
+            }
         }
+        merged.aiUnconfirmedFields = unconfirmedFields
         return merged
     }
 

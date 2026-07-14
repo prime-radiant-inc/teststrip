@@ -71,6 +71,35 @@ final class MetadataTests: XCTestCase {
         XCTAssertEqual(merged.aiUnconfirmedFields, [.caption, .flag, .rating])
     }
 
+    func testMergePrefersConfirmedSidecarValueOverUnconfirmedAI() throws {
+        // A field/keyword the sidecar already carries is confirmed — even
+        // when the catalog still marks it AI-unconfirmed, an external tool's
+        // (or human's) sidecar value wins and the field graduates to
+        // confirmed rather than being clobbered by the stale AI value.
+        var catalogMetadata = AssetMetadata(keywords: ["people"], caption: "ai guess")
+        catalogMetadata.aiUnconfirmedFields = [.caption]
+        catalogMetadata.aiUnconfirmedKeywords = ["people"]
+        let sidecarMetadata = AssetMetadata(keywords: ["people"], caption: "human caption")
+
+        let merged = catalogMetadata.mergingConfirmedSidecar(sidecarMetadata)
+
+        XCTAssertEqual(merged.caption, "human caption")
+        XCTAssertFalse(merged.aiUnconfirmedFields.contains(.caption))
+        XCTAssertTrue(merged.keywords.contains("people"))
+        XCTAssertFalse(merged.aiUnconfirmedKeywords.contains("people"))
+
+        // Original preserve-case: the sidecar has no caption at all, so the
+        // catalog's unconfirmed AI value is restored and stays unconfirmed.
+        var catalogOnlyMetadata = AssetMetadata(caption: "ai guess")
+        catalogOnlyMetadata.aiUnconfirmedFields = [.caption]
+        let emptySidecarMetadata = AssetMetadata()
+
+        let preserved = catalogOnlyMetadata.mergingConfirmedSidecar(emptySidecarMetadata)
+
+        XCTAssertEqual(preserved.caption, "ai guess")
+        XCTAssertTrue(preserved.aiUnconfirmedFields.contains(.caption))
+    }
+
     func testEncodingIsDeterministicAndOmitsEmptyProvenance() throws {
         var meta = AssetMetadata(rating: 4, keywords: ["beach", "people"])
         meta.aiUnconfirmedKeywords = ["people", "beach"]
