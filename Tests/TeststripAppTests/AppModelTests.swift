@@ -7231,6 +7231,82 @@ final class AppModelTests: XCTestCase {
         )
     }
 
+    // MARK: - Task 11: confirm/remove/reject gestures for AI faces
+
+    private func makeModelWithAIPromotedFace(
+        named name: String
+    ) throws -> (model: AppModel, repository: CatalogRepository, assetID: AssetID) {
+        let assetID = AssetID(rawValue: "a")
+        let asset = makeAsset(id: assetID.rawValue, path: "/Volumes/NAS/Wedding/a.jpg", rating: 0)
+        let provenance = AppleVisionEvaluationProvider.faceProvenance
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: name,
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.replaceFaceObservations(assetID: assetID, provenance: provenance, with: [
+                    CatalogFaceObservation(
+                        assetID: assetID,
+                        faceIndex: 0,
+                        boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                        captureQuality: 0.9,
+                        embedding: [1, 0, 0],
+                        provenance: provenance
+                    )
+                ])
+                try repository.upsertPerson(id: "p1", name: "Jesse")
+                try repository.insertAIFace(assetID: assetID, faceIndex: 0, personID: "p1")
+            }
+        )
+        return (model, repository, assetID)
+    }
+
+    /// Task 11: `.suggested` must resolve straight off the persisted
+    /// `origin='ai'` `person_faces` row `insertAIFace`/`promoteFaceMatches`
+    /// create — not off the in-memory `peopleFaceSuggestions` array, which
+    /// this test never refreshes.
+    func testPhotoFacesPresentationShowsAIPromotedFaceAsSuggestedFromPersistedRow() throws {
+        let (model, _, assetID) = try makeModelWithAIPromotedFace(named: "app-model-ai-face-suggested")
+
+        let presentation = model.photoFacesPresentation(for: assetID)
+
+        XCTAssertEqual(presentation.rows.map(\.state), [.suggested(personID: "p1", name: "Jesse")])
+        XCTAssertTrue(model.peopleFaceSuggestions.isEmpty)
+    }
+
+    func testConfirmAIFacePromotesToConfirmedAndLinksPersonAsset() throws {
+        let (model, repository, assetID) = try makeModelWithAIPromotedFace(named: "app-model-confirm-ai-face")
+
+        try model.confirmAIFace(assetID: assetID, faceIndex: 0)
+
+        let presentation = model.photoFacesPresentation(for: assetID)
+        XCTAssertEqual(presentation.rows.map(\.state), [.confirmed(personID: "p1", name: "Jesse")])
+        XCTAssertEqual(try repository.personFaces(assetID: assetID)[0], PersonFaceAssignment(personID: "p1", origin: "user"))
+        XCTAssertEqual(try repository.assetIDs(personID: "p1"), [assetID])
+    }
+
+    func testRemoveAIFaceClearsPersonFaceRow() throws {
+        let (model, repository, assetID) = try makeModelWithAIPromotedFace(named: "app-model-remove-ai-face")
+
+        try model.removeAIFace(assetID: assetID, faceIndex: 0)
+
+        XCTAssertTrue(try repository.personFaces(assetID: assetID).isEmpty)
+        let presentation = model.photoFacesPresentation(for: assetID)
+        XCTAssertEqual(presentation.rows.map(\.state), [.unnamed])
+    }
+
+    func testRejectAIFaceSuggestionDeletesRowAndRecordsRejection() throws {
+        let (model, repository, assetID) = try makeModelWithAIPromotedFace(named: "app-model-reject-ai-face")
+
+        try model.rejectFaceSuggestion(FaceID(assetID: assetID, faceIndex: 0), personID: "p1")
+
+        XCTAssertTrue(try repository.personFaces(assetID: assetID).isEmpty)
+        XCTAssertTrue(try repository.rejectedFacePeople().contains(
+            RejectedFacePerson(assetID: assetID, faceIndex: 0, personID: "p1")
+        ))
+        let presentation = model.photoFacesPresentation(for: assetID)
+        XCTAssertEqual(presentation.rows.map(\.state), [.unnamed])
+    }
+
     func testSourceAvailabilityFilterAppliesToOfflineOriginals() throws {
         let online = makeAsset(id: "online", path: "/Volumes/NAS/Job/online.cr2", rating: 4)
         let offline = makeAsset(id: "offline", path: "/Volumes/NAS/Job/offline.cr2", rating: 4, availability: .offline)

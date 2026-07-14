@@ -2,13 +2,17 @@ import TeststripCore
 import XCTest
 @testable import TeststripApp
 
-/// Covers Task 7's AppModel-level assembly: `photoFacesPresentation(for:)`
-/// gathers one photo's face observations, its confirmed identities (via the
-/// new `personFaceAssignments` repo read, name-resolved against
-/// `catalogPeople`), and any `peopleFaceSuggestions` entries whose faces
-/// belong to it, into one `PhotoFacesPresentation`. The row-state precedence
-/// itself (confirmed wins over suggested) is `PhotoFacesPresentationTests`'
-/// job — this file is about the AppModel plumbing that feeds it.
+/// Covers `photoFacesPresentation(for:)`'s AppModel-level assembly: it
+/// gathers one photo's face observations and its `person_faces` links (via
+/// `personFaces`, name-resolved against `catalogPeople`), split into
+/// confirmed (`origin='user'`) vs. suggested (`origin='ai'`) by that same
+/// read, into one `PhotoFacesPresentation`. Task 11 moved `suggested` off
+/// the in-memory `peopleFaceSuggestions` array onto this persisted read —
+/// these tests never call `refreshPeopleFaceSuggestions()`, so a passing
+/// `.suggested` row here proves the persisted origin drives it. The
+/// row-state precedence itself (confirmed wins over suggested) is
+/// `PhotoFacesPresentationTests`' job — this file is about the AppModel
+/// plumbing that feeds it.
 final class PhotoFacesPresentationAssemblyTests: XCTestCase {
     func testConfirmedFaceResolvesNameFromCatalogPeople() throws {
         let (catalog, repository, _) = try makeCatalog(named: "confirmed-assembly")
@@ -26,25 +30,24 @@ final class PhotoFacesPresentationAssemblyTests: XCTestCase {
         ])
     }
 
-    func testSuggestedFaceResolvesFromPeopleFaceSuggestions() throws {
-        // Asset "b" carries the confirmed identity for "Casey"; asset "a" has
-        // an unassigned face with a near-identical embedding, so the real
-        // suggestion pipeline (FaceSuggestionBuilder, via
-        // refreshPeopleFaceSuggestions) proposes Casey for it.
+    func testSuggestedFaceResolvesFromPersistedAIOriginRow() throws {
+        // A face's persisted origin='ai' person_faces row (as `insertAIFace`/
+        // `promoteFaceMatches` create) is what drives `.suggested` now — the
+        // in-memory `peopleFaceSuggestions` array is never refreshed here,
+        // proving it's not the source.
         let (catalog, repository, _) = try makeCatalog(named: "suggested-assembly")
         try seedFaceObservations(repository, assetID: "a", embeddings: [[1, 0, 0], [0, 1, 0]])
-        try seedFaceObservations(repository, assetID: "b", embeddings: [[1, 0, 0]])
         try repository.upsertPerson(id: "p1", name: "Casey")
-        try repository.assignFaces([FaceID(assetID: AssetID(rawValue: "b"), faceIndex: 0)], toPersonID: "p1")
+        try repository.insertAIFace(assetID: AssetID(rawValue: "a"), faceIndex: 0, personID: "p1")
 
         let model = try AppModel.load(catalog: catalog)
-        model.refreshPeopleFaceSuggestions()
         let presentation = model.photoFacesPresentation(for: AssetID(rawValue: "a"))
 
         XCTAssertEqual(presentation.rows.map(\.state), [
             .suggested(personID: "p1", name: "Casey"),
             .unnamed
         ])
+        XCTAssertTrue(model.peopleFaceSuggestions.isEmpty)
     }
 
     func testUnknownAssetYieldsNoRows() throws {

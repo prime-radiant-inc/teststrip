@@ -25,6 +25,14 @@ public struct RemovedAILabel: Hashable, Sendable {
     public init(field: MetadataField, value: String) { self.field = field; self.value = value }
 }
 
+/// One face's link to a person, with its `person_faces.origin` — `"user"`
+/// (confirmed) or `"ai"` (machine-suggested, still provisional).
+public struct PersonFaceAssignment: Hashable, Sendable {
+    public let personID: String
+    public let origin: String
+    public init(personID: String, origin: String) { self.personID = personID; self.origin = origin }
+}
+
 public final class CatalogRepository {
     private let database: CatalogDatabase
     private let encoder = JSONEncoder()
@@ -1101,21 +1109,24 @@ public final class CatalogRepository {
         return try rows.map(decodeFaceObservation)
     }
 
-    /// One photo's confirmed face identities, keyed by face index. Backs the
-    /// per-photo People inspector section's "confirmed" rows.
-    public func personFaceAssignments(assetID: AssetID) throws -> [Int: String] {
+    /// One photo's face-to-person links, keyed by face index, each carrying
+    /// its provenance (`PersonFaceAssignment.origin`). Backs the per-photo
+    /// People inspector section's confirmed ('user') vs. suggested ('ai')
+    /// split.
+    public func personFaces(assetID: AssetID) throws -> [Int: PersonFaceAssignment] {
         let rows = try database.rows(
-            "SELECT face_index, person_id FROM person_faces WHERE asset_id = ?",
+            "SELECT face_index, person_id, origin FROM person_faces WHERE asset_id = ?",
             bindings: [assetID.rawValue]
         )
-        var result: [Int: String] = [:]
+        var result: [Int: PersonFaceAssignment] = [:]
         for row in rows {
             guard let faceIndexValue = row["face_index"],
                   let faceIndex = Int(faceIndexValue),
-                  let personID = row["person_id"] else {
+                  let personID = row["person_id"],
+                  let origin = row["origin"] else {
                 throw CatalogError.sqlite("person face row is missing required columns")
             }
-            result[faceIndex] = personID
+            result[faceIndex] = PersonFaceAssignment(personID: personID, origin: origin)
         }
         return result
     }

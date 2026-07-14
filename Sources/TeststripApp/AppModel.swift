@@ -3675,9 +3675,14 @@ public final class AppModel {
         refreshPeopleFaceSuggestions()
     }
 
-    /// Assembles the per-photo People inspector section (Task 7): one row
-    /// per detected face, confirmed identity (`person_faces`) winning over a
-    /// suggested match for the same face index.
+    /// Assembles the per-photo People inspector section: one row per
+    /// detected face, its state derived straight from the persisted
+    /// `person_faces` row for that face index (Task 11) — `origin='user'` is
+    /// confirmed, `origin='ai'` is a still-provisional suggestion (from
+    /// `promoteFaceMatches`/`insertAIFace`), and no row at all is unnamed.
+    /// Deliberately independent of the in-memory `peopleFaceSuggestions`
+    /// (that array drives the separate cross-catalog "who is this" review,
+    /// not this per-photo section).
     func photoFacesPresentation(for assetID: AssetID) -> PhotoFacesPresentation {
         guard let catalog else {
             return PhotoFacesPresentation(
@@ -3688,18 +3693,16 @@ public final class AppModel {
             )
         }
         let observations = (try? catalog.repository.faceObservations(assetID: assetID)) ?? []
-        let personIDsByFaceIndex = (try? catalog.repository.personFaceAssignments(assetID: assetID)) ?? [:]
+        let assignmentsByFaceIndex = (try? catalog.repository.personFaces(assetID: assetID)) ?? [:]
         let personNamesByID = Dictionary(uniqueKeysWithValues: catalogPeople.map { ($0.id, $0.name) })
         var confirmedByFaceIndex: [Int: (personID: String, name: String)] = [:]
-        for (faceIndex, personID) in personIDsByFaceIndex {
-            guard let name = personNamesByID[personID] else { continue }
-            confirmedByFaceIndex[faceIndex] = (personID: personID, name: name)
-        }
         var suggestionsByFaceIndex: [Int: (personID: String, name: String)] = [:]
-        for suggestion in peopleFaceSuggestions {
-            guard case .matchExisting(let personID, let personName) = suggestion.kind else { continue }
-            for faceID in suggestion.faceIDs where faceID.assetID == assetID {
-                suggestionsByFaceIndex[faceID.faceIndex] = (personID: personID, name: personName)
+        for (faceIndex, assignment) in assignmentsByFaceIndex {
+            guard let name = personNamesByID[assignment.personID] else { continue }
+            if assignment.origin == "user" {
+                confirmedByFaceIndex[faceIndex] = (personID: assignment.personID, name: name)
+            } else {
+                suggestionsByFaceIndex[faceIndex] = (personID: assignment.personID, name: name)
             }
         }
         return PhotoFacesPresentation(
@@ -3748,12 +3751,36 @@ public final class AppModel {
         refreshPeopleFaceSuggestions()
     }
 
+    /// Confirms a machine-suggested face match ("Confirm" on a `.suggested`
+    /// row): promotes the persisted `origin='ai'` `person_faces` row to
+    /// `'user'` and links the asset into the person's confirmed set
+    /// (`CatalogRepository.confirmFace`).
+    public func confirmAIFace(assetID: AssetID, faceIndex: Int) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        try catalog.repository.confirmFace(assetID: assetID, faceIndex: faceIndex)
+        catalogPeople = try catalog.repository.people()
+        refreshPeopleFaceSuggestions()
+    }
+
+    /// Removes a machine-suggested face's person link outright — the face
+    /// returns to unnamed. Same repo path as `removeFacePerson`, addressed
+    /// by asset/face-index to mirror `confirmAIFace`.
+    public func removeAIFace(assetID: AssetID, faceIndex: Int) throws {
+        try removeFacePerson(FaceID(assetID: assetID, faceIndex: faceIndex))
+    }
+
     /// Records that a suggested identity is wrong for one face ("not
-    /// them"), so recognition stops re-proposing that person for it.
+    /// them"): deletes the persisted `origin='ai'` `person_faces` row (so
+    /// the face goes back to unnamed instead of re-showing the same
+    /// suggestion) and remembers the rejection so recognition stops
+    /// re-proposing that person for it.
     public func rejectFaceSuggestion(_ faceID: FaceID, personID: String) throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
+        try catalog.repository.unassignFaces([faceID])
         try catalog.repository.recordRejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: personID)
         refreshPeopleFaceSuggestions()
     }
