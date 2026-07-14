@@ -1676,7 +1676,12 @@ final class CatalogDatabaseTests: XCTestCase {
 
         XCTAssertEqual(try repository.confirmedFaceEmbeddingsByPerson(provenance: provenance), [:])
         let unassigned = try repository.unassignedFaceObservations(provenance: provenance, limit: 10)
+        // Unassigned is face-level: confirmed-frame's stale person_assets link (below)
+        // does not blanket-hide its faces now that neither index has a current
+        // person_faces/dismissed_faces link, so both faces of both photos surface.
         XCTAssertEqual(Set(unassigned.map(\.faceID)), [
+            FaceID(assetID: confirmed.id, faceIndex: 0),
+            FaceID(assetID: confirmed.id, faceIndex: 1),
             FaceID(assetID: dismissed.id, faceIndex: 0),
             FaceID(assetID: dismissed.id, faceIndex: 1)
         ])
@@ -1818,6 +1823,115 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(
             try repository.unassignedFaceObservations(provenance: provenance, limit: 10).map(\.faceID),
             [FaceID(assetID: frame.id, faceIndex: 0)]
+        )
+    }
+
+    func testInsertAIFaceIsGuardedAndAssetLinkFree() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-insert-ai-face-guard")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let frame = Asset.testAsset(id: AssetID(rawValue: "frame"), path: "/Volumes/NAS/Job/frame.jpg", rating: 0)
+        try repository.upsert(frame)
+        try repository.upsertPerson(id: "person-ada", name: "Ada")
+
+        try repository.insertAIFace(assetID: frame.id, faceIndex: 0, personID: "person-ada")
+
+        XCTAssertEqual(try database.personFaceOrigin(assetID: frame.id, faceIndex: 0), "ai")
+        XCTAssertFalse(try database.hasPersonAsset(personID: "person-ada", assetID: frame.id))
+
+        // A user assignment for the same face must not be clobbered by a later ai insert.
+        try repository.assignFaces([FaceID(assetID: frame.id, faceIndex: 0)], toPersonID: "person-ada")
+        XCTAssertEqual(try database.personFaceOrigin(assetID: frame.id, faceIndex: 0), "user")
+
+        try repository.insertAIFace(assetID: frame.id, faceIndex: 0, personID: "person-ada")
+        XCTAssertEqual(try database.personFaceOrigin(assetID: frame.id, faceIndex: 0), "user")
+    }
+
+    func testConfirmFacePromotesOriginAndAssetLink() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-confirm-face")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let frame = Asset.testAsset(id: AssetID(rawValue: "frame"), path: "/Volumes/NAS/Job/frame.jpg", rating: 0)
+        try repository.upsert(frame)
+        try repository.upsertPerson(id: "person-ada", name: "Ada")
+        try repository.insertAIFace(assetID: frame.id, faceIndex: 0, personID: "person-ada")
+
+        try repository.confirmFace(assetID: frame.id, faceIndex: 0)
+
+        XCTAssertEqual(try database.personFaceOrigin(assetID: frame.id, faceIndex: 0), "user")
+        XCTAssertTrue(try database.hasPersonAsset(personID: "person-ada", assetID: frame.id))
+    }
+
+    func testConfirmedFaceEmbeddingsByPersonOnlyIncludesUserOriginFaces() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-centroid-user-origin-only")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "face-crop-pad-25")
+        let frame = Asset.testAsset(id: AssetID(rawValue: "frame"), path: "/Volumes/NAS/Job/frame.jpg", rating: 0)
+        try repository.upsert(frame)
+        try repository.replaceFaceObservations(assetID: frame.id, provenance: provenance, with: [
+            CatalogFaceObservation(
+                assetID: frame.id,
+                faceIndex: 0,
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                captureQuality: 0.5,
+                embedding: [0.6, 0.8, 0],
+                provenance: provenance
+            )
+        ])
+        try repository.upsertPerson(id: "person-ada", name: "Ada")
+        try repository.insertAIFace(assetID: frame.id, faceIndex: 0, personID: "person-ada")
+
+        // An ai-origin suggestion must not feed the person centroid until confirmed.
+        XCTAssertEqual(try repository.confirmedFaceEmbeddingsByPerson(provenance: provenance), [:])
+
+        try repository.confirmFace(assetID: frame.id, faceIndex: 0)
+
+        XCTAssertEqual(
+            try repository.confirmedFaceEmbeddingsByPerson(provenance: provenance),
+            ["person-ada": [[0.6, 0.8, 0]]]
+        )
+    }
+
+    func testUnassignedFaceObservationsAreFaceLevelNotWholeAsset() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-unassigned-faces-face-level")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "face-crop-pad-25")
+        let frame = Asset.testAsset(id: AssetID(rawValue: "frame"), path: "/Volumes/NAS/Job/frame.jpg", rating: 0)
+        try repository.upsert(frame)
+        try repository.replaceFaceObservations(assetID: frame.id, provenance: provenance, with: [
+            CatalogFaceObservation(
+                assetID: frame.id,
+                faceIndex: 0,
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                captureQuality: 0.5,
+                embedding: [1, 0, 0],
+                provenance: provenance
+            ),
+            CatalogFaceObservation(
+                assetID: frame.id,
+                faceIndex: 1,
+                boundingBox: FaceBoundingBox(x: 0.6, y: 0.5, width: 0.2, height: 0.25),
+                captureQuality: 0.5,
+                embedding: [0, 1, 0],
+                provenance: provenance
+            )
+        ])
+        try repository.upsertPerson(id: "person-maya", name: "Maya")
+
+        // Confirming one face on this photo links the whole asset to Maya in
+        // person_assets, but the second face is a different, still-unidentified
+        // person and must keep showing up in the unassigned queue.
+        try repository.assignFaces([FaceID(assetID: frame.id, faceIndex: 0)], toPersonID: "person-maya")
+
+        XCTAssertEqual(
+            try repository.unassignedFaceObservations(provenance: provenance, limit: 10).map(\.faceID),
+            [FaceID(assetID: frame.id, faceIndex: 1)]
         )
     }
 
@@ -3301,6 +3415,22 @@ private extension CatalogDatabaseTests {
 }
 
 private extension CatalogDatabase {
+    func personFaceOrigin(assetID: AssetID, faceIndex: Int) throws -> String? {
+        let matches = try rows(
+            "SELECT origin FROM person_faces WHERE asset_id = ? AND face_index = ?",
+            bindings: [assetID.rawValue, "\(faceIndex)"]
+        )
+        return matches.first?["origin"]
+    }
+
+    func hasPersonAsset(personID: String, assetID: AssetID) throws -> Bool {
+        let matches = try rows(
+            "SELECT 1 FROM person_assets WHERE person_id = ? AND asset_id = ?",
+            bindings: [personID, assetID.rawValue]
+        )
+        return !matches.isEmpty
+    }
+
     func insertTestAsset(_ asset: Asset, createdAt: String) throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .secondsSince1970

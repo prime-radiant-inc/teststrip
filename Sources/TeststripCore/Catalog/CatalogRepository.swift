@@ -1153,10 +1153,6 @@ public final class CatalogRepository {
                   SELECT 1 FROM dismissed_face_assets
                   WHERE dismissed_face_assets.asset_id = face_observations.asset_id
               )
-              AND NOT EXISTS (
-                  SELECT 1 FROM person_assets
-                  WHERE person_assets.asset_id = face_observations.asset_id
-              )
             ORDER BY created_at DESC, asset_id ASC, face_index ASC
             LIMIT ?
             """,
@@ -1175,6 +1171,7 @@ public final class CatalogRepository {
              AND face_observations.face_index = person_faces.face_index
             WHERE face_observations.provider = ? AND face_observations.model = ?
               AND face_observations.version = ? AND face_observations.settings_hash = ?
+              AND person_faces.origin = 'user'
             ORDER BY person_faces.person_id ASC, person_faces.asset_id ASC, person_faces.face_index ASC
             """,
             bindings: [provenance.provider, provenance.model, provenance.version, provenance.settingsHash]
@@ -1202,6 +1199,46 @@ public final class CatalogRepository {
         return rows.first.flatMap { $0["asset_count"] }.flatMap(Int.init) ?? 0
     }
 
+    /// Guarded machine-proposed face-to-person link: an `origin='ai'` `person_faces`
+    /// row that never overwrites an existing (user or ai) assignment for the same
+    /// face, and writes no `person_assets` link — the asset stays out of the
+    /// person's confirmed set until a user confirms via `confirmFace`.
+    public func insertAIFace(assetID: AssetID, faceIndex: Int, personID: String) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT INTO person_faces (person_id, asset_id, face_index, created_at, origin)
+            SELECT ?, ?, ?, ?, 'ai'
+            WHERE NOT EXISTS (
+                SELECT 1 FROM person_faces WHERE asset_id = ? AND face_index = ?
+            )
+            """,
+            bindings: [personID, assetID.rawValue, "\(faceIndex)", now, assetID.rawValue, "\(faceIndex)"]
+        )
+    }
+
+    /// Promotes a machine-proposed face assignment to user-confirmed: flips
+    /// `person_faces.origin` to `'user'` and upserts the `person_assets` link so
+    /// the asset joins the person's confirmed set.
+    public func confirmFace(assetID: AssetID, faceIndex: Int) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.transaction {
+            try database.execute(
+                "UPDATE person_faces SET origin = 'user' WHERE asset_id = ? AND face_index = ?",
+                bindings: [assetID.rawValue, "\(faceIndex)"]
+            )
+            try database.execute(
+                """
+                INSERT INTO person_assets (person_id, asset_id, created_at, origin)
+                SELECT person_id, asset_id, ?, 'user' FROM person_faces
+                WHERE asset_id = ? AND face_index = ?
+                ON CONFLICT(person_id, asset_id) DO UPDATE SET origin = 'user'
+                """,
+                bindings: [now, assetID.rawValue, "\(faceIndex)"]
+            )
+        }
+    }
+
     public func assignFaces(_ faceIDs: [FaceID], toPersonID personID: String) throws {
         let trimmedPersonID = personID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPersonID.isEmpty else {
@@ -1214,9 +1251,9 @@ public final class CatalogRepository {
             for faceID in faceIDs {
                 try database.execute(
                     """
-                    INSERT INTO person_faces (person_id, asset_id, face_index, created_at)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(asset_id, face_index) DO UPDATE SET person_id = excluded.person_id
+                    INSERT INTO person_faces (person_id, asset_id, face_index, created_at, origin)
+                    VALUES (?, ?, ?, ?, 'user')
+                    ON CONFLICT(asset_id, face_index) DO UPDATE SET person_id = excluded.person_id, origin = 'user'
                     """,
                     bindings: [trimmedPersonID, faceID.assetID.rawValue, "\(faceID.faceIndex)", now]
                 )
@@ -1227,7 +1264,11 @@ public final class CatalogRepository {
             }
             for assetID in Set(faceIDs.map(\.assetID)).sorted(by: { $0.rawValue < $1.rawValue }) {
                 try database.execute(
-                    "INSERT OR IGNORE INTO person_assets (person_id, asset_id, created_at) VALUES (?, ?, ?)",
+                    """
+                    INSERT INTO person_assets (person_id, asset_id, created_at, origin)
+                    VALUES (?, ?, ?, 'user')
+                    ON CONFLICT(person_id, asset_id) DO UPDATE SET origin = 'user'
+                    """,
                     bindings: [trimmedPersonID, assetID.rawValue, now]
                 )
                 try database.execute(
