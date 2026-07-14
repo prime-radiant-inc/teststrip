@@ -16975,10 +16975,10 @@ final class AppModelTests: XCTestCase {
                 metadata: AssetMetadata()
             ))
         }
-        let retryableURL = photosDirectory.appendingPathComponent("retryable-beyond-loaded.cr2")
+        let retryableURL = photosDirectory.appendingPathComponent("sole-retryable.cr2")
         try Data("retryable raw bytes".utf8).write(to: retryableURL)
         let retryable = Asset(
-            id: AssetID(rawValue: "retryable-beyond-loaded"),
+            id: AssetID(rawValue: "sole-retryable"),
             originalURL: retryableURL,
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: 1_000, modificationDate: Date(timeIntervalSince1970: 1_000)),
