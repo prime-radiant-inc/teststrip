@@ -3241,6 +3241,19 @@ final class CatalogDatabaseTests: XCTestCase {
             to: directory.appendingPathComponent("does-not-exist.cr2")
         ))
     }
+
+    func testMigrationAddsProvenanceColumnsAndRemovedLabelsTable() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-provenance-migration")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+
+        let personFaces = try database.rows("PRAGMA table_info(person_faces)")
+        XCTAssertTrue(personFaces.contains { $0["name"] == "origin" })
+        let personAssets = try database.rows("PRAGMA table_info(person_assets)")
+        XCTAssertTrue(personAssets.contains { $0["name"] == "origin" })
+        let removed = try database.rows("PRAGMA table_info(removed_ai_labels)")
+        XCTAssertEqual(Set(removed.compactMap { $0["name"] }), ["asset_id", "field", "value", "created_at"])
+    }
 }
 
 private extension Asset {

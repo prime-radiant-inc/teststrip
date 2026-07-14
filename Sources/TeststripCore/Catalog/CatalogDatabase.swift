@@ -53,6 +53,8 @@ public final class CatalogDatabase: @unchecked Sendable {
         try addColumnIfMissing(table: "preview_generation_queue", column: "last_attempted_at", definition: "REAL")
         try addColumnIfMissing(table: "relocation_manifest_entries", column: "asset_snapshot_json", definition: "TEXT")
         try addColumnIfMissing(table: "relocation_manifest_entries", column: "person_ids_json", definition: "TEXT")
+        try addColumnIfMissing(table: "person_faces", column: "origin", definition: "TEXT NOT NULL DEFAULT 'user'")
+        try addColumnIfMissing(table: "person_assets", column: "origin", definition: "TEXT NOT NULL DEFAULT 'user'")
         try execute(CatalogMigrations.coordinateIndexStatement)
         try execute(
             "INSERT OR REPLACE INTO catalog_meta (key, value) VALUES ('schema_version', ?)",
