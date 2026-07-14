@@ -3595,10 +3595,12 @@ public final class AppModel {
             let personNamesByID = Dictionary(
                 uniqueKeysWithValues: catalogPeople.map { ($0.id, $0.name) }
             )
+            let rejectedPairs = try catalog.repository.rejectedFacePeople()
             peopleFaceSuggestions = Self.peopleFaceSuggestions(
                 from: suggestions,
                 observationsByFaceID: observationsByFaceID,
-                personNamesByID: personNamesByID
+                personNamesByID: personNamesByID,
+                rejectedPairs: rejectedPairs
             )
             peopleFaceObservationAssetCount = try catalog.repository.faceObservationAssetCount(provenance: provenance)
         } catch {
@@ -3675,20 +3677,26 @@ public final class AppModel {
     private static func peopleFaceSuggestions(
         from suggestions: FaceSuggestions,
         observationsByFaceID: [FaceID: CatalogFaceObservation],
-        personNamesByID: [String: String]
+        personNamesByID: [String: String],
+        rejectedPairs: Set<RejectedFacePerson>
     ) -> [PeopleFaceSuggestion] {
         var result: [PeopleFaceSuggestion] = []
         for match in suggestions.matches {
+            let acceptedFaceIDs = match.faceIDs.filter { faceID in
+                !rejectedPairs.contains(
+                    RejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: match.personID)
+                )
+            }
             guard let personName = personNamesByID[match.personID],
-                  let representative = match.faceIDs.first,
+                  let representative = acceptedFaceIDs.first,
                   let observation = observationsByFaceID[representative] else { continue }
             result.append(PeopleFaceSuggestion(
                 id: "face-match-\(match.personID)",
                 kind: .matchExisting(personID: match.personID, personName: personName),
-                faceIDs: match.faceIDs,
+                faceIDs: acceptedFaceIDs,
                 representativeFace: representative,
                 representativeBoundingBox: observation.boundingBox,
-                assetIDs: Self.uniqueAssetIDs(match.faceIDs)
+                assetIDs: Self.uniqueAssetIDs(acceptedFaceIDs)
             ))
         }
         for cluster in suggestions.clusters {
