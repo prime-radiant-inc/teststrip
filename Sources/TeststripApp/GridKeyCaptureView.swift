@@ -232,7 +232,11 @@ final class GridKeyCaptureNSView: NSView {
     private func installLocalKeyMonitor() {
         guard localKeyMonitor == nil else { return }
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleLocalKeyDown(event) ?? event
+            KeyMonitorForwarding.result(
+                viewIsAlive: self != nil,
+                handlerVerdict: self?.handleLocalKeyDown(event),
+                event: event
+            )
         }
     }
 
