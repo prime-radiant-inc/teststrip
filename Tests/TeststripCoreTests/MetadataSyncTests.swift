@@ -147,6 +147,25 @@ final class MetadataSyncTests: XCTestCase {
         XCTAssertEqual(rdfContainerValues(in: description, propertyLocalName: "rights", containerLocalName: "Alt"), ["Copyright Jesse"])
     }
 
+    func testXMPPacketExcludesUnconfirmedLabels() throws {
+        var metadata = AssetMetadata(rating: 4, keywords: ["beach", "people"], caption: "cap")
+        metadata.aiUnconfirmedKeywords = ["people"]
+        metadata.aiUnconfirmedFields = [.caption]
+
+        let xml = try XMPPacket(metadata: metadata).xmlData()
+        let document = try XMLDocument(data: xml)
+        let description = try rdfDescription(in: document)
+
+        XCTAssertEqual(
+            rdfContainerValues(in: description, propertyLocalName: "subject", containerLocalName: "Bag"),
+            ["beach"]
+        )
+        XCTAssertEqual(
+            rdfContainerValues(in: description, propertyLocalName: "description", containerLocalName: "Alt"),
+            []
+        )
+    }
+
     func testSidecarStoreWritesPortableMetadataBesideOriginal() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "xmp-sidecar-write")
         let originalURL = directory.appendingPathComponent("frame.cr2")

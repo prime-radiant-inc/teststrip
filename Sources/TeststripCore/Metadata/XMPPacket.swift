@@ -57,6 +57,9 @@ public struct XMPPacket: Equatable, Sendable {
     }
 
     private func applyManagedMetadata(to description: XMLElement) {
+        // AI-unconfirmed labels are provisional and must never reach the XMP
+        // sidecar; project down to the confirmed subset before emitting.
+        let metadata = self.metadata.confirmedProjection
         Self.ensureNamespace(prefix: "xmp", uri: Self.xmpNamespace, in: description)
         Self.ensureNamespace(prefix: "dc", uri: Self.dcNamespace, in: description)
         Self.ensureNamespace(prefix: "ts", uri: Self.teststripNamespace, in: description)
