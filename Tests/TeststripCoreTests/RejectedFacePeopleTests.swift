@@ -42,4 +42,27 @@ final class RejectedFacePeopleTests: XCTestCase {
         let remainingFaceIndexes = rows.compactMap { $0["face_index"] }
         XCTAssertEqual(remainingFaceIndexes, ["1"])
     }
+
+    func testUnassignFacesDropsPersonAssetsOnlyWhenNoFacesRemain() throws {
+        let (r, db) = try repo()
+        try r.upsertPerson(id: "p1", name: "Ann")
+        try r.assignFaces([FaceID(assetID: AssetID(rawValue: "a"), faceIndex: 0)], toPersonID: "p1")
+        try r.assignFaces([FaceID(assetID: AssetID(rawValue: "a"), faceIndex: 1)], toPersonID: "p1")
+
+        func personAssetExists() throws -> Bool {
+            let rows = try db.rows(
+                "SELECT 1 AS present FROM person_assets WHERE person_id = ? AND asset_id = ?",
+                bindings: ["p1", "a"]
+            )
+            return !rows.isEmpty
+        }
+
+        XCTAssertTrue(try personAssetExists(), "person_assets row should exist once a face is assigned")
+
+        try r.unassignFaces([FaceID(assetID: AssetID(rawValue: "a"), faceIndex: 0)])
+        XCTAssertTrue(try personAssetExists(), "person_assets row must survive while sibling face 1 is still assigned")
+
+        try r.unassignFaces([FaceID(assetID: AssetID(rawValue: "a"), faceIndex: 1)])
+        XCTAssertFalse(try personAssetExists(), "person_assets row must be dropped once no faces of p1 remain in asset a")
+    }
 }

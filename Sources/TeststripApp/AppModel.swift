@@ -3712,6 +3712,7 @@ public final class AppModel {
         }
         try catalog.repository.assignFaces([faceID], toPersonID: personID)
         try catalog.repository.clearRejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: personID)
+        catalogPeople = try catalog.repository.people()
         refreshPeopleFaceSuggestions()
     }
 

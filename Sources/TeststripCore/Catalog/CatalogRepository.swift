@@ -1269,13 +1269,45 @@ public final class CatalogRepository {
     public func unassignFaces(_ faceIDs: [FaceID]) throws {
         guard !faceIDs.isEmpty else { return }
         try database.transaction {
+            var affectedPersonAssets: Set<PersonAssetKey> = []
             for faceID in faceIDs {
+                let ownerRows = try database.rows(
+                    "SELECT person_id FROM person_faces WHERE asset_id = ? AND face_index = ?",
+                    bindings: [faceID.assetID.rawValue, "\(faceID.faceIndex)"]
+                )
+                if let personID = ownerRows.first?["person_id"] {
+                    affectedPersonAssets.insert(PersonAssetKey(personID: personID, assetID: faceID.assetID))
+                }
                 try database.execute(
                     "DELETE FROM person_faces WHERE asset_id = ? AND face_index = ?",
                     bindings: [faceID.assetID.rawValue, "\(faceID.faceIndex)"]
                 )
             }
+            // person_assets is also written directly by assignAssets(...) (whole-asset
+            // People-workspace naming), which has no person_faces row and no provenance
+            // column distinguishing it from a face-derived link. So in the rare case
+            // where the same (person, asset) pair was both whole-asset-assigned and
+            // face-assigned, dropping the last confirmed face here also drops the
+            // whole-asset link. Accepted as a documented edge; a provenance column on
+            // person_assets is the proper fix, and is out of scope for this change.
+            for key in affectedPersonAssets {
+                let remaining = try database.rows(
+                    "SELECT 1 AS present FROM person_faces WHERE person_id = ? AND asset_id = ? LIMIT 1",
+                    bindings: [key.personID, key.assetID.rawValue]
+                )
+                if remaining.isEmpty {
+                    try database.execute(
+                        "DELETE FROM person_assets WHERE person_id = ? AND asset_id = ?",
+                        bindings: [key.personID, key.assetID.rawValue]
+                    )
+                }
+            }
         }
+    }
+
+    private struct PersonAssetKey: Hashable {
+        let personID: String
+        let assetID: AssetID
     }
 
     public func save(_ session: WorkSession) throws {

@@ -35,6 +35,22 @@ final class PhotoFaceEditTests: XCTestCase {
         XCTAssertTrue(model.catalogPeople.contains { $0.name == "Jesse" })
     }
 
+    /// `nameFace(personID:)` (naming a face as an EXISTING person) must
+    /// refresh `catalogPeople` the same way `nameFace(newPersonName:)`
+    /// already does, or the People-workspace card count for that person
+    /// stays stale until some other reload happens to run.
+    func testNameFaceWithExistingPersonIDRefreshesCatalogPeopleList() throws {
+        let (model, repository, _) = try makeModelWithOneFace(named: "name-face-existing-person-refreshes-people")
+        let faceID = FaceID(assetID: AssetID(rawValue: "a"), faceIndex: 0)
+        try repository.upsertPerson(id: "p1", name: "Pat")
+
+        XCTAssertFalse(model.catalogPeople.contains { $0.id == "p1" })
+
+        try model.nameFace(faceID, personID: "p1")
+
+        XCTAssertTrue(model.catalogPeople.contains { $0.id == "p1" && $0.assetCount == 1 })
+    }
+
     func testRejectRecordsNegativeThenNameClearsItAndRemoveClearsPerson() throws {
         let (model, repository, db) = try makeModelWithOneFace(named: "reject-name-remove")
         let faceID = FaceID(assetID: AssetID(rawValue: "a"), faceIndex: 0)
