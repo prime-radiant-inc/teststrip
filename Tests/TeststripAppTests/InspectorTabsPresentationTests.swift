@@ -86,15 +86,19 @@ final class InspectorTabsPresentationTests: XCTestCase {
         XCTAssertEqual(model.selectedWorkspace, .people)
     }
 
-    func testToggleInspectorInCullSwitchesToLibraryAndShowsInspector() {
+    // Task 5: the single-image inspector is reachable from the Cull loupe,
+    // so ⌘I toggles it in place instead of redirecting to Library.
+    func testToggleInspectorTogglesInCull() {
         let model = AppModel.demo()
         model.selectWorkspace(.cull)
         XCTAssertFalse(model.isInspectorVisible)
 
         model.toggleInspector()
-
-        XCTAssertEqual(model.selectedWorkspace, .library)
         XCTAssertTrue(model.isInspectorVisible)
+        XCTAssertEqual(model.selectedWorkspace, .cull)
+
+        model.toggleInspector()
+        XCTAssertFalse(model.isInspectorVisible)
     }
 
     // File ▸ Export…'s sheet is a popover hosted on the Library toolbar's
@@ -134,13 +138,15 @@ final class InspectorTabsPresentationTests: XCTestCase {
         XCTAssertTrue(model.isInspectorVisible)
     }
 
-    func testSelectInspectorTabInCullSetsTabWithoutForcingVisibility() {
+    // Task 5: Cull can show the inspector now, so selecting a tab there
+    // presents it, same as Library/People.
+    func testSelectInspectorTabInCullSetsTabAndPresentsInspector() {
         let model = AppModel.demo()
         model.selectWorkspace(.cull)
 
         model.selectInspectorTab(.ai)
 
         XCTAssertEqual(model.inspectorTab, .ai)
-        XCTAssertFalse(model.isInspectorVisible)
+        XCTAssertTrue(model.isInspectorVisible)
     }
 }

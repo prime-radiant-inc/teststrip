@@ -4397,15 +4397,10 @@ public final class AppModel {
         selectedView = lastSubView[workspace] ?? workspace.defaultSubView
     }
 
-    /// ⌘I. Toggles the on-demand inspector in Library/People; Cull has no
-    /// inspector column, so there it switches to Library and shows it.
+    /// ⌘I. Toggles the on-demand inspector, reachable in every workspace
+    /// (Task 5 unified it onto the Cull loupe alongside Library/People).
     public func toggleInspector() {
-        if selectedWorkspace == .cull {
-            selectWorkspace(.library)
-            isInspectorVisible = true
-        } else {
-            isInspectorVisible.toggle()
-        }
+        isInspectorVisible.toggle()
     }
 
     /// ⌥⌘1..3. Selects an inspector tab, and presents the inspector if the

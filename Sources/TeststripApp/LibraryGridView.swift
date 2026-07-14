@@ -7801,10 +7801,11 @@ enum CardDestinationResolution: Equatable {
     case promptPanel
 }
 
-/// Which browse-oriented chrome (search, filters, footer, inspector) a
-/// workspace shows. Views branch on this policy, never on raw `Workspace`
-/// cases, so the test matrix pins the behavior. Library shows all of it;
-/// Cull and People are focused surfaces that hide it.
+/// Which browse-oriented chrome (search, filters, footer) and the on-demand
+/// inspector a workspace shows. Views branch on this policy, never on raw
+/// `Workspace` cases, so the test matrix pins the behavior. Library shows
+/// all of the browse chrome; Cull and People are focused surfaces that hide
+/// it, but all three workspaces show the inspector.
 enum WorkspaceChromePolicy {
     static func showsSearchField(_ workspace: Workspace) -> Bool {
         workspace == .library
@@ -7826,11 +7827,10 @@ enum WorkspaceChromePolicy {
         workspace == .library
     }
 
-    /// The on-demand inspector (⌘I, Task 11) is reachable in Library and
-    /// People; Cull has no inspector column, so ⌘I there switches to
-    /// Library first (`AppModel.toggleInspector`).
+    /// The on-demand inspector (⌘I, Task 11; unified onto the Cull loupe in
+    /// Task 5) is reachable in every workspace — Library, People, and Cull.
     static func showsInspector(_ workspace: Workspace) -> Bool {
-        workspace != .cull
+        true
     }
 
     /// Toolbar-level import/search/export chrome (Import ▾, Import Path,
