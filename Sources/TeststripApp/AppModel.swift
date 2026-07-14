@@ -6273,6 +6273,31 @@ public final class AppModel {
         selectCullingStack(.previous)
     }
 
+    // ↑/↓ within-stack navigation: moves the selection to the next/previous
+    // frame in the current stack's ordered assetIDs (the same membership the
+    // rail displays via `selectedCullingStackScope`), stopping at the ends —
+    // no wrap, no crossing into a neighboring stack.
+    public func selectNextCandidateInStack() {
+        moveSelectionWithinCurrentCullingStack(by: 1)
+    }
+
+    public func selectPreviousCandidateInStack() {
+        moveSelectionWithinCurrentCullingStack(by: -1)
+    }
+
+    private func moveSelectionWithinCurrentCullingStack(by offset: Int) {
+        guard let selectedAssetID,
+              let stackAssetIDs = selectedCullingStackScope?.assetIDs,
+              let currentIndex = stackAssetIDs.firstIndex(of: selectedAssetID) else {
+            return
+        }
+        let targetIndex = currentIndex + offset
+        guard stackAssetIDs.indices.contains(targetIndex) else {
+            return
+        }
+        selectAssetID(stackAssetIDs[targetIndex])
+    }
+
     @discardableResult
     private func selectFirstCullingStackIfAvailable() throws -> Bool {
         if let explicitAssetIDs = selectedExplicitAssetIDs,
@@ -6387,7 +6412,10 @@ public final class AppModel {
 
         guard let selectedAssetID,
               let selectedIndex = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
-            selectAssetID(direction == .next ? indexedStacks.first?.firstAssetID : indexedStacks.last?.firstAssetID)
+            let fallbackStack = direction == .next ? indexedStacks.first : indexedStacks.last
+            if let fallbackStack {
+                selectAssetID(recommendedStackLandingAssetID(for: fallbackStack))
+            }
             return
         }
 
@@ -6411,8 +6439,15 @@ public final class AppModel {
         }
 
         if let targetStack {
-            selectAssetID(targetStack.firstAssetID)
+            selectAssetID(recommendedStackLandingAssetID(for: targetStack))
         }
+    }
+
+    // ←/→ stack-to-stack navigation lands on the new stack's AI-recommended
+    // frame (the same ranking the rail's Keep-recommended action uses), not
+    // always the first frame.
+    private func recommendedStackLandingAssetID(for indexedStack: IndexedCullingStack) -> AssetID? {
+        recommendedCullingStackAssetID(in: indexedStack.stack.assetIDs) ?? indexedStack.firstAssetID
     }
 
     private func selectPreviousAssetForCulling() throws {
