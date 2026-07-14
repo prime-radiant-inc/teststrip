@@ -41,4 +41,27 @@ final class MetadataTests: XCTestCase {
         meta.aiUnconfirmedKeywords = []
         XCTAssertTrue(meta.hasWrittenPortableMetadata)
     }
+
+    func testEncodingIsDeterministicAndOmitsEmptyProvenance() throws {
+        var meta = AssetMetadata(rating: 4, keywords: ["beach", "people"])
+        meta.aiUnconfirmedKeywords = ["people", "beach"]
+        meta.aiUnconfirmedFields = [.rating, .flag]
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let json = String(decoding: try encoder.encode(meta), as: UTF8.self)
+
+        XCTAssertTrue(
+            json.contains(#""aiUnconfirmedFields":["flag","rating"]"#),
+            "expected sorted aiUnconfirmedFields, got: \(json)"
+        )
+        XCTAssertTrue(
+            json.contains(#""aiUnconfirmedKeywords":["beach","people"]"#),
+            "expected sorted aiUnconfirmedKeywords, got: \(json)"
+        )
+
+        let emptyProvenance = AssetMetadata(rating: 4, keywords: [])
+        let emptyJSON = String(decoding: try encoder.encode(emptyProvenance), as: UTF8.self)
+        XCTAssertEqual(emptyJSON, #"{"keywords":[],"rating":4}"#)
+    }
 }

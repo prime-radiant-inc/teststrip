@@ -34,6 +34,18 @@ public struct AssetMetadata: Codable, Equatable, Sendable {
     public var aiUnconfirmedKeywords: Set<String>
     public var aiUnconfirmedFields: Set<MetadataField>
 
+    private enum CodingKeys: String, CodingKey {
+        case rating
+        case colorLabel
+        case flag
+        case keywords
+        case caption
+        case creator
+        case copyright
+        case aiUnconfirmedKeywords
+        case aiUnconfirmedFields
+    }
+
     private static let validRatingRange = 0...5
     private static let invalidRatingMessage = "rating must be between 0 and 5"
 
@@ -110,6 +122,32 @@ public struct AssetMetadata: Codable, Equatable, Sendable {
         self.copyright = try container.decodeIfPresent(String.self, forKey: .copyright)
         self.aiUnconfirmedKeywords = try container.decodeIfPresent(Set<String>.self, forKey: .aiUnconfirmedKeywords) ?? []
         self.aiUnconfirmedFields = try container.decodeIfPresent(Set<MetadataField>.self, forKey: .aiUnconfirmedFields) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(rating, forKey: .rating)
+        try container.encodeIfPresent(colorLabel, forKey: .colorLabel)
+        try container.encodeIfPresent(flag, forKey: .flag)
+        try container.encode(keywords, forKey: .keywords)
+        try container.encodeIfPresent(caption, forKey: .caption)
+        try container.encodeIfPresent(creator, forKey: .creator)
+        try container.encodeIfPresent(copyright, forKey: .copyright)
+        // Provenance sets are omitted when empty (keeps confirmed-only assets
+        // byte-identical to the legacy canonical form) and encoded as sorted
+        // arrays when present (Set iteration order is per-process random,
+        // which would defeat the catalog's byte-stable metadata_json compare
+        // used to detect real edits — see CatalogRepository's sortedKeys
+        // encoder and catalog_generation bump logic).
+        if !aiUnconfirmedKeywords.isEmpty {
+            try container.encode(aiUnconfirmedKeywords.sorted(), forKey: .aiUnconfirmedKeywords)
+        }
+        if !aiUnconfirmedFields.isEmpty {
+            try container.encode(
+                aiUnconfirmedFields.sorted { $0.rawValue < $1.rawValue },
+                forKey: .aiUnconfirmedFields
+            )
+        }
     }
 
     public static func validated(
