@@ -11869,6 +11869,267 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
     }
 
+    func testConfirmAIKeywordClearsUnconfirmedAndWritesSidecar() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-confirm-ai-keyword")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let asset = makeAsset(id: "confirm-ai-keyword-target", path: originalURL.path, rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-confirm-ai-keyword-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.keywords = ["People"]
+                    metadata.aiUnconfirmedKeywords = ["People"]
+                }
+            }
+        )
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+
+        try model.confirmAIKeyword("People", for: asset.id)
+
+        let confirmed = try repository.asset(id: asset.id).metadata
+        XCTAssertEqual(confirmed.keywords, ["People"])
+        XCTAssertTrue(confirmed.aiUnconfirmedKeywords.isEmpty)
+
+        let sidecarData = try Data(contentsOf: sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata.keywords, ["People"])
+
+        let inMemory = model.assets.first { $0.id == asset.id }
+        XCTAssertEqual(inMemory?.metadata.keywords, ["People"])
+        XCTAssertEqual(inMemory?.metadata.aiUnconfirmedKeywords, [])
+    }
+
+    func testRemoveAIKeywordDropsFromBothSetsRecordsRemovalAndBlocksRePromotion() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-remove-ai-keyword")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let asset = makeAsset(id: "remove-ai-keyword-target", path: originalURL.path, rating: 0)
+        let peopleProvenance = ProviderProvenance(provider: "apple-vision", model: "Vision-people", version: "1", settingsHash: "default")
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-remove-ai-keyword-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.keywords = ["People"]
+                    metadata.aiUnconfirmedKeywords = ["People"]
+                }
+                try repository.recordEvaluationSignals([
+                    EvaluationSignal(assetID: asset.id, kind: .object, value: .label("People"), confidence: 0.9, provenance: peopleProvenance)
+                ])
+            }
+        )
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+
+        try model.removeAIKeyword("People", for: asset.id)
+
+        let removed = try repository.asset(id: asset.id).metadata
+        XCTAssertFalse(removed.keywords.contains("People"))
+        XCTAssertTrue(removed.aiUnconfirmedKeywords.isEmpty)
+        XCTAssertTrue(try repository.removedAILabels(assetID: asset.id).contains(RemovedAILabel(field: .keyword, value: "People")))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
+
+        let inMemory = model.assets.first { $0.id == asset.id }
+        XCTAssertFalse(inMemory?.metadata.keywords.contains("People") ?? true)
+
+        // Ties Task 7's guard: promotion never resurrects a removed keyword.
+        try model.promoteMetadataLabels(for: asset.id)
+        XCTAssertFalse(try repository.asset(id: asset.id).metadata.keywords.contains("People"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
+    }
+
+    func testConfirmAICaptionClearsUnconfirmedAndWritesSidecar() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-confirm-ai-caption")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let asset = makeAsset(id: "confirm-ai-caption-target", path: originalURL.path, rating: 0)
+        let promotedCaption = "Happy Birthday Grandma"
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-confirm-ai-caption-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.caption = promotedCaption
+                    metadata.aiUnconfirmedFields = [.caption]
+                }
+            }
+        )
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+
+        try model.confirmAIField(.caption, for: asset.id)
+
+        let confirmed = try repository.asset(id: asset.id).metadata
+        XCTAssertEqual(confirmed.caption, promotedCaption)
+        XCTAssertFalse(confirmed.aiUnconfirmedFields.contains(.caption))
+
+        let sidecarData = try Data(contentsOf: sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata.caption, promotedCaption)
+
+        let inMemory = model.assets.first { $0.id == asset.id }
+        XCTAssertEqual(inMemory?.metadata.caption, promotedCaption)
+        XCTAssertFalse(inMemory?.metadata.aiUnconfirmedFields.contains(.caption) ?? true)
+    }
+
+    func testRemoveAICaptionClearsRecordsRemovalAndWritesNoSidecarCaption() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-remove-ai-caption")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let asset = makeAsset(id: "remove-ai-caption-target", path: originalURL.path, rating: 0)
+        let promotedCaption = "Happy Birthday Grandma"
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-remove-ai-caption-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.caption = promotedCaption
+                    metadata.aiUnconfirmedFields = [.caption]
+                }
+            }
+        )
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+
+        try model.removeAIField(.caption, for: asset.id)
+
+        let removed = try repository.asset(id: asset.id).metadata
+        XCTAssertNil(removed.caption)
+        XCTAssertFalse(removed.aiUnconfirmedFields.contains(.caption))
+        XCTAssertTrue(try repository.removedAILabels(assetID: asset.id).contains(RemovedAILabel(field: .caption, value: promotedCaption)))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
+
+        let inMemory = model.assets.first { $0.id == asset.id }
+        XCTAssertNil(inMemory?.metadata.caption)
+    }
+
+    func testConfirmAIFlagClearsUnconfirmedAndWritesSidecar() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-confirm-ai-flag")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let asset = makeAsset(id: "confirm-ai-flag-target", path: originalURL.path, rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-confirm-ai-flag-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.flag = .pick
+                    metadata.aiUnconfirmedFields = [.flag]
+                }
+            }
+        )
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+
+        try model.confirmAIField(.flag, for: asset.id)
+
+        let confirmed = try repository.asset(id: asset.id).metadata
+        XCTAssertEqual(confirmed.flag, .pick)
+        XCTAssertFalse(confirmed.aiUnconfirmedFields.contains(.flag))
+
+        let sidecarData = try Data(contentsOf: sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata.flag, .pick)
+    }
+
+    func testRemoveAIFlagClearsRecordsRemovalAndWritesNoSidecarFlag() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-remove-ai-flag")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let asset = makeAsset(id: "remove-ai-flag-target", path: originalURL.path, rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-remove-ai-flag-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.flag = .pick
+                    metadata.aiUnconfirmedFields = [.flag]
+                }
+            }
+        )
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+
+        try model.removeAIField(.flag, for: asset.id)
+
+        let removed = try repository.asset(id: asset.id).metadata
+        XCTAssertNil(removed.flag)
+        XCTAssertFalse(removed.aiUnconfirmedFields.contains(.flag))
+        XCTAssertTrue(try repository.removedAILabels(assetID: asset.id).contains(RemovedAILabel(field: .flag, value: "pick")))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
+    }
+
+    func testConfirmAIRatingClearsUnconfirmedAndWritesSidecar() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-confirm-ai-rating")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let asset = makeAsset(id: "confirm-ai-rating-target", path: originalURL.path, rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-confirm-ai-rating-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.rating = 4
+                    metadata.aiUnconfirmedFields = [.rating]
+                }
+            }
+        )
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+
+        try model.confirmAIField(.rating, for: asset.id)
+
+        let confirmed = try repository.asset(id: asset.id).metadata
+        XCTAssertEqual(confirmed.rating, 4)
+        XCTAssertFalse(confirmed.aiUnconfirmedFields.contains(.rating))
+
+        let sidecarData = try Data(contentsOf: sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata.rating, 4)
+    }
+
+    func testRemoveAIRatingClearsRecordsRemovalAndWritesNoSidecarRating() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-remove-ai-rating")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let asset = makeAsset(id: "remove-ai-rating-target", path: originalURL.path, rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-remove-ai-rating-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.rating = 4
+                    metadata.aiUnconfirmedFields = [.rating]
+                }
+            }
+        )
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+
+        try model.removeAIField(.rating, for: asset.id)
+
+        let removed = try repository.asset(id: asset.id).metadata
+        XCTAssertEqual(removed.rating, 0)
+        XCTAssertFalse(removed.aiUnconfirmedFields.contains(.rating))
+        XCTAssertTrue(try repository.removedAILabels(assetID: asset.id).contains(RemovedAILabel(field: .rating, value: "4")))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
+    }
+
+    func testConfirmAndRemoveAIFieldRejectKeyword() throws {
+        let asset = makeAsset(id: "ai-field-rejects-keyword", path: "/Photos/frame.jpg", rating: 0)
+        let (model, _) = try makeModelWithCatalogAssets(named: "app-model-ai-field-rejects-keyword", assets: [asset])
+
+        XCTAssertThrowsError(try model.confirmAIField(.keyword, for: asset.id))
+        XCTAssertThrowsError(try model.removeAIField(.keyword, for: asset.id))
+    }
+
     func testVisibleBatchKeywordSuggestionsAggregateObjectLabels() throws {
         let first = makeAsset(id: "first-batch-keyword", path: "/Photos/first.jpg", rating: 0)
         let second = makeAsset(id: "second-batch-keyword", path: "/Photos/second.jpg", rating: 0)

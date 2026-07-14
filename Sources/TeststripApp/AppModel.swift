@@ -7380,6 +7380,115 @@ public final class AppModel {
         }
     }
 
+    /// Confirms an AI-proposed keyword: it stays in `keywords`, just no
+    /// longer marked `aiUnconfirmedKeywords`, so it's now part of the
+    /// confirmed projection. Goes through the sidecar-syncing write path
+    /// (`applyMetadataSnapshot`) since a confirm is exactly the user gesture
+    /// that makes a previously AI-only label portable.
+    public func confirmAIKeyword(_ keyword: String, for assetID: AssetID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        var metadata = try catalog.repository.asset(id: assetID).metadata
+        metadata.aiUnconfirmedKeywords.remove(keyword)
+        try applyMetadataSnapshot(assetID: assetID, metadata: metadata)
+    }
+
+    /// Removes an AI-proposed keyword the user rejected: dropped from both
+    /// `keywords` and `aiUnconfirmedKeywords`, and remembered in
+    /// `removed_ai_labels` so a later `promoteMetadataLabels` never re-adds
+    /// it. Catalog-only write — nothing confirmed changed (the keyword was
+    /// never in the confirmed projection), so there's no sidecar delta to
+    /// sync.
+    public func removeAIKeyword(_ keyword: String, for assetID: AssetID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        try catalog.repository.updateMetadata(assetID: assetID) { metadata in
+            metadata.keywords.removeAll { $0 == keyword }
+            metadata.aiUnconfirmedKeywords.remove(keyword)
+        }
+        try catalog.repository.recordRemovedAILabel(assetID: assetID, field: .keyword, value: keyword)
+        try refreshInMemoryAsset(assetID)
+    }
+
+    /// Confirms an AI-proposed `.caption`/`.flag`/`.rating`: the value stays,
+    /// just no longer marked unconfirmed. Sidecar-syncing write path, same
+    /// reasoning as `confirmAIKeyword`.
+    public func confirmAIField(_ field: MetadataField, for assetID: AssetID) throws {
+        guard field != .keyword else {
+            throw TeststripError.invalidState("confirmAIField does not handle .keyword; use confirmAIKeyword")
+        }
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        var metadata = try catalog.repository.asset(id: assetID).metadata
+        metadata.aiUnconfirmedFields.remove(field)
+        try applyMetadataSnapshot(assetID: assetID, metadata: metadata)
+    }
+
+    /// Removes an AI-proposed `.caption`/`.flag`/`.rating` the user rejected:
+    /// clears the field's value, drops it from `aiUnconfirmedFields`, and
+    /// records the removal keyed by a stable string of the value that was
+    /// rejected — the exact caption text (matching `promoteMetadataLabels`'s
+    /// keying), the flag's raw value (`"pick"`/`"reject"`), or the rating as
+    /// a decimal string — so a future promoter (autopilot) can recognize and
+    /// skip re-proposing that same value. Catalog-only write, same reasoning
+    /// as `removeAIKeyword`.
+    public func removeAIField(_ field: MetadataField, for assetID: AssetID) throws {
+        guard field != .keyword else {
+            throw TeststripError.invalidState("removeAIField does not handle .keyword; use removeAIKeyword")
+        }
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let currentMetadata = try catalog.repository.asset(id: assetID).metadata
+        let removedValue = Self.removedAILabelValue(for: field, in: currentMetadata)
+        try catalog.repository.updateMetadata(assetID: assetID) { metadata in
+            switch field {
+            case .caption:
+                metadata.caption = nil
+            case .flag:
+                metadata.flag = nil
+            case .rating:
+                metadata.rating = 0
+            case .keyword:
+                break
+            }
+            metadata.aiUnconfirmedFields.remove(field)
+        }
+        try catalog.repository.recordRemovedAILabel(assetID: assetID, field: field, value: removedValue)
+        try refreshInMemoryAsset(assetID)
+    }
+
+    private static func removedAILabelValue(for field: MetadataField, in metadata: AssetMetadata) -> String {
+        switch field {
+        case .caption:
+            return metadata.caption ?? ""
+        case .flag:
+            return metadata.flag?.rawValue ?? ""
+        case .rating:
+            return String(metadata.rating)
+        case .keyword:
+            return ""
+        }
+    }
+
+    /// Fetch-and-splice a single asset's catalog state into the in-memory
+    /// `assets` cache (and, transitively, `selectedAsset`, derived from it)
+    /// after a catalog-only write that skips the sidecar-syncing
+    /// `applyMetadataSnapshot` path — same pattern `promoteEvaluationResults`
+    /// uses after promotion.
+    private func refreshInMemoryAsset(_ assetID: AssetID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let updatedAsset = try catalog.repository.asset(id: assetID)
+        if let index = assets.firstIndex(where: { $0.id == assetID }) {
+            assets[index] = updatedAsset
+        }
+    }
+
     private static func objectLabels(from signal: EvaluationSignal) -> [String] {
         guard signal.kind == .object else { return [] }
         switch signal.value {
@@ -9294,14 +9403,11 @@ public final class AppModel {
     /// dismiss a face suggestion, dismiss face review). Bounded to the one
     /// asset that just finished evaluating — never scans the whole catalog.
     private func promoteEvaluationResults(for assetID: AssetID) {
-        guard let catalog else { return }
+        guard catalog != nil else { return }
         do {
             try promoteMetadataLabels(for: assetID)
             try promoteFaceMatches(for: assetID)
-            let updatedAsset = try catalog.repository.asset(id: assetID)
-            if let index = assets.firstIndex(where: { $0.id == assetID }) {
-                assets[index] = updatedAsset
-            }
+            try refreshInMemoryAsset(assetID)
             refreshPeopleFaceSuggestions()
         } catch {
             errorMessage = error.localizedDescription
