@@ -127,26 +127,42 @@ final class InspectorTabsPresentationTests: XCTestCase {
         XCTAssertEqual(model.exportRequestToken, originalToken + 1)
     }
 
-    func testSelectInspectorTabSetsTabAndPresentsWhenEligible() {
+    func testScrollInspectorSetsTargetAndPresentsWhenEligible() {
         let model = AppModel.demo()
         model.selectWorkspace(.library)
-        XCTAssertEqual(model.inspectorTab, .info)
+        let originalToken = model.inspectorScrollRequestToken
 
-        model.selectInspectorTab(.describe)
+        model.scrollInspector(to: .describe)
 
-        XCTAssertEqual(model.inspectorTab, .describe)
+        XCTAssertEqual(model.inspectorScrollTarget, .describe)
+        XCTAssertEqual(model.inspectorScrollRequestToken, originalToken + 1)
         XCTAssertTrue(model.isInspectorVisible)
     }
 
-    // Task 5: Cull can show the inspector now, so selecting a tab there
-    // presents it, same as Library/People.
-    func testSelectInspectorTabInCullSetsTabAndPresentsInspector() {
+    // Task 5: Cull can show the inspector now, so scrolling to a section
+    // there presents it, same as Library/People.
+    func testScrollInspectorInCullSetsTargetAndPresentsInspector() {
         let model = AppModel.demo()
         model.selectWorkspace(.cull)
 
-        model.selectInspectorTab(.ai)
+        model.scrollInspector(to: .ai)
 
-        XCTAssertEqual(model.inspectorTab, .ai)
+        XCTAssertEqual(model.inspectorScrollTarget, .ai)
         XCTAssertTrue(model.isInspectorVisible)
+    }
+
+    // The stacked inspector has no notion of a "current" section, so
+    // scrolling to the same section twice must still bump the request
+    // token — otherwise InspectorView's onChange wouldn't fire the second
+    // time if the user had since scrolled away manually.
+    func testScrollInspectorToSameSectionStillBumpsRequestToken() {
+        let model = AppModel.demo()
+        model.selectWorkspace(.library)
+        model.scrollInspector(to: .info)
+        let tokenAfterFirstRequest = model.inspectorScrollRequestToken
+
+        model.scrollInspector(to: .info)
+
+        XCTAssertEqual(model.inspectorScrollRequestToken, tokenAfterFirstRequest + 1)
     }
 }

@@ -4,9 +4,11 @@ import SwiftUI
 struct AppWindowLayoutMetrics {
     /// Per-workspace minimum window width (Task 22): the prior single global
     /// 1520pt floor forced every workspace to pay for Library's chrome
-    /// (sidebar + inspector + footer). Library keeps the widest floor; Cull's
-    /// rail is narrower; People has neither inspector nor filter chrome.
-    /// Sidebar/inspector collapse before content squeezes below these.
+    /// (sidebar + inspector + footer). Library keeps the widest floor for its
+    /// search/filter-token/footer chrome; Cull and People are narrower since
+    /// they lack those, but (Task 5) all three workspaces can show the
+    /// inspector column. Sidebar/inspector collapse before content squeezes
+    /// below these.
     static func minimumWidth(for workspace: Workspace) -> CGFloat {
         switch workspace {
         case .library: return 1_000
@@ -113,7 +115,9 @@ enum AppMenuCoveragePresentation {
         .grid, .libraryLoupe, .timeline, .map
     ]
 
-    static let inspectorTabActionIDs: [String] = InspectorTab.allCases.map { "\($0.title) Tab" }
+    // Task 6: the inspector is a single stacked scroll, not tabs, so these
+    // menu items scroll to a section rather than switch to it.
+    static let inspectorSectionScrollActionIDs: [String] = InspectorTab.allCases.map { "Scroll to \($0.title)" }
     static let showInspectorActionID = "Show Inspector"
 
     static let zoomInActionID = "Zoom In"
@@ -596,11 +600,11 @@ private struct InspectorCommands: Commands {
 
             // Titles come from the same presentation list the coverage test
             // enumerates, so the menu and test can't drift apart.
-            ForEach(Array(zip(InspectorTab.allCases, AppMenuCoveragePresentation.inspectorTabActionIDs)), id: \.0) { tab, title in
+            ForEach(Array(zip(InspectorTab.allCases, AppMenuCoveragePresentation.inspectorSectionScrollActionIDs)), id: \.0) { section, title in
                 Button(title) {
-                    model.selectInspectorTab(tab)
+                    model.scrollInspector(to: section)
                 }
-                .keyboardShortcut(tab.keyEquivalent, modifiers: [.command, .option])
+                .keyboardShortcut(section.keyEquivalent, modifiers: [.command, .option])
             }
         }
     }

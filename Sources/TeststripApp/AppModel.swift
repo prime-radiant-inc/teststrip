@@ -2059,9 +2059,13 @@ public final class AppModel {
     /// Whether the on-demand inspector (⌘I) is shown, presented via
     /// `.inspector()` and gated by `WorkspaceChromePolicy.showsInspector`.
     public var isInspectorVisible = false
-    /// Which inspector tab is active. Selected by the segmented picker in
-    /// the inspector itself, or the ⌥⌘1..3 menu items.
-    public var inspectorTab: InspectorTab = .info
+    /// Which stacked inspector section the ⌥⌘1..3 menu items (or a
+    /// conflict deep-link) most recently asked to scroll to. Read alongside
+    /// `inspectorScrollRequestToken`, which bumps on every request — even a
+    /// repeat of the same section — so `InspectorView`'s `onChange` fires
+    /// even when the user has since scrolled away and back.
+    public private(set) var inspectorScrollTarget: InspectorTab = .info
+    public private(set) var inspectorScrollRequestToken = 0
     private var selectedBatchAssetIDOrder: [AssetID]
     private var selectedBatchAssetSortKeys: [AssetID: Int]
     public var statusMessage: String?
@@ -2842,7 +2846,10 @@ public final class AppModel {
         for assetID in assetIDs {
             setBatchSelection(assetID, isSelected: true)
         }
-        inspectorTab = .info
+        // The conflict resolver lives in the Info section (Task 11); scroll
+        // there so the deep-link lands on it instead of wherever the
+        // inspector was last scrolled.
+        scrollInspector(to: .info)
         isInspectorVisible = true
     }
 
@@ -4403,10 +4410,12 @@ public final class AppModel {
         isInspectorVisible.toggle()
     }
 
-    /// ⌥⌘1..3. Selects an inspector tab, and presents the inspector if the
-    /// current workspace can show one.
-    public func selectInspectorTab(_ tab: InspectorTab) {
-        inspectorTab = tab
+    /// ⌥⌘1..3 (or a conflict deep-link). Scrolls the on-demand inspector to
+    /// a stacked section, presenting the inspector if the current workspace
+    /// can show one.
+    public func scrollInspector(to section: InspectorTab) {
+        inspectorScrollTarget = section
+        inspectorScrollRequestToken += 1
         if WorkspaceChromePolicy.showsInspector(selectedWorkspace) {
             isInspectorVisible = true
         }
