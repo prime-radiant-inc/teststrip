@@ -381,6 +381,32 @@ public final class CatalogRepository {
         return count
     }
 
+    /// Confirmed-only counterpart of `assetCount(ids:flag:)` — an asset whose
+    /// `.flag` is still AI-unconfirmed (a tentative autopilot proposal, not a
+    /// user decision) does not count. Used for culling decision counts/undecided
+    /// triage, which must match the pre-autopilot-write semantics where a
+    /// pending proposal never counted as a decision.
+    public func assetCount(ids: [AssetID], confirmedFlag flag: PickFlag) throws -> Int {
+        var count = 0
+        for chunk in Self.chunks(ids, size: 500) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            let rows = try database.rows(
+                """
+                SELECT COUNT(*) AS count FROM assets
+                WHERE id IN (\(placeholders))
+                  AND json_extract(metadata_json, '$.flag') = ?
+                  AND \(Self.confirmedFieldClauseSQL)
+                """,
+                bindings: chunk.map(\.rawValue) + [flag.rawValue, MetadataField.flag.rawValue]
+            )
+            guard let countString = rows.first?["count"], let chunkCount = Int(countString) else {
+                throw CatalogError.sqlite("asset ID confirmed-flag count query returned no count")
+            }
+            count += chunkCount
+        }
+        return count
+    }
+
     public func assetCount() throws -> Int {
         let rows = try database.rows("SELECT COUNT(*) AS count FROM assets")
         guard let countString = rows.first?["count"], let count = Int(countString) else {
@@ -827,6 +853,25 @@ public final class CatalogRepository {
         )
         guard let countString = rows.first?["count"], let count = Int(countString) else {
             throw CatalogError.sqlite("asset count query returned no count")
+        }
+        return count
+    }
+
+    /// Confirmed-only counterpart of `assetCount(matching:)`: `query`'s own
+    /// predicates apply as usual, ANDed with a match on `flag` that requires
+    /// it NOT be AI-unconfirmed. `query` should not itself contain a `.flag`
+    /// predicate (this method supplies it) — see `assetCount(ids:confirmedFlag:)`
+    /// for why an unconfirmed flag must never count as a decision.
+    public func assetCount(matching query: SetQuery, confirmedFlag flag: PickFlag) throws -> Int {
+        var (clauses, bindings) = try compileClauses(query)
+        clauses.append("json_extract(metadata_json, '$.flag') = ?")
+        bindings.append(flag.rawValue)
+        clauses.append(Self.confirmedFieldClauseSQL)
+        bindings.append(MetadataField.flag.rawValue)
+        let whereSQL = " WHERE " + clauses.joined(separator: " AND ")
+        let rows = try database.rows("SELECT COUNT(*) AS count FROM assets\(whereSQL)", bindings: bindings)
+        guard let countString = rows.first?["count"], let count = Int(countString) else {
+            throw CatalogError.sqlite("confirmed-flag count query returned no count")
         }
         return count
     }
@@ -2554,6 +2599,15 @@ public final class CatalogRepository {
             failedAt: Date(timeIntervalSince1970: failedAt)
         )
     }
+
+    /// Clause requiring the bound `MetadataField.rawValue` NOT appear in
+    /// `aiUnconfirmedFields` — how confirmed-only queries (destructive/
+    /// committing paths that must never act on an unconfirmed AI proposal)
+    /// restrict a raw field match to a real user decision. `json_each` on a
+    /// path that doesn't exist (an asset with no unconfirmed fields at all,
+    /// the common case) yields zero rows, so this is always safe to AND in.
+    private static let confirmedFieldClauseSQL =
+        "NOT EXISTS (SELECT 1 FROM json_each(metadata_json, '$.aiUnconfirmedFields') WHERE json_each.value = ?)"
 
     private func compile(_ query: SetQuery) throws -> (whereSQL: String, bindings: [String]) {
         let (clauses, bindings) = try compileClauses(query)

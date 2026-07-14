@@ -2594,19 +2594,22 @@ public final class AppModel {
         }
     }
 
+    // Confirmed-only: a tentative AI pick/reject (autopilot proposal, not yet
+    // confirmed by the user) counts as undecided here, matching the semantics
+    // from before autopilot wrote tentative flags at run time (a pending
+    // proposal never counted as a decision).
     private func cullingDecisionCount(flag: PickFlag, repository: CatalogRepository) throws -> Int {
         if let explicitAssetIDs = selectedExplicitAssetIDs {
-            return try repository.assetCount(ids: explicitAssetIDs, flag: flag)
+            return try repository.assetCount(ids: explicitAssetIDs, confirmedFlag: flag)
         }
-        var predicates = currentLibraryQuery()?.predicates ?? []
-        predicates.append(.flag(flag))
-        return try repository.assetCount(matching: SetQuery(predicates: predicates))
+        let predicates = currentLibraryQuery()?.predicates ?? []
+        return try repository.assetCount(matching: SetQuery(predicates: predicates), confirmedFlag: flag)
     }
 
     private func loadedCullingDecisionCounts() -> (pickCount: Int, rejectCount: Int) {
         (
-            assets.filter { $0.metadata.flag == .pick }.count,
-            assets.filter { $0.metadata.flag == .reject }.count
+            assets.filter { $0.metadata.confirmedProjection.flag == .pick }.count,
+            assets.filter { $0.metadata.confirmedProjection.flag == .reject }.count
         )
     }
 
@@ -6136,9 +6139,11 @@ public final class AppModel {
     /// `assets` array (the same array `CullScopeOrdering` navigates, and which
     /// now holds the whole catalog), not a full-catalog query: cheap, and
     /// consistent with how scope-based nav already treats `assets` as the
-    /// session's universe elsewhere in this file.
+    /// session's universe elsewhere in this file. A tentative AI flag
+    /// (unconfirmed autopilot proposal) counts as undecided too — it isn't a
+    /// user decision yet.
     public var cullUndecidedCount: Int {
-        assets.filter { $0.metadata.flag == nil }.count
+        assets.filter { $0.metadata.confirmedProjection.flag == nil }.count
     }
 
     /// The `.reviewPicks` action from `CullCompletionPresentation`.
@@ -11102,6 +11107,9 @@ public final class AppModel {
     /// originals plus their sidecar/byte totals. `destinationFolder` (folder
     /// mode) additionally excludes originals already under the destination;
     /// trash mode passes nil — the Trash can't already contain a catalog file.
+    /// A reject whose flag is still AI-unconfirmed (an autopilot proposal the
+    /// user hasn't acted on) is excluded outright, regardless of destination —
+    /// only a user-confirmed reject is ever eligible for relocation/trash.
     private func rejectRelocationScope(destinationFolder: URL?) throws -> RejectRelocationScope {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
@@ -11120,6 +11128,13 @@ public final class AppModel {
         var scope = RejectRelocationScope()
         for assetID in rejectIDs {
             let asset = try catalog.repository.asset(id: assetID)
+            // A tentative AI reject (autopilot proposal, not yet confirmed by
+            // the user) is excluded outright — it must never be moved or
+            // trashed. This is the safety-critical guard: confirmed rejects
+            // only ever reach `scope.assetIDs`/`originalURLs` below.
+            guard !asset.metadata.aiUnconfirmedFields.contains(.flag) else {
+                continue
+            }
             guard FileManager.default.fileExists(atPath: asset.originalURL.path) else {
                 scope.unavailableCount += 1
                 continue

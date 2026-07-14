@@ -179,6 +179,48 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.cullingProgressSummary.reviewedCount, 3)
     }
 
+    // A tentative AI `.reject` (unconfirmed autopilot proposal) must not
+    // count as a decided reject — it counts as undecided, matching the
+    // semantics from before autopilot wrote tentative flags at run time.
+    func testTentativeAIRejectCountsAsUndecided() {
+        let confirmedReject = makeAsset(id: "reject", path: "/Photos/reject.jpg", rating: 0, flag: .reject)
+        var tentativeReject = makeAsset(id: "tentative-reject", path: "/Photos/tentative-reject.jpg", rating: 0, flag: .reject)
+        tentativeReject.metadata.aiUnconfirmedFields = [.flag]
+        let unreviewed = makeAsset(id: "unreviewed", path: "/Photos/unreviewed.jpg", rating: 0)
+        let model = AppModel(
+            sidebarSections: [],
+            selectedView: .loupe,
+            assets: [confirmedReject, tentativeReject, unreviewed]
+        )
+
+        XCTAssertEqual(model.cullingProgressSummary.pickCount, 0)
+        XCTAssertEqual(model.cullingProgressSummary.rejectCount, 1)
+        XCTAssertEqual(model.cullUndecidedCount, 2)
+    }
+
+    // Same assertion against the SQL-backed catalog path (`cullingDecisionCount`
+    // / `assetCount(matching:confirmedFlag:)`), which is what a real catalog
+    // exercises — the in-memory fallback above alone wouldn't catch a
+    // confirmed-only regression in the SQL query.
+    func testTentativeAIRejectCountsAsUndecidedAgainstCatalog() throws {
+        let confirmedReject = makeAsset(id: "cat-reject", path: "/Photos/cat-reject.jpg", rating: 0, flag: .reject)
+        let tentativeReject = makeAsset(id: "cat-tentative-reject", path: "/Photos/cat-tentative-reject.jpg", rating: 0, flag: .reject)
+        let unreviewed = makeAsset(id: "cat-unreviewed", path: "/Photos/cat-unreviewed.jpg", rating: 0)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "undecided-counts-catalog-model",
+            assets: [confirmedReject, tentativeReject, unreviewed],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: tentativeReject.id) { metadata in
+                    metadata.aiUnconfirmedFields = [.flag]
+                }
+            }
+        )
+
+        XCTAssertEqual(model.cullingProgressSummary.pickCount, 0)
+        XCTAssertEqual(model.cullingProgressSummary.rejectCount, 1)
+        XCTAssertEqual(model.cullUndecidedCount, 2)
+    }
+
     func testCullingProgressSummaryCountsEntireCatalogScope() throws {
         var assets: [Asset] = []
         for index in 0..<125 {
@@ -16918,6 +16960,80 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(preflight.unavailableCount, 1)
         XCTAssertEqual(preflight.moveCount, 0)
+    }
+
+    // Safety-critical: an unconfirmed AI `.reject` (autopilot proposal) must
+    // never be moved/trashed. Only a user-confirmed reject may be relocated.
+    func testTentativeAIRejectIsNotRelocatable() throws {
+        let directory = try makeTemporaryDirectory(named: "reject-preflight-tentative")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let tentativeOriginal = shoot.appendingPathComponent("tentative.cr2")
+        let confirmedOriginal = shoot.appendingPathComponent("confirmed.cr2")
+        try Data("tentative raw".utf8).write(to: tentativeOriginal)
+        try Data("confirmed raw".utf8).write(to: confirmedOriginal)
+        let tentativeReject = makeAsset(id: "pf-tentative-reject", path: tentativeOriginal.path, rating: 0, flag: .reject)
+        let confirmedReject = makeAsset(id: "pf-confirmed-reject", path: confirmedOriginal.path, rating: 0, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "reject-preflight-tentative-model",
+            assets: [tentativeReject, confirmedReject],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: tentativeReject.id) { metadata in
+                    metadata.aiUnconfirmedFields = [.flag]
+                }
+            }
+        )
+        let destination = directory.appendingPathComponent("rejects", isDirectory: true)
+
+        let preflight = try model.rejectRelocationPreflight(destinationFolder: destination)
+
+        // Only the confirmed reject is in scope — the tentative one is a
+        // proposal, not a decision.
+        XCTAssertEqual(preflight.assetIDs, [confirmedReject.id])
+        XCTAssertEqual(preflight.moveCount, 1)
+
+        let summary = try model.moveRejectsToFolder(preflight)
+
+        XCTAssertEqual(summary.movedCount, 1)
+        // The tentative reject's original is untouched: still on disk, still
+        // at its original catalog path, still carrying its tentative flag.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: tentativeOriginal.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: confirmedOriginal.path))
+        let tentativeAfter = try repository.asset(id: tentativeReject.id)
+        XCTAssertEqual(tentativeAfter.originalURL, tentativeOriginal)
+        XCTAssertEqual(tentativeAfter.metadata.flag, .reject)
+        XCTAssertTrue(tentativeAfter.metadata.aiUnconfirmedFields.contains(.flag))
+    }
+
+    // Trash-mode counterpart: `moveRejectsToTrash` shares `rejectRelocationScope`
+    // with folder relocation, but is exercised separately since it deletes the
+    // catalog row rather than repointing it — proving no branch of either path
+    // touches a tentative reject.
+    func testTentativeAIRejectIsNotTrashable() throws {
+        let directory = try makeTemporaryDirectory(named: "reject-trash-tentative")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let tentativeOriginal = shoot.appendingPathComponent("tentative.cr2")
+        try Data("tentative raw".utf8).write(to: tentativeOriginal)
+        let tentativeReject = makeAsset(id: "trash-tentative-reject", path: tentativeOriginal.path, rating: 0, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "reject-trash-tentative-model",
+            assets: [tentativeReject],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: tentativeReject.id) { metadata in
+                    metadata.aiUnconfirmedFields = [.flag]
+                }
+            }
+        )
+
+        let preflight = try model.rejectRelocationTrashPreflight()
+        XCTAssertEqual(preflight.moveCount, 0)
+
+        let summary = try model.moveRejectsToTrash(preflight)
+
+        XCTAssertEqual(summary.movedCount, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: tentativeOriginal.path))
+        XCTAssertEqual(try repository.asset(id: tentativeReject.id).originalURL, tentativeOriginal)
     }
 
     func testMoveRejectsToFolderMovesOriginalsSidecarsAndRewritesCatalog() throws {
