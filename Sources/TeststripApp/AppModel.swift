@@ -7473,8 +7473,9 @@ public final class AppModel {
         let sidecarData = try Data(contentsOf: conflict.sidecarURL)
         let sidecarMetadata = try XMPPacket.parse(sidecarData).metadata
 
+        let mergedMetadata = originalAsset.metadata.mergingConfirmedSidecar(sidecarMetadata)
         try catalog.repository.updateMetadata(assetID: assetID) { metadata in
-            metadata = sidecarMetadata
+            metadata = mergedMetadata
         }
         let updatedAsset = try catalog.repository.asset(id: assetID)
         let generation = try catalog.repository.catalogGeneration(assetID: assetID)
@@ -7488,11 +7489,11 @@ public final class AppModel {
             assets[index] = updatedAsset
         }
         try refreshCatalogSidebarCounts()
-        if originalAsset.metadata != sidecarMetadata {
+        if originalAsset.metadata != mergedMetadata {
             recordMetadataChangeGroup(label: "Resolved XMP conflict", changes: [MetadataChange(
                 assetID: assetID,
                 before: originalAsset.metadata,
-                after: sidecarMetadata
+                after: mergedMetadata
             )])
         }
         clearMetadataSyncState(assetID: assetID)

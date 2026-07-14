@@ -64,6 +64,37 @@ public struct AssetMetadata: Codable, Equatable, Sendable {
         )
     }
 
+    /// Merges a freshly-parsed sidecar's confirmed labels into this (catalog)
+    /// metadata. XMP never carries AI-unconfirmed markers (see
+    /// `confirmedProjection`), so importing/freshening from a sidecar
+    /// wholesale — `sidecarMetadata` as-is — would silently wipe any
+    /// catalog-only AI proposal that hasn't been confirmed yet. This keeps
+    /// the sidecar's confirmed values (they win for anything actually
+    /// synced) while carrying this metadata's AI-unconfirmed state forward:
+    /// unconfirmed keywords are added back into the merged keyword list, and
+    /// an unconfirmed caption/flag/rating is restored from the catalog side
+    /// (the sidecar never had it to begin with).
+    public func mergingConfirmedSidecar(_ sidecarMetadata: AssetMetadata) -> AssetMetadata {
+        var merged = sidecarMetadata
+        var keywords = sidecarMetadata.keywords
+        for keyword in self.keywords where aiUnconfirmedKeywords.contains(keyword) && !keywords.contains(keyword) {
+            keywords.append(keyword)
+        }
+        merged.keywords = keywords
+        merged.aiUnconfirmedKeywords = aiUnconfirmedKeywords
+        merged.aiUnconfirmedFields = aiUnconfirmedFields
+        if aiUnconfirmedFields.contains(.caption) {
+            merged.caption = caption
+        }
+        if aiUnconfirmedFields.contains(.flag) {
+            merged.flag = flag
+        }
+        if aiUnconfirmedFields.contains(.rating) {
+            merged.rating = rating
+        }
+        return merged
+    }
+
     /// True once the user has set any portable field that mirrors to an XMP
     /// sidecar. A sidecar is written only after such a set (non-destructive), so
     /// this doubles as "a sidecar exists for this asset" — used to show a

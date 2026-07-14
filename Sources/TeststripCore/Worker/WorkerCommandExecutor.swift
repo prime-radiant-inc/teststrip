@@ -517,7 +517,7 @@ public struct WorkerCommandExecutor {
             }
         case .importSidecar(let metadata):
             try repository.updateMetadata(assetID: assetID) { catalogMetadata in
-                catalogMetadata = metadata
+                catalogMetadata = catalogMetadata.mergingConfirmedSidecar(metadata)
             }
             let importedGeneration = try repository.catalogGeneration(assetID: assetID)
             let importedData: Data

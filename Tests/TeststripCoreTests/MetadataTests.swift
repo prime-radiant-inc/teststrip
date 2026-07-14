@@ -42,6 +42,35 @@ final class MetadataTests: XCTestCase {
         XCTAssertTrue(meta.hasWrittenPortableMetadata)
     }
 
+    func testMergingConfirmedSidecarPreservesCatalogAILabels() throws {
+        // Catalog holds a confirmed keyword plus an AI-proposed, unconfirmed
+        // one; the sidecar (confirmed labels only, per confirmedProjection)
+        // has just the confirmed keyword. Importing/freshening from the
+        // sidecar must not wipe the still-unconfirmed catalog proposal.
+        var catalogMetadata = AssetMetadata(keywords: ["beach", "people"])
+        catalogMetadata.aiUnconfirmedKeywords = ["people"]
+        let sidecarMetadata = AssetMetadata(keywords: ["beach"])
+
+        let merged = catalogMetadata.mergingConfirmedSidecar(sidecarMetadata)
+
+        XCTAssertEqual(Set(merged.keywords), ["beach", "people"])
+        XCTAssertEqual(merged.aiUnconfirmedKeywords, ["people"])
+    }
+
+    func testMergingConfirmedSidecarRestoresUnconfirmedCaptionFlagAndRating() throws {
+        var catalogMetadata = AssetMetadata(rating: 4, flag: .pick, caption: "AI caption")
+        catalogMetadata.aiUnconfirmedFields = [.caption, .flag, .rating]
+        let sidecarMetadata = AssetMetadata(rating: 0, keywords: ["confirmed"])
+
+        let merged = catalogMetadata.mergingConfirmedSidecar(sidecarMetadata)
+
+        XCTAssertEqual(merged.keywords, ["confirmed"])
+        XCTAssertEqual(merged.rating, 4)
+        XCTAssertEqual(merged.flag, .pick)
+        XCTAssertEqual(merged.caption, "AI caption")
+        XCTAssertEqual(merged.aiUnconfirmedFields, [.caption, .flag, .rating])
+    }
+
     func testEncodingIsDeterministicAndOmitsEmptyProvenance() throws {
         var meta = AssetMetadata(rating: 4, keywords: ["beach", "people"])
         meta.aiUnconfirmedKeywords = ["people", "beach"]

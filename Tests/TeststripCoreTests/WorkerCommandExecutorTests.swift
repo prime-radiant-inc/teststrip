@@ -674,6 +674,26 @@ final class WorkerCommandExecutorTests: XCTestCase {
         XCTAssertEqual(try setup.repository.pendingMetadataSyncItems(), [])
     }
 
+    func testImportSidecarPreservesCatalogAILabels() throws {
+        // Catalog holds a confirmed keyword ("beach") plus an AI-proposed,
+        // not-yet-confirmed keyword ("people") — never synced (no prior
+        // metadata_sync_state row). An external tool drops a sidecar with
+        // only the confirmed label; the worker's first-encounter import must
+        // not wipe the still-unconfirmed catalog proposal.
+        var catalogMetadata = AssetMetadata(keywords: ["beach", "people"])
+        catalogMetadata.aiUnconfirmedKeywords = ["people"]
+        let setup = try makeMetadataSyncSetup(named: "worker-sync-import-preserves-ai-labels", metadata: catalogMetadata)
+        let sidecarMetadata = AssetMetadata(keywords: ["beach"])
+        try XMPPacket(metadata: sidecarMetadata).xmlData().write(to: setup.sidecarURL)
+
+        let result = try setup.executor.execute(.syncMetadata(assetID: setup.asset.id))
+
+        XCTAssertEqual(result, .completed("imported metadata for asset.raw"))
+        let importedMetadata = try setup.repository.asset(id: setup.asset.id).metadata
+        XCTAssertEqual(Set(importedMetadata.keywords), ["beach", "people"])
+        XCTAssertEqual(importedMetadata.aiUnconfirmedKeywords, ["people"])
+    }
+
     func testSyncMetadataCommandImportsExistingAdobeStyleSidecarWhenCatalogIsUnchanged() throws {
         let catalogMetadata = AssetMetadata(rating: 2)
         let setup = try makeMetadataSyncSetup(named: "worker-sync-import-adobe-style", metadata: catalogMetadata)

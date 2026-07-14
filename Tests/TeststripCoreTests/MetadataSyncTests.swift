@@ -594,7 +594,13 @@ final class MetadataSyncTests: XCTestCase {
         XCTAssertEqual(decision, .importSidecar(metadata))
     }
 
-    func testPlannerWritesCatalogWhenOnlyCatalogGenerationChanged() throws {
+    func testPlannerTreatsUnchangedConfirmedMetadataAsUpToDateDespiteGenerationBump() throws {
+        // catalog_generation can advance without the CONFIRMED projection
+        // changing at all (any metadata_json edit bumps it, including an
+        // AI-only one — see testAIOnlyMetadataChangeQueuesNoSidecarWrite).
+        // The planner must key off what the sidecar would actually contain,
+        // not the raw generation counter, so an unchanged confirmed
+        // projection must resolve to .upToDate rather than .writeCatalog.
         let metadata = AssetMetadata(rating: 4)
         let sidecarData = try XMPPacket(metadata: metadata).xmlData()
         let lastSynced = MetadataSyncItem(
@@ -611,7 +617,38 @@ final class MetadataSyncTests: XCTestCase {
             sidecarData: sidecarData
         )
 
-        XCTAssertEqual(decision, .writeCatalog)
+        XCTAssertEqual(decision, .upToDate)
+    }
+
+    func testAIOnlyMetadataChangeQueuesNoSidecarWrite() throws {
+        // A confirmed keyword is already synced to the sidecar. Promoting an
+        // AI proposal on top (e.g. autopilot/face-group confirmation
+        // elsewhere) adds an aiUnconfirmedKeywords entry and bumps
+        // catalog_generation, but the CONFIRMED projection — what the
+        // sidecar would actually contain — hasn't changed. The planner must
+        // not queue/write a rewrite of the already-synced sidecar for that:
+        // nothing the user confirmed has changed, and there is no gesture
+        // behind it.
+        let syncedMetadata = AssetMetadata(keywords: ["beach"])
+        let sidecarData = try XMPPacket(metadata: syncedMetadata).xmlData()
+        let lastSynced = MetadataSyncItem(
+            assetID: AssetID(rawValue: "asset-1"),
+            sidecarURL: URL(fileURLWithPath: "/Photos/frame.cr2.xmp"),
+            catalogGeneration: 3,
+            lastSyncedFingerprint: XMPSidecarStore.fingerprint(for: sidecarData)
+        )
+        var catalogMetadata = syncedMetadata
+        catalogMetadata.keywords.append("dog")
+        catalogMetadata.aiUnconfirmedKeywords = ["dog"]
+
+        let decision = try MetadataSyncPlanner().decision(
+            catalogMetadata: catalogMetadata,
+            catalogGeneration: 4,
+            lastSynced: lastSynced,
+            sidecarData: sidecarData
+        )
+
+        XCTAssertEqual(decision, .upToDate)
     }
 
     func testPlannerWritesCatalogWhenCatalogChangedAndSidecarOnlyHasNewerTimestamp() throws {

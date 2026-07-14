@@ -166,7 +166,7 @@ public struct IngestService: Sendable {
                             sidecarModificationDate: sidecarModificationDate
                         )
                         if case .importSidecar(let sidecarMetadata) = decision {
-                            metadata = sidecarMetadata
+                            metadata = metadata.mergingConfirmedSidecar(sidecarMetadata)
                             importedSidecars.append(ImportedSidecarSync(
                                 assetID: assetID,
                                 sidecarURL: sidecarURL,
