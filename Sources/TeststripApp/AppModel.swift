@@ -3591,6 +3591,41 @@ public final class AppModel {
         }
     }
 
+    /// Auto-apply "promotion" for face matches: turns a face's match against
+    /// a CONFIRMED person's centroid into a guarded, face-level
+    /// `person_faces` row (`origin='ai'`, via `insertAIFace`) — provisional
+    /// until a user gesture confirms it (`confirmFace`). Reuses the same
+    /// match-distance and `rejected_face_people` filtering
+    /// `refreshPeopleFaceSuggestions` uses to propose matches to existing
+    /// people, applied automatically instead of surfaced for review. Only
+    /// the match half of `FaceSuggestionBuilder`'s output is used — a face
+    /// with no confirmed-person match (the cluster/new-person half) stays
+    /// unassigned for "who is this" review, out of scope here.
+    public func promoteFaceMatches(for assetID: AssetID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let provenance = AppleVisionEvaluationProvider.faceProvenance
+        let unassigned = try catalog.repository.unassignedFaceObservations(
+            provenance: provenance,
+            limit: Self.maximumFaceSuggestionInputCount
+        )
+        let confirmedFacesByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
+        let suggestions = FaceSuggestionBuilder().suggestions(
+            unassignedFaces: unassigned.map { FaceEmbedding(faceID: $0.faceID, vector: $0.embedding) },
+            confirmedFacesByPerson: confirmedFacesByPerson
+        )
+        let rejectedPairs = try catalog.repository.rejectedFacePeople()
+        for match in suggestions.matches {
+            for faceID in match.faceIDs where faceID.assetID == assetID {
+                guard !rejectedPairs.contains(
+                    RejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: match.personID)
+                ) else { continue }
+                try catalog.repository.insertAIFace(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: match.personID)
+            }
+        }
+    }
+
     public func confirmPeopleFaceSuggestion(_ suggestion: PeopleFaceSuggestion) throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")

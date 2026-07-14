@@ -7067,6 +7067,79 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.catalogPeople, [CatalogPerson(id: "person-maya", name: "Maya", assetCount: 0)])
     }
 
+    func testFacePromotionCreatesGuardedAIFacesRespectingRejections() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-face-promotion")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let provenance = AppleVisionEvaluationProvider.faceProvenance
+        let known = makeAsset(id: "known", path: "/Volumes/NAS/Wedding/known.jpg", rating: 0)
+        let incoming = makeAsset(id: "incoming", path: "/Volumes/NAS/Wedding/incoming.jpg", rating: 0)
+        try repository.upsert([known, incoming])
+        func observation(_ asset: Asset, _ faceIndex: Int, _ embedding: [Double]) -> CatalogFaceObservation {
+            CatalogFaceObservation(
+                assetID: asset.id,
+                faceIndex: faceIndex,
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                captureQuality: 0.9,
+                embedding: embedding,
+                provenance: provenance
+            )
+        }
+        try repository.replaceFaceObservations(assetID: known.id, provenance: provenance, with: [observation(known, 0, [1, 0, 0])])
+        try repository.upsertPerson(id: "person-maya", name: "Maya")
+        try repository.assignFaces([FaceID(assetID: known.id, faceIndex: 0)], toPersonID: "person-maya")
+        // face 0 sits near the Maya centroid (a match); face 1 is far away (unmatched).
+        try repository.replaceFaceObservations(assetID: incoming.id, provenance: provenance, with: [
+            observation(incoming, 0, [0.99, 0.1, 0]),
+            observation(incoming, 1, [0, 1, 0])
+        ])
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+
+        try model.promoteFaceMatches(for: incoming.id)
+
+        XCTAssertEqual(
+            try database.rows(
+                "SELECT origin FROM person_faces WHERE asset_id = ? AND face_index = ?",
+                bindings: [incoming.id.rawValue, "0"]
+            ).first?["origin"],
+            "ai"
+        )
+        XCTAssertEqual(try repository.assetIDs(personID: "person-maya"), [known.id])
+        XCTAssertEqual(
+            try repository.unassignedFaceObservations(provenance: provenance, limit: 10).map(\.faceID),
+            [FaceID(assetID: incoming.id, faceIndex: 1)]
+        )
+
+        // Simulate the ai match being cleared (e.g. a review action) and then
+        // explicitly rejected before the next promotion pass: promotion must
+        // not re-create it.
+        try repository.unassignFaces([FaceID(assetID: incoming.id, faceIndex: 0)])
+        try repository.recordRejectedFacePerson(assetID: incoming.id, faceIndex: 0, personID: "person-maya")
+
+        try model.promoteFaceMatches(for: incoming.id)
+
+        XCTAssertEqual(
+            try database.rows(
+                "SELECT origin FROM person_faces WHERE asset_id = ? AND face_index = ?",
+                bindings: [incoming.id.rawValue, "0"]
+            ),
+            []
+        )
+        XCTAssertEqual(
+            Set(try repository.unassignedFaceObservations(provenance: provenance, limit: 10).map(\.faceID)),
+            [FaceID(assetID: incoming.id, faceIndex: 0), FaceID(assetID: incoming.id, faceIndex: 1)]
+        )
+    }
+
     func testSourceAvailabilityFilterAppliesToOfflineOriginals() throws {
         let online = makeAsset(id: "online", path: "/Volumes/NAS/Job/online.cr2", rating: 4)
         let offline = makeAsset(id: "offline", path: "/Volumes/NAS/Job/offline.cr2", rating: 4, availability: .offline)
