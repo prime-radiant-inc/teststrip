@@ -329,7 +329,25 @@ final class CullingStackRailPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.items[2].flawBadges, [CompareDecisionBadge(text: "SOFT", tone: .destructive)])
     }
 
-    private func makeAsset(id: String, path: String, capturedAt: Date?) -> Asset {
+    func testItemsCarryPickRejectDecisionFromAssetFlag() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let picked = makeAsset(id: "picked", path: "/Photos/Job/picked.cr2", capturedAt: capturedAt, flag: .pick)
+        let rejected = makeAsset(id: "rejected", path: "/Photos/Job/rejected.cr2", capturedAt: capturedAt.addingTimeInterval(1), flag: .reject)
+        let undecided = makeAsset(id: "undecided", path: "/Photos/Job/undecided.cr2", capturedAt: capturedAt.addingTimeInterval(1.8), flag: nil)
+
+        let presentation = CullingStackRailPresentation(
+            assets: [picked, rejected, undecided],
+            selectedAssetID: picked.id,
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 2)
+        )
+
+        let byID = Dictionary(uniqueKeysWithValues: presentation.items.map { ($0.assetID, $0.decision) })
+        XCTAssertEqual(byID[picked.id], .picked)
+        XCTAssertEqual(byID[rejected.id], .rejected)
+        XCTAssertEqual(byID[undecided.id], .undecided)
+    }
+
+    private func makeAsset(id: String, path: String, capturedAt: Date?, flag: PickFlag? = nil) -> Asset {
         let technicalMetadata = capturedAt.map { date in
             AssetTechnicalMetadata(
                 pixelWidth: 6000,
@@ -344,7 +362,7 @@ final class CullingStackRailPresentationTests: XCTestCase {
             volumeIdentifier: "Photos",
             fingerprint: FileFingerprint(size: 1, modificationDate: capturedAt ?? Date(timeIntervalSince1970: 0)),
             availability: .online,
-            metadata: AssetMetadata(),
+            metadata: AssetMetadata(flag: flag),
             technicalMetadata: technicalMetadata
         )
     }

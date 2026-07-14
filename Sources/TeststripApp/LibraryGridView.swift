@@ -5934,6 +5934,7 @@ struct CullingStackRailPresentation: Equatable {
         var isSelected: Bool
         var isRecommended: Bool
         var flawBadges: [CompareDecisionBadge]
+        var decision: CullingFilmstripPresentation.DecisionState
     }
 
     var items: [Item]
@@ -6008,6 +6009,7 @@ struct CullingStackRailPresentation: Equatable {
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
         let recommendation = rankedCandidates.first
+        let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
 
         items = stackScope.assetIDs.enumerated().map { index, assetID in
             Item(
@@ -6015,7 +6017,8 @@ struct CullingStackRailPresentation: Equatable {
                 label: "\(index + 1)",
                 isSelected: assetID == selectedAssetID,
                 isRecommended: assetID == recommendation?.assetID,
-                flawBadges: CompareSurveyPresentation.flawBadges(for: evaluationSignalsByAssetID[assetID] ?? [])
+                flawBadges: CompareSurveyPresentation.flawBadges(for: evaluationSignalsByAssetID[assetID] ?? []),
+                decision: CullingFilmstripPresentation.DecisionState(flag: assetsByID[assetID]?.metadata.flag)
             )
         }
         if let stackIndex = stackScope.stackIndex,
