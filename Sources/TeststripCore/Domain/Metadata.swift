@@ -17,6 +17,7 @@ public enum MetadataField: String, Codable, Sendable, CaseIterable {
     case flag
     case caption
     case rating
+    case keyword
 }
 
 public struct AssetMetadata: Codable, Equatable, Sendable {

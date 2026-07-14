@@ -19,6 +19,12 @@ public struct SourceRootReconnectResult: Equatable, Sendable {
     }
 }
 
+public struct RemovedAILabel: Hashable, Sendable {
+    public let field: MetadataField
+    public let value: String
+    public init(field: MetadataField, value: String) { self.field = field; self.value = value }
+}
+
 public final class CatalogRepository {
     private let database: CatalogDatabase
     private let encoder = JSONEncoder()
@@ -1332,6 +1338,28 @@ public final class CatalogRepository {
                 throw CatalogError.sqlite("rejected face person row is missing required columns")
             }
             return RejectedFacePerson(assetID: AssetID(rawValue: assetID), faceIndex: faceIndex, personID: personID)
+        })
+    }
+
+    public func recordRemovedAILabel(assetID: AssetID, field: MetadataField, value: String) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT OR IGNORE INTO removed_ai_labels (asset_id, field, value, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            bindings: [assetID.rawValue, field.rawValue, value, now]
+        )
+    }
+
+    public func removedAILabels(assetID: AssetID) throws -> Set<RemovedAILabel> {
+        let rows = try database.rows(
+            "SELECT field, value FROM removed_ai_labels WHERE asset_id = ?",
+            bindings: [assetID.rawValue]
+        )
+        return Set(rows.compactMap { row in
+            guard let f = row["field"], let field = MetadataField(rawValue: f), let value = row["value"] else { return nil }
+            return RemovedAILabel(field: field, value: value)
         })
     }
 

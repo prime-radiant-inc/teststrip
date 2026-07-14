@@ -3414,6 +3414,19 @@ final class CatalogDatabaseTests: XCTestCase {
         let removed = try database.rows("PRAGMA table_info(removed_ai_labels)")
         XCTAssertEqual(Set(removed.compactMap { $0["name"] }), ["asset_id", "field", "value", "created_at"])
     }
+
+    func testRecordAndReadRemovedAILabels() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "removed-labels")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repo = CatalogRepository(database: database)
+        try repo.recordRemovedAILabel(assetID: AssetID(rawValue: "a1"), field: .keyword, value: "people")
+        try repo.recordRemovedAILabel(assetID: AssetID(rawValue: "a1"), field: .caption, value: "")
+        let removed = try repo.removedAILabels(assetID: AssetID(rawValue: "a1"))
+        XCTAssertTrue(removed.contains(RemovedAILabel(field: .keyword, value: "people")))
+        XCTAssertTrue(removed.contains(RemovedAILabel(field: .caption, value: "")))
+        XCTAssertTrue(try repo.removedAILabels(assetID: AssetID(rawValue: "a2")).isEmpty)
+    }
 }
 
 private extension Asset {
