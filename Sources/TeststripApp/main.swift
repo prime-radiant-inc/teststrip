@@ -123,7 +123,6 @@ enum AppMenuCoveragePresentation {
     static var cullingShortcutActionIDs: [String] {
         CullingCommandMenuPresentation.sections
             .flatMap(\.items)
-            .filter { !$0.isMonitorOnly }
             .map(\.title)
     }
 
@@ -460,7 +459,7 @@ private struct CullingCommands: Commands {
             Divider()
 
             ForEach(Array(CullingCommandMenuPresentation.sections.enumerated()), id: \.element.id) { index, section in
-                ForEach(section.items.filter { !$0.isMonitorOnly }) { item in
+                ForEach(section.items) { item in
                     Button(item.menuDisplayTitle) {
                         applyShortcut(item.shortcut)
                     }

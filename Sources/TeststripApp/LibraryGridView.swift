@@ -9233,8 +9233,7 @@ struct LoupeExifOverlayPresentation: Equatable {
 
 /// The `?` key-map overlay: every culling shortcut, generated straight from
 /// `CullingCommandMenuPresentation` (the single source of truth the Culling
-/// menu also reads) — including monitor-only entries like ⌥←/⌥→ that have no
-/// menu equivalent. View-only; Esc or a repeated `?` dismisses it.
+/// menu also reads). View-only; Esc or a repeated `?` dismisses it.
 struct KeyMapOverlayView: View {
     // Item 3: which section AppModel.keyMapOverlayScrollIndex currently
     // points at, driven by ↑/↓/PgUp/PgDn while this overlay owns navigation.

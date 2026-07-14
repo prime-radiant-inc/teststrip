@@ -197,6 +197,12 @@ public enum CullingShortcut: Equatable, Sendable {
     case nextPhoto
     case previousStack
     case nextStack
+    /// ↑/↓ within-stack navigation (cull-stack-rail): moves the selection to
+    /// the next/previous frame in the current stack, never crossing into a
+    /// neighboring stack. See `AppModel.selectNextCandidateInStack()`/
+    /// `selectPreviousCandidateInStack()`.
+    case previousCandidateInStack
+    case nextCandidateInStack
     case rating(Int)
     case colorLabel(ColorLabel?)
     case pick
@@ -227,19 +233,15 @@ public enum CullingShortcut: Equatable, Sendable {
     public init?(key: CullingShortcutKey) {
         switch key {
         case .leftArrow:
-            self = .previousPhoto
-        case .rightArrow:
-            self = .nextPhoto
-        case .upArrow:
             self = .previousStack
-        case .downArrow:
+        case .rightArrow:
             self = .nextStack
+        case .upArrow:
+            self = .previousCandidateInStack
+        case .downArrow:
+            self = .nextCandidateInStack
         case .returnKey:
             self = .promoteAndRejectSiblings
-        case .optionLeftArrow:
-            self = .previousStack
-        case .optionRightArrow:
-            self = .nextStack
         // Shift-Z (exact-case match, checked before the lowercased switch
         // below) is a distinct shortcut from plain "z" toggle-zoom.
         case .character("Z"):
@@ -449,12 +451,6 @@ public enum CullingShortcutKey: Equatable, Sendable {
     case downArrow
     case returnKey
     case character(String)
-    // Display-only entries for the monitor-only ⌥←/⌥→ stack-navigation
-    // alternates (see CullingKeyCaptureView): never routed through
-    // CullingShortcut.init(key:) at runtime — the key monitor handles them
-    // directly — but present here so the ? key-map overlay can list them.
-    case optionLeftArrow
-    case optionRightArrow
 
     /// Human-readable key label for the ? key-map overlay.
     public var displayText: String {
@@ -465,8 +461,6 @@ public enum CullingShortcutKey: Equatable, Sendable {
         case .downArrow: return "↓"
         case .returnKey: return "⏎"
         case .character(let character): return character
-        case .optionLeftArrow: return "⌥←"
-        case .optionRightArrow: return "⌥→"
         }
     }
 }
@@ -475,18 +469,13 @@ public struct CullingCommandMenuItem: Equatable, Identifiable, Sendable {
     public var title: String
     public var shortcut: CullingShortcut
     public var key: CullingShortcutKey
-    /// Monitor-only shortcuts (e.g. ⌥←/⌥→) have no menu equivalent — a bare
-    /// menu binding would double-fire alongside the key monitor — but the
-    /// ? key-map overlay still lists them for discoverability.
-    public var isMonitorOnly: Bool
 
     public var id: String { title }
 
-    public init(title: String, shortcut: CullingShortcut, key: CullingShortcutKey, isMonitorOnly: Bool = false) {
+    public init(title: String, shortcut: CullingShortcut, key: CullingShortcutKey) {
         self.title = title
         self.shortcut = shortcut
         self.key = key
-        self.isMonitorOnly = isMonitorOnly
     }
 
     /// Menu-item label with the key advertised as a title suffix, e.g.
@@ -517,13 +506,11 @@ public struct CullingCommandMenuSection: Equatable, Identifiable, Sendable {
 public enum CullingCommandMenuPresentation {
     public static let sections: [CullingCommandMenuSection] = [
         CullingCommandMenuSection(title: "Navigation", items: [
-            CullingCommandMenuItem(title: "Previous Photo", shortcut: .previousPhoto, key: .leftArrow),
-            CullingCommandMenuItem(title: "Next Photo", shortcut: .nextPhoto, key: .rightArrow),
-            CullingCommandMenuItem(title: "Previous Stack", shortcut: .previousStack, key: .upArrow),
-            CullingCommandMenuItem(title: "Next Stack", shortcut: .nextStack, key: .downArrow),
-            CullingCommandMenuItem(title: "Promote Frame & Reject Siblings", shortcut: .promoteAndRejectSiblings, key: .returnKey),
-            CullingCommandMenuItem(title: "Previous Stack (Option)", shortcut: .previousStack, key: .optionLeftArrow, isMonitorOnly: true),
-            CullingCommandMenuItem(title: "Next Stack (Option)", shortcut: .nextStack, key: .optionRightArrow, isMonitorOnly: true)
+            CullingCommandMenuItem(title: "Previous Frame in Stack", shortcut: .previousCandidateInStack, key: .upArrow),
+            CullingCommandMenuItem(title: "Next Frame in Stack", shortcut: .nextCandidateInStack, key: .downArrow),
+            CullingCommandMenuItem(title: "Previous Stack", shortcut: .previousStack, key: .leftArrow),
+            CullingCommandMenuItem(title: "Next Stack", shortcut: .nextStack, key: .rightArrow),
+            CullingCommandMenuItem(title: "Promote Frame & Reject Siblings", shortcut: .promoteAndRejectSiblings, key: .returnKey)
         ]),
         CullingCommandMenuSection(title: "Ratings", items: [
             CullingCommandMenuItem(title: "Clear Rating", shortcut: .rating(0), key: .character("0")),
@@ -5869,6 +5856,12 @@ public final class AppModel {
         case .nextStack:
             clearCullingMetadataDecisionFeedback()
             try selectNextStackForCulling()
+        case .previousCandidateInStack:
+            clearCullingMetadataDecisionFeedback()
+            selectPreviousCandidateInStack()
+        case .nextCandidateInStack:
+            clearCullingMetadataDecisionFeedback()
+            selectNextCandidateInStack()
         case .rating(let rating):
             try applyCullingCommandAndAdvance(.rating(rating))
         case .colorLabel(let colorLabel):

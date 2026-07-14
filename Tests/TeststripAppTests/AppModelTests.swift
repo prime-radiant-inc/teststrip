@@ -4747,10 +4747,10 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCullingShortcutInterpretsKeyboardKeys() {
-        XCTAssertEqual(CullingShortcut(key: .rightArrow), .nextPhoto)
-        XCTAssertEqual(CullingShortcut(key: .leftArrow), .previousPhoto)
-        XCTAssertEqual(CullingShortcut(key: .upArrow), .previousStack)
-        XCTAssertEqual(CullingShortcut(key: .downArrow), .nextStack)
+        XCTAssertEqual(CullingShortcut(key: .leftArrow), .previousStack)
+        XCTAssertEqual(CullingShortcut(key: .rightArrow), .nextStack)
+        XCTAssertEqual(CullingShortcut(key: .upArrow), .previousCandidateInStack)
+        XCTAssertEqual(CullingShortcut(key: .downArrow), .nextCandidateInStack)
         XCTAssertEqual(CullingShortcut(key: .character(" ")), .nextPhoto)
         XCTAssertEqual(CullingShortcut(key: .returnKey), .promoteAndRejectSiblings)
         XCTAssertEqual(CullingShortcut(key: .character("5")), .rating(5))

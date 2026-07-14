@@ -126,22 +126,6 @@ final class CullingKeyCaptureNSView: NSView {
 extension CullingShortcut {
     init?(event: NSEvent) {
         let relevantModifiers = event.modifierFlags.intersection([.command, .control, .option])
-
-        // ⌥←/⌥→ jump between stacks — a monitor-only alternate to the plain
-        // up/down arrows, with no menu equivalent (double-fire rule).
-        if relevantModifiers == [.option] {
-            switch event.keyCode {
-            case MacKeyCode.leftArrow:
-                self = .previousStack
-                return
-            case MacKeyCode.rightArrow:
-                self = .nextStack
-                return
-            default:
-                return nil
-            }
-        }
-
         guard relevantModifiers.isEmpty else { return nil }
 
         // Shift+Z (zoom to nearest face) and Shift+/ ("?", key map) need
@@ -164,13 +148,13 @@ extension CullingShortcut {
 
         switch event.keyCode {
         case MacKeyCode.leftArrow:
-            self = .previousPhoto
-        case MacKeyCode.rightArrow:
-            self = .nextPhoto
-        case MacKeyCode.upArrow:
             self = .previousStack
-        case MacKeyCode.downArrow:
+        case MacKeyCode.rightArrow:
             self = .nextStack
+        case MacKeyCode.upArrow:
+            self = .previousCandidateInStack
+        case MacKeyCode.downArrow:
+            self = .nextCandidateInStack
         case MacKeyCode.space:
             self = .nextPhoto
         case MacKeyCode.returnKey, MacKeyCode.keypadEnter:

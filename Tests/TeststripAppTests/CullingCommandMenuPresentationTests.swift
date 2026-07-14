@@ -2,24 +2,15 @@ import XCTest
 @testable import TeststripApp
 
 final class CullingCommandMenuPresentationTests: XCTestCase {
-    func testNavigationSectionExposesPhotoAndStackShortcuts() {
+    func testNavigationSectionExposesWithinStackAndCrossStackShortcuts() {
         let navigation = CullingCommandMenuPresentation.sections.first
 
-        XCTAssertEqual(navigation?.items.filter { !$0.isMonitorOnly }, [
-            CullingCommandMenuItem(title: "Previous Photo", shortcut: .previousPhoto, key: .leftArrow),
-            CullingCommandMenuItem(title: "Next Photo", shortcut: .nextPhoto, key: .rightArrow),
-            CullingCommandMenuItem(title: "Previous Stack", shortcut: .previousStack, key: .upArrow),
-            CullingCommandMenuItem(title: "Next Stack", shortcut: .nextStack, key: .downArrow),
+        XCTAssertEqual(navigation?.items, [
+            CullingCommandMenuItem(title: "Previous Frame in Stack", shortcut: .previousCandidateInStack, key: .upArrow),
+            CullingCommandMenuItem(title: "Next Frame in Stack", shortcut: .nextCandidateInStack, key: .downArrow),
+            CullingCommandMenuItem(title: "Previous Stack", shortcut: .previousStack, key: .leftArrow),
+            CullingCommandMenuItem(title: "Next Stack", shortcut: .nextStack, key: .rightArrow),
             CullingCommandMenuItem(title: "Promote Frame & Reject Siblings", shortcut: .promoteAndRejectSiblings, key: .returnKey)
-        ])
-    }
-
-    func testNavigationSectionExposesMonitorOnlyOptionArrowAlternates() {
-        let navigation = CullingCommandMenuPresentation.sections.first
-
-        XCTAssertEqual(navigation?.items.filter(\.isMonitorOnly), [
-            CullingCommandMenuItem(title: "Previous Stack (Option)", shortcut: .previousStack, key: .optionLeftArrow, isMonitorOnly: true),
-            CullingCommandMenuItem(title: "Next Stack (Option)", shortcut: .nextStack, key: .optionRightArrow, isMonitorOnly: true)
         ])
     }
 
