@@ -52,32 +52,6 @@ final class LoupeOverlayPresentationTests: XCTestCase {
         XCTAssertTrue(fullLines.contains("4000 × 3000"))
     }
 
-    // MARK: - Key-map presentation includes monitor-only shortcuts
-
-    func testCullingCommandMenuPresentationIncludesMonitorOnlyOptionArrowShortcuts() {
-        let allItems = CullingCommandMenuPresentation.sections.flatMap(\.items)
-
-        let monitorOnlyItems = allItems.filter(\.isMonitorOnly)
-        XCTAssertTrue(monitorOnlyItems.contains { $0.shortcut == .previousStack && $0.key == .optionLeftArrow })
-        XCTAssertTrue(monitorOnlyItems.contains { $0.shortcut == .nextStack && $0.key == .optionRightArrow })
-    }
-
-    func testMenuBuilderSkipsMonitorOnlyItemsButKeyMapIncludesThem() {
-        let allItems = CullingCommandMenuPresentation.sections.flatMap(\.items)
-        let menuItems = allItems.filter { !$0.isMonitorOnly }
-
-        // The menu-visible set excludes the monitor-only option-arrow entries...
-        XCTAssertFalse(menuItems.contains { $0.key == .optionLeftArrow })
-        // ...while the full set used to generate the key-map overlay keeps them.
-        XCTAssertTrue(allItems.contains { $0.key == .optionLeftArrow })
-    }
-
-    func testCullingShortcutKeyDisplayTextCoversNewCases() {
-        XCTAssertEqual(CullingShortcutKey.optionLeftArrow.displayText, "⌥←")
-        XCTAssertEqual(CullingShortcutKey.optionRightArrow.displayText, "⌥→")
-        XCTAssertEqual(CullingShortcutKey.character("Z").displayText, "Z")
-    }
-
     func testShowKeyMapShortcutTogglesOverlayVisibility() throws {
         let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [makeAsset(id: "keymap", size: 1)])
 

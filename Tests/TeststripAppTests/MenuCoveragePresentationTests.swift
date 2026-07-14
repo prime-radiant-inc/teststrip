@@ -7,10 +7,9 @@ import XCTest
 /// (also in main.swift) is the small presentation layer this test enumerates
 /// against the underlying action-producing enums.
 final class MenuCoveragePresentationTests: XCTestCase {
-    func testCullingMenuCoversEveryNonMonitorOnlyShortcutItem() {
+    func testCullingMenuCoversEveryShortcutItem() {
         let expected = CullingCommandMenuPresentation.sections
             .flatMap(\.items)
-            .filter { !$0.isMonitorOnly }
             .map(\.title)
 
         XCTAssertFalse(expected.isEmpty)
@@ -84,13 +83,11 @@ final class MenuCoveragePresentationTests: XCTestCase {
     // persona-3 item 1: bare culling keys can't carry a real menu
     // .keyboardShortcut (double-fires against the in-view key monitors — see
     // menuKeyboardShortcut in main.swift), so the menu advertises the key as
-    // a title suffix instead, e.g. "Pick (P)". Every non-monitor-only item
-    // must carry its key glyph, sourced from the same CullingShortcutKey
-    // .displayText the ? key-map overlay uses.
+    // a title suffix instead, e.g. "Pick (P)". Every item must carry its key
+    // glyph, sourced from the same CullingShortcutKey .displayText the ?
+    // key-map overlay uses.
     func testCullingMenuItemsAdvertiseTheirKeyInTheTitle() {
-        let items = CullingCommandMenuPresentation.sections
-            .flatMap(\.items)
-            .filter { !$0.isMonitorOnly }
+        let items = CullingCommandMenuPresentation.sections.flatMap(\.items)
 
         XCTAssertFalse(items.isEmpty)
         for item in items {

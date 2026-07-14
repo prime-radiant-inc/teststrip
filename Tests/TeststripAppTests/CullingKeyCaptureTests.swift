@@ -37,13 +37,15 @@ final class CullingKeyCaptureTests: XCTestCase {
             keyCode: 125
         )
 
-        XCTAssertEqual(CullingShortcut(event: left), .previousPhoto)
-        XCTAssertEqual(CullingShortcut(event: right), .nextPhoto)
-        XCTAssertEqual(CullingShortcut(event: up), .previousStack)
-        XCTAssertEqual(CullingShortcut(event: down), .nextStack)
+        XCTAssertEqual(CullingShortcut(event: left), .previousStack)
+        XCTAssertEqual(CullingShortcut(event: right), .nextStack)
+        XCTAssertEqual(CullingShortcut(event: up), .previousCandidateInStack)
+        XCTAssertEqual(CullingShortcut(event: down), .nextCandidateInStack)
     }
 
-    func testCullingShortcutMapsOptionArrowKeyEventsToStackNavigation() throws {
+    // ⌥←/⌥→ (formerly a monitor-only alternate to plain up/down for stack
+    // navigation) are retired now that up/down/left/right are all live axes.
+    func testCullingShortcutIgnoresOptionArrowKeyEvents() throws {
         let optionLeft = try makeKeyEvent(
             characters: arrowCharacter(NSLeftArrowFunctionKey),
             charactersIgnoringModifiers: arrowCharacter(NSLeftArrowFunctionKey),
@@ -57,8 +59,8 @@ final class CullingKeyCaptureTests: XCTestCase {
             keyCode: 124
         )
 
-        XCTAssertEqual(CullingShortcut(event: optionLeft), .previousStack)
-        XCTAssertEqual(CullingShortcut(event: optionRight), .nextStack)
+        XCTAssertNil(CullingShortcut(event: optionLeft))
+        XCTAssertNil(CullingShortcut(event: optionRight))
     }
 
     func testCullingShortcutIgnoresOptionModifiedNonArrowKeyEvents() throws {

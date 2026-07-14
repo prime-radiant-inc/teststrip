@@ -3840,6 +3840,9 @@ private struct LoupeView: View {
                 }
             }
             HStack(spacing: 0) {
+                if presentation.showsCullChrome {
+                    cullingStackRail(presentation: stackPresentation)
+                }
                 VStack(spacing: 0) {
                     if let completion {
                         cullCompletionStage(completion)
@@ -3866,7 +3869,6 @@ private struct LoupeView: View {
                 }
             }
             if presentation.showsCullChrome {
-                cullingStackRail(presentation: stackPresentation)
                 cullingFilmstrip(recommendedAssetID: stackPresentation.recommendedAssetID)
             } else {
                 libraryLoupeNavBar
@@ -4366,7 +4368,7 @@ private struct LoupeView: View {
         .background(Color.black.opacity(0.18))
         .liveMockupPlaceholder(.cullingFilmstrip)
         .task(id: presentation.requestID) {
-            requestFilmstripPreviews(for: presentation.visibleAssets)
+            requestVisiblePreviews(for: presentation.visibleAssets.map(\.id))
         }
     }
 
@@ -4391,98 +4393,156 @@ private struct LoupeView: View {
             .accessibilityHidden(true)
     }
 
+    private static let cullStackRailThumbnailSize = CGSize(width: 120, height: 84)
+    private static let cullStackRailWidth: CGFloat = 148
+
     @ViewBuilder
     private func cullingStackRail(presentation: CullingStackRailPresentation) -> some View {
         if presentation.isVisible {
-            HStack(spacing: 10) {
-                Label(presentation.titleText, systemImage: "rectangle.stack")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
-                    .lineLimit(1)
-                Text(presentation.positionText)
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                if let rationaleText = presentation.rationaleText {
-                    Text(rationaleText)
-                        .font(.caption2)
+            VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Label(presentation.titleText, systemImage: "rectangle.stack")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                    Text(presentation.positionText)
+                        .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                if let primaryAction = presentation.actions.first {
-                    Button {
-                        keepSelectedStackFrame()
-                    } label: {
-                        Label(primaryAction.title, systemImage: "checkmark.circle.fill")
-                            .lineLimit(1)
+                    if let rationaleText = presentation.rationaleText {
+                        Text(rationaleText)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .tint(.orange)
-                    .disabled(!primaryAction.isEnabled)
-                    .help(primaryAction.help)
-                    .liveMockupPlaceholder(primaryAction.liveMockupPlaceholder)
                 }
-                let secondaryActions = Array(presentation.actions.dropFirst())
-                if !secondaryActions.isEmpty {
-                    Menu {
-                        ForEach(secondaryActions) { action in
-                            Button(action.title) {
-                                performCullingStackAction(action.action)
-                            }
-                            .disabled(!action.isEnabled)
-                            .help(action.help)
-                            .liveMockupPlaceholder(action.liveMockupPlaceholder)
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(presentation.items, id: \.assetID.rawValue) { item in
+                            cullStackRailCell(item)
                         }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
                     }
-                    .menuStyle(.borderlessButton)
-                    .controlSize(.small)
-                    .fixedSize()
-                    .help("More stack actions")
                 }
-                HStack(spacing: 5) {
-                    ForEach(presentation.items, id: \.assetID.rawValue) { item in
+                HStack(spacing: 6) {
+                    if let primaryAction = presentation.actions.first {
                         Button {
-                            model.select(item.assetID)
+                            keepSelectedStackFrame()
                         } label: {
-                            HStack(spacing: 2) {
-                                if item.isRecommended {
-                                    Text("✦")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
-                                Text(item.label)
-                                    .font(.caption2.monospacedDigit().weight(.semibold))
-                            }
-                            .frame(width: item.isRecommended ? 32 : 24, height: 22)
-                            .foregroundStyle(item.isSelected ? Color.black : Color.orange)
-                            .background(item.isSelected ? Color.orange : Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .strokeBorder(Color.orange.opacity(item.isSelected ? 0.4 : 0.26))
-                            }
-                            .overlay(alignment: .bottomTrailing) {
-                                if !item.flawBadges.isEmpty {
-                                    Circle()
-                                        .fill(Color.red)
-                                        .frame(width: 6, height: 6)
-                                        .offset(x: 1, y: 1)
-                                }
-                            }
+                            Label(primaryAction.title, systemImage: "checkmark.circle.fill")
+                                .lineLimit(2)
                         }
-                        .buttonStyle(.plain)
-                        .help(stackChipFlawHelpText(item))
-                        .accessibilityLabel("Stack frame \(item.label)")
-                        .accessibilityValue(stackChipAccessibilityValue(item))
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .tint(.orange)
+                        .disabled(!primaryAction.isEnabled)
+                        .help(primaryAction.help)
+                        .liveMockupPlaceholder(primaryAction.liveMockupPlaceholder)
+                    }
+                    let secondaryActions = Array(presentation.actions.dropFirst())
+                    if !secondaryActions.isEmpty {
+                        Menu {
+                            ForEach(secondaryActions) { action in
+                                Button(action.title) {
+                                    performCullingStackAction(action.action)
+                                }
+                                .disabled(!action.isEnabled)
+                                .help(action.help)
+                                .liveMockupPlaceholder(action.liveMockupPlaceholder)
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .controlSize(.small)
+                        .fixedSize()
+                        .help("More stack actions")
                     }
                 }
             }
-            .padding(.horizontal, 14)
-            .frame(height: 38)
+            .padding(10)
+            .frame(width: Self.cullStackRailWidth)
+            .frame(maxHeight: .infinity)
             .background(Color.black.opacity(0.23))
             .liveMockupPlaceholder(.cullingStackCull)
+            .task(id: presentation.items.map(\.assetID.rawValue).joined(separator: "\n")) {
+                requestVisiblePreviews(for: presentation.items.map(\.assetID))
+            }
+        }
+    }
+
+    private func cullStackRailCell(_ item: CullingStackRailPresentation.Item) -> some View {
+        Button {
+            model.select(item.assetID)
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                ZStack(alignment: .bottomLeading) {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.black.opacity(0.55))
+                    if let previewURL = model.gridPreviewURL(for: item.assetID) {
+                        CachedPreviewImage(
+                            previewURL: previewURL,
+                            scaling: .fit,
+                            cacheGeneration: model.previewCacheGeneration(for: item.assetID)
+                        )
+                        .padding(3)
+                    } else {
+                        Image(systemName: "photo")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    cullStackRailDecisionOverlay(item.decision)
+                        .padding(4)
+                    if item.isRecommended {
+                        Text("✦")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.orange)
+                            .padding(3)
+                            .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                            .padding(3)
+                    }
+                }
+                .frame(width: Self.cullStackRailThumbnailSize.width, height: Self.cullStackRailThumbnailSize.height)
+                .opacity(item.decision.isDimmed ? 0.45 : 1.0)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(alignment: .top) {
+                    filmstripDecisionBar(item.decision)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(item.isSelected ? Color.orange : Color.white.opacity(0.12), lineWidth: item.isSelected ? 2 : 1)
+                }
+                if !item.flawBadges.isEmpty {
+                    compareDecisionBadges(item.flawBadges)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .help(stackChipFlawHelpText(item))
+        .accessibilityLabel("Stack frame \(item.label)")
+        .accessibilityValue(stackChipAccessibilityValue(item))
+    }
+
+    /// Mirrors `filmstripDecisionOverlay`'s pick/reject glyph styling, but keyed
+    /// off the rail item's `DecisionState` directly (rail items don't carry a
+    /// star rating, so there's no rating badge to show alongside it).
+    @ViewBuilder
+    private func cullStackRailDecisionOverlay(_ decision: CullingFilmstripPresentation.DecisionState) -> some View {
+        switch decision {
+        case .undecided:
+            EmptyView()
+        case .picked:
+            Image(systemName: DesignGlyph.pick.symbolName)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.green)
+                .padding(4)
+                .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
+        case .rejected:
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.red)
+                .padding(4)
+                .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
         }
     }
 
@@ -4764,10 +4824,10 @@ private struct LoupeView: View {
         }
     }
 
-    private func requestFilmstripPreviews(for assets: [Asset]) {
+    private func requestVisiblePreviews(for assetIDs: [AssetID]) {
         do {
-            for asset in assets {
-                try model.requestVisibleGridPreview(assetID: asset.id)
+            for assetID in assetIDs {
+                try model.requestVisibleGridPreview(assetID: assetID)
             }
         } catch {
             model.errorMessage = error.localizedDescription
@@ -5565,6 +5625,52 @@ struct CompareDecisionBadge: Equatable, Identifiable {
     }
 }
 
+/// Renders each badge as its own small tone-colored pill. Shared by the
+/// compare survey tiles and the cull stack rail cells so both surfaces read
+/// AI-read/decision badges the same way.
+@ViewBuilder
+private func compareDecisionBadges(_ badges: [CompareDecisionBadge]) -> some View {
+    if !badges.isEmpty {
+        HStack(spacing: 5) {
+            ForEach(badges) { badge in
+                Text(badge.text)
+                    .font(.caption2.monospaced().weight(.bold))
+                    .foregroundStyle(compareBadgeForeground(for: badge.tone))
+                    .lineLimit(1)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(compareBadgeBackground(for: badge.tone), in: RoundedRectangle(cornerRadius: 4))
+            }
+        }
+    }
+}
+
+private func compareBadgeForeground(for tone: CompareDecisionBadge.Tone) -> Color {
+    switch tone {
+    case .primary, .rating, .best, .rank:
+        return .black
+    case .positive, .destructive, .label:
+        return .white
+    }
+}
+
+private func compareBadgeBackground(for tone: CompareDecisionBadge.Tone) -> Color {
+    switch tone {
+    case .primary:
+        return .orange
+    case .positive:
+        return .green.opacity(0.92)
+    case .destructive:
+        return .red.opacity(0.92)
+    case .rating:
+        return .yellow
+    case .label:
+        return .blue.opacity(0.9)
+    case .best, .rank:
+        return .orange
+    }
+}
+
 struct CompareFocusMetric: Equatable, Identifiable {
     enum Tone: String, Equatable {
         case waiting
@@ -5934,6 +6040,7 @@ struct CullingStackRailPresentation: Equatable {
         var isSelected: Bool
         var isRecommended: Bool
         var flawBadges: [CompareDecisionBadge]
+        var decision: CullingFilmstripPresentation.DecisionState
     }
 
     var items: [Item]
@@ -6008,6 +6115,7 @@ struct CullingStackRailPresentation: Equatable {
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
         let recommendation = rankedCandidates.first
+        let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
 
         items = stackScope.assetIDs.enumerated().map { index, assetID in
             Item(
@@ -6015,7 +6123,8 @@ struct CullingStackRailPresentation: Equatable {
                 label: "\(index + 1)",
                 isSelected: assetID == selectedAssetID,
                 isRecommended: assetID == recommendation?.assetID,
-                flawBadges: CompareSurveyPresentation.flawBadges(for: evaluationSignalsByAssetID[assetID] ?? [])
+                flawBadges: CompareSurveyPresentation.flawBadges(for: evaluationSignalsByAssetID[assetID] ?? []),
+                decision: CullingFilmstripPresentation.DecisionState(flag: assetsByID[assetID]?.metadata.flag)
             )
         }
         if let stackIndex = stackScope.stackIndex,
@@ -6681,49 +6790,6 @@ private struct CompareView: View {
             }
             compareDecisionBadges(presentation.tileBadges(for: asset))
                 .padding(8)
-        }
-    }
-
-    @ViewBuilder
-    private func compareDecisionBadges(_ badges: [CompareDecisionBadge]) -> some View {
-        if !badges.isEmpty {
-            HStack(spacing: 5) {
-                ForEach(badges) { badge in
-                    Text(badge.text)
-                        .font(.caption2.monospaced().weight(.bold))
-                        .foregroundStyle(compareBadgeForeground(for: badge.tone))
-                        .lineLimit(1)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(compareBadgeBackground(for: badge.tone), in: RoundedRectangle(cornerRadius: 4))
-                }
-            }
-        }
-    }
-
-    private func compareBadgeForeground(for tone: CompareDecisionBadge.Tone) -> Color {
-        switch tone {
-        case .primary, .rating, .best, .rank:
-            return .black
-        case .positive, .destructive, .label:
-            return .white
-        }
-    }
-
-    private func compareBadgeBackground(for tone: CompareDecisionBadge.Tone) -> Color {
-        switch tone {
-        case .primary:
-            return .orange
-        case .positive:
-            return .green.opacity(0.92)
-        case .destructive:
-            return .red.opacity(0.92)
-        case .rating:
-            return .yellow
-        case .label:
-            return .blue.opacity(0.9)
-        case .best, .rank:
-            return .orange
         }
     }
 
@@ -9167,8 +9233,7 @@ struct LoupeExifOverlayPresentation: Equatable {
 
 /// The `?` key-map overlay: every culling shortcut, generated straight from
 /// `CullingCommandMenuPresentation` (the single source of truth the Culling
-/// menu also reads) — including monitor-only entries like ⌥←/⌥→ that have no
-/// menu equivalent. View-only; Esc or a repeated `?` dismisses it.
+/// menu also reads). View-only; Esc or a repeated `?` dismisses it.
 struct KeyMapOverlayView: View {
     // Item 3: which section AppModel.keyMapOverlayScrollIndex currently
     // points at, driven by ↑/↓/PgUp/PgDn while this overlay owns navigation.
