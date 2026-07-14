@@ -1143,6 +1143,35 @@ final class CatalogDatabaseTests: XCTestCase {
         XCTAssertEqual(page.map(\.id), [second.id])
     }
 
+    func testAllAssetsWithoutLimitReturnsEveryRow() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-all")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        for index in 0..<250 {
+            try repository.upsert(Asset.testAsset(path: "/Volumes/NAS/Job/asset-\(index).cr2", rating: 0))
+        }
+
+        XCTAssertEqual(try repository.allAssets().count, 250)
+    }
+
+    func testAllAssetsMatchingWithoutLimitReturnsEveryMatch() throws {
+        let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-all-matching")
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        for index in 0..<250 {
+            try repository.upsert(Asset.testAsset(path: "/Volumes/NAS/Job/rated-\(index).cr2", rating: 5))
+        }
+        for index in 0..<10 {
+            try repository.upsert(Asset.testAsset(path: "/Volumes/NAS/Job/unrated-\(index).cr2", rating: 0))
+        }
+
+        let matches = try repository.allAssets(matching: SetQuery(predicates: [.ratingAtLeast(5)]))
+
+        XCTAssertEqual(matches.count, 250)
+    }
+
     func testFindsAssetOffsetInCatalogOrder() throws {
         let directory = try TestDirectories.makeTemporaryDirectory(named: "catalog-offset")
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))

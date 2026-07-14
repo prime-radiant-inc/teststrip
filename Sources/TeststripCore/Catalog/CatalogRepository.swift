@@ -159,11 +159,11 @@ public final class CatalogRepository {
     }
 
     public func allAssets(limit: Int, offset: Int = 0, sort: LibrarySortOption = .importOrder) throws -> [Asset] {
-        let rows = try database.rows(
-            "SELECT * FROM assets ORDER BY \(Self.orderSQL(for: sort)) LIMIT ? OFFSET ?",
-            bindings: ["\(limit)", "\(offset)"]
-        )
-        return try rows.map(decodeAsset)
+        try loadAssets(sort: sort, limit: limit, offset: offset)
+    }
+
+    public func allAssets(sort: LibrarySortOption = .importOrder) throws -> [Asset] {
+        try loadAssets(sort: sort, limit: nil, offset: 0)
     }
 
     public func allAssets(
@@ -173,9 +173,44 @@ public final class CatalogRepository {
         sort: LibrarySortOption = .importOrder
     ) throws -> [Asset] {
         let compiledQuery = try compile(query)
+        return try loadAssets(
+            whereSQL: compiledQuery.whereSQL,
+            whereBindings: compiledQuery.bindings,
+            sort: sort,
+            limit: limit,
+            offset: offset
+        )
+    }
+
+    public func allAssets(
+        matching query: SetQuery,
+        sort: LibrarySortOption = .importOrder
+    ) throws -> [Asset] {
+        let compiledQuery = try compile(query)
+        return try loadAssets(
+            whereSQL: compiledQuery.whereSQL,
+            whereBindings: compiledQuery.bindings,
+            sort: sort,
+            limit: nil,
+            offset: 0
+        )
+    }
+
+    // A nil limit selects every matching row (no LIMIT/OFFSET clause) so the
+    // library grid can hold the whole catalog and rely on display-level
+    // windowing; a non-nil limit paginates for the bench/recovery scopes.
+    private func loadAssets(
+        whereSQL: String = "",
+        whereBindings: [String] = [],
+        sort: LibrarySortOption,
+        limit: Int?,
+        offset: Int
+    ) throws -> [Asset] {
+        let pagingSQL = limit == nil ? "" : " LIMIT ? OFFSET ?"
+        let pagingBindings = limit.map { ["\($0)", "\(offset)"] } ?? []
         let rows = try database.rows(
-            "SELECT * FROM assets\(compiledQuery.whereSQL) ORDER BY \(Self.orderSQL(for: sort)) LIMIT ? OFFSET ?",
-            bindings: compiledQuery.bindings + ["\(limit)", "\(offset)"]
+            "SELECT * FROM assets\(whereSQL) ORDER BY \(Self.orderSQL(for: sort))\(pagingSQL)",
+            bindings: whereBindings + pagingBindings
         )
         return try rows.map(decodeAsset)
     }
