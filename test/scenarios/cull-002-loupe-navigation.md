@@ -16,17 +16,26 @@ visual chips — this card stays focused on the loupe's base Left/Right/Space
 navigation plus the (now within-stack) Up/Down and end-of-scope pagination.
 
 **What this covers**: as a photographer working through a shoot in the Cull
-loupe, I want Left/Right (and Space) to step through the active scope,
-Up/Down to step within the currently-selected stack, and — once I reach the
-end of the `.all` scope with more assets on disk than are loaded — the
-loupe to page in more rather than dead-ending. Covers:
-- Left/Right/Space navigation and toast-clearing:
-  `Sources/TeststripApp/AppModel.swift:5850-5855` (`.previousPhoto`/
-  `.nextPhoto` both call `clearCullingMetadataDecisionFeedback()` before
-  moving), `selectNextAssetForCulling`/`selectPreviousAssetForCulling`
-  (`:6085-6107`/`:6449-6471`, pagination branches at `:6095-6103`/
-  `:6459-6467` — unchanged by this branch's remap; only the shortcut names
-  dispatching into them via arrows changed, see next bullet).
+loupe, I want Space to step linearly through the active scope, Left/Right
+to jump between stacks (landing on the next/previous stack's
+AI-recommended frame), Up/Down to step within the currently-selected
+stack, and — once Space reaches the end of the `.all` scope with more
+assets on disk than are loaded — the loupe to page in more rather than
+dead-ending. Covers:
+- **Space (linear advance) and toast-clearing**:
+  `Sources/TeststripApp/AppModel.swift:5853-5855` (`.nextPhoto` calls
+  `clearCullingMetadataDecisionFeedback()` before
+  `selectNextAssetForCulling()`, `:6085-6107`, pagination branch at
+  `:6095-6103` — unchanged by this branch's remap). Space
+  (`CullingKeyCaptureView.swift:158-159`) is the *only* Cull-loupe key that
+  still reaches `.nextPhoto`. `.previousPhoto`
+  (`AppModel.swift:5850-5852`, → `selectPreviousAssetForCulling`,
+  `:6449-6471`, pagination branch at `:6459-6467`) is **not** bound to any
+  key in the Cull loupe any more — it is dispatched only by the Library
+  loupe's chevron buttons (`LibraryGridView.swift:4683-4691`
+  `CullingNavDirection.shortcut`, wired into `libraryLoupeNavBar`,
+  `:3976-3982`, a different, non-culling view). Left no longer reverses
+  Space's advance — see the next bullet for what Left/Right dispatch now.
 - **Remapped arrow dispatch** (this branch): `CullingShortcut.init(event:)`
   now maps `leftArrow`/`rightArrow` → `.previousStack`/`.nextStack` and
   `upArrow`/`downArrow` → `.previousCandidateInStack`/`.nextCandidateInStack`
@@ -59,9 +68,13 @@ loupe to page in more rather than dead-ending. Covers:
   parallel reconciliation).
 - End-of-`.all`-scope pagination: `selectNextAssetForCulling`'s pagination
   branch at `AppModel.swift:6095-6103` (`cullScope == .all, index ==
-  assets.count - 1, hasMoreAssets` triggers `loadMoreAssets()`, `:9612`);
-  the mirror-image `loadPreviousAssets()` (`:9634`) branch for Left at
-  `:6459-6467`. Unaffected by the remap.
+  assets.count - 1, hasMoreAssets` triggers `loadMoreAssets()`, `:9612`) —
+  reachable via `Space` now, not `Right` (`Right` dispatches `.nextStack`,
+  not `.nextPhoto`; see the Space bullet above). The mirror-image
+  `loadPreviousAssets()` (`:9634`) branch inside
+  `selectPreviousAssetForCulling` (`:6459-6467`) is, like `.previousPhoto`
+  itself, unreachable from any Cull-loupe key post-remap — step 7 below
+  only exercises the forward/Space leg.
 
 ## Pre-state
 ```bash
@@ -84,45 +97,53 @@ calls below.
    note `--smoke`'s baseline flags mean Unrated/Picks/Rejects are all
    non-empty, so starting from `All` avoids scope-boundary surprises in
    steps 3-4.
-3. Press `Right`. Assert the displayed filename changes to the next asset in
-   catalog order and any decision toast (if one was showing from a prior
-   step) is cleared — `applyCullingShortcut(.nextPhoto)` calls
-   `clearCullingMetadataDecisionFeedback()` unconditionally before moving.
-4. Press `Left`. Assert it returns to the asset from step 2.
-5. Press `Space`. Per `CullingShortcut.init(event:)`
-   (`CullingKeyCaptureView.swift:158-159`), Space maps to `.nextPhoto` too —
-   assert the same forward step as `Right` (not an auto-advance-after-
-   decision — no flag/rating was set this step).
-6. **Within-stack nav caveat (remapped)**: `--smoke`'s seeder assigns
-   `capturedAt` 15 minutes apart per asset
-   (`Sources/TeststripBench/SmokeCatalogSeeder.swift:105`,
+3. **Space — linear advance.** Press `Space`. Assert the displayed filename
+   changes to the next asset in catalog order, and any decision toast (if
+   one was showing from a prior step) is cleared —
+   `applyCullingShortcut(.nextPhoto)` calls
+   `clearCullingMetadataDecisionFeedback()` unconditionally before moving
+   (`AppModel.swift:5853-5855`). This is the linear-scope probe for this
+   card now; Left/Right no longer perform this move (see step 4).
+4. **Right — stack nav (remapped).** Press `Right`. Per
+   `CullingShortcut.init(event:)` (`CullingKeyCaptureView.swift:152-153`),
+   `Right` dispatches `.nextStack` → `selectNextStackForCulling()`
+   (`AppModel.swift:5859-5861`, `:6258-6262`), which on a catalog with real
+   multi-frame stacks lands on the next stack's
+   `recommendedStackLandingAssetID` (`:6442-6447`: the ranked winner, or
+   the stack's first frame if nothing is ranked). **On `--smoke` this is a
+   designed no-op**: the seeder assigns `capturedAt` 900 seconds (15
+   minutes) apart per asset
+   (`Sources/TeststripBench/SmokeCatalogSeeder.swift:136-137`,
    `1_704_067_200 + index*900`), far outside `AssetStackBuilder`'s 2-second
    `maximumCaptureGap`, and there is no persisted `work-stack-` session in a
-   fresh `--smoke` catalog (per README). So `cullingStacks()` partitions all
-   24 assets into 24 **singleton** stacks. Both directions of nav are a
-   **designed no-op** on an all-singleton catalog, for the same underlying
-   reason (the multi-frame filter), just via two different code paths now:
-   - `Down`/`Up` (`.nextCandidateInStack`/`.previousCandidateInStack`):
-     `selectedCullingStackScope` returns `nil` when the selected asset's
-     stack has only one member (`cullingStacks()` filters to
-     `$0.assetIDs.count > 1`), so `moveSelectionWithinCurrentCullingStack`
-     guard-fails immediately and the selection does not move.
-   - `Right`/`Left` when a *stack* jump is attempted at the boundary of the
-     scope (distinct from step 3/4's plain photo-advance, which always
-     works): `selectCullingStack(_:)` builds its jump list from
-     `cullingStacks()`, which is empty when every stack is a singleton, and
-     guard-returns.
-   Since Left/Right in this UI *primarily* advance the linear scope (steps
-   3-4), not jump stacks — the stack-jump shortcuts are the **same**
-   `.previousStack`/`.nextStack` shortcuts, they're just not reachable via a
-   distinct keystroke from plain photo-advance in this remap (both are
-   bound to the literal Left/Right arrow key). Confirm live: press
-   `Right`/`Left` and assert they behave exactly as steps 3-4 describe
-   (linear photo advance) — since `.nextStack`/`.previousStack` **is** what
-   Left/Right now dispatch, this step is really confirming there is no
-   *separate* within-stack-boundary special case to trip over, not a second
-   independent behavior. This does *not* exercise genuine multi-frame
-   stack-to-stack landing-on-recommended behavior — see Sharp edges and
+   fresh `--smoke` catalog (per README) — so `cullingStacks()` partitions
+   all 24 assets into 24 **singleton** stacks
+   (`.filter { $0.assetIDs.count > 1 }`, `AppModel.swift:6143-6145`) and
+   `selectCullingStack(_:)`'s `indexedStacks` jump list is empty, so its
+   guard returns before moving anything (`:6398-6407`). The toast still
+   clears — `clearCullingMetadataDecisionFeedback()` runs unconditionally
+   before the guarded call. Assert: the selected asset does **not** change,
+   no crash/error alert, and the toast (if any) clears. Genuine
+   stack-to-stack landing on a real multi-frame fixture is
+   `cull-021-stack-rail-nav.md`'s job (`burst` seed variant, its steps
+   10-11) — don't duplicate that coverage here.
+5. **Left — mirrors Right.** Press `Left`. Per `CullingShortcut.init(event:)`
+   (`CullingKeyCaptureView.swift:150-151`), `Left` dispatches
+   `.previousStack` → `selectPreviousStackForCulling()`
+   (`AppModel.swift:5856-5858`, `:6265-6269`) — assert the identical
+   no-op/toast-clear behavior as step 4, for the same singleton-stack
+   reason.
+6. **Up/Down — within-stack nav (remapped), same singleton caveat.** Press
+   `Down`, then `Up`. For the same reason established in steps 4-5
+   (`--smoke`'s all-singleton catalog), both are a **designed no-op** via a
+   different code path: `selectedCullingStackScope` returns `nil` when the
+   selected asset's stack has only one member (`cullingStacks()` filters to
+   `$0.assetIDs.count > 1`, `AppModel.swift:6143-6145`), so
+   `moveSelectionWithinCurrentCullingStack` (`:6284-6295`) guard-fails at
+   its first `guard` (`:6285-6289`) and the selection does not move. Toast
+   clearing still applies (`:5862-5867`). This does *not* exercise genuine
+   multi-frame within-stack candidate movement or stack-to-stack
+   landing-on-recommended behavior — see Sharp edges and
    `cull-021-stack-rail-nav.md` for that coverage on the `burst` fixture.
 7. **Pagination**: find the last loaded asset in `.all` scope. Query the
    loaded count so far and compare to the catalog total:
@@ -134,8 +155,8 @@ calls below.
    exercised against `--smoke` as seeded; note this and either (a) confirm
    `hasMoreAssets` is false and the grid simply stops advancing at the last
    asset without erroring, or (b) if a larger seed variant is available,
-   rerun against it. Navigate to the last asset (repeated `Right`/`⌘⇧]` or
-   jump via grid). Press `Right` once more:
+   rerun against it. Navigate to the last asset (repeated `Space` or
+   jump via grid). Press `Space` once more:
    - If `hasMoreAssets` was true: assert `loadMoreAssets()` fired — the
      loaded asset count grows and the selection lands on the newly-loaded
      next asset.
@@ -158,22 +179,26 @@ calls below.
 - Step 8: browsing writes nothing — zero sidecars, zero pending metadata
   syncs after pure navigation. **Fails if** even one `.xmp` appears for a
   merely-visited photo (the Rating=0 sidecar-spray defect).
-- Steps 3-5: filename changes forward/backward/forward exactly as Left/
-  Right/Space dictate; toast clears on every navigation keystroke. **Fails
-  if** the toast survives a navigation press (stale decision feedback shown
-  next to a different photo), or if Space does something other than advance.
+- Step 3: the filename advances forward exactly as `Space` (`.nextPhoto`)
+  dictates, and any decision toast clears. **Fails if** the toast survives
+  the Space press, or Space does something other than advance to the next
+  asset in catalog order.
+- Steps 4-5: on `--smoke`'s all-singleton catalog, `Right`/`Left` leave the
+  selection unchanged (empty stack-jump list — designed no-op) while still
+  clearing any decision toast. **Fails if** Right/Left move the selection
+  at all on an all-singleton catalog, or on a catalog with real
+  multi-frame stacks (see `cull-021-stack-rail-nav.md`) fail to land on
+  the documented recommended-or-first frame of the neighboring stack.
 - Step 6: Up/Down leave the selection unchanged in `--smoke`'s
   all-singleton-stacks case (designed no-op — within-stack nav has nowhere
-  to go on a singleton), and Left/Right continue to behave as plain
-  photo-advance (steps 3-4) with no distinct stack-boundary misbehavior.
+  to go on a singleton), for the same underlying reason as steps 4-5.
   **Fails if** Up/Down move the selection at all on an all-singleton
   catalog, or if on a catalog with real multi-frame stacks (see
-  `cull-021-stack-rail-nav.md`) Up/Down no-op or skip frames, or Left/Right
-  fail to land on the documented recommended-or-first frame.
+  `cull-021-stack-rail-nav.md`) Up/Down no-op or skip frames.
 - Step 7: either pagination measurably grows the loaded set and advances
   past the pre-pagination end, or (if `--smoke` has no `hasMoreAssets` at
   all) the loupe holds steady at the last frame without error. **Fails if**
-  pressing `Right` at the end throws, shows an error alert, or silently
+  pressing `Space` at the end throws, shows an error alert, or silently
   wraps to the first asset.
 
 ## Cleanup
@@ -183,11 +208,11 @@ calls below.
 
 ## Sharp edges
 - **`--smoke` cannot exercise genuine multi-frame within/across-stack nav.**
-  Every asset lands in its own singleton stack (see step 6). Real coverage
-  of ↑/↓-within-a-stack and ←/→-landing-on-the-recommended-frame now lives
-  in `cull-021-stack-rail-nav.md` against the `burst` seed variant — don't
-  duplicate that coverage here; this card only proves the all-singleton
-  no-op case and the ordinary linear Left/Right/Space advance.
+  Every asset lands in its own singleton stack (see steps 4-6). Real
+  coverage of ↑/↓-within-a-stack and ←/→-landing-on-the-recommended-frame
+  now lives in `cull-021-stack-rail-nav.md` against the `burst` seed
+  variant — don't duplicate that coverage here; this card only proves the
+  all-singleton no-op case and the ordinary linear Space advance.
 - **Pagination may be untestable against `--smoke`'s 24-asset seed** if the
   Cull loupe's initial working set already loads all 24 (`hasMoreAssets ==
   false` from the start). Confirm this empirically in the live run and note

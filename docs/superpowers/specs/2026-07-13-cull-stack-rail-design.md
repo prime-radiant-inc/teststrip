@@ -59,6 +59,10 @@ keyboard.
     AI-recommended frame.
   - **Space** — linear advance: next candidate down the stack, then roll into
     the next stack's recommended frame at the bottom.
+    _Implementation note: the roll-into-next-stack-at-the-bottom flourish was
+    de-scoped; Space stays plain linear `.nextPhoto` advance across the whole
+    scope (see `cull-021-stack-rail-nav.md` and
+    `cull-002-loupe-navigation.md`)._
   - **Return** — unchanged: promote the loupe'd frame + reject its siblings; the
     rail immediately shows ✓ on the pick and ✕ on the siblings.
   - **⌥← / ⌥→** — retired (redundant with the new ← / →).
