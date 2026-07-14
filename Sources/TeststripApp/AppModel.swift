@@ -7305,6 +7305,44 @@ public final class AppModel {
         }
     }
 
+    /// Auto-apply "promotion": turns AI reads (object-label and caption
+    /// evaluation signals) into catalog labels, marked AI-unconfirmed so they
+    /// stay provisional until a user gesture confirms them (see
+    /// `AssetMetadata.confirmedProjection`). A label the user has previously
+    /// rejected (`removedAILabels`) is never re-added. Catalog-only write —
+    /// no XMP sidecar sync, since an AI-unconfirmed delta never syncs
+    /// (`MetadataSyncPlanner` treats it as up to date; see Task 6).
+    public static let objectKeywordConfidenceFloor = 0.5
+
+    public func promoteMetadataLabels(for assetID: AssetID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        let signals = try catalog.repository.evaluationSignals(assetID: assetID)
+        let removedLabels = try catalog.repository.removedAILabels(assetID: assetID)
+        let captionCandidate = Self.captionSuggestions(from: signals).first
+
+        try catalog.repository.updateMetadata(assetID: assetID) { metadata in
+            for signal in signals where signal.kind == .object && signal.confidence >= Self.objectKeywordConfidenceFloor {
+                for label in Self.objectLabels(from: signal) {
+                    guard !Self.keywordList(metadata.keywords, contains: label),
+                          !removedLabels.contains(RemovedAILabel(field: .keyword, value: label)) else {
+                        continue
+                    }
+                    metadata.keywords.append(label)
+                    metadata.aiUnconfirmedKeywords.insert(label)
+                }
+            }
+
+            if let captionCandidate,
+               metadata.caption == nil || metadata.aiUnconfirmedFields.contains(.caption),
+               !removedLabels.contains(RemovedAILabel(field: .caption, value: captionCandidate.caption)) {
+                metadata.caption = captionCandidate.caption
+                metadata.aiUnconfirmedFields.insert(.caption)
+            }
+        }
+    }
+
     private static func objectLabels(from signal: EvaluationSignal) -> [String] {
         guard signal.kind == .object else { return [] }
         switch signal.value {

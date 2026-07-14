@@ -11607,6 +11607,52 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(try repository.asset(id: asset.id).metadata.caption)
     }
 
+    func testKeywordPromotionAddsUnconfirmedAndRespectsRemovals() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-keyword-promotion")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let asset = makeAsset(id: "keyword-promotion-target", path: originalURL.path, rating: 0)
+        let peopleProvenance = ProviderProvenance(provider: "apple-vision", model: "Vision-people", version: "1", settingsHash: "default")
+        let skipProvenance = ProviderProvenance(provider: "apple-vision", model: "Vision-skip", version: "1", settingsHash: "default")
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-keyword-promotion-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.recordEvaluationSignals([
+                    EvaluationSignal(assetID: asset.id, kind: .object, value: .labels(["People"]), confidence: 0.9, provenance: peopleProvenance),
+                    EvaluationSignal(assetID: asset.id, kind: .object, value: .label("Skip Me"), confidence: 0.4, provenance: skipProvenance)
+                ])
+            }
+        )
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+
+        try model.promoteMetadataLabels(for: asset.id)
+
+        let promoted = try repository.asset(id: asset.id).metadata
+        XCTAssertEqual(promoted.keywords, ["People"])
+        XCTAssertEqual(promoted.aiUnconfirmedKeywords, ["People"])
+        XCTAssertFalse(promoted.keywords.contains("Skip Me"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
+
+        // Idempotent: promoting again does not duplicate the keyword.
+        try model.promoteMetadataLabels(for: asset.id)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.keywords, ["People"])
+
+        // Simulate the user rejecting the AI keyword: strip it and record the removal.
+        try repository.updateMetadata(assetID: asset.id) { metadata in
+            metadata.keywords.removeAll { $0 == "People" }
+            metadata.aiUnconfirmedKeywords.remove("People")
+        }
+        try repository.recordRemovedAILabel(assetID: asset.id, field: .keyword, value: "People")
+
+        try model.promoteMetadataLabels(for: asset.id)
+
+        XCTAssertFalse(try repository.asset(id: asset.id).metadata.keywords.contains("People"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
+    }
+
     func testVisibleBatchKeywordSuggestionsAggregateObjectLabels() throws {
         let first = makeAsset(id: "first-batch-keyword", path: "/Photos/first.jpg", rating: 0)
         let second = makeAsset(id: "second-batch-keyword", path: "/Photos/second.jpg", rating: 0)
