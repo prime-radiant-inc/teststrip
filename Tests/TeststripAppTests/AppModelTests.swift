@@ -5370,6 +5370,96 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.canUndoAutopilotRun)
     }
 
+    // Regression for a data-loss defect: undoAutopilotRun used to restore
+    // each touched asset's FULL pre-run snapshot, silently wiping any edit
+    // the user made to that same asset between the run and the undo (a
+    // caption, a rating, a manually-added keyword). It must revert only the
+    // run's own tentative contributions (the flag it proposed, the keyword it
+    // added) and leave everything else — including a still-tentative
+    // keyword's sibling keywords the user has since typed alongside it —
+    // untouched.
+    func testUndoAutopilotRunPreservesInterveningUserEdits() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "undo-preserve-lead", path: "/Photos/Job/undo-preserve-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = makeAsset(id: "undo-preserve-alt", path: "/Photos/Job/undo-preserve-alt.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1)))
+        let (model, repository) = try makeModelWithCatalogAssets(named: "undo-preserve-user-edits", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: lead.id, kind: .object, value: .label("dog"), confidence: 0.8, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+        XCTAssertEqual(try repository.asset(id: lead.id).metadata.flag, .reject)
+        XCTAssertTrue(try repository.asset(id: lead.id).metadata.aiUnconfirmedKeywords.contains("dog"))
+
+        // An intervening user edit on the SAME run-touched asset, between the
+        // run and the undo — the reviewer's exact clobber scenario.
+        model.select(lead.id)
+        try model.setCaptionForSelectedAsset("mine")
+        try model.setRatingForSelectedAsset(5)
+        try model.setKeywordTextForSelectedAsset("dog, vacation")
+
+        try model.undoAutopilotRun()
+
+        let reverted = try repository.asset(id: lead.id).metadata
+        // The run's own tentative contributions are undone...
+        XCTAssertNil(reverted.flag)
+        XCTAssertTrue(reverted.aiUnconfirmedFields.isEmpty)
+        XCTAssertFalse(reverted.keywords.contains("dog"))
+        XCTAssertTrue(reverted.aiUnconfirmedKeywords.isEmpty)
+        // ...but the user's intervening edits survive untouched.
+        XCTAssertEqual(reverted.caption, "mine")
+        XCTAssertEqual(reverted.rating, 5)
+        XCTAssertTrue(reverted.keywords.contains("vacation"))
+    }
+
+    // Coverage gap: commitAutopilotProposals is the gesture that makes a
+    // tentative autopilot flag portable, but nothing asserted the sidecar
+    // actually ends up carrying the confirmed value on disk.
+    func testCommitAutopilotProposalsWritesConfirmedFlagToSidecar() throws {
+        let directory = try makeTemporaryDirectory(named: "commit-autopilot-sidecar-photos")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let alternateURL = photosDirectory.appendingPathComponent("alt.cr2")
+        try Data("original raw bytes".utf8).write(to: alternateURL)
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        // Both frames share the photos directory (no real bytes needed for
+        // `lead` — its sidecar is never asserted) so the stack builder groups
+        // them as a burst by capture-time proximity; a stack is what makes
+        // the planner propose a pick/reject pair in the first place.
+        let lead = makeAsset(id: "sidecar-commit-lead", path: photosDirectory.appendingPathComponent("lead.cr2").path, rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))
+        let alternate = Asset(
+            id: AssetID(rawValue: "sidecar-commit-alt"),
+            originalURL: alternateURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata(),
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(named: "commit-autopilot-sidecar", assets: [lead, alternate]) { repository in
+            let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+            try repository.recordEvaluationSignals([
+                EvaluationSignal(assetID: lead.id, kind: .focus, value: .score(0.3), confidence: 0.9, provenance: provenance),
+                EvaluationSignal(assetID: alternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+            ])
+        }
+        try model.selectSidebarTarget(.allPhotographs)
+        _ = try model.runAutopilot(scope: .visible)
+        XCTAssertEqual(try repository.asset(id: alternate.id).metadata.flag, .pick)
+
+        let committed = try model.commitAllAutopilotProposals()
+        XCTAssertEqual(committed, 2)
+
+        let sidecarURL = alternateURL.appendingPathExtension("xmp")
+        let sidecarData = try Data(contentsOf: sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata.flag, .pick)
+        XCTAssertFalse(try repository.asset(id: alternate.id).metadata.aiUnconfirmedFields.contains(.flag))
+    }
+
     func testDismissAutopilotProposalsClearsTheirTentativeMetadata() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let lead = makeAsset(id: "dismiss-lead", path: "/Photos/Job/dismiss-lead.cr2", rating: 0, technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt))

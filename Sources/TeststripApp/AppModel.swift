@@ -1806,6 +1806,31 @@ private struct MetadataChangeGroup: Equatable {
     var changes: [MetadataChange]
 }
 
+/// One touched asset's contribution to a run-time autopilot tentative batch
+/// (`applyTentativeAutopilotProposals`): the pre-run/post-run snapshots plus
+/// exactly which fields/keywords THIS run tentatively added. Recording the
+/// delta (not just `before`) is what lets `revertAutopilotTentativeChange`
+/// undo only the run's own contribution instead of blindly restoring the
+/// whole pre-run snapshot and clobbering an unrelated edit the user made to
+/// the same asset in between.
+private struct AutopilotTentativeChange: Equatable {
+    var assetID: AssetID
+    var before: AssetMetadata
+    var after: AssetMetadata
+    /// Fields (`.flag` today) this run inserted into `aiUnconfirmedFields`.
+    /// `.rating` follows the identical rule below if a future proposal kind
+    /// ever tentatively writes it; `.caption`/`.keyword` never appear here —
+    /// autopilot proposals never tentatively set a caption, and a tentative
+    /// keyword is tracked in `tentativeKeywords` instead.
+    var tentativeFields: Set<MetadataField>
+    /// Keywords this run appended to `keywords` and marked `aiUnconfirmedKeywords`.
+    var tentativeKeywords: Set<String>
+}
+
+private struct AutopilotTentativeChangeGroup: Equatable {
+    var changes: [AutopilotTentativeChange]
+}
+
 public struct CullingMetadataDecisionFeedback: Equatable, Sendable {
     public var assetID: AssetID
     public var filename: String
@@ -2099,7 +2124,7 @@ public final class AppModel {
     // confirm step uses instead; reverting a catalog-only tentative write
     // through that generic, sidecar-syncing path would spuriously create a
     // sidecar for an asset that never had one). In-memory only.
-    private var lastAutopilotRunUndoGroup: MetadataChangeGroup?
+    private var lastAutopilotRunUndoGroup: AutopilotTentativeChangeGroup?
     private var lastAutopilotRunUndoRunID: AutopilotRunID?
     // Opt-in natural-language Ask translator. nil (default) keeps the Ask on
     // the always-available deterministic parser with byte-identical behavior.
@@ -8726,12 +8751,14 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        var changes: [MetadataChange] = []
+        var changes: [AutopilotTentativeChange] = []
         let proposalsByAssetID = Dictionary(grouping: proposals, by: { $0.assetID })
         for (assetID, assetProposals) in proposalsByAssetID {
             let removedLabels = try catalog.repository.removedAILabels(assetID: assetID)
             let originalAsset = try catalog.repository.asset(id: assetID)
             var updatedMetadata = originalAsset.metadata
+            var tentativeFields: Set<MetadataField> = []
+            var tentativeKeywords: Set<String> = []
             for proposal in assetProposals {
                 switch proposal.kind {
                 case .pick, .reject:
@@ -8743,6 +8770,7 @@ public final class AppModel {
                     }
                     updatedMetadata.flag = flagValue
                     updatedMetadata.aiUnconfirmedFields.insert(.flag)
+                    tentativeFields.insert(.flag)
                 case .keyword:
                     guard let keyword = proposal.keyword,
                           !Self.keywordList(updatedMetadata.keywords, contains: keyword),
@@ -8751,14 +8779,21 @@ public final class AppModel {
                     }
                     updatedMetadata.keywords.append(keyword)
                     updatedMetadata.aiUnconfirmedKeywords.insert(keyword)
+                    tentativeKeywords.insert(keyword)
                 }
             }
             guard updatedMetadata != originalAsset.metadata else { continue }
             try catalog.repository.updateMetadata(assetID: assetID) { $0 = updatedMetadata }
             try refreshInMemoryAsset(assetID)
-            changes.append(MetadataChange(assetID: assetID, before: originalAsset.metadata, after: updatedMetadata))
+            changes.append(AutopilotTentativeChange(
+                assetID: assetID,
+                before: originalAsset.metadata,
+                after: updatedMetadata,
+                tentativeFields: tentativeFields,
+                tentativeKeywords: tentativeKeywords
+            ))
         }
-        lastAutopilotRunUndoGroup = changes.isEmpty ? nil : MetadataChangeGroup(label: "Autopilot", changes: changes)
+        lastAutopilotRunUndoGroup = changes.isEmpty ? nil : AutopilotTentativeChangeGroup(changes: changes)
         lastAutopilotRunUndoRunID = changes.isEmpty ? nil : runID
     }
 
@@ -9016,27 +9051,67 @@ public final class AppModel {
         statusMessage = "Undid autopilot batch"
     }
 
-    /// Reverts one asset from a run-time tentative change's `after` back to
-    /// its `before` snapshot, catalog-only — mirroring how it was written.
-    /// The one case that needs a real sidecar fix-up is when the tentative
-    /// value was since *confirmed* (`commitAutopilotProposals`, which does
-    /// sync): the asset's current confirmed projection then differs from
-    /// `before`'s, and leaving the sidecar alone would strand a stale
-    /// confirmed value on disk after the catalog reverts underneath it.
-    private func revertAutopilotTentativeChange(_ change: MetadataChange) throws {
+    /// Reverts one asset's run-time tentative contribution, merge-aware:
+    /// touches only the fields/keywords THIS run added
+    /// (`change.tentativeFields`/`tentativeKeywords`), and only where the
+    /// current value still matches what the run left it as — an intervening
+    /// user edit to that same field (a direct re-flag, an explicit
+    /// confirm/reject) changes the value or clears the AI-unconfirmed marker
+    /// in a way this check can't distinguish from "untouched", so on any
+    /// mismatch it leaves the field alone rather than guess. Fields/keywords
+    /// the run never touched (caption, colorLabel, rating, other keywords)
+    /// are never referenced here at all, so an unrelated edit made between
+    /// the run and the undo always survives. A field is still reverted even
+    /// after `commitAutopilotProposals` confirmed it (matching value, marker
+    /// just cleared) — undo-run intentionally reaches back through a commit,
+    /// per `undoAutopilotRun`'s "including any since committed" contract.
+    /// The one case that needs a real sidecar fix-up is exactly that
+    /// since-committed case: the asset's confirmed projection changes as a
+    /// result of the revert, and leaving the sidecar alone would strand a
+    /// stale confirmed value on disk underneath the reverted catalog state.
+    private func revertAutopilotTentativeChange(_ change: AutopilotTentativeChange) throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        let currentMetadata: AssetMetadata
+        let beforeRevertMetadata: AssetMetadata
         do {
-            currentMetadata = try catalog.repository.asset(id: change.assetID).metadata
+            beforeRevertMetadata = try catalog.repository.asset(id: change.assetID).metadata
         } catch CatalogError.notFound {
             return
         }
-        try catalog.repository.updateMetadata(assetID: change.assetID) { $0 = change.before }
-        if currentMetadata.confirmedProjection != change.before.confirmedProjection {
-            let updatedAsset = try catalog.repository.asset(id: change.assetID)
-            try syncMetadataSidecar(for: updatedAsset)
+
+        try catalog.repository.updateMetadata(assetID: change.assetID) { metadata in
+            for field in change.tentativeFields {
+                switch field {
+                case .flag:
+                    guard metadata.flag == change.after.flag else { continue }
+                    metadata.flag = change.before.flag
+                case .rating:
+                    guard metadata.rating == change.after.rating else { continue }
+                    metadata.rating = change.before.rating
+                case .caption, .keyword:
+                    continue
+                }
+                if change.before.aiUnconfirmedFields.contains(field) {
+                    metadata.aiUnconfirmedFields.insert(field)
+                } else {
+                    metadata.aiUnconfirmedFields.remove(field)
+                }
+            }
+            for keyword in change.tentativeKeywords {
+                guard metadata.keywords.contains(keyword) else { continue }
+                metadata.keywords.removeAll { $0 == keyword }
+                if change.before.aiUnconfirmedKeywords.contains(keyword) {
+                    metadata.aiUnconfirmedKeywords.insert(keyword)
+                } else {
+                    metadata.aiUnconfirmedKeywords.remove(keyword)
+                }
+            }
+        }
+
+        let revertedAsset = try catalog.repository.asset(id: change.assetID)
+        if beforeRevertMetadata.confirmedProjection != revertedAsset.metadata.confirmedProjection {
+            try syncMetadataSidecar(for: revertedAsset)
             try refreshCatalogSidebarCounts()
         }
         try refreshInMemoryAsset(change.assetID)
