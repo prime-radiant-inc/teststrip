@@ -3840,6 +3840,9 @@ private struct LoupeView: View {
                 }
             }
             HStack(spacing: 0) {
+                if presentation.showsCullChrome {
+                    cullingStackRail(presentation: stackPresentation)
+                }
                 VStack(spacing: 0) {
                     if let completion {
                         cullCompletionStage(completion)
@@ -3866,7 +3869,6 @@ private struct LoupeView: View {
                 }
             }
             if presentation.showsCullChrome {
-                cullingStackRail(presentation: stackPresentation)
                 cullingFilmstrip(recommendedAssetID: stackPresentation.recommendedAssetID)
             } else {
                 libraryLoupeNavBar
@@ -4393,10 +4395,6 @@ private struct LoupeView: View {
 
     private static let cullStackRailThumbnailSize = CGSize(width: 120, height: 84)
     private static let cullStackRailWidth: CGFloat = 148
-    // Bounds the rail so the cell list actually scrolls instead of growing
-    // to fit every frame; Task 3 (moving the rail into the stage's leftmost
-    // column) will likely replace this with a height that tracks the stage.
-    private static let cullStackRailHeight: CGFloat = 320
 
     @ViewBuilder
     private func cullingStackRail(presentation: CullingStackRailPresentation) -> some View {
@@ -4462,7 +4460,8 @@ private struct LoupeView: View {
                 }
             }
             .padding(10)
-            .frame(width: Self.cullStackRailWidth, height: Self.cullStackRailHeight)
+            .frame(width: Self.cullStackRailWidth)
+            .frame(maxHeight: .infinity)
             .background(Color.black.opacity(0.23))
             .liveMockupPlaceholder(.cullingStackCull)
             .task(id: presentation.items.map(\.assetID.rawValue).joined(separator: "\n")) {
