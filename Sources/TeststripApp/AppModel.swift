@@ -7305,6 +7305,10 @@ public final class AppModel {
         }
     }
 
+    /// Minimum object-detection confidence required before a label is
+    /// eligible for auto-promotion into `metadata.keywords`.
+    public static let objectKeywordConfidenceFloor = 0.5
+
     /// Auto-apply "promotion": turns AI reads (object-label and caption
     /// evaluation signals) into catalog labels, marked AI-unconfirmed so they
     /// stay provisional until a user gesture confirms them (see
@@ -7312,8 +7316,6 @@ public final class AppModel {
     /// rejected (`removedAILabels`) is never re-added. Catalog-only write —
     /// no XMP sidecar sync, since an AI-unconfirmed delta never syncs
     /// (`MetadataSyncPlanner` treats it as up to date; see Task 6).
-    public static let objectKeywordConfidenceFloor = 0.5
-
     public func promoteMetadataLabels(for assetID: AssetID) throws {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")

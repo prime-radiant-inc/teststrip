@@ -11653,6 +11653,58 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
     }
 
+    func testCaptionPromotionAddsUnconfirmedRespectsUserCaptionAndRemovals() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-caption-promotion")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let asset = makeAsset(id: "caption-promotion-target", path: originalURL.path, rating: 0)
+        let ocrProvenance = ProviderProvenance(provider: "apple-vision", model: "Vision-ocr", version: "1", settingsHash: "default")
+        let promotedCaption = "Happy Birthday Grandma"
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-caption-promotion-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.recordEvaluationSignals([
+                    EvaluationSignal(assetID: asset.id, kind: .ocrText, value: .text(promotedCaption), confidence: 0.8, provenance: ocrProvenance)
+                ])
+            }
+        )
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+
+        try model.promoteMetadataLabels(for: asset.id)
+
+        let promoted = try repository.asset(id: asset.id).metadata
+        XCTAssertEqual(promoted.caption, promotedCaption)
+        XCTAssertTrue(promoted.aiUnconfirmedFields.contains(.caption))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
+
+        // Idempotent: promoting again does not change the caption.
+        try model.promoteMetadataLabels(for: asset.id)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.caption, promotedCaption)
+
+        // Guard: a user-set caption (present and not AI-unconfirmed) is never overwritten.
+        try repository.updateMetadata(assetID: asset.id) { metadata in
+            metadata.caption = "The user's own caption"
+            metadata.aiUnconfirmedFields.remove(.caption)
+        }
+        try model.promoteMetadataLabels(for: asset.id)
+        XCTAssertEqual(try repository.asset(id: asset.id).metadata.caption, "The user's own caption")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
+
+        // Simulate the user rejecting the AI caption: clear it and record the removal.
+        try repository.updateMetadata(assetID: asset.id) { metadata in
+            metadata.caption = nil
+        }
+        try repository.recordRemovedAILabel(assetID: asset.id, field: .caption, value: promotedCaption)
+
+        try model.promoteMetadataLabels(for: asset.id)
+
+        XCTAssertNil(try repository.asset(id: asset.id).metadata.caption)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
+    }
+
     func testVisibleBatchKeywordSuggestionsAggregateObjectLabels() throws {
         let first = makeAsset(id: "first-batch-keyword", path: "/Photos/first.jpg", rating: 0)
         let second = makeAsset(id: "second-batch-keyword", path: "/Photos/second.jpg", rating: 0)
