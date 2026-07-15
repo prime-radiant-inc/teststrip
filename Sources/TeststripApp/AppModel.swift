@@ -3820,15 +3820,6 @@ public final class AppModel {
         try reload()
     }
 
-    public func showPeopleFaceSuggestionPhotos(_ suggestion: PeopleFaceSuggestion) throws {
-        try selectSidebarTarget(.allPhotographs)
-        clearBatchSelection()
-        for assetID in suggestion.assetIDs {
-            setBatchSelection(assetID, isSelected: true)
-        }
-        selectedAssetID = suggestion.assetIDs.first
-    }
-
     /// Builds the review-first surface behind a face-group suggestion: resolves
     /// each face's bounding box (`faceObservations`, grouped by asset) so every
     /// face in the group can be shown large and zoomed to the face. Tiles are

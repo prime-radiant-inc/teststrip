@@ -8,6 +8,10 @@ struct PeopleView: View {
     @State private var personName = ""
     @State private var namingSuggestion: PeopleFaceSuggestion?
     @State private var suggestionPersonName = ""
+    // The face group currently open in the review surface, tracked by
+    // suggestion id (not the value) so the review view always re-reads the
+    // live, possibly-shrunk suggestion from the model.
+    @State private var reviewingGroup: ReviewingFaceGroup?
     // persona-2 item 3: the naming field didn't visually announce itself as
     // typeable — Ruth had to hunt before typing blindly. Auto-focus it so
     // typing works immediately and a focus ring is visible on appear.
@@ -68,6 +72,9 @@ struct PeopleView: View {
         }
         .sheet(item: $namingSuggestion) { suggestion in
             nameSuggestionSheet(suggestion)
+        }
+        .sheet(item: $reviewingGroup) { group in
+            faceGroupReviewSheet(group.id)
         }
         .liveMockupPlaceholder(.peopleSidebar)
     }
@@ -297,26 +304,37 @@ struct PeopleView: View {
         queuePresentation.focusedCard?.id == cardID
     }
 
+    // A suggestion card is a link into the review surface — click it to look
+    // at every face in the group large and zoomed before naming (review-first),
+    // rather than confirming a whole group from one tiny crop. Confirm/Name
+    // live inside the review surface now; the card keeps only Review + Dismiss.
     private func faceSuggestionCard(_ card: PeopleFaceSuggestionCard, isFocused: Bool) -> some View {
         HStack(spacing: 12) {
-            FaceCropAvatar(
-                previewURL: model.previewURL(for: card.suggestion.representativeFace.assetID, levels: [.grid, .medium, .micro]),
-                boundingBox: card.suggestion.representativeBoundingBox
-            )
-            VStack(alignment: .leading, spacing: 6) {
-                Text(card.countText)
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Text(card.title)
-                    .font(.caption.weight(.semibold))
-                Button(card.confirmActionTitle) {
-                    confirmFaceSuggestion(card)
+            Button {
+                openFaceGroupReview(card)
+            } label: {
+                HStack(spacing: 12) {
+                    FaceCropAvatar(
+                        previewURL: model.previewURL(for: card.suggestion.representativeFace.assetID, levels: [.grid, .medium, .micro]),
+                        boundingBox: card.suggestion.representativeBoundingBox
+                    )
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(card.countText)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Text(card.title)
+                            .font(.caption.weight(.semibold))
+                        Label("Review", systemImage: "rectangle.stack.badge.person.crop")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.orange)
+                    }
+                    Spacer(minLength: 0)
                 }
-                .controlSize(.small)
-                .buttonStyle(.borderedProminent)
-                .help(card.isOneTapConfirm ? "Confirm these faces as \(card.confirmActionTitle)" : "Name this face group")
+                .contentShape(Rectangle())
             }
-            Spacer(minLength: 0)
+            .buttonStyle(.plain)
+            .help(card.isOneTapConfirm ? "Review this group before confirming \(card.confirmActionTitle)" : "Review these faces before naming them")
+
             Button {
                 dismissFaceSuggestion(card)
             } label: {
@@ -332,10 +350,6 @@ struct PeopleView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(isFocused ? Color.accentColor : Color.white.opacity(0.07), lineWidth: isFocused ? 2 : 1)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 10))
-        .onTapGesture {
-            showFaceSuggestionPhotos(card)
         }
     }
 
@@ -359,17 +373,29 @@ struct PeopleView: View {
         }
     }
 
-    private func confirmFaceSuggestion(_ card: PeopleFaceSuggestionCard) {
-        if card.isOneTapConfirm {
-            do {
-                try model.confirmPeopleFaceSuggestion(card.suggestion)
-            } catch {
-                model.errorMessage = error.localizedDescription
-            }
-        } else {
-            suggestionPersonName = ""
-            namingSuggestion = card.suggestion
-        }
+    private func openFaceGroupReview(_ card: PeopleFaceSuggestionCard) {
+        reviewingGroup = ReviewingFaceGroup(id: card.id)
+    }
+
+    private func faceGroupReviewSheet(_ suggestionID: String) -> some View {
+        FaceGroupReviewView(
+            model: model,
+            suggestionID: suggestionID,
+            confirm: { suggestion in
+                do {
+                    try model.confirmPeopleFaceSuggestion(suggestion)
+                } catch {
+                    model.errorMessage = error.localizedDescription
+                }
+                reviewingGroup = nil
+            },
+            name: { suggestion in
+                reviewingGroup = nil
+                suggestionPersonName = ""
+                namingSuggestion = suggestion
+            },
+            close: { reviewingGroup = nil }
+        )
     }
 
     private func confirmNamedFaceSuggestion(_ suggestion: PeopleFaceSuggestion) {
@@ -384,14 +410,6 @@ struct PeopleView: View {
     private func dismissFaceSuggestion(_ card: PeopleFaceSuggestionCard) {
         do {
             try model.dismissPeopleFaceSuggestion(card.suggestion)
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func showFaceSuggestionPhotos(_ card: PeopleFaceSuggestionCard) {
-        do {
-            try model.showPeopleFaceSuggestionPhotos(card.suggestion)
         } catch {
             model.errorMessage = error.localizedDescription
         }
@@ -525,6 +543,13 @@ struct PeopleView: View {
         let angle = Angle(degrees: Double(seedValue % 160 + 20))
         return LinearGradient(colors: colors, startPoint: UnitPoint(x: 0.2, y: 0.1), endPoint: UnitPoint(x: cos(angle.radians), y: sin(angle.radians)))
     }
+}
+
+/// Identifies the face group open in the review sheet by suggestion id, so the
+/// `.sheet(item:)` presentation drives off a stable key while the review view
+/// re-reads the live suggestion.
+struct ReviewingFaceGroup: Identifiable, Equatable {
+    var id: String
 }
 
 struct PeoplePresentation: Equatable {
