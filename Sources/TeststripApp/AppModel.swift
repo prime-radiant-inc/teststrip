@@ -2250,6 +2250,13 @@ public final class AppModel {
     /// read time — kept in lockstep with `catalogPeople` via `loadCatalogPeople()`
     /// so a card never shows a face for a stale person set.
     public var personKeyFaces: [String: PersonKeyFace] = [:]
+    /// Session-only most-recently-named person ids (most-recent first). Orders the
+    /// no-similarity tail and the whole-asset naming case in the autocompleter.
+    public private(set) var recentlyNamedPersonIDs: [String] = []
+
+    private func noteRecentlyNamedPerson(_ personID: String) {
+        recentlyNamedPersonIDs = [personID] + recentlyNamedPersonIDs.filter { $0 != personID }
+    }
     public private(set) var peopleFaceSuggestions: [PeopleFaceSuggestion] = []
     public private(set) var peopleFaceObservationAssetCount = 0
     /// A person's PROPOSED photos (AI-unconfirmed face matches), shown as a
@@ -3669,6 +3676,44 @@ public final class AppModel {
         }
     }
 
+    /// Candidate people for naming a face, ranked by similarity to that face (or
+    /// most-recently-used when `faceID` is nil), including not-yet-materialized
+    /// contacts. Reuses the confirmed+contact embedding/name union the matcher uses.
+    public func rankedPersonCandidates(forFace faceID: FaceID?) -> [PersonCandidate] {
+        guard let catalog else { return [] }
+        do {
+            let provenance = AppleVisionEvaluationProvider.faceProvenance
+            var embeddingsByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
+            for (personID, vectors) in try catalog.repository.contactReferenceEmbeddingsByPerson() {
+                embeddingsByPerson[personID, default: []].append(contentsOf: vectors)
+            }
+            let centroidsByPerson = embeddingsByPerson.compactMapValues(FaceSuggestionBuilder.centroid)
+
+            var namesByID = Dictionary(uniqueKeysWithValues: catalogPeople.map { ($0.id, $0.name) })
+            for (personID, name) in try catalog.repository.contactReferenceNamesByPerson() where namesByID[personID] == nil {
+                namesByID[personID] = name
+            }
+
+            let targetEmbedding: [Double]?
+            if let faceID {
+                targetEmbedding = try catalog.repository.faceObservations(assetID: faceID.assetID)
+                    .first { $0.faceIndex == faceID.faceIndex }?.embedding
+            } else {
+                targetEmbedding = nil
+            }
+
+            return PersonCandidateRanker.rank(
+                targetEmbedding: targetEmbedding,
+                centroidsByPerson: centroidsByPerson,
+                namesByID: namesByID,
+                recentPersonIDs: recentlyNamedPersonIDs
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            return []
+        }
+    }
+
     /// Imports address-book contact photos as reference faces (Contacts
     /// seeding): fetches every contact with a photo via the injected
     /// `ContactsProviding`, embeds each photo's best face, and seeds/updates
@@ -3841,8 +3886,15 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
+        // A contact-only candidate has no `people` row yet; assignFaces would
+        // throw notFound. Materialize it first, exactly as confirmPeopleFaceSuggestion does.
+        if catalogPeople.first(where: { $0.id == personID }) == nil,
+           let reference = try catalog.repository.contactReferenceFace(personID: personID) {
+            try catalog.repository.upsertPerson(id: personID, name: reference.name)
+        }
         try catalog.repository.assignFaces([faceID], toPersonID: personID)
         try catalog.repository.clearRejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: personID)
+        noteRecentlyNamedPerson(personID)
         try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
@@ -3856,9 +3908,10 @@ public final class AppModel {
         guard !trimmedName.isEmpty else {
             throw TeststripError.invalidState("person name is required")
         }
-        let personID = "person-\(UUID().uuidString)"
+        let personID = existingPersonID(matchingName: trimmedName) ?? "person-\(UUID().uuidString)"
         try catalog.repository.upsertPerson(id: personID, name: trimmedName)
         try catalog.repository.assignFaces([faceID], toPersonID: personID)
+        noteRecentlyNamedPerson(personID)
         try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
