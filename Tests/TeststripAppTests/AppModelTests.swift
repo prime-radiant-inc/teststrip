@@ -7643,6 +7643,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.assetIDs(personID: "p1"), [assetID])
     }
 
+    /// Regression: `confirmAIFace` must route through `loadCatalogPeople()`
+    /// so `personKeyFaces` never shows a stale (or missing) key face after a
+    /// confirm — `keyFacesByPerson` only returns `origin='user'` rows, so the
+    /// key face for `p1` doesn't exist until this promotion happens.
+    func testConfirmAIFaceRefreshesPersonKeyFaces() throws {
+        let (model, _, assetID) = try makeModelWithAIPromotedFace(named: "app-model-confirm-ai-face-key-faces")
+        XCTAssertNil(model.personKeyFaces["p1"])
+
+        try model.confirmAIFace(assetID: assetID, faceIndex: 0)
+
+        let keyFace = try XCTUnwrap(model.personKeyFaces["p1"])
+        XCTAssertEqual(keyFace.assetID, assetID)
+    }
+
     func testRejectAIFaceSuggestionDeletesRowAndRecordsRejection() throws {
         let (model, repository, assetID) = try makeModelWithAIPromotedFace(named: "app-model-reject-ai-face")
 
