@@ -47,14 +47,16 @@ final class PersonCandidateRankerTests: XCTestCase {
     }
 
     func testDistanceTiesBreakByNameThenID() {
-        // p-bob's centroid [0, 1, 0] and p-ann's centroid [0, -1, 0] are both
-        // distance √2 from the target [1, 0, 0] — a distance tie — so the
-        // tie-break (name, then id) is what determines the order below.
-        let centroids: [String: [Double]] = ["p-bob": [0, 1, 0], "p-ann": [0, -1, 0]]
+        // "id-1" (Bob)'s centroid [0, 1, 0] and "id-9" (Ann)'s centroid [0, -1, 0]
+        // are both distance √2 from the target [1, 0, 0] — a genuine distance
+        // tie. The ids are chosen to sort the opposite way from the names
+        // ("id-1" < "id-9", but "Ann" < "Bob") so this only passes if the name
+        // tie-break (not the id tie-break) is what orders the result.
+        let centroids: [String: [Double]] = ["id-1": [0, 1, 0], "id-9": [0, -1, 0]]
         let result = PersonCandidateRanker.rank(
             targetEmbedding: [1, 0, 0], centroidsByPerson: centroids,
-            namesByID: ["p-bob": "Bob", "p-ann": "Ann"], recentPersonIDs: [])
-        XCTAssertEqual(result.map(\.id), ["p-ann", "p-bob"])
+            namesByID: ["id-1": "Bob", "id-9": "Ann"], recentPersonIDs: [])
+        XCTAssertEqual(result.map(\.id), ["id-9", "id-1"])
     }
 
     func testDuplicateRecentPersonIDsDoNotCrash() {
