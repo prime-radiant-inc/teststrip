@@ -3829,6 +3829,59 @@ public final class AppModel {
         selectedAssetID = suggestion.assetIDs.first
     }
 
+    /// Builds the review-first surface behind a face-group suggestion: resolves
+    /// each face's bounding box (`faceObservations`, grouped by asset) so every
+    /// face in the group can be shown large and zoomed to the face. Tiles are
+    /// ordered by asset then face index for a stable layout. A pure projection
+    /// of `suggestion` — removals mutate the catalog and the caller rebuilds
+    /// from the refreshed `peopleFaceSuggestions`.
+    func faceGroupReview(for suggestion: PeopleFaceSuggestion) -> FaceGroupReviewPresentation {
+        var boxesByFaceID: [FaceID: FaceBoundingBox] = [:]
+        if let catalog {
+            for assetID in Set(suggestion.faceIDs.map(\.assetID)) {
+                let observations = (try? catalog.repository.faceObservations(assetID: assetID)) ?? []
+                for observation in observations {
+                    boxesByFaceID[observation.faceID] = observation.boundingBox
+                }
+            }
+        }
+        let tiles = suggestion.faceIDs
+            .compactMap { faceID -> FaceReviewTile? in
+                guard let box = boxesByFaceID[faceID] else { return nil }
+                return FaceReviewTile(faceID: faceID, boundingBox: box)
+            }
+            .sorted { lhs, rhs in
+                if lhs.faceID.assetID.rawValue != rhs.faceID.assetID.rawValue {
+                    return lhs.faceID.assetID.rawValue < rhs.faceID.assetID.rawValue
+                }
+                return lhs.faceID.faceIndex < rhs.faceID.faceIndex
+            }
+        return FaceGroupReviewPresentation(
+            suggestionID: suggestion.id,
+            kind: suggestion.kind,
+            tiles: tiles
+        )
+    }
+
+    /// Removes one face from a face-group review before the group is
+    /// confirmed/named. For a matched person it's a sticky "not them" reject
+    /// (`rejectFaceSuggestion`); for a new cluster it dismisses the face from
+    /// the review pool (`dismissFaces`). Neither writes a person assignment —
+    /// confirm-before-write holds until the user confirms/names the remainder.
+    public func removeFaceFromReviewGroup(_ suggestion: PeopleFaceSuggestion, faceID: FaceID) throws {
+        switch suggestion.kind {
+        case .matchExisting(let personID, _):
+            try rejectFaceSuggestion(faceID, personID: personID)
+        case .newPerson:
+            guard let catalog else {
+                throw TeststripError.invalidState("app model has no catalog")
+            }
+            try catalog.repository.dismissFaces([faceID])
+            refreshCatalogEvaluationKindSummaries()
+            refreshPeopleFaceSuggestions()
+        }
+    }
+
     private static func peopleFaceSuggestions(
         from suggestions: FaceSuggestions,
         observationsByFaceID: [FaceID: CatalogFaceObservation],
