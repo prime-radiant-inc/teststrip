@@ -158,7 +158,7 @@ public struct LibraryQueryToken: Equatable, Identifiable {
             tokens.append(LibraryQueryToken(field: .source, display: "Source: \(source.rawValue.capitalized)", value: .source(source)))
         }
         if let signal = model.evaluationKindFilter {
-            tokens.append(LibraryQueryToken(field: .signal, display: "Signal: \(signal.displayName)", value: .signal(signal)))
+            tokens.append(LibraryQueryToken(field: .signal, display: chipDisplay(for: signal), value: .signal(signal)))
         }
         if model.metadataSyncPendingFilter {
             tokens.append(LibraryQueryToken(field: .xmpPending, display: "XMP Pending", value: .int(0)))
@@ -353,7 +353,7 @@ public struct LibraryQueryToken: Equatable, Identifiable {
         case .availability(let source):
             return LibraryQueryToken(field: .source, display: "Source: \(source.rawValue.capitalized)", value: .source(source))
         case .evaluationKind(let signal):
-            return LibraryQueryToken(field: .signal, display: "Signal: \(signal.displayName)", value: .signal(signal))
+            return LibraryQueryToken(field: .signal, display: chipDisplay(for: signal), value: .signal(signal))
         case .metadataSyncPending:
             return LibraryQueryToken(field: .xmpPending, display: "XMP Pending", value: .int(0))
         case .metadataSyncConflict:
@@ -368,6 +368,22 @@ public struct LibraryQueryToken: Equatable, Identifiable {
             return LibraryQueryToken(field: .providerFailures, display: "Analysis Failures", value: .int(0))
         default:
             return nil
+        }
+    }
+
+    /// `.faceCount`/`.ocrText` are obvious boolean-existence predicates (does
+    /// an evaluation signal of this kind exist for the asset), so their chip
+    /// reads as plain language rather than jargon. Every other kind is
+    /// score/label-based, not an obvious boolean, so it keeps the generic
+    /// "Signal: …" form.
+    private static func chipDisplay(for kind: EvaluationKind) -> String {
+        switch kind {
+        case .faceCount:
+            return "Has faces"
+        case .ocrText:
+            return "Has text"
+        default:
+            return "Signal: \(kind.displayName)"
         }
     }
 

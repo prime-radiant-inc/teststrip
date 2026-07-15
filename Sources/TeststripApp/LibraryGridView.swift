@@ -1054,12 +1054,6 @@ struct LibraryGridView: View {
         let legacyRows = LibraryQueryToken.legacyRows(model.activeLibraryFilterRows, notCoveredBy: tokens)
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                Text("Text found")
-                    .font(.caption2.monospaced().weight(.semibold))
-                    .foregroundStyle(.orange)
                 ForEach(tokens) { token in
                     filterChip(title: token.display, subtitle: nil) {
                         LibraryQueryToken.remove(token, from: model)
