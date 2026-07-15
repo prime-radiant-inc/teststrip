@@ -3672,30 +3672,44 @@ public final class AppModel {
     /// Imports address-book contact photos as reference faces (Contacts
     /// seeding): fetches every contact with a photo via the injected
     /// `ContactsProviding`, embeds each photo's best face, and seeds/updates
-    /// `contact_reference_faces` via `ContactFaceSeeder` — attaching to an
-    /// existing same-named person or minting a latent `contact:<id>` person.
-    /// Gated on the face-embedding model being available; `contactFaceDetector`
-    /// lets tests substitute a stub instead of the real Vision + CoreML pipeline.
+    /// `contact_reference_faces` — attaching to an existing same-named person
+    /// or minting a latent `contact:<id>` person. Gated on the face-embedding
+    /// model being available; `contactFaceDetector` lets tests substitute a
+    /// stub instead of the real Vision + CoreML pipeline.
+    ///
+    /// The Contacts fetch and the CoreML/Vision embedding are the only place
+    /// the app process runs the face embedder — everywhere else that work
+    /// happens in the out-of-process worker. Running it synchronously on
+    /// this method's caller (the main thread) blocked the UI for the whole
+    /// import and, worse, corrupted main-thread runtime state badly enough to
+    /// crash the app on the next SwiftUI update. So only the fast catalog
+    /// write happens here on the main actor; the fetch + embed run in a
+    /// `Task.detached` that captures no `self`/catalog state — only the
+    /// `Sendable` provider, detector, and current-hash snapshot it needs.
     @MainActor
     public func importFacesFromContacts() async throws {
         guard let catalog else { throw TeststripError.invalidState("app model has no catalog") }
         guard let provider = contactsProvider else {
             throw TeststripError.invalidState("Contacts access is not available")
         }
-        let detector: @Sendable (CGImage) throws -> [AppleVisionFaceObservation]
-        if let injected = contactFaceDetector {
-            detector = injected
-        } else {
-            guard let model = CoreMLFaceEmbeddingModel.auraFace() else {
-                throw TeststripError.invalidState("The face model is unavailable; cannot import from Contacts")
+        let currentHashes = try catalog.repository.contactReferenceHashesByIdentifier()
+        let contactFaceDetector = self.contactFaceDetector
+        let result = try await Task.detached(priority: .userInitiated) {
+            let detector: @Sendable (CGImage) throws -> [AppleVisionFaceObservation]
+            if let contactFaceDetector {
+                detector = contactFaceDetector
+            } else {
+                guard let model = CoreMLFaceEmbeddingModel.auraFace() else {
+                    throw TeststripError.invalidState("The face model is unavailable; cannot import from Contacts")
+                }
+                let embedder = FaceRecognitionEmbedder(model: model)
+                detector = { try embedder.faceObservations(in: $0) }
             }
-            let embedder = FaceRecognitionEmbedder(model: model)
-            detector = { try embedder.faceObservations(in: $0) }
-        }
-        let records = try provider.contactsWithPhotos()
-        let seeder = ContactFaceSeeder(detectFaces: detector, repository: catalog.repository,
-                                       photoCache: catalog.contactPhotoCache)
-        let summary = try seeder.seed(records: records)
+            let records = try provider.contactsWithPhotos()
+            return try ContactFaceEmbedder(detectFaces: detector).embed(records: records, currentHashes: currentHashes)
+        }.value
+        let summary = try ContactFacePersister(repository: catalog.repository, photoCache: catalog.contactPhotoCache)
+            .persist(result)
         statusMessage = "Contacts: \(summary.seeded) seeded, \(summary.unchanged) unchanged, \(summary.skippedNoFace) without a face"
         refreshPeopleFaceSuggestions()
     }

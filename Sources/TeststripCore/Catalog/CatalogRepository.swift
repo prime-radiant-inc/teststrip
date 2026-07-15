@@ -1386,6 +1386,21 @@ public final class CatalogRepository {
         ).first?["photo_hash"]
     }
 
+    /// All contact photo hashes keyed by contact identifier — feeds the
+    /// off-main-thread embed phase's hash-skip (`ContactFaceEmbedder.embed`)
+    /// in one read instead of one `contactReferencePhotoHash` query per contact.
+    public func contactReferenceHashesByIdentifier() throws -> [String: String] {
+        let rows = try database.rows("SELECT contact_identifier, photo_hash FROM contact_reference_faces")
+        var result: [String: String] = [:]
+        for row in rows {
+            guard let identifier = row["contact_identifier"], let hash = row["photo_hash"] else {
+                throw CatalogError.sqlite("contact reference row is missing required columns")
+            }
+            result[identifier] = hash
+        }
+        return result
+    }
+
     public func contactReferenceEmbeddingsByPerson() throws -> [String: [[Double]]] {
         let rows = try database.rows("SELECT person_id, embedding_json FROM contact_reference_faces")
         var result: [String: [[Double]]] = [:]
