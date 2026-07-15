@@ -3801,13 +3801,6 @@ public final class AppModel {
         refreshPeopleFaceSuggestions()
     }
 
-    /// Removes a machine-suggested face's person link outright — the face
-    /// returns to unnamed. Same repo path as `removeFacePerson`, addressed
-    /// by asset/face-index to mirror `confirmAIFace`.
-    public func removeAIFace(assetID: AssetID, faceIndex: Int) throws {
-        try removeFacePerson(FaceID(assetID: assetID, faceIndex: faceIndex))
-    }
-
     /// Records that a suggested identity is wrong for one face ("not
     /// them"): deletes the persisted `origin='ai'` `person_faces` row (so
     /// the face goes back to unnamed instead of re-showing the same

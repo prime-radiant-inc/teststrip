@@ -89,7 +89,7 @@ struct PhotoFacesSectionView: View {
         switch row.state {
         case .unnamed:
             addNameMenu(for: row)
-        case .suggested:
+        case .suggested(let personID, _):
             HStack(spacing: 6) {
                 Button("Confirm") {
                     apply { try model.confirmAIFace(assetID: row.faceID.assetID, faceIndex: row.faceID.faceIndex) }
@@ -97,7 +97,7 @@ struct PhotoFacesSectionView: View {
                 .controlSize(.small)
                 .buttonStyle(.borderedProminent)
                 Button("Remove") {
-                    apply { try model.removeAIFace(assetID: row.faceID.assetID, faceIndex: row.faceID.faceIndex) }
+                    apply { try model.rejectFaceSuggestion(row.faceID, personID: personID) }
                 }
                 .controlSize(.small)
                 .help("Remove this suggested match")

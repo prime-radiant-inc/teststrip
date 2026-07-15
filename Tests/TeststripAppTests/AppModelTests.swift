@@ -7562,16 +7562,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.assetIDs(personID: "p1"), [assetID])
     }
 
-    func testRemoveAIFaceClearsPersonFaceRow() throws {
-        let (model, repository, assetID) = try makeModelWithAIPromotedFace(named: "app-model-remove-ai-face")
-
-        try model.removeAIFace(assetID: assetID, faceIndex: 0)
-
-        XCTAssertTrue(try repository.personFaces(assetID: assetID).isEmpty)
-        let presentation = model.photoFacesPresentation(for: assetID)
-        XCTAssertEqual(presentation.rows.map(\.state), [.unnamed])
-    }
-
     func testRejectAIFaceSuggestionDeletesRowAndRecordsRejection() throws {
         let (model, repository, assetID) = try makeModelWithAIPromotedFace(named: "app-model-reject-ai-face")
 
@@ -7583,6 +7573,26 @@ final class AppModelTests: XCTestCase {
         ))
         let presentation = model.photoFacesPresentation(for: assetID)
         XCTAssertEqual(presentation.rows.map(\.state), [.unnamed])
+    }
+
+    /// Regression test (reviewer-caught): the suggested-face row's
+    /// reject/second gesture must record `rejected_face_people`, or
+    /// `promoteFaceMatches` — whose only guard against re-inserting a
+    /// dismissed AI match is that table — resurrects the exact link the
+    /// user just dismissed. Invokes the row's reject gesture directly.
+    func testRejectingSuggestedFaceRecordsRejectionAndDoesNotResurrect() throws {
+        let (model, repository, assetID) = try makeModelWithAIPromotedFace(named: "app-model-reject-suggested-face-no-resurrect")
+
+        try model.rejectFaceSuggestion(FaceID(assetID: assetID, faceIndex: 0), personID: "p1")
+
+        XCTAssertTrue(try repository.personFaces(assetID: assetID).isEmpty)
+        XCTAssertTrue(try repository.rejectedFacePeople().contains(
+            RejectedFacePerson(assetID: assetID, faceIndex: 0, personID: "p1")
+        ))
+
+        try model.promoteFaceMatches(for: assetID)
+
+        XCTAssertTrue(try repository.personFaces(assetID: assetID).isEmpty)
     }
 
     func testSourceAvailabilityFilterAppliesToOfflineOriginals() throws {
