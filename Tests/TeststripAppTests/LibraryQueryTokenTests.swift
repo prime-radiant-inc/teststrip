@@ -180,6 +180,28 @@ final class LibraryQueryTokenTests: XCTestCase {
         XCTAssertEqual(restored.evaluationKindFilter, .focus)
     }
 
+    func testFaceCountSignalChipReadsAsPlainPredicate() {
+        let model = makeModel()
+        model.evaluationKindFilter = .faceCount
+
+        let tokens = LibraryQueryToken.tokens(from: model)
+        guard let token = tokens.first(where: { $0.field == .signal }) else {
+            return XCTFail("expected a signal token")
+        }
+        XCTAssertEqual(token.display, "Has faces")
+    }
+
+    func testOCRTextSignalChipReadsAsPlainPredicate() {
+        let model = makeModel()
+        model.evaluationKindFilter = .ocrText
+
+        let tokens = LibraryQueryToken.tokens(from: model)
+        guard let token = tokens.first(where: { $0.field == .signal }) else {
+            return XCTFail("expected a signal token")
+        }
+        XCTAssertEqual(token.display, "Has text")
+    }
+
     func testXMPPendingRoundTrips() {
         let model = makeModel()
         model.metadataSyncPendingFilter = true
@@ -298,7 +320,7 @@ final class LibraryQueryTokenTests: XCTestCase {
     // MARK: - Legacy chip rows deduplicate against tokens by filter identity
 
     /// `.faceCount`/`.ocrText` legacy rows carry the review-queue title
-    /// ("Faces Found"/"Text Found"), not the token's "Signal: …" display, so
+    /// ("Faces Found"/"Text Found"), not the token's plain-predicate display, so
     /// a title-only dedupe would render two chips for one filter.
     func testEvaluationKindFilterRendersExactlyOneChip() {
         for kind in [EvaluationKind.faceCount, .ocrText, .focus] {
