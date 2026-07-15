@@ -165,6 +165,8 @@ teststrip_write_info_plist() {
        asks that the downloader service be disabled in that case. -->
   <key>SUEnableInstallerLauncherService</key>
   <true/>
+  <key>NSContactsUsageDescription</key>
+  <string>Teststrip matches faces in your photos against your contacts to suggest who's who. Your contacts never leave your Mac.</string>
 </dict>
 </plist>
 PLIST

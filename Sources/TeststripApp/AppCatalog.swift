@@ -157,7 +157,8 @@ public struct AppCatalog {
             resourceAccess: runtimePolicy.requiresSuccessfulSecurityScopedImportAccess ? .required : .permissive,
             workerImportsEnabled: runtimePolicy.workerImportsEnabled,
             backgroundWorkPublicationInterval: backgroundWorkPublicationCoalescingInterval,
-            sessionRestoreDefaults: sessionRestoreDefaults
+            sessionRestoreDefaults: sessionRestoreDefaults,
+            contactsProvider: LiveContactsProvider()
         )
     }
 

@@ -2103,6 +2103,9 @@ public final class AppModel {
     /// Import-scoped failures only, surfaced in the Activity Center's import
     /// row - unrelated model errors stay on `errorMessage` and never route here.
     public var importError: String?
+    /// Summary of the most recent `importFacesFromContacts()` run ("N seeded,
+    /// N unchanged, N without a face").
+    public var contactSeedSummaryText: String?
     /// Drives the Activity Center popover (toolbar item + Window ▸ Activity).
     public var isActivityCenterPresented = false
     public private(set) var isExporting = false
@@ -2315,6 +2318,12 @@ public final class AppModel {
 
     @ObservationIgnored
     private var catalog: AppCatalog?
+
+    @ObservationIgnored
+    private var contactsProvider: (any ContactsProviding)?
+
+    @ObservationIgnored
+    private var contactFaceDetector: (@Sendable (CGImage) throws -> [AppleVisionFaceObservation])?
 
     @ObservationIgnored
     private let importTaskFactory: AppImportTaskFactory
@@ -3663,6 +3672,37 @@ public final class AppModel {
         }
     }
 
+    /// Imports address-book contact photos as reference faces (Contacts
+    /// seeding): fetches every contact with a photo via the injected
+    /// `ContactsProviding`, embeds each photo's best face, and seeds/updates
+    /// `contact_reference_faces` via `ContactFaceSeeder` — attaching to an
+    /// existing same-named person or minting a latent `contact:<id>` person.
+    /// Gated on the face-embedding model being available; `contactFaceDetector`
+    /// lets tests substitute a stub instead of the real Vision + CoreML pipeline.
+    @MainActor
+    public func importFacesFromContacts() async throws {
+        guard let catalog else { throw TeststripError.invalidState("app model has no catalog") }
+        guard let provider = contactsProvider else {
+            throw TeststripError.invalidState("Contacts access is not available")
+        }
+        let detector: @Sendable (CGImage) throws -> [AppleVisionFaceObservation]
+        if let injected = contactFaceDetector {
+            detector = injected
+        } else {
+            guard let model = CoreMLFaceEmbeddingModel.auraFace() else {
+                throw TeststripError.invalidState("The face model is unavailable; cannot import from Contacts")
+            }
+            let embedder = FaceRecognitionEmbedder(model: model)
+            detector = { try embedder.faceObservations(in: $0) }
+        }
+        let records = try provider.contactsWithPhotos()
+        let seeder = ContactFaceSeeder(detectFaces: detector, repository: catalog.repository,
+                                       photoCache: catalog.contactPhotoCache)
+        let summary = try seeder.seed(records: records)
+        contactSeedSummaryText = "Contacts: \(summary.seeded) seeded, \(summary.unchanged) unchanged, \(summary.skippedNoFace) without a face"
+        refreshPeopleFaceSuggestions()
+    }
+
     /// Auto-apply "promotion" for face matches: turns a face's match against
     /// a CONFIRMED person's centroid into a guarded, face-level
     /// `person_faces` row (`origin='ai'`, via `insertAIFace`) — provisional
@@ -4314,7 +4354,9 @@ public final class AppModel {
         workerImportsEnabled: Bool? = nil,
         backgroundWorkPublicationInterval: TimeInterval? = nil,
         backgroundWorkPublicationScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler(),
-        sessionRestoreDefaults: UserDefaults? = nil
+        sessionRestoreDefaults: UserDefaults? = nil,
+        contactsProvider: (any ContactsProviding)? = nil,
+        contactFaceDetector: (@Sendable (CGImage) throws -> [AppleVisionFaceObservation])? = nil
     ) throws -> AppModel {
         try reconcileInterruptedIngestWorkSessions(repository: catalog.repository)
         let assets = try catalog.repository.allAssets()
@@ -4390,6 +4432,8 @@ public final class AppModel {
             backgroundWorkPublicationScheduler: backgroundWorkPublicationScheduler,
             sessionRestoreDefaults: sessionRestoreDefaults
         )
+        model.contactsProvider = contactsProvider
+        model.contactFaceDetector = contactFaceDetector
         // `catalogPeople` above already seeded the init; this also derives
         // `personKeyFaces` so People cards show key faces on first launch,
         // not just after the next mutating action.
