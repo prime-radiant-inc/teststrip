@@ -13144,6 +13144,16 @@ public final class AppModel {
         return nil
     }
 
+    /// The cached address-book photo (+ its face box) for a person that was
+    /// seeded from Contacts, or nil if this person has no contact reference.
+    public func contactReferencePhoto(forPersonID personID: String) -> (url: URL, box: FaceBoundingBox)? {
+        guard let catalog,
+              let reference = try? catalog.repository.contactReferenceFace(personID: personID) else { return nil }
+        let url = catalog.contactPhotoCache.url(for: reference.contactIdentifier)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return (url, reference.boundingBox)
+    }
+
     private func hasCachedPreview(for assetID: AssetID) -> Bool {
         previewURL(for: assetID, levels: [.large, .medium, .grid, .micro]) != nil
     }

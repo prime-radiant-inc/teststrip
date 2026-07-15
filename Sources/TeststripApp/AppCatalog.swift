@@ -5,11 +5,13 @@ public struct AppCatalogPaths: Equatable, Sendable {
     public var root: URL
     public var catalogURL: URL
     public var previewCacheRoot: URL
+    public var contactPhotoRoot: URL
 
-    public init(root: URL, catalogURL: URL, previewCacheRoot: URL) {
+    public init(root: URL, catalogURL: URL, previewCacheRoot: URL, contactPhotoRoot: URL) {
         self.root = root
         self.catalogURL = catalogURL
         self.previewCacheRoot = previewCacheRoot
+        self.contactPhotoRoot = contactPhotoRoot
     }
 }
 
@@ -53,19 +55,22 @@ public struct AppCatalog {
     public var previewCache: PreviewCache
     public var importService: LibraryImportService
     public var metadataSidecarStore: XMPSidecarStore
+    public var contactPhotoCache: ContactPhotoCache
 
     public init(
         paths: AppCatalogPaths,
         repository: CatalogRepository,
         previewCache: PreviewCache,
         importService: LibraryImportService,
-        metadataSidecarStore: XMPSidecarStore = XMPSidecarStore()
+        metadataSidecarStore: XMPSidecarStore = XMPSidecarStore(),
+        contactPhotoCache: ContactPhotoCache = ContactPhotoCache(root: FileManager.default.temporaryDirectory)
     ) {
         self.paths = paths
         self.repository = repository
         self.previewCache = previewCache
         self.importService = importService
         self.metadataSidecarStore = metadataSidecarStore
+        self.contactPhotoCache = contactPhotoCache
     }
 
     public static func defaultPaths() throws -> AppCatalogPaths {
@@ -92,12 +97,14 @@ public struct AppCatalog {
         return AppCatalogPaths(
             root: root,
             catalogURL: root.appendingPathComponent("catalog.sqlite"),
-            previewCacheRoot: root.appendingPathComponent("Previews", isDirectory: true)
+            previewCacheRoot: root.appendingPathComponent("Previews", isDirectory: true),
+            contactPhotoRoot: root.appendingPathComponent("ContactPhotos", isDirectory: true)
         )
     }
 
     public static func open(paths: AppCatalogPaths) throws -> AppCatalog {
         try FileManager.default.createDirectory(at: paths.previewCacheRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: paths.contactPhotoRoot, withIntermediateDirectories: true)
         let database = try CatalogDatabase.open(at: paths.catalogURL)
         try database.migrate()
         let repository = CatalogRepository(database: database)
@@ -107,7 +114,13 @@ public struct AppCatalog {
             decodeRegistry: DecodeRegistry(providers: [ImageIODecodeProvider()])
         )
         let importService = LibraryImportService(ingestService: ingestService, previewCache: previewCache)
-        return AppCatalog(paths: paths, repository: repository, previewCache: previewCache, importService: importService)
+        return AppCatalog(
+            paths: paths,
+            repository: repository,
+            previewCache: previewCache,
+            importService: importService,
+            contactPhotoCache: ContactPhotoCache(root: paths.contactPhotoRoot)
+        )
     }
 
     public static func bundledWorkerExecutableURL(bundleURL: URL = Bundle.main.bundleURL) -> URL {

@@ -1184,7 +1184,8 @@ final class AppModelTests: XCTestCase {
             paths: AppCatalogPaths(
                 root: root,
                 catalogURL: root.appendingPathComponent("catalog.sqlite"),
-                previewCacheRoot: root.appendingPathComponent("Previews", isDirectory: true)
+                previewCacheRoot: root.appendingPathComponent("Previews", isDirectory: true),
+                contactPhotoRoot: root.appendingPathComponent("ContactPhotos", isDirectory: true)
             ),
             repository: CatalogRepository(database: database),
             previewCache: previewCache,
