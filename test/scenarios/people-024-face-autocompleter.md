@@ -1,21 +1,39 @@
 # people-024-face-autocompleter: face-box name pill autocompleter and inspector people autocompleter
 
-**What this covers**: the face autocompleter sub-project — on the loupe with
-the inspector visible, hovering an unnamed face box reveals a "Name…" pill that
-opens a popover autocompleter listing candidate people **ordered by similarity
-%**, and the inspector's People section autocompleter for both picking existing
-people and creating new ones. Exercises face-box pill-driven assignment, removal
-via the ✕ button (confirmed → unassign, suggested → sticky reject), and
-inspector-driven new-person creation.
+**What this covers**: the face autocompleter sub-project's two naming surfaces on
+`feat/person-autocompleter` — the loupe's face-box pill (`FaceBoxOverlayView`,
+hover-only, `.popover`-hosted `PersonAutocompleteField`) and the inspector
+People section's "Add name" button (`PhotoFacesSectionView`, same popover).
+Exercises: assigning a genuinely unnamed face via the pill's ranked-candidate
+list, removing a **confirmed** face via the pill's ✕ (plain unassign), removing
+a **suggested** (`origin='ai'`) face via the same ✕ (the sticky-reject path —
+`rejected_face_people`), and creating a brand-new person from the inspector's
+autocompleter's `Create "..."` row.
+
+Source read at authoring time (cite these, not anything else):
+`Sources/TeststripApp/FaceBoxOverlayView.swift`,
+`Sources/TeststripApp/PhotoFacesSectionView.swift`,
+`Sources/TeststripApp/PhotoFacesPresentation.swift`,
+`Sources/TeststripApp/PersonAutocompleteField.swift`,
+`Sources/TeststripApp/AppModel.swift` (`rankedPersonCandidates(forFace:)`,
+`nameFace`, `removeFacePerson`, `rejectFaceSuggestion`, `promoteFaceMatches`),
+`Sources/TeststripCore/Catalog/CatalogRepository.swift` (`assignFaces`,
+`unassignFaces`, `insertAIFace`, `recordRejectedFacePerson`),
+`Sources/TeststripCore/People/PersonCandidateRanker.swift`,
+`script/ax_drive.sh`.
 
 ## Pre-state
 
 A freshly built, isolated app instance seeded with real face photos (VM +
-AuraFace), built up to a concrete fixture: one person confirmed with a
-face-level assignment (so a centroid exists for ranking) and two additional
-unassigned same-person faces waiting for autocompleter assignment.
-Construction mirrors `people-020-ai-label-provenance.md`'s §3 and §7-9 almost
-exactly.
+AuraFace), built up to a concrete fixture: one person ("John Glenn") confirmed
+with a face-level assignment (so a centroid exists for ranking), one other
+same-person face left as an `origin='ai'` **suggestion** against that centroid
+(for the sticky-reject leg), and two faces left genuinely **unnamed** — no
+`person_faces` row at all — for the assign-via-pill and create-new-person
+legs. Construction mirrors `people-020-ai-label-provenance.md`'s §3 and
+`people-022-proposed-and-key-photo.md`'s Pre-state almost exactly, except the
+person-creation gesture below uses the **current** popover autocompleter, not
+the deleted `Menu`/"New person…"/"Create Person" sheet those two cards used.
 
 ```bash
 ROOT_DIR="$(git rev-parse --show-toplevel)"
@@ -30,237 +48,294 @@ script/vm_scenario_run.sh ax wait-vended Teststrip
 ×4/Armstrong ×2/Aldrin ×1, per `sample-data/faces.tsv`) via a plain folder
 import — nothing is pre-flagged/pre-rated/pre-confirmed. Glenn's four files:
 `commons-glenn-official.jpg`, `commons-glenn-1962.jpg`,
-`commons-glenn-senator.jpg`, `commons-glenn-senator-portrait.jpg`.
+`commons-glenn-senator.jpg`, `commons-glenn-senator-portrait.jpg` (the last is
+a spare, unused unless a clustering retry is needed below).
 
-1. **Evaluate everything** so face detection runs before anything else (mirrors
-   `people-022-proposed-and-key-photo.md`'s Pre-state step 1):
+1. **Evaluate everything** so face detection runs before any person exists
+   (this matters: `promoteFaceMatches` only proposes AI matches against
+   **confirmed** centroids, and no person exists yet, so this pass leaves
+   every one of the 11 assets with zero `person_faces` rows):
    ```bash
-   ax wait-vended Teststrip
-   # (⌘2 Library — confirm all 11 thumbnails visible)
-   ax press --role AXMenuItem --label "Evaluate Visible"
+   script/vm_scenario_run.sh ax wait-vended Teststrip
+   # ⌘2 Library — confirm all 11 thumbnails visible
+   script/vm_scenario_run.sh ax press --role AXMenuItem --label "Evaluate Visible"
    for i in $(seq 1 60); do n=$(script/vm_scenario_run.sh sql faces "SELECT count(DISTINCT asset_id) FROM evaluation_signals;"); [ "$n" -ge 11 ] && break; sleep 2; done
    script/vm_scenario_run.sh sql faces "SELECT count(*) FROM face_observations;"   # >0 required — if 0, the AuraFace model didn't load; stop and flag, don't force the rest
+   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_faces;"        # 0 — no person exists yet, so nothing could have been proposed
    ```
-2. **Confirm one face to establish a centroid** — the basis for
-   autocompleter ranking (mirrors `people-020` step 7 verbatim). Open
-   `commons-glenn-official.jpg` (⌘2 → Library → select → double-click → ⌘I;
-   scroll to People section):
+2. **Create "John Glenn" via the current popover autocompleter**, confirming
+   one face directly (a **user** gesture) to establish the centroid the
+   ranking/promotion below need. Resolve the asset ids used throughout:
    ```bash
    GLENN_OFFICIAL_ID=$(script/vm_scenario_run.sh sql faces "SELECT id FROM assets WHERE original_path LIKE '%commons-glenn-official.jpg';")
    GLENN_1962_ID=$(script/vm_scenario_run.sh sql faces "SELECT id FROM assets WHERE original_path LIKE '%commons-glenn-1962.jpg';")
    GLENN_SENATOR_ID=$(script/vm_scenario_run.sh sql faces "SELECT id FROM assets WHERE original_path LIKE '%commons-glenn-senator.jpg';")
    RIDE_STS7_ID=$(script/vm_scenario_run.sh sql faces "SELECT id FROM assets WHERE original_path LIKE '%commons-ride-sts7.jpg';")
    ```
-   Assign Glenn to the first photo:
+   Open `commons-glenn-official.jpg` (⌘2 Library → select → double-click →
+   ⌘I; the "People" section is a plain `VStack` below Info/Describe/AI, no
+   scroll gate). Its one face is `.unnamed`, so the row shows an "Add name"
+   button (`PhotoFacesSectionView.addNameButton`):
    ```bash
-   ax press --role AXButton --label "Add name"
-   ax press --role AXMenuItem --label "New person…"
-   ax type --contains "Person name" --text "John Glenn"
-   ax press --role AXButton --label "Create Person"
+   script/vm_scenario_run.sh ax press --role AXButton --label "Add name"
+   script/vm_scenario_run.sh ax type --contains "Name" --text "John Glenn"
+   script/vm_scenario_run.sh ax press --role AXButton --label 'Create "John Glenn"'
    ```
+   (The popover's `TextField("Name", ...)` has placeholder "Name", matched by
+   `--contains` per CLAUDE.md's empty-field rule; the create row is
+   `Label("Create \"\(name)\"", systemImage: "plus")` wrapped in a `Button` —
+   see Sharp edges on the "Name" placeholder not being unique app-wide.)
    ```bash
    JOHN_GLENN_ID=$(script/vm_scenario_run.sh sql faces "SELECT id FROM people WHERE name='John Glenn';")
+   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM people WHERE name='John Glenn';"  # 1
    script/vm_scenario_run.sh sql faces "SELECT origin FROM person_faces WHERE asset_id='$GLENN_OFFICIAL_ID';"    # user
    script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_assets WHERE person_id='$JOHN_GLENN_ID' AND asset_id='$GLENN_OFFICIAL_ID';"  # 1
    ```
-3. **Re-evaluate to build AI proposals** against the new centroid (mirrors
-   `people-020` step 8 — promotion fires only on evaluation completion).
-   Select `$GLENN_1962_ID`, then:
+3. **Re-evaluate one more Glenn asset alone** to fire an AI proposal against
+   the new centroid — `promoteFaceMatches` only runs on a genuine
+   evaluation-*completion* event, not on naming or navigation (per
+   `people-020`'s step 8 caution, unchanged in this branch). Select
+   `commons-glenn-1962.jpg`'s thumbnail (⌘2 Library, click), then:
    ```bash
-   ax press --role AXMenuItem --label "Evaluate Photo"
+   script/vm_scenario_run.sh ax press --role AXMenuItem --label "Evaluate Photo"
    for i in $(seq 1 60); do n=$(script/vm_scenario_run.sh sql faces "SELECT count(DISTINCT asset_id) FROM evaluation_signals WHERE asset_id='$GLENN_1962_ID';"); [ "$n" -gt 0 ] && break; sleep 2; done
+   script/vm_scenario_run.sh sql faces "SELECT origin, person_id, face_index FROM person_faces WHERE asset_id='$GLENN_1962_ID';"   # origin='ai', person_id=$JOHN_GLENN_ID
    ```
-   Check:
+   If this didn't cluster within `FaceSuggestionBuilder.defaultMaximumMatchDistance`
+   (1.23), retry with `commons-glenn-senator-portrait.jpg` in place of
+   `$GLENN_1962_ID` (the fourth, otherwise-unused Glenn photo) or a same-person
+   Ride pair, per `people-020`'s step 9 caution — note the fixture gap rather
+   than forcing a result. Capture the face index for later assertions:
    ```bash
-   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_faces WHERE asset_id='$GLENN_1962_ID' AND origin='ai' AND person_id='$JOHN_GLENN_ID';"  # >0 — or retry with $GLENN_SENATOR_ID or a Ride pair if this didn't cluster
+   GLENN_1962_FACE_INDEX=$(script/vm_scenario_run.sh sql faces "SELECT face_index FROM person_faces WHERE asset_id='$GLENN_1962_ID' AND origin='ai';")
    ```
-   Repeat for `$GLENN_SENATOR_ID`:
+4. **Confirm the other two faces are still genuinely unnamed** — neither
+   `commons-glenn-senator.jpg` nor `commons-ride-sts7.jpg` was touched by
+   steps 2-3, so both should still have zero `person_faces` rows (their pill
+   will read "Name…", `PhotoFaceState.unnamed`):
    ```bash
-   ax wait-vended Teststrip
-   # (⌘2 Library → select $GLENN_SENATOR_ID's thumbnail)
-   ax press --role AXMenuItem --label "Evaluate Photo"
-   for i in $(seq 1 60); do n=$(script/vm_scenario_run.sh sql faces "SELECT count(DISTINCT asset_id) FROM evaluation_signals WHERE asset_id='$GLENN_SENATOR_ID';"); [ "$n" -gt 0 ] && break; sleep 2; done
-   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_faces WHERE asset_id='$GLENN_SENATOR_ID' AND origin='ai' AND person_id='$JOHN_GLENN_ID';"  # >0 — or retry with another asset
+   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_faces WHERE asset_id='$GLENN_SENATOR_ID';"  # 0
+   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_faces WHERE asset_id='$RIDE_STS7_ID';"      # 0
    ```
 
-This leaves `$JOHN_GLENN_ID` confirmed with a centroid, and `$GLENN_1962_ID` +
-`$GLENN_SENATOR_ID` each with an unassigned face (`person_faces` exists with
-`origin='ai'`, but UI doesn't show them until clicked/assigned via
-autocompleter in the Steps below). A third unassigned face on `$RIDE_STS7_ID`
-will be used in Step 4 for inspector-driven new-person creation.
+This leaves: `$JOHN_GLENN_ID` confirmed with a centroid
+(`$GLENN_OFFICIAL_ID`); `$GLENN_1962_ID` with an `origin='ai'` **suggested**
+face against John Glenn; `$GLENN_SENATOR_ID` and `$RIDE_STS7_ID` genuinely
+**unnamed** — the fixture the Steps below exercise.
 
 ## Steps
 
-### 1. Face-box pill: assign an AI-proposed face via autocompleter
+### 1. Face-box pill: assign a genuinely unnamed face
 
-1. Open `commons-glenn-1962.jpg` on the loupe with inspector visible (⌘2
-   Library → select → double-click → ⌘I). Assert that the face is currently
-   unconfirmed:
+1. Open `commons-glenn-senator.jpg` on the loupe with inspector visible (⌘2
+   Library → select → double-click → ⌘I).
+2. Hover the face box. Per `FaceBoxOverlayView.faceBox`, hovering sets
+   `model.focusedFaceID` (shared with the inspector's own hover handling),
+   which renders the pill; since this face is `.unnamed`, `pillTitle` reads
+   `"Name…"` (`FaceBoxOverlayView.swift:159`, `"Name\u{2026}"`).
    ```bash
-   script/vm_scenario_run.sh sql faces "SELECT origin FROM person_faces WHERE asset_id='$GLENN_1962_ID';"  # ai
-   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_assets WHERE asset_id='$GLENN_1962_ID';"  # 0
+   script/vm_scenario_run.sh ax press --role AXButton --label "Name…"
    ```
-2. On the loupe, identify the unassigned face box and hover it. The inspector
-   uses `focusedFaceID` to track hover state (per `Sources/TeststripApp/Views/PhotoLoupe.swift` overlay logic) — on hover, a "Name…" pill button appears
-   over the face box.
-   - **AX note**: Face-box identification by AX is delicate (each box is a
-     custom overlay rect with no independent AXElement); the exact `--xpath`
-     or label to find the pill may require a real-run pass to pin precisely.
-     As written, this assumes the pill has an accessibility label or can be
-     found by role + nearby box position; adjust per actual AX hierarchy when
-     running live.
-3. Click the "Name…" pill button:
+   (See Sharp edges — whether a hover state can be reached at all through
+   `ax_drive.sh`'s AX-action-only verbs, and whether the box's
+   accessibility-collapsing wrapper hides the pill regardless, are both open
+   questions pending a live pass.)
+3. Clicking the pill sets `model.editingFaceID`, opening the `.popover` with
+   `PersonAutocompleteField`. John Glenn is the only confirmed person, so he's
+   the only ranked candidate and appears with a similarity "%" badge
+   (`AppModel.rankedPersonCandidates(forFace:)` → `PersonCandidateRanker.rank`,
+   using `FaceSuggestionBuilder.centroid`/`.distance`):
    ```bash
-   ax press --role AXButton --label "Name…"
+   script/vm_scenario_run.sh ax press --role AXButton --label "John Glenn"
    ```
-   A popover autocompleter appears, listing candidate people **ordered by
-   similarity %** (per `FaceSuggestionBuilder.sortedSuggestions(_:)` ranking).
-   John Glenn should appear at/near the top.
-4. Click "John Glenn" in the autocompleter popover:
+4. Assert the assignment:
    ```bash
-   ax press --role AXButton --label "John Glenn"
-   ```
-5. Assert the assignment:
-   ```bash
-   script/vm_scenario_run.sh sql faces "SELECT origin FROM person_faces WHERE asset_id='$GLENN_1962_ID' AND person_id='$JOHN_GLENN_ID';"  # user (flipped from ai)
-   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_assets WHERE person_id='$JOHN_GLENN_ID' AND asset_id='$GLENN_1962_ID';"  # 1 (created)
+   script/vm_scenario_run.sh sql faces "SELECT origin FROM person_faces WHERE asset_id='$GLENN_SENATOR_ID' AND person_id='$JOHN_GLENN_ID';"  # user
+   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_assets WHERE person_id='$JOHN_GLENN_ID' AND asset_id='$GLENN_SENATOR_ID';"  # 1
    ```
 
-### 2. Face-box pill: remove a confirmed assignment via ✕
+### 2. Face-box pill: remove the now-confirmed assignment via ✕
 
-1. Still viewing `commons-glenn-1962.jpg` on the loupe, hover the now-named
-   face box. The pill should now show the person name ("John Glenn") with a
-   trailing ✕ button instead of "Name…".
-2. Click the ✕ button:
+1. Still on `commons-glenn-senator.jpg`'s loupe, hover the same face box.
+   It's now `.confirmed`, so `pillTitle` reads `"John Glenn"` (no checkmark —
+   the `✓` suffix belongs only to `PhotoFaceState.displayLabel`, used for the
+   box's own accessibility label and the inspector row text, not the pill),
+   and a trailing ✕ button appears (`row.state.personID != nil`).
+2. Click the ✕, an icon-only control targeted by AXHelp per CLAUDE.md's rule
+   (`Image(systemName: "xmark.circle.fill")` + `.help("Remove this person")`,
+   `FaceBoxOverlayView.swift:142-145`):
    ```bash
-   ax press --role AXButton --label "Clear…"  # or match the ✕ icon label — adjust per actual AX label
+   script/vm_scenario_run.sh ax press --role AXButton --help "Remove this person"
    ```
-3. Assert the unassignment:
+   For a `.confirmed` row, `removePerson` calls `model.removeFacePerson(row.faceID)`
+   (`FaceBoxOverlayView.swift:163-166`) → `CatalogRepository.unassignFaces` —
+   deletes the `person_faces` row outright; this is a plain unassign, not a
+   sticky reject.
+3. Assert:
    ```bash
-   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_faces WHERE asset_id='$GLENN_1962_ID' AND person_id='$JOHN_GLENN_ID';"  # 0 (removed)
-   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_assets WHERE person_id='$JOHN_GLENN_ID' AND asset_id='$GLENN_1962_ID';"  # 0 (unlinked)
-   ```
-
-### 3. Face-box pill: re-assign and then step 4 will use inspector instead
-
-1. Click the "Name…" pill again to re-open the autocompleter:
-   ```bash
-   ax press --role AXButton --label "Name…"
-   ```
-2. Click "John Glenn" to re-assign:
-   ```bash
-   ax press --role AXButton --label "John Glenn"
-   ```
-3. Confirm:
-   ```bash
-   script/vm_scenario_run.sh sql faces "SELECT origin FROM person_faces WHERE asset_id='$GLENN_1962_ID' AND person_id='$JOHN_GLENN_ID';"  # user again
+   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_faces WHERE asset_id='$GLENN_SENATOR_ID' AND person_id='$JOHN_GLENN_ID';"   # 0
+   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_assets WHERE person_id='$JOHN_GLENN_ID' AND asset_id='$GLENN_SENATOR_ID';"   # 0
+   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM rejected_face_people WHERE asset_id='$GLENN_SENATOR_ID' AND person_id='$JOHN_GLENN_ID';"  # 0 — a confirmed-face removal is not a sticky reject
    ```
 
-### 4. Inspector autocompleter: create a new person on an unnamed face
+### 3. Face-box pill: remove a suggested (`origin='ai'`) assignment via ✕ — the sticky-reject leg
 
-1. Open `commons-ride-sts7.jpg` (`$RIDE_STS7_ID`) on the loupe with inspector
-   visible (same ⌘2/double-click/⌘I flow). This asset has no prior face
-   assignments (none of the Ride photos were in the Pre-state face confirmation
-   or evaluation path). Assert:
+1. Open `commons-glenn-1962.jpg` on the loupe (inspector visible). Re-confirm
+   the Pre-state fixture is still intact:
+   ```bash
+   script/vm_scenario_run.sh sql faces "SELECT origin, person_id FROM person_faces WHERE asset_id='$GLENN_1962_ID';"  # ai, $JOHN_GLENN_ID
+   ```
+2. Hover its face box. It's `.suggested`, so `pillTitle` reads
+   `"guess: John Glenn"` (`FaceBoxOverlayView.swift:158`), and since
+   `row.state.personID` is non-nil for `.suggested` too, the ✕ button also
+   appears alongside it.
+3. Click the ✕ (same target as Step 2):
+   ```bash
+   script/vm_scenario_run.sh ax press --role AXButton --help "Remove this person"
+   ```
+   For a `.suggested` row, `removePerson` calls
+   `model.rejectFaceSuggestion(row.faceID, personID:)`
+   (`FaceBoxOverlayView.swift:167-168`), which calls `unassignFaces` (deletes
+   the `origin='ai'` `person_faces` row) **then**
+   `recordRejectedFacePerson` (writes a `rejected_face_people` row) — the
+   sticky-reject path, so recognition never re-proposes this pair.
+4. Assert:
+   ```bash
+   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_faces WHERE asset_id='$GLENN_1962_ID' AND origin='ai';"  # 0 — the ai row is deleted, not just hidden
+   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM rejected_face_people WHERE asset_id='$GLENN_1962_ID' AND face_index='$GLENN_1962_FACE_INDEX' AND person_id='$JOHN_GLENN_ID';"  # 1
+   ```
+
+### 4. Inspector People-section autocompleter: create a brand-new person
+
+1. Open `commons-ride-sts7.jpg` (⌘2 Library → select → double-click → ⌘I;
+   People section). Re-confirm the Pre-state fixture:
    ```bash
    script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_faces WHERE asset_id='$RIDE_STS7_ID';"  # 0
    ```
-2. In the inspector's People section, find the face row (a `.suggested` or
-   `.unassigned` row, depending on whether AI promotion happened to propose
-   something; for simplicity, assume it's unassigned and shows a "Name…" or
-   similar placeholder):
-   - **AX note**: the People section is a `VStack` in `InspectorView.swift`
-     (`PhotoFacesSectionView`); find the face's row and the autocompleter
-     trigger within it.
-3. Click the face's autocompleter trigger (e.g., a "Name…" button or similar in
-   the People row):
+   Its `.unnamed` face row renders `addNameButton` ("Add name",
+   `PhotoFacesSectionView.swift:103-109`) — a plain button with no
+   accessibility-collapsing wrapper (unlike the loupe pill; see Sharp edges),
+   so it should be reliably AX-findable without any hover.
+2. Click it:
    ```bash
-   ax press --role AXButton --label "Name…"  # or the actual label for the People section's face assignment trigger
+   script/vm_scenario_run.sh ax press --role AXButton --label "Add name"
    ```
-   The autocompleter popover appears, listing existing people (John Glenn,
-   etc.) and showing a "Create 'Gus Grissom'" row if a new name has been
-   typed.
-4. Type a new name, "Gus Grissom", in a text field (if the autocompleter
-   includes a free-text input) or trigger a new-person flow (the exact UI
-   depends on the inspector's autocompleter design — flag if the flow differs
-   from this outline):
+3. Type a brand-new name into the popover's field:
    ```bash
-   ax type --contains "Person name" --text "Gus Grissom"
+   script/vm_scenario_run.sh ax type --contains "Name" --text "Gus Grissom"
    ```
-5. Activate the "Create 'Gus Grissom'" row or button:
+4. Click the create row — `Label("Create \"Gus Grissom\"", systemImage: "plus")`
+   (`PersonAutocompleteField.swift:97`), wrapped in a `Button` (`rowButton`):
    ```bash
-   ax press --role AXMenuItem --label "Create 'Gus Grissom'"  # or equivalent
+   script/vm_scenario_run.sh ax press --role AXButton --label 'Create "Gus Grissom"'
    ```
-6. Assert the new person and the assignment:
+   This calls `onCreate` → `model.nameFace(row.faceID, newPersonName: "Gus Grissom")`
+   (`PhotoFacesSectionView.swift:117-120`) → `upsertPerson` + `assignFaces`.
+5. Assert:
    ```bash
+   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM people WHERE name='Gus Grissom';"  # 1
    GUS_GRISSOM_ID=$(script/vm_scenario_run.sh sql faces "SELECT id FROM people WHERE name='Gus Grissom';")
-   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM people WHERE name='Gus Grissom';"  # 1 (created)
    script/vm_scenario_run.sh sql faces "SELECT origin FROM person_faces WHERE asset_id='$RIDE_STS7_ID' AND person_id='$GUS_GRISSOM_ID';"  # user
    script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_assets WHERE person_id='$GUS_GRISSOM_ID' AND asset_id='$RIDE_STS7_ID';"  # 1
    ```
 
 ## Expected
 
-- Step 1.2–1.4 (face-box pill assign): the popover autocompleter appears with
-  John Glenn ranked at or near the top (similarity % ordering visible or
-  verifiable via the presence of other candidates lower in the list). **Fails
-  if** the autocompleter does not appear, John Glenn is not listed, or the
-  popover shows no ordering distinction.
-- Step 1.5 (assignment): `person_faces.origin` for `$GLENN_1962_ID`/John Glenn
-  flips from `ai` to `user`, and a `person_assets` row is created. **Fails if**
-  the row stays `ai`, no `person_assets` row appears, or the face remains
-  unassigned in the UI.
-- Step 2.2–2.3 (face-box remove): clicking the ✕ button removes both the
-  `person_faces` row (confirmed → unassign, not stub with `origin='ai'`) and
-  the `person_assets` row. **Fails if** either row persists, the UI still shows
-  the face assigned, or the pill reappears with "John Glenn" still active.
-- Step 3 (re-assign): the pill can be clicked again to re-open the autocompleter
-  and re-assign the same person. **Fails if** the pill does not reappear after
-  removal, or the re-assignment is rejected or silently fails.
-- Step 4.6 (inspector autocompleter, new person): a new `people` row is created
-  with `name='Gus Grissom'`, a `person_faces` row links the face to the new
-  person with `origin='user'`, and a `person_assets` row exists. **Fails if**
-  the new person row is not created, the face assignment fails, or the row has
-  the wrong `origin`.
+- Step 1 (pill assign): the popover lists John Glenn (with a "%" similarity
+  badge) and clicking his row flips `person_faces.origin` to `user` for
+  `$GLENN_SENATOR_ID` and creates a `person_assets` row. **Fails if** the pill
+  never appears/opens the popover, John Glenn isn't listed, the row stays
+  unassigned, or no `person_assets` row is created.
+- Step 2 (pill remove, confirmed): clicking the ✕ deletes both the
+  `person_faces` row and the `person_assets` row for `$GLENN_SENATOR_ID`, and
+  writes **no** `rejected_face_people` row. **Fails if** either row survives,
+  or a `rejected_face_people` row appears (a confirmed removal must not be
+  sticky).
+- Step 3 (pill remove, suggested — the sticky-reject leg, required by this
+  rewrite): clicking the ✕ on a `.suggested` face deletes the `origin='ai'`
+  `person_faces` row **and** writes a `rejected_face_people` row for
+  `($GLENN_1962_ID, $GLENN_1962_FACE_INDEX, $JOHN_GLENN_ID)`. **Fails if** the
+  `ai` row survives (reject only hid the pill instead of clearing the
+  suggestion), or the `rejected_face_people` row is missing (the reject isn't
+  sticky, so recognition could re-propose the same wrong match later).
+- Step 4 (inspector, new person): a new `people` row is created with
+  `name='Gus Grissom'`, a `person_faces` row links `$RIDE_STS7_ID` to it with
+  `origin='user'`, and a `person_assets` row exists. **Fails if** the new
+  person isn't created, the face assignment fails, or `origin` is wrong.
 
 ## Cleanup
 
-Quit the launched instance; discard the VM run directory (`~/teststrip-vm/run/faces-<timestamp>`, i.e. `$FRESH` from Pre-state) created for this run, per `test/scenarios/README.md`'s isolated-launch teardown. Touch no real catalog.
+Quit the launched instance; discard the VM run directory
+(`~/teststrip-vm/run/faces-<timestamp>`, i.e. `$FRESH` from Pre-state) created
+for this run, per `test/scenarios/README.md`'s isolated-launch teardown.
+Touch no real catalog.
 
 ## Sharp edges
 
-- **Face-box pill AX targeting is delicate.** The face box is a custom overlay
-  rect (per `PhotoLoupe.swift`'s `focusedFaceID` hover logic), and the pill
-  appears on hover via `ZStack` overlay logic — not a persistent, always-present
-  AXButton. Finding the pill via AX may require matching by `--xpath`, nearby
-  element context, or the text label `"Name…"` / person name string. On a real
-  run, inspect the AX hierarchy (e.g., via Xcode's Accessibility Inspector or
-  `script/ax_drive.sh find --role ...` exploratory queries) to nail down the
-  exact selector and label; this card's `ax press --role AXButton --label
-  "Name…"` is a best-guess outline that may need adjustment. Similarly, the
-  ✕ button's accessibility label (e.g., `"Clear…"`, `"Remove"`, an icon label)
-  must be verified live.
-- **Inspector autocompleter design unconfirmed.** This card assumes the
-  inspector's People section has a face-level autocompleter trigger (a button
-  or text input) that behaves like the face-box pill (showing a popover, listing
-  people, supporting new-person creation via a "Create '…'" row). If the actual
-  UI differs (e.g., a different layout, a different trigger mechanism, or a
-  different new-person flow), adjust Steps 4.2–4.5 to match the real
-  implementation.
-- **AI proposal presence optional.** If Pre-state step 3's evaluation doesn't
-  fire an AI proposal for `$RIDE_STS7_ID` (Step 4.1 `person_faces` check returns
-  0), that's expected — the face is simply unassigned, and Step 4 proceeds
-  normally. The card doesn't require a proposed face; it exercises both
-  unassigned and (if present) proposed faces.
-- **Idle-wedge / keep-warm**: Step 1 waits on face rendering in the loupe after
-  opening a photo. If the loupe lags or the face box doesn't appear, re-assert
-  frontmost via `ax wait-vended Teststrip` and retry navigation. Keep the app
-  warm during any waits, per CLAUDE.md and `script/verify_people_clustering.sh`'s
-  reference pattern.
+- **The pill only appears on hover, and driving that hover purely through
+  `ax_drive.sh` is unproven.** `facePill` only exists in the view tree when
+  `isFocused || isEditing` (`FaceBoxOverlayView.swift:82-88`), and
+  `isFocused` is set by a real SwiftUI `.onHover` callback
+  (`FaceBoxOverlayView.swift:91-97`). Reading `script/ax_drive.sh` end to
+  end: its plain `press`/`find`/`wait` verbs act purely through
+  `AXUIElementPerformAction`/AX-tree reads and never move the actual mouse
+  cursor; only its `--button right` path calls `CGWarpMouseCursorPosition` +
+  posts a real `mouseMoved` event (immediately followed by a right-click) —
+  there is no bare "move/hover" verb. Whether that right-click path's cursor
+  warp is enough to trigger `.onHover` (and whether the resulting context
+  menu can be dismissed cleanly first) is untested; treat Steps 1-3's hover
+  instruction as the *intent*, not a proven recipe, until a live pass checks
+  it. (Both the inspector's People rows and the loupe's face box call
+  `model.focusedFaceID = row.faceID` on hover — same shared state — so if
+  hover-driving one surface is solved, it solves both.)
+- **The face box's own accessibility wrapper may hide the pill/✕ regardless
+  of hover.** `FaceBoxOverlayView.faceBox` applies
+  `.accessibilityElement(children: .ignore)` +
+  `.accessibilityLabel(row.state.displayLabel)` unconditionally to the whole
+  box (`FaceBoxOverlayView.swift:98-99`), which per SwiftUI's accessibility
+  model collapses the box's entire subtree — including the conditionally
+  rendered pill `Button` and ✕ `Button` — into one opaque element exposing
+  only that single label. If so, `ax_drive.sh find --role AXButton --label
+  "Name…"` (or `--help "Remove this person"`) may never match anything inside
+  a face box, hover or not. This is a real, source-grounded risk, not settled
+  by reading alone — confirm live (e.g.
+  `script/vm_scenario_run.sh ax find --role AXButton` scoped near the loupe)
+  before trusting Steps 1-3's AX commands as written; if it's
+  confirmed, driving these two steps needs either a product-code change
+  (relaxing the `.ignore`) or a coordinate-based click, neither of which this
+  card invents.
+- **The inspector's "Add name"/create-row buttons carry none of the above
+  risk** — `PhotoFacesSectionView` has no accessibility-collapsing wrapper,
+  so Step 4 should be materially more reliable to drive than Steps 1-3.
+- **The popover's `TextField` placeholder ("Name") is not unique app-wide.**
+  `LibraryGridView.swift` (culling-session-name, rename fields) and
+  `SidebarView.swift` (rename fields) also use `TextField("Name", ...)`. They
+  should not be mounted while this card's popover is open, but if
+  `ax type --contains "Name"` ever lands in the wrong field, sanity-check
+  with `ax find --contains "Name"` first to see how many fields matched.
+- **AuraFace gating.** Steps 1-3 need the AuraFace embedder present
+  (`download_face_model.sh`); if it's missing, `face_observations` stays
+  empty and the whole card is blocked at Pre-state step 1 — stop and flag
+  per `dev-008-sample-downloads.md`'s manifest-gap note, don't force it.
+- **Clustering isn't guaranteed.** Pre-state step 3's AI proposal depends on
+  `commons-glenn-1962.jpg` actually landing within
+  `FaceSuggestionBuilder.defaultMaximumMatchDistance` (1.23) of
+  `commons-glenn-official.jpg`'s centroid — retry with the spare Glenn photo
+  or a Ride pair per the inline fallback note before concluding promotion is
+  broken.
+- **Idle-wedge / keep-warm**: every wait above (evaluation, AI-proposal
+  polling) needs the app kept frontmost — re-assert via
+  `script/vm_scenario_run.sh ax wait-vended Teststrip` on every poll, per
+  CLAUDE.md and `script/verify_people_clustering.sh`'s reference pattern.
 
 ## Run status
 
-NOT RUN — authored 2026-07-14 against `feat/person-autocompleter`, not yet run
-live. Pending execution in the Tart VM with the AuraFace model present
+NOT RUN — authored 2026-07-15 against `feat/person-autocompleter`, rewritten
+after review rejected the prior version for describing UI this branch deleted
+(the old `Menu`/"New person…"/"Create Person" sheet) and for citing source
+paths and methods that do not exist in this tree. Every label, AX role/help
+string, file path, and method name above was re-verified by reading the
+actual current-tree source listed under "Source" before writing this card.
+Pending live execution in the Tart VM with the AuraFace model present
 (`script/vm_scenario_run.sh`, per `test/scenarios/README.md`) — a
 human-triggered step separate from authoring this card.
