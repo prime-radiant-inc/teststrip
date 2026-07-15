@@ -11127,6 +11127,7 @@ public final class AppModel {
             replaceAssets(contents.assets, preferredSelection: state.selectedAssetID)
             totalAssetCount = contents.totalAssetCount
         }
+        try refreshProposedAssets()
     }
 
     // Routes that only ever exist mid-culling-session; never auto-restored.
