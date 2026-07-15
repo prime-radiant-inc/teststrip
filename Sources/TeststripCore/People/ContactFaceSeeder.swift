@@ -12,7 +12,7 @@ public struct ContactSeedSummary: Equatable, Sendable {
 /// Turns address-book contact records into reference faces: embed the contact
 /// photo's primary face and upsert a `contact_reference_faces` row, attaching to
 /// an existing same-named person or minting a latent `contact:<id>` person id.
-public struct ContactFaceSeeder: Sendable {
+public struct ContactFaceSeeder {
     private let detectFaces: @Sendable (CGImage) throws -> [AppleVisionFaceObservation]
     private let repository: CatalogRepository
     private let photoCache: ContactPhotoCache
