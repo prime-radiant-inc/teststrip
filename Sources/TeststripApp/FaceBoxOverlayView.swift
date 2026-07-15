@@ -47,13 +47,15 @@ enum FaceBoxOverlayGeometry {
 /// (`PhotoFaceState.displayLabel`, shared with the People inspector rows).
 /// The box matching `model.focusedFaceID` (set by hovering a People row) is
 /// highlighted, and hovering a box sets `model.focusedFaceID` in turn — the
-/// same hover-only linking the People rows use (`PhotoFacesSectionView`),
-/// not click-to-pin: a click on the loupe image already zooms to 100% at the
-/// clicked point (`LoupeZoomStageView.fittedImage`), and overloading a click
-/// on a face box to instead pin its selection would shadow that existing,
-/// discoverable gesture. If Jesse wants persistent face selection later,
-/// that's a deliberate follow-up (e.g. a modifier-click), not a silent
-/// addition here.
+/// same hover-only linking the People rows use (`PhotoFacesSectionView`).
+/// Hovering a box also swaps its plain label for a pill; clicking the pill
+/// opens the naming popover (`PersonAutocompleteField`) and pins the box
+/// open via `model.editingFaceID`, independent of hover, so the popover
+/// stays put while the pointer moves off the box and into it. The pill's ✕
+/// removes a confirmed person or rejects a suggestion. Neither the pill nor
+/// the popover claims the rest of the box, so a click on the box interior
+/// still falls through to zoom to 100% at the clicked point
+/// (`LoupeZoomStageView.fittedImage`).
 struct FaceBoxOverlayView: View {
     var model: AppModel
     var rows: [PhotoFaceRow]

@@ -3597,6 +3597,7 @@ public final class AppModel {
         let targetID = try existingPersonID(matchingName: trimmedName) ?? id
         try catalog.repository.upsertPerson(id: targetID, name: trimmedName)
         try catalog.repository.assignAssets(assetIDs, toPersonID: targetID)
+        noteRecentlyNamedPerson(targetID)
         try loadCatalogPeople()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
@@ -3814,6 +3815,7 @@ public final class AppModel {
             try catalog.repository.upsertPerson(id: personID, name: personName)
         }
         try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: personID)
+        noteRecentlyNamedPerson(personID)
         try loadCatalogPeople()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
@@ -3836,6 +3838,7 @@ public final class AppModel {
         let targetID = try existingPersonID(matchingName: trimmedName) ?? personID
         try catalog.repository.upsertPerson(id: targetID, name: trimmedName)
         try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: targetID)
+        noteRecentlyNamedPerson(targetID)
         try loadCatalogPeople()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()

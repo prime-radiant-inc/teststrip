@@ -138,6 +138,35 @@ final class RankedPersonCandidatesTests: XCTestCase {
         XCTAssertEqual(model.catalogPeople.first?.id, "contact:C1")
     }
 
+    func testConfirmPeopleFaceSuggestionByNameUpdatesRecency() throws {
+        // Recency must be pushed on the whole-asset/group by-name confirm path
+        // too, not just the per-face nameFace paths — rankedPersonCandidates(forFace: nil)'s
+        // entire sort key is recency-then-alpha (the whole-asset "Name selection"
+        // surface uses it). Pre-fix (no noteRecentlyNamedPerson call in
+        // confirmPeopleFaceSuggestion(_:personName:personID:)), "p2" would NOT be
+        // first here — with no recency signal for either person the ranker falls
+        // back to alpha order, so "p1" (Ann) sorts before "p2" (Bob).
+        let a = makeAsset(id: "a5", path: "/p/a5.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(named: "confirm-suggestion-recency", assets: [a]) { repo in
+            try repo.upsertPerson(id: "p1", name: "Ann")
+            try repo.upsertPerson(id: "p2", name: "Bob")
+            try repo.replaceFaceObservations(assetID: a.id, provenance: self.provenance, with: [self.obs(a.id, [1, 0, 0])])
+        }
+        let faceID = FaceID(assetID: a.id, faceIndex: 0)
+        let suggestion = PeopleFaceSuggestion(
+            id: "face-cluster-\(a.id.rawValue)-0",
+            kind: .newPerson,
+            faceIDs: [faceID],
+            representativeFace: faceID,
+            representativeBoundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+            assetIDs: [a.id]
+        )
+
+        try model.confirmPeopleFaceSuggestion(suggestion, personName: "Bob")
+
+        XCTAssertEqual(model.rankedPersonCandidates(forFace: nil).first?.id, "p2")
+    }
+
     // MARK: - Test support (copied from FaceGroupReviewTests.swift; kept private per file)
 
     private func makeModelWithCatalogAssets(
