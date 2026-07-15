@@ -389,10 +389,13 @@ struct PeopleView: View {
                 }
                 reviewingGroup = nil
             },
-            name: { suggestion in
+            confirmNamed: { suggestion, personName in
+                do {
+                    try model.confirmPeopleFaceSuggestion(suggestion, personName: personName)
+                } catch {
+                    model.errorMessage = error.localizedDescription
+                }
                 reviewingGroup = nil
-                suggestionPersonName = ""
-                namingSuggestion = suggestion
             },
             close: { reviewingGroup = nil }
         )

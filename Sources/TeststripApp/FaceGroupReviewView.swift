@@ -12,9 +12,14 @@ struct FaceGroupReviewView: View {
     var suggestionID: String
     /// One-tap confirm for a matched person.
     var confirm: (PeopleFaceSuggestion) -> Void
-    /// Name-first confirm for a new cluster (opens the naming sheet).
-    var name: (PeopleFaceSuggestion) -> Void
+    /// Confirm for a new cluster, with the name the user typed in the review's
+    /// own naming sheet.
+    var confirmNamed: (PeopleFaceSuggestion, String) -> Void
     var close: () -> Void
+
+    @State private var isNaming = false
+    @State private var newPersonName = ""
+    @FocusState private var isNameFieldFocused: Bool
 
     private var suggestion: PeopleFaceSuggestion? {
         model.peopleFaceSuggestions.first { $0.id == suggestionID }
@@ -34,6 +39,13 @@ struct FaceGroupReviewView: View {
             }
         }
         .frame(minWidth: 760, minHeight: 560)
+        // The new-cluster naming sheet is presented from *within* the review
+        // sheet (sheet-on-sheet), not by swapping the People canvas's sheets —
+        // that avoids the dismiss-then-present race and keeps the pruned group
+        // in view behind it.
+        .sheet(isPresented: $isNaming) {
+            namingSheet()
+        }
     }
 
     private func header(_ review: FaceGroupReviewPresentation) -> some View {
@@ -84,7 +96,8 @@ struct FaceGroupReviewView: View {
                 if review.isOneTapConfirm {
                     confirm(suggestion)
                 } else {
-                    name(suggestion)
+                    newPersonName = ""
+                    isNaming = true
                 }
             } label: {
                 Text(review.confirmActionTitle)
@@ -96,6 +109,33 @@ struct FaceGroupReviewView: View {
             .help(review.isOneTapConfirm ? "Confirm this group as \(review.confirmActionTitle)" : "Name this new group")
         }
         .padding(18)
+    }
+
+    private func namingSheet() -> some View {
+        SheetScaffold(
+            title: "Name Face Group",
+            subtitle: suggestion.map {
+                PeoplePresentation.nameFaceGroupSubtitle(
+                    faceCount: $0.faceIDs.count,
+                    photoCount: $0.assetIDs.count
+                )
+            },
+            width: 320,
+            primaryLabel: "Create Person",
+            isPrimaryEnabled: !newPersonName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            cancel: { isNaming = false },
+            primary: {
+                if let suggestion {
+                    confirmNamed(suggestion, newPersonName)
+                }
+                isNaming = false
+            }
+        ) {
+            TextField("Person name", text: $newPersonName)
+                .textFieldStyle(.roundedBorder)
+                .focused($isNameFieldFocused)
+                .onAppear { isNameFieldFocused = true }
+        }
     }
 
     private var completionState: some View {
