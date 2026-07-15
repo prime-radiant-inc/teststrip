@@ -4,11 +4,12 @@
 Automatic face grouping surfaces two card kinds: one-tap `matchExisting`
 ("Is this X?") and `newPerson` ("Who is this?" → Name…) per
 `PeopleView.suggestionCards` (`Sources/TeststripApp/PeopleView.swift:636-660`).
-One-tap confirm writes through the `assignFaces` path with an invalid-state
-guard; the name-new sheet's Create is disabled/throws on a blank name; card
-count text is singular/plural correct; the card body is tappable to
-batch-select the suggestion's assets in Library; dismiss (X/Esc) calls
-`dismissFaces` without writing. Suggestions are built from ≤2000 unassigned
+Confirm/name now happen inside the **review surface** the card links into
+(clicking the card opens it — see people-021), not from a button on the card;
+that path still writes through `assignFaces` with an invalid-state guard, and
+the name-new sheet's Create is disabled/throws on a blank name. Card count text
+is singular/plural correct; dismiss (X/Esc) calls `dismissFaces` without
+writing. Suggestions are built from ≤2000 unassigned
 Vision faces + ArcFace embeddings via `FaceSuggestionBuilder`, refreshed on
 appear. Confirming/naming a group writes a `people` row and its
 `person_assets` links; nothing is written until the explicit confirm — the
@@ -55,10 +56,12 @@ should be one person's faces, not a visual-similarity grab-bag.
    sqlite3 "$DB" "SELECT count(*) FROM people;"          # must still equal P0
    ```
    Surfacing a "needs a name" card must not have written a person.
-4. **Confirm/name a group.** AX-press a suggestion card's confirm button
-   (accessible via help **"Confirm these faces as …"** or **"Name this face
-   group"**). If a name sheet appears (**"Name Face Group"**), type a name and
-   press its confirm button.
+4. **Confirm/name a group.** AX-press a suggestion card (its Review link, help
+   **"Review these faces before naming them"** / **"Review this group before
+   confirming …"**) to open the review sheet, then use the sheet's confirm bar:
+   press the person-name button (**"Is this X?"**) or **"Name…"** → type a name
+   in the **"Name Face Group"** sheet → confirm. (people-021 exercises the
+   review surface itself; here we only need a group to get named.)
 5. **Assert the confirm wrote through**:
    ```bash
    sqlite3 "$DB" "SELECT count(*) FROM people;"          # P1
@@ -97,10 +100,11 @@ Quit the launched instance.
   exercise the one-tap branch until a prior run of this same card (or
   people-005) has named at least one person in the same catalog.
 - Not directly exercised by the Steps above (asserted only against the code
-  cited in "What this covers"): singular/plural count-text exactness, the
-  blank-name Create-disabled guard, and card-body-tap batch-selecting the
-  suggestion's assets into Library. Flag as a follow-up if a live run finds
-  the code has drifted from this description.
+  cited in "What this covers"): singular/plural count-text exactness and the
+  blank-name Create-disabled guard. The card body now opens the **review
+  surface** (people-021) rather than batch-selecting the suggestion's assets
+  into Library — the old card→grid jump was removed. Flag as a follow-up if a
+  live run finds the code has drifted from this description.
 - Cross-check the rendered person against the `people` row: the UI must not show
   a named person the table doesn't back (name fabricated in the view).
 - **Attach-to-existing ruling (2026-07-10, Jesse):** in the "Who is this?"

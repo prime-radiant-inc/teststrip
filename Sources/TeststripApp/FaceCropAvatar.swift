@@ -30,6 +30,28 @@ enum FaceCropGeometry {
     }
 }
 
+/// Loads a preview image and returns the face crop for a bounding box, off the
+/// main actor. Shared by the round `FaceCropAvatar` and the rectangular
+/// `FaceReviewTileView` so the crop pipeline lives in one place.
+enum FaceCropLoader {
+    static func loadCroppedFace(previewURL: URL, boundingBox: FaceBoundingBox) async -> NSImage? {
+        await Task.detached(priority: .userInitiated) {
+            guard let data = try? Data(contentsOf: previewURL, options: [.mappedIfSafe]),
+                  let image = NSImage(data: data),
+                  let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                return nil
+            }
+            let rect = FaceCropGeometry.pixelCropRect(
+                boundingBox: boundingBox,
+                imagePixelWidth: cgImage.width,
+                imagePixelHeight: cgImage.height
+            )
+            guard let cropped = cgImage.cropping(to: rect) else { return nil }
+            return NSImage(cgImage: cropped, size: NSSize(width: rect.width, height: rect.height))
+        }.value
+    }
+}
+
 struct FaceCropAvatar: View {
     // Suggestion refreshes can change the representative face while the asset
     // (and therefore the preview URL) stays the same, so the reload key must
@@ -86,27 +108,10 @@ struct FaceCropAvatar: View {
         guard loadedKey != key else { return }
         loadedKey = key
         let boundingBox = boundingBox
-        guard let cropped = await Self.loadCroppedFace(previewURL: previewURL, boundingBox: boundingBox),
+        guard let cropped = await FaceCropLoader.loadCroppedFace(previewURL: previewURL, boundingBox: boundingBox),
               !Task.isCancelled else {
             return
         }
         image = cropped
-    }
-
-    private static func loadCroppedFace(previewURL: URL, boundingBox: FaceBoundingBox) async -> NSImage? {
-        await Task.detached(priority: .userInitiated) {
-            guard let data = try? Data(contentsOf: previewURL, options: [.mappedIfSafe]),
-                  let image = NSImage(data: data),
-                  let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-                return nil
-            }
-            let rect = FaceCropGeometry.pixelCropRect(
-                boundingBox: boundingBox,
-                imagePixelWidth: cgImage.width,
-                imagePixelHeight: cgImage.height
-            )
-            guard let cropped = cgImage.cropping(to: rect) else { return nil }
-            return NSImage(cgImage: cropped, size: NSSize(width: rect.width, height: rect.height))
-        }.value
     }
 }

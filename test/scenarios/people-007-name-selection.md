@@ -26,8 +26,9 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    sqlite3 "$DB" "SELECT count(*) FROM person_assets;"   # L0
    sqlite3 "$DB" "SELECT count(*) FROM dismissed_face_assets;"  # D0
    ```
-2. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for Library (or ⌘3
-   People, whichever hosts the grid the "Name Selection" gesture reads from —
+2. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for Library (then the
+   sub-view toggle segment **"People"**, whichever hosts the grid the "Name
+   Selection" gesture reads from —
    confirm via `PeopleView`'s pendingPeoplePanel, which reads
    `model.canConfirmSelectedPerson` regardless of `selectedView`).
 3. **Single-selection candidate path.** Click one grid thumbnail to select it

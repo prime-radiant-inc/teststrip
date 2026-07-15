@@ -2,7 +2,7 @@
 
 **What this covers**: As a photographer culling a group shot I want to check
 everyone's eyes/expression at a glance via face close-ups next to the loupe,
-without it being confused for the People-workspace face-confirmation flow (no
+without it being confused for the People view's face-confirmation flow (no
 catalog writes come from looking at it). Covered inventory items 34 (Cull-chrome-only
 112px crop panel) and 35 (display-only — nothing persisted). Source:
 `closeUpsPanel` at `Sources/TeststripApp/LibraryGridView.swift:3705-3730`,

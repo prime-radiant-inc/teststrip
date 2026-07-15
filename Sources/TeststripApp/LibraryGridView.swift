@@ -170,7 +170,7 @@ struct LibraryGridView: View {
                         dismiss: { model.dismissRejectRelocationSummary() }
                     )
                 }
-                if WorkspaceChromePolicy.showsFooter(model.selectedWorkspace) {
+                if WorkspaceChromePolicy.showsFooter(model.selectedView) {
                     footer
                 }
             }
@@ -235,7 +235,7 @@ struct LibraryGridView: View {
             workspaceSwitcher
         }
 
-        if WorkspaceChromePolicy.showsImportMenu(model.selectedWorkspace) {
+        if WorkspaceChromePolicy.showsImportMenu(model.selectedView) {
             ToolbarItem {
                 Menu {
                     Button {
@@ -259,7 +259,7 @@ struct LibraryGridView: View {
             }
         }
 
-        if WorkspaceChromePolicy.showsImportMenu(model.selectedWorkspace)
+        if WorkspaceChromePolicy.showsImportMenu(model.selectedView)
             && LibraryGridChromePolicy.shouldExposeImportPathControl(
                 environment: ProcessInfo.processInfo.environment
             ) {
@@ -281,7 +281,7 @@ struct LibraryGridView: View {
         // "Start Culling" naming popover when nothing is batch-selected (no
         // Culling-menu or context-menu equivalent exists for that path —
         // "Cull These" only covers the batch-selection fast path).
-        if WorkspaceChromePolicy.showsCullButton(model.selectedWorkspace) {
+        if WorkspaceChromePolicy.showsCullButton(model.selectedView) {
             ToolbarItem {
                 Button {
                     // A batch selection culls straight to those photos (same
@@ -303,7 +303,7 @@ struct LibraryGridView: View {
             }
         }
 
-        if WorkspaceChromePolicy.showsExportButton(model.selectedWorkspace) {
+        if WorkspaceChromePolicy.showsExportButton(model.selectedView) {
             ToolbarItem {
                 Button {
                     beginExport()
@@ -341,7 +341,7 @@ struct LibraryGridView: View {
             }
         }
 
-        if WorkspaceChromePolicy.showsMoreMenu(model.selectedWorkspace) {
+        if WorkspaceChromePolicy.showsMoreMenu(model.selectedView) {
             ToolbarItem {
                 Menu {
                     Button {
@@ -473,10 +473,10 @@ struct LibraryGridView: View {
         .frame(width: 220)
     }
 
-    // Grid/Loupe/Timeline/Map: the Library workspace's own sub-view toggle
-    // (as distinct from the Cull sub-views reachable via the temporary View
-    // menu routes). Loupe here opens the plain-chrome Library loupe, not the
-    // culling loupe.
+    // Grid/Loupe/Timeline/Map/People: the Library workspace's own sub-view
+    // toggle (as distinct from the Cull sub-views reachable via the temporary
+    // View menu routes). Loupe here opens the plain-chrome Library loupe, not
+    // the culling loupe. People is a peer sub-view, not a top-level workspace.
     private var librarySubViewToggle: some View {
         Picker("Library View", selection: Binding(
             get: { model.selectedView },
@@ -486,9 +486,10 @@ struct LibraryGridView: View {
             Text("Loupe").tag(LibraryViewMode.libraryLoupe)
             Text("Timeline").tag(LibraryViewMode.timeline)
             Text("Map").tag(LibraryViewMode.map)
+            Text("People").tag(LibraryViewMode.people)
         }
         .pickerStyle(.segmented)
-        .frame(width: 280)
+        .frame(width: 340)
         .accessibilityLabel("Library View")
     }
 
@@ -548,11 +549,11 @@ struct LibraryGridView: View {
 
     private var libraryTopBar: some View {
         HStack(spacing: 12) {
-            if WorkspaceChromePolicy.showsLibraryViewToggle(model.selectedWorkspace) {
+            if WorkspaceChromePolicy.showsLibraryViewToggle(model.selectedView) {
                 librarySubViewToggle
             }
             Spacer(minLength: 12)
-            if WorkspaceChromePolicy.showsImportButton(model.selectedWorkspace) {
+            if WorkspaceChromePolicy.showsImportButton(model.selectedView) {
                 Button {
                     showImportFolderPanel()
                 } label: {
@@ -712,8 +713,8 @@ struct LibraryGridView: View {
     // (WorkspaceChromePolicy), so libraryTopBar would otherwise render an
     // empty 52pt gradient bar with nothing in it.
     private var hasVisibleLibraryTopBarContent: Bool {
-        WorkspaceChromePolicy.showsLibraryViewToggle(model.selectedWorkspace)
-            || WorkspaceChromePolicy.showsImportButton(model.selectedWorkspace)
+        WorkspaceChromePolicy.showsLibraryViewToggle(model.selectedView)
+            || WorkspaceChromePolicy.showsImportButton(model.selectedView)
     }
 
     @ViewBuilder
@@ -722,7 +723,7 @@ struct LibraryGridView: View {
             if hasVisibleLibraryTopBarContent {
                 libraryTopBar
             }
-            if WorkspaceChromePolicy.showsFilterTokens(model.selectedWorkspace) {
+            if WorkspaceChromePolicy.showsFilterTokens(model.selectedView) {
                 libraryQueryBar
                 // spec §2b: no empty second row — the header renders only
                 // when it has content (active tokens, a residual-text
@@ -7709,53 +7710,69 @@ enum CardDestinationResolution: Equatable {
 /// `Workspace` cases, so the test matrix pins the behavior. Library shows
 /// all of the browse chrome; Cull and People are focused surfaces that hide
 /// it, but all three workspaces show the inspector.
+/// Which chrome each Library/Cull sub-view shows. Keyed on the selected
+/// `LibraryViewMode`, not the workspace: People is a Library-workspace view but
+/// a focused, non-browse one, so keying on `Workspace` alone would leak the
+/// Library browse chrome onto it. Browse chrome belongs to the Library
+/// *browse* views (Grid/Timeline/Map/Library Loupe); Cull views and People
+/// carry none of it.
 enum WorkspaceChromePolicy {
-    static func showsSearchField(_ workspace: Workspace) -> Bool {
-        workspace == .library
+    /// The search field, filter tokens, import, footer, and the
+    /// Cull/Export/More toolbar actions — everything a photographer uses to
+    /// browse the whole catalog. People, though a Library view, opts out.
+    static func showsBrowseChrome(_ view: LibraryViewMode) -> Bool {
+        view.workspace == .library && view != .people
     }
 
-    static func showsFilterTokens(_ workspace: Workspace) -> Bool {
-        workspace == .library
+    static func showsSearchField(_ view: LibraryViewMode) -> Bool {
+        showsBrowseChrome(view)
     }
 
-    static func showsImportButton(_ workspace: Workspace) -> Bool {
-        workspace == .library
+    static func showsFilterTokens(_ view: LibraryViewMode) -> Bool {
+        showsBrowseChrome(view)
     }
 
-    static func showsLibraryViewToggle(_ workspace: Workspace) -> Bool {
-        workspace == .library
+    static func showsImportButton(_ view: LibraryViewMode) -> Bool {
+        showsBrowseChrome(view)
     }
 
-    static func showsFooter(_ workspace: Workspace) -> Bool {
-        workspace == .library
+    /// The Library sub-view toggle (Grid | Loupe | Timeline | Map | People)
+    /// shows for *every* Library view, People included — it's the only way
+    /// back out of People — so it is broader than the browse chrome.
+    static func showsLibraryViewToggle(_ view: LibraryViewMode) -> Bool {
+        view.workspace == .library
+    }
+
+    static func showsFooter(_ view: LibraryViewMode) -> Bool {
+        showsBrowseChrome(view)
     }
 
     /// The on-demand inspector (⌘I, Task 11; unified onto the Cull loupe in
-    /// Task 5) is reachable in every workspace — Library, People, and Cull.
-    static func showsInspector(_ workspace: Workspace) -> Bool {
+    /// Task 5) is reachable from every view — Library browse, People, and Cull.
+    static func showsInspector(_ view: LibraryViewMode) -> Bool {
         true
     }
 
     /// Toolbar-level import/search/export chrome (Import ▾, Import Path,
     /// Cull, Export, More): spec §3 gives Cull no import or search chrome,
-    /// and People has no browse chrome either — only Library carries these
-    /// actions. Activity stays global and isn't gated here. "Find Best
-    /// Shots" moved into the Culling menu only (spec §2b) and has no
-    /// toolbar presence to gate.
-    static func showsImportMenu(_ workspace: Workspace) -> Bool {
-        workspace == .library
+    /// and People has no browse chrome either — only the Library browse
+    /// views carry these actions. Activity stays global and isn't gated
+    /// here. "Find Best Shots" moved into the Culling menu only (spec §2b)
+    /// and has no toolbar presence to gate.
+    static func showsImportMenu(_ view: LibraryViewMode) -> Bool {
+        showsBrowseChrome(view)
     }
 
-    static func showsCullButton(_ workspace: Workspace) -> Bool {
-        workspace == .library
+    static func showsCullButton(_ view: LibraryViewMode) -> Bool {
+        showsBrowseChrome(view)
     }
 
-    static func showsExportButton(_ workspace: Workspace) -> Bool {
-        workspace == .library
+    static func showsExportButton(_ view: LibraryViewMode) -> Bool {
+        showsBrowseChrome(view)
     }
 
-    static func showsMoreMenu(_ workspace: Workspace) -> Bool {
-        workspace == .library
+    static func showsMoreMenu(_ view: LibraryViewMode) -> Bool {
+        showsBrowseChrome(view)
     }
 }
 

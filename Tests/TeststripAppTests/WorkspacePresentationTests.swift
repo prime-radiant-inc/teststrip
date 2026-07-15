@@ -4,13 +4,15 @@ import SwiftUI
 
 final class WorkspacePresentationTests: XCTestCase {
     func testWorkspaceTitleAndKeyEquivalent() {
+        // People is no longer a top-level workspace: only Cull (⌘1) and
+        // Library (⌘2) remain.
+        XCTAssertEqual(Workspace.allCases, [.cull, .library])
+
         XCTAssertEqual(Workspace.cull.title, "Cull")
         XCTAssertEqual(Workspace.library.title, "Library")
-        XCTAssertEqual(Workspace.people.title, "People")
 
         XCTAssertEqual(Workspace.cull.keyEquivalent, KeyEquivalent("1"))
         XCTAssertEqual(Workspace.library.keyEquivalent, KeyEquivalent("2"))
-        XCTAssertEqual(Workspace.people.keyEquivalent, KeyEquivalent("3"))
     }
 
     func testEveryViewModeMapsToExactlyOneWorkspace() {
@@ -24,7 +26,8 @@ final class WorkspacePresentationTests: XCTestCase {
         XCTAssertEqual(LibraryViewMode.timeline.workspace, .library)
         XCTAssertEqual(LibraryViewMode.map.workspace, .library)
         XCTAssertEqual(LibraryViewMode.libraryLoupe.workspace, .library)
-        XCTAssertEqual(LibraryViewMode.people.workspace, .people)
+        // People is a Library sub-view now, not its own workspace.
+        XCTAssertEqual(LibraryViewMode.people.workspace, .library)
     }
 
     func testLoupePresentationChromeFlagByMode() {
