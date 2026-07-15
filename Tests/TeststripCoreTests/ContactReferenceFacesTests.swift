@@ -48,4 +48,27 @@ extension ContactReferenceFacesTests {
         XCTAssertEqual(try r.personID(matchingName: "dan shapiro"), "p1") // case-insensitive
         XCTAssertNil(try r.personID(matchingName: "Nobody"))
     }
+
+    // Regression: mergePerson deleted the source `people` row but left
+    // contact_reference_faces.person_id pointing at the dead source id. A
+    // regenerated suggestion for the dead id could then pass the
+    // `contactReferenceFace(personID:) != nil` confirm gate and
+    // upsertPerson-resurrect the merged-away person, silently undoing the
+    // merge. The fix re-keys the reference to the target instead of
+    // orphaning it. Pre-fix, this test fails: contactReferenceEmbeddingsByPerson()
+    // would still key the embedding under "contact:C1", and
+    // contactReferenceFace(personID: "contact:C1") would still be non-nil.
+    func testMergePersonReKeysContactReferenceToTarget() throws {
+        let (r, _) = try repo()
+        try r.upsertContactReferenceFace(contactIdentifier: "C1", personID: "contact:C1", name: "Dan Shapiro",
+                                         embedding: [0.1, 0.2], boundingBox: box(), photoHash: "h1")
+        try r.upsertPerson(id: "contact:C1", name: "Dan Shapiro")
+        try r.upsertPerson(id: "person-other", name: "Someone Else")
+
+        try r.mergePerson(sourceID: "contact:C1", into: "person-other")
+
+        XCTAssertEqual(try r.contactReferenceEmbeddingsByPerson(), ["person-other": [[0.1, 0.2]]])
+        XCTAssertNil(try r.contactReferenceFace(personID: "contact:C1"))
+        XCTAssertEqual(try r.contactReferenceFace(personID: "person-other")?.name, "Dan Shapiro")
+    }
 }

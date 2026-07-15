@@ -1017,6 +1017,14 @@ public final class CatalogRepository {
         }
         guard trimmedSourceID != trimmedTargetID else { return }
         try database.transaction {
+            // The source and target are the same person post-merge, so the
+            // source's contact reference (and its recall boost) follows to
+            // the target rather than orphaning against the deleted source id
+            // (which would let a regenerated suggestion resurrect it).
+            try database.execute(
+                "UPDATE contact_reference_faces SET person_id = ? WHERE person_id = ?",
+                bindings: [trimmedTargetID, trimmedSourceID]
+            )
             try database.execute(
                 """
                 INSERT OR IGNORE INTO person_assets (person_id, asset_id, created_at)
