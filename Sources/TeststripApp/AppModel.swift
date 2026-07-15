@@ -2122,6 +2122,13 @@ public final class AppModel {
     // sidecar for an asset that never had one). In-memory only.
     private var lastAutopilotRunUndoGroup: AutopilotTentativeChangeGroup?
     private var lastAutopilotRunUndoRunID: AutopilotRunID?
+    // Tracks the in-progress whole-scope culling session (beginCullingSession
+    // over a pure filter scope, selectedAssetSetID == nil) so
+    // activeCullingSession(repository:) can still discover it for progress /
+    // completion even though the filter scope — not the session's input
+    // snapshot — stays the active selection. Cleared whenever the scope is
+    // explicitly changed (clearLibraryQueryFilters).
+    private var activeCullingSessionID: WorkSessionID?
     // Opt-in natural-language Ask translator. nil (default) keeps the Ask on
     // the always-available deterministic parser with byte-identical behavior.
     public var autopilotQueryTranslator: (any AutopilotQueryTranslator)?
@@ -5316,11 +5323,22 @@ public final class AppModel {
         let inputSetID = try cullingInputSetID(sessionID: sessionID, title: title)
         let previousSelection = selectedAssetID
 
-        try applyAssetSet(id: inputSetID)
-        if let previousSelection, assets.contains(where: { $0.id == previousSelection }) {
-            selectedAssetID = previousSelection
+        if selectedAssetSetID == nil && activeWorkSessionFilterID == nil {
+            // Pure filter scope: the cull overlays the live filtered `assets`
+            // rather than snapshotting into a selected set, so the filters
+            // stay intact when navigating back to Library. A `session:`
+            // search token (e.g. from openLatestImportCompletion) is its own
+            // explicit re-scoping gesture, not a persisted filter scope —
+            // that path keeps applying the input snapshot below.
+            selectedView = .loupe
+        } else {
+            try applyAssetSet(id: inputSetID)
+            if let previousSelection, assets.contains(where: { $0.id == previousSelection }) {
+                selectedAssetID = previousSelection
+            }
+            selectedView = .loupe
         }
-        selectedView = .loupe
+        activeCullingSessionID = sessionID
 
         let detail = trimmedIntent.isEmpty ? "Culling \(Self.photoCountDescription(totalUnitCount))" : trimmedIntent
         let activity = AppWorkActivity(
@@ -10921,6 +10939,7 @@ public final class AppModel {
         metadataSyncPendingFilter = false
         metadataSyncConflictFilter = false
         detachedLibraryFilterPredicates = []
+        activeCullingSessionID = nil
     }
 
     // MARK: - Session restore
@@ -11659,9 +11678,15 @@ public final class AppModel {
         if let selectedAssetSetID {
             return try activeCullingSession(for: selectedAssetSetID, repository: repository)
         }
-        guard let workSessionID = activeWorkSessionFilterID else { return nil }
-        let session = try repository.session(id: workSessionID)
-        return session.kind == .culling ? session : nil
+        if let workSessionID = activeWorkSessionFilterID {
+            let session = try repository.session(id: workSessionID)
+            return session.kind == .culling ? session : nil
+        }
+        if let activeCullingSessionID {
+            let session = try repository.session(id: activeCullingSessionID)
+            return session.kind == .culling ? session : nil
+        }
+        return nil
     }
 
     private var activeWorkSessionFilterID: WorkSessionID? {
