@@ -5,15 +5,14 @@ struct AppWindowLayoutMetrics {
     /// Per-workspace minimum window width (Task 22): the prior single global
     /// 1520pt floor forced every workspace to pay for Library's chrome
     /// (sidebar + inspector + footer). Library keeps the widest floor for its
-    /// search/filter-token/footer chrome; Cull and People are narrower since
-    /// they lack those, but (Task 5) all three workspaces can show the
-    /// inspector column. Sidebar/inspector collapse before content squeezes
-    /// below these.
+    /// search/filter-token/footer chrome; Cull is narrower since it lacks
+    /// those, but (Task 5) both workspaces can show the inspector column.
+    /// People rides the Library floor (it's a Library view). Sidebar/inspector
+    /// collapse before content squeezes below these.
     static func minimumWidth(for workspace: Workspace) -> CGFloat {
         switch workspace {
         case .library: return 1_000
         case .cull: return 800
-        case .people: return 700
         }
     }
 
@@ -50,7 +49,7 @@ struct TeststripApplication: App {
                 LibraryGridView(model: model)
             }
             .inspector(isPresented: Binding(
-                get: { model.isInspectorVisible && WorkspaceChromePolicy.showsInspector(model.selectedWorkspace) },
+                get: { model.isInspectorVisible && WorkspaceChromePolicy.showsInspector(model.selectedView) },
                 set: { model.isInspectorVisible = $0 }
             )) {
                 InspectorView(model: model)
@@ -107,12 +106,12 @@ struct TeststripApplication: App {
 enum AppMenuCoveragePresentation {
     static let workspaceActionIDs: [String] = Workspace.allCases.map(\.title)
 
-    /// Sub-view switcher items (Task 10 Library / Task 18 Cull). `.people`
-    /// has no switcher — People is a single view, not a workspace with
-    /// alternate routes — so it's excluded.
+    /// Sub-view switcher items (Task 10 Library / Task 18 Cull). People is now
+    /// a Library sub-view (peer of Grid/Loupe/Timeline/Map), so it joins the
+    /// Library group here alongside the sub-view toggle.
     static let subViewMenuModes: [LibraryViewMode] = [
         .loupe, .cullGrid, .compare, .abCompare,
-        .grid, .libraryLoupe, .timeline, .map
+        .grid, .libraryLoupe, .timeline, .map, .people
     ]
 
     // Task 6: the inspector is a single stacked scroll, not tabs, so these
@@ -156,8 +155,8 @@ enum AppMenuCoveragePresentation {
 }
 
 extension LibraryViewMode {
-    /// Title shown in the View menu's sub-view switcher; `nil` excludes the
-    /// mode (currently only `.people`, which has no switcher).
+    /// Title shown in the View menu's sub-view switcher. Every mode has a
+    /// title now that People is a Library sub-view rather than a workspace.
     var subViewMenuTitle: String? {
         switch self {
         case .loupe: return "Loupe"
@@ -168,7 +167,7 @@ extension LibraryViewMode {
         case .libraryLoupe: return "Library Loupe"
         case .timeline: return "Timeline"
         case .map: return "Map"
-        case .people: return nil
+        case .people: return "People"
         }
     }
 

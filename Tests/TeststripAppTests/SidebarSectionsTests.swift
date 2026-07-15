@@ -4,8 +4,8 @@ import XCTest
 
 /// Covers `AppModel.sidebarSections(for:)` - the per-workspace sidebar shape
 /// introduced in Task 7: Library is navigation only (Collections/Saved
-/// Sets/Folders), Cull and People get their own sidebar content in later
-/// tasks (empty for now).
+/// Sets/Folders) and is shared by every Library view (People included); Cull
+/// has its own sidebar content (empty here).
 final class SidebarSectionsTests: XCTestCase {
     func testLibrarySidebarSectionsAreExactlyCollectionsSavedSetsFolders() throws {
         let asset = makeAsset(id: "hero", path: "/Photos/hero.jpg", rating: 5)
@@ -30,10 +30,9 @@ final class SidebarSectionsTests: XCTestCase {
         XCTAssertEqual(folders.rowTitles, ["photos"])
     }
 
-    func testPeopleAndCullSidebarSectionsAreEmpty() {
+    func testCullSidebarSectionsAreEmpty() {
         let model = AppModel.demo()
 
-        XCTAssertEqual(model.sidebarSections(for: .people), [])
         XCTAssertEqual(model.sidebarSections(for: .cull), [])
     }
 
@@ -45,8 +44,11 @@ final class SidebarSectionsTests: XCTestCase {
         model.selectWorkspace(.cull)
         XCTAssertEqual(model.sidebarSections, [])
 
-        model.selectWorkspace(.people)
-        XCTAssertEqual(model.sidebarSections, [])
+        // People is a Library view, so switching to it keeps the Library
+        // navigation sidebar rather than blanking it.
+        model.selectedView = .people
+        XCTAssertEqual(model.selectedWorkspace, .library)
+        XCTAssertEqual(model.sidebarSections.map(\.title), ["Collections"])
 
         model.selectWorkspace(.library)
         XCTAssertEqual(model.sidebarSections.map(\.title), ["Collections"])

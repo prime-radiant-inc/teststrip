@@ -177,7 +177,7 @@ final class CullingKeyCaptureTests: XCTestCase {
     // would write metadata, g/c/b would teleport the view), and never
     // .cullGrid (which owns GridKeyCaptureView instead).
     func testCullingKeyCaptureGateInactiveOutsideCullWorkspace() {
-        XCTAssertFalse(CullingKeyCaptureGate.isActive(workspace: .people, selectedView: .people))
+        XCTAssertFalse(CullingKeyCaptureGate.isActive(workspace: .library, selectedView: .people))
         XCTAssertFalse(CullingKeyCaptureGate.isActive(workspace: .library, selectedView: .timeline))
         XCTAssertFalse(CullingKeyCaptureGate.isActive(workspace: .library, selectedView: .map))
         XCTAssertFalse(CullingKeyCaptureGate.isActive(workspace: .library, selectedView: .grid))

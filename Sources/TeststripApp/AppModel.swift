@@ -43,19 +43,19 @@ extension LibraryViewMode: Codable {
     }
 }
 
-/// The three top-level workspaces the UI is organized around; each
-/// `LibraryViewMode` belongs to exactly one.
+/// The two top-level workspaces the UI is organized around; each
+/// `LibraryViewMode` belongs to exactly one. People is *not* a workspace — it
+/// is a Library sub-view (peer of Grid/Loupe/Timeline/Map), so it lives under
+/// `.library` and is reached from the sub-view toggle, not the ⌘1/⌘2 switcher.
 public enum Workspace: String, CaseIterable, Sendable {
     case cull
     case library
-    case people
 
     /// The sub-view shown when a workspace is selected for the first time.
     var defaultSubView: LibraryViewMode {
         switch self {
         case .cull: return .loupe
         case .library: return .grid
-        case .people: return .people
         }
     }
 
@@ -64,17 +64,15 @@ public enum Workspace: String, CaseIterable, Sendable {
         switch self {
         case .cull: return "Cull"
         case .library: return "Library"
-        case .people: return "People"
         }
     }
 
-    /// ⌘1/2/3, shared by the toolbar switcher and the View menu so the two
+    /// ⌘1/2, shared by the toolbar switcher and the View menu so the two
     /// never drift out of sync.
     public var keyEquivalent: KeyEquivalent {
         switch self {
         case .cull: return "1"
         case .library: return "2"
-        case .people: return "3"
         }
     }
 }
@@ -84,10 +82,8 @@ extension LibraryViewMode {
         switch self {
         case .loupe, .compare, .abCompare, .cullGrid:
             return .cull
-        case .grid, .timeline, .map, .libraryLoupe:
+        case .grid, .timeline, .map, .libraryLoupe, .people:
             return .library
-        case .people:
-            return .people
         }
     }
 }
@@ -2010,8 +2006,8 @@ public final class AppModel {
     }
 
     /// The sidebar sections for a given workspace. Library is navigation
-    /// only (Collections/Saved Sets/Folders); Cull has its own sidebar
-    /// (CullSidebarView) and People has none.
+    /// only (Collections/Saved Sets/Folders) — shared by every Library view,
+    /// People included; Cull has its own sidebar (CullSidebarView).
     public func sidebarSections(for workspace: Workspace) -> [SidebarSection] {
         switch workspace {
         case .library:
@@ -2026,7 +2022,7 @@ public final class AppModel {
                 starredWork: starredWork,
                 matchedWork: workHistorySearchResults
             )
-        case .cull, .people:
+        case .cull:
             return []
         }
     }
@@ -2374,14 +2370,14 @@ public final class AppModel {
     }
 
     // Bumped by Edit ▸ Find ⌘F so LibraryGridView's @FocusState can move
-    // keyboard focus into the query field. The query field only exists in
-    // Library, so from Cull/People this also switches workspace first (the
-    // same pattern ⌘I's inspector toggle would need if it ever gained a
-    // Library-only tab) rather than silently doing nothing.
+    // keyboard focus into the query field. The query field only exists in the
+    // Library *browse* views — not the Cull views, and not People (a Library
+    // view that suppresses browse chrome) — so from anywhere that can't show
+    // it, switch to the grid first rather than silently doing nothing.
     public private(set) var focusSearchRequestToken = 0
     public func requestFocusSearch() {
-        if selectedWorkspace != .library {
-            selectWorkspace(.library)
+        if !WorkspaceChromePolicy.showsSearchField(selectedView) {
+            selectedView = .grid
         }
         focusSearchRequestToken += 1
     }
@@ -2409,14 +2405,15 @@ public final class AppModel {
 
     public private(set) var exportRequestToken = 0
     // Export's sheet is a popover hosted on the Library toolbar's Export
-    // button (WorkspaceChromePolicy.showsExportButton == .library only), so
+    // button, which only the browse views show
+    // (WorkspaceChromePolicy.showsExportButton) — not Cull, not People. So
     // bumping the token alone is a silent no-op while Cull is frontmost —
     // Maya's persona-1 finding ("File > Export does nothing in the Cull
-    // workspace"). Mirror toggleInspector's ⌘I pattern: switch to Library
-    // first, so the token-consuming onChange has somewhere to attach.
+    // workspace"). Switch to the grid first, so the token-consuming onChange
+    // has somewhere to attach.
     public func requestExport() {
-        if selectedWorkspace != .library {
-            selectWorkspace(.library)
+        if !WorkspaceChromePolicy.showsExportButton(selectedView) {
+            selectedView = .grid
         }
         exportRequestToken += 1
     }
@@ -4520,7 +4517,7 @@ public final class AppModel {
     public func scrollInspector(to section: InspectorTab) {
         inspectorScrollTarget = section
         inspectorScrollRequestToken += 1
-        if WorkspaceChromePolicy.showsInspector(selectedWorkspace) {
+        if WorkspaceChromePolicy.showsInspector(selectedView) {
             isInspectorVisible = true
         }
     }

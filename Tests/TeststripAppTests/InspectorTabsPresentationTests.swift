@@ -78,12 +78,14 @@ final class InspectorTabsPresentationTests: XCTestCase {
 
     func testToggleInspectorTogglesInPeople() {
         let model = AppModel.demo()
-        model.selectWorkspace(.people)
+        model.selectedView = .people
         XCTAssertFalse(model.isInspectorVisible)
 
         model.toggleInspector()
         XCTAssertTrue(model.isInspectorVisible)
-        XCTAssertEqual(model.selectedWorkspace, .people)
+        // People is a Library view now, so it stays in the Library workspace.
+        XCTAssertEqual(model.selectedWorkspace, .library)
+        XCTAssertEqual(model.selectedView, .people)
     }
 
     // Task 5: the single-image inspector is reachable from the Cull loupe,
@@ -125,6 +127,42 @@ final class InspectorTabsPresentationTests: XCTestCase {
 
         XCTAssertEqual(model.selectedWorkspace, .library)
         XCTAssertEqual(model.exportRequestToken, originalToken + 1)
+    }
+
+    // People is a Library view but suppresses the browse chrome, so the Export
+    // button isn't there to host the sheet — Export must land on the grid, not
+    // just "the Library workspace" (which People already is).
+    func testRequestExportInPeopleSwitchesToGrid() {
+        let model = AppModel.demo()
+        model.selectedView = .people
+        let originalToken = model.exportRequestToken
+
+        model.requestExport()
+
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.exportRequestToken, originalToken + 1)
+    }
+
+    func testRequestFocusSearchInPeopleSwitchesToGrid() {
+        let model = AppModel.demo()
+        model.selectedView = .people
+        let originalToken = model.focusSearchRequestToken
+
+        model.requestFocusSearch()
+
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.focusSearchRequestToken, originalToken + 1)
+    }
+
+    func testRequestFocusSearchInCullSwitchesToGrid() {
+        let model = AppModel.demo()
+        model.selectWorkspace(.cull)
+        let originalToken = model.focusSearchRequestToken
+
+        model.requestFocusSearch()
+
+        XCTAssertEqual(model.selectedView, .grid)
+        XCTAssertEqual(model.focusSearchRequestToken, originalToken + 1)
     }
 
     func testScrollInspectorSetsTargetAndPresentsWhenEligible() {

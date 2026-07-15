@@ -20,10 +20,10 @@ final class MenuCoveragePresentationTests: XCTestCase {
         XCTAssertEqual(AppMenuCoveragePresentation.workspaceActionIDs, Workspace.allCases.map(\.title))
     }
 
-    func testViewMenuCoversEverySubViewExceptPeople() {
-        // People has no sub-view switcher: it's a single view, not a
-        // workspace with alternate routes.
-        let expectedRawValues = Set(LibraryViewMode.allCases.filter { $0 != .people }.map(\.rawValue))
+    func testViewMenuCoversEverySubView() {
+        // People is now a Library sub-view (peer of Grid/Loupe/Timeline/Map),
+        // so every mode has a menu item.
+        let expectedRawValues = Set(LibraryViewMode.allCases.map(\.rawValue))
         let coveredRawValues = Set(AppMenuCoveragePresentation.subViewMenuModes.map(\.rawValue))
 
         XCTAssertEqual(coveredRawValues, expectedRawValues)
