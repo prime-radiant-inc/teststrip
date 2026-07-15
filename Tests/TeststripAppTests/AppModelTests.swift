@@ -13156,6 +13156,91 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedSuggestedCaptions, [])
     }
 
+    // Same-class provenance gap flagged in final review (mirrors the
+    // Blocker-2 direct-gesture fix, commit 9dec8b97): "accepting" a
+    // suggestion is a direct user gesture and must CONFIRM the value even
+    // when auto-apply already wrote it tentatively (already in `keywords` +
+    // `aiUnconfirmedKeywords`) — not just leave it provisional.
+    func testAcceptSuggestedKeywordForSelectedAssetsConfirmsAnAlreadyAutoAppliedKeyword() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-accept-suggested-keyword-confirms-auto-applied")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "accept-suggested-keyword-confirm"),
+            originalURL: originalURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata(keywords: ["people"], aiUnconfirmedKeywords: ["people"])
+        )
+        try repository.upsert(asset)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        model.select(asset.id)
+
+        try model.acceptSuggestedKeywordForSelectedAssets("people")
+
+        let confirmed = try repository.asset(id: asset.id).metadata
+        XCTAssertEqual(confirmed.keywords, ["people"])
+        XCTAssertFalse(confirmed.aiUnconfirmedKeywords.contains("people"))
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+        let sidecarData = try Data(contentsOf: sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata.keywords, ["people"])
+    }
+
+    // Same-class gap as above, for captions: accepting a suggested caption
+    // must confirm an already auto-applied-but-unconfirmed caption.
+    func testAcceptSuggestedCaptionForSelectedAssetsConfirmsAnAlreadyAutoAppliedCaption() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-accept-suggested-caption-confirms-auto-applied")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        let asset = Asset(
+            id: AssetID(rawValue: "accept-suggested-caption-confirm"),
+            originalURL: originalURL,
+            volumeIdentifier: "Photos",
+            fingerprint: FileFingerprint(size: 10, modificationDate: Date(timeIntervalSince1970: 10)),
+            availability: .online,
+            metadata: AssetMetadata(caption: "Invoice 123 Client ABC", aiUnconfirmedFields: [.caption])
+        )
+        try repository.upsert(asset)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        model.select(asset.id)
+
+        try model.acceptSuggestedCaptionForSelectedAssets("Invoice 123 Client ABC")
+
+        let confirmed = try repository.asset(id: asset.id).metadata
+        XCTAssertEqual(confirmed.caption, "Invoice 123 Client ABC")
+        XCTAssertFalse(confirmed.aiUnconfirmedFields.contains(.caption))
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+        let sidecarData = try Data(contentsOf: sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata.caption, "Invoice 123 Client ABC")
+    }
+
     @MainActor
     func testEvaluationCompletionInvalidatesSelectedEvaluationSignals() async throws {
         let directory = try makeTemporaryDirectory(named: "evaluation-completion-signals")

@@ -6689,8 +6689,15 @@ public final class AppModel {
         let cleanedKeyword = Self.cleanedKeyword(keyword)
         guard !cleanedKeyword.isEmpty else { return }
         try updateSelectedAssetMetadata(label: "Keywords") { metadata in
-            guard !Self.keywordList(metadata.keywords, contains: cleanedKeyword) else { return }
-            metadata.keywords.append(cleanedKeyword)
+            if !Self.keywordList(metadata.keywords, contains: cleanedKeyword) {
+                metadata.keywords.append(cleanedKeyword)
+            }
+            // Accepting a suggestion is a direct user gesture: it confirms
+            // the keyword even when auto-apply already added it tentatively
+            // (marker removal alone still makes this a real change, so the
+            // no-op early-return in updateSelectedAssetMetadata doesn't skip
+            // it) — same reasoning as the direct setters' Blocker-2 fix.
+            metadata.aiUnconfirmedKeywords.remove(cleanedKeyword)
         }
     }
 
@@ -6700,16 +6707,21 @@ public final class AppModel {
         let cleanedKeyword = Self.cleanedKeyword(keyword)
         guard !cleanedKeyword.isEmpty else { return }
         try updateSelectedAssetsMetadata(label: "Keywords") { metadata in
-            guard !Self.keywordList(metadata.keywords, contains: cleanedKeyword) else { return }
-            metadata.keywords.append(cleanedKeyword)
+            if !Self.keywordList(metadata.keywords, contains: cleanedKeyword) {
+                metadata.keywords.append(cleanedKeyword)
+            }
+            metadata.aiUnconfirmedKeywords.remove(cleanedKeyword)
         }
     }
 
     public func acceptSuggestedCaptionForSelectedAsset(_ caption: String) throws {
         guard let portableCaption = Self.portableCaption(from: caption) else { return }
         try updateSelectedAssetMetadata(label: "Caption") { metadata in
-            guard metadata.caption != portableCaption else { return }
             metadata.caption = portableCaption
+            // Same authoritative-gesture reasoning as the keyword accept
+            // above: confirm even when auto-apply already set this same
+            // caption text tentatively.
+            metadata.aiUnconfirmedFields.remove(.caption)
         }
     }
 
@@ -6718,8 +6730,8 @@ public final class AppModel {
     public func acceptSuggestedCaptionForSelectedAssets(_ caption: String) throws {
         guard let portableCaption = Self.portableCaption(from: caption) else { return }
         try updateSelectedAssetsMetadata(label: "Caption") { metadata in
-            guard metadata.caption != portableCaption else { return }
             metadata.caption = portableCaption
+            metadata.aiUnconfirmedFields.remove(.caption)
         }
     }
 
