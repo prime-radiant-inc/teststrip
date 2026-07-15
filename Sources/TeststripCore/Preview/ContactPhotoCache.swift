@@ -9,20 +9,10 @@ public struct ContactPhotoCache: Sendable {
         self.root = root
     }
 
+    // Path-safe escaping is shared with PreviewCache via PathSafeName —
+    // contact identifiers (e.g. `A:B/C`) get the same all-or-nothing,
+    // byte-level hex encoding as asset directory names.
     public func url(for contactIdentifier: String) -> URL {
-        root.appendingPathComponent("\(Self.safeName(for: contactIdentifier)).jpg")
-    }
-
-    private static func safeName(for rawValue: String) -> String {
-        var result = ""
-        for scalar in rawValue.unicodeScalars {
-            if (scalar >= "A" && scalar <= "Z") || (scalar >= "a" && scalar <= "z")
-                || (scalar >= "0" && scalar <= "9") || scalar == "_" || scalar == "-" {
-                result.unicodeScalars.append(scalar)
-            } else {
-                result += String(format: "~%04x", scalar.value)
-            }
-        }
-        return result
+        root.appendingPathComponent("\(PathSafeName.encode(contactIdentifier)).jpg")
     }
 }
