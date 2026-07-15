@@ -71,4 +71,20 @@ extension ContactReferenceFacesTests {
         XCTAssertNil(try r.contactReferenceFace(personID: "contact:C1"))
         XCTAssertEqual(try r.contactReferenceFace(personID: "person-other")?.name, "Dan Shapiro")
     }
+
+    // Feeds the off-main-thread embed phase's hash-skip in ONE read instead of
+    // N per-identifier round trips (see ContactFaceEmbedder.embed(currentHashes:)).
+    func testContactReferenceHashesByIdentifier() throws {
+        let (r, _) = try repo()
+        try r.upsertContactReferenceFace(contactIdentifier: "C1", personID: "contact:C1", name: "Dan Shapiro",
+                                         embedding: [0.1, 0.2], boundingBox: box(), photoHash: "h1")
+        try r.upsertContactReferenceFace(contactIdentifier: "C2", personID: "contact:C2", name: "Priya",
+                                         embedding: [0.3], boundingBox: box(), photoHash: "h2")
+        XCTAssertEqual(try r.contactReferenceHashesByIdentifier(), ["C1": "h1", "C2": "h2"])
+    }
+
+    func testContactReferenceHashesByIdentifierIsEmptyWhenNoContactsSeeded() throws {
+        let (r, _) = try repo()
+        XCTAssertEqual(try r.contactReferenceHashesByIdentifier(), [:])
+    }
 }
