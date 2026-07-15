@@ -9,9 +9,6 @@ struct PhotoFacesSectionView: View {
     var model: AppModel
     var asset: Asset
 
-    @State private var newPersonFaceID: FaceID?
-    @State private var newPersonNameDraft = ""
-
     private var presentation: PhotoFacesPresentation {
         model.photoFacesPresentation(for: asset.id)
     }
@@ -32,18 +29,6 @@ struct PhotoFacesSectionView: View {
                 }
             }
         }
-        .sheet(isPresented: isShowingNewPersonSheet) {
-            newPersonNameSheet
-        }
-    }
-
-    private var isShowingNewPersonSheet: Binding<Bool> {
-        Binding(
-            get: { newPersonFaceID != nil },
-            set: { isPresented in
-                if !isPresented { newPersonFaceID = nil }
-            }
-        )
     }
 
     private func faceRow(_ row: PhotoFaceRow) -> some View {
@@ -88,7 +73,7 @@ struct PhotoFacesSectionView: View {
     private func controls(for row: PhotoFaceRow) -> some View {
         switch row.state {
         case .unnamed:
-            addNameMenu(for: row)
+            addNameButton(for: row)
         case .suggested(let personID, _):
             HStack(spacing: 6) {
                 Button("Confirm") {
@@ -111,41 +96,39 @@ struct PhotoFacesSectionView: View {
         }
     }
 
-    private func addNameMenu(for row: PhotoFaceRow) -> some View {
-        Menu("Add name") {
-            ForEach(model.catalogPeople) { person in
-                Button(person.name) {
-                    apply { try model.nameFace(row.faceID, personID: person.id) }
-                }
-            }
-            if !model.catalogPeople.isEmpty {
-                Divider()
-            }
-            Button("New person\u{2026}") {
-                newPersonNameDraft = ""
-                newPersonFaceID = row.faceID
-            }
+    /// Ranked-picker popover for naming an unnamed face (Task 6's pill
+    /// pattern): `model.editingFaceID` pins the popover open per-face, shared
+    /// with the loupe's face-box overlay so the two surfaces never disagree
+    /// about which face is mid-edit.
+    private func addNameButton(for row: PhotoFaceRow) -> some View {
+        Button("Add name") {
+            model.editingFaceID = row.faceID
         }
         .controlSize(.small)
         .fixedSize()
         .help("Name this face")
+        .popover(isPresented: editingBinding(for: row.faceID), arrowEdge: .bottom) {
+            PersonAutocompleteField(
+                candidates: model.rankedPersonCandidates(forFace: row.faceID),
+                onPick: { personID in
+                    apply { try model.nameFace(row.faceID, personID: personID) }
+                    model.editingFaceID = nil
+                },
+                onCreate: { name in
+                    apply { try model.nameFace(row.faceID, newPersonName: name) }
+                    model.editingFaceID = nil
+                }
+            )
+            .frame(width: 240)
+            .padding(8)
+        }
     }
 
-    private var newPersonNameSheet: some View {
-        SheetScaffold(
-            title: "New Person",
-            primaryLabel: "Create Person",
-            isPrimaryEnabled: !newPersonNameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-            cancel: { newPersonFaceID = nil },
-            primary: {
-                guard let faceID = newPersonFaceID else { return }
-                apply { try model.nameFace(faceID, newPersonName: newPersonNameDraft) }
-                newPersonFaceID = nil
-            }
-        ) {
-            TextField("Person name", text: $newPersonNameDraft)
-                .textFieldStyle(.roundedBorder)
-        }
+    private func editingBinding(for faceID: FaceID) -> Binding<Bool> {
+        Binding(
+            get: { model.editingFaceID == faceID },
+            set: { if !$0, model.editingFaceID == faceID { model.editingFaceID = nil } }
+        )
     }
 
     private func apply(_ action: () throws -> Void) {

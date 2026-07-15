@@ -20,6 +20,16 @@ enum PhotoFaceState: Equatable {
             "Unnamed"
         }
     }
+
+    /// The assigned person, for confirmed and suggested faces alike — used to
+    /// route removal (`AppModel.removeFacePerson`/`rejectFaceSuggestion`) to
+    /// the right origin.
+    var personID: String? {
+        switch self {
+        case .confirmed(let personID, _), .suggested(let personID, _): personID
+        case .unnamed: nil
+        }
+    }
 }
 
 /// One row in the People inspector section: a detected face plus whatever

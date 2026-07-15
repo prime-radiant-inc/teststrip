@@ -139,14 +139,14 @@ public struct FaceSuggestionBuilder: Sendable {
         return FaceSuggestions(matches: matches, clusters: clusterSuggestions)
     }
 
-    private static func normalized(_ vector: [Double]) -> [Double]? {
+    public static func normalized(_ vector: [Double]) -> [Double]? {
         guard !vector.isEmpty else { return nil }
         let magnitude = vector.map { $0 * $0 }.reduce(0, +).squareRoot()
         guard magnitude > 0 else { return nil }
         return vector.map { $0 / magnitude }
     }
 
-    private static func centroid(of vectors: [[Double]]) -> [Double]? {
+    public static func centroid(of vectors: [[Double]]) -> [Double]? {
         let normalizedVectors = vectors.compactMap(normalized)
         guard let dimension = normalizedVectors.first?.count else { return nil }
         let matching = normalizedVectors.filter { $0.count == dimension }
@@ -159,7 +159,7 @@ public struct FaceSuggestionBuilder: Sendable {
         return normalized(sum)
     }
 
-    private static func distance(_ lhs: [Double], _ rhs: [Double]) -> Double? {
+    public static func distance(_ lhs: [Double], _ rhs: [Double]) -> Double? {
         guard lhs.count == rhs.count, !lhs.isEmpty else { return nil }
         return zip(lhs, rhs)
             .map { first, second in

@@ -2250,6 +2250,13 @@ public final class AppModel {
     /// read time — kept in lockstep with `catalogPeople` via `loadCatalogPeople()`
     /// so a card never shows a face for a stale person set.
     public var personKeyFaces: [String: PersonKeyFace] = [:]
+    /// Session-only most-recently-named person ids (most-recent first). Orders the
+    /// no-similarity tail and the whole-asset naming case in the autocompleter.
+    public private(set) var recentlyNamedPersonIDs: [String] = []
+
+    private func noteRecentlyNamedPerson(_ personID: String) {
+        recentlyNamedPersonIDs = [personID] + recentlyNamedPersonIDs.filter { $0 != personID }
+    }
     public private(set) var peopleFaceSuggestions: [PeopleFaceSuggestion] = []
     public private(set) var peopleFaceObservationAssetCount = 0
     /// A person's PROPOSED photos (AI-unconfirmed face matches), shown as a
@@ -2262,6 +2269,9 @@ public final class AppModel {
     /// so the loupe's face-box overlay (Task 8) can highlight the matching
     /// box, and vice versa — hovering a box focuses the list row.
     public var focusedFaceID: FaceID?
+    /// The face whose naming popover is open. Pinned independently of hover so the
+    /// box stays active while the pointer is inside the popover.
+    public var editingFaceID: FaceID?
     public var reviewQueueCounts: [ReviewQueue: Int]
     public var selectedAssetSetID: AssetSetID? {
         didSet { persistSessionState() }
@@ -3584,9 +3594,10 @@ public final class AppModel {
             throw TeststripError.invalidState("select photos before naming a person")
         }
 
-        let targetID = existingPersonID(matchingName: trimmedName) ?? id
+        let targetID = try existingPersonID(matchingName: trimmedName) ?? id
         try catalog.repository.upsertPerson(id: targetID, name: trimmedName)
         try catalog.repository.assignAssets(assetIDs, toPersonID: targetID)
+        noteRecentlyNamedPerson(targetID)
         try loadCatalogPeople()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
@@ -3600,9 +3611,19 @@ public final class AppModel {
     /// An exact name match (trimmed, case-insensitive — the same
     /// normalization `showPersonPhotos`'s `person:` filter uses via
     /// `COLLATE NOCASE`) attaches confirmed assets/faces to the existing
-    /// person instead of minting a duplicate.
-    private func existingPersonID(matchingName trimmedName: String) -> String? {
-        catalogPeople.first { $0.name.caseInsensitiveCompare(trimmedName) == .orderedSame }?.id
+    /// person instead of minting a duplicate. A real `people` row wins; a
+    /// latent contact (present only in `contact_reference_faces`) is the
+    /// fallback, so naming a not-yet-materialized contact returns its own
+    /// `contact:<id>` instead of minting a second identity for the same name.
+    private func existingPersonID(matchingName trimmedName: String) throws -> String? {
+        if let match = catalogPeople.first(where: { $0.name.caseInsensitiveCompare(trimmedName) == .orderedSame }) {
+            return match.id
+        }
+        guard let catalog else { return nil }
+        // Sorted for determinism when two contacts happen to share a name.
+        return try catalog.repository.contactReferenceNamesByPerson()
+            .sorted { $0.key < $1.key }
+            .first { $0.value.caseInsensitiveCompare(trimmedName) == .orderedSame }?.key
     }
 
     public func mergePerson(sourceID: String, into targetID: String) throws {
@@ -3631,6 +3652,26 @@ public final class AppModel {
 
     public static let maximumFaceSuggestionInputCount = 2000
 
+    /// Confirmed (origin='user') face embeddings ∪ contact-reference embeddings, keyed by person id.
+    private func unionedFaceEmbeddingsByPerson(provenance: ProviderProvenance) throws -> [String: [[Double]]] {
+        guard let catalog else { return [:] }
+        var embeddingsByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
+        for (personID, vectors) in try catalog.repository.contactReferenceEmbeddingsByPerson() {
+            embeddingsByPerson[personID, default: []].append(contentsOf: vectors)
+        }
+        return embeddingsByPerson
+    }
+
+    /// catalogPeople names ∪ contact-reference names (additive; a real person's name is never clobbered).
+    private func unionedPersonNamesByID() throws -> [String: String] {
+        guard let catalog else { return [:] }
+        var namesByID = Dictionary(uniqueKeysWithValues: catalogPeople.map { ($0.id, $0.name) })
+        for (personID, name) in try catalog.repository.contactReferenceNamesByPerson() where namesByID[personID] == nil {
+            namesByID[personID] = name
+        }
+        return namesByID
+    }
+
     public func refreshPeopleFaceSuggestions() {
         guard let catalog else { return }
         do {
@@ -3639,10 +3680,7 @@ public final class AppModel {
                 provenance: provenance,
                 limit: Self.maximumFaceSuggestionInputCount
             )
-            var confirmedFacesByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
-            for (personID, vectors) in try catalog.repository.contactReferenceEmbeddingsByPerson() {
-                confirmedFacesByPerson[personID, default: []].append(contentsOf: vectors)
-            }
+            let confirmedFacesByPerson = try unionedFaceEmbeddingsByPerson(provenance: provenance)
             let suggestions = FaceSuggestionBuilder().suggestions(
                 unassignedFaces: unassigned.map { FaceEmbedding(faceID: $0.faceID, vector: $0.embedding) },
                 confirmedFacesByPerson: confirmedFacesByPerson
@@ -3650,12 +3688,7 @@ public final class AppModel {
             let observationsByFaceID = Dictionary(
                 uniqueKeysWithValues: unassigned.map { ($0.faceID, $0) }
             )
-            var personNamesByID = Dictionary(
-                uniqueKeysWithValues: catalogPeople.map { ($0.id, $0.name) }
-            )
-            for (personID, name) in try catalog.repository.contactReferenceNamesByPerson() where personNamesByID[personID] == nil {
-                personNamesByID[personID] = name
-            }
+            let personNamesByID = try unionedPersonNamesByID()
             let rejectedPairs = try catalog.repository.rejectedFacePeople()
             peopleFaceSuggestions = Self.peopleFaceSuggestions(
                 from: suggestions,
@@ -3666,6 +3699,36 @@ public final class AppModel {
             peopleFaceObservationAssetCount = try catalog.repository.faceObservationAssetCount(provenance: provenance)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Candidate people for naming a face, ranked by similarity to that face (or
+    /// most-recently-used when `faceID` is nil), including not-yet-materialized
+    /// contacts. Reuses the confirmed+contact embedding/name union the matcher uses.
+    public func rankedPersonCandidates(forFace faceID: FaceID?) -> [PersonCandidate] {
+        guard let catalog else { return [] }
+        do {
+            let provenance = AppleVisionEvaluationProvider.faceProvenance
+            let centroidsByPerson = try unionedFaceEmbeddingsByPerson(provenance: provenance).compactMapValues(FaceSuggestionBuilder.centroid)
+            let namesByID = try unionedPersonNamesByID()
+
+            let targetEmbedding: [Double]?
+            if let faceID {
+                targetEmbedding = try catalog.repository.faceObservations(assetID: faceID.assetID)
+                    .first { $0.faceIndex == faceID.faceIndex }?.embedding
+            } else {
+                targetEmbedding = nil
+            }
+
+            return PersonCandidateRanker.rank(
+                targetEmbedding: targetEmbedding,
+                centroidsByPerson: centroidsByPerson,
+                namesByID: namesByID,
+                recentPersonIDs: recentlyNamedPersonIDs
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            return []
         }
     }
 
@@ -3733,10 +3796,7 @@ public final class AppModel {
             provenance: provenance,
             limit: Self.maximumFaceSuggestionInputCount
         )
-        var confirmedFacesByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
-        for (personID, vectors) in try catalog.repository.contactReferenceEmbeddingsByPerson() {
-            confirmedFacesByPerson[personID, default: []].append(contentsOf: vectors)
-        }
+        let confirmedFacesByPerson = try unionedFaceEmbeddingsByPerson(provenance: provenance)
         let suggestions = FaceSuggestionBuilder().suggestions(
             unassignedFaces: unassigned.map { FaceEmbedding(faceID: $0.faceID, vector: $0.embedding) },
             confirmedFacesByPerson: confirmedFacesByPerson
@@ -3769,6 +3829,7 @@ public final class AppModel {
             try catalog.repository.upsertPerson(id: personID, name: personName)
         }
         try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: personID)
+        noteRecentlyNamedPerson(personID)
         try loadCatalogPeople()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
@@ -3788,9 +3849,10 @@ public final class AppModel {
         guard !trimmedName.isEmpty else {
             throw TeststripError.invalidState("person name is required")
         }
-        let targetID = existingPersonID(matchingName: trimmedName) ?? personID
+        let targetID = try existingPersonID(matchingName: trimmedName) ?? personID
         try catalog.repository.upsertPerson(id: targetID, name: trimmedName)
         try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: targetID)
+        noteRecentlyNamedPerson(targetID)
         try loadCatalogPeople()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
@@ -3855,8 +3917,17 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
+        // A contact-only candidate has no `people` row yet; assignFaces would
+        // throw notFound. Materialize it here only when no catalogPeople row
+        // already exists for this id AND a contact reference backs it — a
+        // stale non-contact id is not resurrected (assignFaces still throws).
+        if catalogPeople.first(where: { $0.id == personID }) == nil,
+           let reference = try catalog.repository.contactReferenceFace(personID: personID) {
+            try catalog.repository.upsertPerson(id: personID, name: reference.name)
+        }
         try catalog.repository.assignFaces([faceID], toPersonID: personID)
         try catalog.repository.clearRejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: personID)
+        noteRecentlyNamedPerson(personID)
         try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
@@ -3870,9 +3941,10 @@ public final class AppModel {
         guard !trimmedName.isEmpty else {
             throw TeststripError.invalidState("person name is required")
         }
-        let personID = "person-\(UUID().uuidString)"
+        let personID = try existingPersonID(matchingName: trimmedName) ?? "person-\(UUID().uuidString)"
         try catalog.repository.upsertPerson(id: personID, name: trimmedName)
         try catalog.repository.assignFaces([faceID], toPersonID: personID)
+        noteRecentlyNamedPerson(personID)
         try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }

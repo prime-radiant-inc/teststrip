@@ -5,17 +5,13 @@ struct PeopleView: View {
     var model: AppModel
 
     @State private var isNamingSelection = false
-    @State private var personName = ""
+    @State private var nameSelectionQuery = ""
     @State private var namingSuggestion: PeopleFaceSuggestion?
-    @State private var suggestionPersonName = ""
+    @State private var nameSuggestionQuery = ""
     // The face group currently open in the review surface, tracked by
     // suggestion id (not the value) so the review view always re-reads the
     // live, possibly-shrunk suggestion from the model.
     @State private var reviewingGroup: ReviewingFaceGroup?
-    // persona-2 item 3: the naming field didn't visually announce itself as
-    // typeable — Ruth had to hunt before typing blindly. Auto-focus it so
-    // typing works immediately and a focus ring is visible on appear.
-    @FocusState private var isSuggestionNameFieldFocused: Bool
     @State private var queueFocusedIndex = 0
     @State private var keyCaptureFocusRequest = 0
 
@@ -118,7 +114,7 @@ struct PeopleView: View {
                 model.errorMessage = error.localizedDescription
             }
         case .nameSuggestion(let suggestion):
-            suggestionPersonName = ""
+            nameSuggestionQuery = ""
             namingSuggestion = suggestion
         case .selectReview(let target):
             do {
@@ -229,7 +225,7 @@ struct PeopleView: View {
                 .foregroundStyle(.secondary)
 
             Button {
-                personName = ""
+                nameSelectionQuery = ""
                 isNamingSelection = true
             } label: {
                 Label("Name selection", systemImage: "person.crop.circle.badge.plus")
@@ -288,7 +284,8 @@ struct PeopleView: View {
     }
 
     private var nameSelectionSheet: some View {
-        SheetScaffold(
+        let candidates = model.rankedPersonCandidates(forFace: nil)
+        return SheetScaffold(
             title: "Name Selection",
             // The count keeps a stale cross-workspace selection visible
             // before the confirming click (persona-6: a leftover Library
@@ -298,18 +295,26 @@ struct PeopleView: View {
             ),
             width: 320,
             primaryLabel: "Create Person",
-            isPrimaryEnabled: !personName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            isPrimaryEnabled: !nameSelectionQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             cancel: { isNamingSelection = false },
-            primary: confirmSelectedPerson
+            primary: { confirmSelectedPerson(named: nameSelectionQuery) }
         ) {
-            TextField("Person name", text: $personName)
-                .textFieldStyle(.roundedBorder)
+            PersonAutocompleteField(
+                candidates: candidates,
+                onPick: { personID in
+                    confirmSelectedPerson(named: candidates.name(forID: personID))
+                },
+                onCreate: { name in
+                    confirmSelectedPerson(named: name)
+                },
+                text: $nameSelectionQuery
+            )
         }
     }
 
-    private func confirmSelectedPerson() {
+    private func confirmSelectedPerson(named name: String) {
         do {
-            try model.confirmSelectedAssetsAsPerson(named: personName)
+            try model.confirmSelectedAssetsAsPerson(named: name)
             isNamingSelection = false
         } catch {
             model.errorMessage = error.localizedDescription
@@ -378,7 +383,8 @@ struct PeopleView: View {
     }
 
     private func nameSuggestionSheet(_ suggestion: PeopleFaceSuggestion) -> some View {
-        SheetScaffold(
+        let candidates = model.rankedPersonCandidates(forFace: suggestion.representativeFace)
+        return SheetScaffold(
             title: "Name Face Group",
             subtitle: PeoplePresentation.nameFaceGroupSubtitle(
                 faceCount: suggestion.faceIDs.count,
@@ -386,14 +392,20 @@ struct PeopleView: View {
             ),
             width: 320,
             primaryLabel: "Create Person",
-            isPrimaryEnabled: !suggestionPersonName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            isPrimaryEnabled: !nameSuggestionQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             cancel: { namingSuggestion = nil },
-            primary: { confirmNamedFaceSuggestion(suggestion) }
+            primary: { confirmNamedFaceSuggestion(suggestion, name: nameSuggestionQuery) }
         ) {
-            TextField("Person name", text: $suggestionPersonName)
-                .textFieldStyle(.roundedBorder)
-                .focused($isSuggestionNameFieldFocused)
-                .onAppear { isSuggestionNameFieldFocused = true }
+            PersonAutocompleteField(
+                candidates: candidates,
+                onPick: { personID in
+                    confirmNamedFaceSuggestion(suggestion, name: candidates.name(forID: personID))
+                },
+                onCreate: { name in
+                    confirmNamedFaceSuggestion(suggestion, name: name)
+                },
+                text: $nameSuggestionQuery
+            )
         }
     }
 
@@ -425,9 +437,9 @@ struct PeopleView: View {
         )
     }
 
-    private func confirmNamedFaceSuggestion(_ suggestion: PeopleFaceSuggestion) {
+    private func confirmNamedFaceSuggestion(_ suggestion: PeopleFaceSuggestion, name: String) {
         do {
-            try model.confirmPeopleFaceSuggestion(suggestion, personName: suggestionPersonName)
+            try model.confirmPeopleFaceSuggestion(suggestion, personName: name)
             namingSuggestion = nil
         } catch {
             model.errorMessage = error.localizedDescription
