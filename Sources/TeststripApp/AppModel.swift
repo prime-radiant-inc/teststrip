@@ -5956,6 +5956,11 @@ public final class AppModel {
             let originalAsset = try catalog.repository.asset(id: assetID)
             var metadata = originalAsset.metadata
             metadata.flag = pickedAssetIDs.contains(assetID) ? .pick : .reject
+            // A stack decision is a direct user gesture too: it confirms the
+            // flag even when the decided value matches a tentative AI one
+            // already there (the marker removal makes the no-op guard below
+            // see a real change and write it through).
+            metadata.aiUnconfirmedFields.remove(.flag)
             guard metadata != originalAsset.metadata else { continue }
             try applyMetadataSnapshot(assetID: assetID, metadata: metadata)
             changes.append(MetadataChange(assetID: assetID, before: originalAsset.metadata, after: metadata))
@@ -6557,6 +6562,11 @@ public final class AppModel {
         }
         try updateSelectedAssetMetadata(label: "Rating") { metadata in
             metadata.rating = rating
+            // A direct user rating gesture is authoritative: it confirms an
+            // AI-proposed rating even when the value happens to match what
+            // was already there (the marker removal alone still makes this a
+            // real change, so the no-op early-return below doesn't skip it).
+            metadata.aiUnconfirmedFields.remove(.rating)
         }
     }
 
@@ -6564,6 +6574,10 @@ public final class AppModel {
         let rejectedAssetID = (flag == .reject) ? selectedAssetID : nil
         try updateSelectedAssetMetadata(label: "Flag") { metadata in
             metadata.flag = flag
+            // Same authoritative-gesture reasoning as the rating setter above:
+            // agreeing with (or overriding) a tentative AI flag must confirm
+            // it, not just possibly change its value.
+            metadata.aiUnconfirmedFields.remove(.flag)
         }
         try updateActiveCullingSessionProgressAfterFlagChange()
         if let rejectedAssetID {
@@ -6606,12 +6620,14 @@ public final class AppModel {
         }
         try updateSelectedAssetsMetadata(label: "Rating") { metadata in
             metadata.rating = rating
+            metadata.aiUnconfirmedFields.remove(.rating)
         }
     }
 
     public func setFlagForSelectedAssets(_ flag: PickFlag?) throws {
         try updateSelectedAssetsMetadata(label: "Flag") { metadata in
             metadata.flag = flag
+            metadata.aiUnconfirmedFields.remove(.flag)
         }
         try updateActiveCullingSessionProgressAfterFlagChange()
     }
@@ -7018,12 +7034,16 @@ public final class AppModel {
         // Catalog-authored metadata rides into the exported files when
         // "Include EXIF/IPTC metadata" is on (persona-6 defect: exports
         // used to carry only the source file's EXIF, stripping the work).
+        // Only the CONFIRMED projection is embedded — an AI-unconfirmed
+        // keyword/caption/rating is still provisional and must never land in
+        // an exported deliverable (same discipline as the sidecar/relocation
+        // edges: confirmed wins for anything committing/destructive/portable).
         var catalogMetadataBySourceURL: [URL: AssetMetadata] = [:]
         for assetID in assetIDs {
             guard seenAssetIDs.insert(assetID).inserted else { continue }
             let asset = try catalog.repository.asset(id: assetID)
             originalURLs.append(asset.originalURL)
-            catalogMetadataBySourceURL[asset.originalURL] = asset.metadata
+            catalogMetadataBySourceURL[asset.originalURL] = asset.metadata.confirmedProjection
         }
         guard !originalURLs.isEmpty else {
             throw TeststripError.invalidState("no photos to export")
@@ -7064,6 +7084,9 @@ public final class AppModel {
     public func setCaptionForSelectedAsset(_ caption: String) throws {
         try updateSelectedAssetMetadata(label: "Caption") { metadata in
             metadata.caption = Self.portableText(from: caption)
+            // Directly typing a caption is authoritative, same as the flag
+            // and rating setters above.
+            metadata.aiUnconfirmedFields.remove(.caption)
         }
     }
 
@@ -7073,6 +7096,7 @@ public final class AppModel {
     public func setCaptionForSelectedAssets(_ caption: String) throws {
         try updateSelectedAssetsMetadata(label: "Caption") { metadata in
             metadata.caption = Self.portableText(from: caption)
+            metadata.aiUnconfirmedFields.remove(.caption)
         }
     }
 
@@ -11776,7 +11800,10 @@ public final class AppModel {
         var pickCount = 0
         var rejectCount = 0
         for assetID in try cullingInputAssetIDs(in: session, repository: repository) {
-            switch try repository.asset(id: assetID).metadata.flag {
+            // A tentative (AI-unconfirmed) flag doesn't count toward the
+            // pick/reject tally — matches the non-stack progress path's use
+            // of `confirmedProjection.flag` (Task 13).
+            switch try repository.asset(id: assetID).metadata.confirmedProjection.flag {
             case .pick:
                 pickCount += 1
             case .reject:
@@ -11831,8 +11858,12 @@ public final class AppModel {
         for stackSetID in session.inputSetIDs where Self.isWorkStackSetID(stackSetID) {
             let stackAssetIDs = try explicitAssetIDs(in: stackSetID, repository: repository)
             guard !stackAssetIDs.isEmpty else { continue }
+            // A stack with only tentative (AI-unconfirmed) flags is not
+            // decided — matches the non-stack progress path's use of
+            // `confirmedProjection.flag` (Task 13); otherwise an autopilot
+            // proposal alone could flip a session to `.completed`.
             let isDecided = try stackAssetIDs.allSatisfy { assetID in
-                try repository.asset(id: assetID).metadata.flag != nil
+                try repository.asset(id: assetID).metadata.confirmedProjection.flag != nil
             }
             if isDecided {
                 count += stackAssetIDs.count

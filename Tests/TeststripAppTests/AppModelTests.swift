@@ -1,3 +1,4 @@
+import ImageIO
 import Observation
 import XCTest
 @testable import TeststripCore
@@ -2483,6 +2484,52 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.isExporting)
     }
 
+    // BLOCKER: exported files must never embed AI-unconfirmed labels — only
+    // the confirmed projection is portable/committing (matches the sidecar
+    // and relocation edges of the same discipline). A confirmed keyword
+    // ("beach") is embedded; an AI-proposed-but-unconfirmed keyword
+    // ("people"), caption, and rating are not.
+    @MainActor
+    func testExportVisibleAssetsEmbedsOnlyConfirmedProjectionMetadata() async throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-export-confirmed-projection")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let sourceURL = photosDirectory.appendingPathComponent("mixed-provenance.png")
+        try writeTestPNG(to: sourceURL)
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        try database.migrate()
+        let repository = CatalogRepository(database: database)
+        var asset = makeAsset(id: "export-confirmed-projection", path: sourceURL.path, rating: 4, keywords: ["beach", "people"])
+        asset.metadata.caption = "AI guess caption"
+        asset.metadata.aiUnconfirmedKeywords = ["people"]
+        asset.metadata.aiUnconfirmedFields = [.caption, .rating]
+        try repository.upsert(asset)
+        let model = try AppModel.load(catalog: AppCatalog(
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            repository: repository,
+            previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true)),
+            importService: LibraryImportService(
+                ingestService: IngestService(scanner: FolderScanner(supportedExtensions: [])),
+                previewCache: PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+            )
+        ))
+        let destination = directory.appendingPathComponent("exports", isDirectory: true)
+
+        let summary = try await model.exportVisibleAssets(
+            settings: ExportSettings(jpegQuality: 0.8, includeSourceMetadata: true),
+            destinationFolder: destination
+        )
+
+        XCTAssertEqual(summary.exportedCount, 1)
+        let properties = try imageProperties(of: destination.appendingPathComponent("mixed-provenance.jpg"))
+        let iptc = try XCTUnwrap(properties[kCGImagePropertyIPTCDictionary] as? [CFString: Any], "export carries an IPTC block")
+        XCTAssertEqual(iptc[kCGImagePropertyIPTCKeywords] as? [String], ["beach"])
+        XCTAssertNil(iptc[kCGImagePropertyIPTCCaptionAbstract])
+        XCTAssertNil(iptc[kCGImagePropertyIPTCStarRating])
+        let tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any]
+        XCTAssertNil(tiff?[kCGImagePropertyTIFFImageDescription])
+    }
+
     func testRatingSelectedAssetQueuesXmpWhenSidecarCannotBeWritten() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "xmp-pending")
 
@@ -4467,6 +4514,40 @@ final class AppModelTests: XCTestCase {
             fixture.secondLead.id,
             fixture.secondAlternate.id
         ])
+    }
+
+    // MINOR: a stack session must not flip to `.completed` (and its "N
+    // picks"/"N rejects" banner must not count tentative flags) off a stack
+    // the user hasn't actually decided — matches the non-stack progress
+    // path, which already reads `confirmedProjection.flag` (Task 13).
+    func testPersistedStackSessionDoesNotCompleteOrCountTentativeFlagsInAnUndecidedStack() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "persisted-stack-tentative-completion",
+            sessionID: "tentative-completion-session"
+        )
+        // Simulate an autopilot proposal across the second stack: both
+        // frames already carry a flag, but neither is user-confirmed.
+        try fixture.repository.updateMetadata(assetID: fixture.secondLead.id) { metadata in
+            metadata.flag = .pick
+            metadata.aiUnconfirmedFields = [.flag]
+        }
+        try fixture.repository.updateMetadata(assetID: fixture.secondAlternate.id) { metadata in
+            metadata.flag = .reject
+            metadata.aiUnconfirmedFields = [.flag]
+        }
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstAlternate.id)
+
+        // The user genuinely decides only the first stack.
+        try fixture.model.keepAllFramesInSelectedCullingStack()
+
+        let session = try fixture.repository.session(id: WorkSessionID(rawValue: "tentative-completion-session"))
+        // Only the first stack's confirmed decisions count — the second
+        // stack's tentative flags must not count as decided, and must not
+        // inflate the pick/reject tally.
+        XCTAssertEqual(session.completedUnitCount, 2)
+        XCTAssertEqual(session.status, .running)
+        XCTAssertEqual(session.detail, "Reviewed 2 of 4 frames · 2 picks · 0 rejects")
     }
 
     func testSelectedCullingStackScopeUsesPersistedStackSetMembership() throws {
@@ -12530,6 +12611,106 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
     }
 
+    // BLOCKER: a direct user flag/rating/caption gesture is authoritative —
+    // it must confirm (clear the AI-unconfirmed marker) even when the user's
+    // choice happens to match the tentative value already there. Here the
+    // user AGREES with a tentative autopilot `.reject` by pressing reject
+    // again: the flag value doesn't change, but the write must still clear
+    // `aiUnconfirmedFields` so the asset becomes relocatable.
+    func testUserAgreeingWithTentativeRejectConfirmsItAndMakesItRelocatable() throws {
+        let directory = try makeTemporaryDirectory(named: "confirm-tentative-reject-agree")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let originalURL = shoot.appendingPathComponent("tentative.cr2")
+        try Data("tentative raw".utf8).write(to: originalURL)
+        let asset = makeAsset(id: "agree-tentative-reject", path: originalURL.path, rating: 0, flag: .reject)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "confirm-tentative-reject-agree-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.aiUnconfirmedFields = [.flag]
+                }
+            }
+        )
+        model.select(asset.id)
+
+        try model.setFlagForSelectedAsset(.reject)
+
+        let confirmed = try repository.asset(id: asset.id).metadata
+        XCTAssertEqual(confirmed.flag, .reject)
+        XCTAssertFalse(confirmed.aiUnconfirmedFields.contains(.flag))
+
+        let destination = directory.appendingPathComponent("rejects", isDirectory: true)
+        let preflight = try model.rejectRelocationPreflight(destinationFolder: destination)
+        XCTAssertEqual(preflight.assetIDs, [asset.id])
+        XCTAssertEqual(preflight.moveCount, 1)
+    }
+
+    // BLOCKER: the user can also OVERRIDE a tentative reject with a pick —
+    // that direct gesture must confirm the flag (not just change its value),
+    // landing the asset in the culling session's persisted picks output set
+    // and out of the undecided count.
+    func testUserOverridingTentativeRejectWithPickConfirmsItAndEntersPicksOutputSet() throws {
+        let asset = makeAsset(id: "override-tentative-reject", path: "/Photos/Cull/override.jpg", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "override-tentative-reject-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.flag = .reject
+                    metadata.aiUnconfirmedFields = [.flag]
+                }
+            }
+        )
+        let inputSet = AssetSet.manual(
+            id: AssetSetID(rawValue: "override-tentative-reject-input-set"),
+            name: "Override Input Set",
+            assetIDs: [asset.id]
+        )
+        try repository.upsert(inputSet)
+        try model.refreshSavedAssetSets()
+        try model.applyAssetSet(id: inputSet.id)
+        let startedSession = try model.beginCullingSession(named: "Override Tentative Reject Cull")
+        model.select(asset.id)
+
+        try model.setFlagForSelectedAsset(.pick)
+
+        let confirmed = try repository.asset(id: asset.id).metadata
+        XCTAssertEqual(confirmed.flag, .pick)
+        XCTAssertFalse(confirmed.aiUnconfirmedFields.contains(.flag))
+        XCTAssertEqual(model.cullUndecidedCount, 0)
+
+        let session = try repository.session(id: startedSession.id)
+        XCTAssertEqual(session.completedUnitCount, 1)
+        XCTAssertEqual(session.status, .completed)
+        let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
+        XCTAssertEqual(assetIDs(in: try repository.assetSet(id: outputSetID)), [asset.id])
+    }
+
+    // BLOCKER: a direct rating set is also authoritative, including the
+    // no-op case where the user's rating matches the tentative AI value.
+    func testSettingRatingDirectlyConfirmsATentativeAIRatingEvenWhenValueIsUnchanged() throws {
+        let asset = makeAsset(id: "confirm-tentative-rating-direct", path: "/Photos/Cull/rating.jpg", rating: 4)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "confirm-tentative-rating-direct-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.rating = 4
+                    metadata.aiUnconfirmedFields = [.rating]
+                }
+            }
+        )
+        model.select(asset.id)
+
+        try model.setRatingForSelectedAsset(4)
+
+        let confirmed = try repository.asset(id: asset.id).metadata
+        XCTAssertEqual(confirmed.rating, 4)
+        XCTAssertFalse(confirmed.aiUnconfirmedFields.contains(.rating))
+    }
+
     func testConfirmAndRemoveAIFieldRejectKeyword() throws {
         let asset = makeAsset(id: "ai-field-rejects-keyword", path: "/Photos/frame.jpg", rating: 0)
         let (model, _) = try makeModelWithCatalogAssets(named: "app-model-ai-field-rejects-keyword", assets: [asset])
@@ -17488,6 +17669,11 @@ final class AppModelTests: XCTestCase {
     private func writeTestPNG(to url: URL) throws {
         let base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
         try XCTUnwrap(Data(base64Encoded: base64)).write(to: url)
+    }
+
+    private func imageProperties(of url: URL) throws -> [CFString: Any] {
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil))
+        return try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
     }
 
     private func writePreviewPlaceholder(to url: URL) throws {
