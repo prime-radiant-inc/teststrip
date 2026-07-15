@@ -40,7 +40,7 @@ public enum PersonCandidateRanker {
             return lhs.candidate.id < rhs.candidate.id
         }.map(\.candidate)
 
-        let recencyIndex = Dictionary(uniqueKeysWithValues: recentPersonIDs.enumerated().map { ($1, $0) })
+        let recencyIndex = Dictionary(recentPersonIDs.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
         let tail = tailIDs.sorted { lhs, rhs in
             let lr = recencyIndex[lhs], rr = recencyIndex[rhs]
             if lr != rr {

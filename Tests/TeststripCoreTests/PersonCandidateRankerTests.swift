@@ -45,4 +45,24 @@ final class PersonCandidateRankerTests: XCTestCase {
         XCTAssertEqual(result.map(\.id), ["contact:C1"])
         XCTAssertNotNil(result[0].similarityPercent)
     }
+
+    func testDistanceTiesBreakByNameThenID() {
+        // p-bob's centroid [0, 1, 0] and p-ann's centroid [0, -1, 0] are both
+        // distance √2 from the target [1, 0, 0] — a distance tie — so the
+        // tie-break (name, then id) is what determines the order below.
+        let centroids: [String: [Double]] = ["p-bob": [0, 1, 0], "p-ann": [0, -1, 0]]
+        let result = PersonCandidateRanker.rank(
+            targetEmbedding: [1, 0, 0], centroidsByPerson: centroids,
+            namesByID: ["p-bob": "Bob", "p-ann": "Ann"], recentPersonIDs: [])
+        XCTAssertEqual(result.map(\.id), ["p-ann", "p-bob"])
+    }
+
+    func testDuplicateRecentPersonIDsDoNotCrash() {
+        // recentPersonIDs containing a duplicate id used to trap inside
+        // Dictionary(uniqueKeysWithValues:); rank must tolerate duplicates.
+        let result = PersonCandidateRanker.rank(
+            targetEmbedding: nil, centroidsByPerson: [:],
+            namesByID: ["p-ann": "Ann", "p-bob": "Bob"], recentPersonIDs: ["p-ann", "p-ann"])
+        XCTAssertEqual(Set(result.map(\.id)), ["p-ann", "p-bob"])
+    }
 }
