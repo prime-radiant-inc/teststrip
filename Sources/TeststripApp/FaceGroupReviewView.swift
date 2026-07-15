@@ -18,8 +18,6 @@ struct FaceGroupReviewView: View {
     var close: () -> Void
 
     @State private var isNaming = false
-    @State private var newPersonName = ""
-    @FocusState private var isNameFieldFocused: Bool
 
     private var suggestion: PeopleFaceSuggestion? {
         model.peopleFaceSuggestions.first { $0.id == suggestionID }
@@ -96,7 +94,6 @@ struct FaceGroupReviewView: View {
                 if review.isOneTapConfirm {
                     confirm(suggestion)
                 } else {
-                    newPersonName = ""
                     isNaming = true
                 }
             } label: {
@@ -112,7 +109,8 @@ struct FaceGroupReviewView: View {
     }
 
     private func namingSheet() -> some View {
-        SheetScaffold(
+        let candidates = suggestion.map { model.rankedPersonCandidates(forFace: $0.representativeFace) } ?? []
+        return SheetScaffold(
             title: "Name Face Group",
             subtitle: suggestion.map {
                 PeoplePresentation.nameFaceGroupSubtitle(
@@ -122,20 +120,30 @@ struct FaceGroupReviewView: View {
             },
             width: 320,
             primaryLabel: "Create Person",
-            isPrimaryEnabled: !newPersonName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            // PersonAutocompleteField commits directly via its own pick/create
+            // rows (Return activates the focused row) — the footer stays only
+            // for SheetScaffold's shared sheet chrome, so it never enables.
+            isPrimaryEnabled: false,
             cancel: { isNaming = false },
-            primary: {
-                if let suggestion {
-                    confirmNamed(suggestion, newPersonName)
-                }
-                isNaming = false
-            }
+            primary: {}
         ) {
-            TextField("Person name", text: $newPersonName)
-                .textFieldStyle(.roundedBorder)
-                .focused($isNameFieldFocused)
-                .onAppear { isNameFieldFocused = true }
+            PersonAutocompleteField(
+                candidates: candidates,
+                onPick: { personID in
+                    commitName(candidates.first { $0.id == personID }?.name ?? "")
+                },
+                onCreate: { name in
+                    commitName(name)
+                }
+            )
         }
+    }
+
+    private func commitName(_ name: String) {
+        if let suggestion {
+            confirmNamed(suggestion, name)
+        }
+        isNaming = false
     }
 
     private var completionState: some View {
