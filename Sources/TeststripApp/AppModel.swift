@@ -2269,6 +2269,9 @@ public final class AppModel {
     /// so the loupe's face-box overlay (Task 8) can highlight the matching
     /// box, and vice versa — hovering a box focuses the list row.
     public var focusedFaceID: FaceID?
+    /// The face whose naming popover is open. Pinned independently of hover so the
+    /// box stays active while the pointer is inside the popover.
+    public var editingFaceID: FaceID?
     public var reviewQueueCounts: [ReviewQueue: Int]
     public var selectedAssetSetID: AssetSetID? {
         didSet { persistSessionState() }

@@ -74,12 +74,17 @@ struct FaceBoxOverlayView: View {
 
     private func faceBox(rect: CGRect, row: PhotoFaceRow) -> some View {
         let isFocused = model.focusedFaceID == row.faceID
+        let isEditing = model.editingFaceID == row.faceID
         return RoundedRectangle(cornerRadius: 4)
-            .stroke(isFocused ? Color.yellow : Color.white.opacity(0.8), lineWidth: isFocused ? 2.5 : 1.25)
+            .stroke(isFocused || isEditing ? Color.yellow : Color.white.opacity(0.8),
+                    lineWidth: isFocused || isEditing ? 2.5 : 1.25)
             .frame(width: max(rect.width, 0), height: max(rect.height, 0))
             .overlay(alignment: .topLeading) {
-                faceLabel(row.state.displayLabel, isFocused: isFocused)
-                    .padding(3)
+                if isFocused || isEditing {
+                    facePill(row: row, isEditing: isEditing).padding(3)
+                } else {
+                    faceLabel(row.state.displayLabel, isFocused: false).padding(3)
+                }
             }
             .position(x: rect.midX, y: rect.midY)
             .contentShape(Rectangle())
@@ -105,5 +110,68 @@ struct FaceBoxOverlayView: View {
                 in: RoundedRectangle(cornerRadius: 3)
             )
             .fixedSize()
+    }
+
+    private func facePill(row: PhotoFaceRow, isEditing: Bool) -> some View {
+        HStack(spacing: 2) {
+            Button {
+                model.editingFaceID = row.faceID
+            } label: {
+                faceLabel(pillTitle(row.state), isFocused: true)
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: editingBinding(for: row.faceID), arrowEdge: .bottom) {
+                PersonAutocompleteField(
+                    candidates: model.rankedPersonCandidates(forFace: row.faceID),
+                    onPick: { personID in
+                        run { try model.nameFace(row.faceID, personID: personID) }
+                        model.editingFaceID = nil
+                    },
+                    onCreate: { name in
+                        run { try model.nameFace(row.faceID, newPersonName: name) }
+                        model.editingFaceID = nil
+                    }
+                )
+                .frame(width: 240)
+                .padding(8)
+            }
+            if row.state.personID != nil {
+                Button {
+                    removePerson(row)
+                } label: {
+                    Image(systemName: "xmark.circle.fill").font(.caption2)
+                }
+                .buttonStyle(.plain)
+                .help("Remove this person")
+            }
+        }
+    }
+
+    private func editingBinding(for faceID: FaceID) -> Binding<Bool> {
+        Binding(get: { model.editingFaceID == faceID },
+                set: { if !$0, model.editingFaceID == faceID { model.editingFaceID = nil } })
+    }
+
+    private func pillTitle(_ state: PhotoFaceState) -> String {
+        switch state {
+        case .confirmed(_, let name): name
+        case .suggested(_, let name): "guess: \(name)"
+        case .unnamed: "Name\u{2026}"
+        }
+    }
+
+    private func removePerson(_ row: PhotoFaceRow) {
+        switch row.state {
+        case .confirmed:
+            run { try model.removeFacePerson(row.faceID) }
+        case .suggested(let personID, _):
+            run { try model.rejectFaceSuggestion(row.faceID, personID: personID) }
+        case .unnamed:
+            break
+        }
+    }
+
+    private func run(_ body: () throws -> Void) {
+        do { try body() } catch { model.errorMessage = error.localizedDescription }
     }
 }
