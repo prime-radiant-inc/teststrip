@@ -125,19 +125,23 @@ pre-existing sidecar**: `commons-aldrin-portrait.jpg.xmp` (checked into the
 repo) — never use Aldrin's photo for a "no sidecar yet" assertion; this card
 uses Glenn/Ride/Armstrong photos throughout, per `inspect-010`'s precedent.
 
-```bash
-ISOLATED=$(/bin/ps eww -axo command= | awk '{for(i=1;i<=NF;i++){p="TESTSTRIP_APPLICATION_SUPPORT_DIRECTORY=";if(index($i,p)==1)print substr($i,length(p)+1)}}' | head -1)
-DB="$ISOLATED/Teststrip/catalog.sqlite"
-```
+There is no shared filesystem between host and VM — `vm_scenario_run.sh`
+only moves bytes over `rsync`/`ssh` — so a host `ps`/`sqlite3` scan against
+the VM's isolated dir finds nothing. Every catalog read in this card is
+`script/vm_scenario_run.sh sql faces "<SQL>"` instead, which resolves the
+freshest `faces-*` run directory itself (no need to plumb `$FRESH` through
+a `$DB` variable) — the same substitution `cull-002-loupe-navigation.md`
+documents for its own VM fallback ("`sql smoke ...` in place of the direct
+calls below").
 
 **Baseline (confirm-before-write / auto-apply-with-provenance, pre-evaluation)**:
 ```bash
-sqlite3 "$DB" "SELECT count(*) FROM assets;"                                              # 11
-sqlite3 "$DB" "SELECT count(*) FROM assets WHERE json_extract(metadata_json,'\$.aiUnconfirmedKeywords') IS NOT NULL;"  # 0 (key is omitted when empty)
-sqlite3 "$DB" "SELECT count(*) FROM person_faces WHERE origin='ai';"                      # 0
-sqlite3 "$DB" "SELECT count(*) FROM removed_ai_labels;"                                   # 0
-sqlite3 "$DB" "SELECT count(*) FROM evaluation_signals;"                                  # 0 (unevaluated)
-find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                                    # only commons-aldrin-portrait.jpg.xmp
+script/vm_scenario_run.sh sql faces "SELECT count(*) FROM assets;"                                              # 11
+script/vm_scenario_run.sh sql faces "SELECT count(*) FROM assets WHERE json_extract(metadata_json,'\$.aiUnconfirmedKeywords') IS NOT NULL;"  # 0 (key is omitted when empty)
+script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_faces WHERE origin='ai';"                      # 0
+script/vm_scenario_run.sh sql faces "SELECT count(*) FROM removed_ai_labels;"                                   # 0
+script/vm_scenario_run.sh sql faces "SELECT count(*) FROM evaluation_signals;"                                  # 0 (unevaluated)
+find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                                    # only commons-aldrin-portrait.jpg.xmp — host-side fixture check, unaffected by the VM run
 ```
 
 ## Steps
@@ -159,15 +163,15 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
    autopilot richer signals than a face-only scan would. Keep the app warm
    (re-assert frontmost every poll) while it drains:
    ```bash
-   for i in $(seq 1 60); do n=$(sqlite3 "$DB" "SELECT count(DISTINCT asset_id) FROM evaluation_signals;"); [ "$n" -ge 11 ] && break; sleep 2; done
-   sqlite3 "$DB" "SELECT count(*) FROM face_observations;"   # >0 required for the face leg — if 0, the AuraFace model didn't load (stop and flag, don't force the face leg)
+   for i in $(seq 1 60); do n=$(script/vm_scenario_run.sh sql faces "SELECT count(DISTINCT asset_id) FROM evaluation_signals;"); [ "$n" -ge 11 ] && break; sleep 2; done
+   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM face_observations;"   # >0 required for the face leg — if 0, the AuraFace model didn't load (stop and flag, don't force the face leg)
    ```
 
 ### 2. Keyword promotion (✨), confirm-before-write, then confirm it
 3. **Find what actually promoted** (don't assume a specific label — Vision's
    confidence on this corpus isn't established by this card):
    ```bash
-   sqlite3 "$DB" "SELECT id, original_path, json_extract(metadata_json,'\$.aiUnconfirmedKeywords') FROM assets WHERE json_extract(metadata_json,'\$.aiUnconfirmedKeywords') IS NOT NULL;"
+   script/vm_scenario_run.sh sql faces "SELECT id, original_path, json_extract(metadata_json,'\$.aiUnconfirmedKeywords') FROM assets WHERE json_extract(metadata_json,'\$.aiUnconfirmedKeywords') IS NOT NULL;"
    ```
    If **no** asset has a non-null `aiUnconfirmedKeywords`, no `.object` signal
    cleared the 0.5 floor on this 11-photo corpus — note it as a fixture gap
@@ -177,12 +181,12 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
    the promotion path is broken. Otherwise pick one asset/keyword
    (`KW_ID`/`KEYWORD`) and cross-check the raw signal:
    ```bash
-   sqlite3 "$DB" "SELECT value_json, confidence FROM evaluation_signals WHERE asset_id='$KW_ID' AND kind='object';"
+   script/vm_scenario_run.sh sql faces "SELECT value_json, confidence FROM evaluation_signals WHERE asset_id='$KW_ID' AND kind='object';"
    ```
    Confirm `confidence >= 0.5` and `KEYWORD` appears in `value_json`.
 4. **Confirm-before-write checkpoint**:
    ```bash
-   SRC=$(sqlite3 "$DB" "SELECT original_path FROM assets WHERE id='$KW_ID';")
+   SRC=$(script/vm_scenario_run.sh sql faces "SELECT original_path FROM assets WHERE id='$KW_ID';")
    ORIG_SUM=$(shasum "$SRC" | awk '{print $1}')
    test ! -e "$SRC.xmp" && echo "no sidecar yet: OK"
    ```
@@ -200,7 +204,7 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
 6. **Confirm it.** `ax press --role AXButton --label "Confirm keyword $KEYWORD"`.
    Assert:
    ```bash
-   sqlite3 "$DB" "SELECT json_extract(metadata_json,'\$.keywords'), json_extract(metadata_json,'\$.aiUnconfirmedKeywords') FROM assets WHERE id='$KW_ID';"
+   script/vm_scenario_run.sh sql faces "SELECT json_extract(metadata_json,'\$.keywords'), json_extract(metadata_json,'\$.aiUnconfirmedKeywords') FROM assets WHERE id='$KW_ID';"
    # keywords still contains KEYWORD; aiUnconfirmedKeywords no longer does (or the whole key is gone if it was the only one)
    test -f "$SRC.xmp" && echo "sidecar written"
    grep -qF "$KEYWORD" "$SRC.xmp" && echo "keyword in xmp"   # dc:subject/rdf:Bag/rdf:li — coarse check per inspect-008's doctrine; dump the file if it fails
@@ -216,10 +220,10 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
    match against. Capture baselines for the final non-destructive check
    (step 21) before touching anything:
    ```bash
-   GLENN_OFFICIAL_ID=$(sqlite3 "$DB" "SELECT id FROM assets WHERE original_path LIKE '%commons-glenn-official.jpg';")
-   GLENN_1962_ID=$(sqlite3 "$DB" "SELECT id FROM assets WHERE original_path LIKE '%commons-glenn-1962.jpg';")
-   GLENN_OFFICIAL_SRC=$(sqlite3 "$DB" "SELECT original_path FROM assets WHERE id='$GLENN_OFFICIAL_ID';")
-   GLENN_1962_SRC=$(sqlite3 "$DB" "SELECT original_path FROM assets WHERE id='$GLENN_1962_ID';")
+   GLENN_OFFICIAL_ID=$(script/vm_scenario_run.sh sql faces "SELECT id FROM assets WHERE original_path LIKE '%commons-glenn-official.jpg';")
+   GLENN_1962_ID=$(script/vm_scenario_run.sh sql faces "SELECT id FROM assets WHERE original_path LIKE '%commons-glenn-1962.jpg';")
+   GLENN_OFFICIAL_SRC=$(script/vm_scenario_run.sh sql faces "SELECT original_path FROM assets WHERE id='$GLENN_OFFICIAL_ID';")
+   GLENN_1962_SRC=$(script/vm_scenario_run.sh sql faces "SELECT original_path FROM assets WHERE id='$GLENN_1962_ID';")
    GLENN_OFFICIAL_SUM=$(shasum "$GLENN_OFFICIAL_SRC" | awk '{print $1}')
    GLENN_1962_SUM=$(shasum "$GLENN_1962_SRC" | awk '{print $1}')
    ```
@@ -230,9 +234,9 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
    ax press --role AXButton --label "Create Person"
    ```
    ```bash
-   JOHN_GLENN_ID=$(sqlite3 "$DB" "SELECT id FROM people WHERE name='John Glenn';")
-   sqlite3 "$DB" "SELECT origin FROM person_faces WHERE asset_id='$GLENN_OFFICIAL_ID';"    # user
-   sqlite3 "$DB" "SELECT count(*) FROM person_assets WHERE person_id='$JOHN_GLENN_ID' AND asset_id='$GLENN_OFFICIAL_ID';"  # 1
+   JOHN_GLENN_ID=$(script/vm_scenario_run.sh sql faces "SELECT id FROM people WHERE name='John Glenn';")
+   script/vm_scenario_run.sh sql faces "SELECT origin FROM person_faces WHERE asset_id='$GLENN_OFFICIAL_ID';"    # user
+   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_assets WHERE person_id='$JOHN_GLENN_ID' AND asset_id='$GLENN_OFFICIAL_ID';"  # 1
    ```
 8. **Re-evaluate to fire promotion against the new centroid.** Promotion only
    runs from `promoteEvaluationResults`, which fires on a genuine
@@ -250,9 +254,9 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
    Activity, per README's keep-warm pattern).
 9. **Assert the AI match landed face-level only:**
    ```bash
-   sqlite3 "$DB" "SELECT face_index, origin, person_id FROM person_faces WHERE asset_id='$GLENN_1962_ID';"   # origin='ai', person_id=$JOHN_GLENN_ID
-   sqlite3 "$DB" "SELECT count(*) FROM person_assets WHERE person_id='$JOHN_GLENN_ID' AND asset_id='$GLENN_1962_ID';"  # 0 — no whole-asset link from an AI match
-   test ! -e "$(sqlite3 "$DB" "SELECT original_path FROM assets WHERE id='$GLENN_1962_ID';").xmp" && echo "no sidecar for identity"
+   script/vm_scenario_run.sh sql faces "SELECT face_index, origin, person_id FROM person_faces WHERE asset_id='$GLENN_1962_ID';"   # origin='ai', person_id=$JOHN_GLENN_ID
+   script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_assets WHERE person_id='$JOHN_GLENN_ID' AND asset_id='$GLENN_1962_ID';"  # 0 — no whole-asset link from an AI match
+   test ! -e "$(script/vm_scenario_run.sh sql faces "SELECT original_path FROM assets WHERE id='$GLENN_1962_ID';").xmp" && echo "no sidecar for identity"
    ```
    If `person_faces` has no `origin='ai'` row here, this specific two-photo
    pair didn't cluster within `FaceSuggestionBuilder.defaultMaximumMatchDistance`
@@ -272,9 +276,9 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
 11. **Confirm the face**, closing this leg's loop: `ax press --role AXButton
     --label "Confirm"` (People section). Assert:
     ```bash
-    sqlite3 "$DB" "SELECT origin FROM person_faces WHERE asset_id='$GLENN_1962_ID';"          # user
-    sqlite3 "$DB" "SELECT count(*) FROM person_assets WHERE person_id='$JOHN_GLENN_ID' AND asset_id='$GLENN_1962_ID';"  # 1 now
-    test ! -e "$(sqlite3 "$DB" "SELECT original_path FROM assets WHERE id='$GLENN_1962_ID';").xmp" && echo "still no sidecar — identity never syncs to XMP"
+    script/vm_scenario_run.sh sql faces "SELECT origin FROM person_faces WHERE asset_id='$GLENN_1962_ID';"          # user
+    script/vm_scenario_run.sh sql faces "SELECT count(*) FROM person_assets WHERE person_id='$JOHN_GLENN_ID' AND asset_id='$GLENN_1962_ID';"  # 1 now
+    test ! -e "$(script/vm_scenario_run.sh sql faces "SELECT original_path FROM assets WHERE id='$GLENN_1962_ID';").xmp" && echo "still no sidecar — identity never syncs to XMP"
     ```
 
 ### 4. A real (confirmed) reject as the control, before autopilot runs
@@ -285,10 +289,10 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
     (`InspectorView.swift:991-999`, `model.setFlagForSelectedAssets(.reject)`
     — a direct user gesture, `origin` is never `ai` for this path). Assert:
     ```bash
-    MANUAL_ID=$(sqlite3 "$DB" "SELECT id FROM assets WHERE original_path LIKE '%commons-armstrong-eva-training.jpg';")
-    SRC_MANUAL=$(sqlite3 "$DB" "SELECT original_path FROM assets WHERE id='$MANUAL_ID';")
+    MANUAL_ID=$(script/vm_scenario_run.sh sql faces "SELECT id FROM assets WHERE original_path LIKE '%commons-armstrong-eva-training.jpg';")
+    SRC_MANUAL=$(script/vm_scenario_run.sh sql faces "SELECT original_path FROM assets WHERE id='$MANUAL_ID';")
     MANUAL_SUM=$(shasum "$SRC_MANUAL" | awk '{print $1}')   # baseline for step 21's post-relocation content check
-    sqlite3 "$DB" "SELECT json_extract(metadata_json,'\$.flag'), json_extract(metadata_json,'\$.aiUnconfirmedFields') FROM assets WHERE id='$MANUAL_ID';"  # reject, NULL (no aiUnconfirmedFields key)
+    script/vm_scenario_run.sh sql faces "SELECT json_extract(metadata_json,'\$.flag'), json_extract(metadata_json,'\$.aiUnconfirmedFields') FROM assets WHERE id='$MANUAL_ID';"  # reject, NULL (no aiUnconfirmedFields key)
     grep -q 'ts:Pick="reject"' "$SRC_MANUAL.xmp" && echo "confirmed reject synced"
     ```
 
@@ -298,12 +302,12 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
     `cull-017-autopilot-review.md`'s stale claim that autopilot only runs
     post-import). Record the run:
     ```bash
-    RUN_ID=$(sqlite3 "$DB" "SELECT run_id FROM autopilot_proposals ORDER BY created_at DESC LIMIT 1;")
-    sqlite3 "$DB" "SELECT asset_id, kind FROM autopilot_proposals WHERE run_id='$RUN_ID';"
+    RUN_ID=$(script/vm_scenario_run.sh sql faces "SELECT run_id FROM autopilot_proposals ORDER BY created_at DESC LIMIT 1;")
+    script/vm_scenario_run.sh sql faces "SELECT asset_id, kind FROM autopilot_proposals WHERE run_id='$RUN_ID';"
     ```
 14. **Find a genuinely tentative reject, distinct from the manual control:**
     ```bash
-    sqlite3 "$DB" "SELECT a.id, a.original_path FROM assets a
+    script/vm_scenario_run.sh sql faces "SELECT a.id, a.original_path FROM assets a
       JOIN autopilot_proposals p ON p.asset_id = a.id AND p.run_id = '$RUN_ID' AND p.kind='reject'
       WHERE a.id != '$MANUAL_ID'
         AND json_extract(a.metadata_json,'\$.flag')='reject'
@@ -317,11 +321,11 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
     broken. Otherwise call the match `TENT_ID`. Also confirm the manual
     control was **not** silently turned tentative:
     ```bash
-    sqlite3 "$DB" "SELECT json_extract(metadata_json,'\$.aiUnconfirmedFields') FROM assets WHERE id='$MANUAL_ID';"  # still NULL — hasConfirmedFlag guard skipped it
+    script/vm_scenario_run.sh sql faces "SELECT json_extract(metadata_json,'\$.aiUnconfirmedFields') FROM assets WHERE id='$MANUAL_ID';"  # still NULL — hasConfirmedFlag guard skipped it
     ```
 15. **No sidecar for the tentative reject yet:**
     ```bash
-    TENT_SRC=$(sqlite3 "$DB" "SELECT original_path FROM assets WHERE id='$TENT_ID';")
+    TENT_SRC=$(script/vm_scenario_run.sh sql faces "SELECT original_path FROM assets WHERE id='$TENT_ID';")
     TENT_SUM=$(shasum "$TENT_SRC" | awk '{print $1}')   # baseline for step 21's post-relocation content check
     test ! -e "$TENT_SRC.xmp" && echo "no sidecar for tentative reject"
     ```
@@ -334,18 +338,22 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
     assert **N = 1** (the manual control only; `$TESTSTRIP_REJECT_DESTINATION_DIR`
     from Pre-state bypasses the folder panel). Check the confirm-checkbox
     gate (disabled primary + standing hint while unchecked, per
-    `app-010-move-rejects.md`'s step 4): `ax find --role AXCheckBox --contains
-    "confirm"` (or similar — read the live label), `ax press` it, then
+    `app-010-move-rejects.md`'s step 4): the toggle's accessible label is
+    `preflight.confirmationText` — the *same* string as the primary button
+    ("Move N reject photo(s) to `<folder>`", `LibraryGridView.swift:3380`),
+    so a `--contains "confirm"` filter matches nothing; it's the only
+    checkbox in the sheet, so `ax find --role AXCheckBox` (bare, no label
+    filter) is the reliable match. `ax press --role AXCheckBox` it, then
     `ax press --role AXButton --contains "Move 1 reject"` (the button's exact
     title is `confirmationText`, "Move 1 reject photo to `<folder>`").
 17. **Assert the split outcome:**
     ```bash
     test ! -f "$SRC_MANUAL" && echo "manual reject moved"          # gone from source (SRC_MANUAL = armstrong-eva-training's original path, captured in step 12)
     ls "$REJECTS_DIR" | grep -q "$(basename "$SRC_MANUAL")" && echo "present at destination"
-    sqlite3 "$DB" "SELECT count(*) FROM relocation_manifest_entries WHERE asset_id='$MANUAL_ID';"   # 1
+    script/vm_scenario_run.sh sql faces "SELECT count(*) FROM relocation_manifest_entries WHERE asset_id='$MANUAL_ID';"   # 1
     test -f "$TENT_SRC" && echo "tentative reject NOT moved — still at its original path"
     ls "$REJECTS_DIR" | grep -q "$(basename "$TENT_SRC")" && echo "FAIL: should not be present" || echo "correctly absent from destination"
-    sqlite3 "$DB" "SELECT count(*) FROM relocation_manifest_entries WHERE asset_id='$TENT_ID';"      # 0
+    script/vm_scenario_run.sh sql faces "SELECT count(*) FROM relocation_manifest_entries WHERE asset_id='$TENT_ID';"      # 0
     ```
 18. **Close the loop: confirm the tentative reject, then it becomes movable.**
     Open the Autopilot review banner's **Review**
@@ -361,7 +369,7 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
     selected" are disabled with an empty selection — confirm the tile is
     actually selected first). Assert:
     ```bash
-    sqlite3 "$DB" "SELECT json_extract(metadata_json,'\$.aiUnconfirmedFields') FROM assets WHERE id='$TENT_ID';"   # NULL now
+    script/vm_scenario_run.sh sql faces "SELECT json_extract(metadata_json,'\$.aiUnconfirmedFields') FROM assets WHERE id='$TENT_ID';"   # NULL now
     grep -q 'ts:Pick="reject"' "$TENT_SRC.xmp" && echo "confirmed reject now synced"
     ```
 19. **Re-run Move Rejects** (`ax press --role AXMenuItem --label "Move Rejects…"`,
@@ -435,7 +443,9 @@ find "$ROOT_DIR/sample-data/photos/faces" -name '*.xmp'                         
 - Step 12: a direct Reject gesture writes `flag=reject` with **no**
   `aiUnconfirmedFields` and a synced sidecar immediately (this is the
   pre-existing, unchanged user-gesture path — a control, not new behavior
-  under test).
+  under test). **Fails if** `aiUnconfirmedFields` is non-null for this asset
+  (a direct gesture must never be tagged AI-origin), or if the `.xmp` isn't
+  written immediately with `ts:Pick="reject"`.
 - Steps 13-15: Run Autopilot applies at least one tentative `.reject`
   in-catalog with **no** sidecar, and leaves the manual control's confirmed
   reject untouched (not re-marked tentative). **Fails if** autopilot writes a
