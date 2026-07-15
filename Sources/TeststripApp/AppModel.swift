@@ -3814,6 +3814,7 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         try catalog.repository.unassignFaces([faceID])
+        try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
 
