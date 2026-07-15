@@ -1,6 +1,15 @@
 import SwiftUI
 import TeststripCore
 
+extension Array where Element == PersonCandidate {
+    /// Looks up a candidate's display name by id — `onPick` only hands back
+    /// the id, but the whole-asset/group naming sheets need the name too
+    /// (their confirm methods key on name, not id).
+    func name(forID id: String) -> String {
+        first { $0.id == id }?.name ?? ""
+    }
+}
+
 /// A reusable name-entry field for assigning a person to a face: a text field
 /// backed by a ranked, filtered list of existing people (Task 4's
 /// `PersonAutocompletePresentation`) plus a trailing "create new person" row
@@ -10,22 +19,29 @@ struct PersonAutocompleteField: View {
     var candidates: [PersonCandidate]
     var onPick: (String) -> Void
     var onCreate: (String) -> Void
+    /// An external query binding for hosts that need the typed text (e.g. to
+    /// enable a sheet's own primary button). `nil` (the default) keeps the
+    /// field's query as private internal state — the two popover call sites
+    /// (inspector, face-box overlay) rely on this default.
+    var text: Binding<String>? = nil
 
-    @State private var query = ""
+    @State private var internalQuery = ""
     @State private var focusIndex = 0
     @FocusState private var isFieldFocused: Bool
 
+    private var query: Binding<String> { text ?? $internalQuery }
+
     private var rows: [PersonAutocompleteRow] {
-        PersonAutocompletePresentation.rows(candidates: candidates, query: query)
+        PersonAutocompletePresentation.rows(candidates: candidates, query: query.wrappedValue)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TextField("Name", text: $query)
+            TextField("Name", text: query)
                 .textFieldStyle(.roundedBorder)
                 .focused($isFieldFocused)
                 .onAppear { isFieldFocused = true }
-                .onChange(of: query) { focusIndex = 0 }
+                .onChange(of: query.wrappedValue) { focusIndex = 0 }
                 .onKeyPress(.downArrow) {
                     focusIndex = PersonAutocompletePresentation.clampedFocusIndex(focusIndex + 1, rowCount: rows.count)
                     return .handled

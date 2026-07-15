@@ -105,6 +105,39 @@ final class RankedPersonCandidatesTests: XCTestCase {
         XCTAssertEqual(model.catalogPeople.first?.id, "p-real")
     }
 
+    func testConfirmPeopleFaceSuggestionByNameDedupesToLatentContact() throws {
+        // A latent contact (contact_reference_faces row, no `people` row)
+        // named through a by-name confirm path must reuse the contact's own
+        // person_id instead of minting a duplicate "person-<uuid>" — pre-fix
+        // (existingPersonID(matchingName:) checks only catalogPeople, never
+        // contact-reference names), this mints a *second* "Dan Shapiro" row
+        // under a fresh UUID, orphaned from "contact:C1".
+        let a = makeAsset(id: "a4", path: "/p/a4.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(named: "confirm-suggestion-dedup-contact", assets: [a]) { repo in
+            try repo.replaceFaceObservations(assetID: a.id, provenance: self.provenance, with: [self.obs(a.id, [1, 0, 0])])
+            try repo.upsertContactReferenceFace(
+                contactIdentifier: "C1", personID: "contact:C1", name: "Dan Shapiro",
+                embedding: [1, 0, 0],
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                photoHash: "h"
+            )
+        }
+        let faceID = FaceID(assetID: a.id, faceIndex: 0)
+        let suggestion = PeopleFaceSuggestion(
+            id: "face-cluster-\(a.id.rawValue)-0",
+            kind: .newPerson,
+            faceIDs: [faceID],
+            representativeFace: faceID,
+            representativeBoundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+            assetIDs: [a.id]
+        )
+
+        try model.confirmPeopleFaceSuggestion(suggestion, personName: "Dan Shapiro")
+
+        XCTAssertEqual(model.catalogPeople.filter { $0.name.caseInsensitiveCompare("Dan Shapiro") == .orderedSame }.count, 1)
+        XCTAssertEqual(model.catalogPeople.first?.id, "contact:C1")
+    }
+
     // MARK: - Test support (copied from FaceGroupReviewTests.swift; kept private per file)
 
     private func makeModelWithCatalogAssets(

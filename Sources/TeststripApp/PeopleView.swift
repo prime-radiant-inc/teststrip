@@ -5,7 +5,9 @@ struct PeopleView: View {
     var model: AppModel
 
     @State private var isNamingSelection = false
+    @State private var nameSelectionQuery = ""
     @State private var namingSuggestion: PeopleFaceSuggestion?
+    @State private var nameSuggestionQuery = ""
     // The face group currently open in the review surface, tracked by
     // suggestion id (not the value) so the review view always re-reads the
     // live, possibly-shrunk suggestion from the model.
@@ -112,6 +114,7 @@ struct PeopleView: View {
                 model.errorMessage = error.localizedDescription
             }
         case .nameSuggestion(let suggestion):
+            nameSuggestionQuery = ""
             namingSuggestion = suggestion
         case .selectReview(let target):
             do {
@@ -222,6 +225,7 @@ struct PeopleView: View {
                 .foregroundStyle(.secondary)
 
             Button {
+                nameSelectionQuery = ""
                 isNamingSelection = true
             } label: {
                 Label("Name selection", systemImage: "person.crop.circle.badge.plus")
@@ -291,21 +295,19 @@ struct PeopleView: View {
             ),
             width: 320,
             primaryLabel: "Create Person",
-            // PersonAutocompleteField commits directly via its own pick/create
-            // rows (Return activates the focused row) — the footer stays only
-            // for SheetScaffold's shared sheet chrome, so it never enables.
-            isPrimaryEnabled: false,
+            isPrimaryEnabled: !nameSelectionQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             cancel: { isNamingSelection = false },
-            primary: {}
+            primary: { confirmSelectedPerson(named: nameSelectionQuery) }
         ) {
             PersonAutocompleteField(
                 candidates: candidates,
                 onPick: { personID in
-                    confirmSelectedPerson(named: candidates.first { $0.id == personID }?.name ?? "")
+                    confirmSelectedPerson(named: candidates.name(forID: personID))
                 },
                 onCreate: { name in
                     confirmSelectedPerson(named: name)
-                }
+                },
+                text: $nameSelectionQuery
             )
         }
     }
@@ -390,18 +392,19 @@ struct PeopleView: View {
             ),
             width: 320,
             primaryLabel: "Create Person",
-            isPrimaryEnabled: false,
+            isPrimaryEnabled: !nameSuggestionQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             cancel: { namingSuggestion = nil },
-            primary: {}
+            primary: { confirmNamedFaceSuggestion(suggestion, name: nameSuggestionQuery) }
         ) {
             PersonAutocompleteField(
                 candidates: candidates,
                 onPick: { personID in
-                    confirmNamedFaceSuggestion(suggestion, name: candidates.first { $0.id == personID }?.name ?? "")
+                    confirmNamedFaceSuggestion(suggestion, name: candidates.name(forID: personID))
                 },
                 onCreate: { name in
                     confirmNamedFaceSuggestion(suggestion, name: name)
-                }
+                },
+                text: $nameSuggestionQuery
             )
         }
     }

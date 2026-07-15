@@ -3594,7 +3594,7 @@ public final class AppModel {
             throw TeststripError.invalidState("select photos before naming a person")
         }
 
-        let targetID = existingPersonID(matchingName: trimmedName) ?? id
+        let targetID = try existingPersonID(matchingName: trimmedName) ?? id
         try catalog.repository.upsertPerson(id: targetID, name: trimmedName)
         try catalog.repository.assignAssets(assetIDs, toPersonID: targetID)
         try loadCatalogPeople()
@@ -3610,9 +3610,19 @@ public final class AppModel {
     /// An exact name match (trimmed, case-insensitive — the same
     /// normalization `showPersonPhotos`'s `person:` filter uses via
     /// `COLLATE NOCASE`) attaches confirmed assets/faces to the existing
-    /// person instead of minting a duplicate.
-    private func existingPersonID(matchingName trimmedName: String) -> String? {
-        catalogPeople.first { $0.name.caseInsensitiveCompare(trimmedName) == .orderedSame }?.id
+    /// person instead of minting a duplicate. A real `people` row wins; a
+    /// latent contact (present only in `contact_reference_faces`) is the
+    /// fallback, so naming a not-yet-materialized contact returns its own
+    /// `contact:<id>` instead of minting a second identity for the same name.
+    private func existingPersonID(matchingName trimmedName: String) throws -> String? {
+        if let match = catalogPeople.first(where: { $0.name.caseInsensitiveCompare(trimmedName) == .orderedSame }) {
+            return match.id
+        }
+        guard let catalog else { return nil }
+        // Sorted for determinism when two contacts happen to share a name.
+        return try catalog.repository.contactReferenceNamesByPerson()
+            .sorted { $0.key < $1.key }
+            .first { $0.value.caseInsensitiveCompare(trimmedName) == .orderedSame }?.key
     }
 
     public func mergePerson(sourceID: String, into targetID: String) throws {
@@ -3823,7 +3833,7 @@ public final class AppModel {
         guard !trimmedName.isEmpty else {
             throw TeststripError.invalidState("person name is required")
         }
-        let targetID = existingPersonID(matchingName: trimmedName) ?? personID
+        let targetID = try existingPersonID(matchingName: trimmedName) ?? personID
         try catalog.repository.upsertPerson(id: targetID, name: trimmedName)
         try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: targetID)
         try loadCatalogPeople()
@@ -3914,7 +3924,7 @@ public final class AppModel {
         guard !trimmedName.isEmpty else {
             throw TeststripError.invalidState("person name is required")
         }
-        let personID = existingPersonID(matchingName: trimmedName) ?? "person-\(UUID().uuidString)"
+        let personID = try existingPersonID(matchingName: trimmedName) ?? "person-\(UUID().uuidString)"
         try catalog.repository.upsertPerson(id: personID, name: trimmedName)
         try catalog.repository.assignFaces([faceID], toPersonID: personID)
         noteRecentlyNamedPerson(personID)

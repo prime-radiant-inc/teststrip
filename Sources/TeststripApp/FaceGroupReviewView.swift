@@ -18,6 +18,7 @@ struct FaceGroupReviewView: View {
     var close: () -> Void
 
     @State private var isNaming = false
+    @State private var query = ""
 
     private var suggestion: PeopleFaceSuggestion? {
         model.peopleFaceSuggestions.first { $0.id == suggestionID }
@@ -94,6 +95,7 @@ struct FaceGroupReviewView: View {
                 if review.isOneTapConfirm {
                     confirm(suggestion)
                 } else {
+                    query = ""
                     isNaming = true
                 }
             } label: {
@@ -120,21 +122,19 @@ struct FaceGroupReviewView: View {
             },
             width: 320,
             primaryLabel: "Create Person",
-            // PersonAutocompleteField commits directly via its own pick/create
-            // rows (Return activates the focused row) — the footer stays only
-            // for SheetScaffold's shared sheet chrome, so it never enables.
-            isPrimaryEnabled: false,
+            isPrimaryEnabled: !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             cancel: { isNaming = false },
-            primary: {}
+            primary: { commitName(query) }
         ) {
             PersonAutocompleteField(
                 candidates: candidates,
                 onPick: { personID in
-                    commitName(candidates.first { $0.id == personID }?.name ?? "")
+                    commitName(candidates.name(forID: personID))
                 },
                 onCreate: { name in
                     commitName(name)
-                }
+                },
+                text: $query
             )
         }
     }
