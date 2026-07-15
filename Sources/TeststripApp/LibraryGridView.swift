@@ -803,7 +803,6 @@ struct LibraryGridView: View {
             if !model.activeLibraryFilterChips.isEmpty {
                 activeFilterChips
             }
-            currentBatchKeywordSuggestionBar
         }
         .padding(.bottom, 7)
         .background(.bar)
@@ -1112,50 +1111,6 @@ struct LibraryGridView: View {
                 : "Remove filter \(title) (\(subtitle ?? ""))"
         )
         .help("Remove \(title) filter")
-    }
-
-    @ViewBuilder
-    private var currentBatchKeywordSuggestionBar: some View {
-        let rows = BatchKeywordSuggestionPresentation.rows(for: model.visibleBatchKeywordSuggestions)
-        if !rows.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    Image(systemName: "tag")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                    Text("Suggestions")
-                        .font(.caption2.monospaced().weight(.semibold))
-                        .foregroundStyle(.orange)
-                    ForEach(rows) { row in
-                        Button {
-                            applyVisibleBatchKeywordSuggestion(row.keyword)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(row.title)
-                                    .font(.caption.weight(.semibold))
-                                    .lineLimit(1)
-                                Text(row.detail)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 5)
-                            .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .strokeBorder(Color.orange.opacity(0.2))
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!row.isEnabled)
-                        .help(row.detail)
-                    }
-                }
-                .padding(.horizontal, 12)
-            }
-            .liveMockupPlaceholder(.keywordingBatch)
-        }
     }
 
     private var batchMetadataPopover: some View {
@@ -3166,14 +3121,6 @@ struct LibraryGridView: View {
     private func reviewFaceQueueFromImportCompletion() {
         do {
             try model.selectSidebarTarget(.reviewQueue(.facesFound))
-        } catch {
-            model.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func applyVisibleBatchKeywordSuggestion(_ keyword: String) {
-        do {
-            try model.acceptVisibleBatchKeywordSuggestion(keyword)
         } catch {
             model.errorMessage = error.localizedDescription
         }
