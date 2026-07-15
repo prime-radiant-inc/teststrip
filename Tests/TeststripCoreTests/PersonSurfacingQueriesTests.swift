@@ -59,3 +59,39 @@ final class PersonSurfacingQueriesTests: XCTestCase {
         XCTAssertNil(try r.keyFacesByPerson(provenance: prov)["p1"])
     }
 }
+
+extension PersonSurfacingQueriesTests {
+    func testProposedFacesReturnsAIFacesNotYetConfirmed() throws {
+        let (r, _) = try repo()
+        try r.upsertPerson(id: "p1", name: "Dan Shapiro")
+        try r.insertAIFace(assetID: AssetID(rawValue: "a1"), faceIndex: 0, personID: "p1")
+
+        let proposed = try r.proposedPersonFaces(personName: "Dan Shapiro")
+        XCTAssertEqual(proposed, [ProposedPersonFace(personID: "p1", assetID: AssetID(rawValue: "a1"), faceIndex: 0)])
+    }
+
+    func testProposedFacesExcludesConfirmedAsset() throws {
+        let (r, _) = try repo()
+        try r.upsertPerson(id: "p1", name: "Dan Shapiro")
+        try r.insertAIFace(assetID: AssetID(rawValue: "a1"), faceIndex: 0, personID: "p1")
+        try r.confirmFace(assetID: AssetID(rawValue: "a1"), faceIndex: 0) // now in person_assets
+        XCTAssertTrue(try r.proposedPersonFaces(personName: "Dan Shapiro").isEmpty)
+    }
+
+    func testProposedFacesExcludesRejectedFace() throws {
+        let (r, _) = try repo()
+        try r.upsertPerson(id: "p1", name: "Dan Shapiro")
+        try r.insertAIFace(assetID: AssetID(rawValue: "a1"), faceIndex: 0, personID: "p1")
+        // Reject = unassign the person_faces row + record the sticky negative.
+        try r.unassignFaces([FaceID(assetID: AssetID(rawValue: "a1"), faceIndex: 0)])
+        try r.recordRejectedFacePerson(assetID: AssetID(rawValue: "a1"), faceIndex: 0, personID: "p1")
+        XCTAssertTrue(try r.proposedPersonFaces(personName: "Dan Shapiro").isEmpty)
+    }
+
+    func testProposedFacesMatchesNameCaseInsensitively() throws {
+        let (r, _) = try repo()
+        try r.upsertPerson(id: "p1", name: "Dan Shapiro")
+        try r.insertAIFace(assetID: AssetID(rawValue: "a1"), faceIndex: 0, personID: "p1")
+        XCTAssertEqual(try r.proposedPersonFaces(personName: "dan shapiro").count, 1)
+    }
+}
