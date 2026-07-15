@@ -96,10 +96,13 @@ Mechanics:
 
 - New `private var activeCullingSessionID: WorkSessionID?` on `AppModel`.
 - `beginCullingSession`: compute `inputSetID` via `cullingInputSetID`
-  (unchanged snapshot). Branch on `selectedAssetSetID == nil`: pure-filter path
-  keeps filters/assets and only sets `selectedView = .loupe`; set-scope path
-  keeps today's `applyAssetSet(inputSetID)` + selection restore. Set
-  `activeCullingSessionID = sessionID` at the end of both paths.
+  (unchanged snapshot). Branch on
+  `selectedAssetSetID == nil && activeWorkSessionFilterID == nil`: the
+  pure-filter path keeps filters/assets and only sets `selectedView = .loupe`;
+  otherwise keep today's `applyAssetSet(inputSetID)` + selection restore. The
+  `activeWorkSessionFilterID == nil` half excludes a `session:`-token scope
+  (the recent-import source), which is an explicit re-scope, not a persisted
+  filter. Set `activeCullingSessionID = sessionID` at the end of both paths.
 - `activeCullingSession(repository:)`: add `activeCullingSessionID` as a final
   fallback, after the existing `selectedAssetSetID` and `session:`-token checks.
 - `clearLibraryQueryFilters()`: also clear `activeCullingSessionID`. This is the
@@ -108,14 +111,28 @@ Mechanics:
   navigating away ends session tracking — mirroring exactly how today's
   `selectedAssetSetID`-based discovery ends when you navigate away.
 
+### How the Cull "Cull From" sources fall out (emergent, and consistent)
+
+The preserve-vs-snapshot behavior keys purely on *how the scope is
+represented*, which cleanly separates the source-picker rows:
+
+- **Filter-field sources persist** — the review-queue rows (Top Picks,
+  Potential Picks, Rejects, Five Stars, Needs Keywords, Faces/OCR Found,
+  Likely Issues, Needs Evaluation, Provider Failures) all route through
+  `applyReviewQueue`, which sets ordinary filter fields (e.g. `flagFilter`)
+  with `selectedAssetSetID == nil`. So culling from one of these keeps its
+  filter live, and returning to Library keeps showing it. This is the **same**
+  behavior those queues already have when reached from the Library sidebar
+  (they are filters), so it is consistent with the single-scope model rather
+  than a special case. A locking test covers it.
+- **Set- and token-based sources snapshot (unchanged)** — "Cull These"
+  (`cullCurrentSelection`) builds a manual `AssetSet` (`selectedAssetSetID !=
+  nil` → else branch), and the recent-import source scopes via a `session:`
+  search token (`activeWorkSessionFilterID != nil` → else branch). Both keep
+  today's snapshot-and-switch behavior.
+
 ### Deliberate non-goals (keep the diff focused)
 
-- The Cull sidebar **"Cull From" source picker** (recent import, Top Picks,
-  Needs Eyes, diagnostics queues) and **"Cull These"** (`cullCurrentSelection`)
-  stay explicit re-scoping gestures: choosing a *different* set to cull, like
-  Library sidebar navigation. They legitimately change the scope. Composing a
-  queue source with an unrelated rating filter is a larger design not asked for
-  here.
 - **Dynamic saved sets** as the scope keep today's cull behavior (the cull
   snapshots them). Only the pure-filter scope (`selectedAssetSetID == nil`) —
   the exact reported case — is preserved. Broadening to dynamic sets is a
@@ -129,7 +146,18 @@ Mechanics:
   are written by any switch; culling still writes flags via the same gestures.
 - **Non-destructive:** unchanged.
 - Session progress, the persisted Picks output set, resumption via Recent Work,
-  and stack culling are all computed off the session record and are unaffected.
+  and stack culling are all computed off the session record and are unaffected
+  *within a run*. `activeCullingSessionID` is in-memory only (not persisted),
+  which is deliberate and matches the existing session-restore design
+  (`AppModel.swift` — "Mid-culling-session state is out of scope on purpose …
+  reopened explicitly via Recent Work"; the loupe is never a restorable
+  route). Consequence: quitting mid-cull and relaunching lands you back in the
+  Library grid with your **filters restored** (the whole point); to resume that
+  session's live progress tracking, reopen it from Recent Work (which restores
+  discovery via its `session:` token). Continuing to cull the restored filtered
+  set via ⌘1 instead starts fresh tracking — flags still persist to the catalog
+  either way. (The old code kept cross-relaunch tracking only because it had
+  already replaced the filters with the snapshot set — the very bug this fixes.)
 
 ## Testing
 
