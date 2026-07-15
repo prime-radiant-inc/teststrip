@@ -109,3 +109,34 @@ final class ContactReferenceMatchingTests: XCTestCase {
         )
     }
 }
+
+extension ContactReferenceMatchingTests {
+    func testConfirmingLatentContactSuggestionCreatesConfirmedPerson() throws {
+        let a = makeAsset(id: "a1", path: "/p/a1.jpg")
+        let (model, repo) = try makeModelWithCatalogAssets(named: "contact-confirm-materialize", assets: [a])
+        try repo.replaceFaceObservations(assetID: a.id, provenance: provenance, with: [obs(a.id, [1, 0, 0])])
+        try repo.upsertContactReferenceFace(contactIdentifier: "C1", personID: "contact:C1", name: "Dan Shapiro",
+                                            embedding: [1, 0, 0], boundingBox: FaceBoundingBox(x: 0, y: 0, width: 1, height: 1),
+                                            photoHash: "h")
+        model.refreshPeopleFaceSuggestions()
+        let s = try XCTUnwrap(model.peopleFaceSuggestions.first { $0.id == "face-match-contact:C1" })
+
+        try model.confirmPeopleFaceSuggestion(s)
+
+        XCTAssertEqual(model.catalogPeople.first { $0.id == "contact:C1" }?.name, "Dan Shapiro")
+        XCTAssertEqual(try repo.assetIDs(personID: "contact:C1"), [a.id]) // confirmed person_assets
+    }
+
+    func testLatentContactWithNoMatchCreatesNoPerson() throws {
+        let a = makeAsset(id: "a1", path: "/p/a1.jpg")
+        let (model, repo) = try makeModelWithCatalogAssets(named: "contact-nomatch-noperson", assets: [a])
+        // Catalog face is FAR from the reference embedding → no match.
+        try repo.replaceFaceObservations(assetID: a.id, provenance: provenance, with: [obs(a.id, [0, 1, 0])])
+        try repo.upsertContactReferenceFace(contactIdentifier: "C1", personID: "contact:C1", name: "Dan",
+                                            embedding: [1, 0, 0], boundingBox: FaceBoundingBox(x: 0, y: 0, width: 1, height: 1),
+                                            photoHash: "h")
+        model.refreshPeopleFaceSuggestions()
+        XCTAssertNil(model.peopleFaceSuggestions.first { $0.id == "face-match-contact:C1" })
+        XCTAssertTrue(model.catalogPeople.isEmpty) // no phantom person
+    }
+}

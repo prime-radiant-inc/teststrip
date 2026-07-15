@@ -3706,8 +3706,16 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        guard case .matchExisting(let personID, _) = suggestion.kind else {
+        guard case .matchExisting(let personID, let personName) = suggestion.kind else {
             throw TeststripError.invalidState("face suggestion has no matched person; name it instead")
+        }
+        // Materialize a latent contact person on first confirm (idempotent for
+        // an already-real person: ON CONFLICT refreshes the name). Gated on a
+        // contact reference actually backing this personID, so a stale
+        // suggestion for a merged-away (non-contact) person still throws
+        // `notFound` below instead of resurrecting it.
+        if try catalog.repository.contactReferenceFace(personID: personID) != nil {
+            try catalog.repository.upsertPerson(id: personID, name: personName)
         }
         try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: personID)
         try loadCatalogPeople()
