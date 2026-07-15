@@ -2240,6 +2240,10 @@ public final class AppModel {
     public var sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary]
     public var catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary]
     public var catalogPeople: [CatalogPerson]
+    /// The best confirmed face per person (People-card key photo), derived at
+    /// read time — kept in lockstep with `catalogPeople` via `loadCatalogPeople()`
+    /// so a card never shows a face for a stale person set.
+    public var personKeyFaces: [String: PersonKeyFace] = [:]
     public private(set) var peopleFaceSuggestions: [PeopleFaceSuggestion] = []
     public private(set) var peopleFaceObservationAssetCount = 0
     /// The face row currently focused in the People inspector section (hover),
@@ -3539,6 +3543,15 @@ public final class AppModel {
         return Self.commonAncestorPath(for: unavailableFolders) ?? ""
     }
 
+    /// Loads confirmed-people + their key faces together so People cards never
+    /// show a face for a stale person set. Replaces bare
+    /// `catalogPeople = try catalog.repository.people()` assignments.
+    private func loadCatalogPeople() throws {
+        guard let catalog else { return }
+        catalogPeople = try catalog.repository.people()
+        personKeyFaces = try catalog.repository.keyFacesByPerson(provenance: AppleVisionEvaluationProvider.faceProvenance)
+    }
+
     @discardableResult
     public func confirmSelectedAssetsAsPerson(named name: String, id: String = "person-\(UUID().uuidString)") throws -> CatalogPerson {
         guard let catalog else {
@@ -3556,7 +3569,7 @@ public final class AppModel {
         let targetID = existingPersonID(matchingName: trimmedName) ?? id
         try catalog.repository.upsertPerson(id: targetID, name: trimmedName)
         try catalog.repository.assignAssets(assetIDs, toPersonID: targetID)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
         try loadCatalogPage(preferredSelection: nil)
@@ -3579,7 +3592,7 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         try catalog.repository.mergePerson(sourceID: sourceID, into: targetID)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
 
@@ -3592,7 +3605,7 @@ public final class AppModel {
             throw TeststripError.invalidState("select photos before dismissing face review")
         }
         try catalog.repository.dismissFaceAssets(assetIDs)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
         try loadCatalogPage(preferredSelection: nil)
@@ -3675,7 +3688,7 @@ public final class AppModel {
             throw TeststripError.invalidState("face suggestion has no matched person; name it instead")
         }
         try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: personID)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
         try loadCatalogPage(preferredSelection: nil)
@@ -3697,7 +3710,7 @@ public final class AppModel {
         let targetID = existingPersonID(matchingName: trimmedName) ?? personID
         try catalog.repository.upsertPerson(id: targetID, name: trimmedName)
         try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: targetID)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
         try loadCatalogPage(preferredSelection: nil)
@@ -3763,7 +3776,7 @@ public final class AppModel {
         }
         try catalog.repository.assignFaces([faceID], toPersonID: personID)
         try catalog.repository.clearRejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: personID)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
 
@@ -3779,7 +3792,7 @@ public final class AppModel {
         let personID = "person-\(UUID().uuidString)"
         try catalog.repository.upsertPerson(id: personID, name: trimmedName)
         try catalog.repository.assignFaces([faceID], toPersonID: personID)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
 
@@ -3801,7 +3814,7 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         try catalog.repository.confirmFace(assetID: assetID, faceIndex: faceIndex)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
 
@@ -4326,6 +4339,10 @@ public final class AppModel {
             backgroundWorkPublicationScheduler: backgroundWorkPublicationScheduler,
             sessionRestoreDefaults: sessionRestoreDefaults
         )
+        // `catalogPeople` above already seeded the init; this also derives
+        // `personKeyFaces` so People cards show key faces on first launch,
+        // not just after the next mutating action.
+        try model.loadCatalogPeople()
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
         try model.enqueuePendingGeocoding()

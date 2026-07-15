@@ -27,7 +27,8 @@ struct PeopleView: View {
             canRequestCurrentScopeFaceScan: model.canRequestPeopleFaceScan,
             faceSuggestions: model.peopleFaceSuggestions,
             faceObservationAssetCount: model.peopleFaceObservationAssetCount,
-            hasUnavailableSources: model.hasUnavailableSourceRoots
+            hasUnavailableSources: model.hasUnavailableSourceRoots,
+            keyFaces: model.personKeyFaces
         )
     }
 
@@ -420,13 +421,20 @@ struct PeopleView: View {
 
     private func namedPersonCard(_ person: NamedPersonPresentation) -> some View {
         HStack(spacing: 12) {
-            Circle()
-                .fill(avatarGradient(seed: person.id, colors: [.orange, .pink]))
-                .frame(width: 52, height: 52)
-                .overlay {
-                    Circle()
-                        .strokeBorder(Color.white.opacity(0.12))
-                }
+            if let keyFace = person.keyFace {
+                FaceCropAvatar(
+                    previewURL: model.previewURL(for: keyFace.assetID, levels: [.grid, .medium, .micro]),
+                    boundingBox: keyFace.boundingBox
+                )
+            } else {
+                Circle()
+                    .fill(avatarGradient(seed: person.id, colors: [.orange, .pink]))
+                    .frame(width: 52, height: 52)
+                    .overlay {
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.12))
+                    }
+            }
             VStack(alignment: .leading, spacing: 6) {
                 Text(person.name)
                     .font(.headline.weight(.semibold))
@@ -578,11 +586,12 @@ struct PeoplePresentation: Equatable {
         canRequestCurrentScopeFaceScan: Bool = false,
         faceSuggestions: [PeopleFaceSuggestion] = [],
         faceObservationAssetCount: Int = 0,
-        hasUnavailableSources: Bool = false
+        hasUnavailableSources: Bool = false,
+        keyFaces: [String: PersonKeyFace] = [:]
     ) {
         self.hasUnavailableSources = hasUnavailableSources
         self.totalAssetCount = totalAssetCount
-        self.namedPeople = namedPeople.map { NamedPersonPresentation(person: $0) }
+        self.namedPeople = namedPeople.map { NamedPersonPresentation(person: $0, keyFace: keyFaces[$0.id]) }
         let faceCountSignals = evaluationSummaries.first { $0.kind == .faceCount }?.assetCount ?? 0
         let faceQualitySignals = evaluationSummaries.first { $0.kind == .faceQuality }?.assetCount ?? 0
         self.photosWithFaceSignals = max(faceCountSignals, faceQualitySignals)
@@ -820,11 +829,13 @@ struct NamedPersonPresentation: Equatable, Identifiable {
     var id: String
     var name: String
     var assetCount: Int
+    var keyFace: PersonKeyFace?
 
-    init(person: CatalogPerson) {
+    init(person: CatalogPerson, keyFace: PersonKeyFace? = nil) {
         self.id = person.id
         self.name = person.name
         self.assetCount = person.assetCount
+        self.keyFace = keyFace
     }
 
     var countText: String {

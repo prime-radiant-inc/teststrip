@@ -45,6 +45,22 @@ public struct ProposedPersonFace: Equatable, Sendable {
     }
 }
 
+/// A person's single best (highest `captureQuality`) CONFIRMED face — the
+/// People-card key photo. See `CatalogRepository.keyFacesByPerson`.
+public struct PersonKeyFace: Equatable, Sendable {
+    public let assetID: AssetID
+    public let faceIndex: Int
+    public let boundingBox: FaceBoundingBox
+    public let captureQuality: Double?
+
+    public init(assetID: AssetID, faceIndex: Int, boundingBox: FaceBoundingBox, captureQuality: Double?) {
+        self.assetID = assetID
+        self.faceIndex = faceIndex
+        self.boundingBox = boundingBox
+        self.captureQuality = captureQuality
+    }
+}
+
 public final class CatalogRepository {
     private let database: CatalogDatabase
     private let encoder = JSONEncoder()
@@ -1267,20 +1283,6 @@ public final class CatalogRepository {
             embeddingsByPerson[personID, default: []].append(payload.embedding)
         }
         return embeddingsByPerson
-    }
-
-    public struct PersonKeyFace: Equatable, Sendable {
-        public let assetID: AssetID
-        public let faceIndex: Int
-        public let boundingBox: FaceBoundingBox
-        public let captureQuality: Double?
-
-        public init(assetID: AssetID, faceIndex: Int, boundingBox: FaceBoundingBox, captureQuality: Double?) {
-            self.assetID = assetID
-            self.faceIndex = faceIndex
-            self.boundingBox = boundingBox
-            self.captureQuality = captureQuality
-        }
     }
 
     /// The person's single best (highest `captureQuality`) CONFIRMED face, keyed
