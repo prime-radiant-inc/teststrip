@@ -22,13 +22,26 @@ and face embedding over a JSON-lines protocol.
 
 ## Non-negotiable invariants
 
-- **Confirm-before-write.** Machine labels (autopilot proposals, face-group
-  suggestions, keyword/verdict reads) stay *provisional* until an explicit user
-  gesture writes them. Assert the negative in tests: nothing in
-  `people`/`person_assets`/asset metadata before the confirming click.
-- **Non-destructive.** Original image bytes are never modified. Edits go to the
-  catalog and mirror to `.xmp` sidecars; a sidecar is written only after a
-  user sets a rating/flag/keyword/caption/creator/copyright.
+- **Auto-apply with provenance.** Machine labels (scene keywords, captions,
+  face/person identity, autopilot pick/reject flags) auto-apply to the catalog
+  immediately, tagged `origin = ai` (unconfirmed) and shown with a subtle
+  ✨ — for people the flag is *prominent*, review-first (the full prominent
+  people surface is a later sub-project). Unconfirmed AI labels are **never**
+  written to `.xmp` sidecars; an explicit user gesture **confirms** a label
+  (flips `origin → user` and, for sidecar-eligible fields, writes the sidecar
+  — identity has no XMP field) or **removes** it. Unconfirmed AI flags/ratings
+  are tentative and **never** drive destructive or committing operations
+  (move/trash-rejects, the persisted Picks set, export) — a tentative-only
+  flag counts as undecided. Removing an AI label deletes it and records the
+  removal (`removed_ai_labels`) so promotion never resurrects it; rejecting a
+  suggested face records `rejected_face_people`. Assert the negative in tests:
+  an AI label lands with `origin=ai` and no sidecar; after confirm,
+  `origin=user` and the sidecar is written; a tentative reject is not
+  relocated/trashed/exported.
+- **Non-destructive.** Original image bytes are never modified. Edits go to
+  the catalog and mirror to `.xmp` sidecars; a sidecar is written only once a
+  rating/flag/keyword/caption/creator/copyright carries `user` origin — set
+  directly, or an AI label confirmed.
 
 ## Key docs (read these before diving in)
 
