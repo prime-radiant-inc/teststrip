@@ -1,5 +1,5 @@
 enum CatalogMigrations {
-    static let version = 20
+    static let version = 21
 
     static let statements = [
         """
@@ -251,7 +251,20 @@ enum CatalogMigrations {
             PRIMARY KEY (asset_id, field, value)
         )
         """,
-        "CREATE INDEX IF NOT EXISTS idx_removed_ai_labels_asset ON removed_ai_labels(asset_id)"
+        "CREATE INDEX IF NOT EXISTS idx_removed_ai_labels_asset ON removed_ai_labels(asset_id)",
+        """
+        CREATE TABLE IF NOT EXISTS contact_reference_faces (
+            contact_identifier TEXT PRIMARY KEY NOT NULL,
+            person_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            embedding_json TEXT NOT NULL,
+            bounding_box_json TEXT NOT NULL,
+            photo_hash TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_contact_reference_faces_person ON contact_reference_faces(person_id)"
     ]
 
     // Runs after `technical_metadata_json` is ensured on legacy catalogs (the

@@ -2317,6 +2317,12 @@ public final class AppModel {
     private var catalog: AppCatalog?
 
     @ObservationIgnored
+    private var contactsProvider: (any ContactsProviding)?
+
+    @ObservationIgnored
+    private var contactFaceDetector: (@Sendable (CGImage) throws -> [AppleVisionFaceObservation])?
+
+    @ObservationIgnored
     private let importTaskFactory: AppImportTaskFactory
 
     @ObservationIgnored
@@ -3633,7 +3639,10 @@ public final class AppModel {
                 provenance: provenance,
                 limit: Self.maximumFaceSuggestionInputCount
             )
-            let confirmedFacesByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
+            var confirmedFacesByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
+            for (personID, vectors) in try catalog.repository.contactReferenceEmbeddingsByPerson() {
+                confirmedFacesByPerson[personID, default: []].append(contentsOf: vectors)
+            }
             let suggestions = FaceSuggestionBuilder().suggestions(
                 unassignedFaces: unassigned.map { FaceEmbedding(faceID: $0.faceID, vector: $0.embedding) },
                 confirmedFacesByPerson: confirmedFacesByPerson
@@ -3641,9 +3650,12 @@ public final class AppModel {
             let observationsByFaceID = Dictionary(
                 uniqueKeysWithValues: unassigned.map { ($0.faceID, $0) }
             )
-            let personNamesByID = Dictionary(
+            var personNamesByID = Dictionary(
                 uniqueKeysWithValues: catalogPeople.map { ($0.id, $0.name) }
             )
+            for (personID, name) in try catalog.repository.contactReferenceNamesByPerson() where personNamesByID[personID] == nil {
+                personNamesByID[personID] = name
+            }
             let rejectedPairs = try catalog.repository.rejectedFacePeople()
             peopleFaceSuggestions = Self.peopleFaceSuggestions(
                 from: suggestions,
@@ -3655,6 +3667,37 @@ public final class AppModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Imports address-book contact photos as reference faces (Contacts
+    /// seeding): fetches every contact with a photo via the injected
+    /// `ContactsProviding`, embeds each photo's best face, and seeds/updates
+    /// `contact_reference_faces` via `ContactFaceSeeder` — attaching to an
+    /// existing same-named person or minting a latent `contact:<id>` person.
+    /// Gated on the face-embedding model being available; `contactFaceDetector`
+    /// lets tests substitute a stub instead of the real Vision + CoreML pipeline.
+    @MainActor
+    public func importFacesFromContacts() async throws {
+        guard let catalog else { throw TeststripError.invalidState("app model has no catalog") }
+        guard let provider = contactsProvider else {
+            throw TeststripError.invalidState("Contacts access is not available")
+        }
+        let detector: @Sendable (CGImage) throws -> [AppleVisionFaceObservation]
+        if let injected = contactFaceDetector {
+            detector = injected
+        } else {
+            guard let model = CoreMLFaceEmbeddingModel.auraFace() else {
+                throw TeststripError.invalidState("The face model is unavailable; cannot import from Contacts")
+            }
+            let embedder = FaceRecognitionEmbedder(model: model)
+            detector = { try embedder.faceObservations(in: $0) }
+        }
+        let records = try provider.contactsWithPhotos()
+        let seeder = ContactFaceSeeder(detectFaces: detector, repository: catalog.repository,
+                                       photoCache: catalog.contactPhotoCache)
+        let summary = try seeder.seed(records: records)
+        statusMessage = "Contacts: \(summary.seeded) seeded, \(summary.unchanged) unchanged, \(summary.skippedNoFace) without a face"
+        refreshPeopleFaceSuggestions()
     }
 
     /// Auto-apply "promotion" for face matches: turns a face's match against
@@ -3676,13 +3719,17 @@ public final class AppModel {
             provenance: provenance,
             limit: Self.maximumFaceSuggestionInputCount
         )
-        let confirmedFacesByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
+        var confirmedFacesByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
+        for (personID, vectors) in try catalog.repository.contactReferenceEmbeddingsByPerson() {
+            confirmedFacesByPerson[personID, default: []].append(contentsOf: vectors)
+        }
         let suggestions = FaceSuggestionBuilder().suggestions(
             unassignedFaces: unassigned.map { FaceEmbedding(faceID: $0.faceID, vector: $0.embedding) },
             confirmedFacesByPerson: confirmedFacesByPerson
         )
+        let materializedPersonIDs = Set(try catalog.repository.people().map(\.id))
         let rejectedPairs = try catalog.repository.rejectedFacePeople()
-        for match in suggestions.matches {
+        for match in suggestions.matches where materializedPersonIDs.contains(match.personID) {
             for faceID in match.faceIDs where faceID.assetID == assetID {
                 guard !rejectedPairs.contains(
                     RejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: match.personID)
@@ -3696,8 +3743,16 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        guard case .matchExisting(let personID, _) = suggestion.kind else {
+        guard case .matchExisting(let personID, let personName) = suggestion.kind else {
             throw TeststripError.invalidState("face suggestion has no matched person; name it instead")
+        }
+        // Materialize a latent contact person on first confirm (idempotent for
+        // an already-real person: ON CONFLICT refreshes the name). Gated on a
+        // contact reference actually backing this personID, so a stale
+        // suggestion for a merged-away (non-contact) person still throws
+        // `notFound` below instead of resurrecting it.
+        if try catalog.repository.contactReferenceFace(personID: personID) != nil {
+            try catalog.repository.upsertPerson(id: personID, name: personName)
         }
         try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: personID)
         try loadCatalogPeople()
@@ -4296,7 +4351,9 @@ public final class AppModel {
         workerImportsEnabled: Bool? = nil,
         backgroundWorkPublicationInterval: TimeInterval? = nil,
         backgroundWorkPublicationScheduler: any WorkerTimeoutScheduling = DispatchWorkerTimeoutScheduler(),
-        sessionRestoreDefaults: UserDefaults? = nil
+        sessionRestoreDefaults: UserDefaults? = nil,
+        contactsProvider: (any ContactsProviding)? = nil,
+        contactFaceDetector: (@Sendable (CGImage) throws -> [AppleVisionFaceObservation])? = nil
     ) throws -> AppModel {
         try reconcileInterruptedIngestWorkSessions(repository: catalog.repository)
         let assets = try catalog.repository.allAssets()
@@ -4372,6 +4429,8 @@ public final class AppModel {
             backgroundWorkPublicationScheduler: backgroundWorkPublicationScheduler,
             sessionRestoreDefaults: sessionRestoreDefaults
         )
+        model.contactsProvider = contactsProvider
+        model.contactFaceDetector = contactFaceDetector
         // `catalogPeople` above already seeded the init; this also derives
         // `personKeyFaces` so People cards show key faces on first launch,
         // not just after the next mutating action.
@@ -13124,6 +13183,16 @@ public final class AppModel {
             }
         }
         return nil
+    }
+
+    /// The cached address-book photo (+ its face box) for a person that was
+    /// seeded from Contacts, or nil if this person has no contact reference.
+    public func contactReferencePhoto(forPersonID personID: String) -> (url: URL, box: FaceBoundingBox)? {
+        guard let catalog,
+              let reference = try? catalog.repository.contactReferenceFace(personID: personID) else { return nil }
+        let url = catalog.contactPhotoCache.url(for: reference.contactIdentifier)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return (url, reference.boundingBox)
     }
 
     private func hasCachedPreview(for assetID: AssetID) -> Bool {

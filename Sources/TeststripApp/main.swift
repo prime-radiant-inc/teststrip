@@ -1,4 +1,5 @@
 import AppKit
+import Contacts
 import SwiftUI
 
 struct AppWindowLayoutMetrics {
@@ -390,6 +391,10 @@ private struct PeopleCommands: Commands {
                 requestPeopleFaceScan()
             }
             .disabled(!model.canRequestPeopleFaceScan)
+
+            Button("Import Faces from Contacts…") {
+                importFacesFromContacts()
+            }
         }
     }
 
@@ -398,6 +403,23 @@ private struct PeopleCommands: Commands {
             try model.requestPeopleFaceScan()
         } catch {
             model.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func importFacesFromContacts() {
+        Task {
+            let granted = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+                CNContactStore().requestAccess(for: .contacts) { ok, _ in cont.resume(returning: ok) }
+            }
+            guard granted else {
+                await MainActor.run { model.errorMessage = "Teststrip needs Contacts access to import faces. Enable it in System Settings ▸ Privacy & Security ▸ Contacts." }
+                return
+            }
+            do {
+                try await model.importFacesFromContacts()
+            } catch {
+                await MainActor.run { model.errorMessage = error.localizedDescription }
+            }
         }
     }
 }

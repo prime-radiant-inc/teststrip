@@ -37,10 +37,25 @@ struct PeopleView: View {
     // the focused card via PeopleQueuePresentation.confirmAction().
     private var queuePresentation: PeopleQueuePresentation {
         PeopleQueuePresentation(
-            suggestionCards: presentation.suggestionCards,
+            suggestionCards: populatedSuggestionCards,
             reviewCards: presentation.reviewCards,
             focusedIndex: queueFocusedIndex
         )
+    }
+
+    // PeoplePresentation is a pure view of faceSuggestions with no catalog
+    // access; the contact reference photo needs `model`, so it's populated
+    // here at the view layer rather than threaded into PeoplePresentation.
+    private var populatedSuggestionCards: [PeopleFaceSuggestionCard] {
+        presentation.suggestionCards.map { card in
+            var card = card
+            if case .matchExisting(let personID, _) = card.suggestion.kind,
+               let reference = model.contactReferencePhoto(forPersonID: personID) {
+                card.referencePhotoURL = reference.url
+                card.referenceBoundingBox = reference.box
+            }
+            return card
+        }
     }
 
     var body: some View {
@@ -171,7 +186,7 @@ struct PeopleView: View {
 
             if !presentation.suggestionCards.isEmpty {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], alignment: .leading, spacing: 12) {
-                    ForEach(presentation.suggestionCards) { card in
+                    ForEach(populatedSuggestionCards) { card in
                         faceSuggestionCard(card, isFocused: isQueueFocused(cardID: card.id))
                     }
                 }
@@ -315,6 +330,14 @@ struct PeopleView: View {
                 openFaceGroupReview(card)
             } label: {
                 HStack(spacing: 12) {
+                    if let referenceURL = card.referencePhotoURL {
+                        VStack(spacing: 2) {
+                            FaceCropAvatar(previewURL: referenceURL,
+                                           boundingBox: card.referenceBoundingBox ?? FaceBoundingBox(x: 0, y: 0, width: 1, height: 1),
+                                           diameter: 44)
+                            Text("Contacts").font(.system(size: 9)).foregroundStyle(.secondary)
+                        }
+                    }
                     FaceCropAvatar(
                         previewURL: model.previewURL(for: card.suggestion.representativeFace.assetID, levels: [.grid, .medium, .micro]),
                         boundingBox: card.suggestion.representativeBoundingBox
@@ -850,6 +873,8 @@ struct PeopleFaceSuggestionCard: Equatable, Identifiable {
     var confirmActionTitle: String
     var isOneTapConfirm: Bool
     var suggestion: PeopleFaceSuggestion
+    var referencePhotoURL: URL? = nil
+    var referenceBoundingBox: FaceBoundingBox? = nil
 }
 
 struct PeopleReviewCard: Equatable, Identifiable {

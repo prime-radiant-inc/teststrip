@@ -22,5 +22,7 @@
     <string>com.teststrip.app-spki</string>
     <string>com.teststrip.app-spks</string>
   </array>
+  <key>com.apple.security.personal-information.addressbook</key>
+  <true/>
 </dict>
 </plist>

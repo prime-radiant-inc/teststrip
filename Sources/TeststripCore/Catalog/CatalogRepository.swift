@@ -1013,6 +1013,14 @@ public final class CatalogRepository {
         }
         guard trimmedSourceID != trimmedTargetID else { return }
         try database.transaction {
+            // The source and target are the same person post-merge, so the
+            // source's contact reference (and its recall boost) follows to
+            // the target rather than orphaning against the deleted source id
+            // (which would let a regenerated suggestion resurrect it).
+            try database.execute(
+                "UPDATE contact_reference_faces SET person_id = ? WHERE person_id = ?",
+                bindings: [trimmedTargetID, trimmedSourceID]
+            )
             try database.execute(
                 """
                 INSERT OR IGNORE INTO person_assets (person_id, asset_id, created_at)
@@ -1333,6 +1341,93 @@ public final class CatalogRepository {
             }
         }
         return best
+    }
+
+    public struct ContactReferenceFace: Equatable, Sendable {
+        public let contactIdentifier: String
+        public let personID: String
+        public let name: String
+        public let boundingBox: FaceBoundingBox
+
+        public init(contactIdentifier: String, personID: String, name: String, boundingBox: FaceBoundingBox) {
+            self.contactIdentifier = contactIdentifier
+            self.personID = personID
+            self.name = name
+            self.boundingBox = boundingBox
+        }
+    }
+
+    public func upsertContactReferenceFace(
+        contactIdentifier: String, personID: String, name: String,
+        embedding: [Double], boundingBox: FaceBoundingBox, photoHash: String
+    ) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            """
+            INSERT INTO contact_reference_faces
+                (contact_identifier, person_id, name, embedding_json, bounding_box_json, photo_hash, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(contact_identifier) DO UPDATE SET
+                person_id = excluded.person_id,
+                name = excluded.name,
+                embedding_json = excluded.embedding_json,
+                bounding_box_json = excluded.bounding_box_json,
+                photo_hash = excluded.photo_hash,
+                updated_at = excluded.updated_at
+            """,
+            bindings: [contactIdentifier, personID, name, try encode(embedding), try encode(boundingBox), photoHash, now, now]
+        )
+    }
+
+    public func contactReferencePhotoHash(contactIdentifier: String) throws -> String? {
+        try database.rows(
+            "SELECT photo_hash FROM contact_reference_faces WHERE contact_identifier = ?",
+            bindings: [contactIdentifier]
+        ).first?["photo_hash"]
+    }
+
+    public func contactReferenceEmbeddingsByPerson() throws -> [String: [[Double]]] {
+        let rows = try database.rows("SELECT person_id, embedding_json FROM contact_reference_faces")
+        var result: [String: [[Double]]] = [:]
+        for row in rows {
+            guard let personID = row["person_id"], let embeddingJSON = row["embedding_json"] else {
+                throw CatalogError.sqlite("contact reference row is missing required columns")
+            }
+            result[personID, default: []].append(try decode([Double].self, from: embeddingJSON))
+        }
+        return result
+    }
+
+    public func contactReferenceNamesByPerson() throws -> [String: String] {
+        let rows = try database.rows("SELECT person_id, name FROM contact_reference_faces")
+        var result: [String: String] = [:]
+        for row in rows {
+            guard let personID = row["person_id"], let name = row["name"] else {
+                throw CatalogError.sqlite("contact reference row is missing required columns")
+            }
+            result[personID] = name
+        }
+        return result
+    }
+
+    public func contactReferenceFace(personID: String) throws -> ContactReferenceFace? {
+        guard let row = try database.rows(
+            "SELECT contact_identifier, person_id, name, bounding_box_json FROM contact_reference_faces WHERE person_id = ? LIMIT 1",
+            bindings: [personID]
+        ).first else { return nil }
+        guard let contactIdentifier = row["contact_identifier"], let pid = row["person_id"],
+              let name = row["name"], let boxJSON = row["bounding_box_json"] else {
+            throw CatalogError.sqlite("contact reference row is missing required columns")
+        }
+        return ContactReferenceFace(contactIdentifier: contactIdentifier, personID: pid, name: name,
+                                    boundingBox: try decode(FaceBoundingBox.self, from: boxJSON))
+    }
+
+    public func personID(matchingName name: String) throws -> String? {
+        try database.rows(
+            "SELECT id FROM people WHERE name = ? COLLATE NOCASE LIMIT 1",
+            bindings: [name]
+        ).first?["id"]
     }
 
     /// A named person's PROPOSED faces: `person_faces.origin='ai'` rows for a

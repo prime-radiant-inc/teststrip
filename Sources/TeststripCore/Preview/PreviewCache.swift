@@ -18,7 +18,7 @@ public struct PreviewCache: Sendable {
     }
 
     public func url(for key: PreviewCacheKey) -> URL {
-        let assetDirectoryName = Self.safeAssetDirectoryName(for: key.assetID.rawValue)
+        let assetDirectoryName = PathSafeName.encode(key.assetID.rawValue)
 
         return root
             .appendingPathComponent(assetDirectoryName, isDirectory: true)
@@ -30,34 +30,8 @@ public struct PreviewCache: Sendable {
     /// a reject to the Trash — so a stale preview never outlives its row. A
     /// no-op when nothing is cached.
     public func deleteAll(for assetID: AssetID) throws {
-        let directory = root.appendingPathComponent(Self.safeAssetDirectoryName(for: assetID.rawValue), isDirectory: true)
+        let directory = root.appendingPathComponent(PathSafeName.encode(assetID.rawValue), isDirectory: true)
         guard FileManager.default.fileExists(atPath: directory.path) else { return }
         try FileManager.default.removeItem(at: directory)
-    }
-
-    private static func safeAssetDirectoryName(for rawValue: String) -> String {
-        if !rawValue.isEmpty && rawValue.utf8.allSatisfy(isAllowedAssetDirectoryByte) {
-            return rawValue
-        }
-
-        var encoded = "~"
-
-        for byte in rawValue.utf8 {
-            let hex = String(byte, radix: 16, uppercase: true)
-            if hex.count == 1 {
-                encoded.append("0")
-            }
-            encoded.append(hex)
-        }
-
-        return encoded
-    }
-
-    private static func isAllowedAssetDirectoryByte(_ byte: UInt8) -> Bool {
-        (65...90).contains(byte) ||
-            (97...122).contains(byte) ||
-            (48...57).contains(byte) ||
-            byte == 45 ||
-            byte == 95
     }
 }
