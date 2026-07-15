@@ -2424,7 +2424,73 @@ struct LibraryGridView: View {
                 }
             }
             .padding(12)
+            if !model.proposedPhotos.isEmpty {
+                proposedSection
+            }
         }
+    }
+
+    private var proposedSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                Text("Proposed")
+                    .font(.subheadline.weight(.semibold))
+                Text("\(model.proposedPhotos.count)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            LazyVGrid(columns: columns, spacing: gridLayout.gridSpacing) {
+                ForEach(model.proposedPhotos) { photo in
+                    proposedCell(photo)
+                }
+            }
+            .padding(12)
+        }
+    }
+
+    private func proposedCell(_ photo: ProposedPersonPhoto) -> some View {
+        AssetGridCell(
+            asset: photo.asset,
+            previewURL: model.gridPreviewURL(for: photo.asset.id),
+            previewCacheGeneration: model.previewCacheGeneration(for: photo.asset.id),
+            previewStatus: model.gridPreviewStatus(for: photo.asset.id),
+            isSelected: false
+        )
+        .overlay(alignment: .topLeading) {
+            proposedActionButton(systemImage: "xmark", help: "Not this person") {
+                runProposedAction { try model.rejectProposedPhoto(photo) }
+            }
+            .padding(6)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            proposedActionButton(systemImage: "checkmark", help: "Confirm this person") {
+                runProposedAction { try model.confirmProposedPhoto(photo) }
+            }
+            .padding(6)
+        }
+        .id(photo.asset.id.rawValue)
+        .task(id: photo.asset.id.rawValue) {
+            do { try model.requestVisibleGridPreview(assetID: photo.asset.id) }
+            catch { model.errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func proposedActionButton(systemImage: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .bold))
+                .frame(width: 22, height: 22)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private func runProposedAction(_ body: () throws -> Void) {
+        do { try body() } catch { model.errorMessage = error.localizedDescription }
     }
 
     private func beginAutopilotReview() {

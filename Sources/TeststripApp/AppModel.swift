@@ -890,6 +890,12 @@ public struct PeopleFaceSuggestion: Equatable, Identifiable, Sendable {
     public var assetIDs: [AssetID]
 }
 
+public struct ProposedPersonPhoto: Identifiable, Equatable {
+    public let asset: Asset
+    public let faces: [ProposedPersonFace]
+    public var id: String { asset.id.rawValue }
+}
+
 public enum SidebarRowTarget: Equatable, Sendable {
     case allPhotographs
     case search
@@ -2240,8 +2246,18 @@ public final class AppModel {
     public var sourceAvailabilitySummaries: [CatalogSourceAvailabilitySummary]
     public var catalogEvaluationKindSummaries: [CatalogEvaluationKindSummary]
     public var catalogPeople: [CatalogPerson]
+    /// The best confirmed face per person (People-card key photo), derived at
+    /// read time — kept in lockstep with `catalogPeople` via `loadCatalogPeople()`
+    /// so a card never shows a face for a stale person set.
+    public var personKeyFaces: [String: PersonKeyFace] = [:]
     public private(set) var peopleFaceSuggestions: [PeopleFaceSuggestion] = []
     public private(set) var peopleFaceObservationAssetCount = 0
+    /// A person's PROPOSED photos (AI-unconfirmed face matches), shown as a
+    /// separate section below the confirmed grid — kept out of `assets` so
+    /// tentative matches never reach Picks/export/destructive ops. Populated
+    /// only when the active query is exactly one `.person(name)` predicate;
+    /// see `refreshProposedAssets()`.
+    public var proposedPhotos: [ProposedPersonPhoto] = []
     /// The face row currently focused in the People inspector section (hover),
     /// so the loupe's face-box overlay (Task 8) can highlight the matching
     /// box, and vice versa — hovering a box focuses the list row.
@@ -3539,6 +3555,15 @@ public final class AppModel {
         return Self.commonAncestorPath(for: unavailableFolders) ?? ""
     }
 
+    /// Loads confirmed-people + their key faces together so People cards never
+    /// show a face for a stale person set. Replaces bare
+    /// `catalogPeople = try catalog.repository.people()` assignments.
+    private func loadCatalogPeople() throws {
+        guard let catalog else { return }
+        catalogPeople = try catalog.repository.people()
+        personKeyFaces = try catalog.repository.keyFacesByPerson(provenance: AppleVisionEvaluationProvider.faceProvenance)
+    }
+
     @discardableResult
     public func confirmSelectedAssetsAsPerson(named name: String, id: String = "person-\(UUID().uuidString)") throws -> CatalogPerson {
         guard let catalog else {
@@ -3556,7 +3581,7 @@ public final class AppModel {
         let targetID = existingPersonID(matchingName: trimmedName) ?? id
         try catalog.repository.upsertPerson(id: targetID, name: trimmedName)
         try catalog.repository.assignAssets(assetIDs, toPersonID: targetID)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
         try loadCatalogPage(preferredSelection: nil)
@@ -3579,7 +3604,7 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         try catalog.repository.mergePerson(sourceID: sourceID, into: targetID)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
 
@@ -3592,7 +3617,7 @@ public final class AppModel {
             throw TeststripError.invalidState("select photos before dismissing face review")
         }
         try catalog.repository.dismissFaceAssets(assetIDs)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
         try loadCatalogPage(preferredSelection: nil)
@@ -3675,7 +3700,7 @@ public final class AppModel {
             throw TeststripError.invalidState("face suggestion has no matched person; name it instead")
         }
         try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: personID)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
         try loadCatalogPage(preferredSelection: nil)
@@ -3697,7 +3722,7 @@ public final class AppModel {
         let targetID = existingPersonID(matchingName: trimmedName) ?? personID
         try catalog.repository.upsertPerson(id: targetID, name: trimmedName)
         try catalog.repository.assignFaces(suggestion.faceIDs, toPersonID: targetID)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshCatalogEvaluationKindSummaries()
         refreshPeopleFaceSuggestions()
         try loadCatalogPage(preferredSelection: nil)
@@ -3763,7 +3788,7 @@ public final class AppModel {
         }
         try catalog.repository.assignFaces([faceID], toPersonID: personID)
         try catalog.repository.clearRejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: personID)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
 
@@ -3779,7 +3804,7 @@ public final class AppModel {
         let personID = "person-\(UUID().uuidString)"
         try catalog.repository.upsertPerson(id: personID, name: trimmedName)
         try catalog.repository.assignFaces([faceID], toPersonID: personID)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
 
@@ -3789,6 +3814,7 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         try catalog.repository.unassignFaces([faceID])
+        try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
 
@@ -3801,7 +3827,7 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         try catalog.repository.confirmFace(assetID: assetID, faceIndex: faceIndex)
-        catalogPeople = try catalog.repository.people()
+        try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
 
@@ -3817,6 +3843,26 @@ public final class AppModel {
         try catalog.repository.unassignFaces([faceID])
         try catalog.repository.recordRejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: personID)
         refreshPeopleFaceSuggestions()
+    }
+
+    /// ✓ on a proposed cell: confirm the person's proposed face(s) on this asset
+    /// (promote `origin='ai'→'user'` + link into the confirmed set), then reload
+    /// so the photo leaves Proposed and joins the confirmed grid.
+    public func confirmProposedPhoto(_ photo: ProposedPersonPhoto) throws {
+        for face in photo.faces {
+            try confirmAIFace(assetID: face.assetID, faceIndex: face.faceIndex)
+        }
+        try reload()
+    }
+
+    /// ✗ on a proposed cell: sticky-reject the person's suggested face(s) on this
+    /// asset (deletes the `origin='ai'` row + records `rejected_face_people`), then
+    /// reload so the photo leaves Proposed for good.
+    public func rejectProposedPhoto(_ photo: ProposedPersonPhoto) throws {
+        for face in photo.faces {
+            try rejectFaceSuggestion(FaceID(assetID: face.assetID, faceIndex: face.faceIndex), personID: face.personID)
+        }
+        try reload()
     }
 
     public func showPersonPhotos(named name: String) throws {
@@ -4326,6 +4372,10 @@ public final class AppModel {
             backgroundWorkPublicationScheduler: backgroundWorkPublicationScheduler,
             sessionRestoreDefaults: sessionRestoreDefaults
         )
+        // `catalogPeople` above already seeded the init; this also derives
+        // `personKeyFaces` so People cards show key faces on first launch,
+        // not just after the next mutating action.
+        try model.loadCatalogPeople()
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
         try model.enqueuePendingGeocoding()
@@ -10082,6 +10132,7 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         isAutopilotReviewActive = false
+        try refreshProposedAssets()
         try refreshWorkHistorySearchResults(repository: catalog.repository)
         // reload() is the single funnel after bulk mutations (trash, move
         // back, relocation, deletes), so every count surface refreshes here
@@ -10117,6 +10168,39 @@ public final class AppModel {
         // `reload()` changes, not just on first appearance.
         if selectedView == .map {
             try refreshPlaceData()
+        }
+    }
+
+    /// A person's PROPOSED photos — shown as a separate section below the
+    /// confirmed grid — are computed only when the active query is exactly one
+    /// `.person(name)` predicate; otherwise cleared. Proposed assets are kept in
+    /// their own array (never `model.assets`) so tentative matches never reach
+    /// Picks/export/destructive ops.
+    private func refreshProposedAssets() throws {
+        guard let catalog,
+              selectedExplicitAssetIDs == nil,
+              let query = currentLibraryQuery(),
+              query.predicates.count == 1,
+              case .person(let name) = query.predicates[0] else {
+            proposedPhotos = []
+            return
+        }
+        let proposed = try catalog.repository.proposedPersonFaces(personName: name)
+        guard !proposed.isEmpty else {
+            proposedPhotos = []
+            return
+        }
+        var order: [AssetID] = []
+        var byAsset: [AssetID: [ProposedPersonFace]] = [:]
+        for face in proposed {
+            if byAsset[face.assetID] == nil { order.append(face.assetID) }
+            byAsset[face.assetID, default: []].append(face)
+        }
+        let assets = try catalog.repository.assets(ids: order, flag: nil, limit: order.count)
+        let assetByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+        proposedPhotos = order.compactMap { id in
+            guard let asset = assetByID[id] else { return nil }
+            return ProposedPersonPhoto(asset: asset, faces: byAsset[id] ?? [])
         }
     }
 
@@ -11044,6 +11128,7 @@ public final class AppModel {
             replaceAssets(contents.assets, preferredSelection: state.selectedAssetID)
             totalAssetCount = contents.totalAssetCount
         }
+        try refreshProposedAssets()
     }
 
     // Routes that only ever exist mid-culling-session; never auto-restored.

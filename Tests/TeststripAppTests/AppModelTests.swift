@@ -7643,6 +7643,55 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.assetIDs(personID: "p1"), [assetID])
     }
 
+    /// Regression: `confirmAIFace` must route through `loadCatalogPeople()`
+    /// so `personKeyFaces` never shows a stale (or missing) key face after a
+    /// confirm — `keyFacesByPerson` only returns `origin='user'` rows, so the
+    /// key face for `p1` doesn't exist until this promotion happens.
+    func testConfirmAIFaceRefreshesPersonKeyFaces() throws {
+        let (model, _, assetID) = try makeModelWithAIPromotedFace(named: "app-model-confirm-ai-face-key-faces")
+        XCTAssertNil(model.personKeyFaces["p1"])
+
+        try model.confirmAIFace(assetID: assetID, faceIndex: 0)
+
+        let keyFace = try XCTUnwrap(model.personKeyFaces["p1"])
+        XCTAssertEqual(keyFace.assetID, assetID)
+    }
+
+    /// Regression: `removeFacePerson` must route through `loadCatalogPeople()`
+    /// too — unassigning a person's only confirmed face deletes the
+    /// `origin='user'` `person_faces` row `keyFacesByPerson` reads, so the
+    /// stale key face must clear with it or the People card keeps showing a
+    /// now-removed crop.
+    func testRemoveFacePersonRefreshesPersonKeyFaces() throws {
+        let assetID = AssetID(rawValue: "a")
+        let asset = makeAsset(id: assetID.rawValue, path: "/Volumes/NAS/Wedding/a.jpg", rating: 0)
+        let provenance = AppleVisionEvaluationProvider.faceProvenance
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "app-model-remove-face-person-key-faces",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.replaceFaceObservations(assetID: assetID, provenance: provenance, with: [
+                    CatalogFaceObservation(
+                        assetID: assetID,
+                        faceIndex: 0,
+                        boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                        captureQuality: 0.9,
+                        embedding: [1, 0, 0],
+                        provenance: provenance
+                    )
+                ])
+                try repository.upsertPerson(id: "p1", name: "Jesse")
+                try repository.assignFaces([FaceID(assetID: assetID, faceIndex: 0)], toPersonID: "p1")
+            }
+        )
+        let keyFace = try XCTUnwrap(model.personKeyFaces["p1"])
+        XCTAssertEqual(keyFace.assetID, assetID)
+
+        try model.removeFacePerson(FaceID(assetID: assetID, faceIndex: 0))
+
+        XCTAssertNil(model.personKeyFaces["p1"])
+    }
+
     func testRejectAIFaceSuggestionDeletesRowAndRecordsRejection() throws {
         let (model, repository, assetID) = try makeModelWithAIPromotedFace(named: "app-model-reject-ai-face")
 

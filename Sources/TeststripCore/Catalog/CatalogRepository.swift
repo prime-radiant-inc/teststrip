@@ -33,6 +33,34 @@ public struct PersonFaceAssignment: Hashable, Sendable {
     public init(personID: String, origin: String) { self.personID = personID; self.origin = origin }
 }
 
+public struct ProposedPersonFace: Equatable, Sendable {
+    public let personID: String
+    public let assetID: AssetID
+    public let faceIndex: Int
+
+    public init(personID: String, assetID: AssetID, faceIndex: Int) {
+        self.personID = personID
+        self.assetID = assetID
+        self.faceIndex = faceIndex
+    }
+}
+
+/// A person's single best (highest `captureQuality`) CONFIRMED face — the
+/// People-card key photo. See `CatalogRepository.keyFacesByPerson`.
+public struct PersonKeyFace: Equatable, Sendable {
+    public let assetID: AssetID
+    public let faceIndex: Int
+    public let boundingBox: FaceBoundingBox
+    public let captureQuality: Double?
+
+    public init(assetID: AssetID, faceIndex: Int, boundingBox: FaceBoundingBox, captureQuality: Double?) {
+        self.assetID = assetID
+        self.faceIndex = faceIndex
+        self.boundingBox = boundingBox
+        self.captureQuality = captureQuality
+    }
+}
+
 public final class CatalogRepository {
     private let database: CatalogDatabase
     private let encoder = JSONEncoder()
@@ -1255,6 +1283,86 @@ public final class CatalogRepository {
             embeddingsByPerson[personID, default: []].append(payload.embedding)
         }
         return embeddingsByPerson
+    }
+
+    /// The person's single best (highest `captureQuality`) CONFIRMED face, keyed
+    /// by person id — the People-card key photo. Clones the join/provenance scope
+    /// of `confirmedFaceEmbeddingsByPerson`, but returns the box/quality/face id
+    /// rather than only the embedding. `captureQuality` lives inside `face_json`
+    /// (not a column), so the max is taken in Swift; `nil` ranks lowest, and the
+    /// stable SQL order makes ties deterministic (first by asset then face index).
+    public func keyFacesByPerson(provenance: ProviderProvenance) throws -> [String: PersonKeyFace] {
+        let rows = try database.rows(
+            """
+            SELECT person_faces.person_id AS person_id,
+                   person_faces.asset_id AS asset_id,
+                   person_faces.face_index AS face_index,
+                   face_observations.face_json AS face_json
+            FROM person_faces
+            JOIN face_observations
+              ON face_observations.asset_id = person_faces.asset_id
+             AND face_observations.face_index = person_faces.face_index
+            WHERE face_observations.provider = ? AND face_observations.model = ?
+              AND face_observations.version = ? AND face_observations.settings_hash = ?
+              AND person_faces.origin = 'user'
+            ORDER BY person_faces.person_id ASC, person_faces.asset_id ASC, person_faces.face_index ASC
+            """,
+            bindings: [provenance.provider, provenance.model, provenance.version, provenance.settingsHash]
+        )
+        var best: [String: PersonKeyFace] = [:]
+        for row in rows {
+            guard let personID = row["person_id"],
+                  let assetID = row["asset_id"],
+                  let faceIndexValue = row["face_index"], let faceIndex = Int(faceIndexValue),
+                  let faceJSON = row["face_json"] else {
+                throw CatalogError.sqlite("key face row is missing required columns")
+            }
+            let payload = try decode(FaceObservationPayload.self, from: faceJSON)
+            let candidate = PersonKeyFace(
+                assetID: AssetID(rawValue: assetID),
+                faceIndex: faceIndex,
+                boundingBox: payload.boundingBox,
+                captureQuality: payload.captureQuality
+            )
+            if let existing = best[personID] {
+                if (candidate.captureQuality ?? -1) > (existing.captureQuality ?? -1) {
+                    best[personID] = candidate
+                }
+            } else {
+                best[personID] = candidate
+            }
+        }
+        return best
+    }
+
+    /// A named person's PROPOSED faces: `person_faces.origin='ai'` rows for a
+    /// person whose asset is not already in that person's confirmed
+    /// `person_assets`. Matched by name (case-insensitive), like the `.person`
+    /// filter, and returns `person_id` too so the reject action (keyed by person)
+    /// targets the right person when two people share a name. Rejected faces are
+    /// absent by construction: rejecting deletes the `origin='ai'` row.
+    public func proposedPersonFaces(personName: String) throws -> [ProposedPersonFace] {
+        let rows = try database.rows(
+            """
+            SELECT pf.person_id AS person_id, pf.asset_id AS asset_id, pf.face_index AS face_index
+            FROM person_faces pf
+            JOIN people ON people.id = pf.person_id AND people.name = ? COLLATE NOCASE
+            WHERE pf.origin = 'ai'
+              AND NOT EXISTS (
+                  SELECT 1 FROM person_assets pa
+                  WHERE pa.person_id = pf.person_id AND pa.asset_id = pf.asset_id
+              )
+            ORDER BY pf.asset_id ASC, pf.face_index ASC
+            """,
+            bindings: [personName]
+        )
+        return try rows.map { row in
+            guard let personID = row["person_id"], let assetID = row["asset_id"],
+                  let faceIndexValue = row["face_index"], let faceIndex = Int(faceIndexValue) else {
+                throw CatalogError.sqlite("proposed person face row is missing required columns")
+            }
+            return ProposedPersonFace(personID: personID, assetID: AssetID(rawValue: assetID), faceIndex: faceIndex)
+        }
     }
 
     public func faceObservationAssetCount(provenance: ProviderProvenance) throws -> Int {
