@@ -3633,7 +3633,10 @@ public final class AppModel {
                 provenance: provenance,
                 limit: Self.maximumFaceSuggestionInputCount
             )
-            let confirmedFacesByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
+            var confirmedFacesByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
+            for (personID, vectors) in try catalog.repository.contactReferenceEmbeddingsByPerson() {
+                confirmedFacesByPerson[personID, default: []].append(contentsOf: vectors)
+            }
             let suggestions = FaceSuggestionBuilder().suggestions(
                 unassignedFaces: unassigned.map { FaceEmbedding(faceID: $0.faceID, vector: $0.embedding) },
                 confirmedFacesByPerson: confirmedFacesByPerson
@@ -3641,9 +3644,12 @@ public final class AppModel {
             let observationsByFaceID = Dictionary(
                 uniqueKeysWithValues: unassigned.map { ($0.faceID, $0) }
             )
-            let personNamesByID = Dictionary(
+            var personNamesByID = Dictionary(
                 uniqueKeysWithValues: catalogPeople.map { ($0.id, $0.name) }
             )
+            for (personID, name) in try catalog.repository.contactReferenceNamesByPerson() where personNamesByID[personID] == nil {
+                personNamesByID[personID] = name
+            }
             let rejectedPairs = try catalog.repository.rejectedFacePeople()
             peopleFaceSuggestions = Self.peopleFaceSuggestions(
                 from: suggestions,
@@ -3676,13 +3682,17 @@ public final class AppModel {
             provenance: provenance,
             limit: Self.maximumFaceSuggestionInputCount
         )
-        let confirmedFacesByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
+        var confirmedFacesByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
+        for (personID, vectors) in try catalog.repository.contactReferenceEmbeddingsByPerson() {
+            confirmedFacesByPerson[personID, default: []].append(contentsOf: vectors)
+        }
         let suggestions = FaceSuggestionBuilder().suggestions(
             unassignedFaces: unassigned.map { FaceEmbedding(faceID: $0.faceID, vector: $0.embedding) },
             confirmedFacesByPerson: confirmedFacesByPerson
         )
+        let materializedPersonIDs = Set(try catalog.repository.people().map(\.id))
         let rejectedPairs = try catalog.repository.rejectedFacePeople()
-        for match in suggestions.matches {
+        for match in suggestions.matches where materializedPersonIDs.contains(match.personID) {
             for faceID in match.faceIDs where faceID.assetID == assetID {
                 guard !rejectedPairs.contains(
                     RejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: match.personID)
