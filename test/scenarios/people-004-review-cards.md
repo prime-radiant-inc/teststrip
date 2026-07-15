@@ -25,7 +25,9 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    when `photosWithDetectedFaces > 0` (`= FC` if `FC > 0` else `FQ`, per
    `PeoplePresentation.init:554`), and "Face quality checks" only appears when
    `FQ > 0`.
-2. `script/ax_drive.sh wait-vended Teststrip`; press ⌘3 for People.
+2. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for Library, then
+   AX-press the sub-view toggle segment **"People"** (People is a Library view
+   now, not ⌘3).
 3. `script/ax_drive.sh find --role AXStaticText --contains "Unnamed faces"`
    and `--contains "Face quality checks"` — assert each card's presence
    matches step 1's gating (present iff its backing count is `> 0`).

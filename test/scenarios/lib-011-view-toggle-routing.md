@@ -1,19 +1,20 @@
-# lib-011-view-toggle-routing: the Library View picker's 4 tags each route the body to the correct sub-view
+# lib-011-view-toggle-routing: the Library View picker's 5 tags each route the body to the correct sub-view
 
 **What this covers**: `librarySubViewToggle`
-(`Sources/TeststripApp/LibraryGridView.swift:442-451`) is a `Picker("Library
+(`Sources/TeststripApp/LibraryGridView.swift`) is a `Picker("Library
 View", ...)` bound to `model.selectedView` (`LibraryViewMode`) offering
-exactly 4 tags — `.grid` ("Grid"), `.libraryLoupe` ("Loupe"), `.timeline`
-("Timeline"), `.map` ("Map") — even though `LibraryViewMode` itself
-(`AppModel.swift:6-20`) has 9 cases total (`grid`, `loupe`, `libraryLoupe`,
-`compare`, `abCompare`, `timeline`, `map`, `people`, `cullGrid`); the other 5
-are reached by other routes (⌘I inspector, Cull workspace, People
-workspace, A/B compare shortcut, etc.), not this picker. The view's `body`
-(`LibraryGridView.swift:74-120`) switches on `model.selectedView` in a
-specific priority order — `.people` first, then `.timeline`, then `.map`,
-then (if `model.assets.isEmpty`) an empty-state view *before* checking
-`.loupe`/`.libraryLoupe`, then `.compare`, `.abCompare`, and finally the
-default `assetGrid` branch for `.grid` and anything else unmatched.
+exactly 5 tags — `.grid` ("Grid"), `.libraryLoupe` ("Loupe"), `.timeline`
+("Timeline"), `.map` ("Map"), `.people` ("People") — even though
+`LibraryViewMode` itself has 9 cases total (`grid`, `loupe`, `libraryLoupe`,
+`compare`, `abCompare`, `timeline`, `map`, `people`, `cullGrid`); the other 4
+(`loupe`, `compare`, `abCompare`, `cullGrid`) are reached by the Cull
+workspace's routes and comparator shortcuts, not this picker. People is a
+Library sub-view now (a peer of the others), not a top-level workspace. The
+view's `body` switches on `model.selectedView` in a specific priority order —
+`.people` first, then `.timeline`, then `.map`, then (if `model.assets.isEmpty`)
+an empty-state view *before* checking `.loupe`/`.libraryLoupe`, then `.compare`,
+`.abCompare`, and finally the default `assetGrid` branch for `.grid` and
+anything else unmatched.
 
 ## Pre-state
 ```bash
@@ -28,12 +29,12 @@ Grid/Loupe cases below).
 
 ## Steps
 1. `script/ax_drive.sh wait-vended Teststrip`; press ⌘2 for Library (only
-   Library shows this picker — `WorkspaceChromePolicy.showsLibraryViewToggle`
-   returns true only for `workspace == .library`,
-   `LibraryGridView.swift:7225-7227`).
+   Library-workspace views show this picker —
+   `WorkspaceChromePolicy.showsLibraryViewToggle(view)` returns true for every
+   `.library` view, People included).
 2. `ax_drive.sh find --role AXRadioButton --label "Grid"` (or the
-   segmented-picker equivalent) and assert all 4 labels exist: "Grid",
-   "Loupe", "Timeline", "Map" — no more, no fewer.
+   segmented-picker equivalent) and assert all 5 labels exist: "Grid",
+   "Loupe", "Timeline", "Map", "People" — no more, no fewer.
 3. Select "Grid". Assert the rendered content is the lazy asset grid
    (`assetGrid`, scrollable `LazyVGrid` with `$TOTAL` cells reachable by
    scrolling) — confirms the fallback `else` branch at line 101-120 handles
@@ -47,14 +48,18 @@ Grid/Loupe cases below).
    renders (distinct chrome from the grid) — confirms line 77's branch,
    which fires *before* the empty-state and loupe checks.
 6. Select "Map". Assert a map view renders (e.g. a `MKMapView`/places
-   cluster surface) — confirms line 85's branch.
-7. Cycle back to "Grid" and confirm the grid reappears with the same
+   cluster surface) — confirms the `.map` branch.
+7. Select "People". Assert the People canvas renders (the review strip /
+   "ALL PEOPLE" panel from `PeopleView`, no asset grid cells) — confirms the
+   `.people`-first branch, and that People is now reachable from this picker
+   rather than a workspace switch.
+8. Cycle back to "Grid" and confirm the grid reappears with the same
    `$TOTAL` cell count as step 3 (round-trip, no state loss).
 
 ## Expected
-- Step 2: exactly 4 tags, matching `librarySubViewToggle` verbatim.
-  **Fails if** a 5th tag appears (e.g. someone wires `.people` or
-  `.compare` into this picker) or one is missing/mislabeled.
+- Step 2: exactly 5 tags, matching `librarySubViewToggle` verbatim.
+  **Fails if** a 6th tag appears (e.g. someone wires `.compare` into this
+  picker) or one is missing/mislabeled.
 - Steps 3-6: each tag routes to its documented view per the `body`
   switch's priority order. **Fails if** any tag renders the wrong content,
   or if selecting "Timeline"/"Map" incorrectly falls through to the grid

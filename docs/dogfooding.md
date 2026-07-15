@@ -12,21 +12,27 @@ Run from the repo root. This rebuilds `TeststripApp` and `TeststripWorker`, ad-h
 
 ## Workspaces
 
-The window is organized into three focused workspaces, switched with the
-toolbar Picker or **⌘1** (Cull) / **⌘2** (Library) / **⌘3** (People) — same
-shortcuts in the View menu, so the two never drift apart:
+The window is organized into two focused workspaces, switched with the
+toolbar Picker or **⌘1** (Cull) / **⌘2** (Library) — same shortcuts in the
+View menu, so the two never drift apart:
 
 - **Cull** — the loupe-first rapid-review flow: sidebar sources (including
   Autopilot Proposals and stacks), the HUD, pick/reject/rate keys, `S` to
   cycle scope, `Z`/`I`/`?`, and the end-of-set handoff. Minimum window width
   800pt.
-- **Library** — grid/loupe/timeline/map browsing with the token query field,
-  result-count header, and sort/filter chrome. Minimum window width 1000pt.
-- **People** — the face-grouping queue (arrow keys to move focus, Return to
-  confirm/name, Esc to dismiss). Minimum window width 700pt.
+- **Library** — grid/loupe/timeline/map/people browsing with the token query
+  field, result-count header, and sort/filter chrome. Minimum window width
+  1000pt.
 
-**⌘I** opens the tabbed inspector (Describe/Metadata/AI) in Library and Cull;
-People has no inspector.
+**People** is a Library sub-view (a peer of Grid | Loupe | Timeline | Map in
+the Library view toggle), not a top-level workspace: the face-grouping queue
+(arrow keys to move focus, Return to confirm/name, Esc to dismiss) and the
+face-group **review** surface (click a suggestion to look at every face large
+and zoomed, remove wrong ones, then name). It keeps its focused, non-browse
+chrome — no search field, filter tokens, import, or footer.
+
+**⌘I** opens the tabbed inspector (Describe/Metadata/AI) in every view —
+Library browse, People, and Cull.
 
 ## Where things live
 

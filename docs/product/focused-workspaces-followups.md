@@ -6,9 +6,12 @@ is deliberately deferred, not forgotten — resolve during dogfooding.
 
 ## Product decisions awaiting dogfood judgment
 
-- **Two vs. three workspaces.** A design reviewer argued People should collapse
-  into Library plus a generic "decide" queue. Kept three because face
-  identification is its own sitting in practice. Revisit if People feels thin.
+- **Two vs. three workspaces.** _Resolved 2026-07-14:_ People collapsed into
+  Library as a sub-view (peer of Grid | Loupe | Timeline | Map in the view
+  toggle), removing the top-level People workspace/⌘3. It keeps its focused,
+  non-browse chrome via the now view-aware `WorkspaceChromePolicy`. Workspaces
+  are now Cull (⌘1) and Library (⌘2). See
+  `docs/superpowers/specs/2026-07-14-people-library-view-and-face-review.md`.
 - **Star concept triplication.** Three star-adjacent concepts coexist: the
   Starred collection (assets), Starred Work (sessions), and star-a-job in the
   Activity popover. Needs a naming/concept pass of its own.

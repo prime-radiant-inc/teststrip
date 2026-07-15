@@ -26,7 +26,8 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    sqlite3 "$DB" "SELECT person_id, count(*) FROM person_assets GROUP BY person_id;"
    ```
 2. **Person-card count text.** `script/ax_drive.sh wait-vended Teststrip`;
-   press ⌘3 People. For each named person card, read its count `AXStaticText`
+   press ⌘2 Library, then AX-press the sub-view toggle segment **"People"**
+   (People is a Library view now, not ⌘3). For each named person card, read its count `AXStaticText`
    and assert it equals `NamedPersonPresentation.countText`: "1 confirmed
    photo" for a single asset, "N confirmed photos" otherwise
    (`PeopleView.swift:777-779`).

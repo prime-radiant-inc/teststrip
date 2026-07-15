@@ -18,7 +18,7 @@ Exact key→command mapping, verified at `GridKeyCaptureView.swift:60-113`:
 - Escape → `.returnToGrid` (only allowed while `mode == .loupe`; a no-op in `.grid`/`.cullGrid` per `isAllowed(in:)` at line 97-113).
 - `0`…`5` → `.rating(0)`…`.rating(5)`.
 - `p` → `.pick`, `x` → `.reject`, `u` → `.clearFlag`.
-- Any event carrying ⌘/⌃/⌥ is rejected outright (`GridKeyInput.init(event:)` line 259: `disallowedModifiers` must be empty) — so e.g. ⌘1/⌘2/⌘3 workspace switches never get eaten by this monitor.
+- Any event carrying ⌘/⌃/⌥ is rejected outright (`GridKeyInput.init(event:)` line 259: `disallowedModifiers` must be empty) — so e.g. ⌘1/⌘2 workspace switches never get eaten by this monitor.
 - Key capture is suppressed while the first responder is an `NSTextView` (`isTextEditor`, line 306) — typing in the query token field must not fire grid shortcuts.
 
 `isAllowed(in mode:)` (line 97-113) also gates by mode: in `.grid`/`.cullGrid`
