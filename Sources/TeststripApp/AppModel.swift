@@ -3638,6 +3638,26 @@ public final class AppModel {
 
     public static let maximumFaceSuggestionInputCount = 2000
 
+    /// Confirmed (origin='user') face embeddings ∪ contact-reference embeddings, keyed by person id.
+    private func unionedFaceEmbeddingsByPerson(provenance: ProviderProvenance) throws -> [String: [[Double]]] {
+        guard let catalog else { return [:] }
+        var embeddingsByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
+        for (personID, vectors) in try catalog.repository.contactReferenceEmbeddingsByPerson() {
+            embeddingsByPerson[personID, default: []].append(contentsOf: vectors)
+        }
+        return embeddingsByPerson
+    }
+
+    /// catalogPeople names ∪ contact-reference names (additive; a real person's name is never clobbered).
+    private func unionedPersonNamesByID() throws -> [String: String] {
+        guard let catalog else { return [:] }
+        var namesByID = Dictionary(uniqueKeysWithValues: catalogPeople.map { ($0.id, $0.name) })
+        for (personID, name) in try catalog.repository.contactReferenceNamesByPerson() where namesByID[personID] == nil {
+            namesByID[personID] = name
+        }
+        return namesByID
+    }
+
     public func refreshPeopleFaceSuggestions() {
         guard let catalog else { return }
         do {
@@ -3646,10 +3666,7 @@ public final class AppModel {
                 provenance: provenance,
                 limit: Self.maximumFaceSuggestionInputCount
             )
-            var confirmedFacesByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
-            for (personID, vectors) in try catalog.repository.contactReferenceEmbeddingsByPerson() {
-                confirmedFacesByPerson[personID, default: []].append(contentsOf: vectors)
-            }
+            let confirmedFacesByPerson = try unionedFaceEmbeddingsByPerson(provenance: provenance)
             let suggestions = FaceSuggestionBuilder().suggestions(
                 unassignedFaces: unassigned.map { FaceEmbedding(faceID: $0.faceID, vector: $0.embedding) },
                 confirmedFacesByPerson: confirmedFacesByPerson
@@ -3657,12 +3674,7 @@ public final class AppModel {
             let observationsByFaceID = Dictionary(
                 uniqueKeysWithValues: unassigned.map { ($0.faceID, $0) }
             )
-            var personNamesByID = Dictionary(
-                uniqueKeysWithValues: catalogPeople.map { ($0.id, $0.name) }
-            )
-            for (personID, name) in try catalog.repository.contactReferenceNamesByPerson() where personNamesByID[personID] == nil {
-                personNamesByID[personID] = name
-            }
+            let personNamesByID = try unionedPersonNamesByID()
             let rejectedPairs = try catalog.repository.rejectedFacePeople()
             peopleFaceSuggestions = Self.peopleFaceSuggestions(
                 from: suggestions,
@@ -3683,16 +3695,8 @@ public final class AppModel {
         guard let catalog else { return [] }
         do {
             let provenance = AppleVisionEvaluationProvider.faceProvenance
-            var embeddingsByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
-            for (personID, vectors) in try catalog.repository.contactReferenceEmbeddingsByPerson() {
-                embeddingsByPerson[personID, default: []].append(contentsOf: vectors)
-            }
-            let centroidsByPerson = embeddingsByPerson.compactMapValues(FaceSuggestionBuilder.centroid)
-
-            var namesByID = Dictionary(uniqueKeysWithValues: catalogPeople.map { ($0.id, $0.name) })
-            for (personID, name) in try catalog.repository.contactReferenceNamesByPerson() where namesByID[personID] == nil {
-                namesByID[personID] = name
-            }
+            let centroidsByPerson = try unionedFaceEmbeddingsByPerson(provenance: provenance).compactMapValues(FaceSuggestionBuilder.centroid)
+            let namesByID = try unionedPersonNamesByID()
 
             let targetEmbedding: [Double]?
             if let faceID {
@@ -3764,10 +3768,7 @@ public final class AppModel {
             provenance: provenance,
             limit: Self.maximumFaceSuggestionInputCount
         )
-        var confirmedFacesByPerson = try catalog.repository.confirmedFaceEmbeddingsByPerson(provenance: provenance)
-        for (personID, vectors) in try catalog.repository.contactReferenceEmbeddingsByPerson() {
-            confirmedFacesByPerson[personID, default: []].append(contentsOf: vectors)
-        }
+        let confirmedFacesByPerson = try unionedFaceEmbeddingsByPerson(provenance: provenance)
         let suggestions = FaceSuggestionBuilder().suggestions(
             unassignedFaces: unassigned.map { FaceEmbedding(faceID: $0.faceID, vector: $0.embedding) },
             confirmedFacesByPerson: confirmedFacesByPerson
@@ -3887,7 +3888,9 @@ public final class AppModel {
             throw TeststripError.invalidState("app model has no catalog")
         }
         // A contact-only candidate has no `people` row yet; assignFaces would
-        // throw notFound. Materialize it first, exactly as confirmPeopleFaceSuggestion does.
+        // throw notFound. Materialize it here only when no catalogPeople row
+        // already exists for this id AND a contact reference backs it — a
+        // stale non-contact id is not resurrected (assignFaces still throws).
         if catalogPeople.first(where: { $0.id == personID }) == nil,
            let reference = try catalog.repository.contactReferenceFace(personID: personID) {
             try catalog.repository.upsertPerson(id: personID, name: reference.name)

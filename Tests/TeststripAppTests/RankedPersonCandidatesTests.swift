@@ -47,6 +47,64 @@ final class RankedPersonCandidatesTests: XCTestCase {
         XCTAssertEqual(ranked.map(\.id), ["p2", "p1"]) // p2 recent first, then Ann alpha
     }
 
+    func testNameFaceMaterializesLatentContact() throws {
+        // A latent contact (contact_reference_faces row, no `people` row) named
+        // via nameFace(personID:) must materialize a real person instead of
+        // hitting assignFaces' notFound — pre-fix (no materialize guard), this
+        // throws CatalogError.notFound("contact:C1") instead of succeeding.
+        let a = makeAsset(id: "a1", path: "/p/a1.jpg")
+        let (model, repo) = try makeModelWithCatalogAssets(named: "name-face-materialize", assets: [a]) { repo in
+            try repo.replaceFaceObservations(assetID: a.id, provenance: self.provenance, with: [self.obs(a.id, [1, 0, 0])])
+            try repo.upsertContactReferenceFace(
+                contactIdentifier: "C1", personID: "contact:C1", name: "Dan",
+                embedding: [1, 0, 0],
+                boundingBox: FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2),
+                photoHash: "h"
+            )
+        }
+
+        XCTAssertNoThrow(try model.nameFace(FaceID(assetID: a.id, faceIndex: 0), personID: "contact:C1"))
+
+        XCTAssertEqual(model.catalogPeople.first(where: { $0.id == "contact:C1" })?.name, "Dan")
+        let assignment = try repo.personFaces(assetID: a.id)[0]
+        XCTAssertEqual(assignment?.personID, "contact:C1")
+        XCTAssertEqual(assignment?.origin, "user")
+        XCTAssertTrue(try repo.assetIDs(personID: "contact:C1").contains(a.id))
+    }
+
+    func testNameFaceDoesNotResurrectStaleNonContactID() throws {
+        // A stale personID with neither a `people` row nor a contact reference
+        // (e.g. a merged-away person) must not be resurrected — nameFace
+        // should propagate assignFaces' notFound rather than materializing it.
+        let a = makeAsset(id: "a2", path: "/p/a2.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(named: "name-face-no-resurrect", assets: [a]) { repo in
+            try repo.replaceFaceObservations(assetID: a.id, provenance: self.provenance, with: [self.obs(a.id, [1, 0, 0])])
+        }
+
+        XCTAssertThrowsError(try model.nameFace(FaceID(assetID: a.id, faceIndex: 0), personID: "ghost"))
+    }
+
+    func testNameFaceDedupesByNameCaseInsensitive() throws {
+        // Naming a face for a "new" person whose name matches an existing
+        // person (case-insensitively) must reuse that person instead of
+        // minting a duplicate — pre-fix (no existingPersonID lookup in
+        // nameFace(newPersonName:)), this would create a second "person-<uuid>"
+        // row and catalogPeople.count would be 2.
+        let a = makeAsset(id: "a3", path: "/p/a3.jpg")
+        let (model, _) = try makeModelWithCatalogAssets(named: "name-face-dedup", assets: [a]) { repo in
+            try repo.upsertPerson(id: "p-real", name: "Dan Shapiro")
+            try repo.replaceFaceObservations(assetID: a.id, provenance: self.provenance, with: [self.obs(a.id, [1, 0, 0])])
+        }
+
+        try model.nameFace(FaceID(assetID: a.id, faceIndex: 0), newPersonName: "dan shapiro")
+
+        // Dedup reuses "p-real" (no duplicate minted); upsertPerson's
+        // ON CONFLICT refreshes the stored name to the typed casing, same as
+        // confirmPeopleFaceSuggestion(_:personName:personID:) does.
+        XCTAssertEqual(model.catalogPeople.count, 1)
+        XCTAssertEqual(model.catalogPeople.first?.id, "p-real")
+    }
+
     // MARK: - Test support (copied from FaceGroupReviewTests.swift; kept private per file)
 
     private func makeModelWithCatalogAssets(
