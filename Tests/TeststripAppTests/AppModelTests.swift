@@ -9754,30 +9754,25 @@ final class AppModelTests: XCTestCase {
 
         let session = try model.beginCullingSession(named: "Wedding Cull")
 
+        // A pure filter scope (no explicit selected set): the hidden
+        // work-input-* snapshot is still recorded for progress/resumption,
+        // but the live filters keep driving the grid — they are not cleared
+        // and selectedAssetSetID is not switched onto the snapshot.
         let inputSetID = try XCTUnwrap(session.inputSetIDs.first)
         let inputSet = try repository.assetSet(id: inputSetID)
         XCTAssertTrue(inputSetID.rawValue.hasPrefix("work-input-"))
         XCTAssertEqual(inputSet.name, "Wedding Cull Input")
         XCTAssertEqual(inputSet.membership, .snapshot([keeper.id]))
-        XCTAssertEqual(model.selectedAssetSetID, inputSetID)
-        XCTAssertEqual(model.assets.map(\.id), [keeper.id])
-        XCTAssertEqual(model.selectedView, .loupe)
         XCTAssertFalse(model.sidebarSections.contains { section in
             section.title == "Saved Sets" && section.rowTitles.contains("Wedding Cull Input")
         })
 
-        try model.clearLibraryFilters()
-        // Cull's sidebar is empty (Task 7); switch to Library to read the
-        // Collections row before returning to Cull via the row's own target.
-        model.selectedView = .grid
-        let row = try XCTUnwrap(recentWorkCollectionRows(model).first)
-        try model.selectSidebarRow(row)
-
         XCTAssertNil(model.selectedAssetSetID)
-        XCTAssertEqual(model.librarySearchText, "session:\(session.id.rawValue)")
-        XCTAssertEqual(model.activeLibraryFilterRows, [
-            ActiveLibraryFilterRow(title: "Session: \(session.id.rawValue)", target: .workSession(session.id))
-        ])
+        XCTAssertEqual(model.librarySearchText, "Wedding")
+        XCTAssertEqual(model.minimumRatingFilter, 4)
+        XCTAssertEqual(model.flagFilter, .pick)
+        XCTAssertEqual(model.selectedView, .loupe)
+        // The preserved filters, not the hidden snapshot, still drive the grid.
         XCTAssertEqual(model.assets.map(\.id), [keeper.id])
     }
 

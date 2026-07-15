@@ -108,6 +108,85 @@ final class AppModelFilterPersistenceTests: XCTestCase {
         XCTAssertEqual(model.assets.map(\.id), expectedAssetIDs)
     }
 
+    // MARK: - Task 2: whole-scope Cull preserves the filter scope
+
+    func testCullingWholeFilterScopePreservesFiltersAndKeepsSetNil() throws {
+        let five = makeAsset(id: "five", path: "/Photos/five.jpg", rating: 5)
+        let four = makeAsset(id: "four", path: "/Photos/four.jpg", rating: 4)
+        let two = makeAsset(id: "two", path: "/Photos/two.jpg", rating: 2)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "filter-scope-cull-preserves-filters",
+            assets: [five, four, two]
+        )
+        model.librarySearchText = "Photos"
+        model.minimumRatingFilter = 4
+        try model.applyLibraryFilters()
+        XCTAssertNil(model.selectedAssetSetID)
+
+        let expectedAssetIDs = model.assets.map(\.id)
+        XCTAssertEqual(Set(expectedAssetIDs), Set([five.id, four.id]))
+
+        let session = try model.beginCullingSession(named: "Scope Cull")
+
+        XCTAssertEqual(model.librarySearchText, "Photos")
+        XCTAssertEqual(model.minimumRatingFilter, 4)
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(model.selectedView, .loupe)
+        XCTAssertEqual(model.assets.map(\.id), expectedAssetIDs)
+
+        let inputSetID = try XCTUnwrap(session.inputSetIDs.first)
+        XCTAssertTrue(inputSetID.rawValue.hasPrefix("work-input-"))
+        XCTAssertEqual(model.recentWork.first?.id, session.id.rawValue)
+    }
+
+    func testCullingWholeFilterScopeTracksProgressToCompletion() throws {
+        let four = makeAsset(id: "four", path: "/Photos/four.jpg", rating: 4)
+        let alsoFour = makeAsset(id: "also-four", path: "/Photos/also-four.jpg", rating: 4)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "filter-scope-cull-tracks-progress",
+            assets: [four, alsoFour]
+        )
+        model.minimumRatingFilter = 4
+        try model.applyLibraryFilters()
+        XCTAssertEqual(Set(model.assets.map(\.id)), Set([four.id, alsoFour.id]))
+
+        let startedSession = try model.beginCullingSession(named: "Scope Cull")
+        XCTAssertNil(model.selectedAssetSetID)
+
+        model.select(four.id)
+        try model.applyCullingCommand(.pick)
+        model.select(alsoFour.id)
+        try model.applyCullingCommand(.reject)
+
+        let session = try repository.session(id: startedSession.id)
+        XCTAssertEqual(session.status, .completed)
+        XCTAssertEqual(session.completedUnitCount, 2)
+
+        let outputSetID = try XCTUnwrap(session.outputSetIDs.first)
+        let outputSet = try repository.assetSet(id: outputSetID)
+        XCTAssertEqual(outputSet.membership, .snapshot([four.id]))
+    }
+
+    func testReturningToLibraryAfterFilterScopeCullShowsLiveFilteredGrid() throws {
+        let five = makeAsset(id: "five", path: "/Photos/five.jpg", rating: 5)
+        let four = makeAsset(id: "four", path: "/Photos/four.jpg", rating: 4)
+        let two = makeAsset(id: "two", path: "/Photos/two.jpg", rating: 2)
+        let (model, _) = try makeModelWithCatalogAssets(
+            named: "filter-scope-cull-return-to-library",
+            assets: [five, four, two]
+        )
+        model.minimumRatingFilter = 4
+        try model.applyLibraryFilters()
+
+        _ = try model.beginCullingSession(named: "Scope Cull")
+
+        model.selectWorkspace(.library)
+
+        XCTAssertEqual(model.minimumRatingFilter, 4)
+        XCTAssertNil(model.selectedAssetSetID)
+        XCTAssertEqual(Set(model.assets.map(\.id)), Set([five.id, four.id]))
+    }
+
     // MARK: - Test helpers
 
     private func makeAsset(
