@@ -82,7 +82,7 @@ final class AppModelFilterPersistenceTests: XCTestCase {
         }
     }
 
-    func testModeSwitchToPeoplePreservesFilters() throws {
+    func testViewSwitchToPeoplePreservesFilters() throws {
         let five = makeAsset(id: "five", path: "/Photos/five.jpg", rating: 5)
         let four = makeAsset(id: "four", path: "/Photos/four.jpg", rating: 4)
         let two = makeAsset(id: "two", path: "/Photos/two.jpg", rating: 2)
@@ -96,12 +96,12 @@ final class AppModelFilterPersistenceTests: XCTestCase {
 
         let expectedAssetIDs = model.assets.map(\.id)
 
-        model.selectWorkspace(.people)
+        model.selectedView = .people
         XCTAssertEqual(model.librarySearchText, "Photos")
         XCTAssertEqual(model.minimumRatingFilter, 4)
         XCTAssertNil(model.selectedAssetSetID)
 
-        model.selectWorkspace(.library)
+        model.selectedView = .grid
         XCTAssertEqual(model.librarySearchText, "Photos")
         XCTAssertEqual(model.minimumRatingFilter, 4)
         XCTAssertNil(model.selectedAssetSetID)
