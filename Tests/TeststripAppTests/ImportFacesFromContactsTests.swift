@@ -28,6 +28,7 @@ final class ImportFacesFromContactsTests: XCTestCase {
         try await model.importFacesFromContacts()
 
         XCTAssertEqual(try repo.contactReferenceNamesByPerson()["contact:C1"], "Dan Shapiro")
+        XCTAssertTrue(model.statusMessage?.contains("seeded") ?? false, "expected a status message reporting the seeded count, got \(String(describing: model.statusMessage))")
     }
 
     // MARK: - Test support

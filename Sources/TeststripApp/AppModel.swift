@@ -2103,9 +2103,6 @@ public final class AppModel {
     /// Import-scoped failures only, surfaced in the Activity Center's import
     /// row - unrelated model errors stay on `errorMessage` and never route here.
     public var importError: String?
-    /// Summary of the most recent `importFacesFromContacts()` run ("N seeded,
-    /// N unchanged, N without a face").
-    public var contactSeedSummaryText: String?
     /// Drives the Activity Center popover (toolbar item + Window ▸ Activity).
     public var isActivityCenterPresented = false
     public private(set) var isExporting = false
@@ -3699,7 +3696,7 @@ public final class AppModel {
         let seeder = ContactFaceSeeder(detectFaces: detector, repository: catalog.repository,
                                        photoCache: catalog.contactPhotoCache)
         let summary = try seeder.seed(records: records)
-        contactSeedSummaryText = "Contacts: \(summary.seeded) seeded, \(summary.unchanged) unchanged, \(summary.skippedNoFace) without a face"
+        statusMessage = "Contacts: \(summary.seeded) seeded, \(summary.unchanged) unchanged, \(summary.skippedNoFace) without a face"
         refreshPeopleFaceSuggestions()
     }
 

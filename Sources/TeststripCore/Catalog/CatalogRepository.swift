@@ -61,10 +61,6 @@ public struct PersonKeyFace: Equatable, Sendable {
     }
 }
 
-// @unchecked like the CatalogDatabase it wraps: `database` serializes concurrent
-// access internally, and `encoder`/`decoder` only have their strategies set once,
-// in init, before any concurrent use — encode/decode calls touch no shared
-// mutable state after that.
 public final class CatalogRepository {
     private let database: CatalogDatabase
     private let encoder = JSONEncoder()
