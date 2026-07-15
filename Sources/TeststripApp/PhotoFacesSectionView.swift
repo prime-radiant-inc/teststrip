@@ -50,8 +50,7 @@ struct PhotoFacesSectionView: View {
         HStack(alignment: .top, spacing: 10) {
             FaceCropAvatar(previewURL: previewURL, boundingBox: row.boundingBox)
             VStack(alignment: .leading, spacing: 5) {
-                Text(row.state.displayLabel)
-                    .font(.caption.weight(.semibold))
+                faceLabel(for: row)
                 controls(for: row)
             }
             Spacer(minLength: 0)
@@ -70,23 +69,38 @@ struct PhotoFacesSectionView: View {
         }
     }
 
+    /// The naming-state label, prefixed with a ✨ marker for a still-provisional
+    /// AI match (Task 14) — the confirmed and unnamed states are unmarked.
+    @ViewBuilder
+    private func faceLabel(for row: PhotoFaceRow) -> some View {
+        HStack(spacing: 4) {
+            if case .suggested = row.state {
+                Image(systemName: DesignGlyph.ai.symbolName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
+            Text(row.state.displayLabel)
+                .font(.caption.weight(.semibold))
+        }
+    }
+
     @ViewBuilder
     private func controls(for row: PhotoFaceRow) -> some View {
         switch row.state {
         case .unnamed:
             addNameMenu(for: row)
-        case .suggested(let personID, let name):
+        case .suggested:
             HStack(spacing: 6) {
                 Button("Confirm") {
-                    apply { try model.nameFace(row.faceID, personID: personID) }
+                    apply { try model.confirmAIFace(assetID: row.faceID.assetID, faceIndex: row.faceID.faceIndex) }
                 }
                 .controlSize(.small)
                 .buttonStyle(.borderedProminent)
-                Button("Not \(name)") {
-                    apply { try model.rejectFaceSuggestion(row.faceID, personID: personID) }
+                Button("Remove") {
+                    apply { try model.removeAIFace(assetID: row.faceID.assetID, faceIndex: row.faceID.faceIndex) }
                 }
                 .controlSize(.small)
-                .help("Reject \(name) for this face")
+                .help("Remove this suggested match")
             }
         case .confirmed:
             Button("Remove") {

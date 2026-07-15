@@ -67,6 +67,31 @@ struct InspectorCaptionSuggestionPresentation: Equatable {
     }
 }
 
+/// One keyword chip's confirm/remove state (Task 14): a keyword still in
+/// `AssetMetadata.aiUnconfirmedKeywords` renders with a ✨ marker and
+/// Confirm/Remove actions instead of the plain tap-to-remove chip.
+struct InspectorKeywordChipPresentation: Equatable, Identifiable {
+    var keyword: String
+    var isUnconfirmed: Bool
+
+    var id: String { keyword }
+
+    static func chips(keywords: [String], aiUnconfirmedKeywords: Set<String>) -> [InspectorKeywordChipPresentation] {
+        keywords.map { InspectorKeywordChipPresentation(keyword: $0, isUnconfirmed: aiUnconfirmedKeywords.contains($0)) }
+    }
+}
+
+/// Whether the selected asset's caption is still AI-unconfirmed (Task 14):
+/// drives the ✨ marker + Confirm/Remove affordance shown under the caption
+/// field.
+struct InspectorCaptionUnconfirmedPresentation: Equatable {
+    var isUnconfirmed: Bool
+
+    init(aiUnconfirmedFields: Set<MetadataField>) {
+        isUnconfirmed = aiUnconfirmedFields.contains(.caption)
+    }
+}
+
 struct InspectorProviderFailurePresentation: Equatable {
     var failures: [CatalogEvaluationFailure]
 
@@ -1022,7 +1047,7 @@ struct InspectorView: View {
     private func portableTextControls(for asset: Asset) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if !asset.metadata.keywords.isEmpty {
-                keywordChips(asset.metadata.keywords)
+                keywordChips(for: asset)
             }
             metadataTextField("Keywords", text: $metadataDraft.keywords) {
                 try model.setKeywordTextForSelectedAssets(metadataDraft.keywords)
@@ -1033,6 +1058,9 @@ struct InspectorView: View {
             }
             metadataTextField("Caption", text: $metadataDraft.caption) {
                 try model.setCaptionForSelectedAssets(metadataDraft.caption)
+            }
+            if InspectorCaptionUnconfirmedPresentation(aiUnconfirmedFields: asset.metadata.aiUnconfirmedFields).isUnconfirmed {
+                aiUnconfirmedCaptionControls(for: asset)
             }
             let captionPresentation = InspectorCaptionSuggestionPresentation(suggestions: model.selectedSuggestedCaptions)
             if captionPresentation.isVisible {
@@ -1055,30 +1083,96 @@ struct InspectorView: View {
         }
     }
 
-    private func keywordChips(_ keywords: [String]) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 5)], alignment: .leading, spacing: 5) {
-            ForEach(keywords, id: \.self) { keyword in
-                Button {
-                    apply { try model.removeKeywordFromSelectedAssets(keyword) }
-                } label: {
-                    HStack(spacing: 5) {
-                        Text(keyword)
-                            .lineLimit(1)
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
-                }
-                .buttonStyle(.plain)
-                .help("Remove \(keyword)")
-                .accessibilityLabel("Remove keyword \(keyword)")
+    private func keywordChips(for asset: Asset) -> some View {
+        let chips = InspectorKeywordChipPresentation.chips(
+            keywords: asset.metadata.keywords,
+            aiUnconfirmedKeywords: asset.metadata.aiUnconfirmedKeywords
+        )
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 5)], alignment: .leading, spacing: 5) {
+            ForEach(chips) { chip in
+                keywordChip(chip, assetID: asset.id)
             }
         }
+    }
+
+    private func keywordChip(_ chip: InspectorKeywordChipPresentation, assetID: AssetID) -> some View {
+        HStack(spacing: 5) {
+            if chip.isUnconfirmed {
+                Image(systemName: DesignGlyph.ai.symbolName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
+            Text(chip.keyword)
+                .lineLimit(1)
+            if chip.isUnconfirmed {
+                Button {
+                    apply { try model.confirmAIKeyword(chip.keyword, for: assetID) }
+                } label: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+                .buttonStyle(.plain)
+                .help("Confirm \(chip.keyword)")
+                .accessibilityLabel("Confirm keyword \(chip.keyword)")
+            }
+            Button {
+                apply {
+                    if chip.isUnconfirmed {
+                        try model.removeAIKeyword(chip.keyword, for: assetID)
+                    } else {
+                        try model.removeKeywordFromSelectedAssets(chip.keyword)
+                    }
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Remove \(chip.keyword)")
+            .accessibilityLabel("Remove keyword \(chip.keyword)")
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background {
+            RoundedRectangle(cornerRadius: 5)
+                .fill(chip.isUnconfirmed ? AnyShapeStyle(Color.orange.opacity(0.08)) : AnyShapeStyle(.quaternary))
+        }
+        .overlay {
+            if chip.isUnconfirmed {
+                RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(Color.orange.opacity(0.18))
+            }
+        }
+    }
+
+    /// ✨ Confirm/Remove affordance for a still-unconfirmed AI caption
+    /// (`aiUnconfirmedFields.contains(.caption)`) — mirrors the keyword
+    /// chip's confirm/remove pairing, shown under the caption field itself.
+    private func aiUnconfirmedCaptionControls(for asset: Asset) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: DesignGlyph.ai.symbolName)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.orange)
+            Text("AI-suggested caption")
+                .font(.caption2.monospaced().weight(.semibold))
+                .foregroundStyle(.orange)
+            Spacer(minLength: 8)
+            Button("Confirm") {
+                apply { try model.confirmAIField(.caption, for: asset.id) }
+            }
+            .controlSize(.small)
+            Button("Remove") {
+                apply { try model.removeAIField(.caption, for: asset.id) }
+            }
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.orange.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
     }
 
     private func suggestedKeywordChips(_ suggestions: [KeywordSuggestion]) -> some View {

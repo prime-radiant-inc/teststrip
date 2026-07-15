@@ -371,6 +371,33 @@ final class InspectorViewTests: XCTestCase {
         XCTAssertTrue(InspectorMetadataConflictActionPresentation.actions[2].help.localizedCaseInsensitiveContains("import"))
     }
 
+    // MARK: - Task 14: ✨ markers + confirm/remove affordances
+
+    func testKeywordChipPresentationFlagsAIUnconfirmedKeywords() {
+        let chips = InspectorKeywordChipPresentation.chips(
+            keywords: ["Patagonia", "dog"],
+            aiUnconfirmedKeywords: ["dog"]
+        )
+
+        XCTAssertEqual(chips.map(\.keyword), ["Patagonia", "dog"])
+        XCTAssertEqual(chips.map(\.isUnconfirmed), [false, true])
+    }
+
+    func testKeywordChipPresentationTreatsConfirmedKeywordAsNotUnconfirmed() {
+        let chips = InspectorKeywordChipPresentation.chips(
+            keywords: ["Patagonia"],
+            aiUnconfirmedKeywords: []
+        )
+
+        XCTAssertEqual(chips, [InspectorKeywordChipPresentation(keyword: "Patagonia", isUnconfirmed: false)])
+    }
+
+    func testCaptionUnconfirmedPresentationReflectsAIUnconfirmedFields() {
+        XCTAssertTrue(InspectorCaptionUnconfirmedPresentation(aiUnconfirmedFields: [.caption]).isUnconfirmed)
+        XCTAssertFalse(InspectorCaptionUnconfirmedPresentation(aiUnconfirmedFields: []).isUnconfirmed)
+        XCTAssertFalse(InspectorCaptionUnconfirmedPresentation(aiUnconfirmedFields: [.flag]).isUnconfirmed)
+    }
+
     func testMetadataDraftFormatsPortableMetadataFromAsset() {
         let asset = makeAsset(
             id: "draft-asset",
