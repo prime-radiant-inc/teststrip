@@ -5,9 +5,34 @@ import CoreGraphics
 final class CoreMLFaceEmbeddingModelTests: XCTestCase {
     private func model() throws -> CoreMLFaceEmbeddingModel {
         guard let m = CoreMLFaceEmbeddingModel.auraFace() else {
-            throw XCTSkip("Face model not downloaded (run script/download_face_model.sh)")
+            throw XCTSkip("Compiled face model missing (run script/download_face_model.sh, or script/compile_face_models.sh if the .mlpackage is already downloaded)")
         }
         return m
+    }
+
+    func testInitRejectsUncompiledPackage() throws {
+        let package = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("sample-data/models/auraface-v1.mlpackage")
+        guard FileManager.default.fileExists(atPath: package.path) else {
+            throw XCTSkip("Face model package not downloaded (run script/download_face_model.sh)")
+        }
+        // Runtime loading must never compile: MLModel.compileModel writes a fresh
+        // ~125 MB .mlmodelc into the process temp dir per call and nothing cleans
+        // it up. Compilation belongs to script/compile_face_models.sh; an
+        // uncompiled .mlpackage is rejected here.
+        XCTAssertNil(CoreMLFaceEmbeddingModel(
+            modelURL: package,
+            provenance: ProviderProvenance(provider: "face-recognition", model: "auraface-v1", version: "1", settingsHash: "default")
+        ))
+    }
+
+    func testCandidateURLsPointAtPrecompiledModels() {
+        let urls = CoreMLFaceEmbeddingModel.candidateURLs(baseName: "auraface-v1")
+        XCTAssertFalse(urls.isEmpty)
+        for url in urls {
+            XCTAssertEqual(url.pathExtension, "mlmodelc", "runtime candidate must be precompiled: \(url.path)")
+        }
+        XCTAssertTrue(urls.contains { $0.path.hasSuffix("sample-data/models/auraface-v1.mlmodelc") })
     }
 
     func testEmbeddingIs512DimAndL2Normalized() throws {

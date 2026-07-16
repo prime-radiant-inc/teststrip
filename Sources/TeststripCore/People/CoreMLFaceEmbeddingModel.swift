@@ -37,8 +37,8 @@ public final class CoreMLFaceEmbeddingModel: FaceEmbeddingModel, @unchecked Send
     private let inputWidth: Int
     private let inputHeight: Int
 
-    /// Loads the model at `modelURL`. Returns nil when the model cannot be
-    /// compiled or loaded (e.g. a corrupt or missing artifact), so evaluation
+    /// Loads the precompiled model at `modelURL` (an `.mlmodelc`). Returns nil
+    /// when the artifact is missing, corrupt, or not compiled, so evaluation
     /// can continue without face embeddings.
     public init?(modelURL: URL, provenance: ProviderProvenance) {
         guard let loaded = Self.loadModel(at: modelURL) else { return nil }
@@ -54,11 +54,13 @@ public final class CoreMLFaceEmbeddingModel: FaceEmbeddingModel, @unchecked Send
         self.inputHeight = image.pixelsHigh
     }
 
-    /// Finds the bundled model `<baseName>.mlpackage`: an explicit
+    /// Finds the precompiled model `<baseName>.mlmodelc`: an explicit
     /// `TESTSTRIP_FACE_MODEL_PATH` override (tests), then `Bundle.main`, then the
     /// enclosing `.app/Contents/Resources`, then the repo dev path
-    /// `sample-data/models/<baseName>.mlpackage` (so `swift test` from the
-    /// package root exercises the real model). Returns nil when absent.
+    /// `sample-data/models/<baseName>.mlmodelc` (so `swift test` from the
+    /// package root exercises the real model). Returns nil when absent —
+    /// script/compile_face_models.sh produces the `.mlmodelc` from the
+    /// downloaded `.mlpackage`.
     public static func bundled(baseName: String, provenance: ProviderProvenance) -> CoreMLFaceEmbeddingModel? {
         for url in candidateURLs(baseName: baseName) where FileManager.default.fileExists(atPath: url.path) {
             if let model = CoreMLFaceEmbeddingModel(modelURL: url, provenance: provenance) {
@@ -68,13 +70,13 @@ public final class CoreMLFaceEmbeddingModel: FaceEmbeddingModel, @unchecked Send
         return nil
     }
 
-    private static func candidateURLs(baseName: String) -> [URL] {
-        let fileName = "\(baseName).mlpackage"
+    static func candidateURLs(baseName: String) -> [URL] {
+        let fileName = "\(baseName).mlmodelc"
         var urls: [URL] = []
         if let override = ProcessInfo.processInfo.environment["TESTSTRIP_FACE_MODEL_PATH"] {
             urls.append(URL(fileURLWithPath: override))
         }
-        if let bundled = Bundle.main.url(forResource: baseName, withExtension: "mlpackage") {
+        if let bundled = Bundle.main.url(forResource: baseName, withExtension: "mlmodelc") {
             urls.append(bundled)
         }
         // Face embedding runs in the out-of-process worker, whose Bundle.main is
@@ -96,16 +98,12 @@ public final class CoreMLFaceEmbeddingModel: FaceEmbeddingModel, @unchecked Send
     }
 
     private static func loadModel(at url: URL) -> MLModel? {
-        do {
-            let configuration = MLModelConfiguration()
-            if url.pathExtension == "mlmodelc" {
-                return try MLModel(contentsOf: url, configuration: configuration)
-            }
-            let compiled = try MLModel.compileModel(at: url)
-            return try MLModel(contentsOf: compiled, configuration: configuration)
-        } catch {
-            return nil
-        }
+        // Runtime never compiles: MLModel.compileModel writes a fresh ~125 MB
+        // .mlmodelc into the process temp dir on every call and nothing cleans
+        // it up. Compilation is a separate explicit step
+        // (script/compile_face_models.sh); only its precompiled output loads.
+        guard url.pathExtension == "mlmodelc" else { return nil }
+        return try? MLModel(contentsOf: url, configuration: MLModelConfiguration())
     }
 
     public func embedding(for alignedFace: CGImage) throws -> [Double] {
