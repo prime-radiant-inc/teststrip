@@ -249,13 +249,15 @@ public final class CatalogRepository {
 
         let rows = try database.rows("SELECT id, original_path FROM assets")
         let inputs = try rows.map(decodeBondInput)
-        for (secondary, primary) in AssetBondPlanner.bonds(for: inputs) {
-            try setBond(secondaryID: secondary, primaryID: primary)
+        try database.transaction {
+            for (secondary, primary) in AssetBondPlanner.bonds(for: inputs) {
+                try setBond(secondaryID: secondary, primaryID: primary)
+            }
+            try database.execute(
+                "INSERT OR REPLACE INTO catalog_meta (key, value) VALUES (?, 'done')",
+                bindings: [gateKey]
+            )
         }
-        try database.execute(
-            "INSERT OR REPLACE INTO catalog_meta (key, value) VALUES (?, 'done')",
-            bindings: [gateKey]
-        )
     }
 
     private func decodeBondInput(_ row: [String: String]) throws -> AssetBondPlanner.BondInput {
