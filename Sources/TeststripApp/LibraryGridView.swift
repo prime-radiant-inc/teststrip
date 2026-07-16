@@ -5226,6 +5226,7 @@ struct CompareSurveyPresentation: Equatable {
     var comparativeVerdictText: String?
     private var recommendedFrameLabel: String?
     private var signalBadgesByAssetID: [AssetID: [CompareDecisionBadge]]
+    private var tiedLeaderIDs: [AssetID]?
 
     init(
         assets: [Asset],
@@ -5248,6 +5249,7 @@ struct CompareSurveyPresentation: Equatable {
             self.comparativeVerdictText = nil
             self.recommendedFrameLabel = nil
             self.signalBadgesByAssetID = [:]
+            self.tiedLeaderIDs = nil
             return
         }
 
@@ -5282,6 +5284,7 @@ struct CompareSurveyPresentation: Equatable {
             stackAssetIDs: assets.map(\.id),
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
+        self.tiedLeaderIDs = tiedLeaderIDs
         let tiedLeaderLastRank = tiedLeaderIDs?
             .compactMap { leaderID in rankedCandidates.firstIndex { $0.assetID == leaderID } }
             .max()
@@ -5305,9 +5308,11 @@ struct CompareSurveyPresentation: Equatable {
         let recommendation = rankedCandidates.first
         self.recommendedAssetID = recommendation?.assetID
         self.recommendedFrameLabel = recommendation?.frameLabel
+        // A tie can't defend a single winner, so no tile may carry "✦ BEST"
+        // when the recommendation itself is tie-suppressed.
         self.signalBadgesByAssetID = Self.signalBadges(
             assetIDs: assets.map(\.id),
-            bestAssetID: rankedCandidates.count >= 2 ? rankedCandidates.first?.assetID : nil,
+            bestAssetID: rankedCandidates.count >= 2 && tiedLeaderIDs == nil ? rankedCandidates.first?.assetID : nil,
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
         let recommendationPhrases = recommendation.map { winner in
@@ -5480,12 +5485,23 @@ struct CompareSurveyPresentation: Equatable {
     }
 
     /// #1/#2/#3 rank chips for contenders-only mode; silent otherwise so
-    /// rank and signal badges never both claim a tile.
+    /// rank and signal badges never both claim a tile. A tie can't defend a
+    /// single winner, so tied-leader-set members render "tied" instead of a
+    /// rank; the remaining, genuinely non-tied contenders continue numbering
+    /// after the tied block (a 3-way tie is followed by #4).
     func rankBadges(for asset: Asset) -> [CompareDecisionBadge] {
-        guard isContendersOnly, let rank = contenderAssets.firstIndex(where: { $0.id == asset.id }) else {
+        guard isContendersOnly, contenderAssets.contains(where: { $0.id == asset.id }) else {
             return []
         }
-        return [CompareDecisionBadge(text: "#\(rank + 1)", tone: .rank)]
+        if let tiedLeaderIDs, tiedLeaderIDs.contains(asset.id) {
+            return [CompareDecisionBadge(text: "tied", tone: .rank)]
+        }
+        let tiedCount = tiedLeaderIDs?.count ?? 0
+        let nonTiedContenders = contenderAssets.filter { tiedLeaderIDs?.contains($0.id) != true }
+        guard let nonTiedRank = nonTiedContenders.firstIndex(where: { $0.id == asset.id }) else {
+            return []
+        }
+        return [CompareDecisionBadge(text: "#\(tiedCount + nonTiedRank + 1)", tone: .rank)]
     }
 
     /// Badges for a compare tile: metadata decision badges plus rank chips
@@ -6152,7 +6168,8 @@ struct CullingStackRailPresentation: Equatable {
             Self.rankedAction(
                 for: rankedCandidates,
                 stackAssetIDs: stackScope.assetIDs,
-                evaluationSignalsByAssetID: evaluationSignalsByAssetID
+                evaluationSignalsByAssetID: evaluationSignalsByAssetID,
+                tiedLeaderIDs: tiedLeaderIDs
             ),
             CullingStackActionPresentation(
                 action: .keepAll,
@@ -6190,7 +6207,8 @@ struct CullingStackRailPresentation: Equatable {
     private static func rankedAction(
         for rankedCandidates: [CullingStackRecommendation],
         stackAssetIDs: [AssetID],
-        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]],
+        tiedLeaderIDs: [AssetID]?
     ) -> CullingStackActionPresentation? {
         let topTwo = Array(rankedCandidates.prefix(2))
         if stackAssetIDs.count > 2, topTwo.count >= 2 {
@@ -6204,7 +6222,11 @@ struct CullingStackRailPresentation: Equatable {
             )
         }
 
-        guard let recommendation = rankedCandidates.first else { return nil }
+        // A tie can't defend a single winner: "Keep recommended X" names a
+        // specific frame, so it's suppressed here too (the banner + Compare
+        // are the resolution paths). "Keep top 2" above is unaffected — it
+        // names a user-chosen quantity, not a machine winner.
+        guard tiedLeaderIDs == nil, let recommendation = rankedCandidates.first else { return nil }
 
         let phrases = CullingStackRecommendation.rationalePhrases(
             forWinner: recommendation.assetID,

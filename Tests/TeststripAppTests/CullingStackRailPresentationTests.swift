@@ -362,6 +362,56 @@ final class CullingStackRailPresentationTests: XCTestCase {
         XCTAssertNil(presentation.tooCloseBanner)
     }
 
+    // A tie can't defend a single winner: the banner + Compare are the
+    // resolution paths, so "Keep recommended X" must not appear alongside
+    // them. "Keep selected & cut" and "Keep all" are user-chosen quantities,
+    // not machine claims, so they remain.
+    func testTiedTwoFrameStackOffersNoKeepRecommendedAction() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "lead", path: "/Photos/Job/lead.cr2", capturedAt: capturedAt)
+        let alternate = makeAsset(id: "alternate", path: "/Photos/Job/alternate.cr2", capturedAt: capturedAt.addingTimeInterval(1))
+
+        let presentation = CullingStackRailPresentation(
+            assets: [lead, alternate],
+            selectedAssetID: lead.id,
+            evaluationSignalsByAssetID: [
+                lead.id: [signal(assetID: lead.id, kind: .focus, score: 0.80)],
+                alternate.id: [signal(assetID: alternate.id, kind: .focus, score: 0.79)]
+            ],
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 2)
+        )
+
+        XCTAssertNotNil(presentation.tooCloseBanner)
+        XCTAssertEqual(presentation.actions.map(\.title), ["Keep frame 1 · cut 1", "Keep all 2"])
+        XCTAssertFalse(presentation.actions.contains { if case .keepRecommended = $0.action { return true } else { return false } })
+    }
+
+    // "Keep top 2" names a user-chosen quantity, not a machine winner, so it
+    // remains even under a 3-way tie; only "Keep recommended" is suppressed.
+    func testTiedThreeFrameStackStillOffersKeepTopTwoButNoKeepRecommendedAction() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let assets = [
+            makeAsset(id: "lead", path: "/Photos/Job/lead.cr2", capturedAt: capturedAt),
+            makeAsset(id: "selected", path: "/Photos/Job/selected.cr2", capturedAt: capturedAt.addingTimeInterval(1)),
+            makeAsset(id: "alternate", path: "/Photos/Job/alternate.cr2", capturedAt: capturedAt.addingTimeInterval(1.8))
+        ]
+
+        let presentation = CullingStackRailPresentation(
+            assets: assets,
+            selectedAssetID: AssetID(rawValue: "selected"),
+            evaluationSignalsByAssetID: [
+                AssetID(rawValue: "lead"): [signal(assetID: AssetID(rawValue: "lead"), kind: .focus, score: 0.80)],
+                AssetID(rawValue: "selected"): [signal(assetID: AssetID(rawValue: "selected"), kind: .focus, score: 0.78)],
+                AssetID(rawValue: "alternate"): [signal(assetID: AssetID(rawValue: "alternate"), kind: .focus, score: 0.79)]
+            ],
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 3)
+        )
+
+        XCTAssertNotNil(presentation.tooCloseBanner)
+        XCTAssertEqual(presentation.actions.map(\.title), ["Keep frame 2 · cut 2", "Keep top 2", "Keep all 3"])
+        XCTAssertFalse(presentation.actions.contains { if case .keepRecommended = $0.action { return true } else { return false } })
+    }
+
     func testItemsCarryCompactFlawBadgesFromPersistedSignals() {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let sharpEyesOpen = makeAsset(id: "sharp-open", path: "/Photos/Job/sharp-open.cr2", capturedAt: capturedAt)

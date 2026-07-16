@@ -682,6 +682,24 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.signalBadges(for: unread), [])
     }
 
+    // A tie can't defend a single winner: no tile may carry "✦ BEST" when the
+    // group's recommendation is tie-suppressed.
+    func testSignalBadgesSuppressBestClaimUnderATie() {
+        let lead = makeAsset(id: "tie-best-lead")
+        let alternate = makeAsset(id: "tie-best-alternate")
+        let presentation = CompareSurveyPresentation(
+            assets: [lead, alternate],
+            selectedAssetID: lead.id,
+            evaluationSignalsByAssetID: [
+                lead.id: [signal(assetID: lead.id, kind: .focus, score: 0.80)],
+                alternate.id: [signal(assetID: alternate.id, kind: .focus, score: 0.79)]
+            ]
+        )
+
+        XCTAssertEqual(presentation.signalBadges(for: lead), [])
+        XCTAssertEqual(presentation.signalBadges(for: alternate), [])
+    }
+
     func testRankBadgesShowTopThreeRanksInContendersMode() {
         let assets = (0..<5).map { makeAsset(id: "rank-\($0)") }
         let signals: [AssetID: [EvaluationSignal]] = [
@@ -721,6 +739,51 @@ final class CompareSurveyPresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.rankBadges(for: assets[0]), [])
+    }
+
+    // Members of the tied-leader set render "tied" instead of a numeric
+    // rank; the two genuinely non-tied contenders continue numbering after
+    // the tied block (a 3-way tie is followed by #4). The non-tied frames
+    // here use extra signal kinds so their raw quality-score sum (which
+    // ranks the contenders list) diverges from the normalized read (which
+    // decides the tie) enough to reach past the top 3 and widen the
+    // contenders window to all 5 — exercising the renumbering against a
+    // realistic raw/normalized ordering mismatch, not just a contiguous
+    // top-of-list tie.
+    func testRankBadgesLabelTiedLeadersAsTiedAndContinueNumberingAfterTheTiedBlock() {
+        let leader = makeAsset(id: "tied-rank-leader")
+        let tied2 = makeAsset(id: "tied-rank-tied2")
+        let tied3 = makeAsset(id: "tied-rank-tied3")
+        let nonTied1 = makeAsset(id: "tied-rank-nontied1")
+        let nonTied2 = makeAsset(id: "tied-rank-nontied2")
+
+        let presentation = CompareSurveyPresentation(
+            assets: [leader, tied2, tied3, nonTied1, nonTied2],
+            selectedAssetID: leader.id,
+            evaluationSignalsByAssetID: [
+                leader.id: [signal(assetID: leader.id, kind: .focus, score: 0.90)],
+                tied2.id: [signal(assetID: tied2.id, kind: .focus, score: 0.88)],
+                tied3.id: [signal(assetID: tied3.id, kind: .focus, score: 0.875)],
+                nonTied1.id: [
+                    signal(assetID: nonTied1.id, kind: .focus, score: 0.37),
+                    signal(assetID: nonTied1.id, kind: .eyesOpen, score: 0.37),
+                    signal(assetID: nonTied1.id, kind: .aesthetics, score: 0.37)
+                ],
+                nonTied2.id: [
+                    signal(assetID: nonTied2.id, kind: .focus, score: 0.368),
+                    signal(assetID: nonTied2.id, kind: .eyesOpen, score: 0.368),
+                    signal(assetID: nonTied2.id, kind: .aesthetics, score: 0.368)
+                ]
+            ],
+            contendersOnly: true
+        )
+
+        XCTAssertEqual(presentation.contenderAssets.count, 5)
+        XCTAssertEqual(presentation.rankBadges(for: leader), [CompareDecisionBadge(text: "tied", tone: .rank)])
+        XCTAssertEqual(presentation.rankBadges(for: tied2), [CompareDecisionBadge(text: "tied", tone: .rank)])
+        XCTAssertEqual(presentation.rankBadges(for: tied3), [CompareDecisionBadge(text: "tied", tone: .rank)])
+        XCTAssertEqual(presentation.rankBadges(for: nonTied1), [CompareDecisionBadge(text: "#4", tone: .rank)])
+        XCTAssertEqual(presentation.rankBadges(for: nonTied2), [CompareDecisionBadge(text: "#5", tone: .rank)])
     }
 
     func testTileBadgesUseRankChipsInContendersModeAndSignalBadgesOtherwise() {
