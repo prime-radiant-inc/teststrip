@@ -2057,6 +2057,11 @@ public final class AppModel {
     private var lastSubView: [Workspace: LibraryViewMode] = [:]
     public var assets: [Asset]
     public var totalAssetCount: Int
+    /// Primary asset IDs that have >=1 bonded secondary (a RAW with a bonded
+    /// working JPEG/HEIC) — refreshed whenever the catalog reloads. The
+    /// grid/loupe RAW badge reads membership to render "RAW+JPEG" instead of
+    /// "RAW"; computed once per reload rather than per-cell.
+    public private(set) var assetIDsWithBondedSecondaries: Set<AssetID> = []
     // Global view history so ⌘⇧[ / ⌘⇧] step back and forth through the
     // sidebar destinations the user has visited this session.
     private var navigationBackStack: [SidebarRowTarget] = []
@@ -10391,6 +10396,7 @@ public final class AppModel {
         // (persona-7's "three surfaces, three stories").
         try refreshCatalogSidebarCounts()
         refreshCatalogFolders()
+        refreshAssetIDsWithBondedSecondaries()
         if let explicitAssetIDs = selectedExplicitAssetIDs {
             let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: explicitAssetIDs.count)
             replaceAssets(loadedAssets)
@@ -10819,6 +10825,7 @@ public final class AppModel {
         )
         replaceAssets(contents.assets, preferredSelection: preferredSelection)
         totalAssetCount = contents.totalAssetCount
+        refreshAssetIDsWithBondedSecondaries()
     }
 
     private static func append(_ predicate: SetQuery.Predicate, to predicates: inout [SetQuery.Predicate]) {
@@ -11378,6 +11385,7 @@ public final class AppModel {
             replaceAssets(contents.assets, preferredSelection: state.selectedAssetID)
             totalAssetCount = contents.totalAssetCount
         }
+        refreshAssetIDsWithBondedSecondaries()
         try refreshProposedAssets()
     }
 
@@ -12530,6 +12538,18 @@ public final class AppModel {
         }
     }
 
+    /// Recomputes the bonded-primary set the RAW/RAW+JPEG badge reads.
+    /// Called wherever the assets array is reloaded wholesale (not the
+    /// narrowing views like autopilot review, which don't change bonds).
+    private func refreshAssetIDsWithBondedSecondaries() {
+        guard let catalog else { return }
+        do {
+            assetIDsWithBondedSecondaries = try catalog.repository.assetIDsWithBondedSecondaries()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func refreshCatalogEvaluationKindSummaries() {
         guard let catalog else { return }
         do {
@@ -12610,6 +12630,7 @@ public final class AppModel {
                 preferredSelection: output.result.importedAssets.first?.id
             )
             totalAssetCount = output.totalAssetCount
+            refreshAssetIDsWithBondedSecondaries()
             try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
             let outputSetIDs = recordCompletedImportActivity(folderURL: folderURL, result: output.result)
@@ -12657,6 +12678,7 @@ public final class AppModel {
                 preferredSelection: output.result.importedAssets.first?.id
             )
             totalAssetCount = output.totalAssetCount
+            refreshAssetIDsWithBondedSecondaries()
             try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
             let outputSetIDs = recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
@@ -12735,6 +12757,7 @@ public final class AppModel {
                     preferredSelection: output.result.importedAssets.first?.id
                 )
                 self.totalAssetCount = output.totalAssetCount
+                self.refreshAssetIDsWithBondedSecondaries()
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
                 let outputSetIDs = self.recordCompletedImportActivity(folderURL: folderURL, result: output.result)
@@ -12870,6 +12893,7 @@ public final class AppModel {
                     preferredSelection: output.result.importedAssets.first?.id
                 )
                 self.totalAssetCount = output.totalAssetCount
+                self.refreshAssetIDsWithBondedSecondaries()
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
                 let outputSetIDs = self.recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)

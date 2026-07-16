@@ -6357,6 +6357,18 @@ struct CullingStackRecommendation: Equatable {
     }
 }
 
+/// The "RAW"/"RAW+JPEG" badge text for a shot, decided from whether it's a
+/// RAW original and whether it's the primary of a bonded working still. A
+/// non-RAW asset never renders the badge — bonding always pairs a RAW
+/// primary with a JPEG/HEIC secondary, so `isRaw: false, hasBondedStill:
+/// true` cannot occur.
+enum RawBadgeLabel {
+    static func text(isRaw: Bool, hasBondedStill: Bool) -> String? {
+        guard isRaw else { return nil }
+        return hasBondedStill ? "RAW+JPEG" : "RAW"
+    }
+}
+
 private struct ABCompareView: View {
     var model: AppModel
 
@@ -6451,8 +6463,11 @@ private struct ABCompareView: View {
             Text(asset.originalURL.lastPathComponent)
                 .font(.caption2.monospaced())
                 .foregroundStyle(.white.opacity(0.85))
-            if asset.isRawOriginal {
-                Text("RAW")
+            if let rawBadgeText = RawBadgeLabel.text(
+                isRaw: asset.isRawOriginal,
+                hasBondedStill: model.assetIDsWithBondedSecondaries.contains(asset.id)
+            ) {
+                Text(rawBadgeText)
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.orange)
             }
