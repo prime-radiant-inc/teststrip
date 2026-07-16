@@ -118,6 +118,7 @@ struct FaceBoxOverlayView: View {
         HStack(spacing: 2) {
             Button {
                 model.editingFaceID = row.faceID
+                model.editingFaceSource = .loupe
             } label: {
                 faceLabel(pillTitle(row.state), isFocused: true)
             }
@@ -128,10 +129,12 @@ struct FaceBoxOverlayView: View {
                     onPick: { personID in
                         run { try model.nameFace(row.faceID, personID: personID) }
                         model.editingFaceID = nil
+                        model.editingFaceSource = nil
                     },
                     onCreate: { name in
                         run { try model.nameFace(row.faceID, newPersonName: name) }
                         model.editingFaceID = nil
+                        model.editingFaceSource = nil
                     }
                 )
                 .frame(width: 240)
@@ -150,8 +153,17 @@ struct FaceBoxOverlayView: View {
     }
 
     private func editingBinding(for faceID: FaceID) -> Binding<Bool> {
-        Binding(get: { model.editingFaceID == faceID },
-                set: { if !$0, model.editingFaceID == faceID { model.editingFaceID = nil } })
+        Binding(
+            get: {
+                FaceNamingPopover.isPresented(
+                    editingFaceID: model.editingFaceID,
+                    editingSource: model.editingFaceSource,
+                    rowFaceID: faceID,
+                    surface: .loupe
+                )
+            },
+            set: { if !$0 { model.editingFaceID = nil; model.editingFaceSource = nil } }
+        )
     }
 
     private func pillTitle(_ state: PhotoFaceState) -> String {

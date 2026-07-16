@@ -103,6 +103,7 @@ struct PhotoFacesSectionView: View {
     private func addNameButton(for row: PhotoFaceRow) -> some View {
         Button("Add name") {
             model.editingFaceID = row.faceID
+            model.editingFaceSource = .inspector
         }
         .controlSize(.small)
         .fixedSize()
@@ -113,10 +114,12 @@ struct PhotoFacesSectionView: View {
                 onPick: { personID in
                     apply { try model.nameFace(row.faceID, personID: personID) }
                     model.editingFaceID = nil
+                    model.editingFaceSource = nil
                 },
                 onCreate: { name in
                     apply { try model.nameFace(row.faceID, newPersonName: name) }
                     model.editingFaceID = nil
+                    model.editingFaceSource = nil
                 }
             )
             .frame(width: 240)
@@ -126,8 +129,15 @@ struct PhotoFacesSectionView: View {
 
     private func editingBinding(for faceID: FaceID) -> Binding<Bool> {
         Binding(
-            get: { model.editingFaceID == faceID },
-            set: { if !$0, model.editingFaceID == faceID { model.editingFaceID = nil } }
+            get: {
+                FaceNamingPopover.isPresented(
+                    editingFaceID: model.editingFaceID,
+                    editingSource: model.editingFaceSource,
+                    rowFaceID: faceID,
+                    surface: .inspector
+                )
+            },
+            set: { if !$0 { model.editingFaceID = nil; model.editingFaceSource = nil } }
         )
     }
 
