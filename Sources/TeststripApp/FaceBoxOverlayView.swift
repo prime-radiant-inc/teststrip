@@ -49,9 +49,12 @@ enum FaceBoxOverlayGeometry {
 /// highlighted, and hovering a box sets `model.focusedFaceID` in turn — the
 /// same hover-only linking the People rows use (`PhotoFacesSectionView`).
 /// Hovering a box also swaps its plain label for a pill; clicking the pill
-/// opens the naming popover (`PersonAutocompleteField`) and pins the box
-/// open via `model.editingFaceID`, independent of hover, so the popover
-/// stays put while the pointer moves off the box and into it. The pill's ✕
+/// opens the naming popover (`PersonAutocompleteField`), sets
+/// `model.editingFaceSource = .loupe`, and gates presentation on both
+/// fields (via `FaceNamingPopover.isPresented`) so only the clicked
+/// surface presents the popover; the box highlight keys on `editingFaceID`
+/// alone (independent of hover), so the popover stays visible as the
+/// pointer moves between box and popover. The pill's ✕
 /// removes a confirmed person or rejects a suggestion. Neither the pill nor
 /// the popover claims the rest of the box, so a click on the box interior
 /// still falls through to zoom to 100% at the clicked point
@@ -118,6 +121,7 @@ struct FaceBoxOverlayView: View {
         HStack(spacing: 2) {
             Button {
                 model.editingFaceID = row.faceID
+                model.editingFaceSource = .loupe
             } label: {
                 faceLabel(pillTitle(row.state), isFocused: true)
             }
@@ -128,10 +132,12 @@ struct FaceBoxOverlayView: View {
                     onPick: { personID in
                         run { try model.nameFace(row.faceID, personID: personID) }
                         model.editingFaceID = nil
+                        model.editingFaceSource = nil
                     },
                     onCreate: { name in
                         run { try model.nameFace(row.faceID, newPersonName: name) }
                         model.editingFaceID = nil
+                        model.editingFaceSource = nil
                     }
                 )
                 .frame(width: 240)
@@ -150,8 +156,17 @@ struct FaceBoxOverlayView: View {
     }
 
     private func editingBinding(for faceID: FaceID) -> Binding<Bool> {
-        Binding(get: { model.editingFaceID == faceID },
-                set: { if !$0, model.editingFaceID == faceID { model.editingFaceID = nil } })
+        Binding(
+            get: {
+                FaceNamingPopover.isPresented(
+                    editingFaceID: model.editingFaceID,
+                    editingSource: model.editingFaceSource,
+                    rowFaceID: faceID,
+                    surface: .loupe
+                )
+            },
+            set: { if !$0 { model.editingFaceID = nil; model.editingFaceSource = nil } }
+        )
     }
 
     private func pillTitle(_ state: PhotoFaceState) -> String {

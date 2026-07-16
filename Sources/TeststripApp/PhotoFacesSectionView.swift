@@ -97,12 +97,14 @@ struct PhotoFacesSectionView: View {
     }
 
     /// Ranked-picker popover for naming an unnamed face (Task 6's pill
-    /// pattern): `model.editingFaceID` pins the popover open per-face, shared
-    /// with the loupe's face-box overlay so the two surfaces never disagree
-    /// about which face is mid-edit.
+    /// pattern): presentation is gated by both `model.editingFaceID` and
+    /// `model.editingFaceSource` (via `FaceNamingPopover.isPresented`), so
+    /// the inspector and loupe overlay never both present a popover for the
+    /// same face; `editingFaceID` alone drives the cross-surface highlight.
     private func addNameButton(for row: PhotoFaceRow) -> some View {
         Button("Add name") {
             model.editingFaceID = row.faceID
+            model.editingFaceSource = .inspector
         }
         .controlSize(.small)
         .fixedSize()
@@ -113,10 +115,12 @@ struct PhotoFacesSectionView: View {
                 onPick: { personID in
                     apply { try model.nameFace(row.faceID, personID: personID) }
                     model.editingFaceID = nil
+                    model.editingFaceSource = nil
                 },
                 onCreate: { name in
                     apply { try model.nameFace(row.faceID, newPersonName: name) }
                     model.editingFaceID = nil
+                    model.editingFaceSource = nil
                 }
             )
             .frame(width: 240)
@@ -126,8 +130,15 @@ struct PhotoFacesSectionView: View {
 
     private func editingBinding(for faceID: FaceID) -> Binding<Bool> {
         Binding(
-            get: { model.editingFaceID == faceID },
-            set: { if !$0, model.editingFaceID == faceID { model.editingFaceID = nil } }
+            get: {
+                FaceNamingPopover.isPresented(
+                    editingFaceID: model.editingFaceID,
+                    editingSource: model.editingFaceSource,
+                    rowFaceID: faceID,
+                    surface: .inspector
+                )
+            },
+            set: { if !$0 { model.editingFaceID = nil; model.editingFaceSource = nil } }
         )
     }
 

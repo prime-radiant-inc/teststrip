@@ -2295,6 +2295,10 @@ public final class AppModel {
     /// The face whose naming popover is open. Pinned independently of hover so the
     /// box stays active while the pointer is inside the popover.
     public var editingFaceID: FaceID?
+    /// Which surface owns the current face-name edit, so the inspector and the
+    /// loupe overlay never present the naming popover for the same face at once
+    /// (`FaceNamingPopover`).
+    public var editingFaceSource: FaceEditSurface?
     public var reviewQueueCounts: [ReviewQueue: Int]
     public var selectedAssetSetID: AssetSetID? {
         didSet { persistSessionState() }
