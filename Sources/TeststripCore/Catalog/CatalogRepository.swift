@@ -200,6 +200,42 @@ public final class CatalogRepository {
         return Set(rows.compactMap { $0["content_hash"] }.filter { !$0.isEmpty })
     }
 
+    /// Bonds `secondaryID` to `primaryID` (a RAW+JPEG pair sharing a folder and
+    /// stem), or clears the bond when `primaryID` is nil.
+    public func setBond(secondaryID: AssetID, primaryID: AssetID?) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            "UPDATE assets SET bonded_to_asset_id = NULLIF(?, ''), updated_at = ? WHERE id = ?",
+            bindings: [primaryID?.rawValue ?? "", now, secondaryID.rawValue]
+        )
+    }
+
+    public func bondedPrimaryID(of assetID: AssetID) throws -> AssetID? {
+        let rows = try database.rows(
+            "SELECT bonded_to_asset_id FROM assets WHERE id = ?",
+            bindings: [assetID.rawValue]
+        )
+        guard let value = rows.first?["bonded_to_asset_id"], !value.isEmpty else { return nil }
+        return AssetID(rawValue: value)
+    }
+
+    public func bondedSecondaryIDs(of primaryID: AssetID) throws -> [AssetID] {
+        let rows = try database.rows(
+            "SELECT id FROM assets WHERE bonded_to_asset_id = ? ORDER BY original_path ASC",
+            bindings: [primaryID.rawValue]
+        )
+        return try rows.map(decodeAssetID)
+    }
+
+    /// Every asset that is the primary of at least one bonded secondary — the
+    /// set that earns the "has a bonded RAW/JPEG pair" badge.
+    public func assetIDsWithBondedSecondaries() throws -> Set<AssetID> {
+        let rows = try database.rows(
+            "SELECT DISTINCT bonded_to_asset_id FROM assets WHERE bonded_to_asset_id IS NOT NULL"
+        )
+        return Set(rows.compactMap { $0["bonded_to_asset_id"].map(AssetID.init(rawValue:)) })
+    }
+
     public func allAssets(limit: Int, offset: Int = 0, sort: LibrarySortOption = .importOrder) throws -> [Asset] {
         try loadAssets(sort: sort, limit: limit, offset: offset)
     }
