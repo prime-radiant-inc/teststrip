@@ -54,7 +54,7 @@ APP_BUNDLE="$DIST_DIR/$TESTSTRIP_APP_NAME.app"
 APP_ENTITLEMENTS="$ROOT_DIR/config/macos/Teststrip.entitlements"
 WORKER_ENTITLEMENTS="$ROOT_DIR/config/macos/TeststripWorker.entitlements"
 WORKER_BINARY="$APP_BUNDLE/Contents/Helpers/$TESTSTRIP_WORKER_PRODUCT_NAME"
-FACE_MODEL_BUNDLED="$APP_BUNDLE/Contents/Resources/auraface-v1.mlpackage"
+FACE_MODEL_BUNDLED="$APP_BUNDLE/Contents/Resources/auraface-v1.mlmodelc"
 
 SIGNING_IDENTITY="${TESTSTRIP_SIGNING_IDENTITY:-}"
 NOTARY_PROFILE="${TESTSTRIP_NOTARY_PROFILE:-}"

@@ -47,4 +47,8 @@ if [[ ! -d "$MODEL" ]]; then
   exit 1
 fi
 
+# The runtime loads only the precompiled .mlmodelc; a model update is exactly
+# when compilation should happen.
+"$ROOT_DIR/script/compile_face_models.sh"
+
 echo "face model ready: $MODEL"

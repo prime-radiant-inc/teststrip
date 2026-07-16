@@ -21,10 +21,13 @@ TESTSTRIP_MIN_SYSTEM_VERSION="14.0"
 TESTSTRIP_SHORT_VERSION="${TESTSTRIP_SHORT_VERSION:-0.1.0}"
 TESTSTRIP_BUNDLE_VERSION="${TESTSTRIP_BUNDLE_VERSION:-1}"
 
-# Relative path of the bundled ArcFace Core ML model within the repo. Absent in
-# a fresh checkout; script/download_face_model.sh fetches it. Assembly skips it
-# (with a warning) when missing so the bundle can still be built and signed.
-TESTSTRIP_FACE_MODEL_REL="sample-data/models/auraface-v1.mlpackage"
+# Relative path of the bundled face Core ML model within the repo, in its
+# precompiled runtime form. Absent in a fresh checkout;
+# script/download_face_model.sh fetches the .mlpackage and
+# script/compile_face_models.sh compiles it (assembly runs the compile step,
+# a fast no-op when fresh). Assembly skips the model (with a warning) when
+# missing so the bundle can still be built and signed.
+TESTSTRIP_FACE_MODEL_REL="sample-data/models/auraface-v1.mlmodelc"
 
 # Build the app + worker products.
 # Usage: teststrip_build_products <root_dir> [extra swift build args...]
@@ -43,9 +46,15 @@ teststrip_build_bin_path() {
 
 # Lay out the .app bundle contents from an already-built bin path. Wipes and
 # recreates <app_bundle>. Does not sign.
-# Usage: teststrip_assemble_bundle <root_dir> <build_dir> <app_bundle>
+# <face_model_mode>: "copy" (default; release bundles carry independent real
+# files) or "clone" (dev bundles APFS-clone the repo's compiled model —
+# instant, no duplicated storage, yet real files inside the bundle. A symlink
+# would NOT work here: the app/worker are sandboxed, so a target resolving
+# outside the bundle is unreadable at runtime, and it also fails
+# `codesign --verify --strict`).
+# Usage: teststrip_assemble_bundle <root_dir> <build_dir> <app_bundle> [face_model_mode]
 teststrip_assemble_bundle() {
-  local root_dir="$1" build_dir="$2" app_bundle="$3"
+  local root_dir="$1" build_dir="$2" app_bundle="$3" face_model_mode="${4:-copy}"
 
   local app_contents="$app_bundle/Contents"
   local app_macos="$app_contents/MacOS"
@@ -87,8 +96,16 @@ teststrip_assemble_bundle() {
     echo "warning: $app_icon_icns is missing; building without an app icon (run script/generate_app_icon.sh)" >&2
   fi
 
+  # Ensure the compiled model exists/is fresh; fast no-op otherwise.
+  "$root_dir/script/compile_face_models.sh"
+
   if [[ -d "$face_model" ]]; then
-    /usr/bin/ditto "$face_model" "$app_resources/auraface-v1.mlpackage"
+    if [[ "$face_model_mode" == "clone" ]]; then
+      /bin/cp -Rc "$face_model" "$app_resources/auraface-v1.mlmodelc" 2>/dev/null \
+        || /usr/bin/ditto "$face_model" "$app_resources/auraface-v1.mlmodelc"
+    else
+      /usr/bin/ditto "$face_model" "$app_resources/auraface-v1.mlmodelc"
+    fi
   else
     echo "warning: face model $face_model is missing; bundle will ship without on-device face embedding (run script/download_face_model.sh)" >&2
   fi
