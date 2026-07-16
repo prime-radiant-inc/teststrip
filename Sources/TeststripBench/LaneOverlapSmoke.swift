@@ -230,7 +230,7 @@ public struct LaneOverlapSmoke {
         }
 
         return LaneOverlapSmokeResult(
-            catalogAssetCount: try repository.assetCount(),
+            catalogAssetCount: try repository.assetCount(includeBondedSecondaries: true),
             previewedAssetCount: previewedCount,
             deferredAssetCount: deferredCount,
             previewWorkItemCount: pendingPreviewItems.count,

@@ -200,19 +200,151 @@ public final class CatalogRepository {
         return Set(rows.compactMap { $0["content_hash"] }.filter { !$0.isEmpty })
     }
 
-    public func allAssets(limit: Int, offset: Int = 0, sort: LibrarySortOption = .importOrder) throws -> [Asset] {
-        try loadAssets(sort: sort, limit: limit, offset: offset)
+    /// Bonds `secondaryID` to `primaryID` (a RAW+JPEG pair sharing a folder and
+    /// stem), or clears the bond when `primaryID` is nil.
+    public func setBond(secondaryID: AssetID, primaryID: AssetID?) throws {
+        let now = "\(Date().timeIntervalSince1970)"
+        try database.execute(
+            "UPDATE assets SET bonded_to_asset_id = NULLIF(?, ''), updated_at = ? WHERE id = ?",
+            bindings: [primaryID?.rawValue ?? "", now, secondaryID.rawValue]
+        )
     }
 
-    public func allAssets(sort: LibrarySortOption = .importOrder) throws -> [Asset] {
-        try loadAssets(sort: sort, limit: nil, offset: 0)
+    public func bondedPrimaryID(of assetID: AssetID) throws -> AssetID? {
+        let rows = try database.rows(
+            "SELECT bonded_to_asset_id FROM assets WHERE id = ?",
+            bindings: [assetID.rawValue]
+        )
+        guard let value = rows.first?["bonded_to_asset_id"], !value.isEmpty else { return nil }
+        return AssetID(rawValue: value)
+    }
+
+    public func bondedSecondaryIDs(of primaryID: AssetID) throws -> [AssetID] {
+        let rows = try database.rows(
+            "SELECT id FROM assets WHERE bonded_to_asset_id = ? ORDER BY original_path ASC",
+            bindings: [primaryID.rawValue]
+        )
+        return try rows.map(decodeAssetID)
+    }
+
+    /// Every asset that is the primary of at least one bonded secondary — the
+    /// set that earns the "has a bonded RAW/JPEG pair" badge.
+    public func assetIDsWithBondedSecondaries() throws -> Set<AssetID> {
+        let rows = try database.rows(
+            "SELECT DISTINCT bonded_to_asset_id FROM assets WHERE bonded_to_asset_id IS NOT NULL"
+        )
+        return Set(rows.compactMap { $0["bonded_to_asset_id"].map(AssetID.init(rawValue:)) })
+    }
+
+    /// One-time retro-pairing of existing RAW+JPEG rows. Idempotent and gated by
+    /// a catalog_meta flag so it runs at most once per catalog; safe to call on
+    /// every open.
+    public func backfillBonds() throws {
+        let gateKey = "bonded_backfill_v1"
+        let gateRows = try database.rows(
+            "SELECT value FROM catalog_meta WHERE key = ?",
+            bindings: [gateKey]
+        )
+        guard gateRows.first?["value"] != "done" else { return }
+
+        let rows = try database.rows("SELECT id, original_path FROM assets")
+        let inputs = try rows.map(decodeBondInput)
+        try database.transaction {
+            for (secondary, primary) in AssetBondPlanner.bonds(for: inputs) {
+                try setBond(secondaryID: secondary, primaryID: primary)
+            }
+            try database.execute(
+                "INSERT OR REPLACE INTO catalog_meta (key, value) VALUES (?, 'done')",
+                bindings: [gateKey]
+            )
+        }
+    }
+
+    private func decodeBondInput(_ row: [String: String]) throws -> AssetBondPlanner.BondInput {
+        guard let id = row["id"], let path = row["original_path"] else {
+            throw CatalogError.sqlite("asset row is missing required columns")
+        }
+        return AssetBondPlanner.BondInput(id: AssetID(rawValue: id), originalURL: URL(fileURLWithPath: path))
+    }
+
+    /// Assets (id + originalURL) presently cataloged under `folderPath` or any
+    /// of its subfolders, including bonded secondaries — pairing must see
+    /// every existing sibling, not just unbonded primaries, or a JPEG imported
+    /// after its RAW would look unpaired. Scoped to the folder so importing
+    /// into one folder never rescans the whole catalog.
+    func bondCandidates(inFolder folderPath: String) throws -> [AssetBondPlanner.BondInput] {
+        let folderPrefix = folderPath == "/" ? folderPath : folderPath + "/"
+        let rows = try database.rows(
+            "SELECT id, original_path FROM assets WHERE original_path LIKE ? ESCAPE '\\'",
+            bindings: ["\(Self.escapedLikePattern(folderPrefix))%"]
+        )
+        return try rows.map(decodeBondInput)
+    }
+
+    /// Applies newly computed secondary→primary bonds, skipping any already
+    /// set to that value (idempotent) and wrapping the writes in a single
+    /// transaction, matching `backfillBonds`'s convention.
+    public func setBonds(_ bonds: [AssetID: AssetID]) throws {
+        let changedBonds = try bonds.filter { secondaryID, primaryID in
+            try bondedPrimaryID(of: secondaryID) != primaryID
+        }
+        guard !changedBonds.isEmpty else { return }
+        try database.transaction {
+            for (secondaryID, primaryID) in changedBonds {
+                try setBond(secondaryID: secondaryID, primaryID: primaryID)
+            }
+        }
+    }
+
+    /// Recomputes RAW+JPEG bonds for every asset cataloged under each of
+    /// `folderPaths`. A bonded secondary's row is deleted (not relocated) when
+    /// its RAW primary is trashed, so restoring it from the trash manifest
+    /// reinserts the row via `upsert` — whose ON CONFLICT DO UPDATE never
+    /// touches `bonded_to_asset_id` — with the bond lost. Calling this after
+    /// a restore re-pairs any RAW+JPEG siblings now co-located, mirroring
+    /// import's per-folder bonding (`IngestService.bondSiblings`). Idempotent
+    /// via `setBonds`, so it's a no-op where bonds are already intact (e.g. a
+    /// move-mode restore, which never loses them).
+    public func rebondFolders(_ folderPaths: Set<String>) throws {
+        guard !folderPaths.isEmpty else { return }
+        var bonds: [AssetID: AssetID] = [:]
+        for folder in folderPaths {
+            let candidates = try bondCandidates(inFolder: folder)
+            bonds.merge(AssetBondPlanner.bonds(for: candidates)) { _, new in new }
+        }
+        try setBonds(bonds)
+    }
+
+    /// ANDs the "primaries + unpaired only" filter onto a WHERE fragment that is
+    /// either "" or " WHERE …". Used by display listings; processing/enqueue and
+    /// fetch-by-id never call this.
+    private static func excludingSecondaries(_ whereSQL: String) -> String {
+        let predicate = "bonded_to_asset_id IS NULL"
+        return whereSQL.isEmpty ? " WHERE \(predicate)" : "\(whereSQL) AND \(predicate)"
+    }
+
+    public func allAssets(
+        limit: Int,
+        offset: Int = 0,
+        sort: LibrarySortOption = .importOrder,
+        includeBondedSecondaries: Bool = false
+    ) throws -> [Asset] {
+        try loadAssets(sort: sort, limit: limit, offset: offset, includeBondedSecondaries: includeBondedSecondaries)
+    }
+
+    public func allAssets(
+        sort: LibrarySortOption = .importOrder,
+        includeBondedSecondaries: Bool = false
+    ) throws -> [Asset] {
+        try loadAssets(sort: sort, limit: nil, offset: 0, includeBondedSecondaries: includeBondedSecondaries)
     }
 
     public func allAssets(
         matching query: SetQuery,
         limit: Int,
         offset: Int = 0,
-        sort: LibrarySortOption = .importOrder
+        sort: LibrarySortOption = .importOrder,
+        includeBondedSecondaries: Bool = false
     ) throws -> [Asset] {
         let compiledQuery = try compile(query)
         return try loadAssets(
@@ -220,13 +352,15 @@ public final class CatalogRepository {
             whereBindings: compiledQuery.bindings,
             sort: sort,
             limit: limit,
-            offset: offset
+            offset: offset,
+            includeBondedSecondaries: includeBondedSecondaries
         )
     }
 
     public func allAssets(
         matching query: SetQuery,
-        sort: LibrarySortOption = .importOrder
+        sort: LibrarySortOption = .importOrder,
+        includeBondedSecondaries: Bool = false
     ) throws -> [Asset] {
         let compiledQuery = try compile(query)
         return try loadAssets(
@@ -234,7 +368,8 @@ public final class CatalogRepository {
             whereBindings: compiledQuery.bindings,
             sort: sort,
             limit: nil,
-            offset: 0
+            offset: 0,
+            includeBondedSecondaries: includeBondedSecondaries
         )
     }
 
@@ -246,26 +381,37 @@ public final class CatalogRepository {
         whereBindings: [String] = [],
         sort: LibrarySortOption,
         limit: Int?,
-        offset: Int
+        offset: Int,
+        includeBondedSecondaries: Bool = false
     ) throws -> [Asset] {
+        let effectiveWhereSQL = includeBondedSecondaries ? whereSQL : Self.excludingSecondaries(whereSQL)
         let pagingSQL = limit == nil ? "" : " LIMIT ? OFFSET ?"
         let pagingBindings = limit.map { ["\($0)", "\(offset)"] } ?? []
         let rows = try database.rows(
-            "SELECT * FROM assets\(whereSQL) ORDER BY \(Self.orderSQL(for: sort))\(pagingSQL)",
+            "SELECT * FROM assets\(effectiveWhereSQL) ORDER BY \(Self.orderSQL(for: sort))\(pagingSQL)",
             bindings: whereBindings + pagingBindings
         )
         return try rows.map(decodeAsset)
     }
 
-    public func assetIDs() throws -> [AssetID] {
-        let rows = try database.rows("SELECT id FROM assets ORDER BY rowid ASC")
+    // Backs display id-listings (e.g. AppModel's current-scope/latest-import
+    // helpers). Those helpers also drive evaluation processing for the
+    // current scope, which must still see a bonded shot's hidden JPEG —
+    // `includeBondedSecondaries: true` is that opt-out; leave it `false` for
+    // anything display-facing (the default).
+    public func assetIDs(includeBondedSecondaries: Bool = false) throws -> [AssetID] {
+        let whereSQL = includeBondedSecondaries ? "" : Self.excludingSecondaries("")
+        let rows = try database.rows("SELECT id FROM assets\(whereSQL) ORDER BY rowid ASC")
         return try rows.map(decodeAssetID)
     }
 
-    public func assetIDs(matching query: SetQuery) throws -> [AssetID] {
+    public func assetIDs(matching query: SetQuery, includeBondedSecondaries: Bool = false) throws -> [AssetID] {
         let compiledQuery = try compile(query)
+        let whereSQL = includeBondedSecondaries
+            ? compiledQuery.whereSQL
+            : Self.excludingSecondaries(compiledQuery.whereSQL)
         let rows = try database.rows(
-            "SELECT id FROM assets\(compiledQuery.whereSQL) ORDER BY rowid ASC",
+            "SELECT id FROM assets\(whereSQL) ORDER BY rowid ASC",
             bindings: compiledQuery.bindings
         )
         return try rows.map(decodeAssetID)
@@ -435,8 +581,9 @@ public final class CatalogRepository {
         return count
     }
 
-    public func assetCount() throws -> Int {
-        let rows = try database.rows("SELECT COUNT(*) AS count FROM assets")
+    public func assetCount(includeBondedSecondaries: Bool = false) throws -> Int {
+        let whereSQL = includeBondedSecondaries ? "" : Self.excludingSecondaries("")
+        let rows = try database.rows("SELECT COUNT(*) AS count FROM assets\(whereSQL)")
         guard let countString = rows.first?["count"], let count = Int(countString) else {
             throw CatalogError.sqlite("asset count query returned no count")
         }
@@ -450,6 +597,7 @@ public final class CatalogRepository {
                 rtrim(original_path, replace(original_path, '/', '')) AS folder_path,
                 COUNT(*) AS asset_count
             FROM assets
+            WHERE bonded_to_asset_id IS NULL
             GROUP BY folder_path
             """
         )
@@ -473,6 +621,7 @@ public final class CatalogRepository {
                 SELECT technical_metadata_json
                 FROM assets
                 WHERE json_valid(technical_metadata_json)
+                  AND bonded_to_asset_id IS NULL
             ),
             captured_assets AS (
                 SELECT CAST(json_extract(technical_metadata_json, '$.capturedAt') AS REAL) AS captured_at
@@ -539,6 +688,7 @@ public final class CatalogRepository {
                 WHERE json_valid(technical_metadata_json)
                   AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
                   AND json_type(technical_metadata_json, '$.longitude') IN ('integer', 'real')
+                  AND bonded_to_asset_id IS NULL
                   \(extraClause)
             )
             SELECT
@@ -578,7 +728,7 @@ public final class CatalogRepository {
                     WHEN json_valid(technical_metadata_json)
                      AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
                     THEN 1 ELSE 0 END) AS geotagged
-            FROM assets\(whereSQL)
+            FROM assets\(Self.excludingSecondaries(whereSQL))
             """,
             bindings: bindings
         )
@@ -873,10 +1023,12 @@ public final class CatalogRepository {
         }
     }
 
+    // A user-facing count aggregate (sidebar/section totals) — a bonded shot
+    // must count once, so this excludes secondaries like the listing queries.
     public func assetCount(matching query: SetQuery) throws -> Int {
         let compiledQuery = try compile(query)
         let rows = try database.rows(
-            "SELECT COUNT(*) AS count FROM assets\(compiledQuery.whereSQL)",
+            "SELECT COUNT(*) AS count FROM assets\(Self.excludingSecondaries(compiledQuery.whereSQL))",
             bindings: compiledQuery.bindings
         )
         guard let countString = rows.first?["count"], let count = Int(countString) else {
@@ -896,6 +1048,7 @@ public final class CatalogRepository {
         bindings.append(flag.rawValue)
         clauses.append(Self.confirmedFieldClauseSQL)
         bindings.append(MetadataField.flag.rawValue)
+        clauses.append("bonded_to_asset_id IS NULL")
         let whereSQL = " WHERE " + clauses.joined(separator: " AND ")
         let rows = try database.rows("SELECT COUNT(*) AS count FROM assets\(whereSQL)", bindings: bindings)
         guard let countString = rows.first?["count"], let count = Int(countString) else {
@@ -1054,12 +1207,19 @@ public final class CatalogRepository {
         }
     }
 
+    // Load-bearing, not merely defensive: evaluation's AI path
+    // (insertAIFace) doesn't write a person_assets row for a bonded
+    // secondary, but a user confirming a secondary's own face suggestion
+    // (confirmFace) does — this guard is what keeps that confirmed
+    // secondary from inflating a person's count, matching the
+    // folder/timeline/place/coverage/source-root aggregates.
     public func people() throws -> [CatalogPerson] {
         let rows = try database.rows(
             """
-            SELECT people.id, people.name, COUNT(person_assets.asset_id) AS asset_count
+            SELECT people.id, people.name, COUNT(assets.id) AS asset_count
             FROM people
             LEFT JOIN person_assets ON person_assets.person_id = people.id
+            LEFT JOIN assets ON assets.id = person_assets.asset_id AND assets.bonded_to_asset_id IS NULL
             GROUP BY people.id, people.name
             ORDER BY people.name COLLATE NOCASE ASC
             """
@@ -1231,12 +1391,24 @@ public final class CatalogRepository {
         )
     }
 
+    // Backs People's suggestion/review queue and the AI auto-apply promoter
+    // (both of which surface faces for a person to be matched against or
+    // confirmed). Both files of a bonded pair are independently evaluated
+    // (secondaries aren't special-cased out of the eval queue), so without
+    // the bonded_to_asset_id exclusion a RAW+JPEG pair's pixel-identical
+    // face would surface twice; the primary's own observation already
+    // covers the shot.
     public func unassignedFaceObservations(provenance: ProviderProvenance, limit: Int) throws -> [CatalogFaceObservation] {
         let rows = try database.rows(
             """
             SELECT asset_id, face_index, face_json, provenance_json
             FROM face_observations
             WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM assets
+                  WHERE assets.id = face_observations.asset_id
+                    AND assets.bonded_to_asset_id IS NOT NULL
+              )
               AND NOT EXISTS (
                   SELECT 1 FROM person_faces
                   WHERE person_faces.asset_id = face_observations.asset_id
@@ -2158,6 +2330,12 @@ public final class CatalogRepository {
                         WHERE person_assets.asset_id = evaluation_signals.asset_id
                     )
                 )
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM assets
+                WHERE assets.id = evaluation_signals.asset_id
+                  AND assets.bonded_to_asset_id IS NOT NULL
             )
             GROUP BY kind
             ORDER BY kind COLLATE NOCASE ASC
@@ -3278,8 +3456,9 @@ public final class CatalogRepository {
                 COUNT(*) AS asset_count,
                 COALESCE(SUM(CASE WHEN availability != ? THEN 1 ELSE 0 END), 0) AS unavailable_asset_count
             FROM assets
-            WHERE original_path = ?
-               OR original_path LIKE ? ESCAPE '\\'
+            WHERE (original_path = ?
+               OR original_path LIKE ? ESCAPE '\\')
+               AND bonded_to_asset_id IS NULL
             """,
             bindings: [
                 SourceAvailability.online.rawValue,

@@ -17442,6 +17442,45 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(tentativeAfter.metadata.aiUnconfirmedFields.contains(.flag))
     }
 
+    // Bonding only decides which files travel once a shot is already an
+    // eligible, committed reject — it must never make a tentative shot
+    // eligible. A bonded secondary is not itself flagged, so if the gate
+    // were checked on the secondary instead of the primary this would move.
+    func testTentativeAIRejectDoesNotCarryBondedSecondaryToFolder() throws {
+        let directory = try makeTemporaryDirectory(named: "reject-preflight-tentative-bonded")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let rawOriginal = shoot.appendingPathComponent("tentative.cr2")
+        let jpegOriginal = shoot.appendingPathComponent("tentative.jpg")
+        try Data("tentative raw".utf8).write(to: rawOriginal)
+        try Data("tentative jpeg".utf8).write(to: jpegOriginal)
+        let tentativeRAW = makeAsset(id: "tentative-bond-raw", path: rawOriginal.path, rating: 0, flag: .reject)
+        let jpeg = makeAsset(id: "tentative-bond-jpg", path: jpegOriginal.path, rating: 0, flag: nil)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "reject-preflight-tentative-bonded-model",
+            assets: [tentativeRAW, jpeg],
+            configureRepository: { repository in
+                try repository.setBond(secondaryID: jpeg.id, primaryID: tentativeRAW.id)
+                try repository.updateMetadata(assetID: tentativeRAW.id) { metadata in
+                    metadata.aiUnconfirmedFields = [.flag]
+                }
+            }
+        )
+        let destination = directory.appendingPathComponent("rejects", isDirectory: true)
+        let preflight = try model.rejectRelocationPreflight(destinationFolder: destination)
+        XCTAssertEqual(preflight.moveCount, 0)
+
+        let summary = try model.moveRejectsToFolder(preflight)
+
+        XCTAssertEqual(summary.movedCount, 0)
+        // Neither the tentative RAW nor its bonded JPEG moved: the reject
+        // flag is still a proposal, not a decision.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: rawOriginal.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: jpegOriginal.path))
+        XCTAssertEqual(try repository.asset(id: jpeg.id).originalURL, jpegOriginal)
+        XCTAssertEqual(try repository.bondedPrimaryID(of: jpeg.id), tentativeRAW.id)
+    }
+
     // Trash-mode counterpart: `moveRejectsToTrash` shares `rejectRelocationScope`
     // with folder relocation, but is exercised separately since it deletes the
     // catalog row rather than repointing it — proving no branch of either path
@@ -17522,6 +17561,51 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.session(id: summary.sessionID).kind, .relocation)
         XCTAssertTrue(model.recentWork.contains { $0.id == summary.sessionID.rawValue })
         XCTAssertEqual(model.rejectRelocationSummary?.sessionID, summary.sessionID)
+    }
+
+    // A committed reject's bonded secondary (the hidden JPEG twin of a RAW)
+    // must travel with it — an orphaned secondary would leave a hidden file
+    // behind at the old location with no primary left to find it by.
+    func testMoveRejectsToFolderCarriesBondedSecondaryJPEG() throws {
+        let directory = try makeTemporaryDirectory(named: "move-rejects-bonded")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let rawOriginal = shoot.appendingPathComponent("shot.cr2")
+        let jpegOriginal = shoot.appendingPathComponent("shot.jpg")
+        try Data("raw".utf8).write(to: rawOriginal)
+        try Data("jpeg".utf8).write(to: jpegOriginal)
+        let raw = makeAsset(id: "bond-raw", path: rawOriginal.path, rating: 0, flag: .reject)
+        let jpeg = makeAsset(id: "bond-jpg", path: jpegOriginal.path, rating: 0, flag: nil)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "move-rejects-bonded-model",
+            assets: [raw, jpeg],
+            configureRepository: { repository in
+                try repository.setBond(secondaryID: jpeg.id, primaryID: raw.id)
+            }
+        )
+        let destination = directory.appendingPathComponent("rejects", isDirectory: true)
+        let preflight = try model.rejectRelocationPreflight(destinationFolder: destination)
+        // The bonded JPEG is hidden from listings/scope and isn't itself
+        // flagged reject — only the RAW primary is counted as the reject.
+        XCTAssertEqual(preflight.assetIDs, [raw.id])
+
+        let summary = try model.moveRejectsToFolder(preflight)
+
+        XCTAssertEqual(summary.movedCount, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: rawOriginal.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: jpegOriginal.path))
+        let movedRAW = destination.appendingPathComponent("shot.cr2")
+        let movedJPEG = destination.appendingPathComponent("shot.jpg")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: movedRAW.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: movedJPEG.path))
+        let updatedRAW = try repository.asset(id: raw.id)
+        let updatedJPEG = try repository.asset(id: jpeg.id)
+        XCTAssertEqual(updatedRAW.originalURL, movedRAW)
+        XCTAssertEqual(updatedJPEG.originalURL, movedJPEG)
+        // The bond is keyed by id, not path — it survives the move.
+        XCTAssertEqual(try repository.bondedPrimaryID(of: jpeg.id), raw.id)
+        let entries = try repository.relocationManifestEntries(sessionID: summary.sessionID)
+        XCTAssertEqual(Set(entries.map(\.assetID)), Set([raw.id, jpeg.id]))
     }
 
     func testMoveRejectsSkipsUnwritableDestinationWithoutTouchingCatalog() throws {
@@ -17631,6 +17715,47 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(entries.first?.originalTo.path)))
     }
 
+    // Trash-mode counterpart of the bonded-carry test above: the bonded
+    // JPEG must be trashed along with its committed-reject RAW primary, not
+    // left behind on disk with a catalog row that no longer resolves.
+    func testMoveRejectsToTrashCarriesBondedSecondaryJPEG() throws {
+        let directory = try makeTemporaryDirectory(named: "trash-rejects-bonded")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let rawOriginal = shoot.appendingPathComponent("shot.cr2")
+        let jpegOriginal = shoot.appendingPathComponent("shot.jpg")
+        try Data("raw".utf8).write(to: rawOriginal)
+        try Data("jpeg".utf8).write(to: jpegOriginal)
+        let raw = makeAsset(id: "bond-trash-raw", path: rawOriginal.path, rating: 0, flag: .reject)
+        let jpeg = makeAsset(id: "bond-trash-jpg", path: jpegOriginal.path, rating: 0, flag: nil)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "trash-rejects-bonded-model",
+            assets: [raw, jpeg],
+            configureRepository: { repository in
+                try repository.setBond(secondaryID: jpeg.id, primaryID: raw.id)
+            }
+        )
+        let preflight = try model.rejectRelocationTrashPreflight()
+
+        let summary = try model.moveRejectsToTrash(preflight)
+
+        XCTAssertEqual(summary.movedCount, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: rawOriginal.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: jpegOriginal.path))
+        XCTAssertThrowsError(try repository.asset(id: raw.id)) { error in
+            guard case CatalogError.notFound = error else {
+                return XCTFail("expected notFound, got \(error)")
+            }
+        }
+        XCTAssertThrowsError(try repository.asset(id: jpeg.id)) { error in
+            guard case CatalogError.notFound = error else {
+                return XCTFail("expected notFound, got \(error)")
+            }
+        }
+        let entries = try repository.relocationManifestEntries(sessionID: summary.sessionID)
+        XCTAssertEqual(Set(entries.map(\.assetID)), Set([raw.id, jpeg.id]))
+    }
+
     // Persona-7 count drift: after trashing rejects the sidebar still said
     // "Rejects 40" / "Not analyzed yet 130" while HUD and catalog said
     // otherwise. Every bulk mutation funnels through reload(), so reload()
@@ -17701,6 +17826,49 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(reinserted.originalURL, original)
         XCTAssertEqual(reinserted.metadata, reject.metadata)
         XCTAssertEqual(try repository.relocationManifestEntries(sessionID: summary.sessionID), [])
+    }
+
+    // Review-finding regression: a bonded secondary's row is deleted (not
+    // relocated) when its RAW primary is trashed, so the bond lives only in
+    // the `bonded_to_asset_id` column. Trash-mode Move Back reinserts the row
+    // via `upsert`'s ON CONFLICT DO UPDATE, which never touches that column —
+    // the restored JPEG used to come back unbonded and reappear as its own,
+    // independently-visible tile. Restore must re-pair RAW+JPEG siblings in
+    // the folders assets land back in so the "one tile per shot" invariant
+    // survives trash + undo.
+    func testMoveBackFromTrashRestoresBondedSecondaryJPEG() throws {
+        let directory = try makeTemporaryDirectory(named: "move-back-trash-bonded")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let rawOriginal = shoot.appendingPathComponent("shot.cr2")
+        let jpegOriginal = shoot.appendingPathComponent("shot.jpg")
+        try Data("raw".utf8).write(to: rawOriginal)
+        try Data("jpeg".utf8).write(to: jpegOriginal)
+        let raw = makeAsset(id: "bond-back-raw", path: rawOriginal.path, rating: 0, flag: .reject)
+        let jpeg = makeAsset(id: "bond-back-jpg", path: jpegOriginal.path, rating: 0, flag: nil)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "move-back-trash-bonded-model",
+            assets: [raw, jpeg],
+            configureRepository: { repository in
+                try repository.setBond(secondaryID: jpeg.id, primaryID: raw.id)
+            }
+        )
+        let preflight = try model.rejectRelocationTrashPreflight()
+        let summary = try model.moveRejectsToTrash(preflight)
+
+        let restored = try model.moveBackRelocation(sessionID: summary.sessionID)
+
+        XCTAssertEqual(restored, 2)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: rawOriginal.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: jpegOriginal.path))
+        XCTAssertEqual(try repository.asset(id: raw.id).originalURL, rawOriginal)
+        XCTAssertEqual(try repository.asset(id: jpeg.id).originalURL, jpegOriginal)
+        // The crux of the regression: the bond must be re-established, not
+        // left NULL by the delete+reinsert round trip.
+        XCTAssertEqual(try repository.bondedPrimaryID(of: jpeg.id), raw.id)
+        // One tile per shot: the re-bonded JPEG is hidden from listings again,
+        // not an independently-visible tile.
+        XCTAssertEqual(try repository.allAssets().map(\.id), [raw.id])
     }
 
     func testMoveBackFromTrashSkipsAndReportsEntriesWhoseTrashURLWasEmptied() throws {

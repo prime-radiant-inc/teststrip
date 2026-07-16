@@ -2057,6 +2057,11 @@ public final class AppModel {
     private var lastSubView: [Workspace: LibraryViewMode] = [:]
     public var assets: [Asset]
     public var totalAssetCount: Int
+    /// Primary asset IDs that have >=1 bonded secondary (a RAW with a bonded
+    /// working JPEG/HEIC) — refreshed whenever the catalog reloads. The
+    /// grid/loupe RAW badge reads membership to render "RAW+JPEG" instead of
+    /// "RAW"; computed once per reload rather than per-cell.
+    public private(set) var assetIDsWithBondedSecondaries: Set<AssetID> = []
     // Global view history so ⌘⇧[ / ⌘⇧] step back and forth through the
     // sidebar destinations the user has visited this session.
     private var navigationBackStack: [SidebarRowTarget] = []
@@ -4571,6 +4576,7 @@ public final class AppModel {
         // cards show key faces on first launch, not just after the next
         // mutating action.
         try model.loadCatalogPeople()
+        model.refreshAssetIDsWithBondedSecondaries()
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
         try model.enqueuePendingGeocoding()
@@ -9570,7 +9576,13 @@ public final class AppModel {
         guard try currentLibraryAssetCount(repository: catalog.repository) > 0 else {
             throw TeststripError.invalidState("no current scope assets")
         }
-        let evaluableAssetIDs = try currentScopeCachedPreviewAssetIDs(repository: catalog.repository)
+        // A bonded shot's hidden JPEG secondary must still get evaluated
+        // (preview/eval processing is never special-cased out of bonding),
+        // even though every other "current scope" surface excludes it.
+        let evaluableAssetIDs = try currentScopeCachedPreviewAssetIDs(
+            repository: catalog.repository,
+            includeBondedSecondaries: true
+        )
         guard !evaluableAssetIDs.isEmpty else {
             throw TeststripError.invalidState("no current scope assets with cached previews")
         }
@@ -9595,7 +9607,9 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        let assetIDs = try latestImportOutputAssetIDs(repository: catalog.repository)
+        // A bonded shot's hidden JPEG secondary must still get evaluated
+        // (preview/eval processing is never special-cased out of bonding).
+        let assetIDs = try latestImportOutputAssetIDs(repository: catalog.repository, includeBondedSecondaries: true)
         guard !assetIDs.isEmpty else {
             throw TeststripError.invalidState("no latest import assets")
         }
@@ -10383,6 +10397,7 @@ public final class AppModel {
         // (persona-7's "three surfaces, three stories").
         try refreshCatalogSidebarCounts()
         refreshCatalogFolders()
+        refreshAssetIDsWithBondedSecondaries()
         if let explicitAssetIDs = selectedExplicitAssetIDs {
             let loadedAssets = try catalog.repository.assets(ids: explicitAssetIDs, flag: flagFilter, limit: explicitAssetIDs.count)
             replaceAssets(loadedAssets)
@@ -10811,6 +10826,7 @@ public final class AppModel {
         )
         replaceAssets(contents.assets, preferredSelection: preferredSelection)
         totalAssetCount = contents.totalAssetCount
+        refreshAssetIDsWithBondedSecondaries()
     }
 
     private static func append(_ predicate: SetQuery.Predicate, to predicates: inout [SetQuery.Predicate]) {
@@ -11370,6 +11386,7 @@ public final class AppModel {
             replaceAssets(contents.assets, preferredSelection: state.selectedAssetID)
             totalAssetCount = contents.totalAssetCount
         }
+        refreshAssetIDsWithBondedSecondaries()
         try refreshProposedAssets()
     }
 
@@ -11577,6 +11594,120 @@ public final class AppModel {
         return (attributes[.size] as? NSNumber)?.int64Value ?? 0
     }
 
+    /// A committed reject's bonded secondaries (e.g. the hidden JPEG twin of
+    /// a RAW), resolved by id — never through the reject-scoped listing that
+    /// hides them from `allAssets`. Bonding only decides which files travel
+    /// once `primaryID` is already an eligible, committed reject; it never
+    /// makes a shot eligible on its own.
+    private static func bondedSecondaryAssets(of primaryID: AssetID, repository: CatalogRepository) throws -> [Asset] {
+        try repository.bondedSecondaryIDs(of: primaryID).map { try repository.asset(id: $0) }
+    }
+
+    /// Moves `assetID`'s bonded secondaries (e.g. a RAW reject's hidden JPEG
+    /// twin) into the same destination folder the primary just moved to, so
+    /// a committed reject never leaves an orphaned sibling behind. Never
+    /// throws — by the time this runs the primary has already moved and been
+    /// counted, so every failure (including the secondary lookup itself) is
+    /// recorded as its own issue rather than unwinding into the primary's
+    /// already-recorded success.
+    private static func relocateBondedSecondaries(
+        of assetID: AssetID,
+        primaryOriginalFrom: URL,
+        destinationDirectory: URL,
+        catalog: AppCatalog,
+        service: RejectRelocationService,
+        sessionID: WorkSessionID,
+        issues: inout [WorkSessionIssue]
+    ) {
+        let secondaryAssets: [Asset]
+        do {
+            secondaryAssets = try bondedSecondaryAssets(of: assetID, repository: catalog.repository)
+        } catch {
+            issues.append(WorkSessionIssue(
+                kind: .skippedSourceFile,
+                sourceURL: primaryOriginalFrom,
+                message: "could not look up bonded secondaries: \(error.localizedDescription)"
+            ))
+            return
+        }
+        for secondaryAsset in secondaryAssets {
+            let secondaryDestination = destinationDirectory.appendingPathComponent(secondaryAsset.originalURL.lastPathComponent)
+            do {
+                let secondaryResult = try service.move(originalFrom: secondaryAsset.originalURL, originalTo: secondaryDestination)
+                try catalog.repository.relocateOriginal(assetID: secondaryAsset.id, to: secondaryResult.originalTo)
+                try catalog.repository.saveRelocationManifestEntry(
+                    RelocationManifestEntry(
+                        assetID: secondaryAsset.id,
+                        originalFrom: secondaryResult.originalFrom,
+                        originalTo: secondaryResult.originalTo,
+                        sidecarFrom: secondaryResult.sidecarFrom,
+                        sidecarTo: secondaryResult.sidecarTo
+                    ),
+                    sessionID: sessionID
+                )
+            } catch {
+                issues.append(WorkSessionIssue(
+                    kind: .skippedSourceFile,
+                    sourceURL: secondaryAsset.originalURL,
+                    message: error.localizedDescription
+                ))
+            }
+        }
+    }
+
+    /// Trash-mode counterpart of `relocateBondedSecondaries`: trashes
+    /// `assetID`'s bonded secondaries alongside their just-trashed primary,
+    /// removing their catalog rows and cached previews the same way. Never
+    /// throws, for the same reason: the primary is already trashed and
+    /// counted by the time this runs.
+    private static func trashBondedSecondaries(
+        of assetID: AssetID,
+        primaryOriginalFrom: URL,
+        catalog: AppCatalog,
+        service: RejectRelocationService,
+        recycler: Recycler,
+        sessionID: WorkSessionID,
+        issues: inout [WorkSessionIssue]
+    ) {
+        let secondaryAssets: [Asset]
+        do {
+            secondaryAssets = try bondedSecondaryAssets(of: assetID, repository: catalog.repository)
+        } catch {
+            issues.append(WorkSessionIssue(
+                kind: .skippedSourceFile,
+                sourceURL: primaryOriginalFrom,
+                message: "could not look up bonded secondaries: \(error.localizedDescription)"
+            ))
+            return
+        }
+        for secondaryAsset in secondaryAssets {
+            do {
+                let secondaryPersonIDs = try catalog.repository.personIDs(assetID: secondaryAsset.id)
+                let secondaryResult = try service.trash(originalFrom: secondaryAsset.originalURL, recycler: recycler)
+                try catalog.repository.deleteAsset(id: secondaryAsset.id)
+                try catalog.previewCache.deleteAll(for: secondaryAsset.id)
+                try catalog.repository.saveRelocationManifestEntry(
+                    RelocationManifestEntry(
+                        assetID: secondaryAsset.id,
+                        originalFrom: secondaryResult.originalFrom,
+                        originalTo: secondaryResult.originalTo,
+                        sidecarFrom: secondaryResult.sidecarFrom,
+                        sidecarTo: secondaryResult.sidecarTo,
+                        assetSnapshot: secondaryAsset,
+                        personIDs: secondaryPersonIDs
+                    ),
+                    sessionID: sessionID
+                )
+            } catch {
+                issues.append(WorkSessionIssue(
+                    kind: .skippedSourceFile,
+                    sourceURL: secondaryAsset.originalURL,
+                    message: error.localizedDescription
+                ))
+            }
+        }
+    }
+
     @discardableResult
     public func moveRejectsToFolder(_ preflight: RejectRelocationPreflight) throws -> RejectRelocationSummary {
         guard let catalog else {
@@ -11626,6 +11757,20 @@ public final class AppModel {
                 )
                 movedCount += 1
                 if result.sidecarTo != nil { sidecarCount += 1 }
+
+                // Bonded secondaries (e.g. the hidden JPEG twin of a RAW
+                // reject) travel with their primary so a committed reject
+                // never leaves an orphaned sibling behind. They're not
+                // themselves counted as moved rejects — only the primary is.
+                Self.relocateBondedSecondaries(
+                    of: assetID,
+                    primaryOriginalFrom: plan.originalFrom,
+                    destinationDirectory: result.originalTo.deletingLastPathComponent(),
+                    catalog: catalog,
+                    service: service,
+                    sessionID: sessionID,
+                    issues: &issues
+                )
             } catch {
                 // Skip-with-issue: a file that can't move is recorded and the
                 // loop continues; its catalog row is left untouched.
@@ -11728,6 +11873,21 @@ public final class AppModel {
                 )
                 movedCount += 1
                 if result.sidecarTo != nil { sidecarCount += 1 }
+
+                // Bonded secondaries (e.g. the hidden JPEG twin of a RAW
+                // reject) are trashed with their primary so a committed
+                // reject never leaves an orphaned sibling behind. They're
+                // not themselves counted as moved rejects — only the primary
+                // is.
+                Self.trashBondedSecondaries(
+                    of: assetID,
+                    primaryOriginalFrom: plan.originalFrom,
+                    catalog: catalog,
+                    service: service,
+                    recycler: recycler,
+                    sessionID: sessionID,
+                    issues: &issues
+                )
             } catch {
                 // Skip-with-issue: a file that can't be trashed is recorded and
                 // the loop continues; its catalog row is left untouched.
@@ -11788,6 +11948,9 @@ public final class AppModel {
         // Transient failures (I/O, permissions): the manifest survives so a
         // retry can still restore these.
         var restoreFailureCount = 0
+        // Parent folders restored assets land back in, re-paired once the
+        // loop finishes (see below).
+        var restoredFolderPaths: Set<String> = []
         // Reverse order so nested-directory recreations undo cleanly.
         for entry in entries.reversed() {
             do {
@@ -11814,6 +11977,7 @@ public final class AppModel {
                         try catalog.repository.relocateOriginal(assetID: entry.assetID, to: entry.originalFrom)
                     }
                     restoredCount += 1
+                    restoredFolderPaths.insert(entry.originalFrom.deletingLastPathComponent().standardizedFileURL.path)
                 } else {
                     // The Trash URL is gone (the user emptied the Trash): the
                     // asset is unrecoverable. Report it and continue restoring
@@ -11825,6 +11989,12 @@ public final class AppModel {
                 errorMessage = error.localizedDescription
             }
         }
+        // Trash-mode restore reinserts a bonded secondary's row via `upsert`,
+        // which never touches `bonded_to_asset_id` — the bond is lost on the
+        // delete+reinsert round trip. Re-pair the folders assets landed back
+        // in so any RAW+JPEG siblings now co-located are re-bonded; a no-op
+        // in move mode, where `relocateOriginal` never broke the bond.
+        try catalog.repository.rebondFolders(restoredFolderPaths)
         // Only transient failures keep the manifest (a retry can still
         // succeed). Unrecoverable files never come back, so they must not
         // hold the manifest — and its Move back button — alive.
@@ -11880,7 +12050,15 @@ public final class AppModel {
         )
     }
 
-    private func currentAssetScopeIDs(repository: CatalogRepository) throws -> [AssetID] {
+    // `includeBondedSecondaries` defaults to excluding a bonded shot's hidden
+    // JPEG, matching every other "current scope" surface (batch metadata,
+    // snapshots, export, session building). The current-scope evaluation
+    // trigger (`requestCurrentScopeAssetEvaluations`) opts back in — the
+    // hidden JPEG must still get evaluated.
+    private func currentAssetScopeIDs(
+        repository: CatalogRepository,
+        includeBondedSecondaries: Bool = false
+    ) throws -> [AssetID] {
         if let explicitAssetIDs = selectedExplicitAssetIDs {
             // A manual/snapshot AssetSet's membership_json can retain a
             // trashed asset's ID (deleteAsset doesn't rewrite it). Filter
@@ -11891,14 +12069,19 @@ public final class AppModel {
             return try repository.assets(ids: explicitAssetIDs, limit: explicitAssetIDs.count).map(\.id)
         }
         if let query = currentLibraryQuery() {
-            return try repository.assetIDs(matching: query)
+            return try repository.assetIDs(matching: query, includeBondedSecondaries: includeBondedSecondaries)
         }
-        return try repository.assetIDs()
+        return try repository.assetIDs(includeBondedSecondaries: includeBondedSecondaries)
     }
 
-    private func currentScopeCachedPreviewAssetIDs(repository: CatalogRepository, limit: Int? = nil) throws -> [AssetID] {
+    private func currentScopeCachedPreviewAssetIDs(
+        repository: CatalogRepository,
+        limit: Int? = nil,
+        includeBondedSecondaries: Bool = false
+    ) throws -> [AssetID] {
         var cachedAssetIDs: [AssetID] = []
-        for assetID in try currentAssetScopeIDs(repository: repository) where hasCachedPreview(for: assetID) {
+        let scopeAssetIDs = try currentAssetScopeIDs(repository: repository, includeBondedSecondaries: includeBondedSecondaries)
+        for assetID in scopeAssetIDs where hasCachedPreview(for: assetID) {
             cachedAssetIDs.append(assetID)
             if let limit, cachedAssetIDs.count >= limit {
                 break
@@ -12319,14 +12502,29 @@ public final class AppModel {
         return nil
     }
 
-    private func latestImportOutputAssetIDs(repository: CatalogRepository) throws -> [AssetID] {
+    // Defaults to excluding a bonded shot's hidden JPEG, matching the other
+    // "latest import" display surfaces (preview/face-review banners, batch
+    // keyword suggestions). `requestLatestImportAssetEvaluations` opts back
+    // in — the hidden JPEG must still get evaluated.
+    private func latestImportOutputAssetIDs(
+        repository: CatalogRepository,
+        includeBondedSecondaries: Bool = false
+    ) throws -> [AssetID] {
         guard let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
             throw TeststripError.invalidState("no completed import")
         }
-        return try latestImportOutputAssetIDs(activityID: activity.id, repository: repository)
+        return try latestImportOutputAssetIDs(
+            activityID: activity.id,
+            repository: repository,
+            includeBondedSecondaries: includeBondedSecondaries
+        )
     }
 
-    private func latestImportOutputAssetIDs(activityID: String, repository: CatalogRepository) throws -> [AssetID] {
+    private func latestImportOutputAssetIDs(
+        activityID: String,
+        repository: CatalogRepository,
+        includeBondedSecondaries: Bool = false
+    ) throws -> [AssetID] {
         let session = try repository.session(id: WorkSessionID(rawValue: activityID))
         guard let outputSetID = session.outputSetIDs.first else {
             return []
@@ -12336,7 +12534,7 @@ public final class AppModel {
         case .manual(let ids), .snapshot(let ids):
             return ids
         case .dynamic(let query):
-            return try repository.assetIDs(matching: query)
+            return try repository.assetIDs(matching: query, includeBondedSecondaries: includeBondedSecondaries)
         }
     }
 
@@ -12494,6 +12692,18 @@ public final class AppModel {
         }
     }
 
+    /// Recomputes the bonded-primary set the RAW/RAW+JPEG badge reads.
+    /// Called wherever the assets array is reloaded wholesale (not the
+    /// narrowing views like autopilot review, which don't change bonds).
+    private func refreshAssetIDsWithBondedSecondaries() {
+        guard let catalog else { return }
+        do {
+            assetIDsWithBondedSecondaries = try catalog.repository.assetIDsWithBondedSecondaries()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func refreshCatalogEvaluationKindSummaries() {
         guard let catalog else { return }
         do {
@@ -12574,6 +12784,7 @@ public final class AppModel {
                 preferredSelection: output.result.importedAssets.first?.id
             )
             totalAssetCount = output.totalAssetCount
+            refreshAssetIDsWithBondedSecondaries()
             try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
             let outputSetIDs = recordCompletedImportActivity(folderURL: folderURL, result: output.result)
@@ -12621,6 +12832,7 @@ public final class AppModel {
                 preferredSelection: output.result.importedAssets.first?.id
             )
             totalAssetCount = output.totalAssetCount
+            refreshAssetIDsWithBondedSecondaries()
             try enqueuePendingPreviewGeneration()
             updateImportStatus(with: output.result)
             let outputSetIDs = recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)
@@ -12699,6 +12911,7 @@ public final class AppModel {
                     preferredSelection: output.result.importedAssets.first?.id
                 )
                 self.totalAssetCount = output.totalAssetCount
+                self.refreshAssetIDsWithBondedSecondaries()
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
                 let outputSetIDs = self.recordCompletedImportActivity(folderURL: folderURL, result: output.result)
@@ -12834,6 +13047,7 @@ public final class AppModel {
                     preferredSelection: output.result.importedAssets.first?.id
                 )
                 self.totalAssetCount = output.totalAssetCount
+                self.refreshAssetIDsWithBondedSecondaries()
                 try self.enqueuePendingPreviewGeneration()
                 self.updateImportStatus(with: output.result)
                 let outputSetIDs = self.recordCompletedImportActivity(folderURL: source, destinationRoot: destinationRoot, result: output.result)

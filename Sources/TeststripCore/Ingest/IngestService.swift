@@ -231,6 +231,7 @@ public struct IngestService: Sendable {
             }
         }
         _ = try flushCatalogAssets(&pendingCatalogAssets, repository: repository)
+        try bondSiblings(among: assets, repository: repository)
         for importedSidecar in importedSidecars {
             try repository.markMetadataSynced(
                 assetID: importedSidecar.assetID,
@@ -335,6 +336,22 @@ public struct IngestService: Sendable {
         try repository.upsert(pendingCatalogAssets)
         pendingCatalogAssets.removeAll(keepingCapacity: true)
         return catalogedAssetIDs
+    }
+
+    // A newly imported RAW or JPEG may now share a folder and stem with a
+    // sibling that's already cataloged (in either arrival order), so bond them
+    // right after the batch persists. Scoped to the folders this batch's
+    // assets actually landed in — the catalog can be arbitrarily large, and
+    // importing one card must never rescan all of it.
+    private func bondSiblings(among assets: [Asset], repository: CatalogRepository) throws {
+        guard !assets.isEmpty else { return }
+        let affectedFolders = Set(assets.map { $0.originalURL.deletingLastPathComponent().standardizedFileURL.path })
+        var bonds: [AssetID: AssetID] = [:]
+        for folder in affectedFolders {
+            let candidates = try repository.bondCandidates(inFolder: folder)
+            bonds.merge(AssetBondPlanner.bonds(for: candidates)) { _, new in new }
+        }
+        try repository.setBonds(bonds)
     }
 
     func originalURL(for sourceFile: URL, plan: IngestPlan) throws -> URL {

@@ -108,6 +108,7 @@ public struct AppCatalog {
         let database = try CatalogDatabase.open(at: paths.catalogURL)
         try database.migrate()
         let repository = CatalogRepository(database: database)
+        try repository.backfillBonds()
         let previewCache = PreviewCache(root: paths.previewCacheRoot)
         let ingestService = IngestService(
             scanner: FolderScanner(supportedExtensions: ImageIODecodeProvider.catalogableExtensions),

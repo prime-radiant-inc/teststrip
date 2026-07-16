@@ -42,6 +42,7 @@ public final class CatalogDatabase: @unchecked Sendable {
         // the column arrives here. Indexing it must therefore follow.
         try addColumnIfMissing(table: "assets", column: "content_hash", definition: "TEXT")
         try execute("CREATE INDEX IF NOT EXISTS idx_assets_content_hash ON assets(content_hash)")
+        try addColumnIfMissing(table: "assets", column: "bonded_to_asset_id", definition: "TEXT")
         try addColumnIfMissing(table: "source_roots", column: "security_scoped_bookmark_base64", definition: "TEXT")
         try addColumnIfMissing(table: "work_sessions", column: "issues_json", definition: "TEXT NOT NULL DEFAULT '[]'")
         try addColumnIfMissing(

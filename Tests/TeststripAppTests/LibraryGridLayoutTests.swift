@@ -181,7 +181,8 @@ final class LibraryGridLayoutTests: XCTestCase {
             selectionState: "Selected",
             badges: AssetGridMetadataBadgePresentation.presentation(for: asset),
             availability: .offline,
-            autopilotDecision: .pick
+            autopilotDecision: .pick,
+            hasBondedStill: false
         )
 
         XCTAssertEqual(
@@ -198,10 +199,29 @@ final class LibraryGridLayoutTests: XCTestCase {
             selectionState: "Not selected",
             badges: AssetGridMetadataBadgePresentation.presentation(for: asset),
             availability: .online,
-            autopilotDecision: nil
+            autopilotDecision: nil,
+            hasBondedStill: false
         )
 
         XCTAssertEqual(value, "Not selected")
+    }
+
+    // Review finding: the grid's "RAW+JPEG" badge (`rawBadge`, LibraryGridView)
+    // is invisible to accessibility because the cell collapses its children
+    // into one AX element whose value comes only from this composer — a
+    // badge with no representation here is inert to VoiceOver/the AX driver.
+    func testGridCellAccessibilityValueIncludesBondedStillBadge() {
+        let asset = Asset.gridLayoutTestAsset(metadata: AssetMetadata())
+
+        let value = AssetGridCellAccessibilityValue.value(
+            selectionState: "Not selected",
+            badges: AssetGridMetadataBadgePresentation.presentation(for: asset),
+            availability: .online,
+            autopilotDecision: nil,
+            hasBondedStill: true
+        )
+
+        XCTAssertEqual(value, "Not selected, RAW with bonded JPEG")
     }
 
     func testGridCellAccessibilityValueDescribesAutopilotCut() {
@@ -211,7 +231,8 @@ final class LibraryGridLayoutTests: XCTestCase {
             selectionState: "Not selected",
             badges: AssetGridMetadataBadgePresentation.presentation(for: asset),
             availability: .online,
-            autopilotDecision: .reject
+            autopilotDecision: .reject,
+            hasBondedStill: false
         )
 
         XCTAssertEqual(value, "Not selected, Autopilot proposes cut")

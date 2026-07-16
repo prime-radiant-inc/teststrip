@@ -75,7 +75,7 @@ public struct WorkerRecoverySmoke {
         let queuedItems = supervisor.queue.queuedItems
 
         return WorkerRecoverySmokeResult(
-            assetCount: try repository.assetCount(),
+            assetCount: try repository.assetCount(includeBondedSecondaries: true),
             recoveredPreviewWorkCount: runningItems.count + queuedItems.count,
             runningWorkCount: runningItems.count,
             queuedWorkCount: queuedItems.count,

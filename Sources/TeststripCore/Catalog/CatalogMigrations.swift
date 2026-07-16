@@ -1,5 +1,5 @@
 enum CatalogMigrations {
-    static let version = 21
+    static let version = 22
 
     static let statements = [
         """
@@ -18,6 +18,7 @@ enum CatalogMigrations {
             metadata_json TEXT NOT NULL,
             technical_metadata_json TEXT,
             content_hash TEXT,
+            bonded_to_asset_id TEXT,
             catalog_generation INTEGER NOT NULL DEFAULT 1,
             created_at REAL NOT NULL,
             updated_at REAL NOT NULL

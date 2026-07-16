@@ -8,8 +8,11 @@ final class ContactReferenceFacesTests: XCTestCase {
         return (CatalogRepository(database: db), db)
     }
 
-    func testSchemaVersionIs21() {
-        XCTAssertEqual(CatalogMigrations.version, 21)
+    func testSchemaVersionCoversContactReferenceFacesTable() {
+        // contact_reference_faces landed at schema 21; later migrations only
+        // raise the version, so assert the floor rather than pinning a literal
+        // that every future migration would break.
+        XCTAssertGreaterThanOrEqual(CatalogMigrations.version, 21)
     }
 
     func testContactReferenceFacesTableExists() throws {

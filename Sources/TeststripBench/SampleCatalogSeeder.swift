@@ -70,7 +70,7 @@ public struct SampleCatalogSeeder {
             catalogURL: catalogURL,
             previewCacheRoot: previewCache.root,
             sourceImageCount: result.importedAssets.count,
-            assetCount: try repository.assetCount(),
+            assetCount: try repository.assetCount(includeBondedSecondaries: true),
             cachedPreviewCount: try PreviewCacheFileCounter.count(root: previewCache.root)
         )
     }

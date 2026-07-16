@@ -125,7 +125,7 @@ public struct RealCorpusSmoke {
             candidatePhotoCount: candidates.count,
             selectedPhotoCount: selectedPhotos.count,
             importedAssetCount: importedAssets.count,
-            catalogAssetCount: try repository.assetCount(),
+            catalogAssetCount: try repository.assetCount(includeBondedSecondaries: true),
             workingStillCount: capabilities.filter { $0.support == .working }.count,
             bestEffortRawCount: capabilities.filter { $0.support == .bestEffort }.count,
             unsupportedCount: capabilities.filter { $0.support == .unsupported }.count,

@@ -2366,7 +2366,8 @@ struct LibraryGridView: View {
                         previewStatus: model.gridPreviewStatus(for: asset.id),
                         isSelected: model.selectedAssetID == asset.id,
                         isBatchSelected: model.isBatchSelected(asset.id),
-                        autopilotDecision: model.autopilotProposalDecision(for: asset.id)
+                        autopilotDecision: model.autopilotProposalDecision(for: asset.id),
+                        hasBondedStill: model.assetIDsWithBondedSecondaries.contains(asset.id)
                     )
                     .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
                         selectAssetFromGrid(assetID)
@@ -6357,6 +6358,18 @@ struct CullingStackRecommendation: Equatable {
     }
 }
 
+/// The "RAW"/"RAW+JPEG" badge text for a shot, decided from whether it's a
+/// RAW original and whether it's the primary of a bonded working still. A
+/// non-RAW asset never renders the badge — bonding always pairs a RAW
+/// primary with a JPEG/HEIC secondary, so `isRaw: false, hasBondedStill:
+/// true` cannot occur.
+enum RawBadgeLabel {
+    static func text(isRaw: Bool, hasBondedStill: Bool) -> String? {
+        guard isRaw else { return nil }
+        return hasBondedStill ? "RAW+JPEG" : "RAW"
+    }
+}
+
 private struct ABCompareView: View {
     var model: AppModel
 
@@ -6451,8 +6464,11 @@ private struct ABCompareView: View {
             Text(asset.originalURL.lastPathComponent)
                 .font(.caption2.monospaced())
                 .foregroundStyle(.white.opacity(0.85))
-            if asset.isRawOriginal {
-                Text("RAW")
+            if let rawBadgeText = RawBadgeLabel.text(
+                isRaw: asset.isRawOriginal,
+                hasBondedStill: model.assetIDsWithBondedSecondaries.contains(asset.id)
+            ) {
+                Text(rawBadgeText)
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(.orange)
             }
@@ -7096,7 +7112,8 @@ private extension View {
             selectionState: selectionState,
             badges: AssetGridMetadataBadgePresentation.presentation(for: asset),
             availability: asset.availability,
-            autopilotDecision: model.autopilotProposalDecision(for: asset.id)
+            autopilotDecision: model.autopilotProposalDecision(for: asset.id),
+            hasBondedStill: model.assetIDsWithBondedSecondaries.contains(asset.id)
         )
     }
 }
@@ -7735,7 +7752,8 @@ enum AssetGridCellAccessibilityValue {
         selectionState: String,
         badges: AssetGridMetadataBadgePresentation,
         availability: SourceAvailability,
-        autopilotDecision: AutopilotProposalKind?
+        autopilotDecision: AutopilotProposalKind?,
+        hasBondedStill: Bool
     ) -> String {
         var parts = [selectionState]
         parts.append(contentsOf: [
@@ -7746,6 +7764,7 @@ enum AssetGridCellAccessibilityValue {
             AssetSourceStatusPresentation.presentation(for: availability)?.detail,
             AutopilotBadgePresentation.badge(for: autopilotDecision)
                 .map { "Autopilot proposes \($0.isKeep ? "keep" : "cut")" },
+            hasBondedStill ? "RAW with bonded JPEG" : nil,
         ].compactMap { $0 })
         return parts.joined(separator: ", ")
     }
@@ -9316,6 +9335,7 @@ private struct AssetGridCell: View {
     var isSelected: Bool
     var isBatchSelected = false
     var autopilotDecision: AutopilotProposalKind? = nil
+    var hasBondedStill = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -9356,6 +9376,12 @@ private struct AssetGridCell: View {
                     }
                 }
                 .padding(6)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if hasBondedStill, let rawBadgeText = RawBadgeLabel.text(isRaw: asset.isRawOriginal, hasBondedStill: hasBondedStill) {
+                    rawBadge(rawBadgeText)
+                        .padding(6)
+                }
             }
             .background(
                 RoundedRectangle(cornerRadius: 5)
@@ -9421,6 +9447,16 @@ private struct AssetGridCell: View {
             .padding(.vertical, 2)
             .background(.black.opacity(0.55), in: Capsule())
             .accessibilityLabel(badge.isKeep ? "Proposed keep" : "Proposed cut")
+    }
+
+    private func rawBadge(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2.monospaced().weight(.semibold))
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(.black.opacity(0.55), in: Capsule())
+            .accessibilityLabel(text == "RAW+JPEG" ? "RAW with bonded JPEG" : "RAW original")
     }
 
     private var metadataOverlay: some View {
