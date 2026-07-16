@@ -874,6 +874,26 @@ extension EvaluationKind {
             return "Eye Sharpness"
         }
     }
+
+    /// Plain-language chip label for this signal used as a library filter —
+    /// no internal "Signal: …" prefix. `.focus`/`.object`/`.faceCount`/
+    /// `.ocrText` read as an obvious existence/state check and get an
+    /// idiomatic phrase; every other kind's `displayName` is already plain
+    /// English, so it's used as-is.
+    var filterChipLabel: String {
+        switch self {
+        case .focus:
+            return "In focus"
+        case .object:
+            return "Has objects"
+        case .faceCount:
+            return "Has faces"
+        case .ocrText:
+            return "Has text"
+        default:
+            return displayName
+        }
+    }
 }
 
 public struct PeopleFaceSuggestion: Equatable, Identifiable, Sendable {
@@ -2259,6 +2279,9 @@ public final class AppModel {
     }
     public private(set) var peopleFaceSuggestions: [PeopleFaceSuggestion] = []
     public private(set) var peopleFaceObservationAssetCount = 0
+    /// True for the duration of `importFacesFromContacts()` — drives the People
+    /// menu's busy guard so a large address book can't be re-imported mid-run.
+    public private(set) var isImportingContacts = false
     /// A person's PROPOSED photos (AI-unconfirmed face matches), shown as a
     /// separate section below the confirmed grid — kept out of `assets` so
     /// tentative matches never reach Picks/export/destructive ops. Populated
@@ -3740,24 +3763,31 @@ public final class AppModel {
     /// model being available; `contactFaceDetector` lets tests substitute a
     /// stub instead of the real Vision + CoreML pipeline.
     ///
-    /// The Contacts fetch and the CoreML/Vision embedding are the only place
-    /// the app process runs the face embedder — everywhere else that work
-    /// happens in the out-of-process worker. Running it synchronously on
-    /// this method's caller (the main thread) blocked the UI for the whole
-    /// import and, worse, corrupted main-thread runtime state badly enough to
-    /// crash the app on the next SwiftUI update. So only the fast catalog
-    /// write happens here on the main actor; the fetch + embed run in a
-    /// `Task.detached` that captures no `self`/catalog state — only the
-    /// `Sendable` provider, detector, and current-hash snapshot it needs.
+    /// The Contacts fetch, the CoreML/Vision embedding, and the catalog write
+    /// are the only place the app process runs the face embedder — everywhere
+    /// else that work happens in the out-of-process worker. Running it
+    /// synchronously on this method's caller (the main thread) blocked the UI
+    /// for the whole import and, worse, corrupted main-thread runtime state
+    /// badly enough to crash the app on the next SwiftUI update. So the whole
+    /// fetch/embed/persist phase runs in a `Task.detached` that opens its own
+    /// catalog connection — following the same reopen-a-fresh-connection
+    /// pattern as `defaultImportTask`/`checkSidecarsForChangesInCurrentScope`
+    /// — rather than sharing the MainActor's live, non-`Sendable`
+    /// `CatalogRepository`/`ContactFaceSeeder` across the actor boundary. The
+    /// detached task's connection commits its writes before returning, so the
+    /// MainActor's own connection sees them when it re-reads afterward.
     @MainActor
     public func importFacesFromContacts() async throws {
+        guard !isImportingContacts else { return }
         guard let catalog else { throw TeststripError.invalidState("app model has no catalog") }
         guard let provider = contactsProvider else {
             throw TeststripError.invalidState("Contacts access is not available")
         }
-        let currentHashes = try catalog.repository.contactReferenceHashesByIdentifier()
+        isImportingContacts = true
+        defer { isImportingContacts = false }
+        let paths = catalog.paths
         let contactFaceDetector = self.contactFaceDetector
-        let result = try await Task.detached(priority: .userInitiated) {
+        let summary = try await Task.detached(priority: .userInitiated) {
             let detector: @Sendable (CGImage) throws -> [AppleVisionFaceObservation]
             if let contactFaceDetector {
                 detector = contactFaceDetector
@@ -3768,12 +3798,17 @@ public final class AppModel {
                 let embedder = FaceRecognitionEmbedder(model: model)
                 detector = { try embedder.faceObservations(in: $0) }
             }
+            let repository = CatalogRepository(database: try CatalogDatabase.open(at: paths.catalogURL))
+            let photoCache = ContactPhotoCache(root: paths.contactPhotoRoot)
             let records = try provider.contactsWithPhotos()
-            return try ContactFaceEmbedder(detectFaces: detector).embed(records: records, currentHashes: currentHashes)
+            let seeder = ContactFaceSeeder(detectFaces: detector, repository: repository, photoCache: photoCache)
+            return try seeder.seed(records: records)
         }.value
-        let summary = try ContactFacePersister(repository: catalog.repository, photoCache: catalog.contactPhotoCache)
-            .persist(result)
-        statusMessage = "Contacts: \(summary.seeded) seeded, \(summary.unchanged) unchanged, \(summary.skippedNoFace) without a face"
+        var message = "Contacts: \(summary.seeded) seeded, \(summary.unchanged) unchanged, \(summary.skippedNoFace) without a face"
+        if summary.skippedUndecodable > 0 {
+            message += ", \(summary.skippedUndecodable) unreadable"
+        }
+        statusMessage = message
         refreshPeopleFaceSuggestions()
     }
 
@@ -3984,6 +4019,19 @@ public final class AppModel {
         try catalog.repository.unassignFaces([faceID])
         try catalog.repository.recordRejectedFacePerson(assetID: faceID.assetID, faceIndex: faceID.faceIndex, personID: personID)
         refreshPeopleFaceSuggestions()
+    }
+
+    /// Removes a face's person by origin: a confirmed identity is cleanly unassigned;
+    /// a suggested (origin='ai') match is sticky-rejected.
+    func removePerson(forFaceRow row: PhotoFaceRow) throws {
+        switch row.state {
+        case .confirmed:
+            try removeFacePerson(row.faceID)
+        case .suggested(let personID, _):
+            try rejectFaceSuggestion(row.faceID, personID: personID)
+        case .unnamed:
+            break
+        }
     }
 
     /// ✓ on a proposed cell: confirm the person's proposed face(s) on this asset
@@ -4450,7 +4498,6 @@ public final class AppModel {
         let sourceRoots = try catalog.repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         let catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
-        let catalogPeople = try catalog.repository.people()
         let reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
         let metadataSyncState = try Self.metadataSyncState(
             repository: catalog.repository,
@@ -4503,7 +4550,6 @@ public final class AppModel {
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
-            catalogPeople: catalogPeople,
             reviewQueueCounts: reviewQueueCounts,
             workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory,
@@ -4517,9 +4563,9 @@ public final class AppModel {
         )
         model.contactsProvider = contactsProvider
         model.contactFaceDetector = contactFaceDetector
-        // `catalogPeople` above already seeded the init; this also derives
-        // `personKeyFaces` so People cards show key faces on first launch,
-        // not just after the next mutating action.
+        // Populates `catalogPeople` and `personKeyFaces` together so People
+        // cards show key faces on first launch, not just after the next
+        // mutating action.
         try model.loadCatalogPeople()
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
@@ -6892,9 +6938,18 @@ public final class AppModel {
         }
     }
 
+    // A freeform keyword-text edit reviews an asset's whole keyword set, so
+    // keeping an AI-unconfirmed keyword is exactly as authoritative a gesture
+    // as confirming its chip directly, and dropping one is exactly as
+    // authoritative as removing it — see `overwriteKeywords(in:with:)`.
     public func setKeywordTextForSelectedAsset(_ keywordText: String) throws {
+        let newKeywords = Self.keywords(from: keywordText)
+        var droppedUnconfirmedKeywords: Set<String> = []
         try updateSelectedAssetMetadata(label: "Keywords") { metadata in
-            metadata.keywords = Self.keywords(from: keywordText)
+            droppedUnconfirmedKeywords = Self.overwriteKeywords(in: &metadata, with: newKeywords)
+        }
+        if let selectedAssetID, !droppedUnconfirmedKeywords.isEmpty {
+            try recordRemovedAIKeywords(droppedUnconfirmedKeywords, for: selectedAssetID)
         }
     }
 
@@ -6906,11 +6961,21 @@ public final class AppModel {
     /// asset, so distinct existing keywords on other assets survive);
     /// caption/creator/copyright OVERWRITE across the batch, matching the
     /// single-asset field semantics. One undo group per gesture.
+    ///
+    /// The single-focused-asset branch overwrites the whole set, same as
+    /// `setKeywordTextForSelectedAsset`, so it gets the same AI-provenance
+    /// reconciliation; the multi-asset append branch never removes a
+    /// keyword, so there's nothing to reconcile there.
     public func setKeywordTextForSelectedAssets(_ keywordText: String) throws {
         let parsedKeywords = Self.keywords(from: keywordText)
         guard currentManualSelectionAssetIDs.count > 1 else {
+            let overwriteAssetID = currentManualSelectionAssetIDs.first
+            var droppedUnconfirmedKeywords: Set<String> = []
             try updateSelectedAssetsMetadata(label: "Keywords") { metadata in
-                metadata.keywords = parsedKeywords
+                droppedUnconfirmedKeywords = Self.overwriteKeywords(in: &metadata, with: parsedKeywords)
+            }
+            if let overwriteAssetID, !droppedUnconfirmedKeywords.isEmpty {
+                try recordRemovedAIKeywords(droppedUnconfirmedKeywords, for: overwriteAssetID)
             }
             return
         }
@@ -6918,6 +6983,34 @@ public final class AppModel {
             for keyword in parsedKeywords where !Self.keywordList(metadata.keywords, contains: keyword) {
                 metadata.keywords.append(keyword)
             }
+        }
+    }
+
+    /// Overwrites `metadata.keywords` with `newKeywords` and resolves every
+    /// previously AI-unconfirmed keyword: a retained one is confirmed right
+    /// here (dropped from `aiUnconfirmedKeywords`, so it rides along in the
+    /// same sidecar-syncing write the caller performs — the same effect as
+    /// `confirmAIKeyword`, just folded into this pass instead of a separate
+    /// one); the keywords the edit dropped are returned so the caller can
+    /// record their removal via `recordRemovedAIKeywords`, matching
+    /// `removeAIKeyword`. A freeform edit reviews the whole set, so nothing
+    /// stays unconfirmed afterward.
+    private static func overwriteKeywords(in metadata: inout AssetMetadata, with newKeywords: [String]) -> Set<String> {
+        let droppedUnconfirmedKeywords = metadata.aiUnconfirmedKeywords.subtracting(newKeywords)
+        metadata.keywords = newKeywords
+        metadata.aiUnconfirmedKeywords.removeAll()
+        return droppedUnconfirmedKeywords
+    }
+
+    /// Records each keyword a keyword-set edit dropped while it was still
+    /// AI-unconfirmed, so a later `promoteMetadataLabels` never resurrects
+    /// it — same repository call and reasoning as `removeAIKeyword`.
+    private func recordRemovedAIKeywords(_ keywords: Set<String>, for assetID: AssetID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        for keyword in keywords {
+            try catalog.repository.recordRemovedAILabel(assetID: assetID, field: .keyword, value: keyword)
         }
     }
 
@@ -10795,11 +10888,11 @@ public final class AppModel {
         if let queue = reviewQueue(forEvaluationKind: kind) {
             return ActiveLibraryFilterRow(title: queue.presentation.title, target: .reviewQueue(queue))
         }
-        return ActiveLibraryFilterRow(title: "Signal: \(kind.displayName)", target: .evaluationKind(kind))
+        return ActiveLibraryFilterRow(title: kind.filterChipLabel, target: .evaluationKind(kind))
     }
 
     private static func filterName(for kind: EvaluationKind) -> String {
-        reviewQueue(forEvaluationKind: kind)?.presentation.title ?? "\(kind.displayName) Signal"
+        reviewQueue(forEvaluationKind: kind)?.presentation.title ?? kind.filterChipLabel
     }
 
     private static func reviewQueue(forEvaluationKind kind: EvaluationKind) -> ReviewQueue? {

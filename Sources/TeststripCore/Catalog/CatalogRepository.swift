@@ -1267,40 +1267,12 @@ public final class CatalogRepository {
         return try rows.map(decodeFaceObservation)
     }
 
-    public func confirmedFaceEmbeddingsByPerson(provenance: ProviderProvenance) throws -> [String: [[Double]]] {
-        let rows = try database.rows(
-            """
-            SELECT person_faces.person_id AS person_id, face_observations.face_json AS face_json
-            FROM person_faces
-            JOIN face_observations
-              ON face_observations.asset_id = person_faces.asset_id
-             AND face_observations.face_index = person_faces.face_index
-            WHERE face_observations.provider = ? AND face_observations.model = ?
-              AND face_observations.version = ? AND face_observations.settings_hash = ?
-              AND person_faces.origin = 'user'
-            ORDER BY person_faces.person_id ASC, person_faces.asset_id ASC, person_faces.face_index ASC
-            """,
-            bindings: [provenance.provider, provenance.model, provenance.version, provenance.settingsHash]
-        )
-        var embeddingsByPerson: [String: [[Double]]] = [:]
-        for row in rows {
-            guard let personID = row["person_id"], let faceJSON = row["face_json"] else {
-                throw CatalogError.sqlite("confirmed face row is missing required columns")
-            }
-            let payload = try decode(FaceObservationPayload.self, from: faceJSON)
-            embeddingsByPerson[personID, default: []].append(payload.embedding)
-        }
-        return embeddingsByPerson
-    }
-
-    /// The person's single best (highest `captureQuality`) CONFIRMED face, keyed
-    /// by person id — the People-card key photo. Clones the join/provenance scope
-    /// of `confirmedFaceEmbeddingsByPerson`, but returns the box/quality/face id
-    /// rather than only the embedding. `captureQuality` lives inside `face_json`
-    /// (not a column), so the max is taken in Swift; `nil` ranks lowest, and the
-    /// stable SQL order makes ties deterministic (first by asset then face index).
-    public func keyFacesByPerson(provenance: ProviderProvenance) throws -> [String: PersonKeyFace] {
-        let rows = try database.rows(
+    /// The CONFIRMED (`person_faces.origin = 'user'`) face rows for a provenance
+    /// scope, joining `person_faces` to `face_observations`. Shared by
+    /// `confirmedFaceEmbeddingsByPerson` and `keyFacesByPerson`, which differ only
+    /// in how they post-process these rows.
+    private func confirmedFaceRows(provenance: ProviderProvenance) throws -> [[String: String]] {
+        try database.rows(
             """
             SELECT person_faces.person_id AS person_id,
                    person_faces.asset_id AS asset_id,
@@ -1317,6 +1289,30 @@ public final class CatalogRepository {
             """,
             bindings: [provenance.provider, provenance.model, provenance.version, provenance.settingsHash]
         )
+    }
+
+    public func confirmedFaceEmbeddingsByPerson(provenance: ProviderProvenance) throws -> [String: [[Double]]] {
+        let rows = try confirmedFaceRows(provenance: provenance)
+        var embeddingsByPerson: [String: [[Double]]] = [:]
+        for row in rows {
+            guard let personID = row["person_id"], let faceJSON = row["face_json"] else {
+                throw CatalogError.sqlite("confirmed face row is missing required columns")
+            }
+            let payload = try decode(FaceObservationPayload.self, from: faceJSON)
+            embeddingsByPerson[personID, default: []].append(payload.embedding)
+        }
+        return embeddingsByPerson
+    }
+
+    /// The person's single best (highest `captureQuality`) CONFIRMED face, keyed
+    /// by person id — the People-card key photo. Shares the join/provenance scope
+    /// of `confirmedFaceEmbeddingsByPerson` (via `confirmedFaceRows`), but returns
+    /// the box/quality/face id rather than only the embedding. `captureQuality`
+    /// lives inside `face_json` (not a column), so the max is taken in Swift;
+    /// `nil` ranks lowest, and the stable SQL order makes ties deterministic
+    /// (first by asset then face index).
+    public func keyFacesByPerson(provenance: ProviderProvenance) throws -> [String: PersonKeyFace] {
+        let rows = try confirmedFaceRows(provenance: provenance)
         var best: [String: PersonKeyFace] = [:]
         for row in rows {
             guard let personID = row["person_id"],
@@ -1436,6 +1432,28 @@ public final class CatalogRepository {
         }
         return ContactReferenceFace(contactIdentifier: contactIdentifier, personID: pid, name: name,
                                     boundingBox: try decode(FaceBoundingBox.self, from: boxJSON))
+    }
+
+    /// Deletes every `contact_reference_faces` row for a contact no longer
+    /// in `keep` (removed from the address book since the last import) and
+    /// returns the deleted contact identifiers, so the caller can also drop
+    /// their cached reference photos (`ContactPhotoCache`). Read-then-delete
+    /// so the deleted identifiers can be reported back.
+    public func pruneContactReferenceFaces(keepingContactIdentifiers keep: Set<String>) throws -> [String] {
+        var deleted: [String] = []
+        try database.transaction {
+            let rows = try database.rows("SELECT contact_identifier FROM contact_reference_faces")
+            let identifiers = rows.compactMap { $0["contact_identifier"] }
+            let toDelete = identifiers.filter { !keep.contains($0) }
+            guard !toDelete.isEmpty else { return }
+            let placeholders = Array(repeating: "?", count: toDelete.count).joined(separator: ", ")
+            try database.execute(
+                "DELETE FROM contact_reference_faces WHERE contact_identifier IN (\(placeholders))",
+                bindings: toDelete
+            )
+            deleted = toDelete
+        }
+        return deleted
     }
 
     public func personID(matchingName name: String) throws -> String? {

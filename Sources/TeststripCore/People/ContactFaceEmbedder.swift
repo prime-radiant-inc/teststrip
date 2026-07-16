@@ -31,11 +31,16 @@ public struct ContactEmbedResult: Equatable, Sendable {
     public var embedded: [EmbeddedContactFace] = []
     public var unchanged: Int = 0
     public var skippedNoFace: Int = 0
+    public var skippedUndecodable: Int = 0
 
-    public init(embedded: [EmbeddedContactFace] = [], unchanged: Int = 0, skippedNoFace: Int = 0) {
+    public init(
+        embedded: [EmbeddedContactFace] = [], unchanged: Int = 0,
+        skippedNoFace: Int = 0, skippedUndecodable: Int = 0
+    ) {
         self.embedded = embedded
         self.unchanged = unchanged
         self.skippedNoFace = skippedNoFace
+        self.skippedUndecodable = skippedUndecodable
     }
 }
 
@@ -65,7 +70,7 @@ public struct ContactFaceEmbedder: Sendable {
                 continue
             }
             guard let image = Self.decodeImage(record.imageData) else {
-                result.skippedNoFace += 1
+                result.skippedUndecodable += 1
                 continue
             }
             let faces = try detectFaces(image)

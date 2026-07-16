@@ -27,6 +27,11 @@ final class PersonAutocompletePresentationTests: XCTestCase {
         XCTAssertEqual(rows, [PersonAutocompleteRow(kind: .person(candidates[1]))]) // no create row
     }
 
+    func testWhitespaceOnlyQueryReturnsAllPeopleInOrderNoCreateRow() {
+        let rows = PersonAutocompletePresentation.rows(candidates: candidates, query: "   ")
+        XCTAssertEqual(rows.map(\.kind), [.person(candidates[0]), .person(candidates[1])])
+    }
+
     func testFocusIndexWraps() {
         XCTAssertEqual(PersonAutocompletePresentation.clampedFocusIndex(-1, rowCount: 3), 2)
         XCTAssertEqual(PersonAutocompletePresentation.clampedFocusIndex(3, rowCount: 3), 0)

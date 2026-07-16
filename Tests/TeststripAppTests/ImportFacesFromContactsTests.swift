@@ -1,4 +1,5 @@
 import CoreGraphics
+import Dispatch
 import ImageIO
 import UniformTypeIdentifiers
 import XCTest
@@ -8,6 +9,21 @@ import XCTest
 private struct StubContacts: ContactsProviding {
     let records: [ContactRecord]
     func contactsWithPhotos() throws -> [ContactRecord] { records }
+}
+
+/// Thread-safe call counter for detectors invoked off the MainActor (inside
+/// `importFacesFromContacts`'s `Task.detached` seeding work).
+private final class ThreadSafeCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    func increment() {
+        lock.withLock { count += 1 }
+    }
+
+    var value: Int {
+        lock.withLock { count }
+    }
 }
 
 final class ImportFacesFromContactsTests: XCTestCase {
@@ -31,6 +47,68 @@ final class ImportFacesFromContactsTests: XCTestCase {
         XCTAssertTrue(model.statusMessage?.contains("seeded") ?? false, "expected a status message reporting the seeded count, got \(String(describing: model.statusMessage))")
     }
 
+    /// Reentry guard: `importFacesFromContacts()` must be a silent no-op when
+    /// called while an import is already in flight (belt-and-suspenders behind
+    /// the menu's `.disabled(isImportingContacts)`), so a second call can never
+    /// race a concurrent detached seed against `contact_reference_faces`.
+    ///
+    /// Asserts, with a real in-flight import (not a simulated flag): while the
+    /// first call is blocked mid-detection, a reentrant call returns promptly
+    /// without ever reaching the detector a second time; once the first call
+    /// is unblocked it completes normally, seeds exactly once, and leaves
+    /// `isImportingContacts` false.
+    @MainActor
+    func testReentrantImportWhileFirstImportInFlightIsANoOp() async throws {
+        let a = makeAsset(id: "a1", path: "/p/a1.jpg")
+        let jpeg = tinyJPEG()
+        let detectorCallCount = ThreadSafeCounter()
+        let releaseGate = DispatchSemaphore(value: 0)
+        let (model, repo) = try makeModelWithContacts(
+            named: "import-contacts-reentrant", assets: [a],
+            provider: StubContacts(records: [ContactRecord(identifier: "C1", name: "Dan Shapiro", imageData: jpeg)]),
+            detectFaces: { _ in
+                detectorCallCount.increment()
+                releaseGate.wait()
+                return [AppleVisionFaceObservation(
+                    boundingBox: FaceBoundingBox(x: 0.2, y: 0.2, width: 0.3, height: 0.3),
+                    captureQuality: 0.9, featurePrintVector: [1, 0, 0])]
+            })
+
+        let firstImport = Task { try await model.importFacesFromContacts() }
+
+        // Let the first call run onto the MainActor, set the flag, hand off to
+        // its detached seeding work, and block inside the detector.
+        for _ in 0..<200 where detectorCallCount.value == 0 {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(detectorCallCount.value, 1, "expected the first import's detector to have started")
+        XCTAssertTrue(model.isImportingContacts)
+
+        // Reentrant call while the first is still blocked mid-detection. Race
+        // it against a bounded timeout rather than awaiting it directly, so a
+        // regressed guard fails the assertion below instead of hanging the test.
+        let secondCallReturned = ThreadSafeCounter()
+        let secondImport = Task { try await model.importFacesFromContacts(); secondCallReturned.increment() }
+        for _ in 0..<40 where secondCallReturned.value == 0 {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(secondCallReturned.value, 1, "reentrant call should return immediately via the guard, without waiting on the in-flight import")
+        XCTAssertEqual(detectorCallCount.value, 1, "reentrant call must not invoke the detector a second time")
+
+        // Signal twice unconditionally (not once) so a regressed guard — which
+        // would let the reentrant call reach the detector too, blocking a
+        // second waiter on this gate — can't hang the test: at most two calls
+        // (first + reentrant) ever reach the detector here, so two signals
+        // always clear the gate regardless of whether the guard held.
+        releaseGate.signal()
+        releaseGate.signal()
+        try await firstImport.value
+        try await secondImport.value
+
+        XCTAssertFalse(model.isImportingContacts)
+        XCTAssertEqual(try repo.contactReferenceNamesByPerson()["contact:C1"], "Dan Shapiro")
+    }
+
     // MARK: - Test support
 
     private func makeModelWithContacts(
@@ -40,13 +118,13 @@ final class ImportFacesFromContactsTests: XCTestCase {
         detectFaces: @escaping @Sendable (CGImage) throws -> [AppleVisionFaceObservation]
     ) throws -> (model: AppModel, repository: CatalogRepository) {
         let directory = try makeTemporaryDirectory(named: name)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("Teststrip/catalog.sqlite"))
         try database.migrate()
         let repository = CatalogRepository(database: database)
         try repository.upsert(assets)
         let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
         let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory),
             repository: repository,
             previewCache: previewCache,
             importService: LibraryImportService(

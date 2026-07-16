@@ -5,6 +5,8 @@ public struct ContactSeedSummary: Equatable, Sendable {
     public var seeded: Int = 0
     public var unchanged: Int = 0
     public var skippedNoFace: Int = 0
+    public var skippedUndecodable: Int = 0
+    public var pruned: Int = 0
 }
 
 /// Persists an embed phase's output (`ContactFaceEmbedder.embed`) to the
@@ -22,7 +24,10 @@ public struct ContactFacePersister {
     }
 
     public func persist(_ result: ContactEmbedResult) throws -> ContactSeedSummary {
-        var summary = ContactSeedSummary(unchanged: result.unchanged, skippedNoFace: result.skippedNoFace)
+        var summary = ContactSeedSummary(
+            unchanged: result.unchanged, skippedNoFace: result.skippedNoFace,
+            skippedUndecodable: result.skippedUndecodable
+        )
         for face in result.embedded {
             let personID = try repository.personID(matchingName: face.name) ?? "contact:\(face.identifier)"
             try Self.writePhoto(face.imageData, to: photoCache.url(for: face.identifier))
@@ -52,6 +57,7 @@ public struct ContactFacePersister {
 public struct ContactFaceSeeder {
     private let detectFaces: @Sendable (CGImage) throws -> [AppleVisionFaceObservation]
     private let repository: CatalogRepository
+    private let photoCache: ContactPhotoCache
     private let persister: ContactFacePersister
 
     public init(
@@ -61,12 +67,25 @@ public struct ContactFaceSeeder {
     ) {
         self.detectFaces = detectFaces
         self.repository = repository
+        self.photoCache = photoCache
         self.persister = ContactFacePersister(repository: repository, photoCache: photoCache)
     }
 
     public func seed(records: [ContactRecord]) throws -> ContactSeedSummary {
         let currentHashes = try repository.contactReferenceHashesByIdentifier()
         let result = try ContactFaceEmbedder(detectFaces: detectFaces).embed(records: records, currentHashes: currentHashes)
-        return try persister.persist(result)
+        var summary = try persister.persist(result)
+
+        // Contacts removed from the address book since the last import
+        // still have a stale contact_reference_faces row unless we prune it
+        // here; their cached reference photo goes with it.
+        let prunedIdentifiers = try repository.pruneContactReferenceFaces(
+            keepingContactIdentifiers: Set(records.map(\.identifier))
+        )
+        for identifier in prunedIdentifiers {
+            try? FileManager.default.removeItem(at: photoCache.url(for: identifier))
+        }
+        summary.pruned = prunedIdentifiers.count
+        return summary
     }
 }

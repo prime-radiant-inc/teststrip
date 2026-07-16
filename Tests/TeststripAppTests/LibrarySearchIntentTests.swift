@@ -114,7 +114,7 @@ final class LibrarySearchIntentTests: XCTestCase {
             "From 2026-02-01",
             "Before 2026-03-01",
             "Source: Offline",
-            "Signal: Focus",
+            "In focus",
             "XMP Pending",
             "Session: cull-42"
         ])
@@ -134,7 +134,7 @@ final class LibrarySearchIntentTests: XCTestCase {
     func testParsesExpressionSignalFieldTokens() {
         let eyesOpen = LibrarySearchIntent.parse("signal:eyesopen")
         XCTAssertEqual(eyesOpen.predicates, [.evaluationKind(.eyesOpen)])
-        XCTAssertEqual(eyesOpen.chips, ["Signal: Eyes Open"])
+        XCTAssertEqual(eyesOpen.chips, ["Eyes Open"])
 
         let smile = LibrarySearchIntent.parse("signal:smile")
         XCTAssertEqual(smile.predicates, [.evaluationKind(.smile)])

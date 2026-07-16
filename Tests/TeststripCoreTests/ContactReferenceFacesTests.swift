@@ -87,4 +87,20 @@ extension ContactReferenceFacesTests {
         let (r, _) = try repo()
         XCTAssertEqual(try r.contactReferenceHashesByIdentifier(), [:])
     }
+
+    // Contacts removed from the address book leave a stale reference row
+    // behind unless re-importing prunes it; the deleted identifiers come
+    // back so the caller can also drop their cached reference photos.
+    func testPruneContactReferenceFacesRemovesContactsNotKept() throws {
+        let (r, _) = try repo()
+        try r.upsertContactReferenceFace(contactIdentifier: "C1", personID: "contact:C1", name: "Dan",
+                                         embedding: [0.1], boundingBox: box(), photoHash: "h1")
+        try r.upsertContactReferenceFace(contactIdentifier: "C2", personID: "contact:C2", name: "Priya",
+                                         embedding: [0.2], boundingBox: box(), photoHash: "h2")
+
+        let pruned = try r.pruneContactReferenceFaces(keepingContactIdentifiers: ["C1"])
+
+        XCTAssertEqual(pruned, ["C2"])
+        XCTAssertEqual(try r.contactReferenceEmbeddingsByPerson().keys.sorted(), ["contact:C1"])
+    }
 }

@@ -16,9 +16,9 @@ extension Array where Element == PersonCandidate {
 /// when the typed name doesn't match anyone. Arrow keys move a focus
 /// highlight through the rows; Return activates whichever row is focused.
 struct PersonAutocompleteField: View {
-    var candidates: [PersonCandidate]
-    var onPick: (String) -> Void
-    var onCreate: (String) -> Void
+    let candidates: [PersonCandidate]
+    let onPick: (String) -> Void
+    let onCreate: (String) -> Void
     /// An external query binding for hosts that need the typed text (e.g. to
     /// enable a sheet's own primary button). `nil` (the default) keeps the
     /// field's query as private internal state — the two popover call sites
@@ -55,12 +55,17 @@ struct PersonAutocompleteField: View {
                     return .handled
                 }
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                        rowButton(row, isFocused: index == focusIndex)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                            rowButton(row, isFocused: index == focusIndex)
+                                .id(index)
+                        }
                     }
                 }
+                .frame(maxHeight: 220)
+                .onChange(of: focusIndex) { proxy.scrollTo(focusIndex) }
             }
         }
     }

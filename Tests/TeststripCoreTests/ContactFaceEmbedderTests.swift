@@ -73,7 +73,10 @@ final class ContactFaceEmbedderTests: XCTestCase {
         XCTAssertEqual(result.skippedNoFace, 1)
     }
 
-    func testUndecodableImageIsSkippedAsNoFace() throws {
+    // A corrupt/undecodable photo is a distinct failure mode from "decoded
+    // fine, but Vision found no face" — counted separately so it doesn't
+    // masquerade as a face-detection miss.
+    func testUndecodableImageIsCountedSeparately() throws {
         let embedder = ContactFaceEmbedder(detectFaces: { _ in [Self.face(0.9)] })
         let result = try embedder.embed(
             records: [ContactRecord(identifier: "C1", name: "Dan", imageData: Data([0x00, 0x01, 0x02]))],
@@ -81,7 +84,8 @@ final class ContactFaceEmbedderTests: XCTestCase {
         )
 
         XCTAssertEqual(result.embedded, [])
-        XCTAssertEqual(result.skippedNoFace, 1)
+        XCTAssertEqual(result.skippedNoFace, 0)
+        XCTAssertEqual(result.skippedUndecodable, 1)
     }
 
     func testPicksHighestQualityFaceWhenMultipleDetected() throws {

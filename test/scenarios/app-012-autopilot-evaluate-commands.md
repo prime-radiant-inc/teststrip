@@ -46,10 +46,19 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
    ```
    Keep the app warm while polling.
 6. **Run Autopilot on an evaluated scope.** After step 5 completes, click
-   Run Autopilot again. Assert proposals appear as *provisional* state only:
-   `autopilot_proposals` rows exist / KEEP-CUT badges render, but no asset's
-   `metadata_json` verdict changed (confirm-before-write: nothing commits
-   without the Review flow, which is cull-017's card).
+   Run Autopilot again. Assert proposals appear as *provisional* state:
+   `autopilot_proposals` rows exist / KEEP-CUT badges render, and (per the
+   auto-apply-with-provenance model — `applyTentativeAutopilotProposals`) the
+   run has already written each proposed asset's tentative pick/reject
+   straight into `metadata_json.flag`, tagged `origin=ai` (`aiUnconfirmedFields`
+   contains `flag`) — not yet a *confirmed* verdict, and not yet synced to any
+   `.xmp` sidecar. Only the Review → Commit flow (cull-017's card) confirms it
+   (flips to `origin=user`, writes the sidecar):
+   ```bash
+   sqlite3 "$DB" "SELECT a.id, json_extract(a.metadata_json,'\$.flag') FROM assets a
+     JOIN autopilot_proposals p ON p.asset_id = a.id AND p.kind IN ('pick','reject')
+     WHERE EXISTS (SELECT 1 FROM json_each(a.metadata_json,'\$.aiUnconfirmedFields') WHERE value='flag');"
+   ```
 
 ## Expected
 - Step 2: exact menu composition; zero arrow/Return equivalents. **Fails
@@ -61,9 +70,12 @@ DB="$ISOLATED/Teststrip/catalog.sqlite"
   autopilot runs on nothing or writes anything.
 - Step 5: ⇧⌘E produces evaluation signals. **Fails if** the shortcut is
   inert while the menu item works (shortcut plumbing bug).
-- Step 6: proposals are provisional only. **Fails if** any `metadata_json`
-  verdict changed without a confirming gesture — invariant violation,
-  report immediately.
+- Step 6: proposals are provisional — each proposed asset's tentative
+  `flag` lands in `metadata_json` immediately, but tagged `aiUnconfirmedFields`
+  contains `flag` and with no `.xmp` sidecar yet. **Fails if** a proposed
+  asset's `flag` is set without `aiUnconfirmedFields` containing `flag` (a
+  tentative verdict silently landed as confirmed), or if a sidecar exists for
+  it before Commit — either is an invariant violation, report immediately.
 
 ## Cleanup
 ```bash
