@@ -45,25 +45,36 @@ never reorders your walk; it only marks frames *within* a stack.
 
 ## 3. Reading the screen
 
-- **The stage**: the current frame, big. It is always rendered at decision
-  quality before any committing key will act — if you outrun the renderer you
-  see an explicit "rendering…" shimmer, never a silent low-res proxy.
-- **The stack rail** (only when the current stop is a multi-frame stack): every
-  frame in the stack as chips, in capture order, tinted along a
-  best-to-worst gradient so "how much good material is left in this burst" is
-  readable at a glance. The recommended frame wears **✦**. Chips carry your
-  decisions (P/X) and any tentative AI flags (**✨**, see §6).
-- **The read pill**: the machine's honest opinion of the current frame —
-  `Keep read 82% · sharpest in stack · eyes open` — built only from signals
-  that actually resolve the claim. A frame with no signals says **No read
-  yet**, never a made-up verdict. When the top frames of a burst are within
-  the signal's noise floor, the rail says **too close to call** across them
-  and awards no ✦.
-- **The close-ups panel**: auto-cropped faces from the current frame with
-  eye-state and sharpness badges, so you check eight pairs of eyes without
-  zooming. Appears when the frame has faces (toggle **/**). With no faces it
-  stays out of your way.
-- **The counter** (always visible, bottom):
+You work one burst at a time, then the next. The screen is organized around
+that, with one home per fact — nothing renders twice:
+
+- **The burst rail** (left): the current stack only — your working set,
+  generous thumbs worked top to bottom, tinted along a best-to-worst gradient
+  so "how much good material is left in this burst" is glanceable. The
+  recommended frame wears **✦**; thumbs carry your decisions (P/X) and any
+  tentative AI flags (**✨**, see §6). Stacks are auto-grouped and labeled by
+  machine facts only (`RR14_0412–0417 · 6 · 14:02`) — nothing is pre-named.
+  On a standalone photo the rail quiets down to that single thumb.
+- **The stage** (center): the photograph, nothing else. It is always rendered
+  at decision quality before any committing key will act — if you outrun the
+  renderer you see an explicit "rendering…" shimmer, never a silent low-res
+  proxy.
+- **The faces & reads panel** (right): a report card per detected face,
+  ordered by prominence — face crop, one traffic-light roll-up dot, an
+  identity chip when the person is recognized, and chips for **eyes ·
+  expression · focus · facing · light**. Judgments are context-aware: eyes
+  shut during a kiss reads *shut · OK* and rolls up green; a mid-blink rolls
+  up red. Background faces collapse to a dot row (**F** expands them).
+  Below the faces, the whole-frame read: `Keep read 82% · sharpest in stack ·
+  eyes open` — claims are score-gated, a frame with no signals says **No
+  read yet**, and when a burst's top frames sit within the signal's noise
+  floor the rail says **too close to call** across them and awards no ✦.
+  Honest empty states hold the space: "no faces", "faces too small to read".
+- **The run strip** (bottom): every stop in the batch — other bursts as
+  count pills, standalones as small thumbs, the current stop highlighted,
+  finished stops checkmarked. This is the "how much is left in the whole
+  run" glance.
+- **The counter** (always visible, beneath the strip):
   `47 of 211 · stack 12 of 63 · frame 3 of 17`, plus filename and a run
   progress bar that counts only *your* decisions — tentative AI flags never
   fill it.
@@ -107,7 +118,8 @@ color labels, `-` clears color.
 **Look closer**: `Z` toggles 100% zoom — position and zoom level stay locked
 while you flip frames within a stack, so you compare the same eye across nine
 frames. `Shift+Z` jumps the zoom to the nearest face; press again to cycle
-faces. `I` cycles the EXIF overlay. `/` toggles close-ups.
+faces. `I` cycles the EXIF overlay. `/` toggles the faces panel; `F` expands
+the background-face dot row into full report cards.
 
 **Run control**: `A` toggles auto-advance. `S` cycles the visible scope
 (everything / undecided / picks / rejects). `G`/`C`/`B` drop into grid,
@@ -196,3 +208,44 @@ what's still undecided.
 | Triple counter, stolen from Narrative verbatim (adapted) | Research §2/§11 |
 | Rank-gradient stack rail | Research §11 |
 | Context-aware eye judgment (kiss ≠ blink) | Research §4a |
+
+## Spike outcome (2026-07-16)
+
+Four mockups were built and played with; **mockup-e-workstation-v3.html is
+the validated direction** ("this feels reasonable"). The two feedback rounds
+that got there:
+
+1. Round 2 killed mockup A's all-bursts left rail (wrong emphasis — "when
+   I'm working through a group of photos, I should be all-in on those
+   photos"), banned curated-looking stack names (machine facts only), and
+   imposed one-home-per-fact deduplication.
+2. Round 3 settled the layout: **current burst on the left rail** (the
+   working set — "you work in a burst at a time, then the next"), **run in
+   the bottom strip**, and **per-face report cards** on the right (eyes ·
+   expression · focus · facing · light, prominence-tiered, identity chips,
+   traffic-light roll-ups). §3 above reflects this.
+
+Mockups A–C remain as the road not taken (A's original three-pane density,
+B's immersive minimalism, C's all-frames-at-once burst board). C's spatial
+comparison is still a candidate for the `C` compare surface *within* the
+workstation direction.
+
+**Open questions carried to the real design:**
+
+- `Return` on a frame you already rejected: force-pick (current tutorial
+  reading), inert, or warn?
+- Should the commit toast double as a ~2s inline undo affordance? (The mass
+  reject reads as violent when all siblings are visible at once.)
+- Ambient visibility of ✨ ghosts on collapsed/undecided stops — does
+  tentative-AI presence deserve one persistent pixel of chrome?
+- "Any red faces in this frame?" needs answering without scrolling the face
+  panel on 8-face group shots — pinned dot-summary row, or roll-up dots on
+  the burst-rail thumbs (which would also make "which frame has no red"
+  scannable per burst).
+
+**Engineering implications noted along the way:** per-face display needs
+per-face signal rows persisted (today smile/eyes/eyeSharpness aggregate
+per-image); facing/head-pose is stock-derivable (Vision yaw/roll/pitch);
+context-qualified eye judgment and occlusion are new model surface; no
+saliency fallback exists for faceless frames; loupe prefetch (±1 frame) is
+too shallow for whole-burst blaze-through.
