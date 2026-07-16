@@ -28,11 +28,16 @@ must revert the run's tentative writes back to the pre-run state. (See
 end-to-end and flagged this card as stale on this one point.)
 
 ## Pre-state
-- **Autopilot only runs after an import** — `runAutopilot` has no on-demand UI
-  trigger (it is invoked once, over the imported set, when an import with
-  Autopilot armed finishes evaluating). The "Autopilot on" checkbox is only the
-  persisted *setting* that arms post-import runs; toggling it on a static
-  catalog does nothing. So this card imports a folder to trigger a run.
+- **This card drives the post-import armed-Autopilot path, not the on-demand
+  gesture.** `runAutopilot` (`AppModel.swift:9061`) has two entry points: an
+  on-demand one via Culling ▸ Run Autopilot (`runAutopilotOnCurrentScope()`,
+  scope `.visible` — driven by `app-012-autopilot-evaluate-commands.md`), and
+  the post-import armed run this card exercises (`runArmedImportAutopilot`,
+  scope `.assetIDs(importedAssetIDs)`), invoked once when an import with
+  Autopilot armed finishes evaluating. The "Autopilot on" checkbox itself is
+  only the persisted *setting* that arms post-import runs; toggling it on a
+  static catalog with no import in flight does nothing on its own. So this
+  card imports a folder to trigger a run.
 - An import fixture folder of a few frames (want ≥4 so a partial "Commit
   selected" is distinguishable from "Commit all"):
   ```bash
@@ -187,10 +192,13 @@ end-to-end and flagged this card as stale on this one point.)
 Quit the app instance you launched. Leave any pre-existing Teststrip untouched.
 
 ## Sharp edges
-- **There is no on-demand "run autopilot" gesture.** `runAutopilot` is called
-  from exactly one place (AppModel, over the imported set post-import). Do not
-  try to trigger a run by toggling "Autopilot on" on a static catalog — it will
-  never produce proposals. Import is the trigger.
+- **An on-demand "run autopilot" gesture does exist** — Culling ▸ Run
+  Autopilot, wired to `runAutopilotOnCurrentScope()` and driven by
+  `app-012-autopilot-evaluate-commands.md` — but this card exercises the
+  *other* entry point: the post-import armed run (`runArmedImportAutopilot`,
+  over the imported set). Toggling "Autopilot on" by itself does not trigger a
+  run on a static catalog — it only arms the next import; Import remains this
+  card's trigger.
 - Ground truth uses `SUM(catalog_generation)` as a coarse write signal because
   the `--smoke` seed already populates ratings/flags on every asset, which
   makes a "rating IS NOT NULL" check vacuous. A generation bump means *some*

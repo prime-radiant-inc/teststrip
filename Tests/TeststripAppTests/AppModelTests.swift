@@ -1162,7 +1162,7 @@ final class AppModelTests: XCTestCase {
 
         model.evaluationKindFilter = .faceQuality
         model.folderFilterText = ""
-        XCTAssertEqual(model.libraryTitle, "Face Quality Signal")
+        XCTAssertEqual(model.libraryTitle, "Face Quality")
 
         let set = AssetSet.manual(
             id: AssetSetID(rawValue: "ceremony-picks"),

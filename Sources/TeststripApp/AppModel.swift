@@ -3778,6 +3778,7 @@ public final class AppModel {
     /// MainActor's own connection sees them when it re-reads afterward.
     @MainActor
     public func importFacesFromContacts() async throws {
+        guard !isImportingContacts else { return }
         guard let catalog else { throw TeststripError.invalidState("app model has no catalog") }
         guard let provider = contactsProvider else {
             throw TeststripError.invalidState("Contacts access is not available")
@@ -3808,7 +3809,6 @@ public final class AppModel {
             message += ", \(summary.skippedUndecodable) unreadable"
         }
         statusMessage = message
-        try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
 
@@ -10892,7 +10892,7 @@ public final class AppModel {
     }
 
     private static func filterName(for kind: EvaluationKind) -> String {
-        reviewQueue(forEvaluationKind: kind)?.presentation.title ?? "\(kind.displayName) Signal"
+        reviewQueue(forEvaluationKind: kind)?.presentation.title ?? kind.filterChipLabel
     }
 
     private static func reviewQueue(forEvaluationKind kind: EvaluationKind) -> ReviewQueue? {
