@@ -236,6 +236,35 @@ public final class CatalogRepository {
         return Set(rows.compactMap { $0["bonded_to_asset_id"].map(AssetID.init(rawValue:)) })
     }
 
+    /// One-time retro-pairing of existing RAW+JPEG rows. Idempotent and gated by
+    /// a catalog_meta flag so it runs at most once per catalog; safe to call on
+    /// every open.
+    public func backfillBonds() throws {
+        let gateKey = "bonded_backfill_v1"
+        let gateRows = try database.rows(
+            "SELECT value FROM catalog_meta WHERE key = ?",
+            bindings: [gateKey]
+        )
+        guard gateRows.first?["value"] != "done" else { return }
+
+        let rows = try database.rows("SELECT id, original_path FROM assets")
+        let inputs = try rows.map(decodeBondInput)
+        for (secondary, primary) in AssetBondPlanner.bonds(for: inputs) {
+            try setBond(secondaryID: secondary, primaryID: primary)
+        }
+        try database.execute(
+            "INSERT OR REPLACE INTO catalog_meta (key, value) VALUES (?, 'done')",
+            bindings: [gateKey]
+        )
+    }
+
+    private func decodeBondInput(_ row: [String: String]) throws -> AssetBondPlanner.BondInput {
+        guard let id = row["id"], let path = row["original_path"] else {
+            throw CatalogError.sqlite("asset row is missing required columns")
+        }
+        return AssetBondPlanner.BondInput(id: AssetID(rawValue: id), originalURL: URL(fileURLWithPath: path))
+    }
+
     public func allAssets(limit: Int, offset: Int = 0, sort: LibrarySortOption = .importOrder) throws -> [Asset] {
         try loadAssets(sort: sort, limit: limit, offset: offset)
     }

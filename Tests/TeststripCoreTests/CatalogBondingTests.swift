@@ -42,5 +42,37 @@ final class CatalogBondingTests: XCTestCase {
         try repository.setBond(secondaryID: AssetID(rawValue: "jpg"), primaryID: nil)
 
         XCTAssertNil(try repository.bondedPrimaryID(of: AssetID(rawValue: "jpg")))
+        // `setBond(primaryID: nil)` must store SQL NULL, not "": this query
+        // filters with `IS NOT NULL`, so a "" regression would still show up here.
+        XCTAssertFalse(try repository.assetIDsWithBondedSecondaries().contains(AssetID(rawValue: "raw")))
+    }
+
+    func testBackfillBondsPairsExistingUnbondedRows() throws {
+        let repository = try makeRepository(named: "bonding-backfill")
+        try repository.upsert(asset(id: "raw", path: "/p/IMG.CR3"))
+        try repository.upsert(asset(id: "jpg", path: "/p/IMG.JPG"))
+
+        try repository.backfillBonds()
+
+        XCTAssertEqual(try repository.bondedPrimaryID(of: AssetID(rawValue: "jpg")), AssetID(rawValue: "raw"))
+    }
+
+    func testBackfillBondsRunsAtMostOncePerCatalog() throws {
+        let repository = try makeRepository(named: "bonding-backfill-once")
+        try repository.upsert(asset(id: "raw", path: "/p/IMG.CR3"))
+        try repository.upsert(asset(id: "jpg", path: "/p/IMG.JPG"))
+
+        try repository.backfillBonds()
+        XCTAssertEqual(try repository.bondedPrimaryID(of: AssetID(rawValue: "jpg")), AssetID(rawValue: "raw"))
+
+        // Clear the bond the backfill just made, simulating a manual change after
+        // the one-time backfill already ran. A second call must be a no-op — if
+        // the gate didn't actually prevent a rescan, this would recompute the
+        // same pairing and clobber the manual clear right back to bonded.
+        try repository.setBond(secondaryID: AssetID(rawValue: "jpg"), primaryID: nil)
+
+        try repository.backfillBonds()
+
+        XCTAssertNil(try repository.bondedPrimaryID(of: AssetID(rawValue: "jpg")))
     }
 }
