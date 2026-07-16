@@ -1,6 +1,6 @@
 # Working on Teststrip
 
-Teststrip is a macOS photo-culling app (Swift 6, SwiftPM, SwiftUI/AppKit) —
+Teststrip is a macOS photo management app (Swift 6, SwiftPM, SwiftUI/AppKit) —
 Jesse's daily-driver alpha. Catalog-first and non-destructive: a SQLite catalog
 is the operational truth, originals stay in place, and portable metadata mirrors
 to XMP sidecars. A supervised out-of-process worker does previews, evaluation,
@@ -10,12 +10,13 @@ and face embedding over a JSON-lines protocol.
 
 - **The bar is "Jesse can dogfood it," not synthetic budgets.** Ship working
   feature coverage toward a usable alpha.
-- **Don't over-invest in performance.** Jesse has repeatedly redirected
-  engineering away from perf tuning toward features/dogfood (e.g. "let's not
-  focus too much on perf right now"). The measure-fix-measure loop is seductive
-  and can eat the whole push. Fix perf only when it blocks a real workflow gate,
-  land the fix, and **stop** — don't iterate toward a numeric probe budget. Cap
-  any perf loop at one round and ask before starting another.
+- **Don't over-engineer performance.** Prefer the simplest correct approach;
+  the measure-fix-measure loop is seductive and can eat a whole push, so don't
+  chase micro-optimizations or a numeric probe budget. Optimize for readability
+  and correctness first.
+- **Finish what you touch — don't defer.** No "later sub-project," no punting a
+  known problem to a backlog. If something's worth fixing, fix it now; if a
+  feature is in scope, build it fully. Leave the tree cleaner than you found it.
 - **Every user-facing feature gets an automated end-to-end scenario.** Don't
   ask Jesse to eyeball an assertion you can drive yourself — write a scenario
   driver (see below) that does the clicks and checks catalog ground truth.
@@ -25,8 +26,7 @@ and face embedding over a JSON-lines protocol.
 - **Auto-apply with provenance.** Machine labels (scene keywords, captions,
   face/person identity, autopilot pick/reject flags) auto-apply to the catalog
   immediately, tagged `origin = ai` (unconfirmed) and shown with a subtle
-  ✨ — for people the flag is *prominent*, review-first (the full prominent
-  people surface is a later sub-project). Unconfirmed AI labels are **never**
+  ✨ — for people the flag is *prominent*, review-first. Unconfirmed AI labels are **never**
   written to `.xmp` sidecars; an explicit user gesture **confirms** a label
   (flips `origin → user` and, for sidecar-eligible fields, writes the sidecar
   — identity has no XMP field) or **removes** it. Unconfirmed AI flags/ratings
@@ -50,8 +50,8 @@ and face embedding over a JSON-lines protocol.
   `ax_drive.sh` accessibility driver, the isolated-launch mechanics, and the
   hard-won driving realities. Read it before writing or running any live UI test.
 - `docs/architecture/` — system architecture.
-- `docs/product/narrative-select-reference.md` — the culling-workflow reference
-  product (narrative.so/select).
+- `docs/product/narrative-select-reference.md` — the selection/review workflow
+  reference product (narrative.so/select).
 
 ## End-to-end verification (the short version; details in test/scenarios/README.md)
 
