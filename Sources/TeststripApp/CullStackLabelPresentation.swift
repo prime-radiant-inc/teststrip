@@ -4,6 +4,9 @@ import TeststripCore
 /// Machine-derived stack labels for culling surfaces: file range, frame
 /// count, start time. Stacks are auto-grouped — labels must never imply
 /// curated names.
+///
+/// Input assets must be in capture order (time-sorted); the label reflects
+/// the first and last stems, so out-of-order input may produce incorrect ranges.
 struct CullStackLabelPresentation {
     static func label(for assets: [Asset]) -> String {
         guard let first = assets.first else { return "" }
@@ -30,6 +33,8 @@ struct CullStackLabelPresentation {
     private static func fileRange(for assets: [Asset]) -> String {
         let stems = assets.map(stem(of:))
         guard let first = stems.first, let last = stems.last else { return "" }
+        // When first and last stems are identical, return just the stem.
+        if first == last { return first }
         // Collapse "IMG_0412"…"IMG_0417" to "IMG_0412–0417" when both share
         // a prefix and end in digits; otherwise fall back to "first…last".
         let firstDigits = trailingDigits(of: first)

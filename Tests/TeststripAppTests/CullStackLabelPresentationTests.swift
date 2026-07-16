@@ -15,13 +15,10 @@ final class CullStackLabelPresentationTests: XCTestCase {
         ]
 
         let label = CullStackLabelPresentation.label(for: assets)
-
-        XCTAssertTrue(label.contains("IMG_0412–0417"), "Should collapse numeric range")
-        XCTAssertTrue(label.contains("6"), "Should include frame count")
-        XCTAssertTrue(label.contains("·"), "Should use middle dot separator")
-        // Verify it contains a time formatted via Date.FormatStyle
         let timeFormatted = firstTime.formatted(date: .omitted, time: .shortened)
-        XCTAssertTrue(label.contains(timeFormatted), "Should include formatted time: \(timeFormatted)")
+        let expectedLabel = "IMG_0412–0417 · 6 · \(timeFormatted)"
+
+        XCTAssertEqual(label, expectedLabel, "Should collapse numeric range with count and time")
     }
 
     func testMixedStemsFallBackToFirstLast() {
@@ -33,9 +30,10 @@ final class CullStackLabelPresentationTests: XCTestCase {
         ]
 
         let label = CullStackLabelPresentation.label(for: assets)
+        let timeFormatted = firstTime.formatted(date: .omitted, time: .shortened)
+        let expectedLabel = "IMG_0412…R5A_0414 · 3 · \(timeFormatted)"
 
-        XCTAssertTrue(label.contains("IMG_0412…R5A_0414"), "Should use first…last for mixed stems")
-        XCTAssertTrue(label.contains("3"), "Should include frame count")
+        XCTAssertEqual(label, expectedLabel, "Should use first…last for mixed stems with count and time")
     }
 
     func testNonNumericSuffixesFallBackToFirstLast() {
@@ -47,9 +45,10 @@ final class CullStackLabelPresentationTests: XCTestCase {
         ]
 
         let label = CullStackLabelPresentation.label(for: assets)
+        let timeFormatted = firstTime.formatted(date: .omitted, time: .shortened)
+        let expectedLabel = "photo_a…photo_c · 3 · \(timeFormatted)"
 
-        XCTAssertTrue(label.contains("photo_a…photo_c"), "Should use first…last for non-numeric suffixes")
-        XCTAssertTrue(label.contains("3"), "Should include frame count")
+        XCTAssertEqual(label, expectedLabel, "Should use first…last for non-numeric suffixes with count and time")
     }
 
     func testMissingCapturedAtOmitsTimeSegment() {
@@ -73,11 +72,10 @@ final class CullStackLabelPresentationTests: XCTestCase {
         let asset = Self.asset(filename: "IMG_0430.jpg", capturedAt: time)
 
         let label = CullStackLabelPresentation.standaloneLabel(for: asset)
-
-        XCTAssertTrue(label.contains("IMG_0430"), "Should include filename stem")
         let timeFormatted = time.formatted(date: .omitted, time: .shortened)
-        XCTAssertTrue(label.contains(timeFormatted), "Should include formatted time")
-        XCTAssertTrue(label.contains("·"), "Should use middle dot separator")
+        let expectedLabel = "IMG_0430 · \(timeFormatted)"
+
+        XCTAssertEqual(label, expectedLabel, "Should format single asset with stem and time")
     }
 
     func testSingleAssetWithoutTimeStandalone() {
@@ -93,15 +91,44 @@ final class CullStackLabelPresentationTests: XCTestCase {
         let asset = Self.asset(filename: "IMG_0440.jpg", capturedAt: time)
 
         let label = CullStackLabelPresentation.standaloneLabel(for: asset)
-        let expectedTime = time.formatted(date: .omitted, time: .shortened)
+        let timeFormatted = time.formatted(date: .omitted, time: .shortened)
+        let expectedLabel = "IMG_0440 · \(timeFormatted)"
 
-        XCTAssertTrue(label.contains(expectedTime), "Should use Date.FormatStyle .shortened for time")
+        XCTAssertEqual(label, expectedLabel, "Should use Date.FormatStyle .shortened for time")
     }
 
     func testEmptyAssetListReturnsEmpty() {
         let label = CullStackLabelPresentation.label(for: [])
 
         XCTAssertEqual(label, "", "Should return empty string for empty asset list")
+    }
+
+    func testIdenticalStemReturnsJustStem() {
+        let firstTime = Date(timeIntervalSince1970: 6000)
+        let assets = [
+            Self.asset(filename: "IMG_0412.jpg", capturedAt: firstTime),
+            Self.asset(filename: "IMG_0412.jpg", capturedAt: firstTime.addingTimeInterval(1))
+        ]
+
+        let label = CullStackLabelPresentation.label(for: assets)
+        let timeFormatted = firstTime.formatted(date: .omitted, time: .shortened)
+        let expectedLabel = "IMG_0412 · 2 · \(timeFormatted)"
+
+        XCTAssertEqual(label, expectedLabel, "Should return just stem when first and last are identical")
+    }
+
+    func testDigitWidthRolloverIMG0999to1000() {
+        let firstTime = Date(timeIntervalSince1970: 7000)
+        let assets = [
+            Self.asset(filename: "IMG_0999.jpg", capturedAt: firstTime),
+            Self.asset(filename: "IMG_1000.jpg", capturedAt: firstTime.addingTimeInterval(1))
+        ]
+
+        let label = CullStackLabelPresentation.label(for: assets)
+        let timeFormatted = firstTime.formatted(date: .omitted, time: .shortened)
+        let expectedLabel = "IMG_0999–1000 · 2 · \(timeFormatted)"
+
+        XCTAssertEqual(label, expectedLabel, "Should collapse digit-width rollover correctly")
     }
 
     // MARK: - Fixture helpers
