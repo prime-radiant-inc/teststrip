@@ -40,13 +40,13 @@ final class ImportFacesFromContactsTests: XCTestCase {
         detectFaces: @escaping @Sendable (CGImage) throws -> [AppleVisionFaceObservation]
     ) throws -> (model: AppModel, repository: CatalogRepository) {
         let directory = try makeTemporaryDirectory(named: name)
-        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
+        let database = try CatalogDatabase.open(at: directory.appendingPathComponent("Teststrip/catalog.sqlite"))
         try database.migrate()
         let repository = CatalogRepository(database: database)
         try repository.upsert(assets)
         let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
         let catalog = AppCatalog(
-            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
+            paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory),
             repository: repository,
             previewCache: previewCache,
             importService: LibraryImportService(

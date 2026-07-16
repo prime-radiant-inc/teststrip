@@ -395,6 +395,7 @@ private struct PeopleCommands: Commands {
             Button("Import Faces from Contacts…") {
                 importFacesFromContacts()
             }
+            .disabled(model.isImportingContacts)
         }
     }
 

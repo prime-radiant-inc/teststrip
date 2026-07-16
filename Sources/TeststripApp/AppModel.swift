@@ -2259,6 +2259,9 @@ public final class AppModel {
     }
     public private(set) var peopleFaceSuggestions: [PeopleFaceSuggestion] = []
     public private(set) var peopleFaceObservationAssetCount = 0
+    /// True for the duration of `importFacesFromContacts()` — drives the People
+    /// menu's busy guard so a large address book can't be re-imported mid-run.
+    public private(set) var isImportingContacts = false
     /// A person's PROPOSED photos (AI-unconfirmed face matches), shown as a
     /// separate section below the confirmed grid — kept out of `assets` so
     /// tentative matches never reach Picks/export/destructive ops. Populated
@@ -3740,24 +3743,30 @@ public final class AppModel {
     /// model being available; `contactFaceDetector` lets tests substitute a
     /// stub instead of the real Vision + CoreML pipeline.
     ///
-    /// The Contacts fetch and the CoreML/Vision embedding are the only place
-    /// the app process runs the face embedder — everywhere else that work
-    /// happens in the out-of-process worker. Running it synchronously on
-    /// this method's caller (the main thread) blocked the UI for the whole
-    /// import and, worse, corrupted main-thread runtime state badly enough to
-    /// crash the app on the next SwiftUI update. So only the fast catalog
-    /// write happens here on the main actor; the fetch + embed run in a
-    /// `Task.detached` that captures no `self`/catalog state — only the
-    /// `Sendable` provider, detector, and current-hash snapshot it needs.
+    /// The Contacts fetch, the CoreML/Vision embedding, and the catalog write
+    /// are the only place the app process runs the face embedder — everywhere
+    /// else that work happens in the out-of-process worker. Running it
+    /// synchronously on this method's caller (the main thread) blocked the UI
+    /// for the whole import and, worse, corrupted main-thread runtime state
+    /// badly enough to crash the app on the next SwiftUI update. So the whole
+    /// fetch/embed/persist phase runs in a `Task.detached` that opens its own
+    /// catalog connection — following the same reopen-a-fresh-connection
+    /// pattern as `defaultImportTask`/`checkSidecarsForChangesInCurrentScope`
+    /// — rather than sharing the MainActor's live, non-`Sendable`
+    /// `CatalogRepository`/`ContactFaceSeeder` across the actor boundary. The
+    /// detached task's connection commits its writes before returning, so the
+    /// MainActor's own connection sees them when it re-reads afterward.
     @MainActor
     public func importFacesFromContacts() async throws {
         guard let catalog else { throw TeststripError.invalidState("app model has no catalog") }
         guard let provider = contactsProvider else {
             throw TeststripError.invalidState("Contacts access is not available")
         }
-        let currentHashes = try catalog.repository.contactReferenceHashesByIdentifier()
+        isImportingContacts = true
+        defer { isImportingContacts = false }
+        let paths = catalog.paths
         let contactFaceDetector = self.contactFaceDetector
-        let result = try await Task.detached(priority: .userInitiated) {
+        let summary = try await Task.detached(priority: .userInitiated) {
             let detector: @Sendable (CGImage) throws -> [AppleVisionFaceObservation]
             if let contactFaceDetector {
                 detector = contactFaceDetector
@@ -3768,16 +3777,18 @@ public final class AppModel {
                 let embedder = FaceRecognitionEmbedder(model: model)
                 detector = { try embedder.faceObservations(in: $0) }
             }
+            let repository = CatalogRepository(database: try CatalogDatabase.open(at: paths.catalogURL))
+            let photoCache = ContactPhotoCache(root: paths.contactPhotoRoot)
             let records = try provider.contactsWithPhotos()
-            return try ContactFaceEmbedder(detectFaces: detector).embed(records: records, currentHashes: currentHashes)
+            let seeder = ContactFaceSeeder(detectFaces: detector, repository: repository, photoCache: photoCache)
+            return try seeder.seed(records: records)
         }.value
-        let summary = try ContactFacePersister(repository: catalog.repository, photoCache: catalog.contactPhotoCache)
-            .persist(result)
         var message = "Contacts: \(summary.seeded) seeded, \(summary.unchanged) unchanged, \(summary.skippedNoFace) without a face"
         if summary.skippedUndecodable > 0 {
             message += ", \(summary.skippedUndecodable) unreadable"
         }
         statusMessage = message
+        try loadCatalogPeople()
         refreshPeopleFaceSuggestions()
     }
 
