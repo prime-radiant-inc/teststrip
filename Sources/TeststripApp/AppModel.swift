@@ -3986,6 +3986,19 @@ public final class AppModel {
         refreshPeopleFaceSuggestions()
     }
 
+    /// Removes a face's person by origin: a confirmed identity is cleanly unassigned;
+    /// a suggested (origin='ai') match is sticky-rejected.
+    func removePerson(forFaceRow row: PhotoFaceRow) throws {
+        switch row.state {
+        case .confirmed:
+            try removeFacePerson(row.faceID)
+        case .suggested(let personID, _):
+            try rejectFaceSuggestion(row.faceID, personID: personID)
+        case .unnamed:
+            break
+        }
+    }
+
     /// ✓ on a proposed cell: confirm the person's proposed face(s) on this asset
     /// (promote `origin='ai'→'user'` + link into the confirmed set), then reload
     /// so the photo leaves Proposed and joins the confirmed grid.

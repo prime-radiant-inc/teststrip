@@ -163,14 +163,7 @@ struct FaceBoxOverlayView: View {
     }
 
     private func removePerson(_ row: PhotoFaceRow) {
-        switch row.state {
-        case .confirmed:
-            run { try model.removeFacePerson(row.faceID) }
-        case .suggested(let personID, _):
-            run { try model.rejectFaceSuggestion(row.faceID, personID: personID) }
-        case .unnamed:
-            break
-        }
+        run { try model.removePerson(forFaceRow: row) }
     }
 
     private func run(_ body: () throws -> Void) {
