@@ -158,8 +158,7 @@ public struct LibrarySearchIntent: Equatable, Sendable {
             return singleFieldPredicate(.availability(availability), chip: "Source: \(title)", namePart: title)
         case "signal", "evaluation", "kind":
             guard let kind = evaluationKind(from: value) else { return nil }
-            let title = kind.displayName
-            return singleFieldPredicate(.evaluationKind(kind), chip: "Signal: \(title)", namePart: title)
+            return singleFieldPredicate(.evaluationKind(kind), chip: kind.filterChipLabel, namePart: kind.displayName)
         case "xmp":
             guard let xmp = xmpPredicate(from: value) else { return nil }
             return singleFieldPredicate(xmp.predicate, chip: xmp.title, namePart: xmp.title)

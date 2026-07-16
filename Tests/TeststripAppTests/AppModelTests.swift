@@ -6111,7 +6111,7 @@ final class AppModelTests: XCTestCase {
             ActiveLibraryFilterRow(title: "Session: cull-42", target: .workSession(WorkSessionID(rawValue: "cull-42"))),
             ActiveLibraryFilterRow(title: "Import: import-7", target: .workSession(WorkSessionID(rawValue: "import-7"))),
             ActiveLibraryFilterRow(title: "Source: Missing", target: .sourceAvailability(.missing)),
-            ActiveLibraryFilterRow(title: "Signal: Face Quality", target: .evaluationKind(.faceQuality)),
+            ActiveLibraryFilterRow(title: "Face Quality", target: .evaluationKind(.faceQuality)),
             ActiveLibraryFilterRow(title: "XMP Pending", target: .metadataSyncPending)
         ])
         XCTAssertEqual(model.activeLibraryFilterChips, model.activeLibraryFilterRows.map(\.title))
@@ -9598,7 +9598,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.availabilityFilter, .offline)
         XCTAssertEqual(model.evaluationKindFilter, .object)
         XCTAssertEqual(model.assets.map(\.id), [offlineObject.id])
-        XCTAssertEqual(model.activeLibraryFilterChips, ["Source: Offline", "Signal: Object"])
+        XCTAssertEqual(model.activeLibraryFilterChips, ["Source: Offline", "Has objects"])
     }
 
     func testApplyingFocusSignalRulePresetNarrowsCurrentQuery() throws {
@@ -9618,7 +9618,7 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(model.evaluationKindFilter, .focus)
         XCTAssertEqual(model.assets.map(\.id), [focused.id])
-        XCTAssertEqual(model.activeLibraryFilterChips, ["Signal: Focus"])
+        XCTAssertEqual(model.activeLibraryFilterChips, ["In focus"])
     }
 
     func testApplyingXmpRulePresetUsesSingleMetadataSyncState() throws {

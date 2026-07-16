@@ -874,6 +874,26 @@ extension EvaluationKind {
             return "Eye Sharpness"
         }
     }
+
+    /// Plain-language chip label for this signal used as a library filter —
+    /// no internal "Signal: …" prefix. `.focus`/`.object`/`.faceCount`/
+    /// `.ocrText` read as an obvious existence/state check and get an
+    /// idiomatic phrase; every other kind's `displayName` is already plain
+    /// English, so it's used as-is.
+    var filterChipLabel: String {
+        switch self {
+        case .focus:
+            return "In focus"
+        case .object:
+            return "Has objects"
+        case .faceCount:
+            return "Has faces"
+        case .ocrText:
+            return "Has text"
+        default:
+            return displayName
+        }
+    }
 }
 
 public struct PeopleFaceSuggestion: Equatable, Identifiable, Sendable {
@@ -4478,7 +4498,6 @@ public final class AppModel {
         let sourceRoots = try catalog.repository.sourceRoots()
         let sourceAvailabilitySummaries = try Self.sourceAvailabilitySummaries(repository: catalog.repository)
         let catalogEvaluationKindSummaries = try catalog.repository.evaluationKindSummaries()
-        let catalogPeople = try catalog.repository.people()
         let reviewQueueCounts = try Self.reviewQueueCounts(repository: catalog.repository)
         let metadataSyncState = try Self.metadataSyncState(
             repository: catalog.repository,
@@ -4531,7 +4550,6 @@ public final class AppModel {
             sourceRoots: sourceRoots,
             sourceAvailabilitySummaries: sourceAvailabilitySummaries,
             catalogEvaluationKindSummaries: catalogEvaluationKindSummaries,
-            catalogPeople: catalogPeople,
             reviewQueueCounts: reviewQueueCounts,
             workerSupervisor: workerSupervisor,
             importTaskFactory: importTaskFactory,
@@ -4545,9 +4563,9 @@ public final class AppModel {
         )
         model.contactsProvider = contactsProvider
         model.contactFaceDetector = contactFaceDetector
-        // `catalogPeople` above already seeded the init; this also derives
-        // `personKeyFaces` so People cards show key faces on first launch,
-        // not just after the next mutating action.
+        // Populates `catalogPeople` and `personKeyFaces` together so People
+        // cards show key faces on first launch, not just after the next
+        // mutating action.
         try model.loadCatalogPeople()
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
@@ -10823,7 +10841,7 @@ public final class AppModel {
         if let queue = reviewQueue(forEvaluationKind: kind) {
             return ActiveLibraryFilterRow(title: queue.presentation.title, target: .reviewQueue(queue))
         }
-        return ActiveLibraryFilterRow(title: "Signal: \(kind.displayName)", target: .evaluationKind(kind))
+        return ActiveLibraryFilterRow(title: kind.filterChipLabel, target: .evaluationKind(kind))
     }
 
     private static func filterName(for kind: EvaluationKind) -> String {

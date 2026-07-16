@@ -159,15 +159,10 @@ public struct LibraryResultHeaderPresentation: Equatable {
         }
 
         let summariesByKind = Dictionary(uniqueKeysWithValues: evaluationKindSummaries.map { ($0.kind, $0) })
-        let signalCandidates: [(kind: EvaluationKind, display: String)] = [
-            (.focus, "Signal: Focus"),
-            (.object, "Signal: Object"),
-            (.ocrText, "Signal: OCR Text"),
-            (.faceCount, "Signal: Face Count")
-        ]
-        for candidate in signalCandidates {
-            guard let summary = summariesByKind[candidate.kind], summary.assetCount > 0 else { continue }
-            addIfNeeded(LibraryQueryToken(field: .signal, display: candidate.display, value: .signal(candidate.kind)))
+        let signalCandidates: [EvaluationKind] = [.focus, .object, .ocrText, .faceCount]
+        for kind in signalCandidates {
+            guard let summary = summariesByKind[kind], summary.assetCount > 0 else { continue }
+            addIfNeeded(LibraryQueryToken(field: .signal, display: kind.filterChipLabel, value: .signal(kind)))
         }
 
         return tokens

@@ -238,7 +238,7 @@ final class SmartCollectionBuilderPresentationTests: XCTestCase {
     func testSuggestedTemplateRowsSkipActiveProviderSignalRules() {
         let presentation = SmartCollectionBuilderPresentation(
             proposedName: "Provider Signals",
-            ruleChips: ["Signal: Object", "OCR Found"],
+            ruleChips: ["Has objects", "OCR Found"],
             matchCount: 24,
             evaluationKindSummaries: [
                 CatalogEvaluationKindSummary(kind: .focus, assetCount: 8),

@@ -8221,13 +8221,13 @@ struct SmartCollectionBuilderPresentation: Equatable {
             case .offlineSources:
                 return chip == "Source: Offline"
             case .facesFound:
-                return chip == "Faces Found" || chip == "Signal: Face Count"
+                return chip == "Faces Found" || chip == "Has faces"
             case .ocrFound:
-                return chip == "OCR Found" || chip == "Signal: OCR Text"
+                return chip == "OCR Found" || chip == "Has text"
             case .focusSignals:
-                return chip == "Signal: Focus"
+                return chip == "In focus"
             case .objectSignals:
-                return chip == "Signal: Object"
+                return chip == "Has objects"
             case .likelyIssues:
                 return chip == "Likely Issues"
             case .providerFailures:
