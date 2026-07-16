@@ -204,6 +204,10 @@ public enum CullingShortcut: Equatable, Sendable {
     case pick
     case reject
     case clearFlag
+    /// A: toggles `AppModel.cullAutoAdvanceEnabled`, which governs whether a
+    /// P/X/rating/color-label decision moves the selection afterward. See
+    /// `AppModel.toggleCullAutoAdvance()`.
+    case toggleAutoAdvance
     case promoteAndRejectSiblings
     case toggleZoom
     case zoomToNearestFace
@@ -270,6 +274,7 @@ public enum CullingShortcut: Equatable, Sendable {
             case "p": self = .pick
             case "x": self = .reject
             case "u": self = .clearFlag
+            case "a": self = .toggleAutoAdvance
             case "z": self = .toggleZoom
             case "i": self = .cycleExifOverlay
             case "s": self = .cycleScope
@@ -368,6 +373,27 @@ public enum CullScopeOrdering {
             }
             forward += 1
             backward -= 1
+        }
+        return nil
+    }
+}
+
+/// Pure ordering for the P/X/rating/color-label auto-advance target (Task 2):
+/// scans a stack's members forward from `index`, wrapping once, for the next
+/// undecided member — skips already-decided siblings so a burst collapses
+/// with one key per undecided frame rather than one key per frame.
+public enum CullAutoAdvanceOrdering {
+    public static func nextUndecidedAssetID(
+        stackAssetIDs: [AssetID],
+        after index: Int,
+        isUndecided: (AssetID) -> Bool
+    ) -> AssetID? {
+        guard !stackAssetIDs.isEmpty else { return nil }
+        for offset in 1..<stackAssetIDs.count {
+            let candidate = stackAssetIDs[(index + offset) % stackAssetIDs.count]
+            if isUndecided(candidate) {
+                return candidate
+            }
         }
         return nil
     }
@@ -544,7 +570,8 @@ public enum CullingCommandMenuPresentation {
             CullingCommandMenuItem(title: "Show Key Map", shortcut: .showKeyMap, key: .character("?"))
         ]),
         CullingCommandMenuSection(title: "Filter", items: [
-            CullingCommandMenuItem(title: "Cycle Filter", shortcut: .cycleScope, key: .character("s"))
+            CullingCommandMenuItem(title: "Cycle Filter", shortcut: .cycleScope, key: .character("s")),
+            CullingCommandMenuItem(title: "Toggle Auto-Advance", shortcut: .toggleAutoAdvance, key: .character("a"))
         ]),
         CullingCommandMenuSection(title: "Compare", items: [
             CullingCommandMenuItem(title: "Keep A · Reject B", shortcut: .keepAOverB, key: .character(",")),
@@ -2110,6 +2137,10 @@ public final class AppModel {
     /// The subset of frames the loupe/filmstrip/grid navigate through while
     /// culling. `.all` means unfiltered. Cycled with the `s` shortcut.
     public private(set) var cullScope: CullScope = .all
+    /// Whether a P/X/rating/color-label decision auto-advances the selection
+    /// afterward (to the next undecided stack frame, or the next stack's
+    /// landing frame). Toggled with the `a` shortcut; default on.
+    public private(set) var cullAutoAdvanceEnabled: Bool = true
     public private(set) var selectedBatchAssetIDs: Set<AssetID>
     /// Whether the on-demand inspector (⌘I) is shown, presented via
     /// `.inspector()` and gated by `WorkspaceChromePolicy.showsInspector`.
@@ -6354,6 +6385,8 @@ public final class AppModel {
             try applyCullingCommandAndAdvance(.reject)
         case .clearFlag:
             try applyCullingCommandAndAdvance(.clearFlag)
+        case .toggleAutoAdvance:
+            toggleCullAutoAdvance()
         case .promoteAndRejectSiblings:
             clearCullingMetadataDecisionFeedback()
             try promoteCurrentFrameAndRejectSiblings()
@@ -6444,6 +6477,20 @@ public final class AppModel {
         )
     }
 
+    public func toggleCullAutoAdvance() {
+        cullAutoAdvanceEnabled.toggle()
+        // Same informational-toast pattern as cycleCullScope() above: an
+        // easy-to-miss mode toggle that writes no metadata.
+        let toastAsset = selectedAsset ?? assets.first
+        lastCullingMetadataDecision = CullingMetadataDecisionFeedback(
+            assetID: toastAsset?.id ?? AssetID(rawValue: "cull-auto-advance"),
+            filename: toastAsset?.originalURL.lastPathComponent ?? "",
+            command: .clearFlag,
+            decisionText: cullAutoAdvanceEnabled ? "Auto-advance on" : "Auto-advance off",
+            isInformational: true
+        )
+    }
+
     /// Count of unflagged (undecided) frames in the session, for driving
     /// `CullCompletionPresentation`. Deliberately NOT filtered by
     /// `cullScope`: the `.picks`/`.rejects` review scopes exclude unflagged
@@ -6520,13 +6567,33 @@ public final class AppModel {
     private func applyCullingCommandAndAdvance(_ command: CullingCommand) throws {
         let originalSelection = selectedAssetID
         let originalAsset = selectedAsset
+        let stackAssetIDs = selectedCullingStackScope?.assetIDs
         try applyCullingCommand(command)
         if let originalAsset {
             lastCullingMetadataDecision = Self.cullingMetadataDecisionFeedback(command: command, asset: originalAsset)
         }
-        if selectedAssetID == originalSelection {
-            try selectNextAssetForCulling()
+        guard cullAutoAdvanceEnabled, selectedAssetID == originalSelection else { return }
+        // Multi-frame stack: hop to the next undecided sibling, wrapping —
+        // deciding the last one carries the selection to the next stack's
+        // landing frame instead (the same machinery ←/→ use), not just the
+        // next asset in array order.
+        if let originalSelection,
+           let stackAssetIDs,
+           let currentIndex = stackAssetIDs.firstIndex(of: originalSelection) {
+            if let nextUndecidedID = CullAutoAdvanceOrdering.nextUndecidedAssetID(
+                stackAssetIDs: stackAssetIDs,
+                after: currentIndex,
+                isUndecided: { assetID in
+                    assets.first(where: { $0.id == assetID })?.metadata.confirmedProjection.flag == nil
+                }
+            ) {
+                selectAssetID(nextUndecidedID)
+            } else {
+                try selectNextStackForCulling()
+            }
+            return
         }
+        try selectNextAssetForCulling()
     }
 
     private func clearCullingMetadataDecisionFeedback() {

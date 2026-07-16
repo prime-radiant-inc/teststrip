@@ -100,6 +100,12 @@ final class CullingKeyCaptureTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(event: lowercase), .toggleZoom)
     }
 
+    func testCullingShortcutMapsToggleAutoAdvanceKeyEvent() throws {
+        let event = try makeKeyEvent(characters: "a", charactersIgnoringModifiers: "a")
+
+        XCTAssertEqual(CullingShortcut(event: event), .toggleAutoAdvance)
+    }
+
     // Shift-Z is a distinct shortcut (zoom to nearest face) from plain z
     // (toggle 1:1 zoom). charactersIgnoringModifiers strips Shift along with
     // the other modifiers (real hardware reports the base "z", not "Z" —

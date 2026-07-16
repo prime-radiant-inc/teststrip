@@ -4877,7 +4877,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(key: .character("P")), .pick)
         XCTAssertEqual(CullingShortcut(key: .character("x")), .reject)
         XCTAssertEqual(CullingShortcut(key: .character("u")), .clearFlag)
-        XCTAssertNil(CullingShortcut(key: .character("a")))
+        XCTAssertEqual(CullingShortcut(key: .character("a")), .toggleAutoAdvance)
+        XCTAssertNil(CullingShortcut(key: .character("q")))
     }
 
     func testBackgroundWorkQueueIsVisibleAndBounded() {

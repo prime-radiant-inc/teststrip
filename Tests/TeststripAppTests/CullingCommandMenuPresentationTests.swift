@@ -24,6 +24,17 @@ final class CullingCommandMenuPresentationTests: XCTestCase {
             CullingCommandMenuItem(title: "Show Key Map", shortcut: .showKeyMap, key: .character("?"))
         ])
     }
+
+    // Task 2: the `A` auto-advance toggle sits alongside `S` cycle-filter —
+    // both are run-control mode toggles, not decisions or navigation.
+    func testFilterSectionExposesCycleFilterAndAutoAdvanceToggle() {
+        let filter = CullingCommandMenuPresentation.sections.first { $0.title == "Filter" }
+
+        XCTAssertEqual(filter?.items, [
+            CullingCommandMenuItem(title: "Cycle Filter", shortcut: .cycleScope, key: .character("s")),
+            CullingCommandMenuItem(title: "Toggle Auto-Advance", shortcut: .toggleAutoAdvance, key: .character("a"))
+        ])
+    }
 }
 
 // The CullingKeyCaptureView local monitor is the single owner of every bare
