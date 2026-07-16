@@ -203,4 +203,51 @@ final class CatalogListingBondingTests: XCTestCase {
 
         XCTAssertEqual(people.first(where: { $0.id == "person-1" })?.assetCount, 1)
     }
+
+    // Review finding: evaluation runs on both files of a bonded pair (the
+    // JPEG secondary is evaluated too, just hidden from listings), so a
+    // secondary's own evaluation_signals rows previously counted toward
+    // evaluationKindSummaries() alongside its primary's, reading "2 photos
+    // have this signal" for what the user sees as one shot.
+    func testEvaluationKindSummariesExcludeBondedSecondary() throws {
+        let repository = try makeRepository(named: "listing-evaluation-kind-summary")
+        let (primary, secondary, standalone) = try seedBondedTrio(repository)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: primary, kind: .object, value: .label("camera"), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: secondary, kind: .object, value: .label("camera"), confidence: 0.8, provenance: provenance),
+            EvaluationSignal(assetID: standalone, kind: .object, value: .label("camera"), confidence: 0.8, provenance: provenance)
+        ])
+
+        let summaries = try repository.evaluationKindSummaries()
+
+        XCTAssertEqual(summaries, [CatalogEvaluationKindSummary(kind: .object, assetCount: 2)])
+    }
+
+    // Review finding: unassignedFaceObservations() (backing People's
+    // suggestion/review queue and the AI auto-apply promoter) surfaced a
+    // bonded secondary's own face_observations row alongside its primary's,
+    // so a RAW+JPEG pair's pixel-identical face was reviewed/suggested
+    // twice. Both files are independently evaluated (design decision), so
+    // the primary already carries its own row; excluding the secondary only
+    // drops the duplicate.
+    func testUnassignedFaceObservationsExcludeBondedSecondary() throws {
+        let repository = try makeRepository(named: "listing-unassigned-faces")
+        let (primary, secondary, standalone) = try seedBondedTrio(repository)
+        let provenance = ProviderProvenance(provider: "apple-vision", model: "Vision", version: "1", settingsHash: "face-crop-pad-25")
+        let box = FaceBoundingBox(x: 0.1, y: 0.1, width: 0.2, height: 0.2)
+        func face(_ assetID: AssetID) -> CatalogFaceObservation {
+            CatalogFaceObservation(assetID: assetID, faceIndex: 0, boundingBox: box, captureQuality: 0.5, embedding: [1, 0, 0], provenance: provenance)
+        }
+        try repository.replaceFaceObservations(assetID: primary, provenance: provenance, with: [face(primary)])
+        try repository.replaceFaceObservations(assetID: secondary, provenance: provenance, with: [face(secondary)])
+        try repository.replaceFaceObservations(assetID: standalone, provenance: provenance, with: [face(standalone)])
+
+        let unassigned = try repository.unassignedFaceObservations(provenance: provenance, limit: 10)
+
+        XCTAssertEqual(Set(unassigned.map(\.faceID)), [
+            FaceID(assetID: primary, faceIndex: 0),
+            FaceID(assetID: standalone, faceIndex: 0)
+        ])
+    }
 }

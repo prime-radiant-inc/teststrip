@@ -7112,7 +7112,8 @@ private extension View {
             selectionState: selectionState,
             badges: AssetGridMetadataBadgePresentation.presentation(for: asset),
             availability: asset.availability,
-            autopilotDecision: model.autopilotProposalDecision(for: asset.id)
+            autopilotDecision: model.autopilotProposalDecision(for: asset.id),
+            hasBondedStill: model.assetIDsWithBondedSecondaries.contains(asset.id)
         )
     }
 }
@@ -7751,7 +7752,8 @@ enum AssetGridCellAccessibilityValue {
         selectionState: String,
         badges: AssetGridMetadataBadgePresentation,
         availability: SourceAvailability,
-        autopilotDecision: AutopilotProposalKind?
+        autopilotDecision: AutopilotProposalKind?,
+        hasBondedStill: Bool
     ) -> String {
         var parts = [selectionState]
         parts.append(contentsOf: [
@@ -7762,6 +7764,7 @@ enum AssetGridCellAccessibilityValue {
             AssetSourceStatusPresentation.presentation(for: availability)?.detail,
             AutopilotBadgePresentation.badge(for: autopilotDecision)
                 .map { "Autopilot proposes \($0.isKeep ? "keep" : "cut")" },
+            hasBondedStill ? "RAW with bonded JPEG" : nil,
         ].compactMap { $0 })
         return parts.joined(separator: ", ")
     }

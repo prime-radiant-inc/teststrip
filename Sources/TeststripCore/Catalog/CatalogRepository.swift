@@ -1206,10 +1206,12 @@ public final class CatalogRepository {
         }
     }
 
-    // Defensive: evaluation doesn't currently write a person_assets row for a
-    // bonded secondary, so this guard doesn't change today's counts. It's
-    // here so a bonded secondary can never inflate a person's count, matching
-    // the folder/timeline/place/coverage/source-root aggregates.
+    // Load-bearing, not merely defensive: evaluation's AI path
+    // (insertAIFace) doesn't write a person_assets row for a bonded
+    // secondary, but a user confirming a secondary's own face suggestion
+    // (confirmFace) does — this guard is what keeps that confirmed
+    // secondary from inflating a person's count, matching the
+    // folder/timeline/place/coverage/source-root aggregates.
     public func people() throws -> [CatalogPerson] {
         let rows = try database.rows(
             """
@@ -1388,12 +1390,24 @@ public final class CatalogRepository {
         )
     }
 
+    // Backs People's suggestion/review queue and the AI auto-apply promoter
+    // (both of which surface faces for a person to be matched against or
+    // confirmed). Both files of a bonded pair are independently evaluated
+    // (secondaries aren't special-cased out of the eval queue), so without
+    // the bonded_to_asset_id exclusion a RAW+JPEG pair's pixel-identical
+    // face would surface twice; the primary's own observation already
+    // covers the shot.
     public func unassignedFaceObservations(provenance: ProviderProvenance, limit: Int) throws -> [CatalogFaceObservation] {
         let rows = try database.rows(
             """
             SELECT asset_id, face_index, face_json, provenance_json
             FROM face_observations
             WHERE provider = ? AND model = ? AND version = ? AND settings_hash = ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM assets
+                  WHERE assets.id = face_observations.asset_id
+                    AND assets.bonded_to_asset_id IS NOT NULL
+              )
               AND NOT EXISTS (
                   SELECT 1 FROM person_faces
                   WHERE person_faces.asset_id = face_observations.asset_id
@@ -2315,6 +2329,12 @@ public final class CatalogRepository {
                         WHERE person_assets.asset_id = evaluation_signals.asset_id
                     )
                 )
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM assets
+                WHERE assets.id = evaluation_signals.asset_id
+                  AND assets.bonded_to_asset_id IS NOT NULL
             )
             GROUP BY kind
             ORDER BY kind COLLATE NOCASE ASC
