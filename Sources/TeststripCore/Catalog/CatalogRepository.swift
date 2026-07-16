@@ -1438,6 +1438,28 @@ public final class CatalogRepository {
                                     boundingBox: try decode(FaceBoundingBox.self, from: boxJSON))
     }
 
+    /// Deletes every `contact_reference_faces` row for a contact no longer
+    /// in `keep` (removed from the address book since the last import) and
+    /// returns the deleted contact identifiers, so the caller can also drop
+    /// their cached reference photos (`ContactPhotoCache`). Read-then-delete
+    /// so the deleted identifiers can be reported back.
+    public func pruneContactReferenceFaces(keepingContactIdentifiers keep: Set<String>) throws -> [String] {
+        var deleted: [String] = []
+        try database.transaction {
+            let rows = try database.rows("SELECT contact_identifier FROM contact_reference_faces")
+            let identifiers = rows.compactMap { $0["contact_identifier"] }
+            let toDelete = identifiers.filter { !keep.contains($0) }
+            guard !toDelete.isEmpty else { return }
+            let placeholders = Array(repeating: "?", count: toDelete.count).joined(separator: ", ")
+            try database.execute(
+                "DELETE FROM contact_reference_faces WHERE contact_identifier IN (\(placeholders))",
+                bindings: toDelete
+            )
+            deleted = toDelete
+        }
+        return deleted
+    }
+
     public func personID(matchingName name: String) throws -> String? {
         try database.rows(
             "SELECT id FROM people WHERE name = ? COLLATE NOCASE LIMIT 1",

@@ -3773,7 +3773,11 @@ public final class AppModel {
         }.value
         let summary = try ContactFacePersister(repository: catalog.repository, photoCache: catalog.contactPhotoCache)
             .persist(result)
-        statusMessage = "Contacts: \(summary.seeded) seeded, \(summary.unchanged) unchanged, \(summary.skippedNoFace) without a face"
+        var message = "Contacts: \(summary.seeded) seeded, \(summary.unchanged) unchanged, \(summary.skippedNoFace) without a face"
+        if summary.skippedUndecodable > 0 {
+            message += ", \(summary.skippedUndecodable) unreadable"
+        }
+        statusMessage = message
         refreshPeopleFaceSuggestions()
     }
 

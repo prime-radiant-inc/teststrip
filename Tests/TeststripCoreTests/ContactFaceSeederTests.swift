@@ -70,4 +70,37 @@ final class ContactFaceSeederTests: XCTestCase {
         XCTAssertEqual(second.unchanged, 1)
         XCTAssertEqual(second.seeded, 0)
     }
+
+    // A corrupt/undecodable photo is a distinct failure mode from "no face
+    // found" — it must not be miscounted as skippedNoFace, and it writes no
+    // reference row.
+    func testUndecodableContactIsCountedSeparately() throws {
+        let (r, dir) = try repo()
+        let seeder = ContactFaceSeeder(detectFaces: { _ in [Self.face(0.9)] }, repository: r,
+                                       photoCache: ContactPhotoCache(root: dir.appendingPathComponent("photos")))
+        let summary = try seeder.seed(
+            records: [ContactRecord(identifier: "C1", name: "Dan", imageData: Data("not a jpeg".utf8))])
+
+        XCTAssertEqual(summary.skippedUndecodable, 1)
+        XCTAssertEqual(summary.skippedNoFace, 0)
+        XCTAssertTrue(try r.contactReferenceEmbeddingsByPerson().isEmpty)
+    }
+
+    // Re-importing after a contact was deleted from the address book must
+    // prune its stale contact_reference_faces row rather than leaving it
+    // to reference a contact that no longer exists.
+    func testReseedingPrunesContactsRemovedFromAddressBook() throws {
+        let (r, dir) = try repo()
+        let seeder = ContactFaceSeeder(detectFaces: { _ in [Self.face(0.9)] }, repository: r,
+                                       photoCache: ContactPhotoCache(root: dir.appendingPathComponent("photos")))
+        let c1 = ContactRecord(identifier: "C1", name: "Dan", imageData: jpeg())
+        let c2 = ContactRecord(identifier: "C2", name: "Priya", imageData: jpeg())
+        _ = try seeder.seed(records: [c1, c2])
+        XCTAssertEqual(try r.contactReferenceEmbeddingsByPerson().keys.sorted(), ["contact:C1", "contact:C2"])
+
+        let summary = try seeder.seed(records: [c1])
+
+        XCTAssertEqual(summary.pruned, 1)
+        XCTAssertEqual(try r.contactReferenceEmbeddingsByPerson().keys.sorted(), ["contact:C1"])
+    }
 }
