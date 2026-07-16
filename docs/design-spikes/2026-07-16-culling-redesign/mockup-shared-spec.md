@@ -69,5 +69,6 @@ Batch: **"June 14 — Red Rocks wedding + archive strays" · 35 frames · 9 stop
    eyes shut"** — deliberately a photo a human may keep anyway; overriding
    the machine should feel completely frictionless.
 
-Seed ✨ ghosts exactly as listed (7 total: 6 ✨X + 1 ✨P). All 35 frames start
-undecided by the user.
+Seed ✨ ghosts exactly as listed (8 total: 7 ✨X — Lineup f4, Kiss f8+f9,
+Bouquet f9–f12 — plus 1 ✨P, Bouquet f1). All 35 frames start undecided by
+the user.

@@ -1,0 +1,1162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teststrip — Cull Mockup A · The Workstation</title>
+<style>
+/* ============================================================
+   Mockup A — "The Workstation"
+   Dense three-pane pro culling layout. Design-spike toy.
+   ============================================================ */
+:root{
+  --bg:#0b0c0f; --stage:#08090c; --panel:#12141a; --panel2:#181b22;
+  --line:#252a34; --line2:#2e3442;
+  --txt:#cfd4dd; --dim:#828a99; --faint:#5a6272;
+  --acc:#57d0b8;           /* navigation / current */
+  --gold:#e6b354;          /* ✦ recommendation */
+  --pick:#4cd08a;          /* user pick */
+  --rej:#ef6461;           /* user reject */
+  --ghost:#b78df2;         /* ✨ tentative */
+  --amber:#d9a13c;         /* mixed / too-close */
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
+  font:11px/1.45 var(--sans);-webkit-font-smoothing:antialiased}
+kbd{font:10px var(--mono);background:#1d212b;border:1px solid var(--line2);
+  border-bottom-width:2px;border-radius:3px;padding:1px 5px;color:var(--txt);white-space:nowrap}
+button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--line2);
+  border-radius:4px;padding:5px 12px;cursor:pointer}
+button:hover{border-color:var(--acc);color:#fff}
+button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.microlabel{font:9px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+
+#app{height:100vh;display:grid;
+  grid-template-columns:250px 1fr 288px;
+  grid-template-rows:34px 1fr 100px 30px auto;
+  grid-template-areas:"top top top" "rail center closeups" "strip strip strip" "status status status" "hint hint hint"}
+
+/* ---------- top bar ---------- */
+#topbar{grid-area:top;display:flex;align-items:center;gap:12px;padding:0 12px;
+  background:var(--panel);border-bottom:1px solid var(--line)}
+#topbar .brand{font:10px var(--mono);letter-spacing:.22em;color:var(--acc)}
+#topbar .batch{font-weight:600;font-size:12px;color:#e8ebf0}
+#topbar .meta{color:var(--dim);font-family:var(--mono);font-size:10px}
+#topbar .lens{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--dim)}
+#topbar .lens b{color:var(--txt);font-weight:600}
+
+/* ---------- left rail ---------- */
+#rail{grid-area:rail;background:var(--panel);border-right:1px solid var(--line);
+  overflow-y:auto;padding:6px 0}
+#rail .railhead{padding:4px 12px 6px}
+.stackrow{display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;
+  border-left:2px solid transparent}
+.stackrow:hover{background:var(--panel2)}
+.stackrow.cur{background:var(--panel2);border-left-color:var(--acc)}
+.stackrow .thumb{width:36px;height:26px;border-radius:3px;flex:none;position:relative;overflow:hidden}
+.stackrow .thumb .soft{position:absolute;inset:0;backdrop-filter:blur(1px)}
+.stackrow .sname{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-size:11px;color:#dde1e8}
+.stackrow.cur .sname{color:#fff;font-weight:600}
+.stackrow .scount{font:9px var(--mono);color:var(--faint)}
+.stackrow .sdone{font-size:10px;width:14px;text-align:center}
+.stackrow .sghost{font-size:9px;color:var(--ghost)}
+.chipwrap{padding:4px 10px 8px 22px;background:var(--panel2);border-left:2px solid var(--acc)}
+.chipgrid{display:flex;flex-wrap:wrap;gap:4px}
+.chip{width:32px;height:26px;border-radius:3px;position:relative;cursor:pointer;
+  font:9px var(--mono);color:#e8ebf0;border:1px solid transparent}
+.chip .n{position:absolute;left:3px;top:2px;text-shadow:0 1px 2px rgba(0,0,0,.7)}
+.chip .strip{position:absolute;left:0;right:0;bottom:0;height:3px;border-radius:0 0 2px 2px}
+.chip .strip.unscored{background:repeating-linear-gradient(90deg,var(--faint) 0 3px,transparent 3px 6px)}
+.chip.cur{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.chip .rec{position:absolute;right:2px;top:0;color:var(--gold);font-size:9px}
+.chip .gho{position:absolute;right:2px;bottom:3px;color:var(--ghost);font-size:8px}
+.chip .dec{position:absolute;inset:0;border-radius:2px;display:flex;align-items:center;
+  justify-content:center;font-weight:700;font-size:11px}
+.chip .dec.P{background:rgba(76,208,138,.28);color:var(--pick)}
+.chip .dec.X{background:rgba(239,100,97,.30);color:var(--rej)}
+.chip .close{position:absolute;left:0;right:0;top:0;height:2px;background:var(--amber)}
+.chip.dimmed{opacity:.3}
+.chiplegend{display:flex;align-items:center;gap:6px;margin-top:5px;font:8px var(--mono);color:var(--faint)}
+.chiplegend .grad{width:52px;height:4px;border-radius:2px;
+  background:linear-gradient(90deg,#3ecf8e,#d9a13c,#e05252)}
+.chiplegend .tcc{color:var(--amber)}
+
+/* ---------- center stage ---------- */
+#center{grid-area:center;display:flex;flex-direction:column;min-width:0;background:var(--stage)}
+#pillrow{display:flex;justify-content:center;align-items:center;gap:8px;padding:8px 12px 4px;min-height:34px}
+.pill{font:11px var(--mono);padding:4px 14px;border-radius:99px;border:1px solid var(--line2);
+  background:var(--panel);color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill.keep{border-color:rgba(87,208,184,.45);color:#8fe6d2}
+.pill.toss{border-color:rgba(239,100,97,.45);color:#f4938f}
+.pill.mixed{border-color:rgba(217,161,60,.45);color:#e5bc72}
+.pill.close{border-color:rgba(217,161,60,.6);color:var(--amber);font-weight:600}
+.pill.none{border-style:dashed;color:var(--faint);font-style:italic}
+#stagebox{flex:1;position:relative;display:flex;align-items:center;justify-content:center;
+  padding:6px 18px 14px;min-height:0}
+#stagewrap{position:relative;height:100%;aspect-ratio:3/2;max-width:100%;border-radius:6px;
+  overflow:hidden;background:#000;box-shadow:0 0 0 1px var(--line),0 12px 40px rgba(0,0,0,.5)}
+#art{position:absolute;inset:0;transition:transform .16s ease-out;will-change:transform}
+#art svg{width:100%;height:100%;display:block}
+#stagewrap.zoomed{cursor:grab}
+#stagewrap.zoomed:active{cursor:grabbing}
+.artlabel{position:absolute;left:14px;bottom:12px;pointer-events:none}
+.artlabel .big{font:600 24px var(--sans);text-shadow:0 2px 8px rgba(0,0,0,.6)}
+.artlabel .file{font:10px var(--mono);color:rgba(255,255,255,.55)}
+.badge{position:absolute;font:10px var(--mono);padding:3px 8px;border-radius:4px;pointer-events:none}
+#brec{left:10px;top:10px;color:var(--gold);border:1px solid rgba(230,179,84,.5);background:rgba(20,16,6,.75)}
+#bclose{left:10px;top:10px;color:var(--amber);border:1px solid rgba(217,161,60,.6);background:rgba(20,16,6,.8)}
+#bdec{right:10px;top:10px;font-weight:700}
+#bdec.P{color:var(--pick);border:1px solid rgba(76,208,138,.6);background:rgba(8,24,15,.8)}
+#bdec.X{color:var(--rej);border:1px solid rgba(239,100,97,.6);background:rgba(28,10,10,.8)}
+#bdec.gP,#bdec.gX{color:var(--ghost);border:1px dashed rgba(183,141,242,.65);background:rgba(18,12,28,.8);font-weight:400}
+#bstars{right:10px;bottom:10px;color:var(--gold);background:rgba(0,0,0,.55);border:1px solid var(--line2)}
+#bskip{left:10px;bottom:48px;color:var(--faint);background:rgba(0,0,0,.5)}
+#bzoom{right:10px;bottom:38px;color:var(--acc);background:rgba(0,0,0,.6);border:1px solid rgba(87,208,184,.4)}
+#shimmer{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+  background:rgba(8,9,12,.72);z-index:5}
+#shimmer.on{display:flex}
+#shimmer .sheen{position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.09) 50%,transparent 60%);
+  background-size:250% 100%;animation:sheen .7s linear infinite}
+#shimmer .word{font:11px var(--mono);color:var(--dim);letter-spacing:.2em;z-index:1}
+#shimmer.flash .word{animation:flashword .22s ease-out}
+@keyframes sheen{from{background-position:120% 0}to{background-position:-120% 0}}
+@keyframes flashword{0%{transform:scale(1);color:var(--dim)}40%{transform:scale(1.35);color:#fff}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){#shimmer .sheen{animation:none;background:rgba(255,255,255,.05)}}
+#toast{position:absolute;left:50%;bottom:26px;transform:translateX(-50%) translateY(8px);
+  font:11px var(--mono);background:#1a1e27;border:1px solid var(--line2);border-radius:5px;
+  padding:6px 14px;opacity:0;transition:opacity .18s,transform .18s;pointer-events:none;z-index:8;
+  box-shadow:0 6px 20px rgba(0,0,0,.5)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ---------- right: close-ups + reads ---------- */
+#closeups{grid-area:closeups;background:var(--panel);border-left:1px solid var(--line);
+  overflow-y:auto;display:flex;flex-direction:column}
+.rpsec{padding:8px 12px;border-bottom:1px solid var(--line)}
+.rphead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.rphead .k{font:9px var(--mono);color:var(--faint)}
+#facearea{min-height:110px} /* reserved: no reflow between faces / no-faces / hidden */
+.facegrid{display:flex;flex-wrap:wrap;gap:8px}
+.facechip{width:46px;text-align:center}
+.facechip .fc{width:44px;height:44px;border-radius:6px;display:flex;align-items:center;
+  justify-content:center;font-size:22px;position:relative;border:2px solid var(--pick)}
+.facechip .fc.shut{border-color:var(--rej)}
+.facechip .fc.kissok{border-color:var(--pick)}
+.facechip .fc .fdot{position:absolute;right:2px;top:2px;width:7px;height:7px;border-radius:50%;
+  border:1px solid rgba(0,0,0,.5)}
+.facechip .fc .fdot.sharp{background:var(--acc)}
+.facechip .fc .fdot.soft{background:var(--amber)}
+.facechip .fl{font:8px var(--mono);margin-top:3px;color:var(--dim)}
+.facechip .fl.shut{color:var(--rej)}
+.facechip .fl.kissok{color:var(--pick)}
+.facestate{height:110px;display:flex;align-items:center;justify-content:center;
+  color:var(--faint);font-style:italic;text-align:center;padding:0 10px}
+.sigrow{display:grid;grid-template-columns:44px 1fr 74px;gap:8px;align-items:center;margin:7px 0}
+.sigrow .sn{font:9px var(--mono);letter-spacing:.1em;color:var(--dim)}
+.sigrow .bar{height:5px;background:#1d212b;border-radius:3px;overflow:hidden}
+.sigrow .bar i{display:block;height:100%;border-radius:3px;background:var(--acc)}
+.sigrow .bar.na{background:repeating-linear-gradient(90deg,#1d212b 0 4px,#14161c 4px 8px)}
+.sigrow .sv{font:10px var(--mono);color:var(--txt);text-align:right}
+.sigrow .sv small{color:var(--faint);font-size:8px}
+.rationale{margin-top:8px;padding:7px 9px;border-radius:4px;background:var(--panel2);
+  border:1px solid var(--line);color:var(--dim);font-size:10.5px;line-height:1.5}
+.rationale b{color:var(--txt)}
+.rationale .noread{color:var(--faint);font-style:italic}
+.ghostnote{margin-top:6px;padding:6px 9px;border-radius:4px;border:1px dashed rgba(183,141,242,.5);
+  color:var(--ghost);font-size:10px;background:rgba(183,141,242,.06)}
+.yourcall{display:flex;align-items:center;gap:8px;margin-top:2px}
+.yourcall .cv{font:600 11px var(--mono)}
+.yourcall .cv.P{color:var(--pick)} .yourcall .cv.X{color:var(--rej)} .yourcall .cv.und{color:var(--faint);font-weight:400}
+.yourcall .st{color:var(--gold);font-size:11px;margin-left:auto}
+
+/* ---------- filmstrip ---------- */
+#strip{grid-area:strip;background:var(--panel);border-top:1px solid var(--line);
+  overflow-x:auto;overflow-y:hidden;display:flex;align-items:stretch;padding:6px 10px 4px;gap:0}
+.sgroup{display:flex;flex-direction:column;flex:none;padding:0 7px;border-right:1px solid var(--line)}
+.sgroup:last-child{border-right:none}
+.sgroup .glabel{font:8px var(--mono);letter-spacing:.08em;color:var(--faint);white-space:nowrap;
+  margin-bottom:4px;text-transform:uppercase}
+.sgroup .glabel .gdone{color:var(--pick)}
+.sgroup .cells{display:flex;gap:4px}
+.cell{width:46px;height:60px;border-radius:4px;position:relative;cursor:pointer;flex:none;
+  border:1px solid transparent;overflow:hidden;font:9px var(--mono)}
+.cell .bgt{position:absolute;inset:0}
+.cell.soft .bgt{opacity:.5}
+.cell .n{position:absolute;left:4px;top:3px;color:#eef1f5;text-shadow:0 1px 2px rgba(0,0,0,.8)}
+.cell .strip2{position:absolute;left:0;right:0;bottom:0;height:3px}
+.cell .strip2.unscored{background:repeating-linear-gradient(90deg,var(--faint) 0 3px,transparent 3px 6px)}
+.cell .rec{position:absolute;right:3px;top:2px;color:var(--gold)}
+.cell .gho{position:absolute;right:3px;bottom:6px;color:var(--ghost);font-size:8px}
+.cell .dec{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:13px}
+.cell .dec.P{background:rgba(76,208,138,.30);color:var(--pick)}
+.cell .dec.X{background:rgba(239,100,97,.32);color:var(--rej)}
+.cell .skp{position:absolute;left:4px;bottom:6px;color:var(--faint)}
+.cell .close{position:absolute;left:0;right:0;top:0;height:2px;background:var(--amber)}
+.cell.cur{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.cell.dimmed{opacity:.25}
+
+/* ---------- status bar ---------- */
+#status{grid-area:status;display:flex;align-items:center;gap:14px;padding:0 12px;
+  background:var(--panel);border-top:1px solid var(--line);font:10px var(--mono);color:var(--dim)}
+#counter{color:var(--txt)}
+#counter b{color:#fff;font-weight:600}
+#progresswrap{display:flex;align-items:center;gap:8px;flex:1;max-width:340px}
+#progressbar{flex:1;height:5px;background:#1d212b;border-radius:3px;overflow:hidden}
+#progressfill{height:100%;background:var(--acc);border-radius:3px;transition:width .2s}
+.schip{padding:2px 8px;border-radius:3px;border:1px solid var(--line2);white-space:nowrap}
+.schip b{color:var(--txt);font-weight:600}
+.schip.on b{color:var(--acc)}
+.schip.off{opacity:.6}
+#status .spacer{flex:1}
+
+/* ---------- hint bar ---------- */
+#hint{grid-area:hint;display:flex;align-items:center;justify-content:center;gap:10px;
+  padding:5px 8px;background:#0e1013;border-top:1px solid var(--line);flex-wrap:wrap}
+#hint span{color:var(--faint);font-size:10px}
+#hint.gone{display:none}
+
+/* ---------- overlays ---------- */
+.overlay{position:fixed;inset:0;background:rgba(5,6,8,.78);display:none;
+  align-items:center;justify-content:center;z-index:50}
+.overlay.on{display:flex}
+.card{background:var(--panel);border:1px solid var(--line2);border-radius:10px;
+  padding:22px 26px;max-width:640px;width:92%;max-height:86vh;overflow-y:auto;
+  box-shadow:0 24px 80px rgba(0,0,0,.7)}
+.card h2{font-size:15px;font-weight:600;color:#fff;margin-bottom:2px}
+.card .sub{color:var(--dim);font-family:var(--mono);font-size:10px;margin-bottom:14px}
+.kmsec{margin-bottom:12px}
+.kmsec h3{font:9px var(--mono);letter-spacing:.16em;text-transform:uppercase;
+  color:var(--acc);margin-bottom:6px}
+.kmgrid{display:grid;grid-template-columns:1fr 1fr;gap:3px 22px}
+.kmrow{display:flex;gap:8px;align-items:baseline;font-size:11px}
+.kmrow .kk{min-width:74px;text-align:right}
+.kmrow .kd{color:var(--dim)}
+.kmsec.stub .kmrow{opacity:.45}
+.sumrow{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:5px;
+  font-size:12px;cursor:pointer}
+.sumrow:hover{background:var(--panel2)}
+.sumrow .num{font:600 13px var(--mono);min-width:38px;text-align:right}
+.sumrow .lbl{flex:1}
+.sumrow .jump{color:var(--faint);font-size:10px}
+.sumrow.p .num{color:var(--pick)} .sumrow.x .num{color:var(--rej)}
+.sumrow.u .num{color:var(--txt)} .sumrow.s .num{color:var(--dim)}
+.sumrow.n .num{color:var(--amber)} .sumrow.g .num{color:var(--ghost)}
+.ceremonies{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;padding-top:14px;
+  border-top:1px solid var(--line)}
+.footnote{margin-top:12px;color:var(--faint);font-size:10px;line-height:1.5}
+.revstack{margin-bottom:12px}
+.revstack h4{font-size:11px;color:var(--txt);margin-bottom:4px}
+.revrow{display:flex;gap:10px;align-items:baseline;padding:3px 6px;font-size:11px}
+.revrow .rgk{font:10px var(--mono);color:var(--ghost);min-width:28px}
+.revrow .rgn{color:var(--dim);flex:1}
+.revrow .rgs{font:9px var(--mono)}
+.revrow .rgs.await{color:var(--ghost)}
+.revrow .rgs.replaced{color:var(--faint);text-decoration:line-through}
+.stubmsg{font-size:12px;line-height:1.6;color:var(--txt);margin-bottom:14px}
+.stubmsg em{color:var(--ghost);font-style:normal}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#262b36;border-radius:4px}
+::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <span class="brand">TESTSTRIP · CULL</span>
+    <span class="batch">June 14 — Red Rocks wedding + archive strays</span>
+    <span class="meta">35 photos · 9 stops · 4 bursts</span>
+    <span class="lens">lens: <b>Everything</b> · 35 shown · 0 hidden</span>
+  </div>
+  <div id="rail"><div class="railhead microlabel">Run — 9 stops</div><div id="raillist"></div></div>
+  <div id="center">
+    <div id="pillrow"></div>
+    <div id="stagebox">
+      <div id="stagewrap">
+        <div id="art"></div>
+        <div class="artlabel"><div class="big" id="albig"></div><div class="file" id="alfile"></div></div>
+        <div class="badge" id="brec">✦ RECOMMENDED</div>
+        <div class="badge" id="bclose"></div>
+        <div class="badge" id="bdec"></div>
+        <div class="badge" id="bstars"></div>
+        <div class="badge" id="bskip">skipped earlier · undecided</div>
+        <div class="badge" id="bzoom">Z 2× · ⇧arrows / drag to pan</div>
+        <div id="shimmer"><div class="sheen"></div><div class="word">RENDERING…</div></div>
+      </div>
+      <div id="toast"></div>
+    </div>
+  </div>
+  <div id="closeups">
+    <div class="rpsec">
+      <div class="rphead"><span class="microlabel">Close-ups</span><span class="k" id="facecount"></span></div>
+      <div id="facearea"></div>
+    </div>
+    <div class="rpsec">
+      <div class="rphead"><span class="microlabel">Reads</span><span class="k" id="rankline"></span></div>
+      <div id="signals"></div>
+      <div class="rationale" id="rationale"></div>
+      <div id="ghostslot"></div>
+    </div>
+    <div class="rpsec">
+      <div class="rphead"><span class="microlabel">Your call</span></div>
+      <div class="yourcall" id="yourcall"></div>
+    </div>
+  </div>
+  <div id="strip"></div>
+  <div id="status">
+    <span id="counter"></span>
+    <div id="progresswrap"><div id="progressbar"><div id="progressfill"></div></div><span id="progresstext"></span></div>
+    <span class="spacer"></span>
+    <span class="schip" id="scopechip"></span>
+    <span class="schip" id="autochip"></span>
+    <span class="schip">? keys</span>
+  </div>
+  <div id="hint">
+    <span><kbd>→</kbd><kbd>←</kbd> stacks</span><span><kbd>↓</kbd><kbd>↑</kbd> frames</span>
+    <span><kbd>P</kbd> pick</span><span><kbd>X</kbd> reject</span><span><kbd>U</kbd> clear</span>
+    <span><kbd>⏎</kbd> commit stack</span><span><kbd>␣</kbd> skip</span>
+    <span><kbd>Z</kbd> zoom</span><span><kbd>/</kbd> faces</span><span><kbd>1–5</kbd> stars</span>
+    <span><kbd>A</kbd> auto</span><span><kbd>S</kbd> scope</span><span><kbd>⌘Z</kbd> undo</span>
+    <span><kbd>?</kbd> all keys (hides this bar)</span>
+  </div>
+</div>
+
+<div class="overlay" id="ovkeys"><div class="card" id="keyscard"></div></div>
+<div class="overlay" id="ovcomplete"><div class="card" id="completecard"></div></div>
+<div class="overlay" id="ovreview"><div class="card" id="reviewcard"></div></div>
+<div class="overlay" id="ovstub"><div class="card" id="stubcard"></div></div>
+
+<script>
+"use strict";
+/*CORE-START*/
+/* ============================================================
+   CORE — pure data + state machine. No DOM. Testable under
+   node/jsc by extracting between the CORE markers.
+   ============================================================ */
+
+// ---- Dataset: exactly the shared-spec 35 frames / 9 stops ----
+const STACKS = [
+  { key:"lineup", name:"Lineup", kind:"lineup", hue:174, sat:34, faces:8, rec:2,
+    frames:[
+      {file:"RR14_0412.RAF", focus:.82, eyes:1,   smile:.72, blur:0,   rankT:.2, pill:"Keep read 76% · eyes open",                        shut:[]},
+      {file:"RR14_0413.RAF", focus:.85, eyes:.75, smile:.70, blur:0,   rankT:.8, pill:"Mixed read 66% · 2 eyes shut",                     shut:[1,5]},
+      {file:"RR14_0414.RAF", focus:.88, eyes:1,   smile:.78, blur:0,   rankT:0,  pill:"Keep read 84% · sharpest in stack · all eyes open", shut:[]},
+      {file:"RR14_0415.RAF", focus:.79, eyes:.5,  smile:.55, blur:1.2, rankT:1,  pill:"Toss read 62% · 2 eyes shut · softer",             shut:[1,3,5,6], ghost:"X", ghostNote:"2 eyes shut · softer"},
+      {file:"RR14_0416.RAF", focus:.84, eyes:.88, smile:.74, blur:0,   rankT:.6, pill:"Keep read 71% · one blink",                        shut:[4]},
+      {file:"RR14_0417.RAF", focus:.81, eyes:1,   smile:.76, blur:0,   rankT:.4, pill:"Keep read 74% · eyes open",                        shut:[]},
+    ]},
+  { key:"venue", name:"Venue wide", kind:"venue", hue:38, sat:42, faces:0, rec:null,
+    frames:[{file:"RR14_0428.RAF", focus:.90, eyes:null, smile:null, blur:0, rankT:null, pill:"Keep read 78% · sharp"}]},
+  { key:"kiss", name:"First kiss", kind:"kiss", hue:345, sat:36, faces:2, rec:5,
+    frames:[
+      {file:"RR14_0431.RAF", focus:.78, eyes:1,   smile:.35, blur:.6, rankT:.75,  pill:"Mixed read 60% · approach",                          shut:[]},
+      {file:"RR14_0432.RAF", focus:.80, eyes:1,   smile:.40, blur:0,  rankT:.625, pill:"Keep read 66%",                                      shut:[]},
+      {file:"RR14_0433.RAF", focus:.82, eyes:1,   smile:.50, blur:0,  rankT:.5,   pill:"Keep read 70%",                                      shut:[]},
+      {file:"RR14_0434.RAF", focus:.84, eyes:.9,  smile:.60, blur:0,  rankT:.375, pill:"Keep read 74% · leaning in",                         shut:[]},
+      {file:"RR14_0435.RAF", focus:.86, eyes:.2,  smile:.55, blur:0,  rankT:.125, pill:"Keep read 81% · eyes-shut OK (kiss)",                shut:[0,1], kissOK:true},
+      {file:"RR14_0436.RAF", focus:.88, eyes:.1,  smile:.60, blur:0,  rankT:0,    pill:"Keep read 88% · peak moment · eyes-shut OK (kiss)",  shut:[0,1], kissOK:true},
+      {file:"RR14_0437.RAF", focus:.83, eyes:.15, smile:.55, blur:0,  rankT:.25,  pill:"Keep read 79% · eyes-shut OK (kiss)",                shut:[0,1], kissOK:true},
+      {file:"RR14_0438.RAF", focus:.62, eyes:.5,  smile:.40, blur:2,  rankT:.875, pill:"Toss read 64% · soft",                               shut:[1], ghost:"X", ghostNote:"soft"},
+      {file:"RR14_0439.RAF", focus:.55, eyes:.6,  smile:.35, blur:2.5,rankT:1,    pill:"Toss read 68% · soft tail",                          shut:[0], ghost:"X", ghostNote:"soft tail"},
+    ]},
+  { key:"rings", name:"Rings detail", kind:"rings", hue:270, sat:32, faces:0, rec:null, unscored:true,
+    frames:[{file:"RR14_0455.RAF", focus:null, eyes:null, smile:null, blur:0, rankT:null, pill:null}]},
+  { key:"toss", name:"Bouquet toss", kind:"toss", hue:205, sat:40, faces:0, rec:null, tooClose:[4,5,6],
+    frames:[
+      {file:"RR14_0502.RAF", focus:.80, blur:0,   rankT:.273, pill:"Keep read 72% · clean launch", ghost:"P", ghostNote:"clean launch · sharp"},
+      {file:"RR14_0503.RAF", focus:.78, blur:0,   rankT:.545, pill:"Mixed read 61%"},
+      {file:"RR14_0504.RAF", focus:.81, blur:0,   rankT:.455, pill:"Mixed read 65%"},
+      {file:"RR14_0505.RAF", focus:.82, blur:0,   rankT:.364, pill:"Keep read 70%"},
+      {file:"RR14_0506.RAF", focus:.84, blur:0,   rankT:.091, pill:"Too close to call — 5·6·7"},
+      {file:"RR14_0507.RAF", focus:.85, blur:0,   rankT:.091, pill:"Too close to call — 5·6·7"},
+      {file:"RR14_0508.RAF", focus:.84, blur:0,   rankT:.091, pill:"Too close to call — 5·6·7"},
+      {file:"RR14_0509.RAF", focus:.70, blur:1,   rankT:.636, pill:"Mixed read 58% · catch begins"},
+      {file:"RR14_0510.RAF", focus:.40, blur:2,   rankT:.727, pill:"Toss read 74% · motion blur", ghost:"X", ghostNote:"motion blur"},
+      {file:"RR14_0511.RAF", focus:.35, blur:2.4, rankT:.818, pill:"Toss read 78% · motion blur", ghost:"X", ghostNote:"motion blur"},
+      {file:"RR14_0512.RAF", focus:.30, blur:2.8, rankT:.909, pill:"Toss read 81% · motion blur", ghost:"X", ghostNote:"motion blur"},
+      {file:"RR14_0513.RAF", focus:.28, blur:3,   rankT:1,    pill:"Toss read 83% · motion blur", ghost:"X", ghostNote:"motion blur"},
+    ]},
+  { key:"grandma", name:"Grandma · scan 1974", kind:"scan", hue:32, sat:24, faces:1, rec:null,
+    frames:[{file:"scan-1974-grandma.tif", focus:.55, eyes:1, smile:.6, blur:2, rankT:null, pill:"Mixed read 55%", shut:[], rot:1.5}]},
+  { key:"reshoots", name:"Scan reshoots", kind:"scan", hue:32, sat:18, faces:0, rec:null, unscored:true,
+    frames:[
+      {file:"reshoot-1974-a.dng", focus:null, blur:0, rankT:null, pill:null, rot:-2},
+      {file:"reshoot-1974-b.dng", focus:null, blur:0, rankT:null, pill:null, rot:1},
+      {file:"reshoot-1974-c.dng", focus:null, blur:0, rankT:null, pill:null, rot:3},
+    ]},
+  { key:"phone", name:"Phone snap 2009", kind:"phone", hue:130, sat:26, faces:3, rec:null,
+    frames:[{file:"IMG_0347.JPG", focus:.62, eyes:1, smile:.8, blur:1.2, rankT:null, pill:"Toss read 58% · soft", shut:[]}]},
+  { key:"ted", name:"Portrait — Ted", kind:"ted", hue:215, sat:14, faces:1, rec:null,
+    frames:[{file:"ted-portrait-04.NEF", focus:.80, eyes:0, smile:.4, blur:0, rankT:null, pill:"Toss read 61% · eyes shut", shut:[0]}]},
+];
+
+// Flatten to the 35-frame walk, capture order.
+const FRAMES = [];
+STACKS.forEach((st, si) => {
+  st.start = FRAMES.length;
+  st.n = st.frames.length;
+  st.frames.forEach((f, i) => {
+    f.si = si; f.idx = i; f.gi = FRAMES.length;
+    f.tooClose = !!(st.tooClose && st.tooClose.includes(i));
+    f.rec = (st.rec === i);
+    FRAMES.push(f);
+  });
+});
+const TOTAL = FRAMES.length;          // 35
+const NSTACKS = STACKS.length;        // 9
+const SCOPES = ["all","undecided","picks","rejects"]; // S cycles these
+
+function initState(){
+  const s = { cur:-1, dec:{}, stars:{}, skipped:{}, viewed:{}, history:[],
+              scope:"all", autoAdv:true };
+  gotoFrame(s, landing(0));            // run opens on stack 1's ✦
+  return s;
+}
+function stackOf(fi){ return STACKS[FRAMES[fi].si]; }
+function landing(si){                  // land-on-✦, honest fallback to frame 1
+  const st = STACKS[si];
+  return st.rec != null ? st.start + st.rec : st.start;
+}
+function gotoFrame(s, fi){ s.cur = fi; s.viewed[fi] = 1; }
+
+function inScope(s, fi){
+  const d = s.dec[fi];
+  switch(s.scope){
+    case "all":       return true;
+    case "undecided": return !d;
+    case "picks":     return d === "P";
+    case "rejects":   return d === "X";
+    case "skipped":   return !d && !!s.skipped[fi];
+    case "never":     return !d && !s.viewed[fi];
+    default:          return true;
+  }
+}
+function stackScopeFrames(s, si){
+  const st = STACKS[si], out = [];
+  for(let i = st.start; i < st.start + st.n; i++) if(inScope(s, i)) out.push(i);
+  return out;
+}
+
+// ---- Navigation ----
+function nextStack(s){
+  const si = FRAMES[s.cur].si;
+  for(let j = si + 1; j < NSTACKS; j++){
+    const fs = stackScopeFrames(s, j);
+    if(fs.length){
+      const land = landing(j);
+      gotoFrame(s, fs.includes(land) ? land : fs[0]);
+      return {};
+    }
+  }
+  return { completed:true };           // walked past the end → summary
+}
+function prevStack(s){
+  const si = FRAMES[s.cur].si;
+  for(let j = si - 1; j >= 0; j--){
+    const fs = stackScopeFrames(s, j);
+    if(fs.length){
+      const land = landing(j);
+      gotoFrame(s, fs.includes(land) ? land : fs[0]);
+      return {};
+    }
+  }
+  return {};
+}
+function nextFrame(s){                 // ↓/J: within stack; photo-walk on singles
+  const f = FRAMES[s.cur], st = STACKS[f.si];
+  if(st.n > 1){
+    for(let i = s.cur + 1; i < st.start + st.n; i++)
+      if(inScope(s, i)){ gotoFrame(s, i); return {}; }
+    return {};                         // clamped at stack edge
+  }
+  for(let i = s.cur + 1; i < TOTAL; i++)
+    if(inScope(s, i)){ gotoFrame(s, i); return {}; }
+  return {};
+}
+function prevFrame(s){
+  const f = FRAMES[s.cur], st = STACKS[f.si];
+  if(st.n > 1){
+    for(let i = s.cur - 1; i >= st.start; i--)
+      if(inScope(s, i)){ gotoFrame(s, i); return {}; }
+    return {};
+  }
+  for(let i = s.cur - 1; i >= 0; i--)
+    if(inScope(s, i)){ gotoFrame(s, i); return {}; }
+  return {};
+}
+
+// ---- Decisions ----
+function decide(s, d){                 // d: 'P' | 'X' | null (U)
+  const fi = s.cur, prev = s.dec[fi] || null;
+  if(prev !== (d || null)){            // only real changes enter the undo history
+    s.history.push({ type:"decide", changes:[{fi, prev}], prevCur:fi });
+    if(d) s.dec[fi] = d; else delete s.dec[fi];
+  }
+  if(d && s.autoAdv){
+    const st = STACKS[FRAMES[fi].si];
+    // next undecided in this stack: forward first, then wrap
+    for(let i = fi + 1; i < st.start + st.n; i++)
+      if(!s.dec[i]){ gotoFrame(s, i); return {}; }
+    for(let i = st.start; i < fi; i++)
+      if(!s.dec[i]){ gotoFrame(s, i); return {}; }
+    return nextStack(s);               // stack fully decided → carry on
+  }
+  return {};
+}
+function skip(s){                      // Space: always decision-free
+  const fi = s.cur, f = FRAMES[fi], st = STACKS[f.si];
+  if(!s.dec[fi]) s.skipped[fi] = 1;
+  if(st.n > 1){
+    for(let i = fi + 1; i < st.start + st.n; i++)
+      if(inScope(s, i)){ gotoFrame(s, i); return {}; }
+  }
+  return nextStack(s);
+}
+function commit(s){                    // Return: the one-key-per-burst cadence
+  const fi = s.cur, f = FRAMES[fi], st = STACKS[f.si];
+  const changes = [];
+  if(st.n === 1){
+    changes.push({fi, prev: s.dec[fi] || null});
+    s.dec[fi] = "P";
+    s.history.push({ type:"commit", changes, prevCur:fi, single:true });
+    const eff = nextStack(s);
+    return { ...eff, toast:"Picked · advancing", committed:true };
+  }
+  for(let i = st.start; i < st.start + st.n; i++){
+    const want = (i === fi) ? "P" : (s.dec[i] || "X");   // keep current + already-picked; reject undecided (ghosts count for nothing)
+    if((s.dec[i] || null) !== want){ changes.push({fi:i, prev: s.dec[i] || null}); s.dec[i] = want; }
+  }
+  s.history.push({ type:"commit", changes, prevCur:fi });
+  let kept = 0, rej = 0;
+  for(let i = st.start; i < st.start + st.n; i++){
+    if(s.dec[i] === "P") kept++; else if(s.dec[i] === "X") rej++;
+  }
+  const eff = nextStack(s);
+  return { ...eff, toast:`Kept ${kept} · rejected ${rej}`, committed:true };
+}
+function undo(s){                      // a stack commit undoes as ONE unit
+  const e = s.history.pop();
+  if(!e) return { toast:"Nothing to undo" };
+  e.changes.forEach(c => { if(c.prev) s.dec[c.fi] = c.prev; else delete s.dec[c.fi]; });
+  gotoFrame(s, e.prevCur);
+  return { toast: e.type === "commit"
+      ? `Undid stack commit — ${stackOf(e.prevCur).name} restored`
+      : "Undid decision" };
+}
+function setStars(s, n){ if(n) s.stars[s.cur] = n; else delete s.stars[s.cur]; }
+function cycleScope(s){
+  const i = SCOPES.indexOf(s.scope);
+  s.scope = SCOPES[(i + 1) % SCOPES.length];   // special jump scopes cycle back via 'all'
+  if(i === -1) s.scope = "all";
+}
+
+// ---- Accounting (disjoint buckets over all 35) ----
+function counts(s){
+  let picked=0, rejected=0, undecided=0, skipped=0, never=0;
+  for(let i = 0; i < TOTAL; i++){
+    const d = s.dec[i];
+    if(d === "P") picked++;
+    else if(d === "X") rejected++;
+    else if(!s.viewed[i]) never++;
+    else if(s.skipped[i]) skipped++;
+    else undecided++;
+  }
+  return { picked, rejected, undecided, skipped, never,
+           ghosts: ghostsAwaiting(s).length };
+}
+function allGhosts(){ return FRAMES.filter(f => f.ghost); }
+function ghostsAwaiting(s){ return allGhosts().filter(f => !s.dec[f.gi]); }
+function stackDecided(s, si){
+  const st = STACKS[si];
+  for(let i = st.start; i < st.start + st.n; i++) if(!s.dec[i]) return false;
+  return true;
+}
+/*CORE-END*/
+
+/* ============================================================
+   UI layer — rendering, keyboard, shimmer, zoom, overlays.
+   ============================================================ */
+if (typeof document !== "undefined") (function(){
+
+const S = initState();
+const $ = id => document.getElementById(id);
+const ui = {
+  closeups:true, hintGone:false,
+  keys:false, complete:false, review:false, reviewFrom:null, stub:null,
+  zoom:{ on:false, x:50, y:50 },
+  renderedOnce:{}, shimmer:false, shimmerTimer:null,
+};
+
+// ---------- colors ----------
+const hsl = (h,s,l) => `hsl(${h},${s}%,${l}%)`;
+function stackCols(st){
+  return { bgA:hsl(st.hue,st.sat,15), bgB:hsl(st.hue,st.sat,23),
+           shape:hsl(st.hue,st.sat+8,52), ink:hsl(st.hue,26,11),
+           label:hsl(st.hue,24,86), tint:hsl(st.hue,st.sat,30) };
+}
+function rankColor(t){                 // 0 best → 1 worst
+  const A=[62,207,142], B=[217,161,60], C=[224,82,82];
+  const mix=(p,q,u)=>Math.round(p+(q-p)*u);
+  const [r,g,b] = t<.5
+    ? [mix(A[0],B[0],t*2),mix(A[1],B[1],t*2),mix(A[2],B[2],t*2)]
+    : [mix(B[0],C[0],(t-.5)*2),mix(B[1],C[1],(t-.5)*2),mix(B[2],C[2],(t-.5)*2)];
+  return {solid:`rgb(${r},${g},${b})`, tint:`rgba(${r},${g},${b},.17)`};
+}
+
+// ---------- placeholder art ----------
+function svgHead(x,y,r,shut,C){
+  const e=r*.34, ey=y-r*.12, ew=Math.max(2.4,r*.16);
+  const eyes = shut
+    ? `<path d="M${x-e-ew} ${ey} h${ew*2} M${x+e-ew} ${ey} h${ew*2}" stroke="${C.ink}" stroke-width="2" fill="none" stroke-linecap="round"/>`
+    : `<circle cx="${x-e}" cy="${ey}" r="${Math.max(1.8,r*.09)}" fill="${C.ink}"/><circle cx="${x+e}" cy="${ey}" r="${Math.max(1.8,r*.09)}" fill="${C.ink}"/>`;
+  return `<circle cx="${x}" cy="${y}" r="${r}" fill="${C.shape}" stroke="${C.ink}" stroke-width="1.5"/>${eyes}
+    <path d="M${x-r*.32} ${y+r*.36} q${r*.32} ${r*.24} ${r*.64} 0" stroke="${C.ink}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
+}
+function motif(st, f){
+  const C = stackCols(st);
+  let art = "";
+  if(st.kind === "lineup"){
+    art += `<path d="M-10 210 L80 70 L170 210 Z" fill="${hsl(st.hue,st.sat,19)}"/>
+            <path d="M180 210 L290 50 L430 210 Z" fill="${hsl(st.hue,st.sat,17)}"/>`;
+    for(let i=0;i<8;i++){
+      const x = 46 + i*47;
+      art += `<rect x="${x-15}" y="${212}" width="30" height="50" rx="9" fill="${C.shape}" opacity=".8"/>`;
+      art += svgHead(x, 196, 15, f.shut && f.shut.includes(i), C);
+    }
+  } else if(st.kind === "venue"){
+    art += `<path d="M-20 230 L120 60 L260 230 Z" fill="${hsl(st.hue,st.sat,20)}"/>
+            <path d="M180 230 L320 90 L460 230 Z" fill="${hsl(st.hue,st.sat,16)}"/>
+            <circle cx="352" cy="58" r="22" fill="${C.shape}" opacity=".85"/>
+            <path d="M175 230 v-52 a35 35 0 0 1 70 0 v52" fill="none" stroke="${C.shape}" stroke-width="5"/>`;
+    for(let r=0;r<3;r++) for(let c=0;c<9;c++)
+      art += `<circle cx="${92+c*26}" cy="${244+r*11}" r="3" fill="${C.shape}" opacity=".5"/>`;
+  } else if(st.kind === "kiss"){
+    const sep = Math.max(0,(4-f.idx))*9;
+    art += `<circle cx="210" cy="252" r="120" fill="${hsl(st.hue,st.sat,18)}"/>`;
+    art += svgHead(176-sep, 128, 27, f.shut && f.shut.includes(0), C);
+    art += svgHead(244+sep, 132, 27, f.shut && f.shut.includes(1), C);
+    if(f.kissOK){
+      const hs = f.idx===5 ? 15 : 10;
+      art += `<path transform="translate(210,84) scale(${hs/12})" d="M0 6 C-1 2 -8 0 -8 -5 a4.5 4.5 0 0 1 8-2 a4.5 4.5 0 0 1 8 2 C8 0 1 2 0 6 Z" fill="${C.shape}"/>`;
+    }
+  } else if(st.kind === "rings"){
+    art += `<rect x="60" y="200" width="300" height="34" rx="6" fill="${hsl(st.hue,st.sat,20)}"/>
+            <circle cx="185" cy="135" r="40" fill="none" stroke="${C.shape}" stroke-width="9"/>
+            <circle cx="235" cy="135" r="40" fill="none" stroke="${hsl(st.hue,st.sat+14,64)}" stroke-width="9"/>
+            <path d="M262 86 l4 10 10 4 -10 4 -4 10 -4-10 -10-4 10-4 Z" fill="${C.label}"/>`;
+  } else if(st.kind === "toss"){
+    const t = f.idx/11, bx = 50+320*t, by = 232-560*t*(1-t);
+    art += `<path d="M50 232 Q210 -46 370 232" fill="none" stroke="${C.shape}" stroke-width="1.6" stroke-dasharray="3 7" opacity=".5"/>`;
+    for(let i=0;i<6;i++){
+      const x = 70+i*56;
+      art += svgHead(x, 252, 13, false, C);
+      art += `<path d="M${x-16} 248 l-8 -20 M${x+16} 248 l8 -20" stroke="${C.shape}" stroke-width="3" stroke-linecap="round"/>`;
+    }
+    art += `<g><circle cx="${bx}" cy="${by}" r="10" fill="${C.shape}"/>`;
+    for(let k=0;k<5;k++){ const a = k*1.257;
+      art += `<circle cx="${bx+Math.cos(a)*12}" cy="${by+Math.sin(a)*12}" r="4.6" fill="${hsl(st.hue,st.sat+16,66)}"/>`; }
+    art += `<path d="M${bx} ${by+12} q4 14 -2 26" stroke="${C.shape}" stroke-width="2.4" fill="none"/></g>`;
+  } else if(st.kind === "scan"){
+    const rot = f.rot || 0;
+    art += `<g transform="rotate(${rot} 210 140)">
+      <rect x="52" y="26" width="316" height="228" fill="hsl(42,22%,82%)"/>
+      <rect x="72" y="44" width="276" height="176" fill="${hsl(st.hue,st.sat+8,42)}"/>
+      ${svgHead(210, 132, 40, false, {shape:hsl(st.hue,st.sat+14,66), ink:hsl(st.hue,30,18)})}
+      <circle cx="210" cy="86" r="15" fill="${hsl(st.hue,st.sat+14,66)}" stroke="${hsl(st.hue,30,18)}" stroke-width="1.5"/>
+      <text x="330" y="242" font-size="11" fill="hsl(32,30%,40%)" text-anchor="end" font-family="monospace">1974</text></g>`;
+  } else if(st.kind === "phone"){
+    art += `<rect x="0" y="196" width="420" height="84" fill="${hsl(st.hue,st.sat,17)}"/>`;
+    [140,210,280].forEach((x,i)=> art += svgHead(x, 150, 23, f.shut && f.shut.includes(i), C));
+    art += `<text x="404" y="264" font-size="15" fill="hsl(28,90%,60%)" text-anchor="end" font-family="monospace" opacity=".85">06·14·2009</text>`;
+  } else if(st.kind === "ted"){
+    art += `<rect x="130" y="196" width="160" height="90" rx="20" fill="${C.shape}" opacity=".75"/>`;
+    art += svgHead(210, 128, 52, f.shut && f.shut.includes(0), C);
+  }
+  return `<svg viewBox="0 0 420 280" preserveAspectRatio="xMidYMid slice">
+    <defs><linearGradient id="g${f.gi}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${C.bgB}"/><stop offset="1" stop-color="${C.bgA}"/>
+    </linearGradient></defs>
+    <rect width="420" height="280" fill="url(#g${f.gi})"/>
+    <g style="filter:blur(${f.blur||0}px)">${art}</g></svg>`;
+}
+
+// ---------- render ----------
+function render(){
+  renderStage(); renderPill(); renderRail(); renderRight(); renderStrip(); renderStatus();
+  const c = document.querySelector("#strip .cell.cur");
+  if(c) c.scrollIntoView({block:"nearest", inline:"nearest"});
+  const r = document.querySelector("#rail .stackrow.cur");
+  if(r) r.scrollIntoView({block:"nearest"});
+}
+
+function renderStage(){
+  const f = FRAMES[S.cur], st = STACKS[f.si], C = stackCols(st);
+  $("art").innerHTML = motif(st, f);
+  $("art").style.transform = ui.zoom.on ? "scale(2)" : "none";
+  $("art").style.transformOrigin = `${ui.zoom.x}% ${ui.zoom.y}%`;
+  $("stagewrap").classList.toggle("zoomed", ui.zoom.on);
+  $("albig").textContent = st.n > 1 ? `${st.name} · ${f.idx+1}/${st.n}` : st.name;
+  $("albig").style.color = C.label;
+  $("alfile").textContent = f.file;
+  $("brec").style.display = f.rec ? "block" : "none";
+  $("bclose").style.display = f.tooClose ? "block" : "none";
+  $("bclose").textContent = "≈ TOO CLOSE TO CALL — 5·6·7";
+  const d = S.dec[S.cur], bdec = $("bdec");
+  if(d){ bdec.style.display="block"; bdec.className="badge "+d;
+         bdec.textContent = d==="P" ? "PICK" : "REJECT"; }
+  else if(f.ghost){ bdec.style.display="block"; bdec.className="badge g"+f.ghost;
+         bdec.textContent = `✨${f.ghost} tentative`; }
+  else bdec.style.display="none";
+  const stn = S.stars[S.cur];
+  $("bstars").style.display = stn ? "block" : "none";
+  $("bstars").textContent = stn ? "★".repeat(stn)+"☆".repeat(5-stn) : "";
+  $("bskip").style.display = (S.skipped[S.cur] && !d) ? "block" : "none";
+  $("bzoom").style.display = ui.zoom.on ? "block" : "none";
+  $("shimmer").classList.toggle("on", ui.shimmer);
+}
+
+function renderPill(){
+  const f = FRAMES[S.cur];
+  let cls = "none", txt = "No read yet";
+  if(f.pill){
+    txt = f.pill;
+    cls = f.tooClose ? "close"
+        : f.pill.startsWith("Keep") ? "keep"
+        : f.pill.startsWith("Toss") ? "toss" : "mixed";
+    if(cls === "close") txt = "≈ " + txt;
+  }
+  $("pillrow").innerHTML = `<span class="pill ${cls}">${txt}</span>`;
+}
+
+function chipHTML(fi){
+  const f = FRAMES[fi], st = STACKS[f.si], d = S.dec[fi];
+  const rk = f.rankT != null ? rankColor(f.rankT) : null;
+  const dim = !inScope(S, fi) ? " dimmed" : "";
+  const bg = rk ? rk.tint : "rgba(120,128,145,.12)";
+  const strip = rk ? `<span class="strip" style="background:${rk.solid}"></span>`
+                   : `<span class="strip unscored"></span>`;
+  return `<span class="chip${fi===S.cur?" cur":""}${dim}" data-fi="${fi}" style="background:${bg}">
+    <span class="n">${f.idx+1}</span>${strip}
+    ${f.tooClose?'<span class="close"></span>':""}
+    ${f.rec?'<span class="rec">✦</span>':""}
+    ${(f.ghost && !d)?'<span class="gho">✨'+f.ghost+'</span>':""}
+    ${d?`<span class="dec ${d}">${d}</span>`:""}</span>`;
+}
+
+function renderRail(){
+  let h = "";
+  STACKS.forEach((st, si) => {
+    const curSi = FRAMES[S.cur].si;
+    const done = stackDecided(S, si);
+    let decCount = 0;
+    for(let i = st.start; i < st.start + st.n; i++) if(S.dec[i]) decCount++;
+    const gh = st.frames.filter(f => f.ghost && !S.dec[f.gi]).length;
+    const C = stackCols(st), lead = st.frames[0];
+    h += `<div class="stackrow${si===curSi?" cur":""}" data-si="${si}">
+      <span class="thumb" style="background:linear-gradient(180deg,${C.bgB},${C.bgA})">
+        ${lead.blur>1?'<span class="soft"></span>':""}</span>
+      <span class="sname">${st.name}</span>
+      ${gh?`<span class="sghost">✨${gh}</span>`:""}
+      <span class="scount">${decCount}/${st.n}</span>
+      <span class="sdone">${done?'<span style="color:var(--pick)">✓</span>':""}</span></div>`;
+    if(si === curSi && st.n > 1){
+      let chips = "";
+      for(let i = st.start; i < st.start + st.n; i++) chips += chipHTML(i);
+      h += `<div class="chipwrap"><div class="chipgrid">${chips}</div>
+        <div class="chiplegend"><span>best</span><span class="grad"></span><span>worst</span>
+        ${st.tooClose?'<span class="tcc">· ≈ 5·6·7 too close to call — no ✦</span>':""}
+        ${st.unscored?'<span>· no read yet — no ranking</span>':""}</div></div>`;
+    }
+  });
+  $("raillist").innerHTML = h;
+  document.querySelectorAll("#raillist .stackrow").forEach(el =>
+    el.addEventListener("click", () => { uiGoto(landing(+el.dataset.si)); }));
+  document.querySelectorAll("#raillist .chip").forEach(el =>
+    el.addEventListener("click", ev => { ev.stopPropagation(); uiGoto(+el.dataset.fi); }));
+}
+
+function renderRight(){
+  const f = FRAMES[S.cur], st = STACKS[f.si];
+  // close-ups (reserved space; never reflows away)
+  const fa = $("facearea");
+  $("facecount").textContent = st.faces ? `${st.faces} face${st.faces>1?"s":""}` : "";
+  if(!ui.closeups){
+    fa.innerHTML = `<div class="facestate">close-ups hidden · <kbd>/</kbd> to show</div>`;
+  } else if(st.unscored){
+    fa.innerHTML = `<div class="facestate">No read yet — faces not scanned</div>`;
+  } else if(!st.faces){
+    fa.innerHTML = `<div class="facestate">No faces in this frame</div>`;
+  } else {
+    let chips = "";
+    for(let i = 0; i < st.faces; i++){
+      const shut = f.shut && f.shut.includes(i);
+      const kissok = shut && f.kissOK;
+      const soft = (f.blur || 0) > .8;
+      const emoji = st.key==="grandma" ? "👵" : kissok ? "😚" : shut ? "😌" : "🙂";
+      const cls = kissok ? "kissok" : shut ? "shut" : "";
+      const lbl = kissok ? "kiss · OK" : shut ? "shut" : "open";
+      chips += `<span class="facechip"><span class="fc ${cls}" style="background:${hsl(st.hue,st.sat,20)}">${emoji}
+        <span class="fdot ${soft?"soft":"sharp"}" title="${soft?"soft":"sharp"}"></span></span>
+        <span class="fl ${cls}">${lbl}</span></span>`;
+    }
+    let note = "";
+    if(f.kissOK) note = `<div class="facestate" style="height:auto;padding-top:6px;font-style:normal;color:var(--pick)">eyes shut — OK in a kiss</div>`;
+    fa.innerHTML = `<div class="facegrid">${chips}</div>${note}`;
+  }
+  // reads card
+  const sig = (name, v, tag) => {
+    if(v == null) return `<div class="sigrow"><span class="sn">${name}</span><span class="bar na"></span><span class="sv"><small>—</small></span></div>`;
+    return `<div class="sigrow"><span class="sn">${name}</span>
+      <span class="bar"><i style="width:${Math.round(v*100)}%"></i></span>
+      <span class="sv">${v.toFixed(2)}${tag?` <small>${tag}</small>`:""}</span></div>`;
+  };
+  $("signals").innerHTML =
+    sig("FOCUS", f.focus ?? null) +
+    sig("EYES",  f.eyes  ?? null, f.kissOK ? "shut·OK" : null) +
+    sig("SMILE", f.smile ?? null);
+  $("rankline").textContent =
+    (st.n > 1 && f.rankT != null) ? `rank-tinted · ${st.n} frames` :
+    (st.n > 1 && st.unscored) ? "unranked" : "";
+  $("rationale").innerHTML = f.pill
+    ? `<b>${f.pill}</b><br>Claims are score-gated — a signal appears only when it genuinely separates the frames.`
+    : `<span class="noread">No read yet.</span> No signals have run on this frame — the mode won't invent a verdict.`;
+  $("ghostslot").innerHTML = (f.ghost && !S.dec[S.cur])
+    ? `<div class="ghostnote">✨${f.ghost} autopilot: ${f.ghostNote} — tentative; counts for nothing until you review it.</div>` : "";
+  const d = S.dec[S.cur], stn = S.stars[S.cur];
+  $("yourcall").innerHTML = `<span class="cv ${d||"und"}">${d==="P"?"PICK":d==="X"?"REJECT":"undecided"}</span>
+    ${(S.skipped[S.cur]&&!d)?'<span style="color:var(--faint)">· skipped</span>':""}
+    <span class="st">${stn?"★".repeat(stn):""}</span>`;
+}
+
+function renderStrip(){
+  let h = "";
+  STACKS.forEach((st, si) => {
+    let cells = "";
+    for(let i = st.start; i < st.start + st.n; i++){
+      const f = FRAMES[i], d = S.dec[i], C = stackCols(st);
+      const rk = f.rankT != null ? rankColor(f.rankT) : null;
+      cells += `<span class="cell${i===S.cur?" cur":""}${(f.blur||0)>1?" soft":""}${!inScope(S,i)?" dimmed":""}" data-fi="${i}">
+        <span class="bgt" style="background:linear-gradient(180deg,${C.bgB},${C.bgA})"></span>
+        <span class="n">${f.idx+1}</span>
+        ${f.tooClose?'<span class="close"></span>':""}
+        ${f.rec?'<span class="rec">✦</span>':""}
+        ${(f.ghost&&!d)?'<span class="gho">✨'+f.ghost+'</span>':""}
+        ${(S.skipped[i]&&!d)?'<span class="skp">›</span>':""}
+        ${d?`<span class="dec ${d}">${d}</span>`:""}
+        ${rk?`<span class="strip2" style="background:${rk.solid}"></span>`:'<span class="strip2 unscored"></span>'}</span>`;
+    }
+    const done = stackDecided(S, si);
+    h += `<div class="sgroup"><span class="glabel">${st.name} ${done?'<span class="gdone">✓</span>':""}</span>
+      <div class="cells">${cells}</div></div>`;
+  });
+  $("strip").innerHTML = h;
+  document.querySelectorAll("#strip .cell").forEach(el =>
+    el.addEventListener("click", () => uiGoto(+el.dataset.fi)));
+}
+
+function renderStatus(){
+  const f = FRAMES[S.cur], st = STACKS[f.si];
+  $("counter").innerHTML = `<b>${S.cur+1}</b> of ${TOTAL} · stack <b>${f.si+1}</b> of ${NSTACKS} · frame <b>${f.idx+1}</b> of ${st.n} · ${f.file}`;
+  const c = counts(S), dec = c.picked + c.rejected;
+  $("progressfill").style.width = (dec/TOTAL*100) + "%";
+  $("progresstext").textContent = `${dec}/${TOTAL} decided`;
+  const scopeN = FRAMES.filter(fr => inScope(S, fr.gi)).length;
+  $("scopechip").innerHTML = `S scope <b>${S.scope === "all" ? "everything" : S.scope}</b>${S.scope!=="all"?` (${scopeN})`:""}`;
+  $("autochip").innerHTML = `A auto-advance <b>${S.autoAdv?"ON":"OFF"}</b>`;
+  $("autochip").className = "schip " + (S.autoAdv ? "on" : "off");
+  $("hint").classList.toggle("gone", ui.hintGone);
+}
+
+// ---------- action plumbing + shimmer (Return-inert gate) ----------
+function act(fn){
+  const prevSi = FRAMES[S.cur].si;
+  const eff = fn() || {};
+  if(FRAMES[S.cur].si !== prevSi){ ui.zoom.on = false; ui.zoom.x = ui.zoom.y = 50; } // zoom sticks within a stack only
+  startShimmerIfNeeded();
+  if(eff.toast) showToast(eff.toast);
+  if(eff.completed) openComplete();
+  render();
+}
+function uiGoto(fi){ act(() => { gotoFrame(S, fi); }); }
+function startShimmerIfNeeded(){
+  clearTimeout(ui.shimmerTimer);
+  if(ui.renderedOnce[S.cur]){ ui.shimmer = false; return; }  // revisits are prefetched — instant
+  ui.renderedOnce[S.cur] = true;
+  ui.shimmer = true;
+  ui.shimmerTimer = setTimeout(() => { ui.shimmer = false; $("shimmer").classList.remove("flash"); render(); }, 250);
+}
+function flashShimmer(){
+  const el = $("shimmer");
+  el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+  showToast("rendering… Return is inert until the frame is at decision quality");
+}
+
+// ---------- toast ----------
+let toastTimer = null;
+function showToast(msg){
+  const t = $("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+// ---------- overlays ----------
+function openKeys(){
+  ui.keys = true; ui.hintGone = true;
+  $("keyscard").innerHTML = `
+    <h2>Keys</h2><div class="sub">every hover affordance has a key twin — no pointer required</div>
+    <div class="kmsec"><h3>Move</h3><div class="kmgrid">
+      <div class="kmrow"><span class="kk"><kbd>→</kbd> <kbd>L</kbd></span><span class="kd">next stack — lands on ✦, or frame 1 if no read</span></div>
+      <div class="kmrow"><span class="kk"><kbd>←</kbd> <kbd>H</kbd></span><span class="kd">previous stack</span></div>
+      <div class="kmrow"><span class="kk"><kbd>↓</kbd> <kbd>J</kbd></span><span class="kd">next frame · next photo on singles</span></div>
+      <div class="kmrow"><span class="kk"><kbd>↑</kbd> <kbd>K</kbd></span><span class="kd">previous frame</span></div>
+      <div class="kmrow"><span class="kk"><kbd>Space</kbd></span><span class="kd">skip — advance, never decides</span></div>
+    </div></div>
+    <div class="kmsec"><h3>Decide</h3><div class="kmgrid">
+      <div class="kmrow"><span class="kk"><kbd>P</kbd></span><span class="kd">pick</span></div>
+      <div class="kmrow"><span class="kk"><kbd>X</kbd></span><span class="kd">reject</span></div>
+      <div class="kmrow"><span class="kk"><kbd>U</kbd></span><span class="kd">clear — back to undecided</span></div>
+      <div class="kmrow"><span class="kk"><kbd>Return</kbd></span><span class="kd">commit stack: keep this + your picks, reject undecided, advance · pick+advance on singles · inert while rendering</span></div>
+      <div class="kmrow"><span class="kk"><kbd>⌘Z</kbd> <kbd>⌫</kbd></span><span class="kd">undo — a stack commit undoes as one unit</span></div>
+    </div></div>
+    <div class="kmsec"><h3>Grade</h3><div class="kmgrid">
+      <div class="kmrow"><span class="kk"><kbd>1</kbd>–<kbd>5</kbd></span><span class="kd">stars</span></div>
+      <div class="kmrow"><span class="kk"><kbd>0</kbd></span><span class="kd">clear stars</span></div>
+    </div></div>
+    <div class="kmsec"><h3>Look closer</h3><div class="kmgrid">
+      <div class="kmrow"><span class="kk"><kbd>Z</kbd></span><span class="kd">2× zoom — position sticks across frames in a stack</span></div>
+      <div class="kmrow"><span class="kk"><kbd>⇧</kbd>+arrows</span><span class="kd">pan while zoomed (or drag)</span></div>
+      <div class="kmrow"><span class="kk"><kbd>/</kbd></span><span class="kd">close-ups panel</span></div>
+    </div></div>
+    <div class="kmsec"><h3>Run control</h3><div class="kmgrid">
+      <div class="kmrow"><span class="kk"><kbd>A</kbd></span><span class="kd">auto-advance on/off</span></div>
+      <div class="kmrow"><span class="kk"><kbd>S</kbd></span><span class="kd">scope: everything · undecided · picks · rejects</span></div>
+      <div class="kmrow"><span class="kk"><kbd>?</kbd></span><span class="kd">this map</span></div>
+      <div class="kmrow"><span class="kk"><kbd>Esc</kbd></span><span class="kd">close overlay · zoom out</span></div>
+    </div></div>
+    <div class="kmsec stub"><h3>In the tutorial, not in this mockup</h3><div class="kmgrid">
+      <div class="kmrow"><span class="kk"><kbd>⇧Z</kbd></span><span class="kd">zoom to nearest face / cycle faces</span></div>
+      <div class="kmrow"><span class="kk"><kbd>I</kbd></span><span class="kd">EXIF overlay</span></div>
+      <div class="kmrow"><span class="kk"><kbd>G</kbd> <kbd>C</kbd> <kbd>B</kbd></span><span class="kd">grid · compare · A/B for this stack</span></div>
+      <div class="kmrow"><span class="kk"><kbd>6</kbd>–<kbd>9</kbd> <kbd>V</kbd> <kbd>-</kbd></span><span class="kd">color labels</span></div>
+      <div class="kmrow"><span class="kk">⌘R</span><span class="kd">start card · lenses (this run: Everything)</span></div>
+      <div class="kmrow"><span class="kk"></span><span class="kd">key remapping</span></div>
+    </div></div>`;
+  $("ovkeys").classList.add("on"); render();
+}
+function closeKeys(){ ui.keys = false; $("ovkeys").classList.remove("on"); }
+
+function openComplete(){
+  ui.complete = true;
+  const c = counts(S);
+  const row = (key, cls, num, lbl, act) =>
+    `<div class="sumrow ${cls}" data-act="${act}"><kbd>${key}</kbd><span class="num">${num}</span>
+     <span class="lbl">${lbl}</span><span class="jump">jump ›</span></div>`;
+  $("completecard").innerHTML = `
+    <h2>Run complete — June 14 · Red Rocks + strays</h2>
+    <div class="sub">every count below is yours — tentative ✨ flags filled nothing</div>
+    ${row(1,"p",c.picked,"Picked","picks")}
+    ${row(2,"x",c.rejected,"Rejected","rejects")}
+    ${row(3,"u",c.undecided,"Undecided","undecided")}
+    ${row(4,"s",c.skipped,"Skipped","skipped")}
+    ${row(5,"n",c.never,"Never viewed","never")}
+    ${row(6,"g",c.ghosts,"✨ awaiting review","review")}
+    <div class="footnote">hidden by lens 0 — this run used the Everything lens.</div>
+    <div class="ceremonies">
+      <button data-cer="review">Review AI suggestions (${c.ghosts})</button>
+      <button data-cer="move">Move rejects…</button>
+      <button data-cer="export">Export picks…</button>
+      <button data-cer="saveset">Save picks as set</button>
+    </div>
+    <div class="footnote">Rejects are catalog flags — nothing was moved or deleted during the run.
+      Ceremonies live here, after the run, never inside it. <kbd>Esc</kbd> resume · <kbd>⌘Z</kbd> undo last commit</div>`;
+  $("ovcomplete").classList.add("on");
+  document.querySelectorAll("#completecard .sumrow").forEach(el =>
+    el.addEventListener("click", () => jumpScoped(el.dataset.act)));
+  document.querySelectorAll("#completecard button").forEach(el =>
+    el.addEventListener("click", () => ceremony(el.dataset.cer)));
+}
+function closeComplete(){ ui.complete = false; $("ovcomplete").classList.remove("on"); }
+function jumpScoped(act){
+  if(act === "review"){ openReview("complete"); return; }
+  closeComplete();
+  S.scope = act === "picks" ? "picks" : act === "rejects" ? "rejects"
+          : act === "undecided" ? "undecided" : act === "skipped" ? "skipped" : "never";
+  const first = FRAMES.find(f => inScope(S, f.gi));
+  if(!first){ showToast(`Nothing in scope "${S.scope}" — clean`); S.scope = "all"; render(); return; }
+  uiGoto(first.gi);
+  showToast(`Scoped mini-run: ${S.scope} — S cycles back to everything`);
+}
+function ceremony(kind){
+  const c = counts(S);
+  const tentX = allGhosts().filter(f => f.ghost === "X" && !S.dec[f.gi]).length;
+  if(kind === "review"){ openReview("complete"); return; }
+  let title, body;
+  if(kind === "move"){
+    title = "Move rejects… (stub)";
+    body = `Would move <b>${c.rejected}</b> user-rejected files to a folder or Trash — with a manifest, undoable.<br><br>
+      <em>${tentX} frame${tentX===1?" carries":"s carry"} only a tentative ✨X and ${tentX===1?"is":"are"} excluded</em> —
+      tentative flags never move files. Confirm them in Review AI suggestions first if you agree with them.`;
+  } else if(kind === "export"){
+    title = "Export picks… (stub)";
+    body = `Would export <b>${c.picked}</b> picks.<br><br><em>✨P suggestions you haven't confirmed are not included</em> — unconfirmed AI never exports.`;
+  } else {
+    title = "Save picks as set (stub)";
+    body = `Would save <b>${c.picked}</b> picks as the set “June 14 selects”. Tentative ✨ flags are not in the Picks set.`;
+  }
+  ui.stub = kind;
+  $("stubcard").innerHTML = `<h2>${title}</h2><div class="sub">post-run ceremony — design stub</div>
+    <div class="stubmsg">${body}</div><button data-close>Nothing happened — close (Esc)</button>`;
+  $("ovstub").classList.add("on");
+  document.querySelector("#stubcard [data-close]").addEventListener("click", closeStub);
+}
+function closeStub(){ ui.stub = null; $("ovstub").classList.remove("on"); }
+
+function openReview(from){
+  ui.review = true; ui.reviewFrom = from || null;
+  if(from === "complete") $("ovcomplete").classList.remove("on");
+  const bySi = {};
+  allGhosts().forEach(f => { (bySi[f.si] = bySi[f.si] || []).push(f); });
+  let h = "";
+  Object.keys(bySi).forEach(si => {
+    const st = STACKS[si];
+    h += `<div class="revstack"><h4>${st.name}</h4>` + bySi[si].map(f => {
+      const d = S.dec[f.gi];
+      const status = d
+        ? `<span class="rgs replaced">replaced by your ${d === "P" ? "pick" : "reject"}</span>`
+        : `<span class="rgs await">awaiting your review</span>`;
+      return `<div class="revrow"><span class="rgk">✨${f.ghost}</span>
+        <span class="rgn">frame ${f.idx+1} · ${f.file} — “${f.ghostNote}”</span>${status}</div>`;
+    }).join("") + `</div>`;
+  });
+  const n = ghostsAwaiting(S).length;
+  $("reviewcard").innerHTML = `
+    <h2>Review AI suggestions</h2>
+    <div class="sub">the only place tentative flags can become yours — nothing here has been confirmed</div>
+    ${h}
+    <div class="ceremonies">
+      <button data-rv="confirm">Confirm ${n} awaiting (stub)</button>
+      <button data-rv="dismiss">Dismiss all (stub)</button>
+    </div>
+    <div class="footnote">Confirming would flip origin → user in the catalog and write sidecars for eligible fields.
+      No navigation or decision key ever confirms silently. <kbd>Esc</kbd> back</div>`;
+  $("ovreview").classList.add("on");
+  document.querySelectorAll("#reviewcard button").forEach(el =>
+    el.addEventListener("click", () => {
+      showToast(el.dataset.rv === "confirm"
+        ? `Stub — would confirm ${ghostsAwaiting(S).length} suggestions (origin → user)`
+        : "Stub — would remove all tentative flags and record the removals");
+    }));
+}
+function closeReview(){
+  ui.review = false; $("ovreview").classList.remove("on");
+  if(ui.reviewFrom === "complete"){ $("ovcomplete").classList.add("on"); }
+  ui.reviewFrom = null;
+}
+
+// ---------- zoom pan (drag = pointer twin of ⇧arrows) ----------
+(function(){
+  let dragging = false, lx = 0, ly = 0;
+  const wrap = $("stagewrap");
+  wrap.addEventListener("pointerdown", e => {
+    if(!ui.zoom.on) return;
+    dragging = true; lx = e.clientX; ly = e.clientY; wrap.setPointerCapture(e.pointerId);
+  });
+  wrap.addEventListener("pointermove", e => {
+    if(!dragging) return;
+    const r = wrap.getBoundingClientRect();
+    ui.zoom.x = Math.max(0, Math.min(100, ui.zoom.x - (e.clientX - lx) / r.width * 100));
+    ui.zoom.y = Math.max(0, Math.min(100, ui.zoom.y - (e.clientY - ly) / r.height * 100));
+    lx = e.clientX; ly = e.clientY;
+    $("art").style.transformOrigin = `${ui.zoom.x}% ${ui.zoom.y}%`;
+  });
+  wrap.addEventListener("pointerup", () => dragging = false);
+})();
+
+// ---------- keyboard ----------
+const NOT_HERE = { i:"EXIF overlay", g:"Grid view", c:"Compare view", b:"A/B view",
+  "6":"Color labels","7":"Color labels","8":"Color labels","9":"Color labels",
+  v:"Color labels","-":"Clear color label" };
+
+document.addEventListener("keydown", e => {
+  const k = e.key, lk = k.toLowerCase();
+  // undo works everywhere, one unit for commits
+  if((e.metaKey || e.ctrlKey) && lk === "z"){
+    e.preventDefault();
+    if(ui.stub) closeStub();
+    if(ui.review) closeReview();
+    if(ui.complete) closeComplete();
+    act(() => undo(S)); return;
+  }
+  if(e.metaKey || e.ctrlKey || e.altKey) return;   // don't eat browser chords
+
+  // overlay routing
+  if(ui.stub){ if(k === "Escape" || k === "Enter"){ e.preventDefault(); closeStub(); } return; }
+  if(ui.review){ if(k === "Escape"){ e.preventDefault(); closeReview(); } return; }
+  if(ui.keys){ if(k === "Escape" || k === "?"){ e.preventDefault(); closeKeys(); render(); } return; }
+  if(ui.complete){
+    e.preventDefault();
+    if(k === "Escape"){ closeComplete(); return; }
+    if(k === "Backspace"){ closeComplete(); act(() => undo(S)); return; }
+    const acts = {1:"picks",2:"rejects",3:"undecided",4:"skipped",5:"never",6:"review"};
+    if(acts[k]) jumpScoped(acts[k]);
+    if(k === "?"){ closeComplete(); openKeys(); }
+    return;
+  }
+
+  switch(true){
+    case (k === "?"): e.preventDefault(); openKeys(); break;
+    case (k === "Escape"):
+      if(ui.zoom.on){ ui.zoom.on = false; render(); } break;
+    case (k === "ArrowRight" || lk === "l"): e.preventDefault();
+      if(ui.zoom.on && e.shiftKey && k === "ArrowRight"){ ui.zoom.x = Math.min(100, ui.zoom.x + 9); render(); }
+      else act(() => nextStack(S));
+      break;
+    case (k === "ArrowLeft"  || lk === "h"): e.preventDefault();
+      if(ui.zoom.on && e.shiftKey && k === "ArrowLeft"){ ui.zoom.x = Math.max(0, ui.zoom.x - 9); render(); }
+      else act(() => prevStack(S));
+      break;
+    case (k === "ArrowDown"):
+    case (lk === "j"): e.preventDefault();
+      if(ui.zoom.on && e.shiftKey && k === "ArrowDown"){ ui.zoom.y = Math.min(100, ui.zoom.y + 9); render(); }
+      else act(() => nextFrame(S));
+      break;
+    case (k === "ArrowUp"):
+    case (lk === "k"): e.preventDefault();
+      if(ui.zoom.on && e.shiftKey && k === "ArrowUp"){ ui.zoom.y = Math.max(0, ui.zoom.y - 9); render(); }
+      else act(() => prevFrame(S));
+      break;
+    case (lk === "p" && !e.shiftKey): e.preventDefault(); act(() => decide(S, "P")); break;
+    case (lk === "x" && !e.shiftKey): e.preventDefault(); act(() => decide(S, "X")); break;
+    case (lk === "u"): e.preventDefault(); act(() => decide(S, null)); break;
+    case (k === "Enter"):
+      e.preventDefault();
+      if(ui.shimmer){ flashShimmer(); break; }     // inert until rendered
+      act(() => commit(S));
+      break;
+    case (k === " "): e.preventDefault(); act(() => skip(S)); break;
+    case (k === "Backspace"): e.preventDefault(); act(() => undo(S)); break;
+    case (lk === "z"):
+      e.preventDefault();
+      if(e.shiftKey){ showToast("⇧Z face zoom — not in this mockup"); break; }
+      ui.zoom.on = !ui.zoom.on; render(); break;
+    case (k === "/"): e.preventDefault(); ui.closeups = !ui.closeups; render(); break;
+    case (lk === "a"): e.preventDefault(); S.autoAdv = !S.autoAdv;
+      showToast(`Auto-advance ${S.autoAdv ? "on" : "off"}`); render(); break;
+    case (lk === "s"): e.preventDefault(); cycleScope(S);
+      showToast(`Scope: ${S.scope === "all" ? "everything" : S.scope}`); render(); break;
+    case ("12345".includes(k)): e.preventDefault(); setStars(S, +k); render(); break;
+    case (k === "0"): e.preventDefault(); setStars(S, 0); render(); break;
+    case (!!NOT_HERE[lk]): e.preventDefault();
+      showToast(`${NOT_HERE[lk]} — not in this mockup`); break;
+  }
+});
+
+startShimmerIfNeeded();
+render();
+})();
+</script>
+</body>
+</html>
