@@ -17828,6 +17828,49 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.relocationManifestEntries(sessionID: summary.sessionID), [])
     }
 
+    // Review-finding regression: a bonded secondary's row is deleted (not
+    // relocated) when its RAW primary is trashed, so the bond lives only in
+    // the `bonded_to_asset_id` column. Trash-mode Move Back reinserts the row
+    // via `upsert`'s ON CONFLICT DO UPDATE, which never touches that column —
+    // the restored JPEG used to come back unbonded and reappear as its own,
+    // independently-visible tile. Restore must re-pair RAW+JPEG siblings in
+    // the folders assets land back in so the "one tile per shot" invariant
+    // survives trash + undo.
+    func testMoveBackFromTrashRestoresBondedSecondaryJPEG() throws {
+        let directory = try makeTemporaryDirectory(named: "move-back-trash-bonded")
+        let shoot = directory.appendingPathComponent("shoot", isDirectory: true)
+        try FileManager.default.createDirectory(at: shoot, withIntermediateDirectories: true)
+        let rawOriginal = shoot.appendingPathComponent("shot.cr2")
+        let jpegOriginal = shoot.appendingPathComponent("shot.jpg")
+        try Data("raw".utf8).write(to: rawOriginal)
+        try Data("jpeg".utf8).write(to: jpegOriginal)
+        let raw = makeAsset(id: "bond-back-raw", path: rawOriginal.path, rating: 0, flag: .reject)
+        let jpeg = makeAsset(id: "bond-back-jpg", path: jpegOriginal.path, rating: 0, flag: nil)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "move-back-trash-bonded-model",
+            assets: [raw, jpeg],
+            configureRepository: { repository in
+                try repository.setBond(secondaryID: jpeg.id, primaryID: raw.id)
+            }
+        )
+        let preflight = try model.rejectRelocationTrashPreflight()
+        let summary = try model.moveRejectsToTrash(preflight)
+
+        let restored = try model.moveBackRelocation(sessionID: summary.sessionID)
+
+        XCTAssertEqual(restored, 2)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: rawOriginal.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: jpegOriginal.path))
+        XCTAssertEqual(try repository.asset(id: raw.id).originalURL, rawOriginal)
+        XCTAssertEqual(try repository.asset(id: jpeg.id).originalURL, jpegOriginal)
+        // The crux of the regression: the bond must be re-established, not
+        // left NULL by the delete+reinsert round trip.
+        XCTAssertEqual(try repository.bondedPrimaryID(of: jpeg.id), raw.id)
+        // One tile per shot: the re-bonded JPEG is hidden from listings again,
+        // not an independently-visible tile.
+        XCTAssertEqual(try repository.allAssets().map(\.id), [raw.id])
+    }
+
     func testMoveBackFromTrashSkipsAndReportsEntriesWhoseTrashURLWasEmptied() throws {
         let directory = try makeTemporaryDirectory(named: "move-back-trash-emptied")
         let shoot = directory.appendingPathComponent("shoot", isDirectory: true)

@@ -11948,6 +11948,9 @@ public final class AppModel {
         // Transient failures (I/O, permissions): the manifest survives so a
         // retry can still restore these.
         var restoreFailureCount = 0
+        // Parent folders restored assets land back in, re-paired once the
+        // loop finishes (see below).
+        var restoredFolderPaths: Set<String> = []
         // Reverse order so nested-directory recreations undo cleanly.
         for entry in entries.reversed() {
             do {
@@ -11974,6 +11977,7 @@ public final class AppModel {
                         try catalog.repository.relocateOriginal(assetID: entry.assetID, to: entry.originalFrom)
                     }
                     restoredCount += 1
+                    restoredFolderPaths.insert(entry.originalFrom.deletingLastPathComponent().standardizedFileURL.path)
                 } else {
                     // The Trash URL is gone (the user emptied the Trash): the
                     // asset is unrecoverable. Report it and continue restoring
@@ -11985,6 +11989,12 @@ public final class AppModel {
                 errorMessage = error.localizedDescription
             }
         }
+        // Trash-mode restore reinserts a bonded secondary's row via `upsert`,
+        // which never touches `bonded_to_asset_id` — the bond is lost on the
+        // delete+reinsert round trip. Re-pair the folders assets landed back
+        // in so any RAW+JPEG siblings now co-located are re-bonded; a no-op
+        // in move mode, where `relocateOriginal` never broke the bond.
+        try catalog.repository.rebondFolders(restoredFolderPaths)
         // Only transient failures keep the manifest (a retry can still
         // succeed). Unrecoverable files never come back, so they must not
         // hold the manifest — and its Move back button — alive.

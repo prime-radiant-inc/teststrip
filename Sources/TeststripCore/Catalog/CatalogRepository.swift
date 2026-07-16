@@ -296,6 +296,25 @@ public final class CatalogRepository {
         }
     }
 
+    /// Recomputes RAW+JPEG bonds for every asset cataloged under each of
+    /// `folderPaths`. A bonded secondary's row is deleted (not relocated) when
+    /// its RAW primary is trashed, so restoring it from the trash manifest
+    /// reinserts the row via `upsert` — whose ON CONFLICT DO UPDATE never
+    /// touches `bonded_to_asset_id` — with the bond lost. Calling this after
+    /// a restore re-pairs any RAW+JPEG siblings now co-located, mirroring
+    /// import's per-folder bonding (`IngestService.bondSiblings`). Idempotent
+    /// via `setBonds`, so it's a no-op where bonds are already intact (e.g. a
+    /// move-mode restore, which never loses them).
+    public func rebondFolders(_ folderPaths: Set<String>) throws {
+        guard !folderPaths.isEmpty else { return }
+        var bonds: [AssetID: AssetID] = [:]
+        for folder in folderPaths {
+            let candidates = try bondCandidates(inFolder: folder)
+            bonds.merge(AssetBondPlanner.bonds(for: candidates)) { _, new in new }
+        }
+        try setBonds(bonds)
+    }
+
     /// ANDs the "primaries + unpaired only" filter onto a WHERE fragment that is
     /// either "" or " WHERE …". Used by display listings; processing/enqueue and
     /// fetch-by-id never call this.
