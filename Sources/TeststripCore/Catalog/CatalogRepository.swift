@@ -548,6 +548,7 @@ public final class CatalogRepository {
                 rtrim(original_path, replace(original_path, '/', '')) AS folder_path,
                 COUNT(*) AS asset_count
             FROM assets
+            WHERE bonded_to_asset_id IS NULL
             GROUP BY folder_path
             """
         )
@@ -571,6 +572,7 @@ public final class CatalogRepository {
                 SELECT technical_metadata_json
                 FROM assets
                 WHERE json_valid(technical_metadata_json)
+                  AND bonded_to_asset_id IS NULL
             ),
             captured_assets AS (
                 SELECT CAST(json_extract(technical_metadata_json, '$.capturedAt') AS REAL) AS captured_at
@@ -637,6 +639,7 @@ public final class CatalogRepository {
                 WHERE json_valid(technical_metadata_json)
                   AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
                   AND json_type(technical_metadata_json, '$.longitude') IN ('integer', 'real')
+                  AND bonded_to_asset_id IS NULL
                   \(extraClause)
             )
             SELECT
@@ -676,7 +679,7 @@ public final class CatalogRepository {
                     WHEN json_valid(technical_metadata_json)
                      AND json_type(technical_metadata_json, '$.latitude') IN ('integer', 'real')
                     THEN 1 ELSE 0 END) AS geotagged
-            FROM assets\(whereSQL)
+            FROM assets\(Self.excludingSecondaries(whereSQL))
             """,
             bindings: bindings
         )
@@ -1155,12 +1158,17 @@ public final class CatalogRepository {
         }
     }
 
+    // Defensive: evaluation doesn't currently write a person_assets row for a
+    // bonded secondary, so this guard doesn't change today's counts. It's
+    // here so a bonded secondary can never inflate a person's count, matching
+    // the folder/timeline/place/coverage/source-root aggregates.
     public func people() throws -> [CatalogPerson] {
         let rows = try database.rows(
             """
-            SELECT people.id, people.name, COUNT(person_assets.asset_id) AS asset_count
+            SELECT people.id, people.name, COUNT(assets.id) AS asset_count
             FROM people
             LEFT JOIN person_assets ON person_assets.person_id = people.id
+            LEFT JOIN assets ON assets.id = person_assets.asset_id AND assets.bonded_to_asset_id IS NULL
             GROUP BY people.id, people.name
             ORDER BY people.name COLLATE NOCASE ASC
             """
@@ -3379,8 +3387,9 @@ public final class CatalogRepository {
                 COUNT(*) AS asset_count,
                 COALESCE(SUM(CASE WHEN availability != ? THEN 1 ELSE 0 END), 0) AS unavailable_asset_count
             FROM assets
-            WHERE original_path = ?
-               OR original_path LIKE ? ESCAPE '\\'
+            WHERE (original_path = ?
+               OR original_path LIKE ? ESCAPE '\\')
+               AND bonded_to_asset_id IS NULL
             """,
             bindings: [
                 SourceAvailability.online.rawValue,
