@@ -138,6 +138,31 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.contenderAssets.map(\.id), [assets[2].id, assets[4].id, assets[0].id])
     }
 
+    // A too-close-to-call tie can reach past the default top 3: the 4th
+    // frame here sits within the tie margin of the leader, so contenders-only
+    // mode must widen to include it rather than silently drop it.
+    func testContendersOnlyModeWidensPastTopThreeToIncludeATiedFourthPlace() {
+        let assets = (0..<5).map { makeAsset(id: "tied-\($0)") }
+        let signals: [AssetID: [EvaluationSignal]] = [
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.90)],
+            assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.89)],
+            assets[2].id: [signal(assetID: assets[2].id, kind: .focus, score: 0.88)],
+            assets[3].id: [signal(assetID: assets[3].id, kind: .focus, score: 0.875)],
+            assets[4].id: [signal(assetID: assets[4].id, kind: .focus, score: 0.50)]
+        ]
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: true
+        )
+
+        // 0/1/2/3 are all within the 0.03 tie margin of the 0.90 leader; 4
+        // (0.50) is well outside it and stays excluded.
+        XCTAssertEqual(presentation.contenderAssets.map(\.id), [assets[0].id, assets[1].id, assets[2].id, assets[3].id])
+    }
+
     func testContendersOnlyModeIsReversibleBackToFullSet() {
         let assets = (0..<5).map { makeAsset(id: "reversible-\($0)") }
         let signals: [AssetID: [EvaluationSignal]] = [

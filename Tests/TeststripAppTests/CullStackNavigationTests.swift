@@ -115,6 +115,48 @@ final class CullStackNavigationTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, secondStackBest.id)
     }
 
+    // When the destination stack's leaders are too close to call, there's no
+    // single defensible AI winner to land on — landing falls back to the
+    // first tied leader (capture order), not frame 1 and not an arbitrary
+    // pick from the raw-score ranking.
+    func testNextStackForCullingLandsOnFirstTiedLeaderWhenTooCloseToCall() throws {
+        let capturedAt = Date(timeIntervalSince1970: 500)
+        let firstStackLead = makeAsset(
+            id: "first-stack-lead",
+            path: "/Photos/Job/first-stack-lead.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let firstStackAlt = makeAsset(
+            id: "first-stack-alt",
+            path: "/Photos/Job/first-stack-alt.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let secondStackLead = makeAsset(
+            id: "second-stack-lead",
+            path: "/Photos/Job/second-stack-lead.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(30))
+        )
+        let secondStackAlt = makeAsset(
+            id: "second-stack-alt",
+            path: "/Photos/Job/second-stack-alt.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(31))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "next-stack-tied",
+            assets: [firstStackLead, firstStackAlt, secondStackLead, secondStackAlt]
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: secondStackLead.id, kind: .focus, value: .score(0.80), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: secondStackAlt.id, kind: .focus, value: .score(0.79), confidence: 0.9, provenance: provenance)
+        ])
+        model.select(firstStackLead.id)
+
+        try model.applyCullingShortcut(.nextStack)
+
+        XCTAssertEqual(model.selectedAssetID, secondStackLead.id)
+    }
+
     // MARK: - Fixtures (mirrors StackDecisionTests' private helpers; kept local per file)
 
     private func makeStackOfThree(selected id: String) throws -> (AppModel, CatalogRepository) {

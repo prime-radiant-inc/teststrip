@@ -298,6 +298,70 @@ final class CullingStackRailPresentationTests: XCTestCase {
         XCTAssertNil(unranked.recommendedAssetID)
     }
 
+    func testTooCloseToCallTieSuppressesTheRecommendationAndSurfacesTheBanner() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "lead", path: "/Photos/Job/lead.cr2", capturedAt: capturedAt)
+        let alternate = makeAsset(id: "alternate", path: "/Photos/Job/alternate.cr2", capturedAt: capturedAt.addingTimeInterval(1))
+
+        let presentation = CullingStackRailPresentation(
+            assets: [lead, alternate],
+            selectedAssetID: lead.id,
+            evaluationSignalsByAssetID: [
+                lead.id: [signal(assetID: lead.id, kind: .focus, score: 0.80)],
+                alternate.id: [signal(assetID: alternate.id, kind: .focus, score: 0.79)]
+            ],
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 2)
+        )
+
+        XCTAssertEqual(presentation.items.map(\.isRecommended), [false, false])
+        XCTAssertNil(presentation.recommendedAssetID)
+        XCTAssertEqual(presentation.tooCloseBanner, "too close to call — 1·2")
+    }
+
+    func testThreeWayTieBannerListsAllTiedFramesInCaptureOrder() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let assets = [
+            makeAsset(id: "lead", path: "/Photos/Job/lead.cr2", capturedAt: capturedAt),
+            makeAsset(id: "selected", path: "/Photos/Job/selected.cr2", capturedAt: capturedAt.addingTimeInterval(1)),
+            makeAsset(id: "alternate", path: "/Photos/Job/alternate.cr2", capturedAt: capturedAt.addingTimeInterval(1.8))
+        ]
+
+        let presentation = CullingStackRailPresentation(
+            assets: assets,
+            selectedAssetID: AssetID(rawValue: "selected"),
+            evaluationSignalsByAssetID: [
+                AssetID(rawValue: "lead"): [signal(assetID: AssetID(rawValue: "lead"), kind: .focus, score: 0.80)],
+                AssetID(rawValue: "selected"): [signal(assetID: AssetID(rawValue: "selected"), kind: .focus, score: 0.78)],
+                AssetID(rawValue: "alternate"): [signal(assetID: AssetID(rawValue: "alternate"), kind: .focus, score: 0.79)]
+            ],
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 3)
+        )
+
+        XCTAssertEqual(presentation.items.map(\.isRecommended), [false, false, false])
+        XCTAssertNil(presentation.recommendedAssetID)
+        XCTAssertEqual(presentation.tooCloseBanner, "too close to call — 1·2·3")
+    }
+
+    func testBeyondMarginDifferenceStillShowsASingleRecommendationWithNoBanner() {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let lead = makeAsset(id: "lead", path: "/Photos/Job/lead.cr2", capturedAt: capturedAt)
+        let alternate = makeAsset(id: "alternate", path: "/Photos/Job/alternate.cr2", capturedAt: capturedAt.addingTimeInterval(1))
+
+        let presentation = CullingStackRailPresentation(
+            assets: [lead, alternate],
+            selectedAssetID: lead.id,
+            evaluationSignalsByAssetID: [
+                lead.id: [signal(assetID: lead.id, kind: .focus, score: 0.80)],
+                alternate.id: [signal(assetID: alternate.id, kind: .focus, score: 0.76)]
+            ],
+            stackBuilder: AssetStackBuilder(maximumCaptureGap: 2)
+        )
+
+        XCTAssertEqual(presentation.items.map(\.isRecommended), [true, false])
+        XCTAssertEqual(presentation.recommendedAssetID, lead.id)
+        XCTAssertNil(presentation.tooCloseBanner)
+    }
+
     func testItemsCarryCompactFlawBadgesFromPersistedSignals() {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let sharpEyesOpen = makeAsset(id: "sharp-open", path: "/Photos/Job/sharp-open.cr2", capturedAt: capturedAt)

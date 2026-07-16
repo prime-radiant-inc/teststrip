@@ -6750,12 +6750,21 @@ public final class AppModel {
         selectedView = keepSurveyCompare ? .compare : .loupe
     }
 
-    // The ranked best-of-stack frame, or nil when no frame carries quality signals.
+    // The ranked best-of-stack frame, or nil when no frame carries quality
+    // signals. When the leaders are too close to call, there is no single
+    // defensible winner to land on, so this falls back to the first tied
+    // leader (capture order) rather than an arbitrarily-chosen "winner".
     private func recommendedCullingStackAssetID(in assetIDs: [AssetID]) -> AssetID? {
         guard assetIDs.count > 1 else { return nil }
         let signalsByAssetID = Dictionary(uniqueKeysWithValues: assetIDs.map { assetID in
             (assetID, evaluationSignals(for: assetID))
         })
+        if let tiedLeaderIDs = CullingStackRecommendation.tiedLeaderIDs(
+            stackAssetIDs: assetIDs,
+            evaluationSignalsByAssetID: signalsByAssetID
+        ) {
+            return tiedLeaderIDs.first
+        }
         return CullingStackRecommendation.rankedCandidates(
             stackAssetIDs: assetIDs,
             evaluationSignalsByAssetID: signalsByAssetID
