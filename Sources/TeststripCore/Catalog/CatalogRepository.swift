@@ -581,8 +581,9 @@ public final class CatalogRepository {
         return count
     }
 
-    public func assetCount() throws -> Int {
-        let rows = try database.rows("SELECT COUNT(*) AS count FROM assets\(Self.excludingSecondaries(""))")
+    public func assetCount(includeBondedSecondaries: Bool = false) throws -> Int {
+        let whereSQL = includeBondedSecondaries ? "" : Self.excludingSecondaries("")
+        let rows = try database.rows("SELECT COUNT(*) AS count FROM assets\(whereSQL)")
         guard let countString = rows.first?["count"], let count = Int(countString) else {
             throw CatalogError.sqlite("asset count query returned no count")
         }

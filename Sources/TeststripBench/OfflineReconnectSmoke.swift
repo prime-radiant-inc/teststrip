@@ -81,7 +81,7 @@ public struct OfflineReconnectSmoke {
         let currentSidecarURL = sidecarStore.sidecarURL(forOriginalAt: reconnectedAsset.originalURL)
 
         return OfflineReconnectSmokeResult(
-            catalogAssetCount: try repository.assetCount(),
+            catalogAssetCount: try repository.assetCount(includeBondedSecondaries: true),
             cachedPreviewReadableBeforeReconnect: cachedPreviewReadableBeforeReconnect,
             cachedPreviewReadableAfterReconnect: cachedPreviewReadableAfterReconnect,
             reconnectedAssetCount: reconnect.reconnectedAssetCount,

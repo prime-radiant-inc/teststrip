@@ -56,7 +56,7 @@ public struct ImportDeferredBenchmark {
 
         return ImportDeferredBenchmarkResult(
             importedAssetCount: result.importedAssets.count,
-            catalogAssetCount: try repository.assetCount(),
+            catalogAssetCount: try repository.assetCount(includeBondedSecondaries: true),
             pendingPreviewCount: try repository.pendingPreviewGenerationItems().count,
             progressEventCount: progressRecorder.eventCount()
         )

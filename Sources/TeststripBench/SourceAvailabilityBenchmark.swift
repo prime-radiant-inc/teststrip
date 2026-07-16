@@ -38,7 +38,7 @@ public struct SourceAvailabilityBenchmark {
         recorder.recordMetric("refreshed_assets", refreshedAssetCount)
 
         let catalogAssetCount = try recorder.measure("count_assets") {
-            try repository.assetCount()
+            try repository.assetCount(includeBondedSecondaries: true)
         }
         recorder.recordMetric("catalog_assets", catalogAssetCount)
 

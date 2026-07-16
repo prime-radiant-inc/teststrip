@@ -68,7 +68,7 @@ public struct ImportPreviewDrainBenchmark {
 
         return ImportPreviewDrainBenchmarkResult(
             importedAssetCount: importResult.importedAssets.count,
-            catalogAssetCount: try repository.assetCount(),
+            catalogAssetCount: try repository.assetCount(includeBondedSecondaries: true),
             pendingPreviewCountBeforeDrain: pendingPreviewCountBeforeDrain,
             generatedPreviewCount: drainResult.generatedCount,
             previewFailureCount: drainResult.previewFailures.count,

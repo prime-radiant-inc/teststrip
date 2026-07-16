@@ -80,7 +80,7 @@ public struct CardImportSmoke {
 
         return CardImportSmokeResult(
             importedAssetCount: result.importedAssets.count,
-            catalogAssetCount: try repository.assetCount(),
+            catalogAssetCount: try repository.assetCount(includeBondedSecondaries: true),
             destinationOriginalCount: destinationOriginalCount,
             cachedPreviewCount: try PreviewCacheFileCounter.count(root: previewRoot),
             sourceOriginalUnchangedCount: sourceOriginalUnchangedCount,

@@ -125,7 +125,7 @@ public struct SmokeCatalogSeeder {
             catalogURL: catalogURL,
             previewCacheRoot: previewCache.root,
             sourceImageCount: sourceImageCount,
-            assetCount: try repository.assetCount(),
+            assetCount: try repository.assetCount(includeBondedSecondaries: true),
             cachedPreviewCount: try PreviewCacheFileCounter.count(root: previewCache.root)
         )
     }

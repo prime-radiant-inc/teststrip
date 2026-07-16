@@ -67,7 +67,7 @@ public struct MetadataWriteBenchmark {
 
         return MetadataWriteBenchmarkResult(
             updatedAssetCount: updatedAssetCount,
-            catalogAssetCount: try repository.assetCount(),
+            catalogAssetCount: try repository.assetCount(includeBondedSecondaries: true),
             sidecarCount: sidecarCount(for: assets, sidecarStore: sidecarStore),
             matchingSidecarMetadataCount: try matchingSidecarMetadataCount(for: assets, repository: repository, sidecarStore: sidecarStore),
             syncedFingerprintCount: try syncedFingerprintCount(for: assets, repository: repository),

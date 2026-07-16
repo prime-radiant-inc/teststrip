@@ -43,7 +43,7 @@ public struct CatalogScaleBenchmark {
         }
 
         let assetCount = try recorder.measure("count_assets") {
-            try repository.assetCount()
+            try repository.assetCount(includeBondedSecondaries: true)
         }
         recorder.recordMetric("asset_count", assetCount)
 

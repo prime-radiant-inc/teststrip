@@ -101,6 +101,15 @@ final class CatalogListingBondingTests: XCTestCase {
         XCTAssertEqual(try repository.assetCount(), 2)
     }
 
+    // Import-integrity/scale bench metrics count total catalog rows, not
+    // visible shots — `includeBondedSecondaries: true` is their opt-in.
+    func testAssetCountIncludesBondedSecondaryWhenRequested() throws {
+        let repository = try makeRepository(named: "listing-assetcount-include")
+        _ = try seedBondedTrio(repository)
+
+        XCTAssertEqual(try repository.assetCount(includeBondedSecondaries: true), 3)
+    }
+
     // `assetIDs()` backs AppModel's current-scope/latest-import evaluation
     // triggers (`currentAssetScopeIDs`, `latestImportOutputAssetIDs`), which
     // must still see a bonded shot's hidden JPEG so it keeps getting

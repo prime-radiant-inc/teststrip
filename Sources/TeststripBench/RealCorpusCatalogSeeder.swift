@@ -97,7 +97,7 @@ public struct RealCorpusCatalogSeeder {
             catalogURL: catalogURL,
             previewCacheRoot: previewCache.root,
             sourceImageCount: selectedPhotos.count,
-            assetCount: try repository.assetCount(),
+            assetCount: try repository.assetCount(includeBondedSecondaries: true),
             cachedPreviewCount: try PreviewCacheFileCounter.count(root: previewCache.root),
             workingStillCount: capabilities.filter { $0.support == .working }.count,
             bestEffortRawCount: capabilities.filter { $0.support == .bestEffort }.count,
