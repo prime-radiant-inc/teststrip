@@ -9,32 +9,33 @@ final class CullStackNavigationTests: XCTestCase {
     func testNextCandidateMovesWithinStackAndStopsAtEnd() throws {
         let (model, _) = try makeStackOfThree(selected: "a")
 
-        model.selectNextCandidateInStack()
+        try model.selectNextCandidateInStack()
         XCTAssertEqual(model.selectedAssetID?.rawValue, "b")
 
-        model.selectNextCandidateInStack()
+        try model.selectNextCandidateInStack()
         XCTAssertEqual(model.selectedAssetID?.rawValue, "c")
 
-        model.selectNextCandidateInStack() // at end — stays put
+        try model.selectNextCandidateInStack() // at end — stays put
         XCTAssertEqual(model.selectedAssetID?.rawValue, "c")
     }
 
     func testPreviousCandidateMovesWithinStackAndStopsAtEnd() throws {
         let (model, _) = try makeStackOfThree(selected: "c")
 
-        model.selectPreviousCandidateInStack()
+        try model.selectPreviousCandidateInStack()
         XCTAssertEqual(model.selectedAssetID?.rawValue, "b")
 
-        model.selectPreviousCandidateInStack()
+        try model.selectPreviousCandidateInStack()
         XCTAssertEqual(model.selectedAssetID?.rawValue, "a")
 
-        model.selectPreviousCandidateInStack() // at start — stays put
+        try model.selectPreviousCandidateInStack() // at start — stays put
         XCTAssertEqual(model.selectedAssetID?.rawValue, "a")
     }
 
     // A frame with no stack-mates (no multi-frame stack contains it) has no
-    // "current stack" to navigate within — both directions are a no-op.
-    func testCandidateNavigationIsNoOpWhenSelectedAssetHasNoStack() throws {
+    // "current stack" to navigate within — J/K (and ↑/↓) fall back to
+    // stop-to-stop advance through the deck instead of going dead.
+    func testNextCandidateFallsBackToStopToStopAdvanceWhenSelectedAssetHasNoStack() throws {
         let capturedAt = Date(timeIntervalSince1970: 400)
         let lonely = makeAsset(
             id: "lonely",
@@ -46,13 +47,31 @@ final class CullStackNavigationTests: XCTestCase {
             path: "/Photos/Job/far-away.cr2",
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(30))
         )
-        let (model, _) = try makeModelWithCatalogAssets(named: "no-stack-nav", assets: [lonely, farAway])
+        let (model, _) = try makeModelWithCatalogAssets(named: "no-stack-nav-next", assets: [lonely, farAway])
         model.select(lonely.id)
 
-        model.selectNextCandidateInStack()
-        XCTAssertEqual(model.selectedAssetID, lonely.id)
+        try model.applyCullingShortcut(.nextCandidateInStack)
 
-        model.selectPreviousCandidateInStack()
+        XCTAssertEqual(model.selectedAssetID, farAway.id)
+    }
+
+    func testPreviousCandidateFallsBackToStopToStopAdvanceWhenSelectedAssetHasNoStack() throws {
+        let capturedAt = Date(timeIntervalSince1970: 400)
+        let lonely = makeAsset(
+            id: "lonely",
+            path: "/Photos/Job/lonely.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let farAway = makeAsset(
+            id: "far-away",
+            path: "/Photos/Job/far-away.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(30))
+        )
+        let (model, _) = try makeModelWithCatalogAssets(named: "no-stack-nav-previous", assets: [lonely, farAway])
+        model.select(farAway.id)
+
+        try model.applyCullingShortcut(.previousCandidateInStack)
+
         XCTAssertEqual(model.selectedAssetID, lonely.id)
     }
 

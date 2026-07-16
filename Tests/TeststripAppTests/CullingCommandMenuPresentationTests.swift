@@ -6,10 +6,10 @@ final class CullingCommandMenuPresentationTests: XCTestCase {
         let navigation = CullingCommandMenuPresentation.sections.first
 
         XCTAssertEqual(navigation?.items, [
-            CullingCommandMenuItem(title: "Previous Frame in Stack", shortcut: .previousCandidateInStack, key: .upArrow),
-            CullingCommandMenuItem(title: "Next Frame in Stack", shortcut: .nextCandidateInStack, key: .downArrow),
-            CullingCommandMenuItem(title: "Previous Stack", shortcut: .previousStack, key: .leftArrow),
-            CullingCommandMenuItem(title: "Next Stack", shortcut: .nextStack, key: .rightArrow),
+            CullingCommandMenuItem(title: "Previous Frame in Stack", shortcut: .previousCandidateInStack, key: .character("↑ / K")),
+            CullingCommandMenuItem(title: "Next Frame in Stack", shortcut: .nextCandidateInStack, key: .character("↓ / J")),
+            CullingCommandMenuItem(title: "Previous Stack", shortcut: .previousStack, key: .character("← / H")),
+            CullingCommandMenuItem(title: "Next Stack", shortcut: .nextStack, key: .character("→ / L")),
             CullingCommandMenuItem(title: "Promote Frame & Reject Siblings", shortcut: .promoteAndRejectSiblings, key: .returnKey)
         ])
     }

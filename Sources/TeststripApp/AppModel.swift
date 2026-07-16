@@ -249,6 +249,11 @@ public enum CullingShortcut: Equatable, Sendable {
             self = .showKeyMap
         case .character(let character):
             switch character.lowercased() {
+            // Vim-style aliases for the arrow-key navigation above.
+            case "h": self = .previousStack
+            case "l": self = .nextStack
+            case "j": self = .nextCandidateInStack
+            case "k": self = .previousCandidateInStack
             case " ": self = .nextPhoto
             case "0": self = .rating(0)
             case "1": self = .rating(1)
@@ -505,10 +510,10 @@ public struct CullingCommandMenuSection: Equatable, Identifiable, Sendable {
 public enum CullingCommandMenuPresentation {
     public static let sections: [CullingCommandMenuSection] = [
         CullingCommandMenuSection(title: "Navigation", items: [
-            CullingCommandMenuItem(title: "Previous Frame in Stack", shortcut: .previousCandidateInStack, key: .upArrow),
-            CullingCommandMenuItem(title: "Next Frame in Stack", shortcut: .nextCandidateInStack, key: .downArrow),
-            CullingCommandMenuItem(title: "Previous Stack", shortcut: .previousStack, key: .leftArrow),
-            CullingCommandMenuItem(title: "Next Stack", shortcut: .nextStack, key: .rightArrow),
+            CullingCommandMenuItem(title: "Previous Frame in Stack", shortcut: .previousCandidateInStack, key: .character("↑ / K")),
+            CullingCommandMenuItem(title: "Next Frame in Stack", shortcut: .nextCandidateInStack, key: .character("↓ / J")),
+            CullingCommandMenuItem(title: "Previous Stack", shortcut: .previousStack, key: .character("← / H")),
+            CullingCommandMenuItem(title: "Next Stack", shortcut: .nextStack, key: .character("→ / L")),
             CullingCommandMenuItem(title: "Promote Frame & Reject Siblings", shortcut: .promoteAndRejectSiblings, key: .returnKey)
         ]),
         CullingCommandMenuSection(title: "Ratings", items: [
@@ -6335,10 +6340,10 @@ public final class AppModel {
             try selectNextStackForCulling()
         case .previousCandidateInStack:
             clearCullingMetadataDecisionFeedback()
-            selectPreviousCandidateInStack()
+            try selectPreviousCandidateInStack()
         case .nextCandidateInStack:
             clearCullingMetadataDecisionFeedback()
-            selectNextCandidateInStack()
+            try selectNextCandidateInStack()
         case .rating(let rating):
             try applyCullingCommandAndAdvance(.rating(rating))
         case .colorLabel(let colorLabel):
@@ -6738,18 +6743,26 @@ public final class AppModel {
     // frame in the current stack's ordered assetIDs (the same membership the
     // rail displays via `selectedCullingStackScope`), stopping at the ends —
     // no wrap, no crossing into a neighboring stack.
-    public func selectNextCandidateInStack() {
-        moveSelectionWithinCurrentCullingStack(by: 1)
+    public func selectNextCandidateInStack() throws {
+        try moveSelectionWithinCurrentCullingStack(by: 1)
     }
 
-    public func selectPreviousCandidateInStack() {
-        moveSelectionWithinCurrentCullingStack(by: -1)
+    public func selectPreviousCandidateInStack() throws {
+        try moveSelectionWithinCurrentCullingStack(by: -1)
     }
 
-    private func moveSelectionWithinCurrentCullingStack(by offset: Int) {
+    private func moveSelectionWithinCurrentCullingStack(by offset: Int) throws {
         guard let selectedAssetID,
               let stackAssetIDs = selectedCullingStackScope?.assetIDs,
               let currentIndex = stackAssetIDs.firstIndex(of: selectedAssetID) else {
+            // Standalone frame (no stack to navigate within): fall back to
+            // stop-to-stop advance through the deck rather than going dead —
+            // mirrors the .nextPhoto/.previousPhoto dispatch arms below.
+            if offset > 0 {
+                try selectNextAssetForCulling()
+            } else {
+                try selectPreviousAssetForCulling()
+            }
             return
         }
         let targetIndex = currentIndex + offset

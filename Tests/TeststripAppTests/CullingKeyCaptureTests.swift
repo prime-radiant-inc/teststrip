@@ -43,6 +43,21 @@ final class CullingKeyCaptureTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(event: down), .nextCandidateInStack)
     }
 
+    // Vim-style aliases for the arrow-key stack navigation above (H/L),
+    // case-insensitive since Shift is a common miss-hit alongside the key.
+    func testCullingShortcutMapsVimStackAliases() {
+        XCTAssertEqual(CullingShortcut(key: .character("h")), .previousStack)
+        XCTAssertEqual(CullingShortcut(key: .character("l")), .nextStack)
+        XCTAssertEqual(CullingShortcut(key: .character("H")), .previousStack)
+        XCTAssertEqual(CullingShortcut(key: .character("L")), .nextStack)
+    }
+
+    // Vim-style aliases for the arrow-key frame-in-stack navigation above (J/K).
+    func testCullingShortcutMapsVimFrameAliases() {
+        XCTAssertEqual(CullingShortcut(key: .character("j")), .nextCandidateInStack)
+        XCTAssertEqual(CullingShortcut(key: .character("k")), .previousCandidateInStack)
+    }
+
     // ⌥←/⌥→ (formerly a monitor-only alternate to plain up/down for stack
     // navigation) are retired now that up/down/left/right are all live axes.
     func testCullingShortcutIgnoresOptionArrowKeyEvents() throws {
