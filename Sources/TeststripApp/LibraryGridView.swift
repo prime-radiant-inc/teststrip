@@ -2366,7 +2366,8 @@ struct LibraryGridView: View {
                         previewStatus: model.gridPreviewStatus(for: asset.id),
                         isSelected: model.selectedAssetID == asset.id,
                         isBatchSelected: model.isBatchSelected(asset.id),
-                        autopilotDecision: model.autopilotProposalDecision(for: asset.id)
+                        autopilotDecision: model.autopilotProposalDecision(for: asset.id),
+                        hasBondedStill: model.assetIDsWithBondedSecondaries.contains(asset.id)
                     )
                     .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
                         selectAssetFromGrid(assetID)
@@ -9331,6 +9332,7 @@ private struct AssetGridCell: View {
     var isSelected: Bool
     var isBatchSelected = false
     var autopilotDecision: AutopilotProposalKind? = nil
+    var hasBondedStill = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -9371,6 +9373,12 @@ private struct AssetGridCell: View {
                     }
                 }
                 .padding(6)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if let rawBadgeText = RawBadgeLabel.text(isRaw: asset.isRawOriginal, hasBondedStill: hasBondedStill) {
+                    rawBadge(rawBadgeText)
+                        .padding(6)
+                }
             }
             .background(
                 RoundedRectangle(cornerRadius: 5)
@@ -9436,6 +9444,16 @@ private struct AssetGridCell: View {
             .padding(.vertical, 2)
             .background(.black.opacity(0.55), in: Capsule())
             .accessibilityLabel(badge.isKeep ? "Proposed keep" : "Proposed cut")
+    }
+
+    private func rawBadge(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2.monospaced().weight(.semibold))
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(.black.opacity(0.55), in: Capsule())
+            .accessibilityLabel(text == "RAW+JPEG" ? "RAW with bonded JPEG" : "RAW original")
     }
 
     private var metadataOverlay: some View {

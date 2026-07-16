@@ -4576,6 +4576,7 @@ public final class AppModel {
         // cards show key faces on first launch, not just after the next
         // mutating action.
         try model.loadCatalogPeople()
+        model.refreshAssetIDsWithBondedSecondaries()
         try model.enqueuePendingPreviewGeneration()
         try model.enqueuePendingMetadataSync()
         try model.enqueuePendingGeocoding()
