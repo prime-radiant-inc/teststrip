@@ -52,60 +52,90 @@ persist only when a feature needs per-face queryability).
 
 ## SP-A engineering decisions
 
-**Layout.** Rework `LoupeView`'s arrangement, reusing its presentation
-types: the existing stack-rail chips become the left burst rail (generous
-thumbs, rank tint, ✦, ✨, decisions, machine-fact stack label); the
-`CullingAssistPresentation` verdict moves into the right panel's reads card
-beneath the existing close-ups (`CloseUpFacesPresentation`); the stage
-drops all pills/overlays except shimmer + decision toast; a new bottom run
-strip replaces the 12-thumb filmstrip (stops = `AssetStackBuilder` groups
-over the current scope: pills for multi-frame stacks, thumbs for
-standalones, current highlighted, done ✓, ✨ count chips); status bar gains
-the triple counter (`N of total · stack S of Σ · frame F of M`) and a
+(Verified against code 2026-07-16; exact line refs live in the SP-A
+integration brief and drift fast — re-grep before trusting any citation.)
+
+**Layout.** Rework `LoupeView`'s arrangement (it stays a private struct in
+`LibraryGridView.swift`; new pure presentation types get their own
+`<Feature>Presentation.swift` files per the established pattern): the
+existing stack rail (already left, 148pt) widens into the burst rail
+(generous thumbs, rank tint, ✦, ✨, decisions, machine-fact stack label);
+the verdict — today a bare line inside the HUD — relocates into a new
+right-panel **reads card** beneath the existing close-ups
+(`CloseUpFacesPresentation`), forming the faces+reads panel; the stage
+keeps only the image, shimmer, decision toast, and the existing
+hover-revealed P/X/★ controls (`CullLoupeHoverControlsPresentation` stays
+as-is: a transient pointer path, not ambient information — it does not
+violate one-home-per-fact); a new bottom **run strip** replaces the
+12-thumb filmstrip. Run-strip stops come from the live
+`AppModel.allCullingStacks(for:)` path (the same full `AssetStackBuilder`
+re-run the filmstrip performs today — NOT `cullingStackListEntries()`,
+which is empty outside persisted stack-culling sessions). Its per-render
+cost (one SQL query per scoped asset for similarity vectors) is
+pre-existing; SP-A names it and accepts it. Status bar gains the triple
+counter (`N of total · stack S of Σ · frame F of M`) and a
 user-origin-only progress bar. Stack labels are machine facts only
 (file-range · count · time) — never curated names.
 
 **Key grammar deltas** (in `CullingShortcut` / `CullingKeyCaptureView`,
-same local-monitor pattern — bare keys never become menu equivalents):
-- Add `H`/`L` = prev/next stack, `J`/`K` = next/prev frame (synonyms for
-  ←→↑↓). On standalone stops, frame keys walk stops — no dead keys.
-- `←→`/`HL` land on the stack's ✦ frame (or frame 1 when no
-  recommendation); a preference switches to always-frame-1.
-- `A` toggles auto-advance (new `AppModel` setting, default on). Advance
-  target after P/X: next *undecided* frame in the stack, else next stack's
-  landing frame.
-- `Space` stays decision-free advance (verify current semantics; if today's
-  path writes anything, fix). Track "skipped" per session for the summary.
-- `Return` = stack commit: keep staged frame + already-picked siblings,
-  reject *undecided* siblings only (adjust
-  `keepSelectedStackFrameAndRejectAlternates` if it currently overwrites
-  user picks); on standalones, pick + advance. Gate: inert unless the
-  staged frame's `.large` preview is in cache (cheap check in SP-A; deep
-  prefetch is SP-C) — show the shimmer instead of committing.
-- Whole commit = one `metadataUndoStack` unit.
+same local-monitor pattern — bare keys never become menu equivalents; every
+new bare key also gets a row in `CullingCommandMenuPresentation.sections`,
+the single source for the `?` overlay and the Culling menu):
+- Add `H`/`L` = prev/next stack, `J`/`K` = next/prev frame — pure aliases
+  onto the existing shortcut cases. Landing on the stack's ✦ frame already
+  ships (`selectCullingStack` → `recommendedStackLandingAssetID`); the new
+  work is only the aliases plus a preference for always-land-on-frame-1.
+- **Fix the standalone dead keys**: today ↑/↓ silently no-op on a
+  non-stacked frame (`selectedCullingStackScope` resolves nil there). Frame
+  keys — and their new J/K aliases — fall back to stop-to-stop advance so
+  there are no dead keys and one grammar.
+- `A` toggles auto-advance (new `cullAutoAdvanceEnabled` state, default
+  on). Advance target after P/X: next *undecided* frame in the current
+  stack, else the next stack's landing frame.
+- `Space` is already decision-free (`selectNextAssetForCulling` writes no
+  metadata) — keep it, and record a "skipped" mark for the run summary.
+- `Return` already has the right core semantics
+  (`promoteCurrentFrameAndRejectSiblings`: force-picks the staged frame
+  regardless of prior flag, protects already-picked siblings, rejects the
+  rest, writes one `recordMetadataChangeGroup` undo unit, auto-advances;
+  standalone = informational no-op toast). SP-A adds: a test for the
+  staged-frame-was-rejected force-flip case (untested today), toast wording
+  that discloses the flip ("Kept 1 (was ✕) · rejected 4"), and the render
+  gate — inert unless `previewURL(for:levels:[.large])` returns non-nil for
+  the staged frame (cheap file stat; deep prefetch is SP-C), showing the
+  shimmer instead of committing.
 - `/` toggles the faces panel. (`F` background-face expansion ships with
   SP-B.)
 
 **Honest states.**
-- *Too close to call*: in `CullingStackRecommendation`, when the top
-  candidates' composite scores sit within a noise-floor margin (constant
-  calibrated in the plan from the scorer's real distributions, documented
-  in-code like the 2026-07-06 threshold work), emit a tied-leader set
-  instead of a winner: no ✦, rail banner "too close to call — N·N·N",
-  Compare (`C`) preloaded with the tied set.
-- *No read yet*: reads card renders the explicit empty state when the
-  frame has fewer than 2 rankable current-scale signals (reuse
-  `currentScaleSignalSQL` gating); never a fabricated verdict.
+- *Too close to call*: computed from
+  `CullingStackRecommendation.normalizedQualityRead` (the 0…1
+  confidence-weighted mean, comparable across frames) — NOT the raw
+  `qualityScore` ranking sum, which is unnormalized and kind-count-
+  dependent. When the top candidates sit within a noise-floor margin
+  (initial constant with documented rationale, revisited against corpus
+  data later), emit a tied-leader set: no ✦ anywhere, rail banner
+  "too close to call — N·N·N", Compare (`C`) preloaded with the tied set.
+- *No read yet*: the reads card gates the ENTIRE card on ≥2 rankable
+  signals (`normalizedQualityRead.kindCount >= 2`, matching the existing
+  verdict-badge gate) — deliberately stricter than today's HUD line, which
+  renders content off a single signal. Signals reaching the UI are already
+  current-scale-only (SQL-layer gating); no new filtering needed.
 
-**Progress and completion.** "Decided" = user-origin flag on every frame of
-the stack (✨ never counts — enforced by reading through
-`aiUnconfirmedFields`, which already exists). Track per-session
-viewed/skipped sets (in the session snapshot, not the catalog). The
-completion banner grows into the summary: picked / rejected / undecided /
-skipped / never-viewed / ✨ awaiting review, plus ceremony buttons wired to
-existing flows (Review AI suggestions → autopilot review; Move rejects → the
-existing relocation flow, which already excludes tentative-only rejects;
-Export picks; Save picks as set). One-key scoped jumps are SP-D.
+**Progress and completion.** "Decided" = user-origin flag, already computed
+throughout via `confirmedProjection.flag` (✨ tentative never counts — no
+new mechanism needed). Viewed/skipped tracking is wholly new: an in-memory
+per-run tracker in SP-A (persisted for exact resume in SP-D — never the
+catalog). The completion summary extends `CullCompletionPresentation` (the
+ad-hoc, scope-wide mechanism — it fires without a formal session, the
+common case); `CullingSessionCompletionSummary` stays nested as-is and the
+two unify in SP-D when runs become first-class. New counts: picked /
+rejected / undecided / skipped / never-viewed / ✨ awaiting review (a
+filter over the in-memory `pendingAutopilotProposals` — no new query).
+Ceremony buttons wire to existing flows (Review AI suggestions → autopilot
+review; Move rejects → existing relocation, which already excludes
+tentative-only rejects; Export picks; Save picks as set). One-key scoped
+jumps are SP-D.
 
 **Invariants restated** (tests assert the negative): tentative ✨ flags
 never fill progress, never enter the Picks set, never relocate/trash/export;
