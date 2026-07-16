@@ -11594,6 +11594,120 @@ public final class AppModel {
         return (attributes[.size] as? NSNumber)?.int64Value ?? 0
     }
 
+    /// A committed reject's bonded secondaries (e.g. the hidden JPEG twin of
+    /// a RAW), resolved by id — never through the reject-scoped listing that
+    /// hides them from `allAssets`. Bonding only decides which files travel
+    /// once `primaryID` is already an eligible, committed reject; it never
+    /// makes a shot eligible on its own.
+    private static func bondedSecondaryAssets(of primaryID: AssetID, repository: CatalogRepository) throws -> [Asset] {
+        try repository.bondedSecondaryIDs(of: primaryID).map { try repository.asset(id: $0) }
+    }
+
+    /// Moves `assetID`'s bonded secondaries (e.g. a RAW reject's hidden JPEG
+    /// twin) into the same destination folder the primary just moved to, so
+    /// a committed reject never leaves an orphaned sibling behind. Never
+    /// throws — by the time this runs the primary has already moved and been
+    /// counted, so every failure (including the secondary lookup itself) is
+    /// recorded as its own issue rather than unwinding into the primary's
+    /// already-recorded success.
+    private static func relocateBondedSecondaries(
+        of assetID: AssetID,
+        primaryOriginalFrom: URL,
+        destinationDirectory: URL,
+        catalog: AppCatalog,
+        service: RejectRelocationService,
+        sessionID: WorkSessionID,
+        issues: inout [WorkSessionIssue]
+    ) {
+        let secondaryAssets: [Asset]
+        do {
+            secondaryAssets = try bondedSecondaryAssets(of: assetID, repository: catalog.repository)
+        } catch {
+            issues.append(WorkSessionIssue(
+                kind: .skippedSourceFile,
+                sourceURL: primaryOriginalFrom,
+                message: "could not look up bonded secondaries: \(error.localizedDescription)"
+            ))
+            return
+        }
+        for secondaryAsset in secondaryAssets {
+            let secondaryDestination = destinationDirectory.appendingPathComponent(secondaryAsset.originalURL.lastPathComponent)
+            do {
+                let secondaryResult = try service.move(originalFrom: secondaryAsset.originalURL, originalTo: secondaryDestination)
+                try catalog.repository.relocateOriginal(assetID: secondaryAsset.id, to: secondaryResult.originalTo)
+                try catalog.repository.saveRelocationManifestEntry(
+                    RelocationManifestEntry(
+                        assetID: secondaryAsset.id,
+                        originalFrom: secondaryResult.originalFrom,
+                        originalTo: secondaryResult.originalTo,
+                        sidecarFrom: secondaryResult.sidecarFrom,
+                        sidecarTo: secondaryResult.sidecarTo
+                    ),
+                    sessionID: sessionID
+                )
+            } catch {
+                issues.append(WorkSessionIssue(
+                    kind: .skippedSourceFile,
+                    sourceURL: secondaryAsset.originalURL,
+                    message: error.localizedDescription
+                ))
+            }
+        }
+    }
+
+    /// Trash-mode counterpart of `relocateBondedSecondaries`: trashes
+    /// `assetID`'s bonded secondaries alongside their just-trashed primary,
+    /// removing their catalog rows and cached previews the same way. Never
+    /// throws, for the same reason: the primary is already trashed and
+    /// counted by the time this runs.
+    private static func trashBondedSecondaries(
+        of assetID: AssetID,
+        primaryOriginalFrom: URL,
+        catalog: AppCatalog,
+        service: RejectRelocationService,
+        recycler: Recycler,
+        sessionID: WorkSessionID,
+        issues: inout [WorkSessionIssue]
+    ) {
+        let secondaryAssets: [Asset]
+        do {
+            secondaryAssets = try bondedSecondaryAssets(of: assetID, repository: catalog.repository)
+        } catch {
+            issues.append(WorkSessionIssue(
+                kind: .skippedSourceFile,
+                sourceURL: primaryOriginalFrom,
+                message: "could not look up bonded secondaries: \(error.localizedDescription)"
+            ))
+            return
+        }
+        for secondaryAsset in secondaryAssets {
+            do {
+                let secondaryPersonIDs = try catalog.repository.personIDs(assetID: secondaryAsset.id)
+                let secondaryResult = try service.trash(originalFrom: secondaryAsset.originalURL, recycler: recycler)
+                try catalog.repository.deleteAsset(id: secondaryAsset.id)
+                try catalog.previewCache.deleteAll(for: secondaryAsset.id)
+                try catalog.repository.saveRelocationManifestEntry(
+                    RelocationManifestEntry(
+                        assetID: secondaryAsset.id,
+                        originalFrom: secondaryResult.originalFrom,
+                        originalTo: secondaryResult.originalTo,
+                        sidecarFrom: secondaryResult.sidecarFrom,
+                        sidecarTo: secondaryResult.sidecarTo,
+                        assetSnapshot: secondaryAsset,
+                        personIDs: secondaryPersonIDs
+                    ),
+                    sessionID: sessionID
+                )
+            } catch {
+                issues.append(WorkSessionIssue(
+                    kind: .skippedSourceFile,
+                    sourceURL: secondaryAsset.originalURL,
+                    message: error.localizedDescription
+                ))
+            }
+        }
+    }
+
     @discardableResult
     public func moveRejectsToFolder(_ preflight: RejectRelocationPreflight) throws -> RejectRelocationSummary {
         guard let catalog else {
@@ -11643,6 +11757,20 @@ public final class AppModel {
                 )
                 movedCount += 1
                 if result.sidecarTo != nil { sidecarCount += 1 }
+
+                // Bonded secondaries (e.g. the hidden JPEG twin of a RAW
+                // reject) travel with their primary so a committed reject
+                // never leaves an orphaned sibling behind. They're not
+                // themselves counted as moved rejects — only the primary is.
+                Self.relocateBondedSecondaries(
+                    of: assetID,
+                    primaryOriginalFrom: plan.originalFrom,
+                    destinationDirectory: result.originalTo.deletingLastPathComponent(),
+                    catalog: catalog,
+                    service: service,
+                    sessionID: sessionID,
+                    issues: &issues
+                )
             } catch {
                 // Skip-with-issue: a file that can't move is recorded and the
                 // loop continues; its catalog row is left untouched.
@@ -11745,6 +11873,21 @@ public final class AppModel {
                 )
                 movedCount += 1
                 if result.sidecarTo != nil { sidecarCount += 1 }
+
+                // Bonded secondaries (e.g. the hidden JPEG twin of a RAW
+                // reject) are trashed with their primary so a committed
+                // reject never leaves an orphaned sibling behind. They're
+                // not themselves counted as moved rejects — only the primary
+                // is.
+                Self.trashBondedSecondaries(
+                    of: assetID,
+                    primaryOriginalFrom: plan.originalFrom,
+                    catalog: catalog,
+                    service: service,
+                    recycler: recycler,
+                    sessionID: sessionID,
+                    issues: &issues
+                )
             } catch {
                 // Skip-with-issue: a file that can't be trashed is recorded and
                 // the loop continues; its catalog row is left untouched.
