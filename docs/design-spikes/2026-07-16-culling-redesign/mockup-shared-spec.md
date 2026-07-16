@@ -79,3 +79,34 @@ A mockup that shows curated-looking names misrepresents the pre-cull state.
 Seed ✨ ghosts exactly as listed (8 total: 7 ✨X — Lineup f4, Kiss f8+f9,
 Bouquet f9–f12 — plus 1 ✨P, Bouquet f1). All 35 frames start undecided by
 the user.
+
+## Per-face assessments (round 3+)
+
+Each detected face carries chips — **eyes** (open / partial / shut /
+shut-ok(kiss) / shut-ok(laugh) / obscured), **expression** (laugh / smile /
+neutral / grimace / mid-speech), **focus** (sharp / soft / blurred),
+**facing** (camera / profile / away / down), **light** (good / blown /
+shadowed) — plus a **prominence** tier (main / secondary / background:
+background faces render as a summary dot only, chips on demand) and an
+optional **identity** name chip. Every face rolls up to one traffic-light
+dot; context-qualified states (shut-ok) roll up GREEN.
+
+Seed (frames not listed: faces eyes-open, smiling or neutral by face-index
+parity, sharp, facing camera, light good; keep directionally consistent with
+the frame-level scores, exact arithmetic not required):
+
+- **Lineup** (8 faces/frame, all main; face 1 = "Maya" identity chip in every
+  frame): f2 face 5 eyes-partial; f4 faces 3+7 eyes-shut and face 3 grimace
+  (this is why f4 wears ✨X); f5 face 2 eyes-partial.
+- **Kiss** (2 faces: "Maya" + "Sam"): both faces eyes shut-ok(kiss) in every
+  frame — dots GREEN; focus sharp on f6 ✦, soft on f8–f9.
+- **Bouquet toss**: faces present but too small to assess — the panel shows
+  an honest "faces too small to read" state, no fabricated chips.
+- **Grandma scan**: 1 face, eyes open, neutral, soft, light shadowed, no
+  identity.
+- **Phone snap**: 3 faces — face 1 main soft; face 2 facing away; face 3
+  background (dot only).
+- **Portrait Ted**: 1 face, identity "Ted", eyes shut, neutral, sharp,
+  facing camera — machine dot red, human may keep anyway.
+- Venue, rings, reshoots: no faces (reserved panel space, honest empty
+  state).
