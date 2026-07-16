@@ -9375,7 +9375,7 @@ private struct AssetGridCell: View {
                 .padding(6)
             }
             .overlay(alignment: .bottomTrailing) {
-                if let rawBadgeText = RawBadgeLabel.text(isRaw: asset.isRawOriginal, hasBondedStill: hasBondedStill) {
+                if hasBondedStill, let rawBadgeText = RawBadgeLabel.text(isRaw: asset.isRawOriginal, hasBondedStill: hasBondedStill) {
                     rawBadge(rawBadgeText)
                         .padding(6)
                 }
