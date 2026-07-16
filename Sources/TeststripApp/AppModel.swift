@@ -9570,7 +9570,13 @@ public final class AppModel {
         guard try currentLibraryAssetCount(repository: catalog.repository) > 0 else {
             throw TeststripError.invalidState("no current scope assets")
         }
-        let evaluableAssetIDs = try currentScopeCachedPreviewAssetIDs(repository: catalog.repository)
+        // A bonded shot's hidden JPEG secondary must still get evaluated
+        // (preview/eval processing is never special-cased out of bonding),
+        // even though every other "current scope" surface excludes it.
+        let evaluableAssetIDs = try currentScopeCachedPreviewAssetIDs(
+            repository: catalog.repository,
+            includeBondedSecondaries: true
+        )
         guard !evaluableAssetIDs.isEmpty else {
             throw TeststripError.invalidState("no current scope assets with cached previews")
         }
@@ -9595,7 +9601,9 @@ public final class AppModel {
         guard let catalog else {
             throw TeststripError.invalidState("app model has no catalog")
         }
-        let assetIDs = try latestImportOutputAssetIDs(repository: catalog.repository)
+        // A bonded shot's hidden JPEG secondary must still get evaluated
+        // (preview/eval processing is never special-cased out of bonding).
+        let assetIDs = try latestImportOutputAssetIDs(repository: catalog.repository, includeBondedSecondaries: true)
         guard !assetIDs.isEmpty else {
             throw TeststripError.invalidState("no latest import assets")
         }
@@ -11880,7 +11888,15 @@ public final class AppModel {
         )
     }
 
-    private func currentAssetScopeIDs(repository: CatalogRepository) throws -> [AssetID] {
+    // `includeBondedSecondaries` defaults to excluding a bonded shot's hidden
+    // JPEG, matching every other "current scope" surface (batch metadata,
+    // snapshots, export, session building). The current-scope evaluation
+    // trigger (`requestCurrentScopeAssetEvaluations`) opts back in — the
+    // hidden JPEG must still get evaluated.
+    private func currentAssetScopeIDs(
+        repository: CatalogRepository,
+        includeBondedSecondaries: Bool = false
+    ) throws -> [AssetID] {
         if let explicitAssetIDs = selectedExplicitAssetIDs {
             // A manual/snapshot AssetSet's membership_json can retain a
             // trashed asset's ID (deleteAsset doesn't rewrite it). Filter
@@ -11891,14 +11907,19 @@ public final class AppModel {
             return try repository.assets(ids: explicitAssetIDs, limit: explicitAssetIDs.count).map(\.id)
         }
         if let query = currentLibraryQuery() {
-            return try repository.assetIDs(matching: query)
+            return try repository.assetIDs(matching: query, includeBondedSecondaries: includeBondedSecondaries)
         }
-        return try repository.assetIDs()
+        return try repository.assetIDs(includeBondedSecondaries: includeBondedSecondaries)
     }
 
-    private func currentScopeCachedPreviewAssetIDs(repository: CatalogRepository, limit: Int? = nil) throws -> [AssetID] {
+    private func currentScopeCachedPreviewAssetIDs(
+        repository: CatalogRepository,
+        limit: Int? = nil,
+        includeBondedSecondaries: Bool = false
+    ) throws -> [AssetID] {
         var cachedAssetIDs: [AssetID] = []
-        for assetID in try currentAssetScopeIDs(repository: repository) where hasCachedPreview(for: assetID) {
+        let scopeAssetIDs = try currentAssetScopeIDs(repository: repository, includeBondedSecondaries: includeBondedSecondaries)
+        for assetID in scopeAssetIDs where hasCachedPreview(for: assetID) {
             cachedAssetIDs.append(assetID)
             if let limit, cachedAssetIDs.count >= limit {
                 break
@@ -12319,14 +12340,29 @@ public final class AppModel {
         return nil
     }
 
-    private func latestImportOutputAssetIDs(repository: CatalogRepository) throws -> [AssetID] {
+    // Defaults to excluding a bonded shot's hidden JPEG, matching the other
+    // "latest import" display surfaces (preview/face-review banners, batch
+    // keyword suggestions). `requestLatestImportAssetEvaluations` opts back
+    // in — the hidden JPEG must still get evaluated.
+    private func latestImportOutputAssetIDs(
+        repository: CatalogRepository,
+        includeBondedSecondaries: Bool = false
+    ) throws -> [AssetID] {
         guard let activity = recentWork.first(where: Self.isImportCompletionActivity) else {
             throw TeststripError.invalidState("no completed import")
         }
-        return try latestImportOutputAssetIDs(activityID: activity.id, repository: repository)
+        return try latestImportOutputAssetIDs(
+            activityID: activity.id,
+            repository: repository,
+            includeBondedSecondaries: includeBondedSecondaries
+        )
     }
 
-    private func latestImportOutputAssetIDs(activityID: String, repository: CatalogRepository) throws -> [AssetID] {
+    private func latestImportOutputAssetIDs(
+        activityID: String,
+        repository: CatalogRepository,
+        includeBondedSecondaries: Bool = false
+    ) throws -> [AssetID] {
         let session = try repository.session(id: WorkSessionID(rawValue: activityID))
         guard let outputSetID = session.outputSetIDs.first else {
             return []
@@ -12336,7 +12372,7 @@ public final class AppModel {
         case .manual(let ids), .snapshot(let ids):
             return ids
         case .dynamic(let query):
-            return try repository.assetIDs(matching: query)
+            return try repository.assetIDs(matching: query, includeBondedSecondaries: includeBondedSecondaries)
         }
     }
 

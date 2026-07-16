@@ -267,19 +267,36 @@ public final class CatalogRepository {
         return AssetBondPlanner.BondInput(id: AssetID(rawValue: id), originalURL: URL(fileURLWithPath: path))
     }
 
-    public func allAssets(limit: Int, offset: Int = 0, sort: LibrarySortOption = .importOrder) throws -> [Asset] {
-        try loadAssets(sort: sort, limit: limit, offset: offset)
+    /// ANDs the "primaries + unpaired only" filter onto a WHERE fragment that is
+    /// either "" or " WHERE …". Used by display listings; processing/enqueue and
+    /// fetch-by-id never call this.
+    private static func excludingSecondaries(_ whereSQL: String) -> String {
+        let predicate = "bonded_to_asset_id IS NULL"
+        return whereSQL.isEmpty ? " WHERE \(predicate)" : "\(whereSQL) AND \(predicate)"
     }
 
-    public func allAssets(sort: LibrarySortOption = .importOrder) throws -> [Asset] {
-        try loadAssets(sort: sort, limit: nil, offset: 0)
+    public func allAssets(
+        limit: Int,
+        offset: Int = 0,
+        sort: LibrarySortOption = .importOrder,
+        includeBondedSecondaries: Bool = false
+    ) throws -> [Asset] {
+        try loadAssets(sort: sort, limit: limit, offset: offset, includeBondedSecondaries: includeBondedSecondaries)
+    }
+
+    public func allAssets(
+        sort: LibrarySortOption = .importOrder,
+        includeBondedSecondaries: Bool = false
+    ) throws -> [Asset] {
+        try loadAssets(sort: sort, limit: nil, offset: 0, includeBondedSecondaries: includeBondedSecondaries)
     }
 
     public func allAssets(
         matching query: SetQuery,
         limit: Int,
         offset: Int = 0,
-        sort: LibrarySortOption = .importOrder
+        sort: LibrarySortOption = .importOrder,
+        includeBondedSecondaries: Bool = false
     ) throws -> [Asset] {
         let compiledQuery = try compile(query)
         return try loadAssets(
@@ -287,13 +304,15 @@ public final class CatalogRepository {
             whereBindings: compiledQuery.bindings,
             sort: sort,
             limit: limit,
-            offset: offset
+            offset: offset,
+            includeBondedSecondaries: includeBondedSecondaries
         )
     }
 
     public func allAssets(
         matching query: SetQuery,
-        sort: LibrarySortOption = .importOrder
+        sort: LibrarySortOption = .importOrder,
+        includeBondedSecondaries: Bool = false
     ) throws -> [Asset] {
         let compiledQuery = try compile(query)
         return try loadAssets(
@@ -301,7 +320,8 @@ public final class CatalogRepository {
             whereBindings: compiledQuery.bindings,
             sort: sort,
             limit: nil,
-            offset: 0
+            offset: 0,
+            includeBondedSecondaries: includeBondedSecondaries
         )
     }
 
@@ -313,26 +333,37 @@ public final class CatalogRepository {
         whereBindings: [String] = [],
         sort: LibrarySortOption,
         limit: Int?,
-        offset: Int
+        offset: Int,
+        includeBondedSecondaries: Bool = false
     ) throws -> [Asset] {
+        let effectiveWhereSQL = includeBondedSecondaries ? whereSQL : Self.excludingSecondaries(whereSQL)
         let pagingSQL = limit == nil ? "" : " LIMIT ? OFFSET ?"
         let pagingBindings = limit.map { ["\($0)", "\(offset)"] } ?? []
         let rows = try database.rows(
-            "SELECT * FROM assets\(whereSQL) ORDER BY \(Self.orderSQL(for: sort))\(pagingSQL)",
+            "SELECT * FROM assets\(effectiveWhereSQL) ORDER BY \(Self.orderSQL(for: sort))\(pagingSQL)",
             bindings: whereBindings + pagingBindings
         )
         return try rows.map(decodeAsset)
     }
 
-    public func assetIDs() throws -> [AssetID] {
-        let rows = try database.rows("SELECT id FROM assets ORDER BY rowid ASC")
+    // Backs display id-listings (e.g. AppModel's current-scope/latest-import
+    // helpers). Those helpers also drive evaluation processing for the
+    // current scope, which must still see a bonded shot's hidden JPEG —
+    // `includeBondedSecondaries: true` is that opt-out; leave it `false` for
+    // anything display-facing (the default).
+    public func assetIDs(includeBondedSecondaries: Bool = false) throws -> [AssetID] {
+        let whereSQL = includeBondedSecondaries ? "" : Self.excludingSecondaries("")
+        let rows = try database.rows("SELECT id FROM assets\(whereSQL) ORDER BY rowid ASC")
         return try rows.map(decodeAssetID)
     }
 
-    public func assetIDs(matching query: SetQuery) throws -> [AssetID] {
+    public func assetIDs(matching query: SetQuery, includeBondedSecondaries: Bool = false) throws -> [AssetID] {
         let compiledQuery = try compile(query)
+        let whereSQL = includeBondedSecondaries
+            ? compiledQuery.whereSQL
+            : Self.excludingSecondaries(compiledQuery.whereSQL)
         let rows = try database.rows(
-            "SELECT id FROM assets\(compiledQuery.whereSQL) ORDER BY rowid ASC",
+            "SELECT id FROM assets\(whereSQL) ORDER BY rowid ASC",
             bindings: compiledQuery.bindings
         )
         return try rows.map(decodeAssetID)
@@ -503,7 +534,7 @@ public final class CatalogRepository {
     }
 
     public func assetCount() throws -> Int {
-        let rows = try database.rows("SELECT COUNT(*) AS count FROM assets")
+        let rows = try database.rows("SELECT COUNT(*) AS count FROM assets\(Self.excludingSecondaries(""))")
         guard let countString = rows.first?["count"], let count = Int(countString) else {
             throw CatalogError.sqlite("asset count query returned no count")
         }
@@ -940,10 +971,12 @@ public final class CatalogRepository {
         }
     }
 
+    // A user-facing count aggregate (sidebar/section totals) — a bonded shot
+    // must count once, so this excludes secondaries like the listing queries.
     public func assetCount(matching query: SetQuery) throws -> Int {
         let compiledQuery = try compile(query)
         let rows = try database.rows(
-            "SELECT COUNT(*) AS count FROM assets\(compiledQuery.whereSQL)",
+            "SELECT COUNT(*) AS count FROM assets\(Self.excludingSecondaries(compiledQuery.whereSQL))",
             bindings: compiledQuery.bindings
         )
         guard let countString = rows.first?["count"], let count = Int(countString) else {
@@ -963,6 +996,7 @@ public final class CatalogRepository {
         bindings.append(flag.rawValue)
         clauses.append(Self.confirmedFieldClauseSQL)
         bindings.append(MetadataField.flag.rawValue)
+        clauses.append("bonded_to_asset_id IS NULL")
         let whereSQL = " WHERE " + clauses.joined(separator: " AND ")
         let rows = try database.rows("SELECT COUNT(*) AS count FROM assets\(whereSQL)", bindings: bindings)
         guard let countString = rows.first?["count"], let count = Int(countString) else {
