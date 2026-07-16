@@ -74,6 +74,8 @@ struct FaceGroupReviewView: View {
                         FaceReviewTileView(
                             previewURL: model.previewURL(for: tile.assetID, levels: [.large, .medium, .grid, .micro]),
                             boundingBox: tile.boundingBox,
+                            candidates: model.rankedPersonCandidates(forFace: tile.faceID),
+                            name: { selection in name(suggestion, tile, selection) },
                             remove: { remove(suggestion, tile) }
                         )
                     }
@@ -161,6 +163,19 @@ struct FaceGroupReviewView: View {
         .padding(40)
     }
 
+    private func name(_ suggestion: PeopleFaceSuggestion, _ tile: FaceReviewTile, _ selection: PersonCandidateSelection) {
+        do {
+            switch selection {
+            case .existing(let personID):
+                try model.nameFace(tile.faceID, personID: personID)
+            case .new(let newName):
+                try model.nameFace(tile.faceID, newPersonName: newName)
+            }
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
+    }
+
     private func remove(_ suggestion: PeopleFaceSuggestion, _ tile: FaceReviewTile) {
         do {
             try model.removeFaceFromReviewGroup(suggestion, faceID: tile.faceID)
@@ -170,17 +185,28 @@ struct FaceGroupReviewView: View {
     }
 }
 
+/// A face is named to an existing person by id or to a brand-new person by
+/// typed name — the two outcomes `PersonAutocompleteField`'s `onPick`/`onCreate`
+/// produce, threaded back through the tile's `name` closure.
+enum PersonCandidateSelection {
+    case existing(String)
+    case new(String)
+}
+
 /// One face tile in the review surface: a large crop zoomed to the face that
 /// swaps to the whole photo on hover/click, with a control to remove the face
 /// from the group. Reuses `FaceCropLoader` (shared with `FaceCropAvatar`).
 struct FaceReviewTileView: View {
     var previewURL: URL?
     var boundingBox: FaceBoundingBox
+    var candidates: [PersonCandidate]
+    var name: (_ pick: PersonCandidateSelection) -> Void
     var remove: () -> Void
 
     @State private var faceCrop: NSImage?
     @State private var loadedKey: FaceCropAvatar.CropKey?
     @State private var isRevealingPhoto = false
+    @State private var isNaming = false
 
     private var cropKey: FaceCropAvatar.CropKey {
         FaceCropAvatar.CropKey(url: previewURL, box: boundingBox)
@@ -204,6 +230,10 @@ struct FaceReviewTileView: View {
 
             removeButton
                 .padding(6)
+
+            namePill
+                .padding(6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         }
         .task(id: cropKey) { await loadFaceCrop() }
         .help("Click to see the whole photo; use the ✕ to remove this face from the group")
@@ -233,6 +263,36 @@ struct FaceReviewTileView: View {
         .buttonStyle(.plain)
         .help("Remove this face from the group")
         .accessibilityLabel("Remove face")
+    }
+
+    private var namePill: some View {
+        Button {
+            isNaming = true
+        } label: {
+            Label("Name", systemImage: "person.crop.circle.badge.plus")
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(.black.opacity(0.55), in: Capsule())
+                .foregroundStyle(.white)
+        }
+        .buttonStyle(.plain)
+        .help("Name this face as a specific person")
+        .popover(isPresented: $isNaming, arrowEdge: .bottom) {
+            PersonAutocompleteField(
+                candidates: candidates,
+                onPick: { personID in
+                    name(.existing(personID))
+                    isNaming = false
+                },
+                onCreate: { newName in
+                    name(.new(newName))
+                    isNaming = false
+                }
+            )
+            .frame(width: 240)
+            .padding(8)
+        }
     }
 
     @MainActor
