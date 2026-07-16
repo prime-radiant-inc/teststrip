@@ -1,5 +1,7 @@
 # Teststrip Culling ML Signals Implementation Plan
 
+*Status superseded as of 2026-07-16 — this plan has shipped (the `core-image-faces` provider and `smile`/`eyesOpen`/`eyeSharpness` signals are in the current codebase); the checkboxes below were never marked done. See `docs/product/narrative-select-reference.md` and `docs/design-spikes/2026-07-16-culling-redesign/teststrip-signals-inventory.md` for current state.*
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Culling can detect smiles, eyes open/closed, and eye-region sharpness as persisted evaluation signals, and the culling verdict pill, stack keep recommendations, Survey Compare badges, and focus-compare metric lanes read them.
