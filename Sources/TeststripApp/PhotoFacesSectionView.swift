@@ -97,9 +97,10 @@ struct PhotoFacesSectionView: View {
     }
 
     /// Ranked-picker popover for naming an unnamed face (Task 6's pill
-    /// pattern): `model.editingFaceID` pins the popover open per-face, shared
-    /// with the loupe's face-box overlay so the two surfaces never disagree
-    /// about which face is mid-edit.
+    /// pattern): presentation is gated by both `model.editingFaceID` and
+    /// `model.editingFaceSource` (via `FaceNamingPopover.isPresented`), so
+    /// the inspector and loupe overlay never both present a popover for the
+    /// same face; `editingFaceID` alone drives the cross-surface highlight.
     private func addNameButton(for row: PhotoFaceRow) -> some View {
         Button("Add name") {
             model.editingFaceID = row.faceID

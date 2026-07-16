@@ -49,9 +49,12 @@ enum FaceBoxOverlayGeometry {
 /// highlighted, and hovering a box sets `model.focusedFaceID` in turn — the
 /// same hover-only linking the People rows use (`PhotoFacesSectionView`).
 /// Hovering a box also swaps its plain label for a pill; clicking the pill
-/// opens the naming popover (`PersonAutocompleteField`) and pins the box
-/// open via `model.editingFaceID`, independent of hover, so the popover
-/// stays put while the pointer moves off the box and into it. The pill's ✕
+/// opens the naming popover (`PersonAutocompleteField`), sets
+/// `model.editingFaceSource = .loupe`, and gates presentation on both
+/// fields (via `FaceNamingPopover.isPresented`) so only the clicked
+/// surface presents the popover; the box highlight keys on `editingFaceID`
+/// alone (independent of hover), so the popover stays visible as the
+/// pointer moves between box and popover. The pill's ✕
 /// removes a confirmed person or rejects a suggestion. Neither the pill nor
 /// the popover claims the rest of the box, so a click on the box interior
 /// still falls through to zoom to 100% at the clicked point
