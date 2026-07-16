@@ -42,7 +42,14 @@ philosophy only.
 ## The dataset (identical in all three)
 
 Batch: **"June 14 — Red Rocks wedding + archive strays" · 35 frames · 9 stops**
-(4 multi-frame stacks, 5 standalone photos), in capture order:
+(4 multi-frame stacks, 5 standalone photos), in capture order.
+
+**Labeling rule (learned from round 1):** the quoted stack names below
+("Lineup", "First kiss", …) are dataset shorthand for the placeholder ART
+only — the UI must never display them. Stacks are auto-grouped; nobody has
+named anything. On-screen labels are machine-derivable facts only: file
+range + frame count + time span (e.g. `R5A_4021–4026 · 6 frames · 14:02`).
+A mockup that shows curated-looking names misrepresents the pre-cull state.
 
 1. **Stack "Lineup" — 6 frames** (ceremony group, 8 faces, teal hues).
    Focus .82/.85/.88/.79/.84/.81; eyes-open 1/.75/1/.5/.88/1.
