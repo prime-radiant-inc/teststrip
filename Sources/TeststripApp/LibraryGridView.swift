@@ -5299,9 +5299,19 @@ struct CompareSurveyPresentation: Equatable {
                 runnerUp: runnerUp.assetID,
                 evaluationSignalsByAssetID: evaluationSignalsByAssetID
             )
-            self.comparativeVerdictText = qualifiers.isEmpty
-                ? "Frame \(leader.frameLabel) edges it"
-                : "Frame \(leader.frameLabel) edges it — \(qualifiers.joined(separator: ", "))"
+            // A tie can't defend "edges it": the winner sentence yields to
+            // the same "Too close to call" wording as the header line, while
+            // the score-gated qualifiers stay — they're raw-signal facts
+            // about a named frame, not a composite crown.
+            if tiedLeaderIDs == nil {
+                self.comparativeVerdictText = qualifiers.isEmpty
+                    ? "Frame \(leader.frameLabel) edges it"
+                    : "Frame \(leader.frameLabel) edges it — \(qualifiers.joined(separator: ", "))"
+            } else {
+                self.comparativeVerdictText = qualifiers.isEmpty
+                    ? "Too close to call"
+                    : "Too close to call — frame \(leader.frameLabel): \(qualifiers.joined(separator: ", "))"
+            }
         } else {
             self.comparativeVerdictText = nil
         }

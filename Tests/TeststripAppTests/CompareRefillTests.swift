@@ -128,6 +128,47 @@ final class CompareRefillTests: XCTestCase {
         XCTAssertEqual(Set(orderedIDs), Set(frames.map(\.id)))
     }
 
+    // Under a too-close-to-call tie the survey can't lead with a single
+    // machine-crowned frame: the whole tied-leader set leads instead
+    // (capture order), and survives the 8-frame cap together, so Compare —
+    // the tie's resolution path — always opens with every tied frame
+    // visible.
+    func testEnteringCompareFromATiedStackLeadsWithTheTiedSetNotARawWinner() throws {
+        let capturedAt = Date(timeIntervalSince1970: 650)
+        let frames = (0..<10).map { index in
+            makeAsset(
+                id: "tied-lead-frame-\(index)",
+                path: "/Photos/Job/tied-lead-frame-\(index).cr2",
+                technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(Double(index)))
+            )
+        }
+        let (model, repository) = try makeModelWithCatalogAssets(named: "compare-tied-lead", assets: frames)
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        // frames[7] (0.79) and frames[8] (0.80) tie within the 0.03 margin;
+        // everything else is far below. Recommended-first ordering would
+        // crown frames[8] and let the cap drop frames[7] entirely.
+        try repository.recordEvaluationSignals(frames.enumerated().map { index, frame in
+            EvaluationSignal(
+                assetID: frame.id,
+                kind: .focus,
+                value: .score(index == 8 ? 0.80 : (index == 7 ? 0.79 : 0.3)),
+                confidence: 0.9,
+                provenance: provenance
+            )
+        })
+
+        model.select(frames[0].id)
+        model.selectedView = .compare
+
+        let orderedIDs = model.compareAssets().map(\.id)
+        XCTAssertEqual(orderedIDs.count, 8)
+        XCTAssertEqual(
+            Array(orderedIDs.prefix(2)),
+            [frames[7].id, frames[8].id],
+            "the tied set leads in capture order — no single raw winner in front"
+        )
+    }
+
     func testAutoPopulateCapsAtEightFramesForALargerStack() throws {
         let capturedAt = Date(timeIntervalSince1970: 700)
         let frames = (0..<10).map { index in

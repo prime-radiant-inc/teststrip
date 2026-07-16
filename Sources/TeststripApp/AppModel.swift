@@ -428,11 +428,27 @@ public enum CompareAutoPopulateOrdering {
         recommendedAssetID: AssetID?,
         cap: Int
     ) -> [AssetID] {
-        guard let recommendedAssetID, stackAssetIDs.contains(recommendedAssetID) else {
+        orderedStackAssetIDs(
+            stackAssetIDs: stackAssetIDs,
+            leadingAssetIDs: recommendedAssetID.map { [$0] } ?? [],
+            cap: cap
+        )
+    }
+
+    /// Tie-aware variant: under a too-close-to-call tie no single frame may
+    /// lead the survey, so the whole tied-leader set leads (in the order
+    /// given) and survives the cap together.
+    public static func orderedStackAssetIDs(
+        stackAssetIDs: [AssetID],
+        leadingAssetIDs: [AssetID],
+        cap: Int
+    ) -> [AssetID] {
+        let leaders = leadingAssetIDs.filter { stackAssetIDs.contains($0) }
+        guard !leaders.isEmpty else {
             return Array(stackAssetIDs.prefix(max(0, cap)))
         }
-        var ordered = [recommendedAssetID]
-        ordered.append(contentsOf: stackAssetIDs.filter { $0 != recommendedAssetID })
+        var ordered = leaders
+        ordered.append(contentsOf: stackAssetIDs.filter { !leaders.contains($0) })
         return Array(ordered.prefix(max(0, cap)))
     }
 }
@@ -6019,18 +6035,32 @@ public final class AppModel {
         // pre-existing anchor-windowed behavior (a stack larger than the cap,
         // with no recommendation yet, centers the window on the selection).
         let evaluationSignalsByAssetID = Dictionary(uniqueKeysWithValues: stackAssetIDs.map { ($0, evaluationSignals(for: $0)) })
-        guard let recommendedAssetID = CullingStackRecommendation.rankedCandidates(
+        let orderedIDs: [AssetID]
+        // A too-close-to-call tie can't defend a single frame leading the
+        // survey: the whole tied-leader set leads instead (capture order),
+        // so Compare — the tie's resolution path — always opens with every
+        // tied frame inside the cap.
+        if let tiedLeaderIDs = CullingStackRecommendation.tiedLeaderIDs(
             stackAssetIDs: stackAssetIDs,
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
-        ).first?.assetID else {
+        ) {
+            orderedIDs = CompareAutoPopulateOrdering.orderedStackAssetIDs(
+                stackAssetIDs: stackAssetIDs,
+                leadingAssetIDs: tiedLeaderIDs,
+                cap: limit
+            )
+        } else if let recommendedAssetID = CullingStackRecommendation.rankedCandidates(
+            stackAssetIDs: stackAssetIDs,
+            evaluationSignalsByAssetID: evaluationSignalsByAssetID
+        ).first?.assetID {
+            orderedIDs = CompareAutoPopulateOrdering.orderedStackAssetIDs(
+                stackAssetIDs: stackAssetIDs,
+                recommendedAssetID: recommendedAssetID,
+                cap: limit
+            )
+        } else {
             return Self.limitedCompareAssets(stackAssets, limit: limit, anchor: anchor)
         }
-
-        let orderedIDs = CompareAutoPopulateOrdering.orderedStackAssetIDs(
-            stackAssetIDs: stackAssetIDs,
-            recommendedAssetID: recommendedAssetID,
-            cap: limit
-        )
         let assetsByID = Dictionary(uniqueKeysWithValues: stackAssets.map { ($0.id, $0) })
         return orderedIDs.compactMap { assetsByID[$0] }
     }

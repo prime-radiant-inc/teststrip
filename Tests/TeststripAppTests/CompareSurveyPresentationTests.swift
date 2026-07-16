@@ -927,6 +927,49 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.comparativeVerdictText, "Frame 2 edges it — sharper")
     }
 
+    // A tie can't defend "edges it": the winner sentence is replaced with the
+    // round-2 header wording, while the score-gated qualifiers stay — they're
+    // raw-signal facts about a named frame, not a composite crown.
+    func testTiedComparativeVerdictReadsTooCloseToCallWithFactualQualifiers() {
+        let assets = [
+            makeAsset(id: "verdict-tied-a0"),
+            makeAsset(id: "verdict-tied-a1")
+        ]
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: [
+                assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.79)],
+                assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.80)]
+            ],
+            contendersOnly: true
+        )
+
+        // 0.80 vs 0.79 ties the composite (margin 0.03) but frame 2 genuinely
+        // leads on raw focus by 1% — the fact survives, the crown does not.
+        XCTAssertEqual(presentation.comparativeVerdictText, "Too close to call — frame 2: 1% sharper")
+        XCTAssertFalse(presentation.comparativeVerdictText?.contains("edges it") ?? false)
+    }
+
+    func testTiedComparativeVerdictWithoutQualifiersIsJustTooCloseToCall() {
+        let assets = [
+            makeAsset(id: "verdict-tied-flat-a0"),
+            makeAsset(id: "verdict-tied-flat-a1")
+        ]
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: [
+                assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.80)],
+                assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.80)]
+            ],
+            contendersOnly: true
+        )
+
+        // Identical scores leave no honest qualifier, so nothing follows.
+        XCTAssertEqual(presentation.comparativeVerdictText, "Too close to call")
+    }
+
     func testComparativeVerdictOmitsSharperClaimWhenLeaderDoesNotLeadOnFocus() {
         let assets = [
             makeAsset(id: "verdict-notfocus-a0"),
