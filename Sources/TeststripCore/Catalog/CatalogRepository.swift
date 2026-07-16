@@ -267,6 +267,35 @@ public final class CatalogRepository {
         return AssetBondPlanner.BondInput(id: AssetID(rawValue: id), originalURL: URL(fileURLWithPath: path))
     }
 
+    /// Assets (id + originalURL) presently cataloged under `folderPath` or any
+    /// of its subfolders, including bonded secondaries — pairing must see
+    /// every existing sibling, not just unbonded primaries, or a JPEG imported
+    /// after its RAW would look unpaired. Scoped to the folder so importing
+    /// into one folder never rescans the whole catalog.
+    func bondCandidates(inFolder folderPath: String) throws -> [AssetBondPlanner.BondInput] {
+        let folderPrefix = folderPath == "/" ? folderPath : folderPath + "/"
+        let rows = try database.rows(
+            "SELECT id, original_path FROM assets WHERE original_path LIKE ? ESCAPE '\\'",
+            bindings: ["\(Self.escapedLikePattern(folderPrefix))%"]
+        )
+        return try rows.map(decodeBondInput)
+    }
+
+    /// Applies newly computed secondary→primary bonds, skipping any already
+    /// set to that value (idempotent) and wrapping the writes in a single
+    /// transaction, matching `backfillBonds`'s convention.
+    public func setBonds(_ bonds: [AssetID: AssetID]) throws {
+        let changedBonds = try bonds.filter { secondaryID, primaryID in
+            try bondedPrimaryID(of: secondaryID) != primaryID
+        }
+        guard !changedBonds.isEmpty else { return }
+        try database.transaction {
+            for (secondaryID, primaryID) in changedBonds {
+                try setBond(secondaryID: secondaryID, primaryID: primaryID)
+            }
+        }
+    }
+
     /// ANDs the "primaries + unpaired only" filter onto a WHERE fragment that is
     /// either "" or " WHERE …". Used by display listings; processing/enqueue and
     /// fetch-by-id never call this.
