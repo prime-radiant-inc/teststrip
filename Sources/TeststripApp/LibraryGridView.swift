@@ -5305,14 +5305,16 @@ struct CompareSurveyPresentation: Equatable {
         } else {
             self.comparativeVerdictText = nil
         }
-        let recommendation = rankedCandidates.first
+        // A tie can't defend a single winner, so the recommendation — and
+        // every claim it drives ("✦ BEST", the keep-top-signal group action,
+        // the "Top signal" header line) — is suppressed at the source rather
+        // than arbitrarily crowning one tied leader.
+        let recommendation = tiedLeaderIDs == nil ? rankedCandidates.first : nil
         self.recommendedAssetID = recommendation?.assetID
         self.recommendedFrameLabel = recommendation?.frameLabel
-        // A tie can't defend a single winner, so no tile may carry "✦ BEST"
-        // when the recommendation itself is tie-suppressed.
         self.signalBadgesByAssetID = Self.signalBadges(
             assetIDs: assets.map(\.id),
-            bestAssetID: rankedCandidates.count >= 2 && tiedLeaderIDs == nil ? rankedCandidates.first?.assetID : nil,
+            bestAssetID: rankedCandidates.count >= 2 ? recommendation?.assetID : nil,
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
         let recommendationPhrases = recommendation.map { winner in
@@ -5324,6 +5326,7 @@ struct CompareSurveyPresentation: Equatable {
         } ?? []
         self.recommendationText = Self.recommendationText(
             rankedCandidates: rankedCandidates,
+            tiedLeaderIDs: tiedLeaderIDs,
             recommendationPhrases: recommendationPhrases,
             primaryAsset: self.primaryAsset,
             rejectCount: max(assets.count - 1, 0)
@@ -5349,12 +5352,19 @@ struct CompareSurveyPresentation: Equatable {
 
     private static func recommendationText(
         rankedCandidates: [CullingStackRecommendation],
+        tiedLeaderIDs: [AssetID]?,
         recommendationPhrases: [String],
         primaryAsset: Asset?,
         rejectCount: Int
     ) -> String {
         guard let recommendation = rankedCandidates.first else {
             return "No ranking yet"
+        }
+        // A tie can't defend a single winner: no "Top signal: frame X", and
+        // "Suggests: keep 1" (a claim that the primary wins) is equally
+        // indefensible — the honest read is the tie itself.
+        guard tiedLeaderIDs == nil else {
+            return "Too close to call"
         }
         guard recommendation.assetID == primaryAsset?.id else {
             guard recommendationPhrases.isEmpty else {

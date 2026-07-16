@@ -86,6 +86,50 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertTrue(actions[0].help.localizedCaseInsensitiveContains("top signal"))
     }
 
+    // A tie can't defend a single winner: the group action falls back to the
+    // user-chosen primary instead of crowning one tied leader as the "top
+    // signal" frame to keep.
+    func testTiedGroupActionFallsBackToKeepPrimaryWithoutNamingATopSignal() {
+        let primary = makeAsset(id: "tie-action-primary")
+        let other = makeAsset(id: "tie-action-other")
+
+        let presentation = CompareSurveyPresentation(
+            assets: [primary, other],
+            selectedAssetID: primary.id,
+            evaluationSignalsByAssetID: [
+                primary.id: [signal(assetID: primary.id, kind: .focus, score: 0.79)],
+                other.id: [signal(assetID: other.id, kind: .focus, score: 0.80)]
+            ]
+        )
+
+        let actions = presentation.groupActions(canApplyPrimaryChoice: true)
+
+        XCTAssertNil(presentation.recommendedAssetID)
+        XCTAssertEqual(presentation.groupActionText, "Keep primary · reject 1")
+        XCTAssertEqual(presentation.groupActionHelp, "Marks the current compare primary as Pick and the visible alternates as Reject")
+        XCTAssertEqual(actions[0].action, .keepPrimaryAndRejectAlternates)
+        XCTAssertFalse(actions.contains { if case .keepRecommendedAndRejectAlternates = $0.action { return true } else { return false } })
+    }
+
+    // Same rule for the header line: under a tie no frame is the "Top
+    // signal", and "Suggests: keep 1" (a claim that the primary wins) is
+    // equally indefensible — the honest read is the tie itself.
+    func testTiedRecommendationTextReadsTooCloseToCallInsteadOfTopSignal() {
+        let primary = makeAsset(id: "tie-text-primary")
+        let other = makeAsset(id: "tie-text-other")
+
+        let presentation = CompareSurveyPresentation(
+            assets: [primary, other],
+            selectedAssetID: primary.id,
+            evaluationSignalsByAssetID: [
+                primary.id: [signal(assetID: primary.id, kind: .focus, score: 0.79)],
+                other.id: [signal(assetID: other.id, kind: .focus, score: 0.80)]
+            ]
+        )
+
+        XCTAssertEqual(presentation.recommendationText, "Too close to call")
+    }
+
     func testEightFrameSurveyUsesFourByTwoLayout() {
         let assets = (0..<8).map { makeAsset(id: "survey-\($0)") }
 
