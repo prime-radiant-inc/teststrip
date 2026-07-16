@@ -6938,9 +6938,18 @@ public final class AppModel {
         }
     }
 
+    // A freeform keyword-text edit reviews an asset's whole keyword set, so
+    // keeping an AI-unconfirmed keyword is exactly as authoritative a gesture
+    // as confirming its chip directly, and dropping one is exactly as
+    // authoritative as removing it — see `overwriteKeywords(in:with:)`.
     public func setKeywordTextForSelectedAsset(_ keywordText: String) throws {
+        let newKeywords = Self.keywords(from: keywordText)
+        var droppedUnconfirmedKeywords: Set<String> = []
         try updateSelectedAssetMetadata(label: "Keywords") { metadata in
-            metadata.keywords = Self.keywords(from: keywordText)
+            droppedUnconfirmedKeywords = Self.overwriteKeywords(in: &metadata, with: newKeywords)
+        }
+        if let selectedAssetID, !droppedUnconfirmedKeywords.isEmpty {
+            try recordRemovedAIKeywords(droppedUnconfirmedKeywords, for: selectedAssetID)
         }
     }
 
@@ -6952,11 +6961,21 @@ public final class AppModel {
     /// asset, so distinct existing keywords on other assets survive);
     /// caption/creator/copyright OVERWRITE across the batch, matching the
     /// single-asset field semantics. One undo group per gesture.
+    ///
+    /// The single-focused-asset branch overwrites the whole set, same as
+    /// `setKeywordTextForSelectedAsset`, so it gets the same AI-provenance
+    /// reconciliation; the multi-asset append branch never removes a
+    /// keyword, so there's nothing to reconcile there.
     public func setKeywordTextForSelectedAssets(_ keywordText: String) throws {
         let parsedKeywords = Self.keywords(from: keywordText)
         guard currentManualSelectionAssetIDs.count > 1 else {
+            let overwriteAssetID = currentManualSelectionAssetIDs.first
+            var droppedUnconfirmedKeywords: Set<String> = []
             try updateSelectedAssetsMetadata(label: "Keywords") { metadata in
-                metadata.keywords = parsedKeywords
+                droppedUnconfirmedKeywords = Self.overwriteKeywords(in: &metadata, with: parsedKeywords)
+            }
+            if let overwriteAssetID, !droppedUnconfirmedKeywords.isEmpty {
+                try recordRemovedAIKeywords(droppedUnconfirmedKeywords, for: overwriteAssetID)
             }
             return
         }
@@ -6964,6 +6983,34 @@ public final class AppModel {
             for keyword in parsedKeywords where !Self.keywordList(metadata.keywords, contains: keyword) {
                 metadata.keywords.append(keyword)
             }
+        }
+    }
+
+    /// Overwrites `metadata.keywords` with `newKeywords` and resolves every
+    /// previously AI-unconfirmed keyword: a retained one is confirmed right
+    /// here (dropped from `aiUnconfirmedKeywords`, so it rides along in the
+    /// same sidecar-syncing write the caller performs — the same effect as
+    /// `confirmAIKeyword`, just folded into this pass instead of a separate
+    /// one); the keywords the edit dropped are returned so the caller can
+    /// record their removal via `recordRemovedAIKeywords`, matching
+    /// `removeAIKeyword`. A freeform edit reviews the whole set, so nothing
+    /// stays unconfirmed afterward.
+    private static func overwriteKeywords(in metadata: inout AssetMetadata, with newKeywords: [String]) -> Set<String> {
+        let droppedUnconfirmedKeywords = metadata.aiUnconfirmedKeywords.subtracting(newKeywords)
+        metadata.keywords = newKeywords
+        metadata.aiUnconfirmedKeywords.removeAll()
+        return droppedUnconfirmedKeywords
+    }
+
+    /// Records each keyword a keyword-set edit dropped while it was still
+    /// AI-unconfirmed, so a later `promoteMetadataLabels` never resurrects
+    /// it — same repository call and reasoning as `removeAIKeyword`.
+    private func recordRemovedAIKeywords(_ keywords: Set<String>, for assetID: AssetID) throws {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        for keyword in keywords {
+            try catalog.repository.recordRemovedAILabel(assetID: assetID, field: .keyword, value: keyword)
         }
     }
 

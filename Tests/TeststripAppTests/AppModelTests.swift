@@ -12476,6 +12476,78 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: sidecarURL.path))
     }
 
+    // A freeform keyword-text edit is a review of the asset's whole keyword
+    // set: keeping an AI-unconfirmed keyword is exactly as authoritative a
+    // gesture as confirming its chip directly, so it must confirm (not leave
+    // dangling as unconfirmed).
+    func testSetKeywordTextForSelectedAssetConfirmsRetainedAIKeywordAndWritesSidecar() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-keyword-text-confirms-retained")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let asset = makeAsset(id: "keyword-text-confirm-retained-target", path: originalURL.path, rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-keyword-text-confirms-retained-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.keywords = ["sunset"]
+                    metadata.aiUnconfirmedKeywords = ["sunset"]
+                }
+            }
+        )
+        model.select(asset.id)
+        let sidecarURL = originalURL.appendingPathExtension("xmp")
+
+        try model.setKeywordTextForSelectedAsset("sunset, beach")
+
+        let updated = try repository.asset(id: asset.id).metadata
+        XCTAssertEqual(updated.keywords, ["sunset", "beach"])
+        XCTAssertTrue(updated.aiUnconfirmedKeywords.isEmpty, "kept AI keyword must be confirmed, not left unconfirmed")
+
+        let sidecarData = try Data(contentsOf: sidecarURL)
+        XCTAssertEqual(try XMPPacket.parse(sidecarData).metadata.keywords, ["sunset", "beach"])
+
+        let inMemory = model.assets.first { $0.id == asset.id }
+        XCTAssertEqual(inMemory?.metadata.keywords, ["sunset", "beach"])
+        XCTAssertEqual(inMemory?.metadata.aiUnconfirmedKeywords, [])
+    }
+
+    // Symmetric case: dropping an AI-unconfirmed keyword in the same edit
+    // must record the removal so promotion never resurrects it, exactly
+    // like `removeAIKeyword`.
+    func testSetKeywordTextForSelectedAssetRecordsDroppedAIKeywordAsRemoved() throws {
+        let directory = try makeTemporaryDirectory(named: "app-model-keyword-text-records-dropped")
+        let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
+        try FileManager.default.createDirectory(at: photosDirectory, withIntermediateDirectories: true)
+        let originalURL = photosDirectory.appendingPathComponent("frame.cr2")
+        try Data("original raw bytes".utf8).write(to: originalURL)
+        let asset = makeAsset(id: "keyword-text-drop-target", path: originalURL.path, rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "app-model-keyword-text-records-dropped-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.keywords = ["sunset"]
+                    metadata.aiUnconfirmedKeywords = ["sunset"]
+                }
+            }
+        )
+        model.select(asset.id)
+
+        try model.setKeywordTextForSelectedAsset("beach")
+
+        let updated = try repository.asset(id: asset.id).metadata
+        XCTAssertFalse(updated.keywords.contains("sunset"))
+        XCTAssertTrue(updated.aiUnconfirmedKeywords.isEmpty)
+        XCTAssertTrue(try repository.removedAILabels(assetID: asset.id).contains(RemovedAILabel(field: .keyword, value: "sunset")))
+
+        // Ties Task 7's guard: promotion never resurrects a removed keyword.
+        try model.promoteMetadataLabels(for: asset.id)
+        XCTAssertFalse(try repository.asset(id: asset.id).metadata.keywords.contains("sunset"))
+    }
+
     func testConfirmAICaptionClearsUnconfirmedAndWritesSidecar() throws {
         let directory = try makeTemporaryDirectory(named: "app-model-confirm-ai-caption")
         let photosDirectory = directory.appendingPathComponent("photos", isDirectory: true)
