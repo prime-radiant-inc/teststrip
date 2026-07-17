@@ -4358,6 +4358,59 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(fixture.model.selectedAssetID, fixture.firstLead.id)
     }
 
+    // Regression fix: beginStackCullingFromLatestImportCompletion (the
+    // initial landing when a new stack-cull session starts) called
+    // recommendedCullingStackAssetID directly instead of routing through the
+    // same gated recommendedStackLandingAssetID helper as every other
+    // arrival path, so starting a session ignored cullLandOnRecommendedFrame
+    // even though ←/→, H/L, Return's advance, the sidebar click, and the run
+    // strip's click all honored it. Signals mirror the persisted-landing
+    // test's seeding pattern so the ✦ is NOT frame 1.
+    func testBeginStackCullingFromLatestImportHonorsLandOnRecommendedFramePreference() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let stackFirst = makeAsset(
+            id: "initial-landing-pref-first",
+            path: "/Photos/Import/initial-landing-pref-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let stackSecond = makeAsset(
+            id: "initial-landing-pref-second",
+            path: "/Photos/Import/initial-landing-pref-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let assets = [stackFirst, stackSecond]
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        let signals = [
+            EvaluationSignal(assetID: stackFirst.id, kind: .focus, value: .score(0.4), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: stackSecond.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ]
+
+        // Default (land on recommended frame): starting the session lands on
+        // the ✦, which the signals place on the second frame, not frame 1.
+        let (onModel, onRepository, _) = try makeModelWithCompletedImportSession(
+            named: "initial-landing-pref-on",
+            assets: assets,
+            outputAssetIDs: assets.map(\.id)
+        )
+        try onRepository.recordEvaluationSignals(signals)
+        _ = try onModel.beginStackCullingFromLatestImportCompletion()
+        XCTAssertEqual(onModel.selectedAssetID, stackSecond.id)
+
+        // Preference off: the same session start lands on frame 1 (capture
+        // order), ignoring the ✦.
+        let (offModel, offRepository, _) = try makeModelWithCompletedImportSession(
+            named: "initial-landing-pref-off",
+            assets: assets,
+            outputAssetIDs: assets.map(\.id)
+        )
+        try offRepository.recordEvaluationSignals(signals)
+        offModel.toggleCullLandOnRecommendedFrame()
+        _ = try offModel.beginStackCullingFromLatestImportCompletion()
+        XCTAssertEqual(offModel.selectedAssetID, stackFirst.id)
+    }
+
     func testOpeningCullingCompletionPicksAppliesTheOutputSet() throws {
         let fixture = try makePersistedStackCullingFixture(
             named: "completion-open-picks",

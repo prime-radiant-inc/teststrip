@@ -5095,8 +5095,8 @@ public final class AppModel {
         }
         stackCullingImportActivityIDBySessionID[sessionID] = summary.activityID
         try applyAssetSet(id: firstStackSetID)
-        if let firstStackAssetIDs = stacks.first?.assetIDs {
-            selectAssetID(recommendedCullingStackAssetID(in: firstStackAssetIDs) ?? firstStackAssetIDs.first)
+        if let firstStack = stacks.first {
+            selectAssetID(recommendedStackLandingAssetID(for: firstStack) ?? firstStack.assetIDs.first)
         }
         selectedView = .loupe
         startCullRunTracking()
