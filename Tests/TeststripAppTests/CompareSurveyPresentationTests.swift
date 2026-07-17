@@ -86,6 +86,50 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertTrue(actions[0].help.localizedCaseInsensitiveContains("top signal"))
     }
 
+    // A tie can't defend a single winner: the group action falls back to the
+    // user-chosen primary instead of crowning one tied leader as the "top
+    // signal" frame to keep.
+    func testTiedGroupActionFallsBackToKeepPrimaryWithoutNamingATopSignal() {
+        let primary = makeAsset(id: "tie-action-primary")
+        let other = makeAsset(id: "tie-action-other")
+
+        let presentation = CompareSurveyPresentation(
+            assets: [primary, other],
+            selectedAssetID: primary.id,
+            evaluationSignalsByAssetID: [
+                primary.id: [signal(assetID: primary.id, kind: .focus, score: 0.79)],
+                other.id: [signal(assetID: other.id, kind: .focus, score: 0.80)]
+            ]
+        )
+
+        let actions = presentation.groupActions(canApplyPrimaryChoice: true)
+
+        XCTAssertNil(presentation.recommendedAssetID)
+        XCTAssertEqual(presentation.groupActionText, "Keep primary · reject 1")
+        XCTAssertEqual(presentation.groupActionHelp, "Marks the current compare primary as Pick and the visible alternates as Reject")
+        XCTAssertEqual(actions[0].action, .keepPrimaryAndRejectAlternates)
+        XCTAssertFalse(actions.contains { if case .keepRecommendedAndRejectAlternates = $0.action { return true } else { return false } })
+    }
+
+    // Same rule for the header line: under a tie no frame is the "Top
+    // signal", and "Suggests: keep 1" (a claim that the primary wins) is
+    // equally indefensible — the honest read is the tie itself.
+    func testTiedRecommendationTextReadsTooCloseToCallInsteadOfTopSignal() {
+        let primary = makeAsset(id: "tie-text-primary")
+        let other = makeAsset(id: "tie-text-other")
+
+        let presentation = CompareSurveyPresentation(
+            assets: [primary, other],
+            selectedAssetID: primary.id,
+            evaluationSignalsByAssetID: [
+                primary.id: [signal(assetID: primary.id, kind: .focus, score: 0.79)],
+                other.id: [signal(assetID: other.id, kind: .focus, score: 0.80)]
+            ]
+        )
+
+        XCTAssertEqual(presentation.recommendationText, "Too close to call")
+    }
+
     func testEightFrameSurveyUsesFourByTwoLayout() {
         let assets = (0..<8).map { makeAsset(id: "survey-\($0)") }
 
@@ -138,6 +182,31 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.contenderAssets.map(\.id), [assets[2].id, assets[4].id, assets[0].id])
     }
 
+    // A too-close-to-call tie can reach past the default top 3: the 4th
+    // frame here sits within the tie margin of the leader, so contenders-only
+    // mode must widen to include it rather than silently drop it.
+    func testContendersOnlyModeWidensPastTopThreeToIncludeATiedFourthPlace() {
+        let assets = (0..<5).map { makeAsset(id: "tied-\($0)") }
+        let signals: [AssetID: [EvaluationSignal]] = [
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.90)],
+            assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.89)],
+            assets[2].id: [signal(assetID: assets[2].id, kind: .focus, score: 0.88)],
+            assets[3].id: [signal(assetID: assets[3].id, kind: .focus, score: 0.875)],
+            assets[4].id: [signal(assetID: assets[4].id, kind: .focus, score: 0.50)]
+        ]
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: true
+        )
+
+        // 0/1/2/3 are all within the 0.03 tie margin of the 0.90 leader; 4
+        // (0.50) is well outside it and stays excluded.
+        XCTAssertEqual(presentation.contenderAssets.map(\.id), [assets[0].id, assets[1].id, assets[2].id, assets[3].id])
+    }
+
     func testContendersOnlyModeIsReversibleBackToFullSet() {
         let assets = (0..<5).map { makeAsset(id: "reversible-\($0)") }
         let signals: [AssetID: [EvaluationSignal]] = [
@@ -160,8 +229,15 @@ final class CompareSurveyPresentationTests: XCTestCase {
 
     func testContendersToggleTitleDescribesTopThreeAndFullSet() {
         let assets = (0..<5).map { makeAsset(id: "toggle-\($0)") }
+        // Untied scores across all 5 assets, so the ranked window genuinely
+        // holds 3 contenders (matching the default contenderCount) rather
+        // than the toggle title merely reciting a hardcoded number.
         let signals: [AssetID: [EvaluationSignal]] = [
-            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.7)]
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.7)],
+            assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.5)],
+            assets[2].id: [signal(assetID: assets[2].id, kind: .focus, score: 0.9)],
+            assets[3].id: [signal(assetID: assets[3].id, kind: .focus, score: 0.6)],
+            assets[4].id: [signal(assetID: assets[4].id, kind: .focus, score: 0.8)]
         ]
 
         let off = CompareSurveyPresentation(
@@ -179,6 +255,31 @@ final class CompareSurveyPresentationTests: XCTestCase {
 
         XCTAssertEqual(off.contendersToggleTitle, "Top 3 contenders")
         XCTAssertEqual(on.contendersToggleTitle, "Full set")
+    }
+
+    // The toggle title must describe the actual contender count, not a
+    // hardcoded 3 — a too-close-to-call tie widens past the default top 3
+    // (see testContendersOnlyModeWidensPastTopThreeToIncludeATiedFourthPlace),
+    // and the button copy has to agree with what tapping it actually shows.
+    func testContendersToggleTitleReflectsAWidenedTieCount() {
+        let assets = (0..<5).map { makeAsset(id: "toggle-tied-\($0)") }
+        let signals: [AssetID: [EvaluationSignal]] = [
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.90)],
+            assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.89)],
+            assets[2].id: [signal(assetID: assets[2].id, kind: .focus, score: 0.88)],
+            assets[3].id: [signal(assetID: assets[3].id, kind: .focus, score: 0.875)],
+            assets[4].id: [signal(assetID: assets[4].id, kind: .focus, score: 0.50)]
+        ]
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: false
+        )
+
+        XCTAssertEqual(presentation.contenderAssets.count, 4)
+        XCTAssertEqual(presentation.contendersToggleTitle, "Top 4 contenders")
     }
 
     func testFirstAssetBecomesPrimaryWhenSelectionIsOutsideCompareSet() {
@@ -657,6 +758,24 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.signalBadges(for: unread), [])
     }
 
+    // A tie can't defend a single winner: no tile may carry "✦ BEST" when the
+    // group's recommendation is tie-suppressed.
+    func testSignalBadgesSuppressBestClaimUnderATie() {
+        let lead = makeAsset(id: "tie-best-lead")
+        let alternate = makeAsset(id: "tie-best-alternate")
+        let presentation = CompareSurveyPresentation(
+            assets: [lead, alternate],
+            selectedAssetID: lead.id,
+            evaluationSignalsByAssetID: [
+                lead.id: [signal(assetID: lead.id, kind: .focus, score: 0.80)],
+                alternate.id: [signal(assetID: alternate.id, kind: .focus, score: 0.79)]
+            ]
+        )
+
+        XCTAssertEqual(presentation.signalBadges(for: lead), [])
+        XCTAssertEqual(presentation.signalBadges(for: alternate), [])
+    }
+
     func testRankBadgesShowTopThreeRanksInContendersMode() {
         let assets = (0..<5).map { makeAsset(id: "rank-\($0)") }
         let signals: [AssetID: [EvaluationSignal]] = [
@@ -696,6 +815,51 @@ final class CompareSurveyPresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.rankBadges(for: assets[0]), [])
+    }
+
+    // Members of the tied-leader set render "tied" instead of a numeric
+    // rank; the two genuinely non-tied contenders continue numbering after
+    // the tied block (a 3-way tie is followed by #4). The non-tied frames
+    // here use extra signal kinds so their raw quality-score sum (which
+    // ranks the contenders list) diverges from the normalized read (which
+    // decides the tie) enough to reach past the top 3 and widen the
+    // contenders window to all 5 — exercising the renumbering against a
+    // realistic raw/normalized ordering mismatch, not just a contiguous
+    // top-of-list tie.
+    func testRankBadgesLabelTiedLeadersAsTiedAndContinueNumberingAfterTheTiedBlock() {
+        let leader = makeAsset(id: "tied-rank-leader")
+        let tied2 = makeAsset(id: "tied-rank-tied2")
+        let tied3 = makeAsset(id: "tied-rank-tied3")
+        let nonTied1 = makeAsset(id: "tied-rank-nontied1")
+        let nonTied2 = makeAsset(id: "tied-rank-nontied2")
+
+        let presentation = CompareSurveyPresentation(
+            assets: [leader, tied2, tied3, nonTied1, nonTied2],
+            selectedAssetID: leader.id,
+            evaluationSignalsByAssetID: [
+                leader.id: [signal(assetID: leader.id, kind: .focus, score: 0.90)],
+                tied2.id: [signal(assetID: tied2.id, kind: .focus, score: 0.88)],
+                tied3.id: [signal(assetID: tied3.id, kind: .focus, score: 0.875)],
+                nonTied1.id: [
+                    signal(assetID: nonTied1.id, kind: .focus, score: 0.37),
+                    signal(assetID: nonTied1.id, kind: .eyesOpen, score: 0.37),
+                    signal(assetID: nonTied1.id, kind: .aesthetics, score: 0.37)
+                ],
+                nonTied2.id: [
+                    signal(assetID: nonTied2.id, kind: .focus, score: 0.368),
+                    signal(assetID: nonTied2.id, kind: .eyesOpen, score: 0.368),
+                    signal(assetID: nonTied2.id, kind: .aesthetics, score: 0.368)
+                ]
+            ],
+            contendersOnly: true
+        )
+
+        XCTAssertEqual(presentation.contenderAssets.count, 5)
+        XCTAssertEqual(presentation.rankBadges(for: leader), [CompareDecisionBadge(text: "tied", tone: .rank)])
+        XCTAssertEqual(presentation.rankBadges(for: tied2), [CompareDecisionBadge(text: "tied", tone: .rank)])
+        XCTAssertEqual(presentation.rankBadges(for: tied3), [CompareDecisionBadge(text: "tied", tone: .rank)])
+        XCTAssertEqual(presentation.rankBadges(for: nonTied1), [CompareDecisionBadge(text: "#4", tone: .rank)])
+        XCTAssertEqual(presentation.rankBadges(for: nonTied2), [CompareDecisionBadge(text: "#5", tone: .rank)])
     }
 
     func testTileBadgesUseRankChipsInContendersModeAndSignalBadgesOtherwise() {
@@ -793,6 +957,49 @@ final class CompareSurveyPresentationTests: XCTestCase {
 
         // Runner-up focus (0.02) is too close to zero for an honest percentage.
         XCTAssertEqual(presentation.comparativeVerdictText, "Frame 2 edges it — sharper")
+    }
+
+    // A tie can't defend "edges it": the winner sentence is replaced with the
+    // round-2 header wording, while the score-gated qualifiers stay — they're
+    // raw-signal facts about a named frame, not a composite crown.
+    func testTiedComparativeVerdictReadsTooCloseToCallWithFactualQualifiers() {
+        let assets = [
+            makeAsset(id: "verdict-tied-a0"),
+            makeAsset(id: "verdict-tied-a1")
+        ]
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: [
+                assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.79)],
+                assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.80)]
+            ],
+            contendersOnly: true
+        )
+
+        // 0.80 vs 0.79 ties the composite (margin 0.03) but frame 2 genuinely
+        // leads on raw focus by 1% — the fact survives, the crown does not.
+        XCTAssertEqual(presentation.comparativeVerdictText, "Too close to call — frame 2: 1% sharper")
+        XCTAssertFalse(presentation.comparativeVerdictText?.contains("edges it") ?? false)
+    }
+
+    func testTiedComparativeVerdictWithoutQualifiersIsJustTooCloseToCall() {
+        let assets = [
+            makeAsset(id: "verdict-tied-flat-a0"),
+            makeAsset(id: "verdict-tied-flat-a1")
+        ]
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: [
+                assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.80)],
+                assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.80)]
+            ],
+            contendersOnly: true
+        )
+
+        // Identical scores leave no honest qualifier, so nothing follows.
+        XCTAssertEqual(presentation.comparativeVerdictText, "Too close to call")
     }
 
     func testComparativeVerdictOmitsSharperClaimWhenLeaderDoesNotLeadOnFocus() {

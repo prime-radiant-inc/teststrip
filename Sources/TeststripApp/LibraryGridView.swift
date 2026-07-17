@@ -3783,12 +3783,11 @@ private struct LoupeView: View {
     // asset/scope.
     private var cullCompletion: CullCompletionPresentation? {
         guard !isCullCompletionDismissed else { return nil }
-        let summary = model.cullingProgressSummary
         return CullCompletionPresentation.presentation(
-            pickCount: summary.pickCount,
-            rejectCount: summary.rejectCount,
-            totalCount: summary.totalCount,
-            undecidedCount: model.cullUndecidedCount,
+            assets: model.assets,
+            viewedAssetIDs: model.cullRunTracker.viewedAssetIDs,
+            skippedAssetIDs: model.cullRunTracker.skippedAssetIDs,
+            pendingProposalAssetIDs: Set(model.pendingAutopilotProposals.map(\.assetID)),
             scope: model.cullScope
         )
     }
@@ -3807,7 +3806,7 @@ private struct LoupeView: View {
                     autopilotBanner(summary: summary)
                 }
                 if let asset = model.selectedAsset {
-                    cullHUD(for: asset, stackPresentation: stackPresentation)
+                    cullHUD(for: asset)
                 }
             }
             HStack(spacing: 0) {
@@ -3820,8 +3819,8 @@ private struct LoupeView: View {
                     } else if let asset = model.selectedAsset {
                         HStack(spacing: 0) {
                             loupeStage(for: asset)
-                            if presentation.showsCullChrome {
-                                closeUpsPanel
+                            if presentation.showsCullChrome && model.showsCullFacesPanel {
+                                cullFacesReadsPanel
                             }
                         }
                         .task(id: asset.id.rawValue) {
@@ -3840,7 +3839,7 @@ private struct LoupeView: View {
                 }
             }
             if presentation.showsCullChrome {
-                cullingFilmstrip(recommendedAssetID: stackPresentation.recommendedAssetID)
+                runStrip(isStackActive: stackPresentation.isVisible)
             } else {
                 libraryLoupeNavBar
             }
@@ -3892,6 +3891,12 @@ private struct LoupeView: View {
             Text("\(completion.picks) picks · \(completion.rejects) rejects")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            // The run-coverage row: what "done" glossed over — frames Space
+            // skipped (and never decided), frames the run never landed on,
+            // and AI suggestions still awaiting review.
+            Text(cullCompletionRunDetailText(completion))
+                .font(.caption)
+                .foregroundStyle(.secondary)
             if let summary = model.autopilotRunSummary {
                 autopilotBanner(summary: summary)
                     .frame(maxWidth: 420)
@@ -3939,9 +3944,30 @@ private struct LoupeView: View {
             case .reviewPicks:
                 Button("Review Picks") { model.applyCullCompletionReviewPicks() }
                     .buttonStyle(.bordered)
+            case .reviewAISuggestions:
+                Button("Review AI Suggestions") { reviewAutopilotRun() }
+                    .buttonStyle(.bordered)
+            case .savePicksAsSet:
+                Button("Save Picks as Set") { savePicksAsSet() }
+                    .buttonStyle(.bordered)
             }
         }
         .controlSize(.regular)
+    }
+
+    private func cullCompletionRunDetailText(_ completion: CullCompletionPresentation) -> String {
+        let skippedText = "\(completion.skipped) skipped"
+        let neverViewedText = "\(completion.neverViewed) never viewed"
+        let sparkleText = "\(completion.sparkleAwaiting) AI \(completion.sparkleAwaiting == 1 ? "suggestion" : "suggestions") awaiting review"
+        return "\(skippedText) · \(neverViewedText) · \(sparkleText)"
+    }
+
+    private func savePicksAsSet() {
+        do {
+            try model.saveCullingPicksAsSet()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     // Plain prev/next navigation for the Library loupe: no pick/reject,
@@ -3978,15 +4004,44 @@ private struct LoupeView: View {
     }
 
 
-    @ViewBuilder
+    private static let cullFacesReadsPanelWidth: CGFloat = 300
+
+    // Faces + reads right panel: face close-ups on top, the frame's reads
+    // card below. One home per fact — the verdict and rationale render here
+    // and nowhere else. Fixed width, and both sections hold their space with
+    // honest empty states so the stage geometry never shifts while cull
+    // chrome is up; `/` hides the whole panel (model.showsCullFacesPanel).
+    private var cullFacesReadsPanel: some View {
+        let readsPresentation = CullReadsCardPresentation.presentation(for: model.selectedEvaluationSignals)
+        return VStack(alignment: .leading, spacing: 16) {
+            closeUpsPanel
+            readsCard(readsPresentation)
+        }
+        .padding(10)
+        .frame(width: Self.cullFacesReadsPanelWidth)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Color.black.opacity(0.26))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Reads")
+        .accessibilityValue(readsPresentation.emptyState ?? readsPresentation.verdictText ?? "")
+    }
+
     private var closeUpsPanel: some View {
-        if !closeUpCrops.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("CLOSE-UPS")
-                    .font(.caption2.monospaced().weight(.semibold))
+        VStack(alignment: .leading, spacing: 8) {
+            Text("CLOSE-UPS")
+                .font(.caption2.monospaced().weight(.semibold))
+                .foregroundStyle(.secondary)
+            if closeUpCrops.isEmpty {
+                Text("No faces")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
+            } else {
                 ScrollView {
-                    VStack(spacing: 8) {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 112), spacing: 8, alignment: .leading)],
+                        alignment: .leading,
+                        spacing: 8
+                    ) {
                         ForEach(closeUpCrops, id: \.id) { crop in
                             Image(decorative: crop.image, scale: 1)
                                 .resizable()
@@ -4001,11 +4056,69 @@ private struct LoupeView: View {
                     }
                 }
             }
-            .padding(10)
-            .frame(width: 136)
-            .background(Color.black.opacity(0.26))
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Face close-ups")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Face close-ups")
+        .accessibilityValue(closeUpCrops.isEmpty ? "No faces" : "\(closeUpCrops.count) faces")
+    }
+
+    // The frame's whole-frame read: verdict, rationale phrases, and per-kind
+    // signal bars, strictly gated by CullReadsCardPresentation — with fewer
+    // than two scored kinds only the honest "No read yet" empty state
+    // renders, holding the card's home in the panel.
+    private func readsCard(_ presentation: CullReadsCardPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("READS")
+                .font(.caption2.monospaced().weight(.semibold))
+                .foregroundStyle(.secondary)
+            if let emptyState = presentation.emptyState {
+                Text(emptyState)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                if let verdictText = presentation.verdictText {
+                    Text(verdictText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(readsToneColor(presentation.verdictTone))
+                        .lineLimit(1)
+                }
+                ForEach(presentation.rationalePhrases, id: \.self) { phrase in
+                    Text(phrase)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                ForEach(presentation.signalRows, id: \.kind.rawValue) { row in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(EvaluationSignalPresentation.displayName(for: row.kind))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            Text(EvaluationSignalPresentation.percentage(row.score))
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        ProgressView(value: min(max(row.score, 0), 1))
+                            .tint(.orange)
+                    }
+                }
+            }
+        }
+        .liveMockupPlaceholder(.cullingAssistVerdict)
+    }
+
+    private func readsToneColor(_ tone: CullingAssistPresentation.Tone) -> Color {
+        switch tone {
+        case .positive:
+            return .green
+        case .caution:
+            return .yellow
+        case .neutral:
+            return .secondary
+        case .waiting:
+            return .orange
         }
     }
 
@@ -4044,19 +4157,12 @@ private struct LoupeView: View {
         model.setLoupeFaceFocuses(result.faceFocuses)
     }
 
-    private func cullHUDPresentation(for asset: Asset, stackPresentation: CullingStackRailPresentation) -> CullHUDPresentation {
-        let assistPresentation = CullingAssistPresentation.presentation(
-            for: model.selectedEvaluationSignals,
-            stackGuidance: cullingStackGuidanceAction(in: stackPresentation)
-        )
-        let verdict = assistPresentation.verdictText
-            ?? (assistPresentation.tone == .waiting ? nil : assistPresentation.title)
-        return CullHUDPresentation(
+    private func cullHUDPresentation(for asset: Asset) -> CullHUDPresentation {
+        CullHUDPresentation(
             filename: asset.originalURL.lastPathComponent,
             rating: asset.metadata.rating,
             colorLabel: asset.metadata.colorLabel,
             summary: model.cullingProgressSummary,
-            verdict: verdict,
             scope: model.cullScope,
             isRatingEchoActive: isRatingEchoActive(for: asset)
         )
@@ -4072,8 +4178,8 @@ private struct LoupeView: View {
         return feedback.isRatingDecision
     }
 
-    private func cullHUD(for asset: Asset, stackPresentation: CullingStackRailPresentation) -> some View {
-        let presentation = cullHUDPresentation(for: asset, stackPresentation: stackPresentation)
+    private func cullHUD(for asset: Asset) -> some View {
+        let presentation = cullHUDPresentation(for: asset)
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 10) {
                 Text(presentation.filename)
@@ -4101,15 +4207,6 @@ private struct LoupeView: View {
                         "\(presentation.pickCount) picks, \(presentation.rejectCount) rejects, \(presentation.undecidedCount) left"
                     )
                 Spacer(minLength: 0)
-                if let verdict = presentation.verdict {
-                    Text(verdict)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: 220, alignment: .trailing)
-                        .liveMockupPlaceholder(.cullingAssistVerdict)
-                }
             }
             if presentation.undecidedCount + presentation.pickCount + presentation.rejectCount > 0 {
                 ProgressView(value: presentation.progressFraction)
@@ -4286,86 +4383,210 @@ private struct LoupeView: View {
         }
     }
 
-    private func cullingFilmstrip(recommendedAssetID: AssetID?) -> some View {
+    // Task 6: one stop per auto-grouped stack (a pill for a multi-frame
+    // stack, a thumb for a standalone) plus a status bar below — replaces
+    // the old flat filmstrip, where a burst of a dozen near-duplicates cost
+    // a dozen tiles instead of one stop. Per-frame recommendation (✦) stays
+    // owned by the stack rail (`cullStackRailCell`), which is the only place
+    // a specific frame within a stack is still individually addressable.
+    private func runStrip(isStackActive: Bool) -> some View {
         let scopedAssets = CullScopeOrdering.filteredAssets(model.assets, scope: model.cullScope)
-        let presentation = CullingFilmstripPresentation(
-            assets: scopedAssets,
-            selectedAssetID: model.selectedAssetID
-        )
+        let stacks = model.allCullingStacks(for: scopedAssets)
         // The unscoped view loads the whole catalog, so its frame numbers are
         // already catalog-wide (offset 0) and agree with the header's
         // "Frame X of Y". Scoped views (picks/rejects/unrated) are scope-local
         // by design.
         let isUnscopedWindow = model.cullScope == .all
-        let stackPresentation = CullFilmstripPresentation(
+        let counterPresentation = CullFilmstripPresentation(
             assets: scopedAssets,
-            stacks: model.allCullingStacks(for: scopedAssets),
+            stacks: stacks,
             selectedAssetID: model.selectedAssetID,
             frameNumberOffset: 0,
             totalFrameCount: isUnscopedWindow ? model.totalAssetCount : nil
         )
-        let stackIndexByAssetID = Self.stackIndexByAssetID(items: stackPresentation.items)
-        return VStack(spacing: 6) {
-            HStack {
-                Text("Filmstrip")
-                    .font(.caption2.monospaced().weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(stackPresentation.positionText)
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-            }
+        let pendingSparkleAssetIDs = Set(model.pendingAutopilotProposals.map(\.assetID))
+        let (stops, _) = CullRunStripPresentation.stops(
+            assets: scopedAssets,
+            stacks: stacks,
+            selectedAssetID: model.selectedAssetID,
+            pendingSparkleAssetIDs: pendingSparkleAssetIDs
+        )
+        return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 7) {
-                ForEach(Array(presentation.visibleAssets.enumerated()), id: \.element.id.rawValue) { index, asset in
-                    if index > 0,
-                       let previousStackIndex = stackIndexByAssetID[presentation.visibleAssets[index - 1].id],
-                       let stackIndex = stackIndexByAssetID[asset.id],
-                       previousStackIndex != stackIndex {
-                        filmstripStackDivider
-                    }
-                    filmstripTile(
-                        for: asset,
-                        isSelected: asset.id == model.selectedAssetID,
-                        isRecommended: asset.id == recommendedAssetID,
-                        decisionState: presentation.decisionState(for: asset)
-                    )
+                ForEach(stops) { stop in
+                    runStripStop(stop)
                 }
                 Spacer(minLength: 0)
             }
+            runStripStatusBar(tripleCounterText: counterPresentation.tripleCounterText, isStackActive: isStackActive)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .frame(height: 82)
         .background(Color.black.opacity(0.18))
         .liveMockupPlaceholder(.cullingFilmstrip)
-        .task(id: presentation.requestID) {
-            requestVisiblePreviews(for: presentation.visibleAssets.map(\.id))
+        .task(id: stops.map { $0.leadAssetID.rawValue }.joined(separator: "\n")) {
+            requestVisiblePreviews(for: stops.map(\.leadAssetID))
         }
     }
 
-    private static func stackIndexByAssetID(items: [CullFilmstripPresentation.Item]) -> [AssetID: Int] {
-        var result: [AssetID: Int] = [:]
-        var stackIndex = 0
-        for item in items {
-            switch item {
-            case .frame(let assetID):
-                result[assetID] = stackIndex
-            case .stackDivider:
-                stackIndex += 1
+    private func runStripStatusBar(tripleCounterText: String, isStackActive: Bool) -> some View {
+        let summary = model.cullingProgressSummary
+        // User-origin-only: `cullingProgressSummary` counts confirmed
+        // pick/reject flags, so a tentative AI flag never inflates progress.
+        let progressFraction = summary.totalCount > 0 ? Double(summary.reviewedCount) / Double(summary.totalCount) : 0
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Text(tripleCounterText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                runStripAutoAdvanceChip
+                if model.cullScope != .all {
+                    cullHUDScopeChip(model.cullScope)
+                }
+                Spacer(minLength: 0)
+                Text(CullingNavLegendPresentation(isStackActive: isStackActive).legendText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            ProgressView(value: progressFraction)
+                .tint(.orange)
+                .accessibilityLabel("Culling Progress")
+        }
+    }
+
+    private var runStripAutoAdvanceChip: some View {
+        let isOn = model.cullAutoAdvanceEnabled
+        let text = isOn ? "Auto-advance on" : "Auto-advance off"
+        return Text(text)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(isOn ? Color.orange.opacity(0.25) : Color.secondary.opacity(0.18)))
+            .accessibilityLabel(text)
+    }
+
+    private func runStripStop(_ stop: CullRunStripPresentation.Stop) -> some View {
+        Button {
+            selectRunStripStopLanding(stop)
+        } label: {
+            if stop.isStandalone {
+                runStripStandaloneThumb(stop)
+            } else {
+                runStripPill(stop)
             }
         }
-        return result
+        .buttonStyle(.plain)
+        .help(stop.label)
+        .accessibilityLabel("Stop \(stop.label)")
+        .accessibilityValue(runStripStopAccessibilityValue(stop))
     }
 
-    private var filmstripStackDivider: some View {
-        Rectangle()
-            .fill(Color.white.opacity(0.18))
-            .frame(width: 1, height: 40)
-            .accessibilityHidden(true)
+    // Routes through AppModel's public `selectStackLanding` — the same
+    // preference-gated landing helper arrow-key stack-to-stack navigation and
+    // Return's post-commit advance use — so a click and a keyboard arrival
+    // never disagree about which frame comes up, and both honor
+    // `cullLandOnRecommendedFrame`. A standalone stop's one-asset "stack"
+    // resolves to that asset either way.
+    private func selectRunStripStopLanding(_ stop: CullRunStripPresentation.Stop) {
+        model.selectStackLanding(for: stop.assetIDs)
+    }
+
+    private func runStripStopAccessibilityValue(_ stop: CullRunStripPresentation.Stop) -> String {
+        var segments: [String] = []
+        if stop.isCurrent { segments.append("Current") }
+        if stop.isDone { segments.append("Done") }
+        segments.append("\(stop.assetIDs.count) \(stop.assetIDs.count == 1 ? "frame" : "frames")")
+        if stop.sparkleCount > 0 {
+            segments.append("\(stop.sparkleCount) \(stop.sparkleCount == 1 ? "suggestion" : "suggestions")")
+        }
+        return segments.joined(separator: ", ")
+    }
+
+    private func runStripPill(_ stop: CullRunStripPresentation.Stop) -> some View {
+        HStack(spacing: 5) {
+            Text(stop.label)
+                .font(.caption2.monospaced())
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Text("\(stop.assetIDs.count)")
+                .font(.caption2.weight(.bold))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(Capsule().fill(Color.white.opacity(0.15)))
+            if stop.sparkleCount > 0 {
+                Label("\(stop.sparkleCount)", systemImage: DesignGlyph.ai.symbolName)
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+            if stop.isDone {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.green)
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 44)
+        .background(Capsule().fill(Color.black.opacity(0.4)))
+        .overlay(
+            Capsule().strokeBorder(stop.isCurrent ? Color.orange : Color.white.opacity(0.12), lineWidth: stop.isCurrent ? 2 : 1)
+        )
+    }
+
+    private func runStripStandaloneThumb(_ stop: CullRunStripPresentation.Stop) -> some View {
+        ZStack(alignment: .topTrailing) {
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.black.opacity(0.55))
+            if let previewURL = model.gridPreviewURL(for: stop.leadAssetID) {
+                CachedPreviewImage(
+                    previewURL: previewURL,
+                    scaling: .fit,
+                    cacheGeneration: model.previewCacheGeneration(for: stop.leadAssetID)
+                )
+                .padding(2)
+            } else {
+                Image(systemName: "photo")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if stop.sparkleCount > 0 {
+                Image(systemName: DesignGlyph.ai.symbolName)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.orange)
+                    .padding(3)
+                    .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
+            }
+        }
+        .frame(width: 64, height: 44)
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .overlay(alignment: .bottomLeading) {
+            if stop.isDone {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.green)
+                    .padding(3)
+                    .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
+            }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(stop.isCurrent ? Color.orange : Color.white.opacity(0.12), lineWidth: stop.isCurrent ? 2 : 1)
+        }
     }
 
     private static let cullStackRailThumbnailSize = CGSize(width: 120, height: 84)
     private static let cullStackRailWidth: CGFloat = 148
+
+    // Machine-fact stack label for the rail header (file-range · count ·
+    // time): stacks are auto-grouped, so the header must never imply a
+    // curated name. Rail items are already in capture (stack-scope) order,
+    // which CullStackLabelPresentation requires for a correct range.
+    private func cullStackLabelText(for presentation: CullingStackRailPresentation) -> String {
+        let assetsByID = Dictionary(uniqueKeysWithValues: model.assets.map { ($0.id, $0) })
+        let stackAssets = presentation.items.compactMap { assetsByID[$0.assetID] }
+        return CullStackLabelPresentation.label(for: stackAssets)
+    }
 
     @ViewBuilder
     private func cullingStackRail(presentation: CullingStackRailPresentation) -> some View {
@@ -4376,6 +4597,14 @@ private struct LoupeView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
                         .lineLimit(1)
+                    let stackLabel = cullStackLabelText(for: presentation)
+                    if !stackLabel.isEmpty {
+                        Text(stackLabel)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                     Text(presentation.positionText)
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
@@ -4385,6 +4614,12 @@ private struct LoupeView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
+                    }
+                    if let tooCloseBanner = presentation.tooCloseBanner {
+                        Text(tooCloseBanner)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .lineLimit(1)
                     }
                 }
                 ScrollView {
@@ -4494,11 +4729,10 @@ private struct LoupeView: View {
         .accessibilityValue(stackChipAccessibilityValue(item))
     }
 
-    /// Mirrors `filmstripDecisionOverlay`'s pick/reject glyph styling, but keyed
-    /// off the rail item's `DecisionState` directly (rail items don't carry a
-    /// star rating, so there's no rating badge to show alongside it).
+    /// Keyed off the rail item's `DecisionState` directly (rail items don't
+    /// carry a star rating, so there's no rating badge to show alongside it).
     @ViewBuilder
-    private func cullStackRailDecisionOverlay(_ decision: CullingFilmstripPresentation.DecisionState) -> some View {
+    private func cullStackRailDecisionOverlay(_ decision: CullingStackRailPresentation.DecisionState) -> some View {
         switch decision {
         case .undecided:
             EmptyView()
@@ -4537,72 +4771,8 @@ private struct LoupeView: View {
         )
     }
 
-    private func cullingStackGuidanceAction(in presentation: CullingStackRailPresentation) -> CullingStackActionPresentation? {
-        presentation.actions.dropFirst().first { action in
-            guard action.isEnabled else { return false }
-            switch action.action {
-            case .keepRecommended, .keepTopRanked:
-                return true
-            case .keepSelectedAndRejectAlternates, .keepAll:
-                return false
-            }
-        }
-    }
-
-    private func filmstripTile(
-        for asset: Asset,
-        isSelected: Bool,
-        isRecommended: Bool,
-        decisionState: CullingFilmstripPresentation.DecisionState
-    ) -> some View {
-        Button {
-            model.select(asset.id)
-        } label: {
-            ZStack(alignment: .bottomLeading) {
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.black.opacity(0.55))
-                if let previewURL = model.gridPreviewURL(for: asset.id) {
-                    CachedPreviewImage(
-                        previewURL: previewURL,
-                        scaling: .fit,
-                        cacheGeneration: model.previewCacheGeneration(for: asset.id)
-                    )
-                    .padding(2)
-                } else {
-                    Image(systemName: "photo")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                filmstripDecisionOverlay(for: asset)
-                    .padding(4)
-                if isRecommended {
-                    Text("✦")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.orange)
-                        .padding(3)
-                        .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                        .padding(3)
-                }
-            }
-            .frame(width: 64, height: 44)
-            .opacity(decisionState.isDimmed ? 0.45 : 1.0)
-            .clipShape(RoundedRectangle(cornerRadius: 5))
-            .overlay(alignment: .top) {
-                filmstripDecisionBar(decisionState)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 5)
-                    .strokeBorder(isSelected ? Color.orange : Color.white.opacity(0.12), lineWidth: isSelected ? 2 : 1)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(asset.originalURL.lastPathComponent)
-        .accessibilityValue(filmstripTileAccessibilityValue(isSelected: isSelected, isRecommended: isRecommended, decisionState: decisionState))
-    }
-
     @ViewBuilder
-    private func filmstripDecisionBar(_ decisionState: CullingFilmstripPresentation.DecisionState) -> some View {
+    private func filmstripDecisionBar(_ decisionState: CullingStackRailPresentation.DecisionState) -> some View {
         switch decisionState {
         case .undecided:
             EmptyView()
@@ -4610,44 +4780,6 @@ private struct LoupeView: View {
             Rectangle().fill(Color.green).frame(height: 3)
         case .rejected:
             Rectangle().fill(Color.red).frame(height: 3)
-        }
-    }
-
-    private func filmstripTileAccessibilityValue(
-        isSelected: Bool,
-        isRecommended: Bool,
-        decisionState: CullingFilmstripPresentation.DecisionState
-    ) -> String {
-        var segments = [isSelected ? "Selected" : (isRecommended ? "Recommended" : "Not selected")]
-        switch decisionState {
-        case .undecided:
-            break
-        case .picked:
-            segments.append("Picked")
-        case .rejected:
-            segments.append("Rejected")
-        }
-        return segments.joined(separator: ", ")
-    }
-
-    @ViewBuilder
-    private func filmstripDecisionOverlay(for asset: Asset) -> some View {
-        if asset.metadata.flag != nil || asset.metadata.rating > 0 {
-            HStack(spacing: 4) {
-                if let flag = asset.metadata.flag {
-                    Image(systemName: flag == .pick ? DesignGlyph.pick.symbolName : "xmark.circle.fill")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(flag == .pick ? .green : .red)
-                }
-                if asset.metadata.rating > 0 {
-                    Text("\(asset.metadata.rating)")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.yellow)
-                }
-            }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
-            .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
         }
     }
 
@@ -5220,6 +5352,7 @@ struct CompareSurveyPresentation: Equatable {
     var comparativeVerdictText: String?
     private var recommendedFrameLabel: String?
     private var signalBadgesByAssetID: [AssetID: [CompareDecisionBadge]]
+    private var tiedLeaderIDs: [AssetID]?
 
     init(
         assets: [Asset],
@@ -5242,6 +5375,7 @@ struct CompareSurveyPresentation: Equatable {
             self.comparativeVerdictText = nil
             self.recommendedFrameLabel = nil
             self.signalBadgesByAssetID = [:]
+            self.tiedLeaderIDs = nil
             return
         }
 
@@ -5269,7 +5403,19 @@ struct CompareSurveyPresentation: Equatable {
         self.isContendersModeAvailable = !rankedCandidates.isEmpty
         self.isContendersOnly = contendersOnly && isContendersModeAvailable
         let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
-        let topContenders = Array(rankedCandidates.prefix(Self.contenderCount))
+        // A too-close-to-call tie can reach past the top 3: widen the
+        // window to the tied leader ranked furthest down so contenders-only
+        // mode never silently drops a frame that's genuinely in the running.
+        let tiedLeaderIDs = CullingStackRecommendation.tiedLeaderIDs(
+            stackAssetIDs: assets.map(\.id),
+            evaluationSignalsByAssetID: evaluationSignalsByAssetID
+        )
+        self.tiedLeaderIDs = tiedLeaderIDs
+        let tiedLeaderLastRank = tiedLeaderIDs?
+            .compactMap { leaderID in rankedCandidates.firstIndex { $0.assetID == leaderID } }
+            .max()
+        let contenderLimit = max(Self.contenderCount, (tiedLeaderLastRank ?? -1) + 1)
+        let topContenders = Array(rankedCandidates.prefix(contenderLimit))
         self.contenderAssets = topContenders.compactMap { assetsByID[$0.assetID] }
         if self.isContendersOnly, topContenders.count >= 2 {
             let leader = topContenders[0]
@@ -5279,18 +5425,32 @@ struct CompareSurveyPresentation: Equatable {
                 runnerUp: runnerUp.assetID,
                 evaluationSignalsByAssetID: evaluationSignalsByAssetID
             )
-            self.comparativeVerdictText = qualifiers.isEmpty
-                ? "Frame \(leader.frameLabel) edges it"
-                : "Frame \(leader.frameLabel) edges it — \(qualifiers.joined(separator: ", "))"
+            // A tie can't defend "edges it": the winner sentence yields to
+            // the same "Too close to call" wording as the header line, while
+            // the score-gated qualifiers stay — they're raw-signal facts
+            // about a named frame, not a composite crown.
+            if tiedLeaderIDs == nil {
+                self.comparativeVerdictText = qualifiers.isEmpty
+                    ? "Frame \(leader.frameLabel) edges it"
+                    : "Frame \(leader.frameLabel) edges it — \(qualifiers.joined(separator: ", "))"
+            } else {
+                self.comparativeVerdictText = qualifiers.isEmpty
+                    ? "Too close to call"
+                    : "Too close to call — frame \(leader.frameLabel): \(qualifiers.joined(separator: ", "))"
+            }
         } else {
             self.comparativeVerdictText = nil
         }
-        let recommendation = rankedCandidates.first
+        // A tie can't defend a single winner, so the recommendation — and
+        // every claim it drives ("✦ BEST", the keep-top-signal group action,
+        // the "Top signal" header line) — is suppressed at the source rather
+        // than arbitrarily crowning one tied leader.
+        let recommendation = tiedLeaderIDs == nil ? rankedCandidates.first : nil
         self.recommendedAssetID = recommendation?.assetID
         self.recommendedFrameLabel = recommendation?.frameLabel
         self.signalBadgesByAssetID = Self.signalBadges(
             assetIDs: assets.map(\.id),
-            bestAssetID: rankedCandidates.count >= 2 ? rankedCandidates.first?.assetID : nil,
+            bestAssetID: rankedCandidates.count >= 2 ? recommendation?.assetID : nil,
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
         let recommendationPhrases = recommendation.map { winner in
@@ -5302,6 +5462,7 @@ struct CompareSurveyPresentation: Equatable {
         } ?? []
         self.recommendationText = Self.recommendationText(
             rankedCandidates: rankedCandidates,
+            tiedLeaderIDs: tiedLeaderIDs,
             recommendationPhrases: recommendationPhrases,
             primaryAsset: self.primaryAsset,
             rejectCount: max(assets.count - 1, 0)
@@ -5309,15 +5470,17 @@ struct CompareSurveyPresentation: Equatable {
     }
 
     /// Title for the reversible contenders-only toggle; independent of
-    /// availability so the disabled button still reads correctly.
+    /// availability so the disabled button still reads correctly. Counts
+    /// `contenderAssets` rather than the default `contenderCount` because a
+    /// too-close-to-call tie widens the contender window past the default.
     var contendersToggleTitle: String {
-        isContendersOnly ? "Full set" : "Top \(Self.contenderCount) contenders"
+        isContendersOnly ? "Full set" : "Top \(contenderAssets.count) contenders"
     }
 
     var contendersToggleHelp: String {
         isContendersOnly
             ? "Shows the full compare set again"
-            : "Narrows the compare grid to the top \(Self.contenderCount) ranked contenders"
+            : "Narrows the compare grid to the top \(contenderAssets.count) ranked contenders"
     }
 
     var primaryDecisionText: String {
@@ -5327,12 +5490,19 @@ struct CompareSurveyPresentation: Equatable {
 
     private static func recommendationText(
         rankedCandidates: [CullingStackRecommendation],
+        tiedLeaderIDs: [AssetID]?,
         recommendationPhrases: [String],
         primaryAsset: Asset?,
         rejectCount: Int
     ) -> String {
         guard let recommendation = rankedCandidates.first else {
             return "No ranking yet"
+        }
+        // A tie can't defend a single winner: no "Top signal: frame X", and
+        // "Suggests: keep 1" (a claim that the primary wins) is equally
+        // indefensible — the honest read is the tie itself.
+        guard tiedLeaderIDs == nil else {
+            return "Too close to call"
         }
         guard recommendation.assetID == primaryAsset?.id else {
             guard recommendationPhrases.isEmpty else {
@@ -5463,12 +5633,23 @@ struct CompareSurveyPresentation: Equatable {
     }
 
     /// #1/#2/#3 rank chips for contenders-only mode; silent otherwise so
-    /// rank and signal badges never both claim a tile.
+    /// rank and signal badges never both claim a tile. A tie can't defend a
+    /// single winner, so tied-leader-set members render "tied" instead of a
+    /// rank; the remaining, genuinely non-tied contenders continue numbering
+    /// after the tied block (a 3-way tie is followed by #4).
     func rankBadges(for asset: Asset) -> [CompareDecisionBadge] {
-        guard isContendersOnly, let rank = contenderAssets.firstIndex(where: { $0.id == asset.id }) else {
+        guard isContendersOnly, contenderAssets.contains(where: { $0.id == asset.id }) else {
             return []
         }
-        return [CompareDecisionBadge(text: "#\(rank + 1)", tone: .rank)]
+        if let tiedLeaderIDs, tiedLeaderIDs.contains(asset.id) {
+            return [CompareDecisionBadge(text: "tied", tone: .rank)]
+        }
+        let tiedCount = tiedLeaderIDs?.count ?? 0
+        let nonTiedContenders = contenderAssets.filter { tiedLeaderIDs?.contains($0.id) != true }
+        guard let nonTiedRank = nonTiedContenders.firstIndex(where: { $0.id == asset.id }) else {
+            return []
+        }
+        return [CompareDecisionBadge(text: "#\(tiedCount + nonTiedRank + 1)", tone: .rank)]
     }
 
     /// Badges for a compare tile: metadata decision badges plus rank chips
@@ -5781,7 +5962,7 @@ enum CompareFocusMetricPresentation {
     }
 }
 
-private enum EvaluationSignalPresentation {
+enum EvaluationSignalPresentation {
     // Calibrated eyeSharpness p75 from the 2026-07-06 calibration study
     // (raw 0.05 / 0.15 ceiling): eyes at or above the corpus top quartile
     // read as sharp everywhere eye sharpness is phrased or toned.
@@ -5861,78 +6042,12 @@ struct CullingNavLegendPresentation: Equatable {
     var legendText: String
 
     init(isStackActive: Bool) {
-        var segments = ["← → navigate", "Space advances", "Z 1:1"]
+        var segments = ["← → / H L navigate", "Space advances", "Z 1:1"]
         if isStackActive {
-            segments.append("↑↓ stacks")
+            segments.append("↑↓ / J K stacks")
             segments.append("↵ accept best")
         }
         legendText = segments.joined(separator: " · ")
-    }
-}
-
-struct CullingFilmstripPresentation: Equatable {
-    static let defaultVisibleLimit = 12
-
-    var visibleAssets: [Asset]
-    var selectedIndex: Int?
-    var totalCount: Int
-
-    init(
-        assets: [Asset],
-        selectedAssetID: AssetID?,
-        visibleLimit: Int = CullingFilmstripPresentation.defaultVisibleLimit
-    ) {
-        totalCount = assets.count
-        selectedIndex = selectedAssetID.flatMap { selectedID in
-            assets.firstIndex { $0.id == selectedID }
-        }
-        let boundedLimit = max(1, visibleLimit)
-        guard assets.count > boundedLimit else {
-            visibleAssets = assets
-            return
-        }
-        let anchorIndex = selectedIndex ?? 0
-        let proposedStart = anchorIndex - boundedLimit / 2
-        let startIndex = min(max(proposedStart, 0), assets.count - boundedLimit)
-        visibleAssets = Array(assets[startIndex..<(startIndex + boundedLimit)])
-    }
-
-    var positionText: String {
-        guard totalCount > 0 else { return "0 frames" }
-        guard let selectedIndex else {
-            return "\(totalCount) \(totalCount == 1 ? "frame" : "frames")"
-        }
-        return "Frame \(selectedIndex + 1) of \(totalCount)"
-    }
-
-    var requestID: String {
-        [
-            visibleAssets.map(\.id.rawValue).joined(separator: "\n"),
-            selectedIndex.map(String.init) ?? "none",
-            String(totalCount)
-        ].joined(separator: "\n")
-    }
-
-    /// A tile's pick/reject state, so the filmstrip can dim rejects and show
-    /// a decision color bar without the view reaching into asset metadata.
-    enum DecisionState: Equatable {
-        case undecided
-        case picked
-        case rejected
-
-        init(flag: PickFlag?) {
-            switch flag {
-            case .pick: self = .picked
-            case .reject: self = .rejected
-            case nil: self = .undecided
-            }
-        }
-
-        var isDimmed: Bool { self == .rejected }
-    }
-
-    func decisionState(for asset: Asset) -> DecisionState {
-        DecisionState(flag: asset.metadata.flag)
     }
 }
 
@@ -6005,13 +6120,32 @@ struct ABComparePresentation: Equatable {
 }
 
 struct CullingStackRailPresentation: Equatable {
+    /// A tile's pick/reject state, so the rail (and the run strip's shared
+    /// decision-bar view) can dim rejects and show a decision color bar
+    /// without the view reaching into asset metadata.
+    enum DecisionState: Equatable {
+        case undecided
+        case picked
+        case rejected
+
+        init(flag: PickFlag?) {
+            switch flag {
+            case .pick: self = .picked
+            case .reject: self = .rejected
+            case nil: self = .undecided
+            }
+        }
+
+        var isDimmed: Bool { self == .rejected }
+    }
+
     struct Item: Equatable {
         var assetID: AssetID
         var label: String
         var isSelected: Bool
         var isRecommended: Bool
         var flawBadges: [CompareDecisionBadge]
-        var decision: CullingFilmstripPresentation.DecisionState
+        var decision: DecisionState
     }
 
     var items: [Item]
@@ -6021,6 +6155,7 @@ struct CullingStackRailPresentation: Equatable {
     var keepActionTitle: String
     var keepActionHelp: String
     var actions: [CullingStackActionPresentation]
+    var tooCloseBanner: String?
 
     init(
         assets: [Asset],
@@ -6037,6 +6172,7 @@ struct CullingStackRailPresentation: Equatable {
             keepActionTitle = ""
             keepActionHelp = ""
             actions = []
+            tooCloseBanner = nil
             return
         }
 
@@ -6059,6 +6195,7 @@ struct CullingStackRailPresentation: Equatable {
                 keepActionTitle = ""
                 keepActionHelp = ""
                 actions = []
+                tooCloseBanner = nil
                 return
             }
             let stack = stacks[stackIndex]
@@ -6079,13 +6216,20 @@ struct CullingStackRailPresentation: Equatable {
             keepActionTitle = ""
             keepActionHelp = ""
             actions = []
+            tooCloseBanner = nil
             return
         }
         let rankedCandidates = CullingStackRecommendation.rankedCandidates(
             stackAssetIDs: stackScope.assetIDs,
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
-        let recommendation = rankedCandidates.first
+        let tiedLeaderIDs = CullingStackRecommendation.tiedLeaderIDs(
+            stackAssetIDs: stackScope.assetIDs,
+            evaluationSignalsByAssetID: evaluationSignalsByAssetID
+        )
+        // A tie can't defend a single winner, so the ✦ is suppressed
+        // entirely rather than arbitrarily picking one tied leader to crown.
+        let recommendation = tiedLeaderIDs == nil ? rankedCandidates.first : nil
         let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
 
         items = stackScope.assetIDs.enumerated().map { index, assetID in
@@ -6095,7 +6239,7 @@ struct CullingStackRailPresentation: Equatable {
                 isSelected: assetID == selectedAssetID,
                 isRecommended: assetID == recommendation?.assetID,
                 flawBadges: CompareSurveyPresentation.flawBadges(for: evaluationSignalsByAssetID[assetID] ?? []),
-                decision: CullingFilmstripPresentation.DecisionState(flag: assetsByID[assetID]?.metadata.flag)
+                decision: DecisionState(flag: assetsByID[assetID]?.metadata.flag)
             )
         }
         if let stackIndex = stackScope.stackIndex,
@@ -6106,6 +6250,12 @@ struct CullingStackRailPresentation: Equatable {
         }
         positionText = "Frame \(selectedIndex + 1) of \(stackScope.assetIDs.count)"
         rationaleText = stackScope.rationaleText
+        tooCloseBanner = tiedLeaderIDs.map { leaderIDs in
+            let frameLabels = leaderIDs.compactMap { leaderID in
+                stackScope.assetIDs.firstIndex(of: leaderID).map { "\($0 + 1)" }
+            }
+            return "too close to call — \(frameLabels.joined(separator: "·"))"
+        }
         keepActionTitle = "Keep frame \(selectedIndex + 1) · cut \(stackScope.assetIDs.count - 1)"
         keepActionHelp = "Keep selected frame and reject stack alternates"
         actions = [
@@ -6119,7 +6269,8 @@ struct CullingStackRailPresentation: Equatable {
             Self.rankedAction(
                 for: rankedCandidates,
                 stackAssetIDs: stackScope.assetIDs,
-                evaluationSignalsByAssetID: evaluationSignalsByAssetID
+                evaluationSignalsByAssetID: evaluationSignalsByAssetID,
+                tiedLeaderIDs: tiedLeaderIDs
             ),
             CullingStackActionPresentation(
                 action: .keepAll,
@@ -6157,7 +6308,8 @@ struct CullingStackRailPresentation: Equatable {
     private static func rankedAction(
         for rankedCandidates: [CullingStackRecommendation],
         stackAssetIDs: [AssetID],
-        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]],
+        tiedLeaderIDs: [AssetID]?
     ) -> CullingStackActionPresentation? {
         let topTwo = Array(rankedCandidates.prefix(2))
         if stackAssetIDs.count > 2, topTwo.count >= 2 {
@@ -6171,7 +6323,11 @@ struct CullingStackRailPresentation: Equatable {
             )
         }
 
-        guard let recommendation = rankedCandidates.first else { return nil }
+        // A tie can't defend a single winner: "Keep recommended X" names a
+        // specific frame, so it's suppressed here too (the banner + Compare
+        // are the resolution paths). "Keep top 2" above is unaffected — it
+        // names a user-chosen quantity, not a machine winner.
+        guard tiedLeaderIDs == nil, let recommendation = rankedCandidates.first else { return nil }
 
         let phrases = CullingStackRecommendation.rationalePhrases(
             forWinner: recommendation.assetID,
@@ -6271,8 +6427,10 @@ struct CullingStackRecommendation: Equatable {
         CullingQualityScore.qualityComponent(for: signal)
     }
 
-    // Confidence-weighted mean of the best component per kind, 0...1.
-    static func normalizedQualityRead(for signals: [EvaluationSignal]) -> (score: Double, kindCount: Int)? {
+    // The best-weighted rankable component per kind — shared by the
+    // normalized read and the reads card's per-kind signal bars, so they
+    // can never disagree on which component represents a kind.
+    static func bestComponentByKind(for signals: [EvaluationSignal]) -> [EvaluationKind: (score: Double, weight: Double)] {
         var bestComponentByKind: [EvaluationKind: (score: Double, weight: Double)] = [:]
         for signal in signals {
             guard let component = qualityComponent(for: signal) else { continue }
@@ -6282,10 +6440,60 @@ struct CullingStackRecommendation: Equatable {
             }
             bestComponentByKind[signal.kind] = component
         }
+        return bestComponentByKind
+    }
+
+    // Confidence-weighted mean of the best component per kind, 0...1.
+    static func normalizedQualityRead(for signals: [EvaluationSignal]) -> (score: Double, kindCount: Int)? {
+        let bestComponentByKind = bestComponentByKind(for: signals)
         let totalWeight = bestComponentByKind.values.reduce(0) { $0 + $1.weight }
         guard totalWeight > 0 else { return nil }
         let weightedScore = bestComponentByKind.values.reduce(0) { $0 + $1.score * $1.weight } / totalWeight
         return (weightedScore, bestComponentByKind.count)
+    }
+
+    /// Leaders whose normalized reads are indistinguishable at the margin.
+    /// nil when a single frame genuinely leads (or <2 frames have reads).
+    /// 0.03 on the 0...1 normalized mean is an initial floor chosen below the
+    /// composite read's frame-to-frame repeatability; revisit with corpus data.
+    static let tooCloseToCallMargin = 0.03
+
+    static func tiedLeaderIDs(
+        stackAssetIDs: [AssetID],
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
+    ) -> [AssetID]? {
+        // Rank by normalizedQualityRead (NOT raw qualityScore, which is
+        // kind-count-dependent); leaders are every candidate within
+        // tooCloseToCallMargin of the top read. compactMap over
+        // stackAssetIDs preserves capture order.
+        let reads: [(assetID: AssetID, read: Double)] = stackAssetIDs.compactMap { assetID in
+            guard let read = normalizedQualityRead(for: evaluationSignalsByAssetID[assetID] ?? []) else {
+                return nil
+            }
+            return (assetID, read.score)
+        }
+        guard let topRead = reads.map(\.read).max() else { return nil }
+        let leaders = reads.filter { topRead - $0.read <= tooCloseToCallMargin }.map(\.assetID)
+        return leaders.count >= 2 ? leaders : nil
+    }
+
+    /// The frame a stack-arrival gesture lands on: the clear winner, or the
+    /// first tied leader (capture order) during a too-close-to-call tie, or
+    /// nil when there aren't enough signals to rank at all — callers fall
+    /// back to the stack's own first/lead frame in that case. The shared
+    /// tie/rank/fallback core: AppModel's private `recommendedCullingStackAssetID`
+    /// delegates to this directly, so every stack-arrival gesture (keyboard,
+    /// Return's advance, and run-strip clicks via `AppModel.selectStackLanding`)
+    /// agrees on where to land. This function is intentionally ungated —
+    /// `cullLandOnRecommendedFrame` gates on top of it in AppModel.
+    static func landingAssetID(
+        stackAssetIDs: [AssetID],
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
+    ) -> AssetID? {
+        if let tiedLeaderIDs = tiedLeaderIDs(stackAssetIDs: stackAssetIDs, evaluationSignalsByAssetID: evaluationSignalsByAssetID) {
+            return tiedLeaderIDs.first
+        }
+        return rankedCandidates(stackAssetIDs: stackAssetIDs, evaluationSignalsByAssetID: evaluationSignalsByAssetID).first?.assetID
     }
 
     /// Short honest reasons why the winner leads the stack, in display order.
@@ -6521,10 +6729,13 @@ private struct ABCompareView: View {
         }
     }
 
+    private static let abFilmstripVisibleLimit = 12
+
     private func abFilmstrip(primaryID: AssetID?) -> some View {
-        let presentation = CullingFilmstripPresentation(
-            assets: model.assets,
-            selectedAssetID: model.selectedAssetID
+        let visibleAssets = Self.windowedAssets(
+            model.assets,
+            selectedAssetID: model.selectedAssetID,
+            visibleLimit: Self.abFilmstripVisibleLimit
         )
         return VStack(spacing: 6) {
             HStack {
@@ -6534,7 +6745,7 @@ private struct ABCompareView: View {
                 Spacer(minLength: 0)
             }
             HStack(spacing: 7) {
-                ForEach(presentation.visibleAssets, id: \.id.rawValue) { asset in
+                ForEach(visibleAssets, id: \.id.rawValue) { asset in
                     abFilmstripTile(asset: asset, isAnchor: asset.id == primaryID)
                 }
                 Spacer(minLength: 0)
@@ -6544,9 +6755,20 @@ private struct ABCompareView: View {
         .padding(.vertical, 8)
         .frame(height: 86)
         .background(Color.black.opacity(0.18))
-        .task(id: presentation.requestID) {
-            requestPreviews(for: presentation.visibleAssets)
+        .task(id: visibleAssets.map { $0.id.rawValue }.joined(separator: "\n")) {
+            requestPreviews(for: visibleAssets)
         }
+    }
+
+    // Centers a window of `visibleLimit` assets around the selected asset,
+    // clamped to the array bounds. The A/B compare filmstrip windows raw
+    // assets, not stack-grouped stops, so it can't reuse
+    // `CullRunStripPresentation.stops` directly — but the centering/clamping
+    // math is shared via `CullStripWindowing`.
+    private static func windowedAssets(_ assets: [Asset], selectedAssetID: AssetID?, visibleLimit: Int) -> [Asset] {
+        let anchorIndex = selectedAssetID.flatMap { id in assets.firstIndex { $0.id == id } } ?? 0
+        let window = CullStripWindowing.centeredWindow(count: assets.count, anchorIndex: anchorIndex, limit: visibleLimit)
+        return Array(assets[window])
     }
 
     private func abFilmstripTile(asset: Asset, isAnchor: Bool) -> some View {
@@ -8358,253 +8580,6 @@ struct SmartCollectionRuleRow: Equatable, Identifiable {
         target = activeFilterRow.target
         title = activeFilterRow.title
     }
-}
-
-struct CullingAssistPresentation: Equatable {
-    enum Tone: Equatable {
-        case waiting
-        case positive
-        case caution
-        case neutral
-    }
-
-    var title: String
-    var detail: String
-    var tone: Tone
-    var verdictText: String?
-    var verdictTone: Tone
-
-    // Anchored to the 2026-07-06 calibration study on the calibrated
-    // focus-family scale: Keep >= 0.7 selects the jointly-strong top quarter
-    // of the corpus and Toss <= 0.5 the weak quarter (eyes-shut and
-    // bottom-decile-focus frames), leaving roughly half Mixed.
-    private static let keepReadThreshold = 0.7
-    private static let tossReadThreshold = 0.5
-
-    static func presentation(
-        for signals: [EvaluationSignal],
-        stackGuidance: CullingStackActionPresentation? = nil
-    ) -> CullingAssistPresentation {
-        let verdict = verdict(for: signals)
-        if let stackGuidance,
-           stackGuidance.isEnabled,
-           let stackTitle = stackGuidanceTitle(for: stackGuidance) {
-            return CullingAssistPresentation(
-                title: stackTitle,
-                detail: stackGuidanceDetail(for: stackGuidance, selectedSignals: signals),
-                tone: .positive,
-                verdictText: verdict?.text,
-                verdictTone: verdict?.tone ?? .waiting
-            )
-        }
-        guard let signal = signals.sorted(by: signalSort).first else {
-            return CullingAssistPresentation(
-                title: "No read yet",
-                detail: "Evaluate frame to show culling signals",
-                tone: .waiting,
-                verdictText: verdict?.text,
-                verdictTone: verdict?.tone ?? .waiting
-            )
-        }
-        return CullingAssistPresentation(
-            title: title(for: signal),
-            detail: detail(primarySignal: signal, signals: signals),
-            tone: tone(for: signal),
-            verdictText: verdict?.text,
-            verdictTone: verdict?.tone ?? .waiting
-        )
-    }
-
-    // Synthesized display-only read over the same components the stack
-    // ranking uses; at least two scored quality kinds are required because
-    // one signal is not a verdict.
-    private static func verdict(for signals: [EvaluationSignal]) -> (text: String, tone: Tone)? {
-        guard let read = CullingStackRecommendation.normalizedQualityRead(for: signals),
-              read.kindCount >= 2 else {
-            return nil
-        }
-        let percentText = EvaluationSignalPresentation.percentage(read.score)
-        if read.score >= keepReadThreshold {
-            return ("Keep read \(percentText)", .positive)
-        }
-        if read.score <= tossReadThreshold {
-            return ("Toss read \(percentText)", .caution)
-        }
-        return ("Mixed read \(percentText)", .neutral)
-    }
-
-    private static func stackGuidanceTitle(for action: CullingStackActionPresentation) -> String? {
-        switch action.action {
-        case .keepRecommended, .keepTopRanked:
-            return action.assistTitle ?? action.title
-        case .keepSelectedAndRejectAlternates, .keepAll:
-            return nil
-        }
-    }
-
-    private static func stackGuidanceDetail(
-        for action: CullingStackActionPresentation,
-        selectedSignals: [EvaluationSignal]
-    ) -> String {
-        var parts = ["Stack recommendation - \(action.help)"]
-        if let selectedSignal = selectedSignals.sorted(by: signalSort).first {
-            parts.append("Selected: \(detail(primarySignal: selectedSignal, signals: selectedSignals))")
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private static func detail(primarySignal: EvaluationSignal, signals: [EvaluationSignal]) -> String {
-        var parts = [
-            "\(EvaluationSignalPresentation.displayName(for: primarySignal.kind)) - \(primarySignal.provenance.provider) - \(EvaluationSignalPresentation.percentage(primarySignal.confidence)) confidence"
-        ]
-        parts.append(contentsOf: rationaleTexts(for: signals, excluding: primarySignal))
-        return parts.joined(separator: " · ")
-    }
-
-    private static func rationaleTexts(
-        for signals: [EvaluationSignal],
-        excluding primarySignal: EvaluationSignal,
-        limit: Int = 3
-    ) -> [String] {
-        var seenKinds = [primarySignal.kind]
-        var rationales: [String] = []
-        for signal in signals.sorted(by: signalSort) where signal != primarySignal {
-            guard rationales.count < limit,
-                  !seenKinds.contains(signal.kind),
-                  let rationale = rationaleText(for: signal) else {
-                continue
-            }
-            rationales.append(rationale)
-            seenKinds.append(signal.kind)
-        }
-        return rationales
-    }
-
-    private static func expressionPhrase(for signal: EvaluationSignal) -> String? {
-        guard case .score(let score) = signal.value else { return nil }
-        switch signal.kind {
-        case .eyesOpen:
-            if score >= 1.0 { return "Eyes open" }
-            if score <= 0.0 { return "Eyes shut" }
-            return "Some eyes shut"
-        case .eyeSharpness:
-            return score >= EvaluationSignalPresentation.eyeSharpnessSharpThreshold ? "Eyes sharp" : "Eyes soft"
-        case .smile:
-            if score >= 1.0 { return "Smiling" }
-            if score > 0.0 { return "Some smiling" }
-            return nil
-        default:
-            return nil
-        }
-    }
-
-    private static func rationaleText(for signal: EvaluationSignal) -> String? {
-        switch signal.kind {
-        case .eyesOpen, .eyeSharpness, .smile:
-            return expressionPhrase(for: signal)
-        case .focus, .motionBlur, .exposure, .aesthetics, .framing, .faceQuality, .faceCount, .novelty, .colorPalette, .visualSimilarity:
-            return title(for: signal)
-        case .object, .ocrText:
-            return nil
-        }
-    }
-
-    private static func signalSort(_ lhs: EvaluationSignal, _ rhs: EvaluationSignal) -> Bool {
-        let lhsRank = rank(for: lhs.kind)
-        let rhsRank = rank(for: rhs.kind)
-        if lhsRank != rhsRank {
-            return lhsRank < rhsRank
-        }
-        return lhs.confidence > rhs.confidence
-    }
-
-    private static func rank(for kind: EvaluationKind) -> Int {
-        switch kind {
-        case .aesthetics:
-            return 0
-        case .framing:
-            return 1
-        case .motionBlur:
-            return 2
-        case .focus:
-            return 3
-        case .faceQuality:
-            return 4
-        case .eyesOpen:
-            return 5
-        case .eyeSharpness:
-            return 6
-        case .smile:
-            return 7
-        case .faceCount:
-            return 8
-        case .exposure:
-            return 9
-        case .object:
-            return 10
-        case .ocrText:
-            return 11
-        case .novelty:
-            return 12
-        case .colorPalette:
-            return 13
-        case .visualSimilarity:
-            return 14
-        }
-    }
-
-    private static func title(for signal: EvaluationSignal) -> String {
-        if let phrase = expressionPhrase(for: signal) {
-            return phrase
-        }
-        switch signal.value {
-        case .score(let score):
-            return "\(EvaluationSignalPresentation.displayName(for: signal.kind)) \(EvaluationSignalPresentation.percentage(score))"
-        case .label(let label):
-            return EvaluationSignalPresentation.capitalized(label, fallback: EvaluationSignalPresentation.displayName(for: signal.kind))
-        case .labels(let labels):
-            return EvaluationSignalPresentation.capitalized(labels.joined(separator: ", "), fallback: EvaluationSignalPresentation.displayName(for: signal.kind))
-        case .text(let text):
-            return EvaluationSignalPresentation.capitalized(text, fallback: EvaluationSignalPresentation.displayName(for: signal.kind))
-        case .count(let count):
-            return "\(EvaluationSignalPresentation.displayName(for: signal.kind)) \(count)"
-        case .vector:
-            return "\(EvaluationSignalPresentation.displayName(for: signal.kind)) sampled"
-        }
-    }
-
-    private static func tone(for signal: EvaluationSignal) -> Tone {
-        switch (signal.kind, signal.value) {
-        case (.motionBlur, .score(let score)):
-            return score >= 0.5 ? .caution : .positive
-        case (.focus, .score(let score)):
-            return score >= 0.7 ? .positive : .caution
-        case (.faceQuality, .score(let score)):
-            return score >= EvaluationSignalPresentation.faceQualityStrongThreshold ? .positive : .caution
-        case (.aesthetics, .label(let label)), (.framing, .label(let label)):
-            return cautionLabels.contains(label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) ? .caution : .positive
-        case (.faceCount, .count(let count)):
-            return count > 0 ? .positive : .neutral
-        case (.eyesOpen, .score(let score)):
-            return score >= 1.0 ? .positive : .caution
-        case (.eyeSharpness, .score(let score)):
-            return score >= EvaluationSignalPresentation.eyeSharpnessSharpThreshold ? .positive : .caution
-        case (.smile, .score(let score)):
-            return score > 0.0 ? .positive : .neutral
-        default:
-            return .neutral
-        }
-    }
-
-    private static let cautionLabels: Set<String> = [
-        "blur",
-        "blurry",
-        "reject",
-        "soft",
-        "eyes closed",
-        "closed eyes"
-    ]
-
 }
 
 struct ImportCompletionPresentation: Equatable {

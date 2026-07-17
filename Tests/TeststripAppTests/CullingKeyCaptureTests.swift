@@ -43,6 +43,24 @@ final class CullingKeyCaptureTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(event: down), .nextCandidateInStack)
     }
 
+    // Vim-style aliases for the arrow-key stack navigation above (H/L),
+    // case-insensitive since Shift is a common miss-hit alongside the key.
+    func testCullingShortcutMapsVimStackAliases() {
+        XCTAssertEqual(CullingShortcut(key: .character("h")), .previousStack)
+        XCTAssertEqual(CullingShortcut(key: .character("l")), .nextStack)
+        XCTAssertEqual(CullingShortcut(key: .character("H")), .previousStack)
+        XCTAssertEqual(CullingShortcut(key: .character("L")), .nextStack)
+    }
+
+    // Vim-style aliases for the arrow-key frame-in-stack navigation above
+    // (J/K), case-insensitive like the H/L stack aliases above.
+    func testCullingShortcutMapsVimFrameAliases() {
+        XCTAssertEqual(CullingShortcut(key: .character("j")), .nextCandidateInStack)
+        XCTAssertEqual(CullingShortcut(key: .character("k")), .previousCandidateInStack)
+        XCTAssertEqual(CullingShortcut(key: .character("J")), .nextCandidateInStack)
+        XCTAssertEqual(CullingShortcut(key: .character("K")), .previousCandidateInStack)
+    }
+
     // ⌥←/⌥→ (formerly a monitor-only alternate to plain up/down for stack
     // navigation) are retired now that up/down/left/right are all live axes.
     func testCullingShortcutIgnoresOptionArrowKeyEvents() throws {
@@ -85,6 +103,12 @@ final class CullingKeyCaptureTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(event: lowercase), .toggleZoom)
     }
 
+    func testCullingShortcutMapsToggleAutoAdvanceKeyEvent() throws {
+        let event = try makeKeyEvent(characters: "a", charactersIgnoringModifiers: "a")
+
+        XCTAssertEqual(CullingShortcut(event: event), .toggleAutoAdvance)
+    }
+
     // Shift-Z is a distinct shortcut (zoom to nearest face) from plain z
     // (toggle 1:1 zoom). charactersIgnoringModifiers strips Shift along with
     // the other modifiers (real hardware reports the base "z", not "Z" —
@@ -100,6 +124,19 @@ final class CullingKeyCaptureTests: XCTestCase {
         let event = try makeKeyEvent(characters: "?", charactersIgnoringModifiers: "/", modifierFlags: .shift)
 
         XCTAssertEqual(CullingShortcut(event: event), .showKeyMap)
+    }
+
+    // Task 5: bare "/" (unclaimed before this) toggles the faces+reads
+    // panel, while Shift+/ ("?") must keep opening the key map via the
+    // shift-aware event branch — both grammars share one physical key, so
+    // both decodes are asserted side by side.
+    func testCullingShortcutMapsBareSlashToToggleFacesPanelAndShiftSlashToShowKeyMap() throws {
+        let bareSlash = try makeKeyEvent(characters: "/", charactersIgnoringModifiers: "/")
+        let shiftSlash = try makeKeyEvent(characters: "?", charactersIgnoringModifiers: "/", modifierFlags: .shift)
+
+        XCTAssertEqual(CullingShortcut(event: bareSlash), .toggleFacesPanel)
+        XCTAssertEqual(CullingShortcut(key: .character("/")), .toggleFacesPanel)
+        XCTAssertEqual(CullingShortcut(event: shiftSlash), .showKeyMap)
     }
 
     func testCullingShortcutIgnoresCommandModifiedKeyEvents() throws {

@@ -157,12 +157,15 @@ final class LiveMockupPlaceholderTests: XCTestCase {
         XCTAssertFalse(surface.currentImplementation.localizedCaseInsensitiveContains("burst-level agentic rationale remains pending"))
     }
 
-    func testCullingFilmstripLedgerTracksImplementedFilmstrip() throws {
+    // Task 6 (culling-flow shell): the flat 12-thumb filmstrip was replaced
+    // by a stack-grouped run strip (a stop per auto-grouped stack) plus a
+    // status bar — the ledger text now describes that, not the old tiles.
+    func testCullingFilmstripLedgerTracksImplementedRunStrip() throws {
         let placeholder = try XCTUnwrap(LiveMockupPlaceholders.all.first { $0.id == "culling.filmstrip" })
 
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("fixed-size thumbnails"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("current-frame context"))
-        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("rating/flag state"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("one stop per auto-grouped stack"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("status bar"))
+        XCTAssertTrue(placeholder.currentFallback.localizedCaseInsensitiveContains("triple frame/stack/position counter"))
     }
 
     // The People sidebar row is gone (Task 7 - Library is Collections/Saved
