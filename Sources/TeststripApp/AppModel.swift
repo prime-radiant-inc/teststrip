@@ -639,10 +639,6 @@ private struct IndexedCullingStack {
     var stack: AssetStack
     var firstIndex: Int
     var lastIndex: Int
-
-    var firstAssetID: AssetID? {
-        stack.assetIDs.first
-    }
 }
 
 public enum ReviewQueue: String, CaseIterable, Equatable, Hashable, Sendable {
@@ -1912,10 +1908,12 @@ public struct CullingMetadataDecisionFeedback: Equatable, Sendable {
     public var filename: String
     public var command: CullingCommand
     public var decisionText: String
-    /// True for feedback that didn't write any metadata (item 4's
-    /// single-frame-stack notice) — the toast shows `decisionText` verbatim,
-    /// skipping the ✓/✕/★ symbol and "— ⌘Z undoes" suffix that would
-    /// misleadingly imply something changed.
+    /// True when `decisionText` is already fully composed and the generic
+    /// toast wrap (symbol + filename + "— ⌘Z undoes") must be skipped —
+    /// either because nothing was written (item 4's single-frame-stack
+    /// notice, where wrapping would misleadingly imply something changed)
+    /// or because `decisionText` already discloses its own undo hint (the
+    /// stack-promote force-flip toast).
     public var isInformational: Bool
 
     public init(
@@ -6247,6 +6245,17 @@ public final class AppModel {
         }
         let context = try selectedCullingStackDecisionContext()
         let originalAsset = selectedAsset
+        // Render gate: Return force-commits the stack decision, so it must
+        // not fire against a preview that hasn't rendered yet — the staged
+        // frame is what the user is actually looking at. No metadata write
+        // happens while the gate is closed; a second Return after the
+        // preview lands commits normally.
+        guard previewURL(for: context.selectedAssetID, levels: [.large]) != nil else {
+            if let originalAsset {
+                lastCullingMetadataDecision = Self.renderPendingFeedback(asset: originalAsset)
+            }
+            return
+        }
         // Jesse's ruling (2026-07-11): a sibling the user already picked is
         // protected — promote never reflags a pick to reject. Flag provenance
         // isn't recorded (autopilot commits write plain picks), so ALL picked
@@ -6268,6 +6277,11 @@ public final class AppModel {
             lastCullingMetadataDecision = Self.promoteDecisionFeedback(
                 asset: originalAsset,
                 siblingCount: context.stack.assetIDs.count - 1 - protectedPickedSiblings.count,
+                // A tentative (AI-unconfirmed) reject is undecided, not a
+                // real prior decision — only a confirmed reject discloses
+                // "(was ✕)" (the force-flip is otherwise invisible: Return
+                // silently overrides what looked like a settled reject).
+                wasRejected: originalAsset.metadata.confirmedProjection.flag == .reject,
                 protectedPickedSiblings: protectedPickedSiblings
             )
         }
@@ -6283,28 +6297,41 @@ public final class AppModel {
         )
     }
 
+    private static func renderPendingFeedback(asset: Asset) -> CullingMetadataDecisionFeedback {
+        CullingMetadataDecisionFeedback(
+            assetID: asset.id,
+            filename: asset.originalURL.lastPathComponent,
+            command: .clearFlag,
+            decisionText: "Rendering full preview…",
+            isInformational: true
+        )
+    }
+
     private static func promoteDecisionFeedback(
         asset: Asset,
         siblingCount: Int,
+        wasRejected: Bool,
         protectedPickedSiblings: [Asset] = []
     ) -> CullingMetadataDecisionFeedback {
-        var components: [String] = ["Picked"]
+        var components: [String] = ["Kept \(asset.originalURL.lastPathComponent)\(wasRejected ? " (was ✕)" : "")"]
         if siblingCount > 0 {
-            components.append("\(siblingCount) sibling\(siblingCount == 1 ? "" : "s") rejected")
+            components.append("rejected \(siblingCount)")
         }
         if protectedPickedSiblings.count == 1, let kept = protectedPickedSiblings.first {
             components.append("kept your pick of \(kept.originalURL.lastPathComponent)")
         } else if protectedPickedSiblings.count > 1 {
             components.append("kept your picks of \(protectedPickedSiblings.count) siblings")
         }
-        let decisionText = components.count > 1
-            ? components.joined(separator: " · ")
-            : cullingMetadataDecisionText(.pick)
+        components.append("⌘Z undoes")
         return CullingMetadataDecisionFeedback(
             assetID: asset.id,
             filename: asset.originalURL.lastPathComponent,
             command: .pick,
-            decisionText: decisionText
+            decisionText: components.joined(separator: " · "),
+            // decisionText already names the frame and the undo hint, so the
+            // generic toast wrap (which would prepend the filename again and
+            // append a second "⌘Z undoes") must be skipped.
+            isInformational: true
         )
     }
 
@@ -6362,7 +6389,15 @@ public final class AppModel {
         if try selectPersistedCullingStack(.next) {
             return
         } else if let nextAssetID = context.nextAssetID {
-            selectAssetID(nextAssetID)
+            // Land like ←/→ do: if the raw next asset belongs to a
+            // multi-frame stack, jump to that stack's recommended frame (✦ or
+            // first tied leader) rather than whichever frame happens to sit
+            // first in deck order.
+            if let nextStack = cullingStacks().first(where: { $0.assetIDs.contains(nextAssetID) }) {
+                selectAssetID(recommendedStackLandingAssetID(for: nextStack) ?? nextAssetID)
+            } else {
+                selectAssetID(nextAssetID)
+            }
         }
     }
 
@@ -6959,7 +6994,7 @@ public final class AppModel {
               let selectedIndex = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
             let fallbackStack = direction == .next ? indexedStacks.first : indexedStacks.last
             if let fallbackStack {
-                selectAssetID(recommendedStackLandingAssetID(for: fallbackStack))
+                selectAssetID(recommendedStackLandingAssetID(for: fallbackStack.stack))
             }
             return
         }
@@ -6984,15 +7019,16 @@ public final class AppModel {
         }
 
         if let targetStack {
-            selectAssetID(recommendedStackLandingAssetID(for: targetStack))
+            selectAssetID(recommendedStackLandingAssetID(for: targetStack.stack))
         }
     }
 
-    // ←/→ stack-to-stack navigation lands on the new stack's AI-recommended
+    // ←/→ stack-to-stack navigation (and a stack decision's post-commit
+    // advance, applyCullingStackDecision) land on the stack's AI-recommended
     // frame (the same ranking the rail's Keep-recommended action uses), not
     // always the first frame.
-    private func recommendedStackLandingAssetID(for indexedStack: IndexedCullingStack) -> AssetID? {
-        recommendedCullingStackAssetID(in: indexedStack.stack.assetIDs) ?? indexedStack.firstAssetID
+    private func recommendedStackLandingAssetID(for stack: AssetStack) -> AssetID? {
+        recommendedCullingStackAssetID(in: stack.assetIDs) ?? stack.assetIDs.first
     }
 
     private func selectPreviousAssetForCulling() throws {

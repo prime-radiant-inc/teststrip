@@ -119,7 +119,7 @@ final class StackDecisionTests: XCTestCase {
         let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
         XCTAssertEqual(feedback.assetID, frame1.id)
         XCTAssertEqual(feedback.filename, "toast-frame-1.cr2")
-        XCTAssertEqual(feedback.decisionText, "Picked · 2 siblings rejected")
+        XCTAssertEqual(feedback.decisionText, "Kept toast-frame-1.cr2 · rejected 2 · ⌘Z undoes")
     }
 
     func testPromoteSingleSiblingUsesSingularWording() throws {
@@ -143,7 +143,7 @@ final class StackDecisionTests: XCTestCase {
         try model.promoteCurrentFrameAndRejectSiblings()
 
         let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
-        XCTAssertEqual(feedback.decisionText, "Picked · 1 sibling rejected")
+        XCTAssertEqual(feedback.decisionText, "Kept singular-frame-1.cr2 · rejected 1 · ⌘Z undoes")
     }
 
     // Jesse's ruling (2026-07-11): promoting must never reflag a sibling the
@@ -192,7 +192,7 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertEqual(feedback.assetID, frameB.id)
         XCTAssertEqual(
             feedback.decisionText,
-            "Picked · 2 siblings rejected · kept your pick of protect-frame-a.cr2"
+            "Kept protect-frame-b.cr2 · rejected 2 · kept your pick of protect-frame-a.cr2 · ⌘Z undoes"
         )
 
         // Undo is still one group: reverts the promote's writes (B/C/D) and
@@ -244,7 +244,7 @@ final class StackDecisionTests: XCTestCase {
         let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
         XCTAssertEqual(
             feedback.decisionText,
-            "Picked · 1 sibling rejected · kept your picks of 2 siblings"
+            "Kept plural-frame-c.cr2 · rejected 1 · kept your picks of 2 siblings · ⌘Z undoes"
         )
     }
 
@@ -272,7 +272,7 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: frameA.id).metadata.flag, .reject)
         XCTAssertEqual(try repository.asset(id: frameB.id).metadata.flag, .pick)
         let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
-        XCTAssertEqual(feedback.decisionText, "Picked · 1 sibling rejected")
+        XCTAssertEqual(feedback.decisionText, "Kept rereject-frame-b.cr2 · rejected 1 · ⌘Z undoes")
     }
 
     // Persona-3 item 4: Return on a frame with no siblings at all used to be
@@ -369,6 +369,162 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertNil(model.selectedCullingStackScope)
     }
 
+    // Task 7: Return force-commits the stack decision, so it must not fire
+    // against a preview that hasn't rendered yet — gate on the staged
+    // frame's `.large` preview before writing any metadata. A second Return
+    // after the preview lands commits normally.
+    func testPromoteInertWhenLargePreviewMissing() throws {
+        let capturedAt = Date(timeIntervalSince1970: 1000)
+        let frame1 = makeAsset(
+            id: "render-gate-frame-1",
+            path: "/Photos/Job/render-gate-frame-1.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let frame2 = makeAsset(
+            id: "render-gate-frame-2",
+            path: "/Photos/Job/render-gate-frame-2.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
+            named: "promote-render-gate",
+            assets: [frame1, frame2]
+        )
+        let stagedLargePreviewURL = previewCache.url(for: PreviewCacheKey(assetID: frame1.id, level: .large))
+        try FileManager.default.removeItem(at: stagedLargePreviewURL)
+        model.select(frame1.id)
+
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        // Gated: no writes, no advance.
+        XCTAssertNil(try repository.asset(id: frame1.id).metadata.flag)
+        XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
+        let gatedFeedback = try XCTUnwrap(model.lastCullingMetadataDecision)
+        XCTAssertEqual(gatedFeedback.decisionText, "Rendering full preview…")
+        XCTAssertTrue(gatedFeedback.isInformational)
+        XCTAssertEqual(model.selectedAssetID, frame1.id)
+
+        // Once the preview lands, the same Return commits normally.
+        try writePreviewPlaceholder(to: stagedLargePreviewURL)
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .reject)
+    }
+
+    // Persona-1 (Maya) again: Return force-flips a sibling's staged frame
+    // even when the frame itself already carries a confirmed reject — but
+    // that override must be visible, not silent, so the toast discloses
+    // "(was ✕)" and the single undo group restores the original reject too.
+    func testPromoteForceFlipsRejectedStagedFrameAndDisclosesInToast() throws {
+        let capturedAt = Date(timeIntervalSince1970: 1100)
+        let frame1 = makeAsset(
+            id: "force-flip-frame-1",
+            path: "/Photos/Job/force-flip-frame-1.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt),
+            metadata: AssetMetadata(flag: .reject)
+        )
+        let frame2 = makeAsset(
+            id: "force-flip-frame-2",
+            path: "/Photos/Job/force-flip-frame-2.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "promote-force-flip",
+            assets: [frame1, frame2]
+        )
+        model.select(frame1.id)
+
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .reject)
+        let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
+        XCTAssertEqual(feedback.decisionText, "Kept force-flip-frame-1.cr2 (was ✕) · rejected 1 · ⌘Z undoes")
+
+        // One ⌘Z restores everything, including the staged frame's original
+        // reject — the force-flip is part of the same undo group.
+        try model.undoMetadataChange()
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .reject)
+        XCTAssertNil(try repository.asset(id: frame2.id).metadata.flag)
+    }
+
+    // Negative case for the above: a tentative (AI-unconfirmed) reject was
+    // never a real decision, so it must not read as a force-flip override —
+    // no "(was ✕)" disclosure.
+    func testPromoteWithTentativeRejectedStagedFrameOmitsWasRejectedDisclosure() throws {
+        let capturedAt = Date(timeIntervalSince1970: 1200)
+        let frame1 = makeAsset(
+            id: "tentative-reject-frame-1",
+            path: "/Photos/Job/tentative-reject-frame-1.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt),
+            metadata: AssetMetadata(flag: .reject, aiUnconfirmedFields: [.flag])
+        )
+        let frame2 = makeAsset(
+            id: "tentative-reject-frame-2",
+            path: "/Photos/Job/tentative-reject-frame-2.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "promote-tentative-reject",
+            assets: [frame1, frame2]
+        )
+        model.select(frame1.id)
+
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .pick)
+        let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
+        XCTAssertFalse(feedback.decisionText.contains("(was ✕)"))
+        XCTAssertEqual(feedback.decisionText, "Kept tentative-reject-frame-1.cr2 · rejected 1 · ⌘Z undoes")
+    }
+
+    // Carry-forward requirement (Task 2 trace): applyCullingStackDecision's
+    // post-commit advance must land like ←/→ do — on the next stack's
+    // AI-recommended frame (✦ or first tied leader), not just the literal
+    // next asset in deck order, which would land on the next stack's first
+    // frame instead.
+    func testPromoteAdvancesToNextStacksRecommendedLandingFrame() throws {
+        let capturedAt = Date(timeIntervalSince1970: 1300)
+        let frame1 = makeAsset(
+            id: "landing-stack-frame-1",
+            path: "/Photos/Job/landing-stack-frame-1.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let frame2 = makeAsset(
+            id: "landing-stack-frame-2",
+            path: "/Photos/Job/landing-stack-frame-2.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let secondStackLead = makeAsset(
+            id: "landing-second-stack-lead",
+            path: "/Photos/Job/landing-second-stack-lead.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(30))
+        )
+        let secondStackBest = makeAsset(
+            id: "landing-second-stack-best",
+            path: "/Photos/Job/landing-second-stack-best.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(31))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "promote-advance-landing",
+            assets: [frame1, frame2, secondStackLead, secondStackBest]
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: secondStackLead.id, kind: .focus, value: .score(0.4), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: secondStackBest.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ])
+        model.select(frame1.id)
+
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .reject)
+        // Lands on the second stack's ✦ (highest focus score), not its lead
+        // frame — the same landing ←/→ would use.
+        XCTAssertEqual(model.selectedAssetID, secondStackBest.id)
+    }
+
     // MARK: - Fixtures (mirrors AppModelTests' private helpers; kept local per file)
 
     private func makeAsset(
@@ -410,12 +566,28 @@ final class StackDecisionTests: XCTestCase {
         named name: String,
         assets: [Asset]
     ) throws -> (AppModel, CatalogRepository) {
+        let result = try makeModelWithCatalogAssetsAndPreviewCache(named: name, assets: assets)
+        return (result.model, result.repository)
+    }
+
+    // Every test in this file drives `promoteCurrentFrameAndRejectSiblings`,
+    // which force-commits only once the staged frame's `.large` preview is
+    // cached (Task 7's render gate) — so this seeds a placeholder for every
+    // asset by default. `testPromoteInertWhenLargePreviewMissing` withholds
+    // one via the returned preview cache.
+    private func makeModelWithCatalogAssetsAndPreviewCache(
+        named name: String,
+        assets: [Asset]
+    ) throws -> (model: AppModel, repository: CatalogRepository, previewCache: PreviewCache) {
         let directory = try makeTemporaryDirectory(named: name)
         let database = try CatalogDatabase.open(at: directory.appendingPathComponent("catalog.sqlite"))
         try database.migrate()
         let repository = CatalogRepository(database: database)
         try repository.upsert(assets)
         let previewCache = PreviewCache(root: directory.appendingPathComponent("previews", isDirectory: true))
+        for asset in assets {
+            try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+        }
         let catalog = AppCatalog(
             paths: AppCatalog.defaultPaths(applicationSupportDirectory: directory.appendingPathComponent("app-support", isDirectory: true)),
             repository: repository,
@@ -426,6 +598,11 @@ final class StackDecisionTests: XCTestCase {
             )
         )
         let model = try AppModel.load(catalog: catalog)
-        return (model, repository)
+        return (model, repository, previewCache)
+    }
+
+    private func writePreviewPlaceholder(to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("preview".utf8).write(to: url)
     }
 }

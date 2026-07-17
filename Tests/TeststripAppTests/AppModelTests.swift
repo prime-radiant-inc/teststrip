@@ -3958,10 +3958,11 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(4))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "keep-selected-stack-frame",
             assets: [first, selected, alternate, next]
         )
+        try seedLargePreviews(for: [first, selected, alternate, next], in: previewCache)
         model.select(selected.id)
 
         try model.promoteCurrentFrameAndRejectSiblings()
@@ -4000,10 +4001,11 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(4))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "loaded-stack-cull-session-progress",
             assets: [first, selected, alternate, next]
         )
+        try seedLargePreviews(for: [first, selected, alternate, next], in: previewCache)
         model.select(selected.id)
         let startedSession = try model.beginCullingSession(named: "Loaded Stack Cull")
 
@@ -4050,10 +4052,11 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(4))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "accept-selected-stack-shortcut",
             assets: [first, selected, alternate, next]
         )
+        try seedLargePreviews(for: [first, selected, alternate, next], in: previewCache)
         model.select(selected.id)
 
         try model.applyCullingShortcut(.promoteAndRejectSiblings)
@@ -4105,10 +4108,11 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(60))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "persisted-stack-shortcut",
             assets: [lead, alternate]
         )
+        try seedLargePreviews(for: [lead, alternate], in: previewCache)
         let stackSet = AssetSet.manual(
             id: AssetSetID(rawValue: "work-stack-cull-session-1"),
             name: "Cull Stack 1",
@@ -4255,11 +4259,12 @@ final class AppModelTests: XCTestCase {
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(201))
         )
         let assets = [singletonFirst, singletonSecond, stackFirst, stackSecond]
-        let (model, repository, _) = try makeModelWithCompletedImportSession(
+        let (model, repository, previewCache) = try makeModelWithCompletedImportSession(
             named: "stack-cull-leftover-singles",
             assets: assets,
             outputAssetIDs: assets.map(\.id)
         )
+        try seedLargePreviews(for: assets, in: previewCache)
 
         let session = try model.beginStackCullingFromLatestImportCompletion()
         XCTAssertEqual(session.inputSetIDs.count, 1)
@@ -4307,11 +4312,12 @@ final class AppModelTests: XCTestCase {
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
         )
         let assets = [stackFirst, stackSecond]
-        let (model, _, _) = try makeModelWithCompletedImportSession(
+        let (model, _, previewCache) = try makeModelWithCompletedImportSession(
             named: "stack-cull-no-leftover-singles",
             assets: assets,
             outputAssetIDs: assets.map(\.id)
         )
+        try seedLargePreviews(for: assets, in: previewCache)
 
         _ = try model.beginStackCullingFromLatestImportCompletion()
         try model.applyCullingShortcut(.promoteAndRejectSiblings)
@@ -18052,6 +18058,16 @@ final class AppModelTests: XCTestCase {
         try Data("preview".utf8).write(to: url)
     }
 
+    // Task 7's render gate requires the staged frame's `.large` preview to
+    // be cached before Return/promoteAndRejectSiblings commits a stack
+    // decision — seed every candidate asset rather than tracking exactly
+    // which one lands staged.
+    private func seedLargePreviews(for assets: [Asset], in previewCache: PreviewCache) throws {
+        for asset in assets {
+            try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+        }
+    }
+
     private func sidebarRowCount(_ rowTitle: String, in sectionTitle: String, of model: AppModel) -> String? {
         model.sidebarSections
             .first { $0.title == sectionTitle }?
@@ -18726,10 +18742,14 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(21))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: name,
             assets: [firstLead, firstAlternate, secondLead, secondAlternate]
         )
+        // This fixture's callers routinely exercise promoteAndRejectSiblings,
+        // which force-commits only once the staged frame's `.large` preview
+        // is cached (Task 7's render gate).
+        try seedLargePreviews(for: [firstLead, firstAlternate, secondLead, secondAlternate], in: previewCache)
         let firstSet = AssetSet.manual(
             id: AssetSetID(rawValue: "work-stack-\(sessionID)-1"),
             name: "Cull Stack 1",
