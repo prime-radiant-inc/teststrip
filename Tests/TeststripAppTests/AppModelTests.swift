@@ -4770,7 +4770,13 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .loupe)
     }
 
-    func testCullingShortcutMovesBetweenLoadedStacks() throws {
+    // T7.5 (spec breach): ←/→ walk the full STOP sequence — bursts AND
+    // standalones — not just multi-frame stacks. Previously `.nextStack`
+    // from the first burst skipped straight to the second burst, silently
+    // stranding the singleton; that skip is exactly the bug this test now
+    // asserts is fixed. See CullStackNavigationTests for the dedicated
+    // mixed-batch/all-singles coverage this update mirrors.
+    func testCullingShortcutMovesBetweenLoadedStacksAndStandaloneStops() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let firstStackFirst = makeAsset(
             id: "shortcut-first-stack-first",
@@ -4810,6 +4816,11 @@ final class AppModelTests: XCTestCase {
 
         try model.applyCullingShortcut(.nextStack)
 
+        // Lands on the standalone stop first — no longer skipped.
+        XCTAssertEqual(model.selectedAssetID, singleton.id)
+
+        try model.applyCullingShortcut(.nextStack)
+
         XCTAssertEqual(model.selectedAssetID, secondStackFirst.id)
 
         model.select(singleton.id)
@@ -4818,7 +4829,12 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, firstStackFirst.id)
     }
 
-    func testCullingStackShortcutsIgnoreCatalogsWithoutLoadedStacks() throws {
+    // T7.5: a no-burst (all-singles) batch has no multi-frame stacks at
+    // all — every asset is its own stop, so ←/→ must walk photo-by-photo
+    // instead of no-opping ("no dead keys, one grammar," tutorial.md §4).
+    // Renamed from testCullingStackShortcutsIgnoreCatalogsWithoutLoadedStacks,
+    // which encoded the pre-fix no-op behavior this test now replaces.
+    func testCullingStackShortcutsWalkPhotoByPhotoWithoutLoadedStacks() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let first = makeAsset(
             id: "shortcut-stackless-first",
@@ -4838,11 +4854,11 @@ final class AppModelTests: XCTestCase {
         )
         model.select(second.id)
 
-        try model.applyCullingShortcut(.nextStack)
+        try model.applyCullingShortcut(.nextStack) // already the last stop — stays put
         XCTAssertEqual(model.selectedAssetID, second.id)
 
         try model.applyCullingShortcut(.previousStack)
-        XCTAssertEqual(model.selectedAssetID, second.id)
+        XCTAssertEqual(model.selectedAssetID, first.id)
     }
 
     func testCullingShortcutAdvancesAcrossWholeLoadedCatalog() throws {

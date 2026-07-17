@@ -525,6 +525,50 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, secondStackBest.id)
     }
 
+    // T7.5: Return's post-commit advance reuses the same landing helper as
+    // ←/→, so `cullLandOnRecommendedFrame = false` must flip its target too —
+    // frame 1 (capture order) instead of the second stack's ✦.
+    func testPromoteAdvancesToNextStacksFirstFrameWhenLandOnRecommendedFrameDisabled() throws {
+        let capturedAt = Date(timeIntervalSince1970: 1300)
+        let frame1 = makeAsset(
+            id: "landing-pref-off-frame-1",
+            path: "/Photos/Job/landing-pref-off-frame-1.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let frame2 = makeAsset(
+            id: "landing-pref-off-frame-2",
+            path: "/Photos/Job/landing-pref-off-frame-2.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let secondStackLead = makeAsset(
+            id: "landing-pref-off-second-lead",
+            path: "/Photos/Job/landing-pref-off-second-lead.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(30))
+        )
+        let secondStackBest = makeAsset(
+            id: "landing-pref-off-second-best",
+            path: "/Photos/Job/landing-pref-off-second-best.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(31))
+        )
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "promote-advance-landing-pref-off",
+            assets: [frame1, frame2, secondStackLead, secondStackBest]
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: secondStackLead.id, kind: .focus, value: .score(0.4), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: secondStackBest.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ])
+        model.select(frame1.id)
+        model.toggleCullLandOnRecommendedFrame()
+
+        try model.promoteCurrentFrameAndRejectSiblings()
+
+        XCTAssertEqual(try repository.asset(id: frame1.id).metadata.flag, .pick)
+        XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .reject)
+        XCTAssertEqual(model.selectedAssetID, secondStackLead.id)
+    }
+
     // MARK: - Fixtures (mirrors AppModelTests' private helpers; kept local per file)
 
     private func makeAsset(
