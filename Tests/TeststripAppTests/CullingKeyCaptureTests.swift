@@ -52,10 +52,13 @@ final class CullingKeyCaptureTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(key: .character("L")), .nextStack)
     }
 
-    // Vim-style aliases for the arrow-key frame-in-stack navigation above (J/K).
+    // Vim-style aliases for the arrow-key frame-in-stack navigation above
+    // (J/K), case-insensitive like the H/L stack aliases above.
     func testCullingShortcutMapsVimFrameAliases() {
         XCTAssertEqual(CullingShortcut(key: .character("j")), .nextCandidateInStack)
         XCTAssertEqual(CullingShortcut(key: .character("k")), .previousCandidateInStack)
+        XCTAssertEqual(CullingShortcut(key: .character("J")), .nextCandidateInStack)
+        XCTAssertEqual(CullingShortcut(key: .character("K")), .previousCandidateInStack)
     }
 
     // ⌥←/⌥→ (formerly a monitor-only alternate to plain up/down for stack
