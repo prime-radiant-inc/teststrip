@@ -4881,26 +4881,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(CullingShortcut(key: .character("q")))
     }
 
-    // Task 5: `/` toggles the faces+reads panel — session-only view state
-    // (never persisted) announced through the same informational toast
-    // pattern as the auto-advance toggle; it writes no metadata.
-    func testToggleFacesPanelShortcutFlipsStateAndPostsInformationalToast() throws {
-        let model = try makeModelWithSeededCatalog(named: "faces-panel-toggle", count: 2)
-        XCTAssertTrue(model.showsCullFacesPanel)
-
-        try model.applyCullingShortcut(.toggleFacesPanel)
-
-        XCTAssertFalse(model.showsCullFacesPanel)
-        XCTAssertEqual(model.lastCullingMetadataDecision?.decisionText, "Faces panel hidden")
-        XCTAssertEqual(model.lastCullingMetadataDecision?.isInformational, true)
-
-        try model.applyCullingShortcut(.toggleFacesPanel)
-
-        XCTAssertTrue(model.showsCullFacesPanel)
-        XCTAssertEqual(model.lastCullingMetadataDecision?.decisionText, "Faces panel shown")
-        XCTAssertEqual(model.lastCullingMetadataDecision?.isInformational, true)
-    }
-
     func testBackgroundWorkQueueIsVisibleAndBounded() {
         let model = AppModel(
             sidebarSections: [],

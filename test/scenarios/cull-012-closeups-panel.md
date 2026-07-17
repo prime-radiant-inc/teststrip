@@ -9,6 +9,10 @@ catalog writes come from looking at it). Covered inventory items 34 (Cull-chrome
 gated into the loupe body only `if presentation.showsCullChrome` at
 `:3550-3552`; crop generation in `refreshCloseUps(for:)` at `:3739-3768`.
 
+**Source (re-verified 2026-07-16)**: `cullFacesReadsPanel` at `Sources/TeststripApp/LibraryGridView.swift:3988-4001`,
+gated into the loupe body only `if presentation.showsCullChrome && model.showsCullFacesPanel` at `:3823`;
+`closeUpsPanel` section at `:4003-4037`; `refreshCloseUps(for:)` at `:4104-4130`.
+
 **Correction to the assumed source of truth**: `refreshCloseUps` does **not**
 read the catalog's `face_observations` table. It runs a fresh, synchronous,
 display-only detection pass — `CoreImageFaceExpressionAnalyzer().detectFaces(previewURL:)`
@@ -94,7 +98,7 @@ script/ax_drive.sh wait-vended Teststrip
   (zero crops).
 - Step 3: the panel is completely absent from the Library workspace's loupe
   for the identical asset. **Fails if** it renders in Library — that would
-  contradict the "Cull-chrome-only" claim in the source comment at `:3550`.
+  contradict the "Cull-chrome-only" claim in the gate at `:3823`.
 - Step 4: `person_assets`/`person_faces`/`dismissed_faces` counts are
   identical before and after interacting with a crop (`PA1==PA0`,
   `PF1==PF0`, `DF1==DF0`). **Fails if** any count changed — that would be a
@@ -117,7 +121,7 @@ script/ax_drive.sh wait-vended Teststrip
   fixture asset, not as an exact-match assertion on the rendered crop count.
 - Step 4's "click a crop" gesture was read from source as very likely a
   no-op (`Image(decorative:)` with no button/tap modifier at
-  `LibraryGridView.swift:3714-3723`) — if `ax_drive.sh find --role AXImage`
+  `LibraryGridView.swift:4020-4024`) — if `ax_drive.sh find --role AXImage`
   can't even locate a pressable target, that's expected; don't fabricate an
   interaction that doesn't exist in the source. The negative-write assertion
   still stands and is still worth capturing.

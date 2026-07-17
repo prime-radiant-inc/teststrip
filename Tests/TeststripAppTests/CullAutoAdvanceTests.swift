@@ -10,6 +10,37 @@ final class CullAutoAdvanceTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(key: .character("a")), .toggleAutoAdvance)
     }
 
+    // Task 5: `/` toggles the faces+reads panel — session-only view state
+    // (never persisted) announced through the same informational toast
+    // pattern as the auto-advance toggle; it writes no metadata.
+    func testToggleFacesPanelShortcutFlipsStateAndPostsInformationalToast() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let frame1 = makeAsset(
+            id: "frame-1",
+            path: "/Photos/Job/frame-1.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let frame2 = makeAsset(
+            id: "frame-2",
+            path: "/Photos/Job/frame-2.cr2",
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let (model, _) = try makeModelWithCatalogAssets(named: "faces-panel-toggle", assets: [frame1, frame2])
+        XCTAssertTrue(model.showsCullFacesPanel)
+
+        try model.applyCullingShortcut(.toggleFacesPanel)
+
+        XCTAssertFalse(model.showsCullFacesPanel)
+        XCTAssertEqual(model.lastCullingMetadataDecision?.decisionText, "Faces panel hidden")
+        XCTAssertEqual(model.lastCullingMetadataDecision?.isInformational, true)
+
+        try model.applyCullingShortcut(.toggleFacesPanel)
+
+        XCTAssertTrue(model.showsCullFacesPanel)
+        XCTAssertEqual(model.lastCullingMetadataDecision?.decisionText, "Faces panel shown")
+        XCTAssertEqual(model.lastCullingMetadataDecision?.isInformational, true)
+    }
+
     // P on frame 1 of a 3-frame stack, with frame 2 already user-picked,
     // skips the decided frame 2 and lands on frame 3 — the next *undecided*
     // stack member, not simply the next frame in order.
