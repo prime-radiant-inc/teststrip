@@ -3755,6 +3755,16 @@ private struct RejectRelocationBannerView: View {
     }
 }
 
+/// A single close-up rail entry: the cropped face image plus the compact
+/// on-face read marks `CloseUpFacesPresentation` computed alongside it.
+private struct LoupeCloseUpCrop {
+    var id: Int
+    var image: CGImage
+    var eyesState: CloseUpFacesPresentation.EyesState
+    var isSmiling: Bool
+    var sharpnessTone: CloseUpFacesPresentation.SharpnessTone?
+}
+
 private struct LoupeView: View {
     var model: AppModel
     var beginExport: () -> Void
@@ -3763,7 +3773,7 @@ private struct LoupeView: View {
 
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var isDecisionToastVisible = false
-    @State private var closeUpCrops: [(id: Int, image: CGImage)] = []
+    @State private var closeUpCrops: [LoupeCloseUpCrop] = []
     // The completion state is dismissible so the handoff doesn't block a user
     // who just wants to look around: an explicit "Continue culling" button
     // dismisses it, and switching scope or moving to another asset (e.g. via
@@ -4004,18 +4014,22 @@ private struct LoupeView: View {
     }
 
 
-    private static let cullFacesReadsPanelWidth: CGFloat = 300
+    private static let cullFacesReadsPanelWidth: CGFloat = 340
+    private static let closeUpsRailWidth: CGFloat = 132
+    private static let closeUpCropSize: CGFloat = 112
 
-    // Faces + reads right panel: face close-ups on top, the frame's reads
-    // card below. One home per fact — the verdict and rationale render here
-    // and nowhere else. Fixed width, and both sections hold their space with
-    // honest empty states so the stage geometry never shifts while cull
-    // chrome is up; `/` hides the whole panel (model.showsCullFacesPanel).
+    // Faces + reads right panel: the frame's reads card on the left, face
+    // close-ups as a vertical rail on the right. One home per fact — the
+    // verdict renders here and nowhere else. Fixed width, and both sections
+    // hold their space with honest empty states so the stage geometry never
+    // shifts while cull chrome is up; `/` hides the whole panel
+    // (model.showsCullFacesPanel).
     private var cullFacesReadsPanel: some View {
         let readsPresentation = CullReadsCardPresentation.presentation(for: model.selectedEvaluationSignals)
-        return VStack(alignment: .leading, spacing: 16) {
-            closeUpsPanel
+        return HStack(alignment: .top, spacing: 12) {
             readsCard(readsPresentation)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            closeUpsRail
         }
         .padding(10)
         .frame(width: Self.cullFacesReadsPanelWidth)
@@ -4026,7 +4040,7 @@ private struct LoupeView: View {
         .accessibilityValue(readsPresentation.emptyState ?? readsPresentation.verdictText ?? "")
     }
 
-    private var closeUpsPanel: some View {
+    private var closeUpsRail: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("CLOSE-UPS")
                 .font(.caption2.monospaced().weight(.semibold))
@@ -4037,29 +4051,67 @@ private struct LoupeView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ScrollView {
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 112), spacing: 8, alignment: .leading)],
-                        alignment: .leading,
-                        spacing: 8
-                    ) {
+                    VStack(spacing: 10) {
                         ForEach(closeUpCrops, id: \.id) { crop in
-                            Image(decorative: crop.image, scale: 1)
-                                .resizable()
-                                .aspectRatio(1, contentMode: .fit)
-                                .frame(width: 112, height: 112)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .strokeBorder(Color.white.opacity(0.14))
-                                }
+                            closeUpCropCell(crop)
                         }
                     }
                 }
             }
         }
+        .frame(width: Self.closeUpsRailWidth)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Face close-ups")
         .accessibilityValue(closeUpCrops.isEmpty ? "No faces" : "\(closeUpCrops.count) faces")
+    }
+
+    // One face crop plus its compact on-face read marks (eyes, smile,
+    // sharpness) — small glyphs immediately below the crop, never bars or
+    // long text, and never a mark for a read the photo doesn't have.
+    private func closeUpCropCell(_ crop: LoupeCloseUpCrop) -> some View {
+        VStack(spacing: 4) {
+            Image(decorative: crop.image, scale: 1)
+                .resizable()
+                .aspectRatio(1, contentMode: .fit)
+                .frame(width: Self.closeUpCropSize, height: Self.closeUpCropSize)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Color.white.opacity(0.14))
+                }
+            closeUpMarks(crop)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Face")
+        .accessibilityValue(closeUpMarksAccessibilityValue(crop))
+    }
+
+    private func closeUpMarks(_ crop: LoupeCloseUpCrop) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: crop.eyesState == .closed ? "eye.slash" : "eye")
+                .foregroundStyle(crop.eyesState == .closed ? .orange : .secondary)
+            if crop.isSmiling {
+                Image(systemName: "face.smiling")
+                    .foregroundStyle(.secondary)
+            }
+            if let sharpnessTone = crop.sharpnessTone {
+                Circle()
+                    .fill(sharpnessTone == .sharp ? Color.green : Color.orange)
+                    .frame(width: 6, height: 6)
+            }
+        }
+        .font(.system(size: 10))
+    }
+
+    private func closeUpMarksAccessibilityValue(_ crop: LoupeCloseUpCrop) -> String {
+        var segments = [crop.eyesState == .closed ? "Eyes closed" : "Eyes open"]
+        if crop.isSmiling {
+            segments.append("Smiling")
+        }
+        if let sharpnessTone = crop.sharpnessTone {
+            segments.append(sharpnessTone == .sharp ? "Sharp" : "Soft")
+        }
+        return segments.joined(separator: ", ")
     }
 
     // The frame's whole-frame read: verdict plus one compact text row per
@@ -4123,7 +4175,8 @@ private struct LoupeView: View {
             model.setLoupeFaceFocuses([])
             return
         }
-        let result = await Task.detached(priority: .utility) { () -> (crops: [(id: Int, image: CGImage)], faceFocuses: [LoupeZoomFocus]) in
+        let wholePhotoSignals = model.selectedEvaluationSignals
+        let result = await Task.detached(priority: .utility) { () -> (crops: [LoupeCloseUpCrop], faceFocuses: [LoupeZoomFocus]) in
             guard let faces = try? CoreImageFaceExpressionAnalyzer().detectFaces(previewURL: previewURL),
                   !faces.isEmpty,
                   let source = CGImageSourceCreateWithURL(previewURL as CFURL, nil),
@@ -4132,10 +4185,19 @@ private struct LoupeView: View {
             }
             let presentation = CloseUpFacesPresentation(
                 faces: faces,
-                imagePixelSize: CGSize(width: image.width, height: image.height)
+                imagePixelSize: CGSize(width: image.width, height: image.height),
+                wholePhotoSignals: wholePhotoSignals
             )
-            let crops = presentation.crops.compactMap { crop in
-                image.cropping(to: crop.pixelRect).map { (id: crop.id, image: $0) }
+            let crops = presentation.crops.compactMap { crop -> LoupeCloseUpCrop? in
+                image.cropping(to: crop.pixelRect).map { croppedImage in
+                    LoupeCloseUpCrop(
+                        id: crop.id,
+                        image: croppedImage,
+                        eyesState: crop.eyesState,
+                        isSmiling: crop.isSmiling,
+                        sharpnessTone: crop.sharpnessTone
+                    )
+                }
             }
             let faceFocuses = faces.map { face in
                 LoupeZoomFocus(x: face.normalizedBounds.midX, y: face.normalizedBounds.midY)

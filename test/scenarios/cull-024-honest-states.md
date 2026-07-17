@@ -36,8 +36,9 @@ fresh grep, not carried over from any older card):
   the state this run's fixture actually produces — don't force it.
 - **AX surface for the Reads panel**, `cullFacesReadsPanel`
   (`LibraryGridView.swift:3988-4001`): the *whole* faces+reads right panel
-  (Close-Ups crops on top, the Reads card below) is one
-  `.accessibilityElement(children: .contain)` block carrying an explicit
+  (the Reads card on the left, the Close-Ups rail of face crops on the
+  right — reconciled 2026-07-17 from the old top/bottom stacked layout) is
+  one `.accessibilityElement(children: .contain)` block carrying an explicit
   `.accessibilityLabel("Reads")` and `.accessibilityValue(readsPresentation
   .emptyState ?? readsPresentation.verdictText ?? "")` — set directly from
   the presentation struct, independent of which inner view branch actually
