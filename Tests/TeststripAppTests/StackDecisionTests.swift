@@ -440,6 +440,12 @@ final class StackDecisionTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: frame2.id).metadata.flag, .reject)
         let feedback = try XCTUnwrap(model.lastCullingMetadataDecision)
         XCTAssertEqual(feedback.decisionText, "Kept force-flip-frame-1.cr2 (was ✕) · rejected 1 · ⌘Z undoes")
+        // This decision writes metadata and has something to undo, so it must
+        // NOT claim isInformational's no-metadata-written contract (queued
+        // T7 review fix) — but decisionText is self-composed, so it must
+        // still render verbatim (skip the generic toast wrap).
+        XCTAssertFalse(feedback.isInformational)
+        XCTAssertTrue(feedback.rendersVerbatim)
 
         // One ⌘Z restores everything, including the staged frame's original
         // reject — the force-flip is part of the same undo group.

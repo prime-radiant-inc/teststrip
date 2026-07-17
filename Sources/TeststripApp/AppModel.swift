@@ -1927,26 +1927,35 @@ public struct CullingMetadataDecisionFeedback: Equatable, Sendable {
     public var filename: String
     public var command: CullingCommand
     public var decisionText: String
-    /// True when `decisionText` is already fully composed and the generic
-    /// toast wrap (symbol + filename + "— ⌘Z undoes") must be skipped —
-    /// either because nothing was written (item 4's single-frame-stack
-    /// notice, where wrapping would misleadingly imply something changed)
-    /// or because `decisionText` already discloses its own undo hint (the
-    /// stack-promote force-flip toast).
+    /// True when no metadata was written by this decision (a scope change,
+    /// a mode toggle, item 4's single-frame-stack notice, the render-pending
+    /// gate) — the toast must not imply an undoable edit: no symbol, no
+    /// "⌘Z undoes". This is a test-enforced contract (`CullScopeTests`); a
+    /// decision that writes metadata must never set this, even if its text
+    /// is self-composed — see `rendersVerbatim` for that case.
     public var isInformational: Bool
+    /// True when `decisionText` is already fully composed — it names the
+    /// frame and, for a decision with something to undo, discloses its own
+    /// "⌘Z undoes" hint (the stack-promote force-flip toast) — so the
+    /// generic toast wrap (symbol + filename + "— ⌘Z undoes") must be
+    /// skipped. Independent of `isInformational`: a verbatim toast can still
+    /// write metadata and have something to undo.
+    public var rendersVerbatim: Bool
 
     public init(
         assetID: AssetID,
         filename: String,
         command: CullingCommand,
         decisionText: String,
-        isInformational: Bool = false
+        isInformational: Bool = false,
+        rendersVerbatim: Bool = false
     ) {
         self.assetID = assetID
         self.filename = filename
         self.command = command
         self.decisionText = decisionText
         self.isInformational = isInformational
+        self.rendersVerbatim = rendersVerbatim
     }
 
     /// True when the decision was a rating keystroke (including clear-to-zero),
@@ -6356,8 +6365,10 @@ public final class AppModel {
             decisionText: components.joined(separator: " · "),
             // decisionText already names the frame and the undo hint, so the
             // generic toast wrap (which would prepend the filename again and
-            // append a second "⌘Z undoes") must be skipped.
-            isInformational: true
+            // append a second "⌘Z undoes") must be skipped. This writes
+            // metadata and has something to undo, so isInformational stays
+            // false — rendersVerbatim is the one that's true here.
+            rendersVerbatim: true
         )
     }
 
