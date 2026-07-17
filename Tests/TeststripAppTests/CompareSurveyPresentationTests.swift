@@ -229,8 +229,15 @@ final class CompareSurveyPresentationTests: XCTestCase {
 
     func testContendersToggleTitleDescribesTopThreeAndFullSet() {
         let assets = (0..<5).map { makeAsset(id: "toggle-\($0)") }
+        // Untied scores across all 5 assets, so the ranked window genuinely
+        // holds 3 contenders (matching the default contenderCount) rather
+        // than the toggle title merely reciting a hardcoded number.
         let signals: [AssetID: [EvaluationSignal]] = [
-            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.7)]
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.7)],
+            assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.5)],
+            assets[2].id: [signal(assetID: assets[2].id, kind: .focus, score: 0.9)],
+            assets[3].id: [signal(assetID: assets[3].id, kind: .focus, score: 0.6)],
+            assets[4].id: [signal(assetID: assets[4].id, kind: .focus, score: 0.8)]
         ]
 
         let off = CompareSurveyPresentation(
@@ -248,6 +255,31 @@ final class CompareSurveyPresentationTests: XCTestCase {
 
         XCTAssertEqual(off.contendersToggleTitle, "Top 3 contenders")
         XCTAssertEqual(on.contendersToggleTitle, "Full set")
+    }
+
+    // The toggle title must describe the actual contender count, not a
+    // hardcoded 3 — a too-close-to-call tie widens past the default top 3
+    // (see testContendersOnlyModeWidensPastTopThreeToIncludeATiedFourthPlace),
+    // and the button copy has to agree with what tapping it actually shows.
+    func testContendersToggleTitleReflectsAWidenedTieCount() {
+        let assets = (0..<5).map { makeAsset(id: "toggle-tied-\($0)") }
+        let signals: [AssetID: [EvaluationSignal]] = [
+            assets[0].id: [signal(assetID: assets[0].id, kind: .focus, score: 0.90)],
+            assets[1].id: [signal(assetID: assets[1].id, kind: .focus, score: 0.89)],
+            assets[2].id: [signal(assetID: assets[2].id, kind: .focus, score: 0.88)],
+            assets[3].id: [signal(assetID: assets[3].id, kind: .focus, score: 0.875)],
+            assets[4].id: [signal(assetID: assets[4].id, kind: .focus, score: 0.50)]
+        ]
+
+        let presentation = CompareSurveyPresentation(
+            assets: assets,
+            selectedAssetID: assets[0].id,
+            evaluationSignalsByAssetID: signals,
+            contendersOnly: false
+        )
+
+        XCTAssertEqual(presentation.contenderAssets.count, 4)
+        XCTAssertEqual(presentation.contendersToggleTitle, "Top 4 contenders")
     }
 
     func testFirstAssetBecomesPrimaryWhenSelectionIsOutsideCompareSet() {

@@ -5470,15 +5470,17 @@ struct CompareSurveyPresentation: Equatable {
     }
 
     /// Title for the reversible contenders-only toggle; independent of
-    /// availability so the disabled button still reads correctly.
+    /// availability so the disabled button still reads correctly. Counts
+    /// `contenderAssets` rather than the default `contenderCount` because a
+    /// too-close-to-call tie widens the contender window past the default.
     var contendersToggleTitle: String {
-        isContendersOnly ? "Full set" : "Top \(Self.contenderCount) contenders"
+        isContendersOnly ? "Full set" : "Top \(contenderAssets.count) contenders"
     }
 
     var contendersToggleHelp: String {
         isContendersOnly
             ? "Shows the full compare set again"
-            : "Narrows the compare grid to the top \(Self.contenderCount) ranked contenders"
+            : "Narrows the compare grid to the top \(contenderAssets.count) ranked contenders"
     }
 
     var primaryDecisionText: String {
