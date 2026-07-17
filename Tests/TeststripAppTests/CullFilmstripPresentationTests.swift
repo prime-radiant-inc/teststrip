@@ -90,6 +90,44 @@ final class CullFilmstripPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.positionText, "0 frames")
     }
 
+    // MARK: - Triple counter (status bar)
+
+    func testTripleCounterTextForMidStackSelection() {
+        let assets = Self.assets(count: 5)
+        let stacks = [
+            AssetStack(assetIDs: [assets[0].id, assets[1].id, assets[2].id]),
+            AssetStack(assetIDs: [assets[3].id, assets[4].id])
+        ]
+
+        let presentation = CullFilmstripPresentation(assets: assets, stacks: stacks, selectedAssetID: assets[1].id)
+
+        XCTAssertEqual(presentation.tripleCounterText, "2 of 5 · stack 1 of 2 · frame 2 of 3")
+    }
+
+    // A standalone is a stack of one, so "frame 1 of 1" carries no
+    // information — the frame segment is dropped entirely.
+    func testTripleCounterTextOmitsFrameSegmentForStandalone() {
+        let assets = Self.assets(count: 3)
+        let stacks = [
+            AssetStack(assetIDs: [assets[0].id]),
+            AssetStack(assetIDs: [assets[1].id]),
+            AssetStack(assetIDs: [assets[2].id])
+        ]
+
+        let presentation = CullFilmstripPresentation(assets: assets, stacks: stacks, selectedAssetID: assets[1].id)
+
+        XCTAssertEqual(presentation.tripleCounterText, "2 of 3 · stack 2 of 3")
+    }
+
+    func testTripleCounterTextWithoutSelectionFallsBackToCount() {
+        let assets = Self.assets(count: 5)
+        let stacks = [AssetStack(assetIDs: assets.map(\.id))]
+
+        let presentation = CullFilmstripPresentation(assets: assets, stacks: stacks, selectedAssetID: nil)
+
+        XCTAssertEqual(presentation.tripleCounterText, "5 frames")
+    }
+
     // MARK: - Toast
 
     func testToastTextForRejectDecision() {

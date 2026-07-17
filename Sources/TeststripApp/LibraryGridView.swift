@@ -3840,7 +3840,7 @@ private struct LoupeView: View {
                 }
             }
             if presentation.showsCullChrome {
-                cullingFilmstrip(recommendedAssetID: stackPresentation.recommendedAssetID)
+                runStrip(isStackActive: stackPresentation.isVisible)
             } else {
                 libraryLoupeNavBar
             }
@@ -4357,82 +4357,186 @@ private struct LoupeView: View {
         }
     }
 
-    private func cullingFilmstrip(recommendedAssetID: AssetID?) -> some View {
+    // Task 6: one stop per auto-grouped stack (a pill for a multi-frame
+    // stack, a thumb for a standalone) plus a status bar below — replaces
+    // the old flat filmstrip, where a burst of a dozen near-duplicates cost
+    // a dozen tiles instead of one stop. Per-frame recommendation (✦) stays
+    // owned by the stack rail (`cullStackRailCell`), which is the only place
+    // a specific frame within a stack is still individually addressable.
+    private func runStrip(isStackActive: Bool) -> some View {
         let scopedAssets = CullScopeOrdering.filteredAssets(model.assets, scope: model.cullScope)
-        let presentation = CullingFilmstripPresentation(
-            assets: scopedAssets,
-            selectedAssetID: model.selectedAssetID
-        )
+        let stacks = model.allCullingStacks(for: scopedAssets)
         // The unscoped view loads the whole catalog, so its frame numbers are
         // already catalog-wide (offset 0) and agree with the header's
         // "Frame X of Y". Scoped views (picks/rejects/unrated) are scope-local
         // by design.
         let isUnscopedWindow = model.cullScope == .all
-        let stackPresentation = CullFilmstripPresentation(
+        let counterPresentation = CullFilmstripPresentation(
             assets: scopedAssets,
-            stacks: model.allCullingStacks(for: scopedAssets),
+            stacks: stacks,
             selectedAssetID: model.selectedAssetID,
             frameNumberOffset: 0,
             totalFrameCount: isUnscopedWindow ? model.totalAssetCount : nil
         )
-        let stackIndexByAssetID = Self.stackIndexByAssetID(items: stackPresentation.items)
-        return VStack(spacing: 6) {
-            HStack {
-                Text("Filmstrip")
-                    .font(.caption2.monospaced().weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(stackPresentation.positionText)
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-            }
+        let pendingSparkleAssetIDs = Set(model.pendingAutopilotProposals.map(\.assetID))
+        let (stops, _) = CullRunStripPresentation.stops(
+            assets: scopedAssets,
+            stacks: stacks,
+            selectedAssetID: model.selectedAssetID,
+            pendingSparkleAssetIDs: pendingSparkleAssetIDs
+        )
+        return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 7) {
-                ForEach(Array(presentation.visibleAssets.enumerated()), id: \.element.id.rawValue) { index, asset in
-                    if index > 0,
-                       let previousStackIndex = stackIndexByAssetID[presentation.visibleAssets[index - 1].id],
-                       let stackIndex = stackIndexByAssetID[asset.id],
-                       previousStackIndex != stackIndex {
-                        filmstripStackDivider
-                    }
-                    filmstripTile(
-                        for: asset,
-                        isSelected: asset.id == model.selectedAssetID,
-                        isRecommended: asset.id == recommendedAssetID,
-                        decisionState: presentation.decisionState(for: asset)
-                    )
+                ForEach(stops) { stop in
+                    runStripStop(stop)
                 }
                 Spacer(minLength: 0)
             }
+            runStripStatusBar(tripleCounterText: counterPresentation.tripleCounterText, isStackActive: isStackActive)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .frame(height: 82)
         .background(Color.black.opacity(0.18))
         .liveMockupPlaceholder(.cullingFilmstrip)
-        .task(id: presentation.requestID) {
-            requestVisiblePreviews(for: presentation.visibleAssets.map(\.id))
+        .task(id: stops.map { $0.leadAssetID.rawValue }.joined(separator: "\n")) {
+            requestVisiblePreviews(for: stops.map(\.leadAssetID))
         }
     }
 
-    private static func stackIndexByAssetID(items: [CullFilmstripPresentation.Item]) -> [AssetID: Int] {
-        var result: [AssetID: Int] = [:]
-        var stackIndex = 0
-        for item in items {
-            switch item {
-            case .frame(let assetID):
-                result[assetID] = stackIndex
-            case .stackDivider:
-                stackIndex += 1
+    private func runStripStatusBar(tripleCounterText: String, isStackActive: Bool) -> some View {
+        let summary = model.cullingProgressSummary
+        // User-origin-only: `cullingProgressSummary` counts confirmed
+        // pick/reject flags, so a tentative AI flag never inflates progress.
+        let progressFraction = summary.totalCount > 0 ? Double(summary.reviewedCount) / Double(summary.totalCount) : 0
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Text(tripleCounterText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                runStripAutoAdvanceChip
+                if model.cullScope != .all {
+                    cullHUDScopeChip(model.cullScope)
+                }
+                Spacer(minLength: 0)
+                Text(CullingNavLegendPresentation(isStackActive: isStackActive).legendText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            ProgressView(value: progressFraction)
+                .tint(.orange)
+                .accessibilityLabel("Culling Progress")
+        }
+    }
+
+    private var runStripAutoAdvanceChip: some View {
+        let isOn = model.cullAutoAdvanceEnabled
+        let text = isOn ? "Auto-advance on" : "Auto-advance off"
+        return Text(text)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(isOn ? Color.orange.opacity(0.25) : Color.secondary.opacity(0.18)))
+            .accessibilityLabel(text)
+    }
+
+    private func runStripStop(_ stop: CullRunStripPresentation.Stop) -> some View {
+        Button {
+            model.select(stop.leadAssetID)
+        } label: {
+            if stop.isStandalone {
+                runStripStandaloneThumb(stop)
+            } else {
+                runStripPill(stop)
             }
         }
-        return result
+        .buttonStyle(.plain)
+        .help(stop.label)
+        .accessibilityLabel("Stop \(stop.label)")
+        .accessibilityValue(runStripStopAccessibilityValue(stop))
     }
 
-    private var filmstripStackDivider: some View {
-        Rectangle()
-            .fill(Color.white.opacity(0.18))
-            .frame(width: 1, height: 40)
-            .accessibilityHidden(true)
+    private func runStripStopAccessibilityValue(_ stop: CullRunStripPresentation.Stop) -> String {
+        var segments: [String] = []
+        if stop.isCurrent { segments.append("Current") }
+        if stop.isDone { segments.append("Done") }
+        segments.append("\(stop.assetIDs.count) \(stop.assetIDs.count == 1 ? "frame" : "frames")")
+        if stop.sparkleCount > 0 {
+            segments.append("\(stop.sparkleCount) \(stop.sparkleCount == 1 ? "suggestion" : "suggestions")")
+        }
+        return segments.joined(separator: ", ")
+    }
+
+    private func runStripPill(_ stop: CullRunStripPresentation.Stop) -> some View {
+        HStack(spacing: 5) {
+            Text(stop.label)
+                .font(.caption2.monospaced())
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Text("\(stop.assetIDs.count)")
+                .font(.caption2.weight(.bold))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(Capsule().fill(Color.white.opacity(0.15)))
+            if stop.sparkleCount > 0 {
+                Label("\(stop.sparkleCount)", systemImage: DesignGlyph.ai.symbolName)
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
+            if stop.isDone {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.green)
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 44)
+        .background(Capsule().fill(Color.black.opacity(0.4)))
+        .overlay(
+            Capsule().strokeBorder(stop.isCurrent ? Color.orange : Color.white.opacity(0.12), lineWidth: stop.isCurrent ? 2 : 1)
+        )
+    }
+
+    private func runStripStandaloneThumb(_ stop: CullRunStripPresentation.Stop) -> some View {
+        ZStack(alignment: .topTrailing) {
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.black.opacity(0.55))
+            if let previewURL = model.gridPreviewURL(for: stop.leadAssetID) {
+                CachedPreviewImage(
+                    previewURL: previewURL,
+                    scaling: .fit,
+                    cacheGeneration: model.previewCacheGeneration(for: stop.leadAssetID)
+                )
+                .padding(2)
+            } else {
+                Image(systemName: "photo")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if stop.sparkleCount > 0 {
+                Image(systemName: DesignGlyph.ai.symbolName)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.orange)
+                    .padding(3)
+                    .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
+            }
+        }
+        .frame(width: 64, height: 44)
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .overlay(alignment: .bottomLeading) {
+            if stop.isDone {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.green)
+                    .padding(3)
+                    .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
+            }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(stop.isCurrent ? Color.orange : Color.white.opacity(0.12), lineWidth: stop.isCurrent ? 2 : 1)
+        }
     }
 
     private static let cullStackRailThumbnailSize = CGSize(width: 120, height: 84)
@@ -4589,11 +4693,10 @@ private struct LoupeView: View {
         .accessibilityValue(stackChipAccessibilityValue(item))
     }
 
-    /// Mirrors `filmstripDecisionOverlay`'s pick/reject glyph styling, but keyed
-    /// off the rail item's `DecisionState` directly (rail items don't carry a
-    /// star rating, so there's no rating badge to show alongside it).
+    /// Keyed off the rail item's `DecisionState` directly (rail items don't
+    /// carry a star rating, so there's no rating badge to show alongside it).
     @ViewBuilder
-    private func cullStackRailDecisionOverlay(_ decision: CullingFilmstripPresentation.DecisionState) -> some View {
+    private func cullStackRailDecisionOverlay(_ decision: CullingStackRailPresentation.DecisionState) -> some View {
         switch decision {
         case .undecided:
             EmptyView()
@@ -4632,60 +4735,8 @@ private struct LoupeView: View {
         )
     }
 
-    private func filmstripTile(
-        for asset: Asset,
-        isSelected: Bool,
-        isRecommended: Bool,
-        decisionState: CullingFilmstripPresentation.DecisionState
-    ) -> some View {
-        Button {
-            model.select(asset.id)
-        } label: {
-            ZStack(alignment: .bottomLeading) {
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.black.opacity(0.55))
-                if let previewURL = model.gridPreviewURL(for: asset.id) {
-                    CachedPreviewImage(
-                        previewURL: previewURL,
-                        scaling: .fit,
-                        cacheGeneration: model.previewCacheGeneration(for: asset.id)
-                    )
-                    .padding(2)
-                } else {
-                    Image(systemName: "photo")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                filmstripDecisionOverlay(for: asset)
-                    .padding(4)
-                if isRecommended {
-                    Text("✦")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.orange)
-                        .padding(3)
-                        .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                        .padding(3)
-                }
-            }
-            .frame(width: 64, height: 44)
-            .opacity(decisionState.isDimmed ? 0.45 : 1.0)
-            .clipShape(RoundedRectangle(cornerRadius: 5))
-            .overlay(alignment: .top) {
-                filmstripDecisionBar(decisionState)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 5)
-                    .strokeBorder(isSelected ? Color.orange : Color.white.opacity(0.12), lineWidth: isSelected ? 2 : 1)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(asset.originalURL.lastPathComponent)
-        .accessibilityValue(filmstripTileAccessibilityValue(isSelected: isSelected, isRecommended: isRecommended, decisionState: decisionState))
-    }
-
     @ViewBuilder
-    private func filmstripDecisionBar(_ decisionState: CullingFilmstripPresentation.DecisionState) -> some View {
+    private func filmstripDecisionBar(_ decisionState: CullingStackRailPresentation.DecisionState) -> some View {
         switch decisionState {
         case .undecided:
             EmptyView()
@@ -4693,44 +4744,6 @@ private struct LoupeView: View {
             Rectangle().fill(Color.green).frame(height: 3)
         case .rejected:
             Rectangle().fill(Color.red).frame(height: 3)
-        }
-    }
-
-    private func filmstripTileAccessibilityValue(
-        isSelected: Bool,
-        isRecommended: Bool,
-        decisionState: CullingFilmstripPresentation.DecisionState
-    ) -> String {
-        var segments = [isSelected ? "Selected" : (isRecommended ? "Recommended" : "Not selected")]
-        switch decisionState {
-        case .undecided:
-            break
-        case .picked:
-            segments.append("Picked")
-        case .rejected:
-            segments.append("Rejected")
-        }
-        return segments.joined(separator: ", ")
-    }
-
-    @ViewBuilder
-    private func filmstripDecisionOverlay(for asset: Asset) -> some View {
-        if asset.metadata.flag != nil || asset.metadata.rating > 0 {
-            HStack(spacing: 4) {
-                if let flag = asset.metadata.flag {
-                    Image(systemName: flag == .pick ? DesignGlyph.pick.symbolName : "xmark.circle.fill")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(flag == .pick ? .green : .red)
-                }
-                if asset.metadata.rating > 0 {
-                    Text("\(asset.metadata.rating)")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.yellow)
-                }
-            }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
-            .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
         }
     }
 
@@ -5991,78 +6004,12 @@ struct CullingNavLegendPresentation: Equatable {
     var legendText: String
 
     init(isStackActive: Bool) {
-        var segments = ["← → navigate", "Space advances", "Z 1:1"]
+        var segments = ["← → / H L navigate", "Space advances", "Z 1:1"]
         if isStackActive {
-            segments.append("↑↓ stacks")
+            segments.append("↑↓ / J K stacks")
             segments.append("↵ accept best")
         }
         legendText = segments.joined(separator: " · ")
-    }
-}
-
-struct CullingFilmstripPresentation: Equatable {
-    static let defaultVisibleLimit = 12
-
-    var visibleAssets: [Asset]
-    var selectedIndex: Int?
-    var totalCount: Int
-
-    init(
-        assets: [Asset],
-        selectedAssetID: AssetID?,
-        visibleLimit: Int = CullingFilmstripPresentation.defaultVisibleLimit
-    ) {
-        totalCount = assets.count
-        selectedIndex = selectedAssetID.flatMap { selectedID in
-            assets.firstIndex { $0.id == selectedID }
-        }
-        let boundedLimit = max(1, visibleLimit)
-        guard assets.count > boundedLimit else {
-            visibleAssets = assets
-            return
-        }
-        let anchorIndex = selectedIndex ?? 0
-        let proposedStart = anchorIndex - boundedLimit / 2
-        let startIndex = min(max(proposedStart, 0), assets.count - boundedLimit)
-        visibleAssets = Array(assets[startIndex..<(startIndex + boundedLimit)])
-    }
-
-    var positionText: String {
-        guard totalCount > 0 else { return "0 frames" }
-        guard let selectedIndex else {
-            return "\(totalCount) \(totalCount == 1 ? "frame" : "frames")"
-        }
-        return "Frame \(selectedIndex + 1) of \(totalCount)"
-    }
-
-    var requestID: String {
-        [
-            visibleAssets.map(\.id.rawValue).joined(separator: "\n"),
-            selectedIndex.map(String.init) ?? "none",
-            String(totalCount)
-        ].joined(separator: "\n")
-    }
-
-    /// A tile's pick/reject state, so the filmstrip can dim rejects and show
-    /// a decision color bar without the view reaching into asset metadata.
-    enum DecisionState: Equatable {
-        case undecided
-        case picked
-        case rejected
-
-        init(flag: PickFlag?) {
-            switch flag {
-            case .pick: self = .picked
-            case .reject: self = .rejected
-            case nil: self = .undecided
-            }
-        }
-
-        var isDimmed: Bool { self == .rejected }
-    }
-
-    func decisionState(for asset: Asset) -> DecisionState {
-        DecisionState(flag: asset.metadata.flag)
     }
 }
 
@@ -6135,13 +6082,32 @@ struct ABComparePresentation: Equatable {
 }
 
 struct CullingStackRailPresentation: Equatable {
+    /// A tile's pick/reject state, so the rail (and the run strip's shared
+    /// decision-bar view) can dim rejects and show a decision color bar
+    /// without the view reaching into asset metadata.
+    enum DecisionState: Equatable {
+        case undecided
+        case picked
+        case rejected
+
+        init(flag: PickFlag?) {
+            switch flag {
+            case .pick: self = .picked
+            case .reject: self = .rejected
+            case nil: self = .undecided
+            }
+        }
+
+        var isDimmed: Bool { self == .rejected }
+    }
+
     struct Item: Equatable {
         var assetID: AssetID
         var label: String
         var isSelected: Bool
         var isRecommended: Bool
         var flawBadges: [CompareDecisionBadge]
-        var decision: CullingFilmstripPresentation.DecisionState
+        var decision: DecisionState
     }
 
     var items: [Item]
@@ -6235,7 +6201,7 @@ struct CullingStackRailPresentation: Equatable {
                 isSelected: assetID == selectedAssetID,
                 isRecommended: assetID == recommendation?.assetID,
                 flawBadges: CompareSurveyPresentation.flawBadges(for: evaluationSignalsByAssetID[assetID] ?? []),
-                decision: CullingFilmstripPresentation.DecisionState(flag: assetsByID[assetID]?.metadata.flag)
+                decision: DecisionState(flag: assetsByID[assetID]?.metadata.flag)
             )
         }
         if let stackIndex = stackScope.stackIndex,
@@ -6706,10 +6672,13 @@ private struct ABCompareView: View {
         }
     }
 
+    private static let abFilmstripVisibleLimit = 12
+
     private func abFilmstrip(primaryID: AssetID?) -> some View {
-        let presentation = CullingFilmstripPresentation(
-            assets: model.assets,
-            selectedAssetID: model.selectedAssetID
+        let visibleAssets = Self.windowedAssets(
+            model.assets,
+            selectedAssetID: model.selectedAssetID,
+            visibleLimit: Self.abFilmstripVisibleLimit
         )
         return VStack(spacing: 6) {
             HStack {
@@ -6719,7 +6688,7 @@ private struct ABCompareView: View {
                 Spacer(minLength: 0)
             }
             HStack(spacing: 7) {
-                ForEach(presentation.visibleAssets, id: \.id.rawValue) { asset in
+                ForEach(visibleAssets, id: \.id.rawValue) { asset in
                     abFilmstripTile(asset: asset, isAnchor: asset.id == primaryID)
                 }
                 Spacer(minLength: 0)
@@ -6729,9 +6698,23 @@ private struct ABCompareView: View {
         .padding(.vertical, 8)
         .frame(height: 86)
         .background(Color.black.opacity(0.18))
-        .task(id: presentation.requestID) {
-            requestPreviews(for: presentation.visibleAssets)
+        .task(id: visibleAssets.map { $0.id.rawValue }.joined(separator: "\n")) {
+            requestPreviews(for: visibleAssets)
         }
+    }
+
+    // Centers a window of `visibleLimit` assets around the selected asset,
+    // clamped to the array bounds. Kept local (rather than shared with
+    // `CullRunStripPresentation`) since the A/B compare filmstrip windows raw
+    // assets, not stack-grouped stops — the only remaining caller that needs
+    // this shape of windowing.
+    private static func windowedAssets(_ assets: [Asset], selectedAssetID: AssetID?, visibleLimit: Int) -> [Asset] {
+        let boundedLimit = max(1, visibleLimit)
+        guard assets.count > boundedLimit else { return assets }
+        let anchorIndex = selectedAssetID.flatMap { id in assets.firstIndex { $0.id == id } } ?? 0
+        let proposedStart = anchorIndex - boundedLimit / 2
+        let startIndex = min(max(proposedStart, 0), assets.count - boundedLimit)
+        return Array(assets[startIndex..<(startIndex + boundedLimit)])
     }
 
     private func abFilmstripTile(asset: Asset, isAnchor: Bool) -> some View {
