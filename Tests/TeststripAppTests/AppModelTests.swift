@@ -3784,6 +3784,42 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(try repository.removedAILabels(assetID: asset.id).isEmpty)
     }
 
+    // The Cull Grid / plain Grid batch "U" gesture (setFlagForSelectedAssets)
+    // must apply the same per-asset provenance routing as the single-asset U
+    // gesture above: a tentative-AI flag in the batch is a recorded removal,
+    // a user-origin flag in the same batch is a plain clear. Mixed selections
+    // handle each asset per its own origin.
+    func testBatchClearFlagRecordsTentativeAIFlagRemovalPerAssetOrigin() throws {
+        let tentative = makeAsset(id: "batch-clear-tentative", path: "/Photos/Job/batch-clear-tentative.cr2", rating: 0)
+        let userOrigin = makeAsset(id: "batch-clear-user", path: "/Photos/Job/batch-clear-user.cr2", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "batch-clear-flag-model",
+            assets: [tentative, userOrigin],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: tentative.id) { metadata in
+                    metadata.flag = .pick
+                    metadata.aiUnconfirmedFields = [.flag]
+                }
+                try repository.updateMetadata(assetID: userOrigin.id) { metadata in
+                    metadata.flag = .reject
+                }
+            }
+        )
+        model.setBatchSelection(tentative.id, isSelected: true)
+        model.setBatchSelection(userOrigin.id, isSelected: true)
+
+        try model.setFlagForSelectedAssets(nil)
+
+        let clearedTentative = try repository.asset(id: tentative.id).metadata
+        XCTAssertNil(clearedTentative.flag)
+        XCTAssertFalse(clearedTentative.aiUnconfirmedFields.contains(.flag))
+        XCTAssertTrue(try repository.removedAILabels(assetID: tentative.id).contains(RemovedAILabel(field: .flag, value: "pick")))
+
+        let clearedUserOrigin = try repository.asset(id: userOrigin.id).metadata
+        XCTAssertNil(clearedUserOrigin.flag)
+        XCTAssertTrue(try repository.removedAILabels(assetID: userOrigin.id).isEmpty)
+    }
+
     func testColorLabelCullingCommandUpdatesSelectedAsset() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "color-label-command")
 

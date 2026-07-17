@@ -7294,6 +7294,20 @@ public final class AppModel {
     }
 
     public func setFlagForSelectedAssets(_ flag: PickFlag?) throws {
+        // Batch counterpart of the single-asset U gesture above: clearing a
+        // tentative ✨ flag is a recorded removal per asset, not a plain
+        // clear, even inside a mixed-origin batch selection. Each
+        // tentative-AI asset routes through removeAIField individually
+        // first; updateSelectedAssetsMetadata below then plain-clears the
+        // remaining user-origin assets (it's a no-op for the ones already
+        // cleared, since their metadata no longer differs).
+        if flag == nil {
+            let assetsByID = Dictionary(uniqueKeysWithValues: assets.map { ($0.id, $0) })
+            for assetID in currentManualSelectionAssetIDs
+            where assetsByID[assetID]?.metadata.aiUnconfirmedFields.contains(.flag) == true {
+                try removeAIField(.flag, for: assetID)
+            }
+        }
         try updateSelectedAssetsMetadata(label: "Flag") { metadata in
             metadata.flag = flag
             metadata.aiUnconfirmedFields.remove(.flag)
