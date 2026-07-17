@@ -2359,65 +2359,67 @@ struct LibraryGridView: View {
             }
             LazyVGrid(columns: columns, spacing: gridLayout.gridSpacing) {
                 ForEach(model.assets, id: \.id.rawValue) { asset in
-                    AssetGridCell(
-                        asset: asset,
-                        previewURL: model.gridPreviewURL(for: asset.id),
-                        previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
-                        previewStatus: model.gridPreviewStatus(for: asset.id),
-                        isSelected: model.selectedAssetID == asset.id,
-                        isBatchSelected: model.isBatchSelected(asset.id),
-                        autopilotDecision: model.autopilotProposalDecision(for: asset.id),
-                        hasBondedStill: model.assetIDsWithBondedSecondaries.contains(asset.id)
-                    )
-                    .assetActivation(
-                        for: asset,
-                        model: model,
-                        focusCullingSurface: focusCullingSurface,
-                        openInLoupe: { model.openAssetInLibraryLoupe($0) }
-                    ) { assetID in
-                        selectAssetFromGrid(assetID)
-                    }
-                    .help("Double-click to open in Loupe")
-                    .contextMenu {
-                        Button("Open in Loupe") {
-                            model.openAssetInLibraryLoupe(asset.id)
+                    VStack(alignment: .leading, spacing: 3) {
+                        AssetGridCell(
+                            asset: asset,
+                            previewURL: model.gridPreviewURL(for: asset.id),
+                            previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
+                            previewStatus: model.gridPreviewStatus(for: asset.id),
+                            isSelected: model.selectedAssetID == asset.id,
+                            isBatchSelected: model.isBatchSelected(asset.id),
+                            autopilotDecision: model.autopilotProposalDecision(for: asset.id)
+                        )
+                        .assetActivation(
+                            for: asset,
+                            model: model,
+                            focusCullingSurface: focusCullingSurface,
+                            openInLoupe: { model.openAssetInLibraryLoupe($0) }
+                        ) { assetID in
+                            selectAssetFromGrid(assetID)
                         }
-                        Divider()
-                        Button("Cull These") {
-                            cullSelection(anchoredOn: asset.id)
-                        }
-                        Divider()
-                        Menu("Rate") {
-                            ForEach(1...5, id: \.self) { rating in
-                                Button("Rate \(rating)") {
-                                    applyGridContextMenuRating(rating, anchoredOn: asset.id)
+                        .help("Double-click to open in Loupe")
+                        .contextMenu {
+                            Button("Open in Loupe") {
+                                model.openAssetInLibraryLoupe(asset.id)
+                            }
+                            Divider()
+                            Button("Cull These") {
+                                cullSelection(anchoredOn: asset.id)
+                            }
+                            Divider()
+                            Menu("Rate") {
+                                ForEach(1...5, id: \.self) { rating in
+                                    Button("Rate \(rating)") {
+                                        applyGridContextMenuRating(rating, anchoredOn: asset.id)
+                                    }
+                                }
+                                Button("Clear Rating") {
+                                    applyGridContextMenuRating(0, anchoredOn: asset.id)
                                 }
                             }
-                            Button("Clear Rating") {
-                                applyGridContextMenuRating(0, anchoredOn: asset.id)
-                            }
-                        }
-                        Menu("Flag") {
-                            Button("Pick") {
-                                applyGridContextMenuFlag(.pick, anchoredOn: asset.id)
-                            }
-                            Button("Reject") {
-                                applyGridContextMenuFlag(.reject, anchoredOn: asset.id)
-                            }
-                            Button("Unflag") {
-                                applyGridContextMenuFlag(nil, anchoredOn: asset.id)
-                            }
-                        }
-                        Menu("Label") {
-                            ForEach(ColorLabel.allCases, id: \.self) { label in
-                                Button(label.rawValue.capitalized) {
-                                    applyGridContextMenuLabel(label, anchoredOn: asset.id)
+                            Menu("Flag") {
+                                Button("Pick") {
+                                    applyGridContextMenuFlag(.pick, anchoredOn: asset.id)
+                                }
+                                Button("Reject") {
+                                    applyGridContextMenuFlag(.reject, anchoredOn: asset.id)
+                                }
+                                Button("Unflag") {
+                                    applyGridContextMenuFlag(nil, anchoredOn: asset.id)
                                 }
                             }
-                            Button("Clear Label") {
-                                applyGridContextMenuLabel(nil, anchoredOn: asset.id)
+                            Menu("Label") {
+                                ForEach(ColorLabel.allCases, id: \.self) { label in
+                                    Button(label.rawValue.capitalized) {
+                                        applyGridContextMenuLabel(label, anchoredOn: asset.id)
+                                    }
+                                }
+                                Button("Clear Label") {
+                                    applyGridContextMenuLabel(nil, anchoredOn: asset.id)
+                                }
                             }
                         }
+                        rawBadgeCaption(for: asset)
                     }
                     .id(asset.id.rawValue)
                     .task(id: asset.id.rawValue) {
@@ -2978,6 +2980,23 @@ struct LibraryGridView: View {
             suppressedSelectionScrollAssetID = assetID.rawValue
         }
         model.select(assetID)
+    }
+
+    // Below the thumb, not over it: a RAW+JPEG chip splashed across the
+    // image dominated the whole grid (dogfood feedback). A muted caption
+    // matches how Compare's assetCaption already renders under-thumb
+    // metadata.
+    @ViewBuilder
+    private func rawBadgeCaption(for asset: Asset) -> some View {
+        if let rawBadgeText = RawBadgeLabel.text(
+            isRaw: asset.isRawOriginal,
+            hasBondedStill: model.assetIDsWithBondedSecondaries.contains(asset.id)
+        ) {
+            Text(rawBadgeText)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(RawBadgeLabel.accessibilityLabel(for: rawBadgeText))
+        }
     }
 
     private func showSaveSearchPopover() {
@@ -6686,6 +6705,10 @@ enum RawBadgeLabel {
         guard isRaw else { return nil }
         return hasBondedStill ? "RAW+JPEG" : "RAW"
     }
+
+    static func accessibilityLabel(for text: String) -> String {
+        text == "RAW+JPEG" ? "RAW with bonded JPEG" : "RAW original"
+    }
 }
 
 private struct ABCompareView: View {
@@ -9435,7 +9458,6 @@ private struct AssetGridCell: View {
     var isSelected: Bool
     var isBatchSelected = false
     var autopilotDecision: AutopilotProposalKind? = nil
-    var hasBondedStill = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -9476,12 +9498,6 @@ private struct AssetGridCell: View {
                     }
                 }
                 .padding(6)
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if hasBondedStill, let rawBadgeText = RawBadgeLabel.text(isRaw: asset.isRawOriginal, hasBondedStill: hasBondedStill) {
-                    rawBadge(rawBadgeText)
-                        .padding(6)
-                }
             }
             .background(
                 RoundedRectangle(cornerRadius: 5)
@@ -9549,15 +9565,6 @@ private struct AssetGridCell: View {
             .accessibilityLabel(badge.isKeep ? "Proposed keep" : "Proposed cut")
     }
 
-    private func rawBadge(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2.monospaced().weight(.semibold))
-            .foregroundStyle(.orange)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(.black.opacity(0.55), in: Capsule())
-            .accessibilityLabel(text == "RAW+JPEG" ? "RAW with bonded JPEG" : "RAW original")
-    }
 
     private var metadataOverlay: some View {
         let presentation = AssetGridMetadataBadgePresentation.presentation(for: asset)

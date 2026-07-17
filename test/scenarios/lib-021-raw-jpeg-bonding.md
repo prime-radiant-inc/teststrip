@@ -37,14 +37,16 @@ JPEG rides along silently.
   `repository.allAssets(sort:)`, feeds `model.assets` (the Library grid's
   data source) with this same default.
 - **The badge**: `RawBadgeLabel.text(isRaw:hasBondedStill:)`
-  (`Sources/TeststripApp/LibraryGridView.swift:6366-6371`) returns
+  (`Sources/TeststripApp/LibraryGridView.swift:6703-6710`) returns
   `"RAW+JPEG"` only when `isRaw` and `hasBondedStill` are both true (a
   non-RAW can never carry the badge — bonding always makes the RAW the
-  primary). Rendered bottom-trailing on `AssetGridCell`
-  (`LibraryGridView.swift:9377-9382`, the `rawBadge(_:)` view at
-  `:9449-9457`), driven by `model.assetIDsWithBondedSecondaries`
-  (published at `AppModel.swift:2064`, refreshed at `:12701`) and wired at
-  the grid's `ForEach` call site (`LibraryGridView.swift:2362-2371`).
+  primary). Rendered as a small, muted caption *below* the tile's thumbnail
+  (dogfood feedback: an earlier over-the-image badge dominated the grid),
+  not on `AssetGridCell` itself — the `rawBadgeCaption(for:)` view at
+  `LibraryGridView.swift:2990-3001`, driven by
+  `model.assetIDsWithBondedSecondaries` (published at `AppModel.swift:2064`,
+  refreshed at `:12701`) and wired as a sibling of `AssetGridCell` at the
+  grid's `ForEach` call site (`LibraryGridView.swift:2361-2426`).
 - **Rate/reject stay RAW-scoped structurally, not incidentally**: the grid
   only ever selects/batch-selects ids present in `model.assets`, which never
   includes the bonded JPEG — so `setRatingForSelectedAssets`/
@@ -167,8 +169,10 @@ script/vm_scenario_run.sh shell "cd ~/teststrip-vm && ./script/submit_import_pat
    Retrieve the PNG from the VM (`sshpass`/`scp` with the same
    `TESTSTRIP_VM_USER`/`TESTSTRIP_VM_PASS` credentials
    `vm_scenario_run.sh` uses — default `admin`/`admin` — there is no
-   dedicated "pull a file" verb yet) and visually confirm a monospaced
-   "RAW+JPEG" chip, bottom-trailing, over the one tile.
+   dedicated "pull a file" verb yet) and visually confirm a small, muted
+   monospaced "RAW+JPEG" caption below the tile's thumbnail (not overlaid on
+   the image — dogfood feedback was that an over-the-image badge dominated
+   the grid).
 
 ### 2. Rating writes only the RAW's sidecar
 
