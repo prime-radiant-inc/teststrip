@@ -208,6 +208,10 @@ public enum CullingShortcut: Equatable, Sendable {
     /// P/X/rating/color-label decision moves the selection afterward. See
     /// `AppModel.toggleCullAutoAdvance()`.
     case toggleAutoAdvance
+    /// Bare /: toggles `AppModel.showsCullFacesPanel`, the cull loupe's
+    /// faces+reads right panel. Shift+/ ("?") stays `.showKeyMap` via the
+    /// shift-aware NSEvent branch in `CullingShortcut.init(event:)`.
+    case toggleFacesPanel
     case promoteAndRejectSiblings
     case toggleZoom
     case zoomToNearestFace
@@ -275,6 +279,7 @@ public enum CullingShortcut: Equatable, Sendable {
             case "x": self = .reject
             case "u": self = .clearFlag
             case "a": self = .toggleAutoAdvance
+            case "/": self = .toggleFacesPanel
             case "z": self = .toggleZoom
             case "i": self = .cycleExifOverlay
             case "s": self = .cycleScope
@@ -583,6 +588,7 @@ public enum CullingCommandMenuPresentation {
             CullingCommandMenuItem(title: "Toggle 1:1 Zoom", shortcut: .toggleZoom, key: .character("z")),
             CullingCommandMenuItem(title: "Zoom to Nearest Face", shortcut: .zoomToNearestFace, key: .character("Z")),
             CullingCommandMenuItem(title: "Cycle EXIF Overlay", shortcut: .cycleExifOverlay, key: .character("i")),
+            CullingCommandMenuItem(title: "Toggle Faces Panel", shortcut: .toggleFacesPanel, key: .character("/")),
             CullingCommandMenuItem(title: "Show Key Map", shortcut: .showKeyMap, key: .character("?"))
         ]),
         CullingCommandMenuSection(title: "Filter", items: [
@@ -2157,6 +2163,9 @@ public final class AppModel {
     /// afterward (to the next undecided stack frame, or the next stack's
     /// landing frame). Toggled with the `a` shortcut; default on.
     public private(set) var cullAutoAdvanceEnabled: Bool = true
+    /// Whether the cull loupe shows the faces+reads right panel. Toggled
+    /// with the `/` shortcut; session-only — deliberately not persisted.
+    public private(set) var showsCullFacesPanel: Bool = true
     public private(set) var selectedBatchAssetIDs: Set<AssetID>
     /// Whether the on-demand inspector (⌘I) is shown, presented via
     /// `.inspector()` and gated by `WorkspaceChromePolicy.showsInspector`.
@@ -6417,6 +6426,8 @@ public final class AppModel {
             try applyCullingCommandAndAdvance(.clearFlag)
         case .toggleAutoAdvance:
             toggleCullAutoAdvance()
+        case .toggleFacesPanel:
+            toggleCullFacesPanel()
         case .promoteAndRejectSiblings:
             clearCullingMetadataDecisionFeedback()
             try promoteCurrentFrameAndRejectSiblings()
@@ -6517,6 +6528,20 @@ public final class AppModel {
             filename: toastAsset?.originalURL.lastPathComponent ?? "",
             command: .clearFlag,
             decisionText: cullAutoAdvanceEnabled ? "Auto-advance on" : "Auto-advance off",
+            isInformational: true
+        )
+    }
+
+    public func toggleCullFacesPanel() {
+        showsCullFacesPanel.toggle()
+        // Same informational-toast pattern as toggleCullAutoAdvance() above:
+        // a view-state toggle that writes no metadata.
+        let toastAsset = selectedAsset ?? assets.first
+        lastCullingMetadataDecision = CullingMetadataDecisionFeedback(
+            assetID: toastAsset?.id ?? AssetID(rawValue: "cull-faces-panel"),
+            filename: toastAsset?.originalURL.lastPathComponent ?? "",
+            command: .clearFlag,
+            decisionText: showsCullFacesPanel ? "Faces panel shown" : "Faces panel hidden",
             isInformational: true
         )
     }

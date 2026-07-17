@@ -58,11 +58,17 @@ script/ax_drive.sh wait-vended Teststrip
    ```bash
    script/ax_drive.sh wait --role AXStaticText --contains "CLOSE-UPS"
    ```
-   Assert the panel renders at least one crop image (the panel is `if
-   !closeUpCrops.isEmpty`, so its mere presence already proves crops > 0):
+   Assert the panel renders at least one crop image. Since the culling-flow
+   shell (Task 5) the Close-Ups section always renders inside the faces+reads
+   right panel, holding its space with an honest "No faces" empty state as
+   its accessibility VALUE — so mere presence no longer proves crops > 0.
+   Assert the element exists AND the empty-state value is absent:
    ```bash
    script/ax_drive.sh find --contains "Face close-ups"
+   script/ax_drive.sh find --contains "No faces"   # expect exit nonzero (crops rendered)
    ```
+   (The whole panel is toggled by the bare `/` culling key,
+   `AppModel.showsCullFacesPanel`, default shown — don't press `/` mid-run.)
 3. Switch to Library workspace (⌘2) with the same asset selected/open in its
    loupe. Assert the Close-Ups panel is **absent** (cull-chrome-only claim):
    ```bash
@@ -84,7 +90,8 @@ script/ax_drive.sh wait-vended Teststrip
 - Step 2: the Close-Ups panel renders with at least one 112x112 crop while in
   the Cull workspace on an asset with detected faces. **Fails if** the panel
   never appears despite a `--faces` asset with confirmed multi-face
-  `face_observations`, or if it appears with zero crops.
+  `face_observations`, or if it still shows the "No faces" empty-state value
+  (zero crops).
 - Step 3: the panel is completely absent from the Library workspace's loupe
   for the identical asset. **Fails if** it renders in Library — that would
   contradict the "Cull-chrome-only" claim in the source comment at `:3550`.

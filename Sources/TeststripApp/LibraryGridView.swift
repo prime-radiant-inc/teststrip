@@ -3807,7 +3807,7 @@ private struct LoupeView: View {
                     autopilotBanner(summary: summary)
                 }
                 if let asset = model.selectedAsset {
-                    cullHUD(for: asset, stackPresentation: stackPresentation)
+                    cullHUD(for: asset)
                 }
             }
             HStack(spacing: 0) {
@@ -3820,8 +3820,8 @@ private struct LoupeView: View {
                     } else if let asset = model.selectedAsset {
                         HStack(spacing: 0) {
                             loupeStage(for: asset)
-                            if presentation.showsCullChrome {
-                                closeUpsPanel
+                            if presentation.showsCullChrome && model.showsCullFacesPanel {
+                                cullFacesReadsPanel
                             }
                         }
                         .task(id: asset.id.rawValue) {
@@ -3978,15 +3978,44 @@ private struct LoupeView: View {
     }
 
 
-    @ViewBuilder
+    private static let cullFacesReadsPanelWidth: CGFloat = 300
+
+    // Faces + reads right panel: face close-ups on top, the frame's reads
+    // card below. One home per fact — the verdict and rationale render here
+    // and nowhere else. Fixed width, and both sections hold their space with
+    // honest empty states so the stage geometry never shifts while cull
+    // chrome is up; `/` hides the whole panel (model.showsCullFacesPanel).
+    private var cullFacesReadsPanel: some View {
+        let readsPresentation = CullReadsCardPresentation.presentation(for: model.selectedEvaluationSignals)
+        return VStack(alignment: .leading, spacing: 16) {
+            closeUpsPanel
+            readsCard(readsPresentation)
+        }
+        .padding(10)
+        .frame(width: Self.cullFacesReadsPanelWidth)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Color.black.opacity(0.26))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Reads")
+        .accessibilityValue(readsPresentation.emptyState ?? readsPresentation.verdictText ?? "")
+    }
+
     private var closeUpsPanel: some View {
-        if !closeUpCrops.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("CLOSE-UPS")
-                    .font(.caption2.monospaced().weight(.semibold))
+        VStack(alignment: .leading, spacing: 8) {
+            Text("CLOSE-UPS")
+                .font(.caption2.monospaced().weight(.semibold))
+                .foregroundStyle(.secondary)
+            if closeUpCrops.isEmpty {
+                Text("No faces")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
+            } else {
                 ScrollView {
-                    VStack(spacing: 8) {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 112), spacing: 8, alignment: .leading)],
+                        alignment: .leading,
+                        spacing: 8
+                    ) {
                         ForEach(closeUpCrops, id: \.id) { crop in
                             Image(decorative: crop.image, scale: 1)
                                 .resizable()
@@ -4001,11 +4030,69 @@ private struct LoupeView: View {
                     }
                 }
             }
-            .padding(10)
-            .frame(width: 136)
-            .background(Color.black.opacity(0.26))
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Face close-ups")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Face close-ups")
+        .accessibilityValue(closeUpCrops.isEmpty ? "No faces" : "\(closeUpCrops.count) faces")
+    }
+
+    // The frame's whole-frame read: verdict, rationale phrases, and per-kind
+    // signal bars, strictly gated by CullReadsCardPresentation — with fewer
+    // than two scored kinds only the honest "No read yet" empty state
+    // renders, holding the card's home in the panel.
+    private func readsCard(_ presentation: CullReadsCardPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("READS")
+                .font(.caption2.monospaced().weight(.semibold))
+                .foregroundStyle(.secondary)
+            if let emptyState = presentation.emptyState {
+                Text(emptyState)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                if let verdictText = presentation.verdictText {
+                    Text(verdictText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(readsToneColor(presentation.verdictTone))
+                        .lineLimit(1)
+                }
+                ForEach(presentation.rationalePhrases, id: \.self) { phrase in
+                    Text(phrase)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                ForEach(presentation.signalRows, id: \.kind.rawValue) { row in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(EvaluationSignalPresentation.displayName(for: row.kind))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            Text(EvaluationSignalPresentation.percentage(row.score))
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        ProgressView(value: min(max(row.score, 0), 1))
+                            .tint(.orange)
+                    }
+                }
+            }
+        }
+        .liveMockupPlaceholder(.cullingAssistVerdict)
+    }
+
+    private func readsToneColor(_ tone: CullingAssistPresentation.Tone) -> Color {
+        switch tone {
+        case .positive:
+            return .green
+        case .caution:
+            return .yellow
+        case .neutral:
+            return .secondary
+        case .waiting:
+            return .orange
         }
     }
 
@@ -4044,19 +4131,12 @@ private struct LoupeView: View {
         model.setLoupeFaceFocuses(result.faceFocuses)
     }
 
-    private func cullHUDPresentation(for asset: Asset, stackPresentation: CullingStackRailPresentation) -> CullHUDPresentation {
-        let assistPresentation = CullingAssistPresentation.presentation(
-            for: model.selectedEvaluationSignals,
-            stackGuidance: cullingStackGuidanceAction(in: stackPresentation)
-        )
-        let verdict = assistPresentation.verdictText
-            ?? (assistPresentation.tone == .waiting ? nil : assistPresentation.title)
-        return CullHUDPresentation(
+    private func cullHUDPresentation(for asset: Asset) -> CullHUDPresentation {
+        CullHUDPresentation(
             filename: asset.originalURL.lastPathComponent,
             rating: asset.metadata.rating,
             colorLabel: asset.metadata.colorLabel,
             summary: model.cullingProgressSummary,
-            verdict: verdict,
             scope: model.cullScope,
             isRatingEchoActive: isRatingEchoActive(for: asset)
         )
@@ -4072,8 +4152,8 @@ private struct LoupeView: View {
         return feedback.isRatingDecision
     }
 
-    private func cullHUD(for asset: Asset, stackPresentation: CullingStackRailPresentation) -> some View {
-        let presentation = cullHUDPresentation(for: asset, stackPresentation: stackPresentation)
+    private func cullHUD(for asset: Asset) -> some View {
+        let presentation = cullHUDPresentation(for: asset)
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 10) {
                 Text(presentation.filename)
@@ -4101,15 +4181,6 @@ private struct LoupeView: View {
                         "\(presentation.pickCount) picks, \(presentation.rejectCount) rejects, \(presentation.undecidedCount) left"
                     )
                 Spacer(minLength: 0)
-                if let verdict = presentation.verdict {
-                    Text(verdict)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: 220, alignment: .trailing)
-                        .liveMockupPlaceholder(.cullingAssistVerdict)
-                }
             }
             if presentation.undecidedCount + presentation.pickCount + presentation.rejectCount > 0 {
                 ProgressView(value: presentation.progressFraction)
@@ -4367,6 +4438,16 @@ private struct LoupeView: View {
     private static let cullStackRailThumbnailSize = CGSize(width: 120, height: 84)
     private static let cullStackRailWidth: CGFloat = 148
 
+    // Machine-fact stack label for the rail header (file-range · count ·
+    // time): stacks are auto-grouped, so the header must never imply a
+    // curated name. Rail items are already in capture (stack-scope) order,
+    // which CullStackLabelPresentation requires for a correct range.
+    private func cullStackLabelText(for presentation: CullingStackRailPresentation) -> String {
+        let assetsByID = Dictionary(uniqueKeysWithValues: model.assets.map { ($0.id, $0) })
+        let stackAssets = presentation.items.compactMap { assetsByID[$0.assetID] }
+        return CullStackLabelPresentation.label(for: stackAssets)
+    }
+
     @ViewBuilder
     private func cullingStackRail(presentation: CullingStackRailPresentation) -> some View {
         if presentation.isVisible {
@@ -4376,6 +4457,14 @@ private struct LoupeView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
                         .lineLimit(1)
+                    let stackLabel = cullStackLabelText(for: presentation)
+                    if !stackLabel.isEmpty {
+                        Text(stackLabel)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                     Text(presentation.positionText)
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
@@ -4541,18 +4630,6 @@ private struct LoupeView: View {
             evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals(),
             explicitStackScope: model.selectedCullingStackScope
         )
-    }
-
-    private func cullingStackGuidanceAction(in presentation: CullingStackRailPresentation) -> CullingStackActionPresentation? {
-        presentation.actions.dropFirst().first { action in
-            guard action.isEnabled else { return false }
-            switch action.action {
-            case .keepRecommended, .keepTopRanked:
-                return true
-            case .keepSelectedAndRejectAlternates, .keepAll:
-                return false
-            }
-        }
     }
 
     private func filmstripTile(

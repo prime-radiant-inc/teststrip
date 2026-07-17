@@ -17,7 +17,6 @@ final class CullHUDPresentationTests: XCTestCase {
             rating: 4,
             colorLabel: .green,
             summary: summary,
-            verdict: nil,
             scope: .all
         )
 
@@ -28,7 +27,6 @@ final class CullHUDPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.rejectCount, 2)
         XCTAssertEqual(presentation.undecidedCount, 5)
         XCTAssertEqual(presentation.progressFraction, 0.5, accuracy: 0.0001)
-        XCTAssertNil(presentation.verdict)
         XCTAssertEqual(presentation.scope, .all)
     }
 
@@ -46,7 +44,6 @@ final class CullHUDPresentationTests: XCTestCase {
             rating: 0,
             colorLabel: nil,
             summary: summary,
-            verdict: nil,
             scope: .picks
         )
 
@@ -66,8 +63,7 @@ final class CullHUDPresentationTests: XCTestCase {
             filename: "IMG_0001.CR2",
             rating: 0,
             colorLabel: nil,
-            summary: summary,
-            verdict: nil
+            summary: summary
         )
 
         XCTAssertEqual(presentation.undecidedCount, 0)
@@ -86,33 +82,16 @@ final class CullHUDPresentationTests: XCTestCase {
             filename: "IMG_0001.CR2",
             rating: 0,
             colorLabel: nil,
-            summary: summary,
-            verdict: nil
+            summary: summary
         )
 
         XCTAssertEqual(presentation.progressFraction, 0)
         XCTAssertEqual(presentation.undecidedCount, 0)
     }
 
-    func testVerdictPassesThroughUnchanged() {
-        let summary = CullingProgressSummary(
-            selectedPosition: 1,
-            positionText: "Frame 1 of 1",
-            pickCount: 0,
-            rejectCount: 0,
-            totalCount: 1
-        )
-
-        let presentation = CullHUDPresentation(
-            filename: "IMG_0099.CR2",
-            rating: 0,
-            colorLabel: nil,
-            summary: summary,
-            verdict: "Keep"
-        )
-
-        XCTAssertEqual(presentation.verdict, "Keep")
-    }
+    // Task 5: the verdict left the HUD entirely — the reads card
+    // (CullReadsCardPresentation) is its one home now, so CullHUDPresentation
+    // carries no verdict field to pass through.
 
     // MARK: - Progressive disclosure visibility matrix
 
@@ -137,7 +116,6 @@ final class CullHUDPresentationTests: XCTestCase {
             rating: rating,
             colorLabel: colorLabel,
             summary: summary,
-            verdict: nil,
             scope: scope,
             isRatingEchoActive: isRatingEchoActive
         )

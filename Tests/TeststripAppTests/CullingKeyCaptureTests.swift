@@ -123,6 +123,19 @@ final class CullingKeyCaptureTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(event: event), .showKeyMap)
     }
 
+    // Task 5: bare "/" (unclaimed before this) toggles the faces+reads
+    // panel, while Shift+/ ("?") must keep opening the key map via the
+    // shift-aware event branch — both grammars share one physical key, so
+    // both decodes are asserted side by side.
+    func testCullingShortcutMapsBareSlashToToggleFacesPanelAndShiftSlashToShowKeyMap() throws {
+        let bareSlash = try makeKeyEvent(characters: "/", charactersIgnoringModifiers: "/")
+        let shiftSlash = try makeKeyEvent(characters: "?", charactersIgnoringModifiers: "/", modifierFlags: .shift)
+
+        XCTAssertEqual(CullingShortcut(event: bareSlash), .toggleFacesPanel)
+        XCTAssertEqual(CullingShortcut(key: .character("/")), .toggleFacesPanel)
+        XCTAssertEqual(CullingShortcut(event: shiftSlash), .showKeyMap)
+    }
+
     func testCullingShortcutIgnoresCommandModifiedKeyEvents() throws {
         let event = try makeKeyEvent(characters: "5", charactersIgnoringModifiers: "5", modifierFlags: .command)
 

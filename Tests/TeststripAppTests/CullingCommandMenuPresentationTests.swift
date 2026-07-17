@@ -14,13 +14,16 @@ final class CullingCommandMenuPresentationTests: XCTestCase {
         ])
     }
 
-    func testLoupeSectionExposesZoomExifAndKeyMapShortcuts() {
+    // Task 5: the `/` faces-panel toggle is loupe chrome, so its menu row
+    // sits with the other loupe view toggles.
+    func testLoupeSectionExposesZoomExifFacesPanelAndKeyMapShortcuts() {
         let loupe = CullingCommandMenuPresentation.sections.first { $0.title == "Loupe" }
 
         XCTAssertEqual(loupe?.items, [
             CullingCommandMenuItem(title: "Toggle 1:1 Zoom", shortcut: .toggleZoom, key: .character("z")),
             CullingCommandMenuItem(title: "Zoom to Nearest Face", shortcut: .zoomToNearestFace, key: .character("Z")),
             CullingCommandMenuItem(title: "Cycle EXIF Overlay", shortcut: .cycleExifOverlay, key: .character("i")),
+            CullingCommandMenuItem(title: "Toggle Faces Panel", shortcut: .toggleFacesPanel, key: .character("/")),
             CullingCommandMenuItem(title: "Show Key Map", shortcut: .showKeyMap, key: .character("?"))
         ])
     }
