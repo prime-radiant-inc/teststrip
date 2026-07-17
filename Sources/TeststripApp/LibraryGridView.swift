@@ -4062,10 +4062,12 @@ private struct LoupeView: View {
         .accessibilityValue(closeUpCrops.isEmpty ? "No faces" : "\(closeUpCrops.count) faces")
     }
 
-    // The frame's whole-frame read: verdict, rationale phrases, and per-kind
-    // signal bars, strictly gated by CullReadsCardPresentation — with fewer
-    // than two scored kinds only the honest "No read yet" empty state
-    // renders, holding the card's home in the panel.
+    // The frame's whole-frame read: verdict plus one compact text row per
+    // whole-photo signal, in CullReadsCardPresentation's fixed canonical
+    // order — one home per fact, no duplicated list-plus-bars layout, no
+    // thermometer bars. With fewer than two scored kinds only the honest
+    // "No read yet" empty state renders, holding the card's home in the
+    // panel.
     private func readsCard(_ presentation: CullReadsCardPresentation) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("READS")
@@ -4082,26 +4084,16 @@ private struct LoupeView: View {
                         .foregroundStyle(readsToneColor(presentation.verdictTone))
                         .lineLimit(1)
                 }
-                ForEach(presentation.rationalePhrases, id: \.self) { phrase in
-                    Text(phrase)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
                 ForEach(presentation.signalRows, id: \.kind.rawValue) { row in
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
-                            Text(EvaluationSignalPresentation.displayName(for: row.kind))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                            Text(EvaluationSignalPresentation.percentage(row.score))
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                        ProgressView(value: min(max(row.score, 0), 1))
-                            .tint(.orange)
+                    HStack(spacing: 6) {
+                        Text(EvaluationSignalPresentation.displayName(for: row.kind))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        Text(EvaluationSignalPresentation.percentage(row.score))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
