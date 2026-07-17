@@ -150,6 +150,22 @@ final class CullRunStripPresentationTests: XCTestCase {
         XCTAssertEqual(stops.map(\.leadAssetID), assets[0..<6].map(\.id))
     }
 
+    func testWindowingClampsNearTheEnd() {
+        let assets = (0..<20).map { Self.asset(id: "a\($0)") }
+        let stacks = assets.map { AssetStack(assetIDs: [$0.id]) }
+
+        let (stops, windowStart) = CullRunStripPresentation.stops(
+            assets: assets,
+            stacks: stacks,
+            selectedAssetID: assets[19].id,
+            pendingSparkleAssetIDs: [],
+            visibleLimit: 6
+        )
+
+        XCTAssertEqual(windowStart, 14)
+        XCTAssertEqual(stops.map(\.leadAssetID), assets[14..<20].map(\.id))
+    }
+
     func testAllStopsReturnedWhenWithinVisibleLimit() {
         let stackA = [Self.asset(id: "a1"), Self.asset(id: "a2")]
         let standalone = Self.asset(id: "b1")
@@ -190,5 +206,49 @@ final class CullRunStripPresentationTests: XCTestCase {
                 )
             }
         )
+    }
+}
+
+// MARK: - CullStripWindowing
+
+// The shared centering/clamping helper behind both CullRunStripPresentation's
+// stop windowing and the A/B compare filmstrip's raw-asset windowing
+// (LibraryGridView.windowedAssets) — one algorithm, tested once here, so the
+// two call sites can never drift apart on the centering math.
+final class CullStripWindowingTests: XCTestCase {
+    func testAnchorAtStartClampsToTheFront() {
+        let window = CullStripWindowing.centeredWindow(count: 20, anchorIndex: 0, limit: 6)
+
+        XCTAssertEqual(window, 0..<6)
+    }
+
+    func testAnchorInTheMiddleCenters() {
+        let window = CullStripWindowing.centeredWindow(count: 20, anchorIndex: 10, limit: 6)
+
+        XCTAssertEqual(window, 7..<13)
+    }
+
+    func testAnchorNearTheEndClampsToTheBack() {
+        let window = CullStripWindowing.centeredWindow(count: 20, anchorIndex: 19, limit: 6)
+
+        XCTAssertEqual(window, 14..<20)
+    }
+
+    func testCountBelowLimitReturnsTheWholeRange() {
+        let window = CullStripWindowing.centeredWindow(count: 4, anchorIndex: 1, limit: 6)
+
+        XCTAssertEqual(window, 0..<4)
+    }
+
+    func testCountEqualToLimitReturnsTheWholeRange() {
+        let window = CullStripWindowing.centeredWindow(count: 6, anchorIndex: 3, limit: 6)
+
+        XCTAssertEqual(window, 0..<6)
+    }
+
+    func testLimitBelowOneIsTreatedAsOne() {
+        let window = CullStripWindowing.centeredWindow(count: 20, anchorIndex: 5, limit: 0)
+
+        XCTAssertEqual(window, 5..<6)
     }
 }

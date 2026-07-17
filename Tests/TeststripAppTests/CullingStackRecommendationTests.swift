@@ -124,6 +124,56 @@ final class CullingStackRecommendationTests: XCTestCase {
         XCTAssertEqual(tiedLeaderIDs?.first, first)
     }
 
+    // MARK: - landingAssetID
+
+    // The convention every stack-arrival path lands by: a clear winner wins,
+    // a too-close-to-call tie lands on the first tied leader (capture
+    // order), and no rankable signals at all yields nil (callers fall back
+    // to the stack's own first/lead frame).
+    func testLandingAssetIDIsTheClearWinner() {
+        let first = AssetID(rawValue: "first")
+        let second = AssetID(rawValue: "second")
+
+        let landingAssetID = CullingStackRecommendation.landingAssetID(
+            stackAssetIDs: [first, second],
+            evaluationSignalsByAssetID: [
+                first: [signal(assetID: first, score: 0.80)],
+                second: [signal(assetID: second, score: 0.50)]
+            ]
+        )
+
+        XCTAssertEqual(landingAssetID, first)
+    }
+
+    func testLandingAssetIDDuringATieIsTheFirstTiedLeaderInCaptureOrder() {
+        let first = AssetID(rawValue: "first")
+        let second = AssetID(rawValue: "second")
+        let third = AssetID(rawValue: "third")
+
+        let landingAssetID = CullingStackRecommendation.landingAssetID(
+            stackAssetIDs: [first, second, third],
+            evaluationSignalsByAssetID: [
+                first: [signal(assetID: first, score: 0.79)],
+                second: [signal(assetID: second, score: 0.80)],
+                third: [signal(assetID: third, score: 0.78)]
+            ]
+        )
+
+        XCTAssertEqual(landingAssetID, first)
+    }
+
+    func testLandingAssetIDWithNoRankableSignalsIsNil() {
+        let first = AssetID(rawValue: "first")
+        let second = AssetID(rawValue: "second")
+
+        let landingAssetID = CullingStackRecommendation.landingAssetID(
+            stackAssetIDs: [first, second],
+            evaluationSignalsByAssetID: [:]
+        )
+
+        XCTAssertNil(landingAssetID)
+    }
+
     private func signal(assetID: AssetID, score: Double, confidence: Double = 0.9) -> EvaluationSignal {
         EvaluationSignal(
             assetID: assetID,

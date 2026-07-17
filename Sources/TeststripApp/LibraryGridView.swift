@@ -4442,7 +4442,7 @@ private struct LoupeView: View {
 
     private func runStripStop(_ stop: CullRunStripPresentation.Stop) -> some View {
         Button {
-            model.select(stop.leadAssetID)
+            selectRunStripStopLanding(stop)
         } label: {
             if stop.isStandalone {
                 runStripStandaloneThumb(stop)
@@ -4454,6 +4454,27 @@ private struct LoupeView: View {
         .help(stop.label)
         .accessibilityLabel("Stop \(stop.label)")
         .accessibilityValue(runStripStopAccessibilityValue(stop))
+    }
+
+    // Lands on the same frame arrow-key stack-to-stack navigation would
+    // (`AppModel`'s private `selectCullingStack` → `recommendedCullingStackAssetID(in:) ?? first`),
+    // not always the stack's first-captured frame — so a click and a keyboard
+    // arrival never disagree about which frame comes up. `landingAssetID`
+    // mirrors that same tie/rank convention; a standalone has no ranking to
+    // do, so it always lands on its one frame.
+    private func selectRunStripStopLanding(_ stop: CullRunStripPresentation.Stop) {
+        guard !stop.isStandalone else {
+            model.select(stop.leadAssetID)
+            return
+        }
+        let evaluationSignalsByAssetID = Dictionary(uniqueKeysWithValues: stop.assetIDs.map { assetID in
+            (assetID, model.evaluationSignals(for: assetID))
+        })
+        let landingAssetID = CullingStackRecommendation.landingAssetID(
+            stackAssetIDs: stop.assetIDs,
+            evaluationSignalsByAssetID: evaluationSignalsByAssetID
+        ) ?? stop.leadAssetID
+        model.select(landingAssetID)
     }
 
     private func runStripStopAccessibilityValue(_ stop: CullRunStripPresentation.Stop) -> String {
@@ -6439,6 +6460,23 @@ struct CullingStackRecommendation: Equatable {
         return leaders.count >= 2 ? leaders : nil
     }
 
+    /// The frame a stack-arrival gesture lands on: the clear winner, or the
+    /// first tied leader (capture order) during a too-close-to-call tie, or
+    /// nil when there aren't enough signals to rank at all — callers fall
+    /// back to the stack's own first/lead frame in that case. Mirrors
+    /// AppModel's private `recommendedCullingStackAssetID`, which arrow-key
+    /// stack navigation uses, so a run-strip click lands the same place
+    /// keyboard arrival would.
+    static func landingAssetID(
+        stackAssetIDs: [AssetID],
+        evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
+    ) -> AssetID? {
+        if let tiedLeaderIDs = tiedLeaderIDs(stackAssetIDs: stackAssetIDs, evaluationSignalsByAssetID: evaluationSignalsByAssetID) {
+            return tiedLeaderIDs.first
+        }
+        return rankedCandidates(stackAssetIDs: stackAssetIDs, evaluationSignalsByAssetID: evaluationSignalsByAssetID).first?.assetID
+    }
+
     /// Short honest reasons why the winner leads the stack, in display order.
     static func rationalePhrases(
         forWinner winner: AssetID,
@@ -6704,17 +6742,14 @@ private struct ABCompareView: View {
     }
 
     // Centers a window of `visibleLimit` assets around the selected asset,
-    // clamped to the array bounds. Kept local (rather than shared with
-    // `CullRunStripPresentation`) since the A/B compare filmstrip windows raw
-    // assets, not stack-grouped stops — the only remaining caller that needs
-    // this shape of windowing.
+    // clamped to the array bounds. The A/B compare filmstrip windows raw
+    // assets, not stack-grouped stops, so it can't reuse
+    // `CullRunStripPresentation.stops` directly — but the centering/clamping
+    // math is shared via `CullStripWindowing`.
     private static func windowedAssets(_ assets: [Asset], selectedAssetID: AssetID?, visibleLimit: Int) -> [Asset] {
-        let boundedLimit = max(1, visibleLimit)
-        guard assets.count > boundedLimit else { return assets }
         let anchorIndex = selectedAssetID.flatMap { id in assets.firstIndex { $0.id == id } } ?? 0
-        let proposedStart = anchorIndex - boundedLimit / 2
-        let startIndex = min(max(proposedStart, 0), assets.count - boundedLimit)
-        return Array(assets[startIndex..<(startIndex + boundedLimit)])
+        let window = CullStripWindowing.centeredWindow(count: assets.count, anchorIndex: anchorIndex, limit: visibleLimit)
+        return Array(assets[window])
     }
 
     private func abFilmstripTile(asset: Asset, isAnchor: Bool) -> some View {

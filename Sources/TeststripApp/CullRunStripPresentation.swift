@@ -50,13 +50,23 @@ struct CullRunStripPresentation {
             )
         }
 
-        let boundedLimit = max(1, visibleLimit)
-        guard allStops.count > boundedLimit else {
-            return (allStops, 0)
-        }
         let currentIndex = allStops.firstIndex(where: \.isCurrent) ?? 0
-        let proposedStart = currentIndex - boundedLimit / 2
-        let windowStart = min(max(proposedStart, 0), allStops.count - boundedLimit)
-        return (Array(allStops[windowStart..<(windowStart + boundedLimit)]), windowStart)
+        let window = CullStripWindowing.centeredWindow(count: allStops.count, anchorIndex: currentIndex, limit: visibleLimit)
+        return (Array(allStops[window]), window.lowerBound)
+    }
+}
+
+/// Centers a `limit`-sized window around `anchorIndex` within a sequence of
+/// `count` items, clamped to the sequence's bounds. Shared by the run strip's
+/// stop windowing above and the A/B compare filmstrip's raw-asset windowing
+/// (`LibraryGridView.windowedAssets`) — one algorithm, so the two can never
+/// drift apart on the centering math.
+enum CullStripWindowing {
+    static func centeredWindow(count: Int, anchorIndex: Int, limit: Int) -> Range<Int> {
+        let boundedLimit = max(1, limit)
+        guard count > boundedLimit else { return 0..<count }
+        let proposedStart = anchorIndex - boundedLimit / 2
+        let start = min(max(proposedStart, 0), count - boundedLimit)
+        return start..<(start + boundedLimit)
     }
 }
