@@ -7150,6 +7150,16 @@ public final class AppModel {
     }
 
     public func setFlagForSelectedAsset(_ flag: PickFlag?) throws {
+        // U on a tentative ✨ flag is the provenance invariant's REMOVE
+        // gesture, not a plain clear: route through the recorded removal
+        // (removed_ai_labels) so re-evaluation can never resurrect the
+        // rejected suggestion. A user-origin flag stays a plain clear.
+        if flag == nil,
+           let selectedAsset,
+           selectedAsset.metadata.aiUnconfirmedFields.contains(.flag) {
+            try removeAIField(.flag, for: selectedAsset.id)
+            return
+        }
         let rejectedAssetID = (flag == .reject) ? selectedAssetID : nil
         try updateSelectedAssetMetadata(label: "Flag") { metadata in
             metadata.flag = flag
