@@ -129,12 +129,12 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
    SQL for cross-checking the moves below (adjust the WHERE clause to the
    actual selected stack once step 1's asset is known):
    ```bash
-   sqlite3 "$DB" "SELECT id FROM assets ORDER BY rowid LIMIT 4;"  # first burst group (3 frames) + 1
+   script/vm_scenario_run.sh sql burst "SELECT id FROM assets ORDER BY rowid LIMIT 4;"  # first burst group (3 frames) + 1
    ```
 3. **Pre-evaluation baseline (honest fixture gap)**: a freshly-seeded
    `burst` catalog has **zero** `evaluation_signals` rows (`SmokeCatalogSeeder`
-   never writes any — confirm: `sqlite3 "$DB" "SELECT count(*) FROM
-   evaluation_signals;"` should read 0). At this point no chip is
+   never writes any — confirm: `script/vm_scenario_run.sh sql burst "SELECT
+   count(*) FROM evaluation_signals;"` should read 0). At this point no chip is
    `isRecommended` (no `✦`, no "Recommended" in any cell's accessibility
    value) and `flawBadges` is empty on every chip — this is the designed
    "no read yet" state, not a bug. Confirm no cell's value contains
@@ -146,7 +146,7 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
    `AppModel.swift:8420-8433`) — wait for previews first if needed
    (`worker-001-preview-lifecycle.md`'s pattern), then poll:
    ```bash
-   sqlite3 "$DB" "SELECT count(DISTINCT asset_id) FROM evaluation_signals;"
+   script/vm_scenario_run.sh sql burst "SELECT count(DISTINCT asset_id) FROM evaluation_signals;"
    ```
    until it covers the stack's asset ids (staying frontmost via `wait-vended`
    each poll — keep the app warm per README).
@@ -154,7 +154,7 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
    frame the ranking should pick by reading the raw signals for the stack's
    asset ids:
    ```bash
-   sqlite3 "$DB" "SELECT asset_id, kind, value_json, confidence FROM evaluation_signals WHERE asset_id IN (<stack ids>);"
+   script/vm_scenario_run.sh sql burst "SELECT asset_id, kind, value_json, confidence FROM evaluation_signals WHERE asset_id IN (<stack ids>);"
    ```
    (schema: `Sources/TeststripCore/Catalog/CatalogMigrations.swift:63-76` —
    column is `kind`, not `signal_kind`; `value_json` encodes
@@ -213,11 +213,11 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
     browsing — rendering the rail, evaluating, navigating, clicking — no
     decision gesture yet), assert **zero** writes:
     ```bash
-    SRC_DIR=$(sqlite3 "$DB" "SELECT original_path FROM assets LIMIT 1;" | xargs dirname)
-    find "$SRC_DIR" -name '*.xmp' | wc -l                                   # must be 0
-    sqlite3 "$DB" "SELECT count(*) FROM metadata_sync_state WHERE state='pending';"  # must be 0
-    sqlite3 "$DB" "SELECT count(*) FROM people;"                            # must be 0
-    sqlite3 "$DB" "SELECT count(*) FROM person_assets;"                     # must be 0
+    SRC_DIR=$(script/vm_scenario_run.sh sql burst "SELECT original_path FROM assets LIMIT 1;" | xargs dirname)
+    script/vm_scenario_run.sh shell "find '$SRC_DIR' -name '*.xmp' | wc -l"                        # must be 0
+    script/vm_scenario_run.sh sql burst "SELECT count(*) FROM metadata_sync_state WHERE status='pending';"  # must be 0 (column is status, not state)
+    script/vm_scenario_run.sh sql burst "SELECT count(*) FROM people;"                             # must be 0
+    script/vm_scenario_run.sh sql burst "SELECT count(*) FROM person_assets;"                      # must be 0
     ```
     (evaluation itself writes only `evaluation_signals`/`autopilot`-adjacent
     tables, never asset metadata/flags/sidecars/people — that's the
@@ -233,7 +233,7 @@ then launch against it — `--smoke`'s 900s-apart seed never auto-stacks.)
       `cull-004`'s pick-protection ruling).
     - Catalog ground truth agrees:
       ```bash
-      sqlite3 "$DB" "SELECT id, json_extract(metadata_json,'\$.flag') FROM assets WHERE id IN (<stack ids>);"
+      script/vm_scenario_run.sh sql burst "SELECT id, json_extract(metadata_json,'\$.flag') FROM assets WHERE id IN (<stack ids>);"
       ```
       the promoted id reads `pick`, every non-protected sibling reads
       `reject`.
@@ -308,4 +308,15 @@ NOT RUN — source-cited against the working tree on 2026-07-13 (line numbers
 and behavior re-verified by reading `LibraryGridView.swift`,
 `AppModel.swift`, and `CullingKeyCaptureView.swift` directly, not carried
 over from an older card); pending live VM execution per
-`test/scenarios/README.md`.
+`test/scenarios/README.md`. Reconciled 2026-07-16: every ground-truth query
+used a raw `sqlite3 "$DB"` invocation with `$DB` never defined anywhere in
+this card (the Pre-state only runs the `vm_scenario_run.sh sync`/`launch`
+verbs and says "ground truth via: script/vm_scenario_run.sh sql burst
+\"...\"" but the Steps never followed that convention) — replaced every
+occurrence with the `script/vm_scenario_run.sh sql burst "..."` form the
+newer cards (`cull-022`/`cull-024`/`cull-026`) use, and the filesystem
+`find` in step 13 with `script/vm_scenario_run.sh shell "find ... | wc
+-l"` (the source directory only exists on the VM). Also fixed step 13's
+`metadata_sync_state WHERE state='pending'` to `status='pending'` — the
+column is `status` (`CatalogMigrations.swift:30-37`); `state` never existed
+on this table. No other content changed.

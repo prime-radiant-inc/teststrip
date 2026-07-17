@@ -1,16 +1,21 @@
 # cull-022-flow-grammar-walk: H/L/J/K (+ arrows) walk burst and no-burst batches with identical grammar, ✦-or-first landing, and the `A` auto-advance toggle
 
 **What this covers**: as a photographer culling a mixed take, I want the same
-four keys — `H`/`L` (across stacks) and `J`/`K` (within a stack), plus their
+four keys — `H`/`L` (across stops) and `J`/`K` (within a stack), plus their
 arrow-key twins — to mean the same thing whether the current batch has real
 multi-frame bursts or is all standalone singles. On a burst batch `J`/`K`
-step within the current stack and `H`/`L` jump across stacks, landing on the
-stack's AI-recommended frame when one exists. On a batch with **no**
-multi-frame stacks at all, `J`/`K` degrade gracefully to plain deck advance
-(the fixed dead-key case — they used to go dead with no stack to navigate
-within) while `H`/`L` correctly have nothing to cross into and are true
-no-ops. This card also proves the `A` auto-advance toggle is observable
-through the AX tree, not just inferred from behavior.
+step within the current stack and `H`/`L` jump across stops, landing on the
+stack's AI-recommended frame when the target stop is a multi-frame stack, or
+on the frame itself when it's a standalone. On a batch with **no**
+multi-frame stacks at all, `H`/`L` now walk the same stop-to-stop grammar as
+everywhere else — every standalone photo is its own stop
+(`AppModel.allCullingStacks(for:)`'s full partition, not the multi-frame-only
+`cullingStacks()`) — so on this fixture `H`/`L` degrade to plain deck advance
+identically to `J`/`K`'s own dead-key fix (both were previously dead-key
+regressions on an all-singles batch; both are now fixed the same way, via
+different code paths that happen to converge on this fixture). This card
+also proves the `A` auto-advance toggle is observable through the AX tree,
+not just inferred from behavior.
 
 Source (re-verified against the working tree on this branch, **2026-07-16**;
 cull-021's own citations for this machinery were already stale after 3 days,
@@ -55,29 +60,31 @@ so every symbol below was re-grepped fresh, not carried over):
   `AssetStackBuilder`'s 2s gap, `Sources/TeststripCore/Search/
   AssetStackBuilder.swift:14`) and asserts `.nextCandidateInStack`/
   `.previousCandidateInStack` still move the selection between them.
-- **Across-stack jump**, `selectNextStackForCulling()`/
-  `selectPreviousStackForCulling()` (`AppModel.swift:6859-6871`): tries a
+- **Across-stop jump**, `selectNextStackForCulling()`/
+  `selectPreviousStackForCulling()` (`AppModel.swift:7038-7050`): tries a
   persisted `work-stack-` session first, else `selectCullingStack(_:)`
-  (`:6947-6989`), which builds `indexedStacks` **only from
-  `cullingStacks()`** (the same `>1`-frame filter above) and returns
-  immediately, doing nothing, if that list is empty
-  (`guard !indexedStacks.isEmpty else { return }`, `:6956`) — on a batch with
-  **zero** multi-frame stacks, `H`/`L` are true no-ops regardless of how many
-  times pressed or which frame is selected, because there is structurally
-  nothing to cross into. This is the asymmetry with `J`/`K`'s dead-key fix
-  above: `J`/`K`'s job (step within a stack) degrades to a sane fallback when
-  there's no stack; `H`/`L`'s job (cross into a different stack) has no
-  fallback because "a different stack" doesn't exist on an all-singles
-  batch — assert the no-op explicitly, don't mistake it for a bug. When a
-  target stack does exist, `selectCullingStack` lands on
-  `recommendedStackLandingAssetID(for:)` (`:6994-6996`:
-  `recommendedCullingStackAssetID(in:) ?? indexedStack.firstAssetID`) — the
+  (`:7132-7174`), which — since T7.5 — builds `indexedStacks` from
+  `cullingStopSequence()` (`:6928-6930`: `allCullingStacks(for: assets)`,
+  the **full** partition, every multi-frame stack *and* every standalone
+  photo as its own stop), not the multi-frame-only `cullingStacks()` a
+  prior revision of this card (and this line's own citation) assumed.
+  `guard !indexedStacks.isEmpty else { return }` (`:7141`) is now the true
+  empty-catalog guard, not an all-singles-batch guard — a batch with zero
+  multi-frame stacks still produces one `indexedStack` per photo, so `H`/`L`
+  walk it one stop at a time, stopping dead (no wrap) at either end, exactly
+  mirroring `J`/`K`'s own fallback. When the target stop **is** a
+  multi-frame stack, `selectCullingStack` lands on
+  `recommendedStackLandingAssetID(for:)` (`:7185-7188`:
+  `recommendedCullingStackAssetID(in:) ?? stack.assetIDs.first`) — the
   ranked winner if evaluation produced one (or, under a too-close-to-call
-  tie, the first tied leader in capture order — `:6812-6827`), otherwise the
-  stack's first frame. See `cull-021-stack-rail-nav.md` steps 5/10-11 for the
-  full independent-ranking cross-check methodology; this card only needs to
-  confirm the *landing rule* holds for whichever branch this run's
-  evaluation state actually produces, not re-derive it.
+  tie, the first tied leader in capture order), otherwise the stack's first
+  frame; a standalone stop resolves to its one asset either way (the doc
+  comment at `:7182-7184` is explicit: `recommendedCullingStackAssetID`
+  only ranks stacks with more than one member). See
+  `cull-021-stack-rail-nav.md` steps 5/10-11 for the full independent-ranking
+  cross-check methodology; this card only needs to confirm the *landing
+  rule* holds for whichever branch this run's evaluation state actually
+  produces, not re-derive it.
 - **`A` auto-advance toggle**, `cullAutoAdvanceEnabled` (`AppModel.swift:2165`,
   default `true`) / `toggleCullAutoAdvance()` (`:6521-6533`): flips the flag
   and sets `lastCullingMetadataDecision` to an *informational* toast reading
@@ -194,15 +201,18 @@ either form should exercise the same code path.
    asset per keypress. Repeat with `key code 125`/`key code 126` (Down/Up)
    from the same starting position and assert identical targets — same
    "identical grammar" claim as Leg A step 3, now for the fallback path.
-9. **`H`/`L` are true no-ops on an all-singles batch.** From any selected
-   asset, press `L` (`keystroke "l"`) 3 times, then `H` 3 times: assert the
-   selection never changes across any of these 6 presses (still the same
-   asset id each time). This is the asymmetry documented in Source above —
-   `J`/`K` degrade to a working fallback, `H`/`L` correctly do nothing
-   because there is no stack to cross into. **Do not** expect `H`/`L` to
-   also fall back to linear advance; that would contradict the source
-   (`selectCullingStack`'s `indexedStacks.isEmpty` guard returns
-   unconditionally, with no fallback branch).
+9. **`H`/`L` now walk stop-to-stop on an all-singles batch too — the T7.5
+   fix, formerly the mirror-image dead-key case.** From the first asset,
+   press `L` (`keystroke "l"`) repeatedly (3-4 times): assert the selection
+   advances one asset per keypress, in the exact order Step 7's SQL query
+   returned — identical to `J`'s fallback in Step 8, just a different key.
+   Press `H` the same number of times and assert it walks back to the
+   start, one asset per keypress. Repeat with the raw arrow keys (`key code
+   124`/`key code 123` for Right/Left) from the same starting position and
+   assert identical targets — same "identical grammar" claim as Step 8, now
+   for `H`/`L`. Then confirm the stop-at-the-end behavior mirrors `J`/`K`'s
+   no-wrap guard: advance to the last asset (`L` repeatedly), press `L`
+   once more, and assert the selection does not move.
 10. **`A` toggle, observable via AX value.** Note `cullAutoAdvanceEnabled`
     defaults to `true` (`AppModel.swift:2165`). Press `P` (pick) on an
     unrated frame: with auto-advance on by default, assert the selection
@@ -231,9 +241,10 @@ either form should exercise the same code path.
 - Step 8: **Fails if** `J`/`K` do not move the selection on the no-burst
   batch (a regression back to "going dead"), if they move by other than one
   asset per keypress, or if the letter and arrow forms disagree.
-- Step 9: **Fails if** `H`/`L` move the selection at all on the no-burst
-  batch — silently falling back to linear advance would be a regression
-  disagreeing with the cited source, not a bugfix.
+- Step 9: **Fails if** `H`/`L` do not move the selection on the no-burst
+  batch (a regression back to the pre-T7.5 no-op), if they move by other
+  than one asset per keypress, if the letter and arrow forms disagree, or
+  if `L` at the last asset wraps or moves the selection at all.
 - Step 10: **Fails if** the toast text is absent, wrong, or the auto-advance
   behavior (selection moves/doesn't move after a decision) disagrees with
   the toggle's last-announced state.
@@ -246,14 +257,20 @@ Run for both legs (burst launch, then smoke launch) — quit each app instance
 before the next leg's launch.
 
 ## Sharp edges
-- **`J`/`K` and `H`/`L` are not symmetric on a no-stack batch, and that is
-  correct.** `J`/`K`'s within-stack job has a documented, unit-tested
-  fallback to deck-wide advance; `H`/`L`'s cross-stack job has no such
-  fallback because "the next stack" is not a meaningful target when no
-  stack exists at all. Do not read step 9's no-op as evidence of a bug
-  mirroring step 8's fix — they are different code paths
-  (`moveSelectionWithinCurrentCullingStack` vs. `selectCullingStack`) with
-  deliberately different failure behavior.
+- **`J`/`K` and `H`/`L` converge to the same behavior on a no-stack batch,
+  via two different code paths — this used to be the opposite.** Before
+  T7.5, `J`/`K`'s within-stack job had a documented fallback to deck-wide
+  advance while `H`/`L`'s cross-stack job had none (there was structurally
+  no "different stack" to cross into on an all-singles batch), so step 9
+  asserted a true no-op. T7.5 gave `H`/`L` their own full-partition stop
+  sequence (`cullingStopSequence()`, every standalone included), so on this
+  fixture both keys now walk one asset at a time — but they still reach
+  that result via genuinely different functions
+  (`moveSelectionWithinCurrentCullingStack`'s no-stack fallback vs.
+  `selectCullingStack`'s stop-sequence walk), and only agree because every
+  "stop" on this specific fixture happens to be a single asset. On a
+  **mixed** batch (Leg A) they remain deliberately different: `J`/`K` never
+  leave the current stack, `H`/`L` always cross to the next stop.
 - **The `A` toast is the only AX-exposed read of `cullAutoAdvanceEnabled`,
   and it fades in 2 real seconds.** A driver that presses `A` and then does
   several other `find`/`sql` round-trips before polling for the toast will
@@ -276,4 +293,12 @@ NOT RUN — authored 2026-07-16, source-cited against the working tree by
 directly reading `CullingKeyCaptureView.swift`, `AppModel.swift`,
 `CullFilmstripPresentation.swift`, `LibraryGridView.swift`, and
 `CullStackNavigationTests.swift`, not carried over from any older card;
-pending live VM execution per `test/scenarios/README.md`.
+pending live VM execution per `test/scenarios/README.md`. Reconciled
+2026-07-16 (same day, later pass): the original authoring predated a T7.5
+behavior fix (`AppModel.swift:7127-7132`'s doc comment: "Before T7.5 this
+used `cullingStacks()` directly, so standalone stops were skipped on mixed
+batches and every key was a dead no-op on all-singles batches") — `H`/`L`
+now walk the full stop sequence (every standalone included), not just
+multi-frame stacks. The headline, the "Across-stop jump" Source bullet,
+step 9, its Expected bullet, and the first Sharp edges bullet were rewritten
+to match; steps 1-8 and 10 and the rest of the card are unchanged.
