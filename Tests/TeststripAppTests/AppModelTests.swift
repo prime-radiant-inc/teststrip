@@ -4174,6 +4174,41 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(completion.detailText, "2 picks · 2 rejects — Cull persisted stacks")
     }
 
+    // T7.5 review fix: the persisted-session arrival path
+    // (`selectPersistedCullingStack`) must route through the same gated
+    // landing helper as auto-grouped navigation, so ←/→, H/L, and Return's
+    // post-commit advance honor `cullLandOnRecommendedFrame` in a persisted
+    // stack-culling session too. Signals make the second stack's *second*
+    // frame the ✦ so frame 1 and the recommendation genuinely differ.
+    func testPersistedStackNavigationHonorsLandOnRecommendedFramePreference() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "persisted-landing-pref",
+            sessionID: "landing-pref-session"
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try fixture.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: fixture.secondLead.id, kind: .focus, value: .score(0.4), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: fixture.secondAlternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ])
+
+        // Default (land on recommended frame): arrival lands on the ✦, which
+        // the signals place on the second frame, not frame 1.
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        try fixture.model.applyCullingShortcut(.nextStack)
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondAlternate.id)
+
+        // Preference off: the same arrival lands on frame 1 (capture order),
+        // ignoring the ✦.
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        fixture.model.toggleCullLandOnRecommendedFrame()
+        try fixture.model.applyCullingShortcut(.nextStack)
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
+    }
+
     func testOpeningCullingCompletionPicksAppliesTheOutputSet() throws {
         let fixture = try makePersistedStackCullingFixture(
             named: "completion-open-picks",
