@@ -4115,8 +4115,6 @@ private struct LoupeView: View {
             return .green
         case .caution:
             return .yellow
-        case .neutral:
-            return .secondary
         case .waiting:
             return .orange
         }

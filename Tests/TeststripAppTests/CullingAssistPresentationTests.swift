@@ -105,36 +105,38 @@ final class CullingAssistPresentationTests: XCTestCase {
         )
     }
 
-    func testVerdictSynthesizesKeepReadFromStrongQualityKinds() {
+    func testVerdictSynthesizesKeepFromStrongQualityKinds() {
         let verdict = CullingAssistPresentation.verdict(for: [
             signal(kind: .focus, value: .score(0.96), confidence: 1.0),
             signal(kind: .aesthetics, value: .score(0.9), confidence: 1.0)
         ])
 
-        // (0.96 * 100 + 0.9 * 50) / 150 = 0.94
-        XCTAssertEqual(verdict?.text, "Keep read 94%")
+        // (0.96 * 100 + 0.9 * 50) / 150 = 0.94, above the Keep threshold.
+        XCTAssertEqual(verdict?.text, "Keep")
         XCTAssertEqual(verdict?.tone, .positive)
     }
 
-    func testVerdictSynthesizesTossReadFromDefects() {
+    func testVerdictSynthesizesTossFromDefects() {
         let verdict = CullingAssistPresentation.verdict(for: [
             signal(kind: .focus, value: .score(0.2), confidence: 1.0),
             signal(kind: .motionBlur, value: .score(0.9), confidence: 1.0)
         ])
 
-        // (0.2 * 100 + (1 - 0.9) * 60) / 160 = 0.16
-        XCTAssertEqual(verdict?.text, "Toss read 16%")
+        // (0.2 * 100 + (1 - 0.9) * 60) / 160 = 0.16, below the Toss threshold.
+        XCTAssertEqual(verdict?.text, "Toss")
         XCTAssertEqual(verdict?.tone, .caution)
     }
 
-    func testVerdictReportsMixedReadBetweenThresholds() {
+    // A verdict that can't commit to Toss or Keep says nothing at all — no
+    // "Mixed" label, per the honest-states philosophy (a pill that can't
+    // commit renders absent, not a hedge word).
+    func testVerdictReportsNothingBetweenThresholds() {
         let verdict = CullingAssistPresentation.verdict(for: [
             signal(kind: .focus, value: .score(0.6), confidence: 1.0),
             signal(kind: .aesthetics, value: .score(0.6), confidence: 1.0)
         ])
 
-        XCTAssertEqual(verdict?.text, "Mixed read 60%")
-        XCTAssertEqual(verdict?.tone, .neutral)
+        XCTAssertNil(verdict)
     }
 
     func testVerdictTossesWeakCalibratedReadBelowHalf() {
@@ -146,7 +148,7 @@ final class CullingAssistPresentationTests: XCTestCase {
             signal(kind: .aesthetics, value: .score(0.56), confidence: 1.0)
         ])
 
-        XCTAssertEqual(verdict?.text, "Toss read 45%")
+        XCTAssertEqual(verdict?.text, "Toss")
         XCTAssertEqual(verdict?.tone, .caution)
     }
 

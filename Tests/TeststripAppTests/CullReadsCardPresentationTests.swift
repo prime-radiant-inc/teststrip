@@ -10,8 +10,8 @@ final class CullReadsCardPresentationTests: XCTestCase {
             signal(kind: .eyesOpen, value: .score(1.0), confidence: 0.7)
         ])
 
-        // (0.96 * 100 + 0.9 * 50 + 1.0 * 63) / 213 = 0.9577... -> 96%
-        XCTAssertEqual(presentation.verdictText, "Keep read 96%")
+        // (0.96 * 100 + 0.9 * 50 + 1.0 * 63) / 213 = 0.9577..., above the Keep threshold.
+        XCTAssertEqual(presentation.verdictText, "Keep")
         XCTAssertEqual(presentation.verdictTone, .positive)
         XCTAssertEqual(presentation.rationalePhrases, ["Aesthetics 90%", "Focus 96%", "Eyes open"])
         XCTAssertEqual(presentation.signalRows, [

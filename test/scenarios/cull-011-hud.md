@@ -58,7 +58,10 @@ Exact computation (read from source, not guessed):
   assistPresentation.title)`. `CullingAssistPresentation.verdict(for:)`
   requires `CullingStackRecommendation.normalizedQualityRead` with
   `kindCount >= 2` (at least two distinct scored quality kinds) to produce a
-  `"Keep read N%"` / `"Toss read N%"` / `"Mixed read N%"` verdictText at all.
+  verdictText at all — as of the dogfood-r1 wording pass, that text is exactly
+  `"Keep"` or `"Toss"` (no "read" suffix, no percentage); a read that lands
+  Mixed (between the two thresholds) now returns nil, same as too few scored
+  kinds — **no verdict label at all**, not a "Mixed" string.
   With **zero** evaluation signals for the selected asset: `signals` is empty,
   `verdict(for:)` returns nil, and the presentation falls to the `"No read
   yet"` / `.waiting` branch — but because `tone == .waiting`, the HUD's final
@@ -66,8 +69,8 @@ Exact computation (read from source, not guessed):
   yet"` string is internal `title`, never shown in the HUD). With **one**
   signal (still < 2 kinds for a quality read) the HUD falls back to showing
   that signal's own `title` (a real string, tone non-`.waiting`). With **two+**
-  quality-kind signals the HUD shows the synthesized `"Keep/Toss/Mixed read
-  N%"` verdictText.
+  quality-kind signals and a decisive (non-Mixed) read, the HUD shows the
+  synthesized `"Keep"`/`"Toss"` verdictText.
 
 ## Pre-state
 ```bash
@@ -145,12 +148,15 @@ script/ax_drive.sh press --role AXButton --help "Cull" # or ⌘1 per workspace-s
    the source computes it internally but the HUD suppresses it when
    `tone == .waiting`.
 7. **Verdict fallback — real signal case.** Select an asset with 2+ distinct
-   evaluation-signal kinds (focus + object detection, etc.) and assert the
-   verdict chip shows one of `"Keep read "`, `"Toss read "`, `"Mixed read "`
-   followed by a percentage:
+   evaluation-signal kinds (focus + object detection, etc.) and a decisive
+   (non-Mixed) read; assert the verdict chip's text is exactly `"Keep"` or
+   `"Toss"` — no "read" suffix, no percentage:
    ```bash
-   script/ax_drive.sh find --role AXStaticText --contains "read " # then read its exact text
+   script/ax_drive.sh find --role AXStaticText --contains "Keep" # or "Toss" — read its exact text
    ```
+   If the fixture's read lands Mixed, no verdict chip renders at all (the
+   honest-states behavior, not a bug) — pick a different asset/signals to
+   exercise this step.
 8. **Hover-reveal decision controls (Jesse's ruling 2026-07-11; cull loupe
    only — the library loupe stays chrome-free).** With the cull loupe open,
    move the pointer over the stage: a P/X/star control cluster (AX label

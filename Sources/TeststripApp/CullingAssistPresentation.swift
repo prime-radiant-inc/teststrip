@@ -5,7 +5,6 @@ struct CullingAssistPresentation {
         case waiting
         case positive
         case caution
-        case neutral
     }
 
     // Anchored to the 2026-07-06 calibration study on the calibrated
@@ -19,20 +18,22 @@ struct CullingAssistPresentation {
     // ranking uses; at least two scored quality kinds are required because
     // one signal is not a verdict. Not private: the reads card
     // (CullReadsCardPresentation) reuses this exact computation rather than
-    // duplicating the Keep/Toss/Mixed scoring.
+    // duplicating the Keep/Toss scoring. A read that lands between the two
+    // thresholds is Mixed — and a verdict that can't commit to Toss or Keep
+    // says nothing at all, so that case returns nil too, same as too few
+    // scored kinds.
     static func verdict(for signals: [EvaluationSignal]) -> (text: String, tone: Tone)? {
         guard let read = CullingStackRecommendation.normalizedQualityRead(for: signals),
               read.kindCount >= 2 else {
             return nil
         }
-        let percentText = EvaluationSignalPresentation.percentage(read.score)
         if read.score >= keepReadThreshold {
-            return ("Keep read \(percentText)", .positive)
+            return ("Keep", .positive)
         }
         if read.score <= tossReadThreshold {
-            return ("Toss read \(percentText)", .caution)
+            return ("Toss", .caution)
         }
-        return ("Mixed read \(percentText)", .neutral)
+        return nil
     }
 
     /// Short rationale phrases for the top signals, in display order, for the
