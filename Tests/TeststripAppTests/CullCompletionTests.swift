@@ -118,6 +118,22 @@ final class CullCompletionTests: XCTestCase {
         XCTAssertEqual(summary.sparkleAwaiting, 1)
     }
 
+    // Mirrors the sparkleAwaiting out-of-scope exclusion above: a skip
+    // recorded for an asset ID outside the completion scope (e.g. a frame
+    // skipped in a previous cull run, or in another scope) must not inflate
+    // `skipped` — skippedAssetIDs ∩ scope, same as pendingProposalAssetIDs ∩ scope.
+    func testSummarySkippedCountExcludesOutOfScopeAssetID() {
+        let asset = Self.asset(id: "in-scope-not-skipped")
+        let summary = CullCompletionPresentation.summary(
+            assets: [asset],
+            viewedAssetIDs: [],
+            skippedAssetIDs: [AssetID(rawValue: "outside-scope")],
+            pendingProposalAssetIDs: []
+        )
+
+        XCTAssertEqual(summary.skipped, 0)
+    }
+
     // INVARIANT (negative): a tentative ✨ flag is not a decision. It counts
     // in undecided AND in sparkleAwaiting, never in picked/rejected — and a
     // tentative-only scope is not complete.
@@ -304,6 +320,27 @@ final class CullCompletionTests: XCTestCase {
         // operation — with nothing confirmed there is nothing to save.
         XCTAssertThrowsError(try model.saveCullingPicksAsSet())
         XCTAssertTrue(try repository.assetSets().isEmpty)
+    }
+
+    // Distinct code path from the ad-hoc throw above: with an ACTIVE session,
+    // saveCullingPicksAsSet goes through refreshCullingSessionOutputSet's
+    // no-picks arm (which deletes/never creates the output set) before the
+    // `guard let outputSet = savedAssetSets.first(...)` throw fires.
+    func testSaveCullingPicksAsSetInActiveSessionThrowsWhenNoConfirmedPicksExist() throws {
+        let unflagged = Self.asset(id: "session-throw-unflagged")
+        let tentative = Self.asset(id: "session-throw-tentative", flag: .pick, tentative: true)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "save-picks-session-throw",
+            assets: [unflagged, tentative]
+        )
+        try model.beginCullingSession(named: "Batch")
+
+        // INVARIANT: same as the ad-hoc case — a tentative flag never drives
+        // the committing picks-set operation, even with a session active.
+        // (beginCullingSession persists its own "Batch Input" set, so
+        // assertion is on the absent output/picks set, not overall emptiness.)
+        XCTAssertThrowsError(try model.saveCullingPicksAsSet())
+        XCTAssertTrue(try repository.assetSets().allSatisfy { !$0.name.hasSuffix("Picks") })
     }
 
     // MARK: - Helpers
