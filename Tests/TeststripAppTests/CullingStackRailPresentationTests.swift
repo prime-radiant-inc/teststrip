@@ -19,6 +19,7 @@ final class CullingStackRailPresentationTests: XCTestCase {
         )
 
         XCTAssertTrue(presentation.isVisible)
+        XCTAssertTrue(presentation.isMultiFrameStack)
         XCTAssertEqual(presentation.titleText, "Stack 1 of 2")
         XCTAssertEqual(presentation.positionText, "Frame 2 of 3")
         XCTAssertEqual(presentation.rationaleText, "Same folder, captured within 2s")
@@ -190,9 +191,13 @@ final class CullingStackRailPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.items.map(\.isSelected), [false, true])
     }
 
-    func testHidesForSingletonSelection() {
+    // A standalone (single-photo) stop still shows in the rail — just its
+    // own thumb, no stack-only chrome: no rank/✦ (a single frame can't have
+    // a recommended sibling), no "Frame N of M" (there's no M), but its
+    // pick/reject decision still renders.
+    func testShowsSingleEntryRailForStandaloneSelection() {
         let capturedAt = Date(timeIntervalSince1970: 100)
-        let asset = makeAsset(id: "single", path: "/Photos/Job/single.cr2", capturedAt: capturedAt)
+        let asset = makeAsset(id: "single", path: "/Photos/Job/single.cr2", capturedAt: capturedAt, flag: .pick)
 
         let presentation = CullingStackRailPresentation(
             assets: [asset],
@@ -200,8 +205,16 @@ final class CullingStackRailPresentationTests: XCTestCase {
             stackBuilder: AssetStackBuilder(maximumCaptureGap: 2)
         )
 
-        XCTAssertFalse(presentation.isVisible)
-        XCTAssertEqual(presentation.items, [])
+        XCTAssertTrue(presentation.isVisible)
+        XCTAssertFalse(presentation.isMultiFrameStack)
+        XCTAssertEqual(presentation.items.map(\.assetID), [asset.id])
+        XCTAssertEqual(presentation.items.map(\.isSelected), [true])
+        XCTAssertEqual(presentation.items.map(\.isRecommended), [false])
+        XCTAssertEqual(presentation.items.map(\.decision), [.picked])
+        XCTAssertTrue(presentation.actions.isEmpty)
+        XCTAssertEqual(presentation.titleText, "Standalone")
+        XCTAssertEqual(presentation.positionText, "")
+        XCTAssertNil(presentation.recommendedAssetID)
     }
 
     func testHidesWhenSelectionIsMissing() {

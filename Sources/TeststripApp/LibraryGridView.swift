@@ -3873,7 +3873,7 @@ private struct LoupeView: View {
                 }
             }
             if presentation.showsCullChrome {
-                runStrip(isStackActive: stackPresentation.isVisible)
+                runStrip(isStackActive: stackPresentation.isMultiFrameStack)
             } else {
                 libraryLoupeNavBar
             }
@@ -4707,10 +4707,12 @@ private struct LoupeView: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
-                    Text(presentation.positionText)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if !presentation.positionText.isEmpty {
+                        Text(presentation.positionText)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                     if let rationaleText = presentation.rationaleText {
                         Text(rationaleText)
                             .font(.caption2)
@@ -6336,7 +6338,7 @@ struct CullingStackRailPresentation: Equatable {
             )
         }
 
-        guard stackScope.assetIDs.count > 1,
+        guard !stackScope.assetIDs.isEmpty,
               let selectedIndex = stackScope.assetIDs.firstIndex(of: selectedAssetID) else {
             items = []
             titleText = ""
@@ -6348,11 +6350,16 @@ struct CullingStackRailPresentation: Equatable {
             tooCloseBanner = nil
             return
         }
-        let rankedCandidates = CullingStackRecommendation.rankedCandidates(
+        // A standalone (single-photo stop) still gets a rail entry — its own
+        // thumb, decision marks intact — but none of the stack-only chrome:
+        // no rank/✦ (nothing to be recommended over), no "Frame N of M", no
+        // keep/cut actions (there are no alternates to reject or keep-all).
+        let isStandalone = stackScope.assetIDs.count == 1
+        let rankedCandidates = isStandalone ? [] : CullingStackRecommendation.rankedCandidates(
             stackAssetIDs: stackScope.assetIDs,
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
-        let tiedLeaderIDs = CullingStackRecommendation.tiedLeaderIDs(
+        let tiedLeaderIDs = isStandalone ? nil : CullingStackRecommendation.tiedLeaderIDs(
             stackAssetIDs: stackScope.assetIDs,
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
@@ -6371,13 +6378,6 @@ struct CullingStackRailPresentation: Equatable {
                 decision: DecisionState(flag: assetsByID[assetID]?.metadata.flag)
             )
         }
-        if let stackIndex = stackScope.stackIndex,
-           let stackCount = stackScope.stackCount {
-            titleText = "Stack \(stackIndex) of \(stackCount)"
-        } else {
-            titleText = "Stack"
-        }
-        positionText = "Frame \(selectedIndex + 1) of \(stackScope.assetIDs.count)"
         rationaleText = stackScope.rationaleText
         tooCloseBanner = tiedLeaderIDs.map { leaderIDs in
             let frameLabels = leaderIDs.compactMap { leaderID in
@@ -6385,6 +6385,21 @@ struct CullingStackRailPresentation: Equatable {
             }
             return "too close to call — \(frameLabels.joined(separator: "·"))"
         }
+        guard !isStandalone else {
+            titleText = "Standalone"
+            positionText = ""
+            keepActionTitle = ""
+            keepActionHelp = ""
+            actions = []
+            return
+        }
+        if let stackIndex = stackScope.stackIndex,
+           let stackCount = stackScope.stackCount {
+            titleText = "Stack \(stackIndex) of \(stackCount)"
+        } else {
+            titleText = "Stack"
+        }
+        positionText = "Frame \(selectedIndex + 1) of \(stackScope.assetIDs.count)"
         keepActionTitle = "Keep frame \(selectedIndex + 1) · cut \(stackScope.assetIDs.count - 1)"
         keepActionHelp = "Keep selected frame and reject stack alternates"
         actions = [
@@ -6413,6 +6428,13 @@ struct CullingStackRailPresentation: Equatable {
 
     var isVisible: Bool {
         !items.isEmpty
+    }
+
+    // A standalone's rail entry is visible (`isVisible`) but isn't a stack —
+    // gates chrome that only makes sense with siblings to navigate/act on,
+    // like the run strip's "↑↓/J K stacks" and "↵ accept best" legend hints.
+    var isMultiFrameStack: Bool {
+        items.count > 1
     }
 
     var recommendedAssetID: AssetID? {
