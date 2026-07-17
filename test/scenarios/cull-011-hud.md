@@ -1,4 +1,4 @@
-# cull-011-hud: The Cull HUD's progressive-disclosure cluster and verdict fallback
+# cull-011-hud: The Cull HUD's progressive-disclosure cluster
 
 **Rewritten for Task 6 (2026-07-11), per spec §2a:** the old HUD showed a
 separate "N left" text, a separate progress bar, and separate Picks/Rejects
@@ -21,18 +21,25 @@ stars) no longer match the rendered surface; they're replaced below.
 above the loupe to tell me exactly where I am in the set — filename, session
 cluster (picks/rejects/undecided, with progress beneath), and only the
 scope/rating/label state that's actually meaningful right now — without
-opening a side panel, and I want the verdict chip to be honest about whether
-a frame has actually been read yet. Covered inventory items 32
-(undecided/progress math) and 33 (verdict fallback rules), plus the Task 6
-progressive-disclosure matrix. Source: `cullHUD`, `cullHUDPresentation`, and
-`isRatingEchoActive` in `Sources/TeststripApp/LibraryGridView.swift`;
+opening a side panel. Covered inventory item 32 (undecided/progress math),
+plus the Task 6 progressive-disclosure matrix. The verdict-fallback rules
+(inventory item 33) are **not** covered by this card: the HUD itself carries
+no verdict at all — `CullHUDPresentation`'s doc comment states "the assist
+verdict is deliberately absent (one home per fact): the right panel's reads
+card owns it," and `cullHUDPresentation(for:)`
+(`Sources/TeststripApp/LibraryGridView.swift`) builds the struct with no
+verdict field or fallback logic whatsoever. That assertion belongs to, and is
+already covered by, `cull-024-honest-states.md`'s Reads-panel steps (its
+step 4 and Source section cite the same `CullReadsCardPresentation`/
+`CullingAssistPresentation` verdict synthesis this card previously,
+incorrectly, attributed to the HUD). Source: `cullHUD`, `cullHUDPresentation`,
+and `isRatingEchoActive` in `Sources/TeststripApp/LibraryGridView.swift`;
 `CullHUDPresentation` (`showsScopeChip`/`showsRating`/`showsLabelDot`/
 `sessionClusterText`) in `Sources/TeststripApp/CullHUDPresentation.swift`;
 `CullingProgressSummary` at `Sources/TeststripApp/AppModel.swift:123-141` +
-`cullingProgressSummary` at `:2261-2269`; `CullingAssistPresentation` verdict
-synthesis in `Sources/TeststripApp/LibraryGridView.swift`; and the
-decision-toast timing state (`isDecisionToastVisible`,
-`lastCullingMetadataDecision`) that the rating echo window reuses.
+`cullingProgressSummary` at `:2261-2269`; and the decision-toast timing state
+(`isDecisionToastVisible`, `lastCullingMetadataDecision`) that the rating
+echo window reuses.
 
 Exact computation (read from source, not guessed):
 - `undecidedCount = max(totalCount - pickCount - rejectCount, 0)`
@@ -53,24 +60,14 @@ Exact computation (read from source, not guessed):
   `CullingCommand`; only the `.rating` case — including clear-to-zero —
   triggers the echo; pick/reject/label decisions do not).
 - `showsLabelDot = (colorLabel != nil)`.
-- Verdict fallback in `cullHUDPresentation`:
-  `verdict = assistPresentation.verdictText ?? (tone == .waiting ? nil :
-  assistPresentation.title)`. `CullingAssistPresentation.verdict(for:)`
-  requires `CullingStackRecommendation.normalizedQualityRead` with
-  `kindCount >= 2` (at least two distinct scored quality kinds) to produce a
-  verdictText at all — as of the dogfood-r1 wording pass, that text is exactly
-  `"Keep"` or `"Toss"` (no "read" suffix, no percentage); a read that lands
-  Mixed (between the two thresholds) now returns nil, same as too few scored
-  kinds — **no verdict label at all**, not a "Mixed" string.
-  With **zero** evaluation signals for the selected asset: `signals` is empty,
-  `verdict(for:)` returns nil, and the presentation falls to the `"No read
-  yet"` / `.waiting` branch — but because `tone == .waiting`, the HUD's final
-  `verdict` is **nil**, so **no verdict chip renders at all** (the `"No read
-  yet"` string is internal `title`, never shown in the HUD). With **one**
-  signal (still < 2 kinds for a quality read) the HUD falls back to showing
-  that signal's own `title` (a real string, tone non-`.waiting`). With **two+**
-  quality-kind signals and a decisive (non-Mixed) read, the HUD shows the
-  synthesized `"Keep"`/`"Toss"` verdictText.
+
+The HUD has no verdict field and no verdict-fallback logic —
+`cullHUDPresentation(for:)` builds `CullHUDPresentation` from exactly
+`filename`/`rating`/`colorLabel`/`summary`/`scope`/`isRatingEchoActive`,
+nothing else. The `"Keep"`/`"Toss"` verdict text (and its no-signal/
+single-signal/Mixed fallback rules) is synthesized by
+`CullReadsCardPresentation.presentation(for:)` and rendered in the right
+panel's reads card, not this HUD — see `cull-024-honest-states.md`.
 
 ## Pre-state
 ```bash
@@ -136,28 +133,7 @@ script/ax_drive.sh press --role AXButton --help "Cull" # or ⌘1 per workspace-s
    `originalURL.lastPathComponent` for that row (join against
    `assets.original_path` or whichever column holds it — verify the column
    name against the schema before running).
-6. **Verdict fallback — no-signal case.** Find an asset with zero rows in
-   `evaluation_signals` for the selected asset (check whichever table backs
-   `EvaluationSignal` — confirm the exact table name against
-   `CatalogMigrations.swift` before querying; do not guess), select it in the
-   loupe, and assert **no verdict chip renders**:
-   ```bash
-   script/ax_drive.sh find --role AXStaticText --contains "read yet" # expect failure/absent
-   ```
-   Fails if the literal string "No read yet" (or any verdict text) is found —
-   the source computes it internally but the HUD suppresses it when
-   `tone == .waiting`.
-7. **Verdict fallback — real signal case.** Select an asset with 2+ distinct
-   evaluation-signal kinds (focus + object detection, etc.) and a decisive
-   (non-Mixed) read; assert the verdict chip's text is exactly `"Keep"` or
-   `"Toss"` — no "read" suffix, no percentage:
-   ```bash
-   script/ax_drive.sh find --role AXStaticText --contains "Keep" # or "Toss" — read its exact text
-   ```
-   If the fixture's read lands Mixed, no verdict chip renders at all (the
-   honest-states behavior, not a bug) — pick a different asset/signals to
-   exercise this step.
-8. **Hover-reveal decision controls (Jesse's ruling 2026-07-11; cull loupe
+6. **Hover-reveal decision controls (Jesse's ruling 2026-07-11; cull loupe
    only — the library loupe stays chrome-free).** With the cull loupe open,
    move the pointer over the stage: a P/X/star control cluster (AX label
    "Cull decision controls") fades in near the bottom edge. Assert:
@@ -194,13 +170,7 @@ script/ax_drive.sh press --role AXButton --help "Cull" # or ⌘1 per workspace-s
 - Step 5: filename/stars/scope chip/label dot match the focused asset's own
   `metadata_json` row and current scope, not a stale/neighboring asset's.
   **Fails if** they lag behind a selection change.
-- Step 6: **Fails if** any verdict text renders for a signal-less asset — the
-  HUD is supposed to render nothing, not a placeholder string.
-- Step 7: **Fails if** the verdict text is missing, or shows the single-signal
-  `title` fallback instead of the synthesized read (i.e. fewer than 2 quality
-  kinds were actually present, invalidating the fixture choice — re-pick an
-  asset, don't weaken the assertion).
-- Step 8: controls appear on hover, hide on 1.5s idle and on any keystroke,
+- Step 6: controls appear on hover, hide on 1.5s idle and on any keystroke,
   and the Pick click writes the same catalog flag as `P`. **Fails if** the
   cluster appears in the library loupe, never hides, or its buttons write
   through a different code path than the keys.
@@ -219,14 +189,10 @@ script/ax_drive.sh press --role AXButton --help "Cull" # or ⌘1 per workspace-s
   chip at all — check `CullScope` default). Jesse ruled (2026-07-11) the
   session-cluster counts stay set totals as-is — resolved, no longer an open
   question.
-- The hover-reveal controls (step 8) share the loupe stage's hover surface
+- The hover-reveal controls (step 6) share the loupe stage's hover surface
   with zoom/pan gestures — any pointer movement over the stage re-reveals
   the cluster; that's by design. Reduced-motion users get no fade animation
   (`.identity` transition); visibility timing is identical.
-- The exact table/column names for `EvaluationSignal` persistence (steps
-  6/7) were not verified against `CatalogMigrations.swift` in this pass —
-  read the migration file's evaluation-signals table before writing the real
-  query; don't guess the schema.
 - The AX surface for the merged session cluster (steps 2/3) wasn't
   independently confirmed against a live AX tree — `find --contains` against
   the cluster's rendered text may need adjustment for the exact Unicode glyphs
