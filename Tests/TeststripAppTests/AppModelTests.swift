@@ -4209,6 +4209,42 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
     }
 
+    // Regression fix: the sidebar stack-list click handler
+    // (`selectCullingStackSet`) called `recommendedCullingStackAssetID`
+    // directly instead of routing through the same gated
+    // `recommendedStackLandingAssetID` helper as every other arrival path,
+    // so a sidebar click ignored `cullLandOnRecommendedFrame` even though
+    // ←/→, H/L, Return's advance, and the run strip's click all honored it.
+    // Signals mirror the persisted-landing test's seeding pattern so the ✦
+    // is NOT frame 1.
+    func testSelectCullingStackSetHonorsLandOnRecommendedFramePreference() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "sidebar-stack-set-landing-pref",
+            sessionID: "sidebar-stack-set-landing-pref-session"
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try fixture.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: fixture.secondLead.id, kind: .focus, value: .score(0.4), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: fixture.secondAlternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ])
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+
+        // Default (land on recommended frame): clicking the second stack in
+        // the sidebar lands on the ✦, which the signals place on the
+        // alternate frame, not frame 1.
+        try fixture.model.selectCullingStackSet(id: fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondAlternate.id)
+
+        // Preference off: the same sidebar click lands on frame 1 (capture
+        // order), ignoring the ✦.
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.toggleCullLandOnRecommendedFrame()
+        try fixture.model.selectCullingStackSet(id: fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
+    }
+
     // Integration fix (post-merge of lanes A/B): the run strip's click
     // handler used a lane-fence-forced duplicate of the tie/rank/fallback
     // glue (CullingStackRecommendation.landingAssetID, called directly from
