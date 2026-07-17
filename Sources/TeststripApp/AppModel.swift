@@ -200,9 +200,11 @@ public enum CullingShortcut: Equatable, Sendable {
     case previousStack
     case nextStack
     /// ↑/↓ within-stack navigation (cull-stack-rail): moves the selection to
-    /// the next/previous frame in the current stack, never crossing into a
-    /// neighboring stack. See `AppModel.selectNextCandidateInStack()`/
-    /// `selectPreviousCandidateInStack()`.
+    /// the next/previous frame in the current stack, stopping at the ends
+    /// without crossing into a neighboring stack. On a standalone frame
+    /// (no stack to navigate within), falls back to stop-to-stop advance
+    /// through the deck instead of going dead. See
+    /// `AppModel.selectNextCandidateInStack()`/`selectPreviousCandidateInStack()`.
     case previousCandidateInStack
     case nextCandidateInStack
     case rating(Int)
