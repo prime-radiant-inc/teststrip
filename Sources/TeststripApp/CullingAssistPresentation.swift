@@ -1,6 +1,6 @@
 import TeststripCore
 
-struct CullingAssistPresentation: Equatable {
+struct CullingAssistPresentation {
     enum Tone: Equatable {
         case waiting
         case positive
@@ -8,52 +8,12 @@ struct CullingAssistPresentation: Equatable {
         case neutral
     }
 
-    var title: String
-    var detail: String
-    var tone: Tone
-    var verdictText: String?
-    var verdictTone: Tone
-
     // Anchored to the 2026-07-06 calibration study on the calibrated
     // focus-family scale: Keep >= 0.7 selects the jointly-strong top quarter
     // of the corpus and Toss <= 0.5 the weak quarter (eyes-shut and
     // bottom-decile-focus frames), leaving roughly half Mixed.
     private static let keepReadThreshold = 0.7
     private static let tossReadThreshold = 0.5
-
-    static func presentation(
-        for signals: [EvaluationSignal],
-        stackGuidance: CullingStackActionPresentation? = nil
-    ) -> CullingAssistPresentation {
-        let verdict = verdict(for: signals)
-        if let stackGuidance,
-           stackGuidance.isEnabled,
-           let stackTitle = stackGuidanceTitle(for: stackGuidance) {
-            return CullingAssistPresentation(
-                title: stackTitle,
-                detail: stackGuidanceDetail(for: stackGuidance, selectedSignals: signals),
-                tone: .positive,
-                verdictText: verdict?.text,
-                verdictTone: verdict?.tone ?? .waiting
-            )
-        }
-        guard let signal = signals.sorted(by: signalSort).first else {
-            return CullingAssistPresentation(
-                title: "No read yet",
-                detail: "Evaluate frame to show culling signals",
-                tone: .waiting,
-                verdictText: verdict?.text,
-                verdictTone: verdict?.tone ?? .waiting
-            )
-        }
-        return CullingAssistPresentation(
-            title: title(for: signal),
-            detail: detail(primarySignal: signal, signals: signals),
-            tone: tone(for: signal),
-            verdictText: verdict?.text,
-            verdictTone: verdict?.tone ?? .waiting
-        )
-    }
 
     // Synthesized display-only read over the same components the stack
     // ranking uses; at least two scored quality kinds are required because
@@ -75,42 +35,11 @@ struct CullingAssistPresentation: Equatable {
         return ("Mixed read \(percentText)", .neutral)
     }
 
-    /// Short rationale phrases for the top signals, in display order — the
-    /// same primary-signal-then-rationale composition `detail(primarySignal:
-    /// signals:)` joins into one line, but as discrete phrases for the reads
-    /// card's row-per-phrase layout. Reused rather than duplicated so the
-    /// HUD line and the reads card can never disagree on the reasons shown.
+    /// Short rationale phrases for the top signals, in display order, for the
+    /// reads card's row-per-phrase layout.
     static func rationalePhrases(for signals: [EvaluationSignal]) -> [String] {
         guard let primarySignal = signals.sorted(by: signalSort).first else { return [] }
         return [title(for: primarySignal)] + rationaleTexts(for: signals, excluding: primarySignal)
-    }
-
-    private static func stackGuidanceTitle(for action: CullingStackActionPresentation) -> String? {
-        switch action.action {
-        case .keepRecommended, .keepTopRanked:
-            return action.assistTitle ?? action.title
-        case .keepSelectedAndRejectAlternates, .keepAll:
-            return nil
-        }
-    }
-
-    private static func stackGuidanceDetail(
-        for action: CullingStackActionPresentation,
-        selectedSignals: [EvaluationSignal]
-    ) -> String {
-        var parts = ["Stack recommendation - \(action.help)"]
-        if let selectedSignal = selectedSignals.sorted(by: signalSort).first {
-            parts.append("Selected: \(detail(primarySignal: selectedSignal, signals: selectedSignals))")
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private static func detail(primarySignal: EvaluationSignal, signals: [EvaluationSignal]) -> String {
-        var parts = [
-            "\(EvaluationSignalPresentation.displayName(for: primarySignal.kind)) - \(primarySignal.provenance.provider) - \(EvaluationSignalPresentation.percentage(primarySignal.confidence)) confidence"
-        ]
-        parts.append(contentsOf: rationaleTexts(for: signals, excluding: primarySignal))
-        return parts.joined(separator: " · ")
     }
 
     private static func rationaleTexts(
@@ -224,37 +153,5 @@ struct CullingAssistPresentation: Equatable {
             return "\(EvaluationSignalPresentation.displayName(for: signal.kind)) sampled"
         }
     }
-
-    private static func tone(for signal: EvaluationSignal) -> Tone {
-        switch (signal.kind, signal.value) {
-        case (.motionBlur, .score(let score)):
-            return score >= 0.5 ? .caution : .positive
-        case (.focus, .score(let score)):
-            return score >= 0.7 ? .positive : .caution
-        case (.faceQuality, .score(let score)):
-            return score >= EvaluationSignalPresentation.faceQualityStrongThreshold ? .positive : .caution
-        case (.aesthetics, .label(let label)), (.framing, .label(let label)):
-            return cautionLabels.contains(label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) ? .caution : .positive
-        case (.faceCount, .count(let count)):
-            return count > 0 ? .positive : .neutral
-        case (.eyesOpen, .score(let score)):
-            return score >= 1.0 ? .positive : .caution
-        case (.eyeSharpness, .score(let score)):
-            return score >= EvaluationSignalPresentation.eyeSharpnessSharpThreshold ? .positive : .caution
-        case (.smile, .score(let score)):
-            return score > 0.0 ? .positive : .neutral
-        default:
-            return .neutral
-        }
-    }
-
-    private static let cautionLabels: Set<String> = [
-        "blur",
-        "blurry",
-        "reject",
-        "soft",
-        "eyes closed",
-        "closed eyes"
-    ]
 
 }

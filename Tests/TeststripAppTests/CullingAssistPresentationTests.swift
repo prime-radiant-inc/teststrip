@@ -3,274 +3,158 @@ import TeststripCore
 @testable import TeststripApp
 
 final class CullingAssistPresentationTests: XCTestCase {
-    func testEmptySignalsShowUnevaluatedState() {
-        let presentation = CullingAssistPresentation.presentation(for: [])
-
-        XCTAssertEqual(presentation.title, "No read yet")
-        XCTAssertEqual(presentation.detail, "Evaluate frame to show culling signals")
-        XCTAssertEqual(presentation.tone, .waiting)
-    }
-
-    func testAestheticLabelBecomesPrimaryVerdict() {
-        let presentation = CullingAssistPresentation.presentation(for: [
+    func testAestheticLabelBecomesPrimaryPhrase() {
+        let phrases = CullingAssistPresentation.rationalePhrases(for: [
             signal(kind: .focus, value: .score(0.91), confidence: 0.82),
             signal(kind: .aesthetics, value: .label("keeper"), confidence: 0.74)
         ])
 
-        XCTAssertEqual(presentation.title, "Keeper")
-        XCTAssertEqual(presentation.detail, "Aesthetics - local-http - 74% confidence · Focus 91%")
-        XCTAssertEqual(presentation.tone, .positive)
+        XCTAssertEqual(phrases, ["Keeper", "Focus 91%"])
     }
 
-    func testDetailCombinesQualitySignalsIntoCompactRationale() {
-        let presentation = CullingAssistPresentation.presentation(for: [
+    func testRationalePhrasesOrderByRankAndExcludeObjectSignals() {
+        let phrases = CullingAssistPresentation.rationalePhrases(for: [
             signal(kind: .focus, value: .score(0.91), confidence: 0.82),
             signal(kind: .motionBlur, value: .score(0.18), confidence: 0.68),
             signal(kind: .faceQuality, value: .score(0.84), confidence: 0.71),
             signal(kind: .object, value: .label("camera"), confidence: 0.88)
         ])
 
-        XCTAssertEqual(presentation.title, "Motion blur 18%")
-        XCTAssertEqual(presentation.detail, "Motion blur - local-http - 68% confidence · Focus 91% · Face quality 84%")
-        XCTAssertEqual(presentation.tone, .positive)
+        XCTAssertEqual(phrases, ["Motion blur 18%", "Focus 91%", "Face quality 84%"])
     }
 
-    func testFocusScoreFormatsAsPercent() {
-        let presentation = CullingAssistPresentation.presentation(for: [
-            signal(kind: .focus, value: .score(0.914), confidence: 0.82)
-        ])
-
-        XCTAssertEqual(presentation.title, "Focus 91%")
-        XCTAssertEqual(presentation.detail, "Focus - local-http - 82% confidence")
-        XCTAssertEqual(presentation.tone, .positive)
-    }
-
-    func testHighMotionBlurUsesCautionTone() {
-        let presentation = CullingAssistPresentation.presentation(for: [
-            signal(kind: .motionBlur, value: .score(0.76), confidence: 0.68)
-        ])
-
-        XCTAssertEqual(presentation.title, "Motion blur 76%")
-        XCTAssertEqual(presentation.detail, "Motion blur - local-http - 68% confidence")
-        XCTAssertEqual(presentation.tone, .caution)
-    }
-
-    func testStackGuidanceOverridesSelectedFrameReadWhenRecommendedActionExists() {
-        let presentation = CullingAssistPresentation.presentation(
-            for: [
-                signal(kind: .focus, value: .score(0.42), confidence: 0.8)
-            ],
-            stackGuidance: CullingStackActionPresentation(
-                action: .keepRecommended(AssetID(rawValue: "alternate")),
-                title: "Keep recommended 3",
-                isEnabled: true,
-                help: "Keep frame 3 based on focus and quality signals.",
-                liveMockupPlaceholder: nil,
-                assistTitle: "Recommended frame 3"
-            )
+    func testSingleSignalPhraseFormatsAsPercent() {
+        XCTAssertEqual(
+            CullingAssistPresentation.rationalePhrases(for: [
+                signal(kind: .focus, value: .score(0.914), confidence: 0.82)
+            ]),
+            ["Focus 91%"]
         )
-
-        XCTAssertEqual(presentation.title, "Recommended frame 3")
-        XCTAssertEqual(presentation.detail, "Stack recommendation - Keep frame 3 based on focus and quality signals. · Selected: Focus - local-http - 80% confidence")
-        XCTAssertEqual(presentation.tone, .positive)
-    }
-
-    func testTopRankedStackGuidanceUsesStructuredReadTitle() {
-        let presentation = CullingAssistPresentation.presentation(
-            for: [
-                signal(kind: .focus, value: .score(0.88), confidence: 0.82)
-            ],
-            stackGuidance: CullingStackActionPresentation(
-                action: .keepTopRanked([
-                    AssetID(rawValue: "alternate"),
-                    AssetID(rawValue: "selected")
-                ]),
-                title: "Keep top 2",
-                isEnabled: true,
-                help: "Keep the two top-ranked frames based on focus and quality signals.",
-                liveMockupPlaceholder: nil,
-                assistTitle: "Top 2 frames"
-            )
+        XCTAssertEqual(
+            CullingAssistPresentation.rationalePhrases(for: [
+                signal(kind: .motionBlur, value: .score(0.76), confidence: 0.68)
+            ]),
+            ["Motion blur 76%"]
         )
-
-        XCTAssertEqual(presentation.title, "Top 2 frames")
-        XCTAssertEqual(presentation.detail, "Stack recommendation - Keep the two top-ranked frames based on focus and quality signals. · Selected: Focus - local-http - 82% confidence")
-        XCTAssertEqual(presentation.tone, .positive)
     }
 
-    func testIgnoredStackGuidancePreservesSelectedFrameRead() {
-        let selectedSignals = [
-            signal(kind: .focus, value: .score(0.91), confidence: 0.82)
-        ]
-        let ignoredActions = [
-            CullingStackActionPresentation(
-                action: .keepRecommended(AssetID(rawValue: "alternate")),
-                title: "Keep recommended 3",
-                isEnabled: false,
-                help: "Keep frame 3 based on focus and quality signals.",
-                liveMockupPlaceholder: nil,
-                assistTitle: "Recommended frame 3"
-            ),
-            CullingStackActionPresentation(
-                action: .keepAll,
-                title: "Keep all 3",
-                isEnabled: true,
-                help: "Keep every frame in this stack.",
-                liveMockupPlaceholder: nil,
-                assistTitle: "Keep all frames"
-            )
-        ]
-
-        for action in ignoredActions {
-            let presentation = CullingAssistPresentation.presentation(
-                for: selectedSignals,
-                stackGuidance: action
-            )
-
-            XCTAssertEqual(presentation.title, "Focus 91%")
-            XCTAssertEqual(presentation.detail, "Focus - local-http - 82% confidence")
-            XCTAssertEqual(presentation.tone, .positive)
-        }
-    }
-
-    func testEyeSignalsJoinVerdictRationaleAfterFocus() {
-        let presentation = CullingAssistPresentation.presentation(for: [
+    func testEyeSignalsJoinRationaleAfterFocus() {
+        let phrases = CullingAssistPresentation.rationalePhrases(for: [
             signal(kind: .focus, value: .score(0.91), confidence: 0.82),
             signal(kind: .eyesOpen, value: .score(1.0), confidence: 0.7),
             signal(kind: .eyeSharpness, value: .score(0.84), confidence: 0.6)
         ])
 
-        XCTAssertEqual(presentation.title, "Focus 91%")
-        XCTAssertEqual(presentation.detail, "Focus - local-http - 82% confidence · Eyes open · Eyes sharp")
-        XCTAssertEqual(presentation.tone, .positive)
+        XCTAssertEqual(phrases, ["Focus 91%", "Eyes open", "Eyes sharp"])
     }
 
-    func testAllEyesShutBecomesCautionVerdictWhenPrimary() {
-        let presentation = CullingAssistPresentation.presentation(for: [
-            signal(kind: .eyesOpen, value: .score(0.0), confidence: 0.7)
-        ])
-
-        XCTAssertEqual(presentation.title, "Eyes shut")
-        XCTAssertEqual(presentation.detail, "Eyes open - local-http - 70% confidence")
-        XCTAssertEqual(presentation.tone, .caution)
+    func testEyesShutBecomesThePhraseWhenPrimary() {
+        XCTAssertEqual(
+            CullingAssistPresentation.rationalePhrases(for: [
+                signal(kind: .eyesOpen, value: .score(0.0), confidence: 0.7)
+            ]),
+            ["Eyes shut"]
+        )
     }
 
     func testPartialBlinkReadsAsSomeEyesShut() {
-        let presentation = CullingAssistPresentation.presentation(for: [
-            signal(kind: .focus, value: .score(0.91), confidence: 0.82),
-            signal(kind: .eyesOpen, value: .score(0.5), confidence: 0.7)
-        ])
-
-        XCTAssertEqual(presentation.detail, "Focus - local-http - 82% confidence · Some eyes shut")
+        XCTAssertEqual(
+            CullingAssistPresentation.rationalePhrases(for: [
+                signal(kind: .focus, value: .score(0.91), confidence: 0.82),
+                signal(kind: .eyesOpen, value: .score(0.5), confidence: 0.7)
+            ]),
+            ["Focus 91%", "Some eyes shut"]
+        )
     }
 
-    func testSoftEyesUseCautionPhraseAndTone() {
-        let presentation = CullingAssistPresentation.presentation(for: [
-            signal(kind: .eyeSharpness, value: .score(0.3), confidence: 0.6)
-        ])
-
-        XCTAssertEqual(presentation.title, "Eyes soft")
-        XCTAssertEqual(presentation.tone, .caution)
+    func testSoftEyesReadAsEyesSoft() {
+        XCTAssertEqual(
+            CullingAssistPresentation.rationalePhrases(for: [
+                signal(kind: .eyeSharpness, value: .score(0.3), confidence: 0.6)
+            ]),
+            ["Eyes soft"]
+        )
     }
 
     func testSmilePhraseAppearsOnlyWhenSomeoneSmiles() {
-        let noSmiles = CullingAssistPresentation.presentation(for: [
-            signal(kind: .focus, value: .score(0.91), confidence: 0.82),
-            signal(kind: .smile, value: .score(0.0), confidence: 0.7)
-        ])
-        XCTAssertEqual(noSmiles.detail, "Focus - local-http - 82% confidence")
+        XCTAssertEqual(
+            CullingAssistPresentation.rationalePhrases(for: [
+                signal(kind: .focus, value: .score(0.91), confidence: 0.82),
+                signal(kind: .smile, value: .score(0.0), confidence: 0.7)
+            ]),
+            ["Focus 91%"]
+        )
 
-        let allSmiling = CullingAssistPresentation.presentation(for: [
-            signal(kind: .focus, value: .score(0.91), confidence: 0.82),
-            signal(kind: .smile, value: .score(1.0), confidence: 0.7)
-        ])
-        XCTAssertEqual(allSmiling.detail, "Focus - local-http - 82% confidence · Smiling")
+        XCTAssertEqual(
+            CullingAssistPresentation.rationalePhrases(for: [
+                signal(kind: .focus, value: .score(0.91), confidence: 0.82),
+                signal(kind: .smile, value: .score(1.0), confidence: 0.7)
+            ]),
+            ["Focus 91%", "Smiling"]
+        )
+    }
+
+    func testTopQuartileCalibratedEyeSharpnessReadsAsEyesSharp() {
+        // Calibrated eyeSharpness p75 is 0.33 (raw 0.05 / 0.15); scores at or
+        // above it read "Eyes sharp".
+        XCTAssertEqual(
+            CullingAssistPresentation.rationalePhrases(for: [
+                signal(kind: .eyeSharpness, value: .score(0.4), confidence: 0.6)
+            ]),
+            ["Eyes sharp"]
+        )
     }
 
     func testVerdictSynthesizesKeepReadFromStrongQualityKinds() {
-        let presentation = CullingAssistPresentation.presentation(for: [
+        let verdict = CullingAssistPresentation.verdict(for: [
             signal(kind: .focus, value: .score(0.96), confidence: 1.0),
             signal(kind: .aesthetics, value: .score(0.9), confidence: 1.0)
         ])
 
         // (0.96 * 100 + 0.9 * 50) / 150 = 0.94
-        XCTAssertEqual(presentation.verdictText, "Keep read 94%")
-        XCTAssertEqual(presentation.verdictTone, .positive)
+        XCTAssertEqual(verdict?.text, "Keep read 94%")
+        XCTAssertEqual(verdict?.tone, .positive)
     }
 
     func testVerdictSynthesizesTossReadFromDefects() {
-        let presentation = CullingAssistPresentation.presentation(for: [
+        let verdict = CullingAssistPresentation.verdict(for: [
             signal(kind: .focus, value: .score(0.2), confidence: 1.0),
             signal(kind: .motionBlur, value: .score(0.9), confidence: 1.0)
         ])
 
         // (0.2 * 100 + (1 - 0.9) * 60) / 160 = 0.16
-        XCTAssertEqual(presentation.verdictText, "Toss read 16%")
-        XCTAssertEqual(presentation.verdictTone, .caution)
+        XCTAssertEqual(verdict?.text, "Toss read 16%")
+        XCTAssertEqual(verdict?.tone, .caution)
     }
 
     func testVerdictReportsMixedReadBetweenThresholds() {
-        let presentation = CullingAssistPresentation.presentation(for: [
+        let verdict = CullingAssistPresentation.verdict(for: [
             signal(kind: .focus, value: .score(0.6), confidence: 1.0),
             signal(kind: .aesthetics, value: .score(0.6), confidence: 1.0)
         ])
 
-        XCTAssertEqual(presentation.verdictText, "Mixed read 60%")
-        XCTAssertEqual(presentation.verdictTone, .neutral)
+        XCTAssertEqual(verdict?.text, "Mixed read 60%")
+        XCTAssertEqual(verdict?.tone, .neutral)
     }
 
     func testVerdictTossesWeakCalibratedReadBelowHalf() {
         // A weak frame on the calibrated scale: focus 0.4 is below the
         // corpus p5 anchor, so the read lands at (0.4 * 100 + 0.56 * 50)
         // / 150 = 0.45 - inside the recalibrated Toss band (<= 0.5).
-        let presentation = CullingAssistPresentation.presentation(for: [
+        let verdict = CullingAssistPresentation.verdict(for: [
             signal(kind: .focus, value: .score(0.4), confidence: 1.0),
             signal(kind: .aesthetics, value: .score(0.56), confidence: 1.0)
         ])
 
-        XCTAssertEqual(presentation.verdictText, "Toss read 45%")
-        XCTAssertEqual(presentation.verdictTone, .caution)
-    }
-
-    func testTopQuartileCalibratedEyeSharpnessReadsAsEyesSharp() {
-        // Calibrated eyeSharpness p75 is 0.33 (raw 0.05 / 0.15); scores at or
-        // above it read "Eyes sharp" with a positive tone.
-        let presentation = CullingAssistPresentation.presentation(for: [
-            signal(kind: .eyeSharpness, value: .score(0.4), confidence: 0.6)
-        ])
-
-        XCTAssertEqual(presentation.title, "Eyes sharp")
-        XCTAssertEqual(presentation.tone, .positive)
-    }
-
-    func testFaceQualityToneUsesCalibratedStrongAnchor() {
-        // Vision faceCaptureQuality maxes out at 0.703 on the study corpus,
-        // so the shared 0.7 positive line rendered virtually every face
-        // read as caution. Face quality tones at the calibrated strong
-        // anchor (p75, 0.45), matching the Potential Picks queue.
-        let strong = CullingAssistPresentation.presentation(for: [
-            signal(kind: .faceQuality, value: .score(0.6), confidence: 0.7)
-        ])
-        let weak = CullingAssistPresentation.presentation(for: [
-            signal(kind: .faceQuality, value: .score(0.4), confidence: 0.7)
-        ])
-
-        XCTAssertEqual(strong.title, "Face quality 60%")
-        XCTAssertEqual(strong.tone, .positive)
-        XCTAssertEqual(weak.title, "Face quality 40%")
-        XCTAssertEqual(weak.tone, .caution)
+        XCTAssertEqual(verdict?.text, "Toss read 45%")
+        XCTAssertEqual(verdict?.tone, .caution)
     }
 
     func testVerdictRequiresAtLeastTwoScoredQualityKinds() {
-        let single = CullingAssistPresentation.presentation(for: [
+        XCTAssertNil(CullingAssistPresentation.verdict(for: [
             signal(kind: .focus, value: .score(0.96), confidence: 1.0)
-        ])
-        let none = CullingAssistPresentation.presentation(for: [])
-
-        XCTAssertNil(single.verdictText)
-        XCTAssertEqual(single.verdictTone, .waiting)
-        XCTAssertNil(none.verdictText)
-        XCTAssertEqual(none.verdictTone, .waiting)
+        ]))
+        XCTAssertNil(CullingAssistPresentation.verdict(for: []))
     }
 
     private func signal(kind: EvaluationKind, value: EvaluationValue, confidence: Double) -> EvaluationSignal {

@@ -1,16 +1,8 @@
 import TeststripCore
 
-/// A stack-aware filmstrip: frames grouped by the same auto-grouped stacks
-/// that feed `CullSidebarView`, with a divider exactly between adjacent
-/// stacks (never at the ends, never within a stack).
+/// A stack-aware filmstrip counter: the run strip's status-bar position text,
+/// computed from the same auto-grouped stacks that feed `CullSidebarView`.
 struct CullFilmstripPresentation: Equatable {
-    enum Item: Equatable {
-        case frame(AssetID)
-        case stackDivider
-    }
-
-    var items: [Item]
-    var positionText: String
     /// The status bar's compact "N of T · stack S of Σ · frame F of M":
     /// overall position, which stack, and position within that stack (the
     /// third segment is dropped on a standalone, where it would always read
@@ -28,22 +20,12 @@ struct CullFilmstripPresentation: Equatable {
         frameNumberOffset: Int = 0,
         totalFrameCount: Int? = nil
     ) {
-        var items: [Item] = []
-        for (index, stack) in stacks.enumerated() {
-            if index > 0 {
-                items.append(.stackDivider)
-            }
-            items.append(contentsOf: stack.assetIDs.map(Item.frame))
-        }
-        self.items = items
         let resolved = Self.resolvedPosition(assets: assets, stacks: stacks, selectedAssetID: selectedAssetID, totalFrameCount: totalFrameCount)
         let fallback = Self.fallbackCountText(assets: assets, totalFrameCount: totalFrameCount)
-        self.positionText = Self.positionText(resolved: resolved, stacks: stacks, frameNumberOffset: frameNumberOffset, fallback: fallback)
         self.tripleCounterText = Self.tripleCounterText(resolved: resolved, stacks: stacks, frameNumberOffset: frameNumberOffset, fallback: fallback)
     }
 
-    /// The selected asset's position, resolved once and shared by
-    /// `positionText`/`tripleCounterText` so both agree on the same lookup —
+    /// The selected asset's position, resolved once for `tripleCounterText` —
     /// nil whenever there's nothing to report a position for (no selection,
     /// selection missing from `assets`/`stacks`, or an empty scope).
     private struct ResolvedPosition {
@@ -72,16 +54,6 @@ struct CullFilmstripPresentation: Equatable {
     private static func fallbackCountText(assets: [Asset], totalFrameCount: Int?) -> String {
         let totalFrames = max(totalFrameCount ?? assets.count, assets.count)
         return "\(totalFrames) \(totalFrames == 1 ? "frame" : "frames")"
-    }
-
-    private static func positionText(
-        resolved: ResolvedPosition?,
-        stacks: [AssetStack],
-        frameNumberOffset: Int,
-        fallback: String
-    ) -> String {
-        guard let resolved else { return fallback }
-        return "frame \(frameNumberOffset + resolved.frameIndex + 1) / \(resolved.totalFrames) · stack \(resolved.stackIndex + 1) / \(stacks.count)"
     }
 
     private static func tripleCounterText(
