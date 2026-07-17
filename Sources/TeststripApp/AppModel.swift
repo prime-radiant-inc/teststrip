@@ -2199,6 +2199,13 @@ public final class AppModel {
     /// Whether the cull loupe shows the faces+reads right panel. Toggled
     /// with the `/` shortcut; session-only — deliberately not persisted.
     public private(set) var showsCullFacesPanel: Bool = true
+    /// The current cull run's viewed/skipped tracking, behind the completion
+    /// summary's skipped/neverViewed counts. Viewed is recorded at
+    /// `selectAssetID` (the single choke point every culling navigation path
+    /// funnels through); skipped only by the Space `.nextPhoto` arm. Reset
+    /// when the cull source/batch changes (`startCullRunTracking`), NOT on
+    /// `S` scope cycling.
+    private(set) var cullRunTracker = CullRunTracker()
     public private(set) var selectedBatchAssetIDs: Set<AssetID>
     /// Whether the on-demand inspector (⌘I) is shown, presented via
     /// `.inspector()` and gated by `WorkspaceChromePolicy.showsInspector`.
@@ -4817,6 +4824,12 @@ public final class AppModel {
         selectedAssetID = assetID
         updateCompareSetAfterSelectionChange(to: assetID)
         guard let assetID else { return }
+        // The single selection choke point every culling navigation path
+        // funnels through (Space, ←/→ and H/L stops, J/K in-stack, Return's
+        // post-commit advance, run-strip clicks, cull-sidebar stack clicks):
+        // the frame the selection lands on has been on stage — record it for
+        // the completion summary's neverViewed (scope ∖ viewed) count.
+        cullRunTracker.recordViewed(assetID)
         do {
             try refreshSelectedPreviewGenerationQueueStates(for: assetID)
         } catch {
@@ -5086,6 +5099,7 @@ public final class AppModel {
             selectAssetID(recommendedCullingStackAssetID(in: firstStackAssetIDs) ?? firstStackAssetIDs.first)
         }
         selectedView = .loupe
+        startCullRunTracking()
 
         let totalUnitCount = stacks.reduce(0) { $0 + $1.assetIDs.count }
         let activity = AppWorkActivity(
@@ -5618,6 +5632,53 @@ public final class AppModel {
         cullingSessionCompletion = nil
     }
 
+    /// The `.savePicksAsSet` completion action. With an active culling
+    /// session, re-runs the same `refreshCullingSessionOutputSet` snapshot
+    /// every flag change maintains, so the persisted "<title> Picks" set is
+    /// current even when flags were written behind the session's back. For
+    /// an ad-hoc (session-less) cull, snapshots the scope's confirmed picks
+    /// through `saveAndSelect` — the same path every other set save uses.
+    /// Confirmed picks only, either way: a tentative AI pick never lands in
+    /// a persisted set (confirm-before-write).
+    @discardableResult
+    public func saveCullingPicksAsSet() throws -> AssetSet {
+        guard let catalog else {
+            throw TeststripError.invalidState("app model has no catalog")
+        }
+        if var session = try activeCullingSession(repository: catalog.repository) {
+            try refreshCullingSessionOutputSet(session: &session, repository: catalog.repository)
+            session.updatedAt = Date()
+            try catalog.repository.save(session)
+            let outputSetID = Self.cullingOutputSetID(sessionID: session.id)
+            guard let outputSet = savedAssetSets.first(where: { $0.id == outputSetID }) else {
+                throw TeststripError.invalidState("there are no confirmed picks to save")
+            }
+            statusMessage = "Saved \(outputSet.name)"
+            return outputSet
+        }
+        let pickedAssetIDs = assets
+            .filter { $0.metadata.confirmedProjection.flag == .pick }
+            .map(\.id)
+        guard !pickedAssetIDs.isEmpty else {
+            throw TeststripError.invalidState("there are no confirmed picks to save")
+        }
+        return try saveAndSelect(AssetSet(
+            id: .new(),
+            name: suggestedPicksSetName,
+            membership: .snapshot(pickedAssetIDs)
+        ))
+    }
+
+    private var suggestedPicksSetName: String {
+        if let selectedAssetSet {
+            return "\(selectedAssetSet.name) Picks"
+        }
+        if currentLibraryQuery() != nil {
+            return "\(suggestedSavedSearchName) Picks"
+        }
+        return "Catalog Picks"
+    }
+
     // Starts a normal (non-stack) culling session over the singles a stack
     // cull left unreviewed, reusing beginCullingSession's session-start path
     // by first scoping the library to exactly those frames.
@@ -5647,6 +5708,18 @@ public final class AppModel {
             named: title,
             intent: "Cull remaining singles from \(completion.title)"
         )
+    }
+
+    // A new cull batch is a fresh run: the viewed/skipped tracker resets, and
+    // whatever frame the batch landed on is on stage right now — record it as
+    // viewed so the completion summary's neverViewed set can never include
+    // the opening frame. Called from every batch-start path (beginCullingSession
+    // and the persisted-stack start); deliberately NOT from `S` scope cycling.
+    private func startCullRunTracking() {
+        cullRunTracker.reset()
+        if let selectedAssetID {
+            cullRunTracker.recordViewed(selectedAssetID)
+        }
     }
 
     @discardableResult
@@ -5683,6 +5756,7 @@ public final class AppModel {
             }
             selectedView = .loupe
         }
+        startCullRunTracking()
         activeCullingSessionID = sessionID
 
         let detail = trimmedIntent.isEmpty ? "Culling \(Self.photoCountDescription(totalUnitCount))" : trimmedIntent
@@ -6473,6 +6547,12 @@ public final class AppModel {
             try selectPreviousAssetForCulling()
         case .nextPhoto:
             clearCullingMetadataDecisionFeedback()
+            // Space is the decision-free advance: leaving a frame that is
+            // still undecided (confirmed math — a tentative AI flag is not a
+            // decision) is a skip, recorded for the completion summary.
+            if let selectedAsset, selectedAsset.metadata.confirmedProjection.flag == nil {
+                cullRunTracker.recordSkipped(selectedAsset.id)
+            }
             try selectNextAssetForCulling()
         case .previousStack:
             clearCullingMetadataDecisionFeedback()

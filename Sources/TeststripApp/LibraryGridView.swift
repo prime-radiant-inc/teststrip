@@ -3783,12 +3783,11 @@ private struct LoupeView: View {
     // asset/scope.
     private var cullCompletion: CullCompletionPresentation? {
         guard !isCullCompletionDismissed else { return nil }
-        let summary = model.cullingProgressSummary
         return CullCompletionPresentation.presentation(
-            pickCount: summary.pickCount,
-            rejectCount: summary.rejectCount,
-            totalCount: summary.totalCount,
-            undecidedCount: model.cullUndecidedCount,
+            assets: model.assets,
+            viewedAssetIDs: model.cullRunTracker.viewedAssetIDs,
+            skippedAssetIDs: model.cullRunTracker.skippedAssetIDs,
+            pendingProposalAssetIDs: Set(model.pendingAutopilotProposals.map(\.assetID)),
             scope: model.cullScope
         )
     }
@@ -3892,6 +3891,12 @@ private struct LoupeView: View {
             Text("\(completion.picks) picks · \(completion.rejects) rejects")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            // The run-coverage row: what "done" glossed over — frames Space
+            // skipped (and never decided), frames the run never landed on,
+            // and AI suggestions still awaiting review.
+            Text(cullCompletionRunDetailText(completion))
+                .font(.caption)
+                .foregroundStyle(.secondary)
             if let summary = model.autopilotRunSummary {
                 autopilotBanner(summary: summary)
                     .frame(maxWidth: 420)
@@ -3939,9 +3944,30 @@ private struct LoupeView: View {
             case .reviewPicks:
                 Button("Review Picks") { model.applyCullCompletionReviewPicks() }
                     .buttonStyle(.bordered)
+            case .reviewAISuggestions:
+                Button("Review AI Suggestions") { reviewAutopilotRun() }
+                    .buttonStyle(.bordered)
+            case .savePicksAsSet:
+                Button("Save Picks as Set") { savePicksAsSet() }
+                    .buttonStyle(.bordered)
             }
         }
         .controlSize(.regular)
+    }
+
+    private func cullCompletionRunDetailText(_ completion: CullCompletionPresentation) -> String {
+        let skippedText = "\(completion.skipped) skipped"
+        let neverViewedText = "\(completion.neverViewed) never viewed"
+        let sparkleText = "\(completion.sparkleAwaiting) AI \(completion.sparkleAwaiting == 1 ? "suggestion" : "suggestions") awaiting review"
+        return "\(skippedText) · \(neverViewedText) · \(sparkleText)"
+    }
+
+    private func savePicksAsSet() {
+        do {
+            try model.saveCullingPicksAsSet()
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     // Plain prev/next navigation for the Library loupe: no pick/reject,
