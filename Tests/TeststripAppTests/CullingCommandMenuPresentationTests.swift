@@ -30,13 +30,27 @@ final class CullingCommandMenuPresentationTests: XCTestCase {
 
     // Task 2: the `A` auto-advance toggle sits alongside `S` cycle-filter —
     // both are run-control mode toggles, not decisions or navigation.
-    func testFilterSectionExposesCycleFilterAndAutoAdvanceToggle() {
+    // T7.5: the land-on-recommended-frame preference joins them here for the
+    // same reason — a run-control mode toggle, not a decision or navigation
+    // shortcut — but unlike its neighbors it has no keyboard shortcut at all
+    // (see testLandOnRecommendedFrameToggleHasNoKeyDecodePath below).
+    func testFilterSectionExposesCycleFilterAutoAdvanceAndLandOnRecommendedFrameToggles() {
         let filter = CullingCommandMenuPresentation.sections.first { $0.title == "Filter" }
 
         XCTAssertEqual(filter?.items, [
             CullingCommandMenuItem(title: "Cycle Filter", shortcut: .cycleScope, key: .character("s")),
-            CullingCommandMenuItem(title: "Toggle Auto-Advance", shortcut: .toggleAutoAdvance, key: .character("a"))
+            CullingCommandMenuItem(title: "Toggle Auto-Advance", shortcut: .toggleAutoAdvance, key: .character("a")),
+            CullingCommandMenuItem(title: "Toggle Land on Recommended Frame", shortcut: .toggleLandOnRecommendedFrame, key: .character("—"))
         ])
+    }
+
+    // T7.5: unlike every other row (which also has a real key decoded by
+    // CullingShortcut.init(key:), just not bound as an NSMenu key
+    // equivalent — see CullingMenuSingleKeyOwnerTests below), this
+    // preference toggle has no keyboard path at all: it's reachable by menu
+    // click only, by construction.
+    func testLandOnRecommendedFrameToggleHasNoKeyDecodePath() {
+        XCTAssertNil(CullingShortcut(key: .character("—")))
     }
 }
 

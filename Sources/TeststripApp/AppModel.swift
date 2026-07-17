@@ -191,6 +191,12 @@ public struct CullingStackListEntry: Equatable, Identifiable, Sendable {
 public enum CullingShortcut: Equatable, Sendable {
     case previousPhoto
     case nextPhoto
+    /// ←/→ (and H/L): walks the full STOP sequence in capture order — every
+    /// multi-frame stack AND every standalone photo, each a stop in its own
+    /// right (tutorial.md §1/§4: "a photo that stands alone is simply its
+    /// own stop on the walk"). See `AppModel.selectCullingStack(_:)`, which
+    /// builds the sequence from `AppModel.allCullingStacks(for:)` rather
+    /// than the multi-frame-only `cullingStacks()` the rail/HUD use.
     case previousStack
     case nextStack
     /// ↑/↓ within-stack navigation (cull-stack-rail): moves the selection to
@@ -208,6 +214,14 @@ public enum CullingShortcut: Equatable, Sendable {
     /// P/X/rating/color-label decision moves the selection afterward. See
     /// `AppModel.toggleCullAutoAdvance()`.
     case toggleAutoAdvance
+    /// T7.5: toggles `AppModel.cullLandOnRecommendedFrame`, which governs
+    /// whether arrival at a multi-frame stop lands on the AI-recommended
+    /// frame (✦) or frame 1. Click-only by design — a Culling-menu row with
+    /// no keyboard shortcut (see `CullingCommandMenuPresentation.sections`);
+    /// deliberately absent from `init?(key:)`/`init?(event:)` so no
+    /// keystroke can ever produce it. See
+    /// `AppModel.toggleCullLandOnRecommendedFrame()`.
+    case toggleLandOnRecommendedFrame
     /// Bare /: toggles `AppModel.showsCullFacesPanel`, the cull loupe's
     /// faces+reads right panel. Shift+/ ("?") stays `.showKeyMap` via the
     /// shift-aware NSEvent branch in `CullingShortcut.init(event:)`.
@@ -593,7 +607,12 @@ public enum CullingCommandMenuPresentation {
         ]),
         CullingCommandMenuSection(title: "Filter", items: [
             CullingCommandMenuItem(title: "Cycle Filter", shortcut: .cycleScope, key: .character("s")),
-            CullingCommandMenuItem(title: "Toggle Auto-Advance", shortcut: .toggleAutoAdvance, key: .character("a"))
+            CullingCommandMenuItem(title: "Toggle Auto-Advance", shortcut: .toggleAutoAdvance, key: .character("a")),
+            // T7.5: click-only — "—" (no key.displayText glyph) rather than
+            // a real character, since this row (unlike its neighbors above)
+            // has no keyboard shortcut at all; see CullingShortcut's
+            // `.toggleLandOnRecommendedFrame` doc comment for why.
+            CullingCommandMenuItem(title: "Toggle Land on Recommended Frame", shortcut: .toggleLandOnRecommendedFrame, key: .character("—"))
         ]),
         CullingCommandMenuSection(title: "Compare", items: [
             CullingCommandMenuItem(title: "Keep A · Reject B", shortcut: .keepAOverB, key: .character(",")),
@@ -639,10 +658,6 @@ private struct IndexedCullingStack {
     var stack: AssetStack
     var firstIndex: Int
     var lastIndex: Int
-
-    var firstAssetID: AssetID? {
-        stack.assetIDs.first
-    }
 }
 
 public enum ReviewQueue: String, CaseIterable, Equatable, Hashable, Sendable {
@@ -1912,24 +1927,35 @@ public struct CullingMetadataDecisionFeedback: Equatable, Sendable {
     public var filename: String
     public var command: CullingCommand
     public var decisionText: String
-    /// True for feedback that didn't write any metadata (item 4's
-    /// single-frame-stack notice) — the toast shows `decisionText` verbatim,
-    /// skipping the ✓/✕/★ symbol and "— ⌘Z undoes" suffix that would
-    /// misleadingly imply something changed.
+    /// True when no metadata was written by this decision (a scope change,
+    /// a mode toggle, item 4's single-frame-stack notice, the render-pending
+    /// gate) — the toast must not imply an undoable edit: no symbol, no
+    /// "⌘Z undoes". This is a test-enforced contract (`CullScopeTests`); a
+    /// decision that writes metadata must never set this, even if its text
+    /// is self-composed — see `rendersVerbatim` for that case.
     public var isInformational: Bool
+    /// True when `decisionText` is already fully composed — it names the
+    /// frame and, for a decision with something to undo, discloses its own
+    /// "⌘Z undoes" hint (the stack-promote force-flip toast) — so the
+    /// generic toast wrap (symbol + filename + "— ⌘Z undoes") must be
+    /// skipped. Independent of `isInformational`: a verbatim toast can still
+    /// write metadata and have something to undo.
+    public var rendersVerbatim: Bool
 
     public init(
         assetID: AssetID,
         filename: String,
         command: CullingCommand,
         decisionText: String,
-        isInformational: Bool = false
+        isInformational: Bool = false,
+        rendersVerbatim: Bool = false
     ) {
         self.assetID = assetID
         self.filename = filename
         self.command = command
         self.decisionText = decisionText
         self.isInformational = isInformational
+        self.rendersVerbatim = rendersVerbatim
     }
 
     /// True when the decision was a rating keystroke (including clear-to-zero),
@@ -2163,6 +2189,13 @@ public final class AppModel {
     /// afterward (to the next undecided stack frame, or the next stack's
     /// landing frame). Toggled with the `a` shortcut; default on.
     public private(set) var cullAutoAdvanceEnabled: Bool = true
+    /// Whether arrival at a multi-frame stop (←/→, H/L, or Return's
+    /// post-commit advance) lands on the AI-recommended frame (✦ / first
+    /// tied leader) or frame 1 (capture order). Toggled from the Culling
+    /// menu only — no keyboard shortcut; session-only — deliberately not
+    /// persisted. Default on. See `recommendedStackLandingAssetID(for:)`,
+    /// the single landing helper every arrival path shares.
+    public private(set) var cullLandOnRecommendedFrame: Bool = true
     /// Whether the cull loupe shows the faces+reads right panel. Toggled
     /// with the `/` shortcut; session-only — deliberately not persisted.
     public private(set) var showsCullFacesPanel: Bool = true
@@ -6247,6 +6280,17 @@ public final class AppModel {
         }
         let context = try selectedCullingStackDecisionContext()
         let originalAsset = selectedAsset
+        // Render gate: Return force-commits the stack decision, so it must
+        // not fire against a preview that hasn't rendered yet — the staged
+        // frame is what the user is actually looking at. No metadata write
+        // happens while the gate is closed; a second Return after the
+        // preview lands commits normally.
+        guard previewURL(for: context.selectedAssetID, levels: [.large]) != nil else {
+            if let originalAsset {
+                lastCullingMetadataDecision = Self.renderPendingFeedback(asset: originalAsset)
+            }
+            return
+        }
         // Jesse's ruling (2026-07-11): a sibling the user already picked is
         // protected — promote never reflags a pick to reject. Flag provenance
         // isn't recorded (autopilot commits write plain picks), so ALL picked
@@ -6268,6 +6312,11 @@ public final class AppModel {
             lastCullingMetadataDecision = Self.promoteDecisionFeedback(
                 asset: originalAsset,
                 siblingCount: context.stack.assetIDs.count - 1 - protectedPickedSiblings.count,
+                // A tentative (AI-unconfirmed) reject is undecided, not a
+                // real prior decision — only a confirmed reject discloses
+                // "(was ✕)" (the force-flip is otherwise invisible: Return
+                // silently overrides what looked like a settled reject).
+                wasRejected: originalAsset.metadata.confirmedProjection.flag == .reject,
                 protectedPickedSiblings: protectedPickedSiblings
             )
         }
@@ -6283,28 +6332,43 @@ public final class AppModel {
         )
     }
 
+    private static func renderPendingFeedback(asset: Asset) -> CullingMetadataDecisionFeedback {
+        CullingMetadataDecisionFeedback(
+            assetID: asset.id,
+            filename: asset.originalURL.lastPathComponent,
+            command: .clearFlag,
+            decisionText: "Rendering full preview…",
+            isInformational: true
+        )
+    }
+
     private static func promoteDecisionFeedback(
         asset: Asset,
         siblingCount: Int,
+        wasRejected: Bool,
         protectedPickedSiblings: [Asset] = []
     ) -> CullingMetadataDecisionFeedback {
-        var components: [String] = ["Picked"]
+        var components: [String] = ["Kept \(asset.originalURL.lastPathComponent)\(wasRejected ? " (was ✕)" : "")"]
         if siblingCount > 0 {
-            components.append("\(siblingCount) sibling\(siblingCount == 1 ? "" : "s") rejected")
+            components.append("rejected \(siblingCount)")
         }
         if protectedPickedSiblings.count == 1, let kept = protectedPickedSiblings.first {
             components.append("kept your pick of \(kept.originalURL.lastPathComponent)")
         } else if protectedPickedSiblings.count > 1 {
             components.append("kept your picks of \(protectedPickedSiblings.count) siblings")
         }
-        let decisionText = components.count > 1
-            ? components.joined(separator: " · ")
-            : cullingMetadataDecisionText(.pick)
+        components.append("⌘Z undoes")
         return CullingMetadataDecisionFeedback(
             assetID: asset.id,
             filename: asset.originalURL.lastPathComponent,
             command: .pick,
-            decisionText: decisionText
+            decisionText: components.joined(separator: " · "),
+            // decisionText already names the frame and the undo hint, so the
+            // generic toast wrap (which would prepend the filename again and
+            // append a second "⌘Z undoes") must be skipped. This writes
+            // metadata and has something to undo, so isInformational stays
+            // false — rendersVerbatim is the one that's true here.
+            rendersVerbatim: true
         )
     }
 
@@ -6362,7 +6426,15 @@ public final class AppModel {
         if try selectPersistedCullingStack(.next) {
             return
         } else if let nextAssetID = context.nextAssetID {
-            selectAssetID(nextAssetID)
+            // Land like ←/→ do: if the raw next asset belongs to a
+            // multi-frame stack, jump to that stack's recommended frame (✦ or
+            // first tied leader) rather than whichever frame happens to sit
+            // first in deck order.
+            if let nextStack = cullingStacks().first(where: { $0.assetIDs.contains(nextAssetID) }) {
+                selectAssetID(recommendedStackLandingAssetID(for: nextStack) ?? nextAssetID)
+            } else {
+                selectAssetID(nextAssetID)
+            }
         }
     }
 
@@ -6426,6 +6498,8 @@ public final class AppModel {
             try applyCullingCommandAndAdvance(.clearFlag)
         case .toggleAutoAdvance:
             toggleCullAutoAdvance()
+        case .toggleLandOnRecommendedFrame:
+            toggleCullLandOnRecommendedFrame()
         case .toggleFacesPanel:
             toggleCullFacesPanel()
         case .promoteAndRejectSiblings:
@@ -6528,6 +6602,21 @@ public final class AppModel {
             filename: toastAsset?.originalURL.lastPathComponent ?? "",
             command: .clearFlag,
             decisionText: cullAutoAdvanceEnabled ? "Auto-advance on" : "Auto-advance off",
+            isInformational: true
+        )
+    }
+
+    public func toggleCullLandOnRecommendedFrame() {
+        cullLandOnRecommendedFrame.toggle()
+        // Same informational-toast pattern as toggleCullAutoAdvance() above:
+        // a mode toggle reachable only from the Culling menu (it has no
+        // keyboard shortcut), so the toast is its sole non-visual feedback.
+        let toastAsset = selectedAsset ?? assets.first
+        lastCullingMetadataDecision = CullingMetadataDecisionFeedback(
+            assetID: toastAsset?.id ?? AssetID(rawValue: "cull-land-on-recommended-frame"),
+            filename: toastAsset?.originalURL.lastPathComponent ?? "",
+            command: .clearFlag,
+            decisionText: cullLandOnRecommendedFrame ? "Land on recommended frame" : "Land on frame 1",
             isInformational: true
         )
     }
@@ -6747,6 +6836,19 @@ public final class AppModel {
             )
     }
 
+    // T7.5: the traversal unit for ←/→ (and H/L) stack-to-stack navigation
+    // is the STOP — every multi-frame stack AND every standalone photo, each
+    // a stop in its own right (tutorial.md §1/§4). This is exactly
+    // `allCullingStacks(for:)`'s full partition (singleton stacks included),
+    // reused under a name that matches the navigation vocabulary. Only the
+    // navigation arms (`selectCullingStack`) consume this — `cullingStacks()`
+    // (multi-frame only) stays the source for `selectedCullingStackScope`,
+    // the rail, HUD "Stack S of Σ" counts, and the Return/rail commit path,
+    // which legitimately describe *bursts* specifically.
+    private func cullingStopSequence() -> [AssetStack] {
+        allCullingStacks(for: assets)
+    }
+
     public func selectedCullingStackEvaluationSignals() -> [AssetID: [EvaluationSignal]] {
         if let selectedAssetID,
            let selectedWorkStackAssetIDs,
@@ -6939,13 +7041,19 @@ public final class AppModel {
         let keepSurveyCompare = selectedView == .compare
         try applyAssetSet(id: targetSetID)
         let stackAssetIDs = selectedExplicitAssetIDs ?? []
-        selectAssetID(recommendedCullingStackAssetID(in: stackAssetIDs) ?? stackAssetIDs.first)
+        let stack = AssetStack(assetIDs: stackAssetIDs)
+        selectAssetID(recommendedStackLandingAssetID(for: stack) ?? stackAssetIDs.first)
         selectedView = keepSurveyCompare ? .compare : .loupe
         return true
     }
 
+    // ←/→ (and H/L) stack-to-stack navigation: walks `cullingStopSequence()`
+    // (every stop — bursts and standalones — in capture order), not
+    // `cullingStacks()` (multi-frame only). Before T7.5 this used
+    // `cullingStacks()` directly, so standalone stops were skipped on mixed
+    // batches and every key was a dead no-op on all-singles batches.
     private func selectCullingStack(_ direction: CullingStackNavigationDirection) {
-        let indexedStacks = cullingStacks().compactMap { stack -> IndexedCullingStack? in
+        let indexedStacks = cullingStopSequence().compactMap { stack -> IndexedCullingStack? in
             let stackAssetIDs = Set(stack.assetIDs)
             guard let firstIndex = assets.firstIndex(where: { stackAssetIDs.contains($0.id) }),
                   let lastIndex = assets.lastIndex(where: { stackAssetIDs.contains($0.id) }) else {
@@ -6959,7 +7067,7 @@ public final class AppModel {
               let selectedIndex = assets.firstIndex(where: { $0.id == selectedAssetID }) else {
             let fallbackStack = direction == .next ? indexedStacks.first : indexedStacks.last
             if let fallbackStack {
-                selectAssetID(recommendedStackLandingAssetID(for: fallbackStack))
+                selectAssetID(recommendedStackLandingAssetID(for: fallbackStack.stack))
             }
             return
         }
@@ -6984,15 +7092,21 @@ public final class AppModel {
         }
 
         if let targetStack {
-            selectAssetID(recommendedStackLandingAssetID(for: targetStack))
+            selectAssetID(recommendedStackLandingAssetID(for: targetStack.stack))
         }
     }
 
-    // ←/→ stack-to-stack navigation lands on the new stack's AI-recommended
-    // frame (the same ranking the rail's Keep-recommended action uses), not
-    // always the first frame.
-    private func recommendedStackLandingAssetID(for indexedStack: IndexedCullingStack) -> AssetID? {
-        recommendedCullingStackAssetID(in: indexedStack.stack.assetIDs) ?? indexedStack.firstAssetID
+    // ←/→ (and H/L) stack-to-stack navigation, and a stack decision's
+    // post-commit advance (applyCullingStackDecision), share this one
+    // landing helper — so `cullLandOnRecommendedFrame` (T7.5) governs every
+    // arrival path from a single switch. Default (on): land on the stack's
+    // AI-recommended frame (the same ranking the rail's Keep-recommended
+    // action uses). Off: land on frame 1 (capture order) instead. A
+    // standalone "stack" (one asset) resolves to that asset either way,
+    // since `recommendedCullingStackAssetID` only ranks multi-frame stacks.
+    private func recommendedStackLandingAssetID(for stack: AssetStack) -> AssetID? {
+        guard cullLandOnRecommendedFrame else { return stack.assetIDs.first }
+        return recommendedCullingStackAssetID(in: stack.assetIDs) ?? stack.assetIDs.first
     }
 
     private func selectPreviousAssetForCulling() throws {

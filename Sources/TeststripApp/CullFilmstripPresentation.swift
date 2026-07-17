@@ -65,9 +65,12 @@ struct CullDecisionToastPresentation: Equatable {
     var text: String
 
     init(feedback: CullingMetadataDecisionFeedback) {
-        if feedback.isInformational {
-            // No metadata changed, so no ✓/✕/★ symbol and no "⌘Z undoes" —
-            // there's nothing to undo (item 4).
+        if feedback.isInformational || feedback.rendersVerbatim {
+            // isInformational: no metadata changed, so no ✓/✕/★ symbol and
+            // no "⌘Z undoes" — there's nothing to undo (item 4).
+            // rendersVerbatim: decisionText is already fully composed (e.g.
+            // the stack-promote force-flip toast already names the frame
+            // and its own undo hint) — either way, render as-is, no wrap.
             text = feedback.decisionText
             return
         }

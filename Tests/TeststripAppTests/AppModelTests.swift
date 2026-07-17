@@ -3958,10 +3958,11 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(4))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "keep-selected-stack-frame",
             assets: [first, selected, alternate, next]
         )
+        try seedLargePreviews(for: [first, selected, alternate, next], in: previewCache)
         model.select(selected.id)
 
         try model.promoteCurrentFrameAndRejectSiblings()
@@ -4000,10 +4001,11 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(4))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "loaded-stack-cull-session-progress",
             assets: [first, selected, alternate, next]
         )
+        try seedLargePreviews(for: [first, selected, alternate, next], in: previewCache)
         model.select(selected.id)
         let startedSession = try model.beginCullingSession(named: "Loaded Stack Cull")
 
@@ -4050,10 +4052,11 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(4))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "accept-selected-stack-shortcut",
             assets: [first, selected, alternate, next]
         )
+        try seedLargePreviews(for: [first, selected, alternate, next], in: previewCache)
         model.select(selected.id)
 
         try model.applyCullingShortcut(.promoteAndRejectSiblings)
@@ -4105,10 +4108,11 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(60))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "persisted-stack-shortcut",
             assets: [lead, alternate]
         )
+        try seedLargePreviews(for: [lead, alternate], in: previewCache)
         let stackSet = AssetSet.manual(
             id: AssetSetID(rawValue: "work-stack-cull-session-1"),
             name: "Cull Stack 1",
@@ -4168,6 +4172,41 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(completion.rejectCount, 2)
         XCTAssertEqual(completion.picksSetID, AssetSetID(rawValue: "work-output-completion-summary-session-picks"))
         XCTAssertEqual(completion.detailText, "2 picks · 2 rejects — Cull persisted stacks")
+    }
+
+    // T7.5 review fix: the persisted-session arrival path
+    // (`selectPersistedCullingStack`) must route through the same gated
+    // landing helper as auto-grouped navigation, so ←/→, H/L, and Return's
+    // post-commit advance honor `cullLandOnRecommendedFrame` in a persisted
+    // stack-culling session too. Signals make the second stack's *second*
+    // frame the ✦ so frame 1 and the recommendation genuinely differ.
+    func testPersistedStackNavigationHonorsLandOnRecommendedFramePreference() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "persisted-landing-pref",
+            sessionID: "landing-pref-session"
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try fixture.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: fixture.secondLead.id, kind: .focus, value: .score(0.4), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: fixture.secondAlternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ])
+
+        // Default (land on recommended frame): arrival lands on the ✦, which
+        // the signals place on the second frame, not frame 1.
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        try fixture.model.applyCullingShortcut(.nextStack)
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondAlternate.id)
+
+        // Preference off: the same arrival lands on frame 1 (capture order),
+        // ignoring the ✦.
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        fixture.model.toggleCullLandOnRecommendedFrame()
+        try fixture.model.applyCullingShortcut(.nextStack)
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
     }
 
     func testOpeningCullingCompletionPicksAppliesTheOutputSet() throws {
@@ -4255,11 +4294,12 @@ final class AppModelTests: XCTestCase {
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(201))
         )
         let assets = [singletonFirst, singletonSecond, stackFirst, stackSecond]
-        let (model, repository, _) = try makeModelWithCompletedImportSession(
+        let (model, repository, previewCache) = try makeModelWithCompletedImportSession(
             named: "stack-cull-leftover-singles",
             assets: assets,
             outputAssetIDs: assets.map(\.id)
         )
+        try seedLargePreviews(for: assets, in: previewCache)
 
         let session = try model.beginStackCullingFromLatestImportCompletion()
         XCTAssertEqual(session.inputSetIDs.count, 1)
@@ -4307,11 +4347,12 @@ final class AppModelTests: XCTestCase {
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
         )
         let assets = [stackFirst, stackSecond]
-        let (model, _, _) = try makeModelWithCompletedImportSession(
+        let (model, _, previewCache) = try makeModelWithCompletedImportSession(
             named: "stack-cull-no-leftover-singles",
             assets: assets,
             outputAssetIDs: assets.map(\.id)
         )
+        try seedLargePreviews(for: assets, in: previewCache)
 
         _ = try model.beginStackCullingFromLatestImportCompletion()
         try model.applyCullingShortcut(.promoteAndRejectSiblings)
@@ -4764,7 +4805,13 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .loupe)
     }
 
-    func testCullingShortcutMovesBetweenLoadedStacks() throws {
+    // T7.5 (spec breach): ←/→ walk the full STOP sequence — bursts AND
+    // standalones — not just multi-frame stacks. Previously `.nextStack`
+    // from the first burst skipped straight to the second burst, silently
+    // stranding the singleton; that skip is exactly the bug this test now
+    // asserts is fixed. See CullStackNavigationTests for the dedicated
+    // mixed-batch/all-singles coverage this update mirrors.
+    func testCullingShortcutMovesBetweenLoadedStacksAndStandaloneStops() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let firstStackFirst = makeAsset(
             id: "shortcut-first-stack-first",
@@ -4804,6 +4851,11 @@ final class AppModelTests: XCTestCase {
 
         try model.applyCullingShortcut(.nextStack)
 
+        // Lands on the standalone stop first — no longer skipped.
+        XCTAssertEqual(model.selectedAssetID, singleton.id)
+
+        try model.applyCullingShortcut(.nextStack)
+
         XCTAssertEqual(model.selectedAssetID, secondStackFirst.id)
 
         model.select(singleton.id)
@@ -4812,7 +4864,12 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, firstStackFirst.id)
     }
 
-    func testCullingStackShortcutsIgnoreCatalogsWithoutLoadedStacks() throws {
+    // T7.5: a no-burst (all-singles) batch has no multi-frame stacks at
+    // all — every asset is its own stop, so ←/→ must walk photo-by-photo
+    // instead of no-opping ("no dead keys, one grammar," tutorial.md §4).
+    // Renamed from testCullingStackShortcutsIgnoreCatalogsWithoutLoadedStacks,
+    // which encoded the pre-fix no-op behavior this test now replaces.
+    func testCullingStackShortcutsWalkPhotoByPhotoWithoutLoadedStacks() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let first = makeAsset(
             id: "shortcut-stackless-first",
@@ -4832,11 +4889,11 @@ final class AppModelTests: XCTestCase {
         )
         model.select(second.id)
 
-        try model.applyCullingShortcut(.nextStack)
+        try model.applyCullingShortcut(.nextStack) // already the last stop — stays put
         XCTAssertEqual(model.selectedAssetID, second.id)
 
         try model.applyCullingShortcut(.previousStack)
-        XCTAssertEqual(model.selectedAssetID, second.id)
+        XCTAssertEqual(model.selectedAssetID, first.id)
     }
 
     func testCullingShortcutAdvancesAcrossWholeLoadedCatalog() throws {
@@ -18052,6 +18109,16 @@ final class AppModelTests: XCTestCase {
         try Data("preview".utf8).write(to: url)
     }
 
+    // Task 7's render gate requires the staged frame's `.large` preview to
+    // be cached before Return/promoteAndRejectSiblings commits a stack
+    // decision — seed every candidate asset rather than tracking exactly
+    // which one lands staged.
+    private func seedLargePreviews(for assets: [Asset], in previewCache: PreviewCache) throws {
+        for asset in assets {
+            try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+        }
+    }
+
     private func sidebarRowCount(_ rowTitle: String, in sectionTitle: String, of model: AppModel) -> String? {
         model.sidebarSections
             .first { $0.title == sectionTitle }?
@@ -18726,10 +18793,14 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(21))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: name,
             assets: [firstLead, firstAlternate, secondLead, secondAlternate]
         )
+        // This fixture's callers routinely exercise promoteAndRejectSiblings,
+        // which force-commits only once the staged frame's `.large` preview
+        // is cached (Task 7's render gate).
+        try seedLargePreviews(for: [firstLead, firstAlternate, secondLead, secondAlternate], in: previewCache)
         let firstSet = AssetSet.manual(
             id: AssetSetID(rawValue: "work-stack-\(sessionID)-1"),
             name: "Cull Stack 1",
