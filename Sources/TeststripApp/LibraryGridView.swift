@@ -4435,12 +4435,13 @@ private struct LoupeView: View {
         }
     }
 
-    // Task 6: one stop per auto-grouped stack (a pill for a multi-frame
-    // stack, a thumb for a standalone) plus a status bar below — replaces
-    // the old flat filmstrip, where a burst of a dozen near-duplicates cost
-    // a dozen tiles instead of one stop. Per-frame recommendation (✦) stays
-    // owned by the stack rail (`cullStackRailCell`), which is the only place
-    // a specific frame within a stack is still individually addressable.
+    // Task 6: one stop per auto-grouped stack (a small photo-stack visual
+    // for a multi-frame stack, a plain thumb for a standalone) plus a status
+    // bar below — replaces the old flat filmstrip, where a burst of a dozen
+    // near-duplicates cost a dozen tiles instead of one stop. Per-frame
+    // recommendation (✦) stays owned by the stack rail (`cullStackRailCell`),
+    // which is the only place a specific frame within a stack is still
+    // individually addressable.
     private func runStrip(isStackActive: Bool) -> some View {
         let scopedAssets = CullScopeOrdering.filteredAssets(model.assets, scope: model.cullScope)
         let stacks = model.allCullingStacks(for: scopedAssets)
@@ -4525,10 +4526,12 @@ private struct LoupeView: View {
             if stop.isStandalone {
                 runStripStandaloneThumb(stop)
             } else {
-                runStripPill(stop)
+                runStripStackThumb(stop)
             }
         }
         .buttonStyle(.plain)
+        // The machine-fact label (file range · time) lives here, in the
+        // tooltip, not as ambient chrome on the stack visual below.
         .help(stop.label)
         .accessibilityLabel("Stop \(stop.label)")
         .accessibilityValue(runStripStopAccessibilityValue(stop))
@@ -4555,38 +4558,16 @@ private struct LoupeView: View {
         return segments.joined(separator: ", ")
     }
 
-    private func runStripPill(_ stop: CullRunStripPresentation.Stop) -> some View {
-        HStack(spacing: 5) {
-            Text(stop.label)
-                .font(.caption2.monospaced())
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Text("\(stop.assetIDs.count)")
-                .font(.caption2.weight(.bold))
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(Capsule().fill(Color.white.opacity(0.15)))
-            if stop.sparkleCount > 0 {
-                Label("\(stop.sparkleCount)", systemImage: DesignGlyph.ai.symbolName)
-                    .labelStyle(.titleAndIcon)
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-            }
-            if stop.isDone {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.green)
-            }
-        }
-        .padding(.horizontal, 10)
-        .frame(height: 44)
-        .background(Capsule().fill(Color.black.opacity(0.4)))
-        .overlay(
-            Capsule().strokeBorder(stop.isCurrent ? Color.orange : Color.white.opacity(0.12), lineWidth: stop.isCurrent ? 2 : 1)
-        )
-    }
+    private static let runStripThumbSize = CGSize(width: 64, height: 44)
 
-    private func runStripStandaloneThumb(_ stop: CullRunStripPresentation.Stop) -> some View {
+    // The photo-card content shared by a standalone stop and a stack's front
+    // card: preview image, sparkle badge, done checkmark, and the
+    // current-stop selection ring. Factored out so the two stop shapes below
+    // can never drift apart on how the frame itself renders. The sparkle
+    // badge shows a bare icon for a standalone (0 or 1 possible) but the
+    // pending count for a stack, where 2+ members can each carry a pending
+    // AI suggestion — same distinction the old pill/thumb pair made.
+    private func runStripThumbnailFace(_ stop: CullRunStripPresentation.Stop, sparkleShowsCount: Bool) -> some View {
         ZStack(alignment: .topTrailing) {
             RoundedRectangle(cornerRadius: 5)
                 .fill(Color.black.opacity(0.55))
@@ -4603,14 +4584,21 @@ private struct LoupeView: View {
                     .foregroundStyle(.secondary)
             }
             if stop.sparkleCount > 0 {
-                Image(systemName: DesignGlyph.ai.symbolName)
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.orange)
-                    .padding(3)
-                    .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
+                Group {
+                    if sparkleShowsCount {
+                        Label("\(stop.sparkleCount)", systemImage: DesignGlyph.ai.symbolName)
+                            .labelStyle(.titleAndIcon)
+                    } else {
+                        Image(systemName: DesignGlyph.ai.symbolName)
+                    }
+                }
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.orange)
+                .padding(3)
+                .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
             }
         }
-        .frame(width: 64, height: 44)
+        .frame(width: Self.runStripThumbSize.width, height: Self.runStripThumbSize.height)
         .clipShape(RoundedRectangle(cornerRadius: 5))
         .overlay(alignment: .bottomLeading) {
             if stop.isDone {
@@ -4625,6 +4613,44 @@ private struct LoupeView: View {
             RoundedRectangle(cornerRadius: 5)
                 .strokeBorder(stop.isCurrent ? Color.orange : Color.white.opacity(0.12), lineWidth: stop.isCurrent ? 2 : 1)
         }
+    }
+
+    private func runStripStandaloneThumb(_ stop: CullRunStripPresentation.Stop) -> some View {
+        runStripThumbnailFace(stop, sparkleShowsCount: false)
+    }
+
+    // A multi-frame stop renders as a small photo stack — the lead frame's
+    // thumbnail on top of 1-2 offset card layers behind it, plus a count
+    // badge — instead of the old wide text pill. The machine-fact label
+    // (file range · time) lives in the stop's `.help` tooltip (set by the
+    // caller, runStripStop) rather than as ambient chrome here.
+    private func runStripStackThumb(_ stop: CullRunStripPresentation.Stop) -> some View {
+        ZStack(alignment: .topTrailing) {
+            if stop.assetIDs.count > 2 {
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.black.opacity(0.3))
+                    .frame(width: Self.runStripThumbSize.width, height: Self.runStripThumbSize.height)
+                    .offset(x: 4, y: 4)
+            }
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.black.opacity(0.42))
+                .frame(width: Self.runStripThumbSize.width, height: Self.runStripThumbSize.height)
+                .offset(x: 2, y: 2)
+            runStripThumbnailFace(stop, sparkleShowsCount: true)
+            // Bottom-trailing, not top-trailing: the sparkle badge already
+            // owns the frame's top-right corner, and this reads naturally
+            // where the offset layers behind peek out.
+            Text("\(stop.assetIDs.count)")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(Capsule().fill(Color.black.opacity(0.7)))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .offset(x: 6, y: 6)
+        }
+        .padding(.trailing, 6)
+        .padding(.bottom, 6)
     }
 
     private static let cullStackRailThumbnailSize = CGSize(width: 120, height: 84)

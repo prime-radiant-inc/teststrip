@@ -28,27 +28,39 @@ card):
   `CullStripWindowingTests` (`Tests/TeststripAppTests/
   CullRunStripPresentationTests.swift:218-254`): count=20/anchor=10/limit=6
   → window `7..<13`; anchor=0 → `0..<6`; anchor=19 → `14..<20`.
-- **Rendering**, `runStrip`/`runStripStop`/`runStripPill`/
-  `runStripStandaloneThumb` (`Sources/TeststripApp/LibraryGridView.swift:
-  4392-4576`): a multi-frame stop renders `runStripPill` — label, a
-  frame-count badge (`Text("\(stop.assetIDs.count)")`), and if
-  `sparkleCount > 0` a **numeric** `Label("\(stop.sparkleCount)",
-  systemImage: DesignGlyph.ai.symbolName)` chip (`:4517-4522`), orange, plus
-  a green checkmark overlay if `isDone`. A standalone stop renders
-  `runStripStandaloneThumb` — a thumbnail with, if `sparkleCount > 0`, an
-  **icon-only** ✨ badge (no numeral — a standalone can only ever be 0 or 1,
-  `:4553-4559`) and its own `isDone` checkmark overlay. Both button forms
+- **Rendering**, `runStrip`/`runStripStop`/`runStripStackThumb`/
+  `runStripStandaloneThumb`/`runStripThumbnailFace`
+  (`Sources/TeststripApp/LibraryGridView.swift:4445-4642`). **Reconciled
+  2026-07-17 (dogfood-r1 panel pass)**: a multi-frame stop no longer renders
+  as a wide text pill (`label` + count + sparkle chip in a `Capsule`) — it
+  now renders `runStripStackThumb`, a small **photo stack**: the lead
+  frame's thumbnail (`runStripThumbnailFace`, shared with the standalone
+  thumb below) on top of 1-2 dimmer offset card layers behind it (a second
+  layer only when the stack has 3+ frames), plus a frame-count `Text` badge
+  at the bottom-trailing corner. The machine-fact label (file range · time)
+  no longer renders as ambient chrome at all — it lives *only* in the
+  stop's `.help(stop.label)` tooltip (unchanged from before; see below). A
+  standalone stop still renders `runStripStandaloneThumb` — now just
+  `runStripThumbnailFace(stop, sparkleShowsCount: false)`, unchanged
+  visually. The sparkle badge (still orange, top-trailing on
+  `runStripThumbnailFace`) keeps the same **numeric-for-stacks /
+  icon-only-for-standalones** distinction as before — `sparkleShowsCount:
+  true` for a stack, `false` for a standalone — and the green `isDone`
+  checkmark overlay is unchanged for both shapes. Both button forms still
   carry `.help(stop.label)`, `.accessibilityLabel("Stop \(stop.label)")`,
   and `.accessibilityValue(runStripStopAccessibilityValue(stop))`
-  (`:4469-4504`) — the value is `["Current"]/["Done"] + "N frame(s)" +
+  (`:4550-4559`) — the value is `["Current"]/["Done"] + "N frame(s)" +
   ["N suggestion(s)"]` joined by `", "` — the **only** reliable AX read of
   `isCurrent`/`sparkleCount` (the visual glyphs themselves aren't
   independently AX-findable, per `cull-021-stack-rail-nav.md`'s identical
-  caution about the rail's `✦`). A click routes through
-  `AppModel.selectStackLanding(for:)` (`AppModel.swift:7196-7201`) — the
-  same preference-gated recommended-or-first landing helper `←`/`→`/`H`/`L`
-  use (see `cull-022-flow-grammar-walk.md`'s T7.5 citation) — so a stop
-  click never disagrees with keyboard arrival.
+  caution about the rail's `✦`) — this AX surface is untouched by the
+  visual reorg, so every `find`/`--contains` assertion below (which reads
+  the accessibility label/value, not the rendered `Text`) still holds
+  unchanged. A click routes through `AppModel.selectStackLanding(for:)`
+  (`AppModel.swift:7196-7201`) — the same preference-gated
+  recommended-or-first landing helper `←`/`→`/`H`/`L` use (see
+  `cull-022-flow-grammar-walk.md`'s T7.5 citation) — so a stop click never
+  disagrees with keyboard arrival.
 - **Triple counter**, `CullFilmstripPresentation.tripleCounterText`
   (`Sources/TeststripApp/CullFilmstripPresentation.swift:87-104`):
   `"\(frameIndex+1) of \(totalFrames) · stack \(stackIndex+1) of
@@ -196,12 +208,13 @@ later card in the same session that needs the pristine baseline.
 3. **✨ chips on the run strip.** Burst has only 8 total stops (well under
    `defaultVisibleLimit = 12`), so every stop renders regardless of current
    selection — no navigation needed for this step. Confirm group2's stop
-   (a 4-frame pill containing `smoke-4`) shows the numeric sparkle chip:
-   find its stop button (`ax find --role AXButton --contains "smoke-4"` —
-   matches the `.help`/label text, which for a multi-frame stop is a
-   file-range like `smoke-3–6`; if that substring doesn't match directly,
-   use `--contains "smoke-3"` instead, since the pill's label collapses the
-   range) and read its accessibility value: expect it to contain `"1
+   (a 4-frame photo-stack visual containing `smoke-4`) shows the numeric
+   sparkle chip: find its stop button (`ax find --role AXButton --contains
+   "smoke-4"` — matches the `.accessibilityLabel`/`.help` text, which for a
+   multi-frame stop is a file-range like `smoke-3–6`, regardless of what the
+   stack visual itself renders; if that substring doesn't match directly,
+   use `--contains "smoke-3"` instead, since the label collapses the range)
+   and read its accessibility value: expect it to contain `"1
    suggestion"`. Confirm `smoke-16`'s standalone stop
    (`ax find --role AXButton --contains "smoke-16 ·"` — the trailing
    `" ·"` disambiguates from `smoke-1`, which is otherwise a substring of
@@ -444,8 +457,8 @@ Run once per leg (separate launches); quit each instance before the next.
 ## Run status
 NOT RUN — authored 2026-07-16, source-cited against the working tree by
 directly reading `CullRunStripPresentation.swift`, `CullCompletionPresentation.swift`,
-`LibraryGridView.swift` (`runStrip`/`runStripStop`/`runStripPill`/
-`runStripStandaloneThumb`/`cullCompletionStage`/`cullCompletionActionButton`),
+`LibraryGridView.swift` (`runStrip`/`runStripStop`/`runStripStackThumb`/
+`runStripStandaloneThumb`/`runStripThumbnailFace`/`cullCompletionStage`/`cullCompletionActionButton`),
 `CullFilmstripPresentation.swift`, `AppModel.swift`
 (`cullingProgressSummary`, `saveCullingPicksAsSet`,
 `reconstructAutopilotStateAfterLoad`), `AutopilotProposalPlanner.swift`,
