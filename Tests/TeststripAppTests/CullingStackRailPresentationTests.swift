@@ -461,6 +461,12 @@ final class CullingStackRailPresentationTests: XCTestCase {
         XCTAssertEqual(byID[undecided.id], .undecided)
     }
 
+    func testOnlyRejectedDecisionStateIsDimmed() {
+        XCTAssertTrue(CullingStackRailPresentation.DecisionState.rejected.isDimmed)
+        XCTAssertFalse(CullingStackRailPresentation.DecisionState.picked.isDimmed)
+        XCTAssertFalse(CullingStackRailPresentation.DecisionState.undecided.isDimmed)
+    }
+
     private func makeAsset(id: String, path: String, capturedAt: Date?, flag: PickFlag? = nil) -> Asset {
         let technicalMetadata = capturedAt.map { date in
             AssetTechnicalMetadata(
