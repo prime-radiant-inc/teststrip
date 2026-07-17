@@ -6903,7 +6903,8 @@ public final class AppModel {
         let keepSurveyCompare = selectedView == .compare
         try applyAssetSet(id: id)
         let stackAssetIDs = selectedExplicitAssetIDs ?? []
-        selectAssetID(recommendedCullingStackAssetID(in: stackAssetIDs) ?? stackAssetIDs.first)
+        let stack = AssetStack(assetIDs: stackAssetIDs)
+        selectAssetID(recommendedStackLandingAssetID(for: stack) ?? stackAssetIDs.first)
         selectedView = keepSurveyCompare ? .compare : .loupe
     }
 
