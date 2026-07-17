@@ -6908,24 +6908,20 @@ public final class AppModel {
     }
 
     // The ranked best-of-stack frame, or nil when no frame carries quality
-    // signals. When the leaders are too close to call, there is no single
-    // defensible winner to land on, so this falls back to the first tied
-    // leader (capture order) rather than an arbitrarily-chosen "winner".
+    // signals. Delegates to `CullingStackRecommendation.landingAssetID` — the
+    // one shared tie/rank/fallback core — rather than re-deriving it: a
+    // too-close-to-call tie has no single defensible winner to land on, so
+    // that core falls back to the first tied leader (capture order) rather
+    // than an arbitrarily-chosen "winner".
     private func recommendedCullingStackAssetID(in assetIDs: [AssetID]) -> AssetID? {
         guard assetIDs.count > 1 else { return nil }
         let signalsByAssetID = Dictionary(uniqueKeysWithValues: assetIDs.map { assetID in
             (assetID, evaluationSignals(for: assetID))
         })
-        if let tiedLeaderIDs = CullingStackRecommendation.tiedLeaderIDs(
+        return CullingStackRecommendation.landingAssetID(
             stackAssetIDs: assetIDs,
             evaluationSignalsByAssetID: signalsByAssetID
-        ) {
-            return tiedLeaderIDs.first
-        }
-        return CullingStackRecommendation.rankedCandidates(
-            stackAssetIDs: assetIDs,
-            evaluationSignalsByAssetID: signalsByAssetID
-        ).first?.assetID
+        )
     }
 
     // The one stack the culling surfaces (rail, A/B compare) and the promote
@@ -7096,17 +7092,31 @@ public final class AppModel {
         }
     }
 
-    // ←/→ (and H/L) stack-to-stack navigation, and a stack decision's
-    // post-commit advance (applyCullingStackDecision), share this one
-    // landing helper — so `cullLandOnRecommendedFrame` (T7.5) governs every
-    // arrival path from a single switch. Default (on): land on the stack's
-    // AI-recommended frame (the same ranking the rail's Keep-recommended
-    // action uses). Off: land on frame 1 (capture order) instead. A
-    // standalone "stack" (one asset) resolves to that asset either way,
-    // since `recommendedCullingStackAssetID` only ranks multi-frame stacks.
+    // ←/→ (and H/L) stack-to-stack navigation, a stack decision's post-commit
+    // advance (applyCullingStackDecision), and the run strip's click handler
+    // (via `selectStackLanding` below) share this one landing helper — so
+    // `cullLandOnRecommendedFrame` (T7.5) governs every arrival path from a
+    // single switch. Default (on): land on the stack's AI-recommended frame
+    // (the same ranking the rail's Keep-recommended action uses). Off: land
+    // on frame 1 (capture order) instead. A standalone "stack" (one asset)
+    // resolves to that asset either way, since `recommendedCullingStackAssetID`
+    // only ranks multi-frame stacks.
     private func recommendedStackLandingAssetID(for stack: AssetStack) -> AssetID? {
         guard cullLandOnRecommendedFrame else { return stack.assetIDs.first }
         return recommendedCullingStackAssetID(in: stack.assetIDs) ?? stack.assetIDs.first
+    }
+
+    // Public entry for a stack-arrival gesture that lives outside AppModel's
+    // own keyboard/Return dispatch — currently just the run strip's click
+    // handler (LibraryGridView.selectRunStripStopLanding). Routes through the
+    // same gated landing helper as every other arrival path, so a click never
+    // disagrees with what ←/→ or H/L would have landed on, and both honor
+    // `cullLandOnRecommendedFrame`.
+    public func selectStackLanding(for stackAssetIDs: [AssetID]) {
+        guard let landingAssetID = recommendedStackLandingAssetID(for: AssetStack(assetIDs: stackAssetIDs)) ?? stackAssetIDs.first else {
+            return
+        }
+        select(landingAssetID)
     }
 
     private func selectPreviousAssetForCulling() throws {

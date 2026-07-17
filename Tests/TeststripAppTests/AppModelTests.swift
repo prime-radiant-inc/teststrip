@@ -4209,6 +4209,39 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
     }
 
+    // Integration fix (post-merge of lanes A/B): the run strip's click
+    // handler used a lane-fence-forced duplicate of the tie/rank/fallback
+    // glue (CullingStackRecommendation.landingAssetID, called directly from
+    // LibraryGridView) that did NOT honor cullLandOnRecommendedFrame — a
+    // click ignored the preference even though ←/→, H/L, and Return's
+    // advance all honored it. `selectStackLanding` is the public AppModel
+    // entry the click handler now routes through, so it shares the same
+    // gated helper as every other arrival path. Signals mirror the
+    // persisted-landing test's seeding pattern so the ✦ is NOT frame 1.
+    func testSelectStackLandingHonorsLandOnRecommendedFramePreference() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "run-strip-landing-pref",
+            sessionID: "run-strip-landing-pref-session"
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try fixture.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: fixture.firstLead.id, kind: .focus, value: .score(0.4), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: fixture.firstAlternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ])
+        let stackAssetIDs = [fixture.firstLead.id, fixture.firstAlternate.id]
+
+        // Default (land on recommended frame): the click lands on the ✦,
+        // which the signals place on the alternate frame, not frame 1.
+        fixture.model.selectStackLanding(for: stackAssetIDs)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.firstAlternate.id)
+
+        // Preference off: the same click lands on frame 1 (capture order),
+        // ignoring the ✦.
+        fixture.model.toggleCullLandOnRecommendedFrame()
+        fixture.model.selectStackLanding(for: stackAssetIDs)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.firstLead.id)
+    }
+
     func testOpeningCullingCompletionPicksAppliesTheOutputSet() throws {
         let fixture = try makePersistedStackCullingFixture(
             named: "completion-open-picks",

@@ -4456,25 +4456,14 @@ private struct LoupeView: View {
         .accessibilityValue(runStripStopAccessibilityValue(stop))
     }
 
-    // Lands on the same frame arrow-key stack-to-stack navigation would
-    // (`AppModel`'s private `selectCullingStack` → `recommendedCullingStackAssetID(in:) ?? first`),
-    // not always the stack's first-captured frame — so a click and a keyboard
-    // arrival never disagree about which frame comes up. `landingAssetID`
-    // mirrors that same tie/rank convention; a standalone has no ranking to
-    // do, so it always lands on its one frame.
+    // Routes through AppModel's public `selectStackLanding` — the same
+    // preference-gated landing helper arrow-key stack-to-stack navigation and
+    // Return's post-commit advance use — so a click and a keyboard arrival
+    // never disagree about which frame comes up, and both honor
+    // `cullLandOnRecommendedFrame`. A standalone stop's one-asset "stack"
+    // resolves to that asset either way.
     private func selectRunStripStopLanding(_ stop: CullRunStripPresentation.Stop) {
-        guard !stop.isStandalone else {
-            model.select(stop.leadAssetID)
-            return
-        }
-        let evaluationSignalsByAssetID = Dictionary(uniqueKeysWithValues: stop.assetIDs.map { assetID in
-            (assetID, model.evaluationSignals(for: assetID))
-        })
-        let landingAssetID = CullingStackRecommendation.landingAssetID(
-            stackAssetIDs: stop.assetIDs,
-            evaluationSignalsByAssetID: evaluationSignalsByAssetID
-        ) ?? stop.leadAssetID
-        model.select(landingAssetID)
+        model.selectStackLanding(for: stop.assetIDs)
     }
 
     private func runStripStopAccessibilityValue(_ stop: CullRunStripPresentation.Stop) -> String {
@@ -6463,10 +6452,12 @@ struct CullingStackRecommendation: Equatable {
     /// The frame a stack-arrival gesture lands on: the clear winner, or the
     /// first tied leader (capture order) during a too-close-to-call tie, or
     /// nil when there aren't enough signals to rank at all — callers fall
-    /// back to the stack's own first/lead frame in that case. Mirrors
-    /// AppModel's private `recommendedCullingStackAssetID`, which arrow-key
-    /// stack navigation uses, so a run-strip click lands the same place
-    /// keyboard arrival would.
+    /// back to the stack's own first/lead frame in that case. The shared
+    /// tie/rank/fallback core: AppModel's private `recommendedCullingStackAssetID`
+    /// delegates to this directly, so every stack-arrival gesture (keyboard,
+    /// Return's advance, and run-strip clicks via `AppModel.selectStackLanding`)
+    /// agrees on where to land. This function is intentionally ungated —
+    /// `cullLandOnRecommendedFrame` gates on top of it in AppModel.
     static func landingAssetID(
         stackAssetIDs: [AssetID],
         evaluationSignalsByAssetID: [AssetID: [EvaluationSignal]]
