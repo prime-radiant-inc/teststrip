@@ -2369,13 +2369,18 @@ struct LibraryGridView: View {
                         autopilotDecision: model.autopilotProposalDecision(for: asset.id),
                         hasBondedStill: model.assetIDsWithBondedSecondaries.contains(asset.id)
                     )
-                    .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
+                    .assetActivation(
+                        for: asset,
+                        model: model,
+                        focusCullingSurface: focusCullingSurface,
+                        openInLoupe: { model.openAssetInLibraryLoupe($0) }
+                    ) { assetID in
                         selectAssetFromGrid(assetID)
                     }
                     .help("Double-click to open in Loupe")
                     .contextMenu {
                         Button("Open in Loupe") {
-                            model.openAssetInLoupe(asset.id)
+                            model.openAssetInLibraryLoupe(asset.id)
                         }
                         Divider()
                         Button("Cull These") {
@@ -7098,7 +7103,12 @@ private struct CompareView: View {
                 isSelected: model.selectedAssetID == asset.id,
                 isBatchSelected: model.isBatchSelected(asset.id)
             )
-            .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
+            .assetActivation(
+                for: asset,
+                model: model,
+                focusCullingSurface: focusCullingSurface,
+                openInLoupe: { model.openAssetInLoupe($0) }
+            ) { assetID in
                 model.select(assetID)
             }
             compareDecisionBadges(presentation.tileBadges(for: asset))
@@ -7386,17 +7396,22 @@ enum AssetActivationFocusPolicy {
 }
 
 private extension View {
+    // `openInLoupe` is which loupe a double-click lands in: Library-workspace
+    // callers (the grid, Timeline) pass `openAssetInLibraryLoupe`; the Cull
+    // workspace's Compare tile passes `openAssetInLoupe` to stay in the
+    // culling loupe.
     func assetActivation(
         for asset: Asset,
         model: AppModel,
         focusCullingSurface: @escaping () -> Void,
+        openInLoupe: @escaping (AssetID) -> Void,
         selectAsset: @escaping (AssetID) -> Void
     ) -> some View {
         let doubleClick = TapGesture(count: 2).onEnded {
             if AssetActivationFocusPolicy.shouldFocusCullingSurface(for: .openInLoupe) {
                 focusCullingSurface()
             }
-            model.openAssetInLoupe(asset.id)
+            openInLoupe(asset.id)
         }
         return Button {
             if NSEvent.modifierFlags.contains(.shift) {
@@ -7898,7 +7913,12 @@ private struct TimelineWorkspaceView: View {
                             isBatchSelected: model.isBatchSelected(asset.id),
                             autopilotDecision: model.autopilotProposalDecision(for: asset.id)
                         )
-                        .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
+                        .assetActivation(
+                            for: asset,
+                            model: model,
+                            focusCullingSurface: focusCullingSurface,
+                            openInLoupe: { model.openAssetInLibraryLoupe($0) }
+                        ) { assetID in
                             selectAsset(assetID)
                         }
                         .id("timeline-\(asset.id.rawValue)")

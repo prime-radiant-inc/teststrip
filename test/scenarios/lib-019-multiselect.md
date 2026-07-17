@@ -22,7 +22,10 @@ Exact semantics, verified at `LibraryGridView.swift:6535-6587,
 - **⌘-click** → `model.toggleBatchSelection(asset.id)` (add/remove one
   asset from the batch set). Same `.batchSelection` → **`false`** gate.
 - **Double-click** (`TapGesture(count: 2)`, simultaneous gesture) →
-  `model.openAssetInLoupe(asset.id)`, and *this* activation kind
+  `model.openAssetInLibraryLoupe(asset.id)` from the Library grid (the plain
+  loupe, not the Cull workspace's — `assetActivation`'s `openInLoupe`
+  parameter is which loupe a given caller opens; the Cull workspace's
+  Compare tile passes `openAssetInLoupe` instead), and *this* activation kind
   (`.openInLoupe`) → **`true`** at line 6529 — double-click legitimately
   focuses the culling surface, since it's actually entering the
   loupe/culling view.
