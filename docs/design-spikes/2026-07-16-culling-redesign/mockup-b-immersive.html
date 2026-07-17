@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Teststrip cull — Mockup B · Immersive</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+/* Mockup B — "Immersive". The photograph is the interface. Design-spike toy;
+   self-contained, no external requests. Dark photo-app aesthetic. */
+:root{
+  --bg:#08090b; --bar:#0d0f12; --line:#1c1f24; --ink:#d7d9dd; --dim:#8b8f97;
+  --accent:#e0aa4e; --pick:#46d29a; --rej:#e06555; --ghost:#b9a3e3;
+  --fast:140ms; --med:180ms;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+  font:13px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.hidden{display:none!important}
+
+/* ---------- stage ---------- */
+#stage{position:fixed;inset:0 0 72px 0;overflow:hidden;background:var(--bg)}
+#zoomwrap{width:100%;height:100%;transition:transform 160ms ease-out;transform-origin:50% 42%}
+#zoomwrap.zoomed{transform:scale(2)}
+#art{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:1.2vh;animation:artIn var(--fast) ease-out}
+@keyframes artIn{from{opacity:.35}to{opacity:1}}
+#artEmoji{font-size:min(26vh,26vw);line-height:1;letter-spacing:-.06em;
+  transition:transform 160ms ease-out;text-shadow:0 4vh 12vh rgba(0,0,0,.5)}
+#artLabel{font-size:min(3.4vh,28px);font-weight:600;letter-spacing:.04em;opacity:.9;
+  text-shadow:0 2px 14px rgba(0,0,0,.7)}
+#artSub{font-size:min(1.9vh,14px);color:var(--dim);letter-spacing:.14em;text-transform:uppercase}
+.blurred{will-change:filter}
+
+/* shimmer = "rendering…" gate */
+#shimmer{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;z-index:5}
+#shimmer .sheen{position:absolute;inset:0;
+  background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.08) 47%,rgba(255,255,255,.14) 50%,rgba(255,255,255,.08) 53%,transparent 70%);
+  background-size:220% 100%;animation:sweep .6s linear infinite}
+@keyframes sweep{from{background-position:120% 0}to{background-position:-120% 0}}
+#shimmer .rlabel{position:absolute;bottom:12vh;font-size:12px;letter-spacing:.22em;
+  text-transform:uppercase;color:rgba(255,255,255,.65);
+  padding:4px 12px;border-radius:999px;background:rgba(0,0,0,.45)}
+#shimmer.flash .rlabel{animation:flashPulse .35s ease-out}
+@keyframes flashPulse{0%{transform:scale(1)}30%{transform:scale(1.18);color:#fff}100%{transform:scale(1)}}
+
+/* ---------- read pill ---------- */
+#readpill{position:absolute;top:16px;left:16px;z-index:6;max-width:44vw;
+  padding:8px 14px;border-radius:12px;background:rgba(10,11,14,.82);
+  border:1px solid var(--line);backdrop-filter:blur(6px);
+  opacity:0;transform:translateY(-4px);transition:opacity var(--med) ease-out,transform var(--med) ease-out;
+  pointer-events:none}
+#readpill.show{opacity:1;transform:none}
+#readpill .main{font-size:13px;font-weight:600}
+#readpill .rec{color:var(--accent);margin-right:6px}
+#readpill .ghostline{font-size:11px;color:var(--ghost);margin-top:3px}
+#readpill .honest{font-size:11px;color:var(--dim);margin-top:3px}
+#readpill.rp-keep .main{color:var(--pick)}
+#readpill.rp-toss .main{color:var(--rej)}
+#readpill.rp-mixed .main{color:var(--accent)}
+#readpill.rp-none .main{color:var(--dim);font-style:italic;font-weight:400}
+#readpill.rp-tooclose{border-color:rgba(224,170,78,.55)}
+#readpill.rp-tooclose .main{color:var(--accent)}
+
+/* ---------- EXIF overlay ---------- */
+#exif{position:absolute;top:16px;right:16px;z-index:6;padding:10px 14px;border-radius:10px;
+  background:rgba(10,11,14,.82);border:1px solid var(--line);backdrop-filter:blur(6px);
+  font-size:11px;color:var(--dim);min-width:180px}
+#exif .fn{color:var(--ink);font-weight:600;margin-bottom:2px}
+#exif table{border-collapse:collapse}
+#exif td{padding:1px 0}
+#exif td:first-child{padding-right:14px;color:#6a6e76}
+
+/* ---------- close-ups panel ---------- */
+#closeups{position:absolute;top:0;right:0;bottom:0;width:196px;z-index:6;
+  background:rgba(10,11,14,.86);border-left:1px solid var(--line);backdrop-filter:blur(8px);
+  transform:translateX(105%);transition:transform var(--med) ease-out;
+  padding:14px 12px;overflow-y:auto}
+#closeups.show{transform:none}
+#cuTitle{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin-bottom:10px}
+.face{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.face .dot{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:24px;background:rgba(255,255,255,.06);flex:none}
+.face .dot.soft{filter:blur(1.2px)}
+.face .info{font-size:10px;line-height:1.5}
+.badge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:9.5px;font-weight:600}
+.badge.ok{background:rgba(70,210,154,.16);color:var(--pick)}
+.badge.bad{background:rgba(224,101,85,.18);color:var(--rej)}
+.badge.soft{background:rgba(224,170,78,.15);color:var(--accent)}
+
+/* ---------- toast ---------- */
+#toast{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%) scale(.98);z-index:40;
+  padding:12px 22px;border-radius:12px;background:rgba(12,13,16,.92);border:1px solid var(--line);
+  font-size:15px;font-weight:600;opacity:0;transition:opacity var(--fast) ease-out,transform var(--fast) ease-out;
+  pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+
+/* ---------- hint bar ---------- */
+#hintbar{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:7;
+  padding:5px 14px;border-radius:999px;background:rgba(12,13,16,.8);border:1px solid var(--line);
+  font-size:11px;color:var(--dim);white-space:nowrap}
+#hintbar b{color:var(--ink);font-weight:600}
+
+/* ---------- bottom bar ---------- */
+#bar{position:fixed;left:0;right:0;bottom:0;height:72px;background:var(--bar);
+  border-top:1px solid var(--line);display:flex;align-items:center;z-index:10}
+#strip{flex:1;display:flex;align-items:center;gap:7px;overflow-x:auto;overflow-y:hidden;
+  padding:0 14px;height:100%;scrollbar-width:thin}
+#strip::-webkit-scrollbar{height:4px}
+#strip::-webkit-scrollbar-thumb{background:#2a2e35;border-radius:2px}
+
+.spill{flex:none;height:28px;min-width:46px;border-radius:8px;position:relative;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.08);
+  transition:transform var(--fast) ease-out}
+.spill .cnt{font-size:10px;font-weight:700;color:rgba(255,255,255,.85);
+  background:rgba(0,0,0,.4);border-radius:999px;padding:0 6px}
+.spill .done{position:absolute;top:-4px;right:-4px;font-size:9px;color:var(--pick)}
+.spill .gh{position:absolute;bottom:-4px;right:-3px;font-size:8px;color:var(--ghost)}
+
+.thumb{flex:none;width:46px;height:34px;border-radius:5px;position:relative;cursor:pointer;
+  border:1px solid rgba(255,255,255,.1);overflow:visible;
+  transition:transform var(--fast) ease-out,opacity var(--fast) ease-out}
+.thumb .rank{position:absolute;left:3px;right:3px;bottom:2px;height:2.5px;border-radius:2px}
+.thumb .star{position:absolute;top:1px;left:3px;font-size:9px;color:var(--accent);text-shadow:0 0 4px #000}
+.thumb .mark{position:absolute;top:-1px;right:1px;font-size:10px;font-weight:800;text-shadow:0 0 4px #000}
+.thumb .mark.p{color:var(--pick)}
+.thumb .mark.x{color:var(--rej)}
+.thumb .gmark{position:absolute;top:-1px;right:1px;font-size:9px;color:var(--ghost);opacity:.85;text-shadow:0 0 4px #000}
+.thumb .skipm{position:absolute;bottom:1px;right:2px;font-size:8px;color:var(--dim)}
+.thumb .grade{position:absolute;bottom:-1px;left:2px;font-size:8px;color:var(--accent);text-shadow:0 0 3px #000}
+.thumb.rejd{opacity:.42}
+.thumb.ghosted{border-style:dashed;border-color:rgba(185,163,227,.5)}
+.thumb.cur,.spill.cur{outline:2px solid #fff;outline-offset:1px}
+.thumb.exp{animation:expandIn var(--med) ease-out}
+@keyframes expandIn{from{transform:scaleX(.4);opacity:.3}to{transform:none;opacity:1}}
+.clabel{flex:none;font-size:9px;color:var(--dim);letter-spacing:.06em;max-width:52px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+#meta{flex:none;width:308px;padding:8px 16px 8px 12px;border-left:1px solid var(--line);
+  font-size:11px;display:flex;flex-direction:column;gap:3px;justify-content:center;height:100%}
+#counter{font-weight:600;color:var(--ink)}
+#fname{color:var(--dim);font-size:10px}
+#progressrow{display:flex;align-items:center;gap:8px}
+#ptrack{flex:1;height:4px;border-radius:2px;background:#1e2126;overflow:hidden}
+#pfill{height:100%;width:0;background:var(--accent);border-radius:2px;transition:width var(--med) ease-out}
+#pnum{color:var(--dim);font-size:10px;white-space:nowrap}
+#flags{display:flex;gap:10px;color:var(--dim);font-size:10px}
+#flags .on{color:var(--pick)}
+#flags .off{color:var(--rej)}
+
+/* ---------- overlays ---------- */
+.overlay{position:fixed;inset:0;z-index:30;background:rgba(5,6,8,.9);backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;animation:ovIn var(--fast) ease-out}
+@keyframes ovIn{from{opacity:0}to{opacity:1}}
+.card{background:#0e1013;border:1px solid var(--line);border-radius:14px;padding:28px 34px;
+  max-width:560px;max-height:82vh;overflow-y:auto;box-shadow:0 18px 60px rgba(0,0,0,.6)}
+.card h1{font-size:19px;margin:0 0 4px;font-weight:700}
+.card h2{font-size:11px;margin:18px 0 8px;color:var(--dim);letter-spacing:.18em;text-transform:uppercase;font-weight:600}
+.card .sub{color:var(--dim);font-size:12px;margin-bottom:6px}
+.key{display:inline-block;min-width:20px;text-align:center;padding:1px 6px;border-radius:5px;
+  background:#181b20;border:1px solid #262a31;border-bottom-width:2px;
+  font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--ink);margin-right:2px}
+.kmrow{display:flex;gap:10px;padding:2.5px 0;font-size:12px;color:var(--ink)}
+.kmrow .kk{flex:none;width:130px;color:var(--dim)}
+.sumrow{display:flex;align-items:center;gap:12px;padding:5px 0;font-size:14px}
+.sumrow .n{font-weight:700;min-width:36px;text-align:right}
+.sumrow .lbl{color:var(--ink)}
+.sumrow.zero{opacity:.45}
+.btn{display:inline-block;margin:6px 8px 0 0;padding:7px 14px;border-radius:8px;cursor:pointer;
+  background:#181b20;border:1px solid #2a2e36;color:var(--ink);font-size:12px;font-weight:600}
+.btn:hover{background:#1e222a}
+.btn.primary{background:rgba(224,170,78,.15);border-color:rgba(224,170,78,.5);color:var(--accent)}
+.note{font-size:11px;color:var(--dim);margin-top:10px;line-height:1.6}
+.ghrow{font-size:12px;padding:3px 0;display:flex;gap:8px;align-items:baseline}
+.ghrow .gk{color:var(--ghost);font-weight:700;flex:none}
+.ghrow .sup{color:var(--dim);font-style:italic}
+</style>
+</head>
+<body>
+
+<div id="hintbar"><b>←→</b> stacks · <b>↓↑</b> frames · <b>P</b> pick · <b>X</b> reject ·
+<b>Return</b> commit stack · <b>Space</b> skip · <b>Z</b> zoom · <b>/</b> faces · <b>?</b> all keys</div>
+
+<div id="stage">
+  <div id="zoomwrap"><div id="art">
+    <div id="artEmoji"></div><div id="artLabel"></div><div id="artSub"></div>
+  </div></div>
+  <div id="shimmer" class="hidden"><div class="sheen"></div><span class="rlabel">rendering…</span></div>
+  <div id="readpill"></div>
+  <div id="exif" class="hidden"></div>
+  <div id="closeups"><div id="cuTitle">Close-ups</div><div id="cuList"></div></div>
+</div>
+
+<div id="bar">
+  <div id="strip"></div>
+  <div id="meta">
+    <div id="counter" class="mono"></div>
+    <div id="fname" class="mono"></div>
+    <div id="progressrow"><div id="ptrack"><div id="pfill"></div></div><span id="pnum" class="mono"></span></div>
+    <div id="flags"><span id="aaFlag"></span><span id="scopeFlag"></span><span id="gradeFlag"></span></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<div id="startcard" class="overlay"><div class="card">
+  <h1>Cull this batch</h1>
+  <div class="sub">June 14 — Red Rocks wedding + archive strays</div>
+  <div style="font-size:14px;margin:10px 0 2px"><b>35 photos · 9 stops</b> (4 bursts — 86% of frames)</div>
+  <div class="sub">Traversal is capture order — the AI marks frames, it never reorders your walk.</div>
+  <h2>Run options</h2>
+  <div style="font-size:12px;line-height:1.9">
+    Lens: <b>Everything</b> (nothing hidden)<br>
+    Auto-advance: <b>on</b> &nbsp;·&nbsp; Land on recommended frame (✦): <b>on</b>
+  </div>
+  <div class="note" style="margin-top:18px;font-size:13px;color:var(--ink)">
+    Press <span class="key">Return</span> to begin.
+  </div>
+</div></div>
+
+<div id="keymap" class="overlay hidden"><div class="card">
+  <h1>Keys</h1>
+  <h2>Move</h2>
+  <div class="kmrow"><span class="kk"><span class="key">→</span><span class="key">L</span></span>Next stack (lands on ✦, or frame 1 if no read)</div>
+  <div class="kmrow"><span class="kk"><span class="key">←</span><span class="key">H</span></span>Previous stack</div>
+  <div class="kmrow"><span class="kk"><span class="key">↓</span><span class="key">J</span></span>Next frame in stack (next photo on a single)</div>
+  <div class="kmrow"><span class="kk"><span class="key">↑</span><span class="key">K</span></span>Previous frame (previous photo on a single)</div>
+  <div class="kmrow"><span class="kk"><span class="key">Space</span></span>Skip — advance without deciding. Always decision-free.</div>
+  <h2>Decide</h2>
+  <div class="kmrow"><span class="kk"><span class="key">P</span></span>Pick this frame</div>
+  <div class="kmrow"><span class="kk"><span class="key">X</span></span>Reject this frame</div>
+  <div class="kmrow"><span class="kk"><span class="key">U</span></span>Clear decision (back to undecided)</div>
+  <div class="kmrow"><span class="kk"><span class="key">Return</span></span>Commit stack: keep this + your picks, reject undecided siblings, next stack. Pick + advance on a single. Inert while rendering.</div>
+  <div class="kmrow"><span class="kk"><span class="key">⌘Z</span><span class="key">⌫</span></span>Undo — a stack commit undoes as one unit</div>
+  <h2>Grade</h2>
+  <div class="kmrow"><span class="kk"><span class="key">1</span>–<span class="key">5</span> <span class="key">0</span></span>Stars · 0 clears</div>
+  <div class="kmrow"><span class="kk"><span class="key">6</span>–<span class="key">9</span> <span class="key">V</span> <span class="key">-</span></span>Color labels · − clears</div>
+  <h2>Look closer</h2>
+  <div class="kmrow"><span class="kk"><span class="key">Z</span></span>2× zoom — position sticky across frames in a stack</div>
+  <div class="kmrow"><span class="kk"><span class="key">/</span></span>Close-ups panel (faces)</div>
+  <div class="kmrow"><span class="kk"><span class="key">I</span></span>EXIF overlay (cycles; pins the read pill)</div>
+  <h2>Run control</h2>
+  <div class="kmrow"><span class="kk"><span class="key">A</span></span>Auto-advance on/off</div>
+  <div class="kmrow"><span class="kk"><span class="key">S</span></span>Scope: everything / undecided / picks / rejects</div>
+  <div class="kmrow"><span class="kk"><span class="key">?</span></span>This overlay · <span class="key">Esc</span> closes</div>
+  <div class="note">Not simulated in this mockup: ⌘R start from anywhere, lenses, G/C/B grid·compare·A/B, Shift+Z face zoom, remapping.</div>
+</div></div>
+
+<div id="summary" class="overlay hidden"><div class="card" id="summaryBox"></div></div>
+<div id="reviewai" class="overlay hidden"><div class="card" id="reviewBox"></div></div>
+<div id="stubdlg" class="overlay hidden"><div class="card" id="stubBox"></div></div>
+
+<script>
+/*CORE-START*/
+"use strict";
+// ---- dataset: exactly the shared-spec 35 frames / 9 stops ----
+// faces: c = closed-eye count, kissOK = closed eyes judged fine (kiss context)
+const STOP_DEFS = [
+ {name:"Lineup", hue:178, sat:40, nfaces:8, emoji:"🧍🧍🧍🧍🧍🧍🧍🧍", frames:[
+  {file:"DSC_0141.RAF", focus:.82, eyes:1.00, c:0, read:"Keep read 76% · all eyes open", kind:"keep"},
+  {file:"DSC_0142.RAF", focus:.85, eyes:.75, c:2, read:"Mixed read 68% · 2 eyes shut", kind:"mixed"},
+  {file:"DSC_0143.RAF", focus:.88, eyes:1.00, c:0, read:"Keep read 84% · sharpest in stack · all eyes open", kind:"keep", rec:true},
+  {file:"DSC_0144.RAF", focus:.79, eyes:.50, c:2, read:"Toss read 62% · 2 eyes shut · softer", kind:"toss", ghost:"X", why:"2 eyes shut · softer"},
+  {file:"DSC_0145.RAF", focus:.84, eyes:.88, c:1, read:"Keep read 72% · 1 blink", kind:"keep"},
+  {file:"DSC_0146.RAF", focus:.81, eyes:1.00, c:0, read:"Keep read 70% · all eyes open", kind:"keep"}]},
+ {name:"Venue wide", hue:40, sat:52, nfaces:0, emoji:"🌄", frames:[
+  {file:"DSC_0152.RAF", focus:.90, read:"Keep read 78% · sharp", kind:"keep"}]},
+ {name:"First kiss", hue:345, sat:38, nfaces:2, emoji:"💑", frames:[
+  {file:"DSC_0163.RAF", focus:.78, c:0, read:"Keep read 61%", kind:"keep"},
+  {file:"DSC_0164.RAF", focus:.80, c:0, read:"Keep read 64%", kind:"keep"},
+  {file:"DSC_0165.RAF", focus:.83, c:0, read:"Keep read 70%", kind:"keep"},
+  {file:"DSC_0166.RAF", focus:.85, c:1, kissOK:true, read:"Keep read 75% · approaching peak", kind:"keep"},
+  {file:"DSC_0167.RAF", focus:.86, c:2, kissOK:true, read:"Keep read 79%", kind:"keep"},
+  {file:"DSC_0168.RAF", focus:.88, c:2, kissOK:true, read:"Keep read 88% · peak moment · eyes-shut OK (kiss)", kind:"keep", rec:true},
+  {file:"DSC_0169.RAF", focus:.82, c:2, kissOK:true, read:"Mixed read 66% · past peak", kind:"mixed"},
+  {file:"DSC_0170.RAF", focus:.58, c:2, kissOK:true, read:"Toss read 64% · soft", kind:"toss", ghost:"X", why:"soft · past peak"},
+  {file:"DSC_0171.RAF", focus:.52, c:2, kissOK:true, read:"Toss read 71% · soft", kind:"toss", ghost:"X", why:"soft · past peak"}]},
+ {name:"Rings detail", hue:270, sat:34, nfaces:0, emoji:"💍", frames:[
+  {file:"DSC_0180.RAF", focus:null, read:null, kind:"none"}]},
+ {name:"Bouquet toss", hue:205, sat:44, nfaces:3, emoji:"💐", arc:true, frames:[
+  {file:"DSC_0201.RAF", focus:.80, c:0, read:"Keep read 74% · well-timed", kind:"keep", ghost:"P", why:"well-timed · crowd clear"},
+  {file:"DSC_0202.RAF", focus:.78, c:0, read:"Keep read 62%", kind:"keep"},
+  {file:"DSC_0203.RAF", focus:.81, c:0, read:"Keep read 68%", kind:"keep"},
+  {file:"DSC_0204.RAF", focus:.82, c:0, read:"Keep read 71%", kind:"keep"},
+  {file:"DSC_0205.RAF", focus:.84, c:0, read:"Too close to call — 5·6·7", kind:"tooclose", tooClose:true},
+  {file:"DSC_0206.RAF", focus:.85, c:0, read:"Too close to call — 5·6·7", kind:"tooclose", tooClose:true},
+  {file:"DSC_0207.RAF", focus:.84, c:0, read:"Too close to call — 5·6·7", kind:"tooclose", tooClose:true},
+  {file:"DSC_0208.RAF", focus:.70, c:0, read:"Mixed read 58%", kind:"mixed"},
+  {file:"DSC_0209.RAF", focus:.38, c:0, read:"Toss read 76% · motion blur", kind:"toss", ghost:"X", why:"motion blur"},
+  {file:"DSC_0210.RAF", focus:.33, c:0, read:"Toss read 79% · motion blur", kind:"toss", ghost:"X", why:"motion blur"},
+  {file:"DSC_0211.RAF", focus:.30, c:0, read:"Toss read 81% · motion blur", kind:"toss", ghost:"X", why:"motion blur"},
+  {file:"DSC_0212.RAF", focus:.27, c:0, read:"Toss read 83% · motion blur", kind:"toss", ghost:"X", why:"motion blur"}]},
+ {name:"Grandma · scan 1974", hue:34, sat:26, nfaces:1, emoji:"👵", frames:[
+  {file:"SCAN-1974-02.tif", focus:.55, c:0, read:"Mixed read 55%", kind:"mixed"}]},
+ {name:"Scan reshoots", hue:34, sat:22, nfaces:0, emoji:"🖼️", sub:"grouped by visual similarity", frames:[
+  {file:"IMG_8841.jpg", focus:null, read:null, kind:"none"},
+  {file:"IMG_8842.jpg", focus:null, read:null, kind:"none"},
+  {file:"IMG_8843.jpg", focus:null, read:null, kind:"none"}]},
+ {name:"Phone snap 2009", hue:130, sat:30, nfaces:3, emoji:"👨‍👩‍👧", frames:[
+  {file:"IMG_0034.jpg", focus:.62, c:0, read:"Toss read 58% · soft", kind:"toss"}]},
+ {name:"Portrait — Ted", hue:220, sat:12, nfaces:1, emoji:"👤", frames:[
+  {file:"DSC_0388.RAF", focus:.74, c:1, read:"Toss read 61% · eyes shut", kind:"toss"}]}
+];
+
+function blurFor(f){ if(f==null) return 0; if(f>=.8) return 0; if(f>=.7) return 1;
+  if(f>=.55) return 1.5; if(f>=.4) return 2.5; return 3.5; }
+
+function buildModel(){
+  const stops=[], frames=[];
+  STOP_DEFS.forEach((sd,si)=>{
+    const start=frames.length, len=sd.frames.length;
+    const stop={i:si, name:sd.name, hue:sd.hue, sat:sd.sat, emoji:sd.emoji, arc:!!sd.arc,
+      sub:sd.sub||null, start, len, kind:len>1?"stack":"single", rec:-1,
+      scored:sd.frames.some(fd=>fd.focus!=null)};
+    sd.frames.forEach((fd,fi)=>{
+      if(fd.rec) stop.rec=fi;
+      const faces=[]; for(let j=0;j<sd.nfaces;j++)
+        faces.push({closed:j<(fd.c||0), kissOK:!!fd.kissOK, sharp:(fd.focus||0)>=.7});
+      frames.push({g:frames.length, stop:si, fi, len, file:fd.file,
+        label: len>1 ? sd.name+" · "+(fi+1)+"/"+len : sd.name,
+        focus:fd.focus??null, read:fd.read, kind:fd.kind, rec:!!fd.rec,
+        tooClose:!!fd.tooClose, ghost:fd.ghost||null, why:fd.why||null,
+        faces, blur:blurFor(fd.focus),
+        decision:null, skipped:false, viewed:false, everRendered:false,
+        stars:0, color:null});
+    });
+    stops.push(stop);
+  });
+  return {stops, frames};
+}
+
+const M = buildModel(), STOPS = M.stops, FRAMES = M.frames;
+
+// best→worst rank tint per stack (null when unscored — no fabricated gradient)
+function rankColors(si){
+  const st=STOPS[si]; if(!st.scored||st.len<2) return null;
+  const idx=[...Array(st.len).keys()];
+  idx.sort((a,b)=>(FRAMES[st.start+b].focus||0)-(FRAMES[st.start+a].focus||0));
+  const cols=new Array(st.len);
+  idx.forEach((fi,rank)=>{ const t=st.len>1?rank/(st.len-1):0;
+    cols[fi]="hsl("+Math.round(150-140*t)+",62%,46%)"; });
+  return cols;
+}
+
+function newState(){ return {cur:0, autoAdvance:true, scope:"everything",
+  undoStack:[], renderReady:true, started:false}; }
+
+const SCOPES=["everything","undecided","picks","rejects"];
+function inScope(S,f){ switch(S.scope){
+  case "everything": return true;
+  case "undecided": return !f.decision;
+  case "picks": return f.decision==="P";
+  case "rejects": return f.decision==="X";
+  case "skipped": return f.skipped && !f.decision;
+  case "unviewed": return !f.viewed && !f.decision;
+  default: return true; } }
+
+function stopHasScope(S,si){ const st=STOPS[si];
+  for(let k=0;k<st.len;k++) if(inScope(S,FRAMES[st.start+k])) return true; return false; }
+
+// land-on-✦ (when in scope), else first in-scope frame of the stop
+function landIndex(S,si){ const st=STOPS[si];
+  if(st.rec>=0 && inScope(S,FRAMES[st.start+st.rec])) return st.start+st.rec;
+  for(let k=0;k<st.len;k++) if(inScope(S,FRAMES[st.start+k])) return st.start+k;
+  return -1; }
+
+function gotoIndex(S,g){ const prev=FRAMES[S.cur];
+  S.cur=g; const f=FRAMES[g]; f.viewed=true;
+  return {stackChanged: prev.stop!==f.stop}; }
+
+// dir:+1/-1 → next/prev stop with in-scope content; "END" past the last stop
+function navStop(S,dir){ let si=FRAMES[S.cur].stop+dir;
+  while(si>=0 && si<STOPS.length){ if(stopHasScope(S,si)) return gotoIndex(S,landIndex(S,si)), "moved"; si+=dir; }
+  return dir>0 ? "END" : "edge"; }
+
+// ↓/↑: within-stack on stacks (clamped); photo-walk on singles
+function navFrame(S,dir){ const f=FRAMES[S.cur], st=STOPS[f.stop];
+  if(st.len>1){ let k=f.fi+dir;
+    while(k>=0&&k<st.len){ if(inScope(S,FRAMES[st.start+k])) return gotoIndex(S,st.start+k),"moved"; k+=dir; }
+    return "edge"; }
+  let g=S.cur+dir;
+  while(g>=0&&g<FRAMES.length){ if(inScope(S,FRAMES[g])) return gotoIndex(S,g),"moved"; g+=dir; }
+  return dir>0 ? "END" : "edge"; }
+
+function pushUndo(S,label,changes){ S.undoStack.push({label,cursor:S.cur,changes}); }
+function chg(f,field,to){ const c={g:f.g,field,from:f[field],to}; f[field]=to; return c; }
+
+// Space: skip — mark skipped (never a decision), advance to next in-scope frame
+function skip(S){ const f=FRAMES[S.cur]; const changes=[];
+  if(!f.decision && !f.skipped) changes.push(chg(f,"skipped",true));
+  if(changes.length) pushUndo(S,"skip",changes);
+  let g=S.cur+1;
+  while(g<FRAMES.length){ if(inScope(S,FRAMES[g])) return gotoIndex(S,g),"moved"; g++; }
+  return "END"; }
+
+// P / X / U — with auto-advance, P/X walk to the next undecided in the stack;
+// deciding the last one carries to the next stack
+function decide(S,mark){ const f=FRAMES[S.cur]; const changes=[];
+  if(mark!==null && f.decision===mark) return "noop";
+  if(mark===null && !f.decision && !f.skipped) return "noop";
+  if(f.skipped) changes.push(chg(f,"skipped",false));
+  if(f.decision!==mark) changes.push(chg(f,"decision",mark));
+  pushUndo(S, mark?("mark-"+mark):"clear", changes);
+  if(allDecided()) return "ALLDONE";
+  if(!S.autoAdvance || mark===null) return "stay";
+  const st=STOPS[f.stop];
+  if(st.len>1){
+    for(let k=f.fi+1;k<st.len;k++) if(!FRAMES[st.start+k].decision) return gotoIndex(S,st.start+k),"moved";
+    for(let k=0;k<f.fi;k++) if(!FRAMES[st.start+k].decision) return gotoIndex(S,st.start+k),"moved";
+  }
+  return navStop(S,1)==="END" ? "END" : "moved"; }
+
+// Return: stack commit (one undo unit). Inert until rendered (S.renderReady).
+function commitStack(S){ if(!S.renderReady) return {inert:true};
+  const f=FRAMES[S.cur], st=STOPS[f.stop], changes=[];
+  if(f.decision!=="P"){ if(f.skipped) changes.push(chg(f,"skipped",false));
+    changes.push(chg(f,"decision","P")); }
+  let rejected=0;
+  for(let k=0;k<st.len;k++){ const s=FRAMES[st.start+k];
+    if(s.g!==f.g && !s.decision){ if(s.skipped) changes.push(chg(s,"skipped",false));
+      changes.push(chg(s,"decision","X")); rejected++; } }
+  if(changes.length) pushUndo(S,"commit",changes);
+  const kept=FRAMES.slice(st.start,st.start+st.len).filter(s=>s.decision==="P").length;
+  const end = navStop(S,1)==="END";
+  return {inert:false, single:st.len===1, kept, rejected, end: end||allDecided()}; }
+
+function undo(S){ const e=S.undoStack.pop(); if(!e) return null;
+  for(let i=e.changes.length-1;i>=0;i--){ const c=e.changes[i]; FRAMES[c.g][c.field]=c.from; }
+  gotoIndex(S,e.cursor); return e; }
+
+function setStars(S,n){ const f=FRAMES[S.cur]; if(f.stars===n) return;
+  pushUndo(S,"stars",[chg(f,"stars",n)]); }
+function setColor(S,c){ const f=FRAMES[S.cur]; if(f.color===c) return;
+  pushUndo(S,"color",[chg(f,"color",c)]); }
+
+function allDecided(){ return FRAMES.every(f=>f.decision); }
+function decidedCount(){ return FRAMES.filter(f=>f.decision).length; }
+function scopeCount(S){ return FRAMES.filter(f=>inScope(S,f)).length; }
+
+// completion buckets — exclusive; ✨ never counts anywhere as decided
+function summarize(){
+  const c={picked:0,rejected:0,undecided:0,skipped:0,neverViewed:0,awaiting:0};
+  FRAMES.forEach(f=>{
+    if(f.decision==="P") c.picked++;
+    else if(f.decision==="X") c.rejected++;
+    else if(!f.viewed) c.neverViewed++;
+    else if(f.skipped) c.skipped++;
+    else c.undecided++;
+    if(f.ghost && !f.decision) c.awaiting++; });
+  return c; }
+
+function ghostList(){ const out=[];
+  FRAMES.forEach(f=>{ if(f.ghost) out.push(f); }); return out; }
+/*CORE-END*/
+</script>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const S=newState();
+let exifMode=0, closeupsOn=false, zoomOn=false, hintDone=false;
+let shimmerTimer=null, pillTimer=null, toastTimer=null;
+
+const COLORS={"6":"#e06555","7":"#e0c94e","8":"#46d29a","9":"#5aa2e0","v":"#b06fd6"};
+const COLORNAMES={"6":"red","7":"yellow","8":"green","9":"blue","v":"purple"};
+
+function stopBg(st){ return "radial-gradient(120% 95% at 50% 30%,hsl("+st.hue+","+st.sat+"%,22%),hsl("+st.hue+","+(st.sat+8)+"%,10%) 68%,#060708)"; }
+
+function showToast(msg,ms){ const t=$("toast"); t.textContent=msg;
+  t.classList.add("show"); clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove("show"), ms||1400); }
+
+// ---------- stage ----------
+function renderStage(){
+  const f=FRAMES[S.cur], st=STOPS[f.stop];
+  $("stage").style.background=stopBg(st);
+  const art=$("art");
+  art.style.animation="none"; void art.offsetWidth; art.style.animation="";
+  const em=$("artEmoji");
+  em.textContent=st.emoji;
+  em.style.filter=f.blur? "blur("+f.blur+"px)":"none";
+  // bouquet arc: the bouquet climbs and falls across the burst
+  em.style.transform= st.arc ? "translateY("+(-Math.sin(Math.PI*f.fi/(st.len-1))*14)+"vh)" : "none";
+  $("artLabel").textContent=f.label;
+  $("artSub").textContent=(st.sub? st.sub+" · ":"")+f.file;
+  // shimmer gate — first display only
+  clearTimeout(shimmerTimer);
+  if(!f.everRendered){
+    S.renderReady=false;
+    const sh=$("shimmer"); sh.classList.remove("hidden","flash");
+    shimmerTimer=setTimeout(()=>{ f.everRendered=true; S.renderReady=true;
+      sh.classList.add("hidden"); showPill(); },250);
+    hidePill();
+  } else { S.renderReady=true; $("shimmer").classList.add("hidden"); showPill(); }
+  renderCloseups(); renderExif(); renderZoom();
+}
+
+function flashShimmer(){ const sh=$("shimmer");
+  sh.classList.remove("flash"); void sh.offsetWidth; sh.classList.add("flash"); }
+
+// ---------- read pill (transient; pinned while EXIF on) ----------
+function pillHtml(f){
+  let main = f.read===null ? "No read yet" : f.read;
+  if(f.rec) main='<span class="rec">✦</span>'+main;
+  let extra="";
+  if(f.ghost && !f.decision)
+    extra='<div class="ghostline">✨ autopilot suggests '+(f.ghost==="P"?"keep":"reject")+
+      " — "+f.why+" · tentative, counts for nothing</div>";
+  if(f.tooClose)
+    extra+='<div class="honest">top frames within the noise floor — no ✦ awarded</div>';
+  if(f.read===null)
+    extra+='<div class="honest">no signals for this frame — no verdict invented</div>';
+  return '<div class="main">'+main+'</div>'+extra;
+}
+function showPill(){
+  const f=FRAMES[S.cur], p=$("readpill");
+  p.className=""; p.classList.add("rp-"+f.kind);
+  p.innerHTML=pillHtml(f);
+  p.classList.add("show");
+  clearTimeout(pillTimer);
+  if(exifMode===0) pillTimer=setTimeout(()=>p.classList.remove("show"),2000);
+}
+function hidePill(){ clearTimeout(pillTimer); $("readpill").classList.remove("show"); }
+
+// ---------- close-ups ----------
+function renderCloseups(){
+  const f=FRAMES[S.cur], panel=$("closeups");
+  if(!(closeupsOn && f.faces.length)){ panel.classList.remove("show"); return; }
+  panel.classList.add("show");
+  $("cuTitle").textContent="Close-ups · "+f.faces.length+(f.faces.length>1?" faces":" face");
+  $("cuList").innerHTML=f.faces.map((fc,i)=>{
+    const emo=fc.closed?(fc.kissOK?"😌":"😑"):"🙂";
+    const eye=fc.closed
+      ? (fc.kissOK?'<span class="badge ok">eyes-shut OK · kiss</span>'
+                  :'<span class="badge bad">blink</span>')
+      : '<span class="badge ok">eyes open</span>';
+    const sharp=fc.sharp?'<span class="badge ok">sharp</span>':'<span class="badge soft">soft</span>';
+    return '<div class="face"><div class="dot'+(fc.sharp?'':' soft')+'">'+emo+
+      '</div><div class="info">Face '+(i+1)+'<br>'+eye+' '+sharp+'</div></div>';
+  }).join("");
+}
+
+// ---------- EXIF ----------
+function renderExif(){
+  const f=FRAMES[S.cur], e=$("exif");
+  if(exifMode===0){ e.classList.add("hidden"); return; }
+  e.classList.remove("hidden");
+  const t="17:"+String(12+f.stop).padStart(2,"0")+":"+String((f.fi*7)%60).padStart(2,"0");
+  let rows='<div class="fn">'+f.file+'</div><table>'+
+    '<tr><td>Captured</td><td>June 14 · '+t+'</td></tr>'+
+    '<tr><td>Camera</td><td>X-T5 · 56mm f/1.2</td></tr>';
+  if(exifMode===2){
+    rows+='<tr><td>Exposure</td><td>1/250s · f/2 · ISO 800</td></tr>'+
+      '<tr><td>Size</td><td>7728 × 5152</td></tr>'+
+      '<tr><td>Focus signal</td><td>'+(f.focus==null?"— (unscored)":f.focus.toFixed(2))+'</td></tr>'+
+      '<tr><td>Stars / color</td><td>'+(f.stars?"★".repeat(f.stars):"—")+
+      ' / '+(f.color?COLORNAMES[f.color]:"—")+'</td></tr>';
+  }
+  e.innerHTML=rows+"</table>";
+}
+
+// ---------- zoom (fake 2×; origin sticky within a stack) ----------
+function renderZoom(){ const zw=$("zoomwrap");
+  zw.classList.toggle("zoomed",zoomOn); }
+$("stage").addEventListener("click",ev=>{
+  if(!zoomOn) return;
+  const zw=$("zoomwrap");
+  zw.style.transformOrigin=(ev.clientX/innerWidth*100)+"% "+(ev.clientY/(innerHeight-72)*100)+"%";
+});
+
+// ---------- filmstrip + meta ----------
+function markHtml(f){
+  if(f.decision==="P") return '<span class="mark p">P</span>';
+  if(f.decision==="X") return '<span class="mark x">✕</span>';
+  if(f.ghost) return '<span class="gmark">✨'+f.ghost+'</span>';
+  return "";
+}
+function renderStrip(){
+  const curStop=FRAMES[S.cur].stop, strip=$("strip");
+  strip.innerHTML="";
+  STOPS.forEach((st,si)=>{
+    const active=si===curStop;
+    const frames=FRAMES.slice(st.start,st.start+st.len);
+    if(st.kind==="stack" && !active){
+      // collapsed pill — one segment per burst
+      const d=document.createElement("div");
+      d.className="spill"; d.style.background=stopBg(st);
+      const decided=frames.every(f=>f.decision);
+      const hasGhost=frames.some(f=>f.ghost&&!f.decision);
+      d.innerHTML='<span class="cnt">'+st.len+'</span>'+
+        (decided?'<span class="done">✓</span>':"")+
+        (hasGhost?'<span class="gh">✨</span>':"");
+      d.title=st.name+" — burst of "+st.len;
+      d.onclick=()=>{ jumpTo(landIndex(S,si)>=0?landIndex(S,si):st.start); };
+      strip.appendChild(d);
+    } else {
+      // expanded stack, or standalone thumb
+      const ranks=rankColors(si);
+      frames.forEach(f=>{
+        const d=document.createElement("div");
+        d.className="thumb"+(active&&st.kind==="stack"?" exp":"");
+        d.style.background=stopBg(st);
+        if(f.g===S.cur) d.classList.add("cur");
+        if(f.decision==="X") d.classList.add("rejd");
+        if(f.ghost&&!f.decision) d.classList.add("ghosted");
+        let inner="";
+        if(f.rec&&st.rec>=0) inner+='<span class="star">✦</span>';
+        inner+=markHtml(f);
+        if(f.skipped&&!f.decision) inner+='<span class="skipm">·skip</span>';
+        if(f.stars) inner+='<span class="grade">'+f.stars+'★</span>';
+        if(ranks) inner+='<span class="rank" style="background:'+ranks[f.fi]+'"></span>';
+        else if(st.kind==="stack") inner+='<span class="rank" style="background:#3a3e45"></span>';
+        if(f.color) d.style.borderLeft="3px solid "+COLORS[f.color];
+        d.innerHTML=inner;
+        d.title=f.label+(f.read?" — "+f.read:" — no read yet");
+        d.onclick=()=>jumpTo(f.g);
+        strip.appendChild(d);
+      });
+      if(active&&st.kind==="stack"){
+        const lb=document.createElement("span"); lb.className="clabel";
+        lb.textContent=st.name; strip.appendChild(lb);
+      }
+    }
+  });
+  const cur=strip.querySelector(".cur");
+  if(cur) cur.scrollIntoView({inline:"center",block:"nearest"});
+}
+function renderMeta(){
+  const f=FRAMES[S.cur], st=STOPS[f.stop];
+  $("counter").textContent=(S.cur+1)+" of 35 · stack "+(f.stop+1)+" of 9 · frame "+(f.fi+1)+" of "+st.len;
+  $("fname").textContent=f.file;
+  const d=decidedCount();
+  $("pfill").style.width=(d/35*100)+"%";
+  $("pnum").textContent=d+"/35 decided";
+  $("aaFlag").innerHTML="auto-advance <span class='"+(S.autoAdvance?"on'>on":"off'>off")+"</span>";
+  const sc=S.scope==="everything"?"everything":S.scope+" ("+scopeCount(S)+")";
+  $("scopeFlag").textContent="scope: "+sc;
+  $("gradeFlag").textContent=(f.stars?("★".repeat(f.stars)+" "):"")+(f.color?("● "+COLORNAMES[f.color]):"");
+}
+function render(){ renderStage(); renderStrip(); renderMeta(); }
+
+function jumpTo(g){ const before=FRAMES[S.cur].stop;
+  gotoIndex(S,g);
+  if(FRAMES[g].stop!==before) resetZoomOrigin();
+  render(); }
+function resetZoomOrigin(){ $("zoomwrap").style.transformOrigin="50% 42%"; }
+
+// ---------- overlays ----------
+function overlayOpen(){ return ["keymap","reviewai","stubdlg","summary","startcard"]
+  .find(id=>!$(id).classList.contains("hidden"))||null; }
+function closeOverlay(id){ $(id).classList.add("hidden"); }
+
+function openSummary(){
+  const c=summarize();
+  const row=(k,n,lbl)=>'<div class="sumrow'+(n===0?" zero":"")+'">'+
+    '<span class="key">'+k+'</span><span class="n">'+n+'</span><span class="lbl">'+lbl+'</span></div>';
+  $("summaryBox").innerHTML=
+    '<h1>Run complete — June 14 · Red Rocks wedding + archive strays</h1>'+
+    '<div class="sub">Each line is a one-key jump back into a scoped mini-run.</div>'+
+    '<div style="margin-top:14px">'+
+    row(1,c.picked,"Picked")+row(2,c.rejected,"Rejected")+
+    row(3,c.undecided,"Undecided")+row(4,c.skipped,"Skipped")+
+    row(5,c.neverViewed,"Never viewed")+row(6,c.awaiting,"✨ awaiting review")+
+    '<div class="sumrow zero"><span class="key">·</span><span class="n">0</span><span class="lbl">hidden by lens (no lens on this run)</span></div>'+
+    '</div><h2>Ceremonies (post-run only)</h2>'+
+    '<span class="btn primary" id="btnReview">Review AI suggestions… <span class="key">6</span></span>'+
+    '<span class="btn" id="btnMove">Move rejects…</span>'+
+    '<span class="btn" id="btnExport">Export picks…</span>'+
+    '<div class="note">Tentative ✨ flags counted for nothing above — they are not decisions. '+
+    '<span class="key">Esc</span> returns to the run.</div>';
+  $("summary").classList.remove("hidden");
+  $("btnReview").onclick=openReview;
+  $("btnMove").onclick=openMoveStub;
+  $("btnExport").onclick=openExportStub;
+}
+function summaryJump(n){
+  const c=summarize();
+  const map={1:["picks",c.picked],2:["rejects",c.rejected],3:["undecided",c.undecided],
+    4:["skipped",c.skipped],5:["unviewed",c.neverViewed]};
+  if(n===6){ if(c.awaiting===0&&ghostList().length===0){showToast("No ✨ suggestions");return;}
+    closeOverlay("summary"); openReview(); return; }
+  const [scope,count]=map[n];
+  if(!count){ showToast("None to review"); return; }
+  S.scope=scope; closeOverlay("summary");
+  const g=FRAMES.findIndex(f=>inScope(S,f));
+  if(g>=0) jumpTo(g);
+  showToast("Mini-run: "+scope+" ("+count+")");
+}
+function openReview(){
+  const gl=ghostList();
+  let html='<h1>Review AI suggestions</h1>'+
+    '<div class="sub">The only place tentative flags can become yours — explicit, grouped, legible.</div>';
+  let cur=-1;
+  gl.forEach(f=>{ const st=STOPS[f.stop];
+    if(f.stop!==cur){ cur=f.stop;
+      html+='<h2>'+st.name+(st.kind==="stack"?" — burst of "+st.len:"")+'</h2>'; }
+    const state=f.decision
+      ? '<span class="sup">superseded by your '+(f.decision==="P"?"pick":"reject")+'</span>'
+      : '<span style="color:var(--accent)">awaiting your review</span>';
+    html+='<div class="ghrow"><span class="gk">✨'+f.ghost+'</span>'+
+      '<span>frame '+(f.fi+1)+' · suggest '+(f.ghost==="P"?"keep":"reject")+' — '+f.why+'</span>'+state+'</div>';
+  });
+  html+='<div style="margin-top:14px"><span class="btn primary" id="btnAccept">Accept all (stub)</span>'+
+    '<span class="btn" id="btnRvClose">Back</span></div>'+
+    '<div class="note">Stub — confirmation is not wired in this mockup. In the real mode this '+
+    'flips origin ai → user, per the provenance invariant. No navigation or decision key ever confirms silently.</div>';
+  $("reviewBox").innerHTML=html;
+  $("reviewai").classList.remove("hidden");
+  $("btnAccept").onclick=()=>showToast("Stub — nothing confirmed");
+  $("btnRvClose").onclick=()=>{ closeOverlay("reviewai"); openSummary(); };
+}
+function openMoveStub(){
+  const c=summarize();
+  const tentative=FRAMES.filter(f=>f.ghost==="X"&&!f.decision).length;
+  stub("Move rejects…",
+    "Would move <b>"+c.rejected+"</b> rejected files to a folder or Trash — with a manifest, undoable.<br><br>"+
+    "<b>"+tentative+"</b> frame"+(tentative===1?"":"s")+" carrying only a tentative ✨X are <b>excluded</b> — "+
+    "tentative flags never drive destructive or committing operations.");
+}
+function openExportStub(){
+  const c=summarize();
+  stub("Export picks…","Would export <b>"+c.picked+"</b> picks. ✨P suggestions are not included — "+
+    "only your confirmed decisions export.");
+}
+function stub(title,body){
+  $("stubBox").innerHTML='<h1>'+title+'</h1><div style="font-size:13px;line-height:1.7;margin-top:8px">'+
+    body+'</div><div style="margin-top:14px"><span class="btn" id="btnStubClose">Close (stub — nothing happens)</span></div>';
+  $("stubdlg").classList.remove("hidden");
+  $("btnStubClose").onclick=()=>{ closeOverlay("stubdlg"); openSummary(); };
+}
+
+// ---------- action wrappers (core call + stack-aware chrome) ----------
+function afterMove(prevStop,res){
+  if(res==="END"){ openSummary(); render(); return; }
+  if(res==="edge"){ render(); return; }
+  if(FRAMES[S.cur].stop!==prevStop) resetZoomOrigin();
+  render();
+}
+function scopeEmpty(){ if(scopeCount(S)===0){ showToast("No frames in scope: "+S.scope); return true; } return false; }
+function doNavStop(dir){ if(scopeEmpty())return; afterMove(FRAMES[S.cur].stop, navStop(S,dir)); }
+function doNavFrame(dir){ if(scopeEmpty())return; afterMove(FRAMES[S.cur].stop, navFrame(S,dir)); }
+function doSkip(){ if(scopeEmpty())return; afterMove(FRAMES[S.cur].stop, skip(S)); }
+function doDecide(mark){
+  const prev=FRAMES[S.cur].stop, wasAll=allDecided(), res=decide(S,mark);
+  if(res==="noop"){ render(); return; }
+  if(res==="ALLDONE"){ render(); if(!wasAll) openSummary(); return; }
+  afterMove(prev,res==="END"?"END":res);
+}
+function doCommit(){
+  const prev=FRAMES[S.cur].stop, res=commitStack(S);
+  if(res.inert){ flashShimmer(); return; }
+  showToast(res.single ? "Picked · next" : "Kept "+res.kept+" · rejected "+res.rejected);
+  if(FRAMES[S.cur].stop!==prev) resetZoomOrigin();
+  render();
+  if(res.end) openSummary();
+}
+function doUndo(){
+  const e=undo(S);
+  if(!e){ showToast("Nothing to undo"); return; }
+  ["summary","reviewai","stubdlg"].forEach(closeOverlay);
+  showToast(e.label==="commit"?"Undid stack commit":"Undid "+e.label);
+  render();
+}
+
+// ---------- keyboard ----------
+addEventListener("keydown",e=>{
+  const k=e.key, lk=k.toLowerCase();
+  const ov=overlayOpen();
+  if(e.metaKey&&lk==="z"&&(!ov||ov==="summary")){ e.preventDefault(); doUndo(); return; }
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+
+  if(ov==="startcard"){
+    if(k==="Enter"){ closeOverlay("startcard"); S.started=true;
+      FRAMES[S.cur].everRendered=false; // first real arrival gets its shimmer
+      gotoIndex(S,S.cur); render(); }
+    else if(k==="?"){ hintDone=true; $("hintbar").classList.add("hidden"); $("keymap").classList.remove("hidden"); }
+    e.preventDefault(); return;
+  }
+  if(ov==="keymap"){ if(k==="Escape"||k==="?") closeOverlay("keymap"); e.preventDefault(); return; }
+  if(ov==="reviewai"){ if(k==="Escape"){ closeOverlay("reviewai"); openSummary(); } e.preventDefault(); return; }
+  if(ov==="stubdlg"){ if(k==="Escape"){ closeOverlay("stubdlg"); openSummary(); } e.preventDefault(); return; }
+  if(ov==="summary"){
+    if(k==="Escape"){ closeOverlay("summary"); showToast("Back in the run — → past the end reopens the summary"); }
+    else if(/^[1-6]$/.test(k)) summaryJump(+k);
+    else if(lk==="r") openReview();
+    else if(lk==="m") openMoveStub();
+    else if(lk==="e") openExportStub();
+    else if((e.metaKey&&lk==="z")||k==="Backspace") doUndo();
+    e.preventDefault(); return;
+  }
+
+  switch(true){
+    case k==="ArrowRight"||lk==="l": doNavStop(1); break;
+    case k==="ArrowLeft"||lk==="h": doNavStop(-1); break;
+    case k==="ArrowDown"||lk==="j": doNavFrame(1); break;
+    case k==="ArrowUp"||lk==="k": doNavFrame(-1); break;
+    case k===" ": doSkip(); break;
+    case lk==="p": doDecide("P"); break;
+    case lk==="x": doDecide("X"); break;
+    case lk==="u": doDecide(null); break;
+    case k==="Enter": doCommit(); break;
+    case k==="Backspace": doUndo(); break;
+    case /^[0-5]$/.test(k): setStars(S,+k); render(); break;
+    case /^[6-9]$/.test(k)||lk==="v":
+      setColor(S, FRAMES[S.cur].color===(lk==="v"?"v":k)?null:(lk==="v"?"v":k)); render(); break;
+    case k==="-": setColor(S,null); render(); break;
+    case lk==="z": zoomOn=!zoomOn; renderZoom(); break;
+    case k==="/": closeupsOn=!closeupsOn; renderCloseups();
+      if(closeupsOn&&!FRAMES[S.cur].faces.length) showToast("No faces in this frame"); break;
+    case lk==="i": exifMode=(exifMode+1)%3; renderExif(); showPill(); break;
+    case lk==="a": S.autoAdvance=!S.autoAdvance; renderMeta();
+      showToast("Auto-advance "+(S.autoAdvance?"on":"off")); break;
+    case lk==="s": { const i=(SCOPES.indexOf(S.scope)+1)%SCOPES.length;
+      S.scope=SCOPES[i]; renderMeta(); renderStrip();
+      showToast("Scope: "+S.scope+(S.scope==="everything"?"":" ("+scopeCount(S)+")")); break; }
+    case k==="?": hintDone=true; $("hintbar").classList.add("hidden");
+      $("keymap").classList.remove("hidden"); break;
+    case k==="Escape": if(zoomOn){ zoomOn=false; renderZoom(); } break;
+    default: return;
+  }
+  e.preventDefault();
+});
+
+// ---------- boot: land on stop 1's ✦ behind the start card ----------
+S.cur=landIndex(S,0);
+render();
+
+</script>
+</body>
+</html>

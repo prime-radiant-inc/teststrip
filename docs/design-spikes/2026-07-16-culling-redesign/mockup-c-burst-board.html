@@ -1,0 +1,1015 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teststrip — Mockup C · The Burst Board</title>
+<style>
+:root{
+  --bg:#0a0c0f; --panel:#12151a; --panel2:#161b22; --line:#242b34; --line2:#333c47;
+  --ink:#d8dde3; --dim:#8a93a0; --dim2:#5c6570;
+  --accent:#f5b84c; --pick:#3ecf8e; --rej:#f0685a; --ghost:#b78cf7; --star:#f5d76e;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);overflow:hidden;user-select:none;-webkit-user-select:none;
+  font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+kbd{background:#1b2027;border:1px solid #2c333d;border-bottom-width:2px;border-radius:4px;
+  padding:0 5px;font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:#c6cdd6;white-space:nowrap}
+#top{position:absolute;top:0;left:0;right:0;height:38px;display:flex;align-items:center;gap:14px;
+  padding:0 18px;border-bottom:1px solid var(--line);background:#0d0f13;z-index:15;font-size:12px}
+#top .t1{font-weight:700;letter-spacing:.04em}
+#top .t2{color:var(--dim)}
+#top .t3{margin-left:auto;color:var(--dim2);font-size:11px}
+#feed{position:absolute;top:38px;bottom:64px;left:0;right:0;overflow-y:auto;
+  padding:14vh clamp(14px,3vw,44px) 32vh}
+/* ---------- rows ---------- */
+.row{border:1px solid var(--line);border-radius:12px;background:var(--panel);
+  margin:10px auto;max-width:1400px;transition:border-color .25s,background .25s,box-shadow .25s}
+.row.collapsed{display:flex;align-items:center;gap:12px;padding:8px 16px;height:64px;opacity:.82}
+.row.collapsed.done{border-color:#1f4634;opacity:.92}
+.row.collapsed .mini{width:74px;height:48px;border-radius:6px;overflow:hidden;flex:none;background:#000}
+.row.collapsed .mini .art{width:100%;height:100%}
+.row.collapsed .mini svg{width:100%;height:100%;display:block}
+.cname{font-weight:600;white-space:nowrap}
+.ccount{color:var(--dim2);font-size:12px;white-space:nowrap}
+.sp{flex:1}
+.mini2{font-size:12px;color:var(--dim)}
+.mini2.dim2{color:var(--dim2);font-style:italic}
+.tally{background:rgba(62,207,142,.10);border:1px solid rgba(62,207,142,.38);color:#7de8b6;
+  border-radius:99px;padding:2px 11px;font-size:12px;white-space:nowrap;animation:pop .3s ease-out}
+.gmini{color:var(--ghost);font-size:12px;margin-left:8px}
+.check{color:var(--pick);font-weight:700;margin-left:8px}
+@keyframes pop{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.12)}100%{transform:scale(1)}}
+.row.active{background:var(--panel2);border-color:#3a4250;padding:12px 16px 6px;opacity:1;
+  box-shadow:0 0 0 1px #39414e,0 14px 46px rgba(0,0,0,.55)}
+.rowhead{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}
+.rname{font-weight:700;font-size:15px}
+.rmeta{color:var(--dim2);font-size:12px}
+.fnote{color:var(--star);font-size:12px}
+.honest{color:var(--dim);font-size:12px;font-style:italic}
+/* ---------- tiles ---------- */
+.tiles{display:flex;gap:9px;align-items:stretch;padding:8px 2px 2px}
+.tiles.padbanner{padding-top:32px}
+.tiles.one{justify-content:center}
+.tiles.one .tile{flex:0 1 470px}
+.tiles.few{justify-content:center}
+.tiles.few .tile{flex:0 1 350px}
+.tile{position:relative;flex:1 1 0;min-width:0;transition:transform .16s ease,opacity .2s}
+.tile .frame{position:relative;width:100%;aspect-ratio:3/2;border-radius:8px;overflow:hidden;
+  background:#000;box-shadow:0 2px 10px rgba(0,0,0,.45)}
+.tile .art{position:absolute;inset:0}
+.tile .art svg,.lbzoom svg{width:100%;height:100%;display:block}
+.tile .lbl{position:absolute;left:0;right:0;bottom:20%;text-align:center;font-weight:600;
+  color:rgba(255,255,255,.88);text-shadow:0 1px 5px rgba(0,0,0,.9);
+  font-size:clamp(9px,1.05vw,16px);letter-spacing:.02em;pointer-events:none}
+.tile .edge{position:absolute;left:6%;right:6%;bottom:0;height:3px;border-radius:2px}
+.tile.cursor{transform:scale(1.07);z-index:6}
+.tile.cursor .frame{box-shadow:0 0 0 2.5px var(--accent),0 10px 34px rgba(0,0,0,.65)}
+.tile.decX .frame::after{content:'';position:absolute;inset:0;background:rgba(8,9,11,.58)}
+.tile.decP .frame{box-shadow:0 0 0 2px rgba(62,207,142,.55),0 2px 10px rgba(0,0,0,.45)}
+.tile.cursor.decP .frame{box-shadow:0 0 0 2.5px var(--accent),0 0 0 5px rgba(62,207,142,.4),0 10px 34px rgba(0,0,0,.65)}
+.tile.scopedout{opacity:.16}
+.tile.zap{transform:scale(.05);opacity:0;transition:transform .3s ease-in,opacity .3s ease-in}
+.tile.keepglow .frame{box-shadow:0 0 0 3px var(--pick),0 0 26px rgba(62,207,142,.5);transition:box-shadow .18s}
+.starb{position:absolute;top:-9px;left:50%;transform:translateX(-50%);z-index:7;width:20px;height:20px;
+  border-radius:50%;background:#2a2413;border:1px solid #8a7430;color:var(--star);
+  font-size:12px;line-height:18px;text-align:center}
+.starb.inl{position:static;display:inline-block;transform:none}
+.dchip{position:absolute;top:5px;left:5px;z-index:7;min-width:19px;height:19px;border-radius:5px;
+  font-size:11px;font-weight:700;line-height:19px;text-align:center;padding:0 3px}
+.dchip.p{background:var(--pick);color:#052517}
+.dchip.x{background:var(--rej);color:#2b0a06}
+.gchip{position:absolute;top:5px;right:5px;z-index:7;border:1px dashed var(--ghost);color:var(--ghost);
+  background:rgba(30,20,48,.72);border-radius:5px;font-size:10px;padding:1px 4px;opacity:.95}
+.schip{position:absolute;bottom:7px;right:6px;z-index:7;color:var(--star);font-size:10px;
+  background:rgba(0,0,0,.55);border-radius:4px;padding:0 4px}
+/* too-close group */
+.tgrp{flex:3 1 0;display:flex;gap:9px;position:relative;min-width:0}
+.tgrp .banner{position:absolute;top:-26px;left:2px;right:2px;text-align:center;
+  border-top:1px dashed rgba(245,184,76,.55);padding-top:1px}
+.tgrp .banner span{position:relative;top:-10px;background:var(--panel2);padding:0 10px;
+  color:var(--accent);font-size:11.5px;font-style:italic}
+.tgrp .banner::before,.tgrp .banner::after{content:'';position:absolute;top:-5px;width:1px;height:9px;
+  background:rgba(245,184,76,.55)}
+.tgrp .banner::before{left:0}
+.tgrp .banner::after{right:0}
+/* shimmer */
+.shimmer{position:absolute;inset:0;z-index:5;background:
+  linear-gradient(100deg,rgba(16,18,22,.55) 25%,rgba(255,255,255,.14) 50%,rgba(16,18,22,.55) 75%);
+  background-size:250% 100%;animation:shimmy .55s linear infinite;
+  display:flex;align-items:center;justify-content:center}
+.shimmer span{font-size:10px;color:#aeb7c2;background:rgba(0,0,0,.5);border-radius:4px;padding:1px 6px}
+@keyframes shimmy{from{background-position:160% 0}to{background-position:-160% 0}}
+.frame.flash{outline:2px solid var(--accent);animation:flashp .3s}
+@keyframes flashp{0%,100%{outline-color:transparent}40%{outline-color:var(--accent)}}
+/* bubble (read pill + faces attached to cursor tile) */
+.bubblewrap{position:relative;min-height:86px;margin-top:14px}
+.caret{position:absolute;top:5px;width:12px;height:12px;background:#0d1013;
+  border-left:1px solid var(--line2);border-top:1px solid var(--line2);
+  transform:translateX(-50%) rotate(45deg);z-index:2}
+.bubble{position:absolute;top:10px;transform:translateX(-50%);background:#0d1013;
+  border:1px solid var(--line2);border-radius:10px;padding:9px 13px;max-width:430px;
+  box-shadow:0 8px 26px rgba(0,0,0,.5);z-index:1}
+.pill{display:inline-block;border-radius:99px;padding:3px 12px;font-size:12.5px;white-space:nowrap;
+  border:1px solid}
+.pill.keep{color:#8fe6bd;border-color:rgba(62,207,142,.45);background:rgba(62,207,142,.07)}
+.pill.toss{color:#f5a094;border-color:rgba(240,104,90,.45);background:rgba(240,104,90,.07)}
+.pill.mixed{color:#f2cf8d;border-color:rgba(245,184,76,.45);background:rgba(245,184,76,.07)}
+.pill.close{color:var(--accent);border-color:rgba(245,184,76,.55);background:rgba(245,184,76,.08);font-style:italic}
+.pill.none{color:var(--dim);border-color:var(--line2);background:rgba(255,255,255,.02);font-style:italic}
+.faces{display:flex;align-items:center;gap:5px;margin-top:8px;flex-wrap:wrap}
+.fchip{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#8d7b64,#6b5b47);
+  display:flex;align-items:center;justify-content:center;gap:3px;flex:none;border:2px solid transparent}
+.fchip.open{border-color:rgba(62,207,142,.4)}
+.fchip.ok{border-color:var(--pick)}
+.fchip.blink{border-color:var(--rej)}
+.fchip i{display:block}
+.fchip .eo{width:3px;height:3px;border-radius:50%;background:#14100b}
+.fchip .ec{width:5px;height:2px;border-radius:1px;background:#14100b}
+.fnote2{font-size:11px;color:var(--dim);margin-left:4px}
+.brow{margin-top:7px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.bstars{color:var(--star);letter-spacing:2px;font-size:13px}
+.bdec{font-size:12px;font-weight:700}
+.bdec.P{color:var(--pick)} .bdec.X{color:var(--rej)}
+.bghost{font-size:11.5px;color:var(--ghost);font-style:italic;max-width:400px;white-space:normal}
+/* ---------- bottom bar ---------- */
+#bar{position:absolute;left:0;right:0;bottom:0;height:64px;background:#0d0f13;
+  border-top:1px solid var(--line);display:flex;align-items:center;gap:16px;padding:0 18px;z-index:15}
+.counter{font-variant-numeric:tabular-nums;white-space:nowrap;font-size:13px}
+.fname{color:var(--dim2);font-size:12px}
+#prog{flex:0 1 340px;min-width:150px}
+.ptrack{height:6px;background:#1c2129;border-radius:3px;overflow:hidden}
+.pfill{height:100%;background:var(--pick);transition:width .25s}
+.plabel{font-size:10.5px;color:var(--dim2);margin-top:3px;white-space:nowrap}
+.chip2{border:1px solid var(--line);border-radius:8px;padding:3px 9px;font-size:11.5px;
+  color:var(--dim);white-space:nowrap}
+.chip2.on{color:#9fe8c6;border-color:#2c5d47}
+#hints{font-size:11.5px;color:var(--dim);margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hmini{margin-left:auto;font-size:11.5px;color:var(--dim)}
+/* ---------- overlays ---------- */
+.ovl{position:fixed;inset:0;background:rgba(5,6,8,.74);backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:center;z-index:40}
+.card{background:#12161c;border:1px solid #2b323c;border-radius:14px;padding:26px 32px;
+  width:min(94vw,660px);box-shadow:0 24px 80px rgba(0,0,0,.65);max-height:86vh;overflow-y:auto}
+.card h1{font-size:22px;margin:6px 0 10px}
+.card h2{font-size:18px;margin:0 0 10px}
+.kicker{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim2)}
+.bigmeta{font-size:14px;margin-bottom:10px}
+.dim3{color:var(--dim2)}
+.opts{font-size:12.5px;color:var(--dim);margin-bottom:14px}
+.phil{font-size:13px;color:var(--dim);border-left:2px solid var(--accent);padding-left:12px;margin:14px 0}
+.go{margin-top:18px;font-size:13px;color:var(--dim)}
+.klist{width:100%;border-collapse:collapse;font-size:12.5px;margin:6px 0 14px}
+.klist td{padding:3.5px 8px 3.5px 0;vertical-align:top}
+.klist td:first-child{white-space:nowrap;width:130px}
+.ksec{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2);
+  margin:14px 0 4px;border-bottom:1px solid var(--line);padding-bottom:3px}
+.note{font-size:12px;color:var(--dim);background:rgba(245,184,76,.06);
+  border:1px solid rgba(245,184,76,.25);border-radius:8px;padding:9px 12px;margin:12px 0}
+.foot{font-size:11.5px;color:var(--dim2);margin-top:12px}
+/* summary */
+.sumline{display:flex;align-items:center;gap:12px;padding:7px 4px;border-bottom:1px solid var(--line);font-size:14px}
+.sumline .num{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700}
+.sumline .zero{color:var(--dim2);font-weight:400}
+.sumbtns{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+.sbtn{border:1px solid var(--line2);border-radius:9px;padding:8px 13px;font-size:12.5px;color:var(--ink);
+  background:#181d24}
+/* review */
+.rgrp{margin:12px 0}
+.rgname{font-weight:700;font-size:13px;margin-bottom:5px}
+.rrow{display:flex;align-items:center;gap:10px;padding:5px 0 5px 12px;font-size:12.5px;
+  border-left:2px solid var(--line)}
+.gtag{border:1px dashed var(--ghost);color:var(--ghost);border-radius:5px;font-size:11px;padding:0 5px}
+.rfr{width:96px;color:var(--dim)}
+.rwhy{flex:1;font-style:italic;color:var(--dim)}
+.await{color:var(--ghost);font-size:11.5px}
+.sup{color:var(--dim2);font-size:11.5px;text-decoration:line-through}
+/* lightbox */
+.ovl.lb{background:rgba(3,4,6,.95);flex-direction:column;gap:12px}
+.lbwrap{display:flex;flex-direction:column;align-items:center;gap:10px;max-width:94vw}
+.lbview{position:relative;width:min(86vw,1020px,132vh);aspect-ratio:3/2;overflow:hidden;
+  border-radius:10px;background:#000;box-shadow:0 0 0 1px #2b323c,0 30px 90px rgba(0,0,0,.8)}
+.lbzoom{position:absolute;width:200%;height:200%;left:-50%;top:-50%}
+.lbtag{position:absolute;top:10px;right:12px;font-size:11px;color:#aeb7c2;
+  background:rgba(0,0,0,.55);border-radius:5px;padding:2px 8px;z-index:6}
+.lbcap{font-size:14px}
+.lbinfo{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center}
+.lbinfo .faces{margin-top:0}
+.lbhint{font-size:12px;color:var(--dim2)}
+/* toast */
+#toastroot{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:60;
+  display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+.toast{background:#1a2027;border:1px solid #333c47;border-radius:99px;padding:7px 18px;
+  font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.5);animation:tin .22s ease-out;white-space:nowrap}
+.toast.out{opacity:0;transition:opacity .4s}
+@keyframes tin{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+</style>
+</head>
+<body>
+<div id="top">
+  <span class="t1">TESTSTRIP · CULL</span>
+  <span class="t2">Mockup C — The Burst Board</span>
+  <span class="t3">design spike · fake data · nothing is written anywhere</span>
+</div>
+<div id="app"></div>
+<div id="toastroot"></div>
+<script>
+/* ============================================================
+   ===CORE-BEGIN===  pure state machine — no DOM, no timers.
+   Extracted verbatim and executed under jsc for verification.
+   ============================================================ */
+'use strict';
+
+function mkFaces(n, closed, ok){
+  const a=[]; for(let i=0;i<n;i++) a.push({closed:i<closed, ok:(i<closed)&&!!ok});
+  return a;
+}
+
+const STACKS=[
+  {name:'Lineup', short:'Lineup', hue:172, art:'lineup', fn:i=>'RR_04'+(12+i)+'.CR3', frames:[
+    {focus:.82, pill:'Keep read 76% · all eyes open', faces:mkFaces(8,0)},
+    {focus:.85, pill:'Keep read 71% · 2 eyes shut', faces:mkFaces(8,2)},
+    {focus:.88, pill:'Keep read 84% · sharpest · all eyes open', star:true, faces:mkFaces(8,0)},
+    {focus:.79, pill:'Toss read 62% · 2 eyes shut · softer', ghost:'X', why:'2 eyes shut · softer', faces:mkFaces(8,2)},
+    {focus:.84, pill:'Keep read 74% · one blink', faces:mkFaces(8,1)},
+    {focus:.81, pill:'Keep read 72% · all eyes open', faces:mkFaces(8,0)},
+  ]},
+  {name:'Venue wide', short:'Venue', hue:38, art:'venue', fn:()=>'RR_0421.CR3', frames:[
+    {focus:.90, pill:'Keep read 78% · sharp', faces:[]},
+  ]},
+  {name:'First kiss', short:'Kiss', hue:345, art:'kiss', fn:i=>'RR_04'+(33+i)+'.CR3', frames:[
+    {focus:.80, pill:'Keep read 66% · approach', faces:mkFaces(2,0)},
+    {focus:.82, pill:'Keep read 69%', faces:mkFaces(2,0)},
+    {focus:.83, pill:'Keep read 72%', faces:mkFaces(2,0)},
+    {focus:.84, pill:'Keep read 75%', faces:mkFaces(2,0)},
+    {focus:.85, pill:'Keep read 79% · eyes-shut OK (kiss)', faces:mkFaces(2,2,true)},
+    {focus:.86, pill:'Keep read 87% · peak moment · eyes-shut OK (kiss)', star:true, faces:mkFaces(2,2,true)},
+    {focus:.83, pill:'Keep read 73% · eyes-shut OK (kiss)', faces:mkFaces(2,2,true)},
+    {focus:.62, pill:'Toss read 64% · soft', ghost:'X', why:'soft', faces:mkFaces(2,2,true)},
+    {focus:.58, pill:'Toss read 67% · soft', ghost:'X', why:'soft', faces:mkFaces(2,2,true)},
+  ]},
+  {name:'Rings detail', short:'Rings', hue:268, art:'rings', unscored:true, fn:()=>'RR_0450.CR3', frames:[
+    {focus:null, pill:'No read yet', faces:[]},
+  ]},
+  {name:'Bouquet toss', short:'Toss', hue:203, art:'bouquet', tooClose:[4,5,6], fn:i=>'RR_04'+(66+i)+'.CR3', frames:[
+    {focus:.80, pill:'Keep read 72% · launch — everyone in frame', ghost:'P', why:'launch — everyone in frame', faces:[]},
+    {focus:.78, pill:'Keep read 68%', faces:[]},
+    {focus:.79, pill:'Keep read 70%', faces:[]},
+    {focus:.81, pill:'Keep read 74%', faces:[]},
+    {focus:.84, pill:'Too close to call — 5·6·7 within the noise floor', tooClose:true, faces:[]},
+    {focus:.85, pill:'Too close to call — 5·6·7 within the noise floor', tooClose:true, faces:[]},
+    {focus:.84, pill:'Too close to call — 5·6·7 within the noise floor', tooClose:true, faces:[]},
+    {focus:.76, pill:'Keep read 65%', faces:[]},
+    {focus:.45, pill:'Toss read 58% · motion blur', ghost:'X', why:'motion blur', faces:[]},
+    {focus:.40, pill:'Toss read 55% · motion blur', ghost:'X', why:'motion blur', faces:[]},
+    {focus:.42, pill:'Toss read 56% · motion blur', ghost:'X', why:'motion blur', faces:[]},
+    {focus:.38, pill:'Toss read 54% · motion blur', ghost:'X', why:'motion blur', faces:[]},
+  ]},
+  {name:'Grandma · scan 1974', short:'Grandma', hue:36, art:'grandma', fn:()=>'SCAN_1974_A.tif', frames:[
+    {focus:.55, pill:'Mixed read 55%', faces:mkFaces(1,0)},
+  ]},
+  {name:'Scan reshoots', short:'Reshoot', hue:36, art:'reshoot', unscored:true, fn:i=>'SCAN_1974_R'+(i+1)+'.tif', frames:[
+    {focus:null, pill:'No read yet', faces:[]},
+    {focus:null, pill:'No read yet', faces:[]},
+    {focus:null, pill:'No read yet', faces:[]},
+  ]},
+  {name:'Phone snap 2009', short:'Phone', hue:130, art:'phone', fn:()=>'IMG_0113.JPG', frames:[
+    {focus:.65, pill:'Toss read 58% · soft', faces:mkFaces(3,0)},
+  ]},
+  {name:'Portrait — Ted', short:'Ted', hue:215, art:'ted', fn:()=>'RR_0509.CR3', frames:[
+    {focus:.80, pill:'Toss read 61% · eyes shut', faces:mkFaces(1,1)},
+  ]},
+];
+
+function blurFor(focus){
+  if(focus==null) return 0;          // no read ≠ blurry — render honest sharp
+  if(focus>=.80) return 0;
+  if(focus>=.78) return 0.6;
+  if(focus>=.70) return 1;
+  if(focus>=.60) return 1.4;
+  if(focus>=.50) return 2;
+  return 2.8;
+}
+
+// Flatten to FR (35 frames) and precompute derived visuals.
+const FR=[];
+STACKS.forEach((s,si)=>{
+  s.frames.forEach((f,fi)=>{
+    FR.push({ id:FR.length, s:si, i:fi, n:s.frames.length,
+      focus:f.focus, pill:f.pill, star:!!f.star, ghost:f.ghost||null, why:f.why||null,
+      tooClose:!!f.tooClose, faces:f.faces, fn:s.fn(fi), blur:blurFor(f.focus), edge:'#49535f' });
+  });
+});
+// rank-gradient edges (best→worst within each scored multi-frame stack)
+STACKS.forEach((s,si)=>{
+  const fs=FR.filter(f=>f.s===si);
+  if(s.unscored){ fs.forEach(f=>f.edge='#404a55'); return; }
+  if(fs.length===1){
+    const f=fs[0];
+    f.edge = f.pill.indexOf('Keep')===0 ? 'hsl(152,60%,44%)'
+           : f.pill.indexOf('Toss')===0 ? 'hsl(10,65%,52%)'
+           : f.pill.indexOf('Mixed')===0 ? 'hsl(42,70%,50%)' : '#404a55';
+    return;
+  }
+  const sorted=fs.slice().sort((a,b)=>b.focus-a.focus);
+  sorted.forEach((f,pos)=>{
+    const t=pos/(sorted.length-1);
+    f.edge='hsl('+Math.round(152-142*t)+',62%,46%)';
+  });
+});
+
+const ROWS=STACKS.map((s,si)=>FR.filter(f=>f.s===si).map(f=>f.id));
+const STARIDX=STACKS.map(s=>{const i=s.frames.findIndex(f=>f.star); return i<0?null:i;});
+const GHOSTS=FR.filter(f=>f.ghost);
+const SCOPES=['everything','undecided','picks','rejects'];
+const NROWS=ROWS.length;
+
+function newState(){
+  return {
+    screen:'start', overlay:null, lightbox:false,
+    activeRow:0, cursor:0,
+    dec:FR.map(()=>null), stars:FR.map(()=>0),
+    skipped:FR.map(()=>false), viewed:FR.map(()=>false), rendered:FR.map(()=>false),
+    committed:STACKS.map(()=>null),
+    autoAdvance:true, scope:0, closeups:true, hintsDismissed:false,
+    undo:[],
+  };
+}
+
+function curId(st){ return ROWS[st.activeRow][st.cursor]; }
+function landIdx(r){ const s=STARIDX[r]; return s==null?0:s; }
+function isSingle(r){ return ROWS[r].length===1; }
+function markRendered(st,id){ st.rendered[id]=true; }
+function activateRow(st,r,c){
+  st.activeRow=r; st.cursor=Math.min(c, ROWS[r].length-1);
+  ROWS[r].forEach(id=>{ st.viewed[id]=true; });
+}
+function advanceRow(st,fx){
+  if(st.activeRow<NROWS-1) activateRow(st, st.activeRow+1, landIdx(st.activeRow+1));
+  else finish(st,fx);
+}
+function finish(st,fx){ st.screen='summary'; st.lightbox=false; }
+
+function pushUndo(st,e){ st.undo.push(e); if(st.undo.length>200) st.undo.shift(); }
+
+function nextUndecidedWrap(st,r,from){
+  const ids=ROWS[r], n=ids.length;
+  for(let k=1;k<n;k++){ const j=(from+k)%n; if(st.dec[ids[j]]==null) return j; }
+  return null;
+}
+function nextUndecidedAfter(st,r,from){
+  const ids=ROWS[r];
+  for(let j=from+1;j<ids.length;j++) if(st.dec[ids[j]]==null) return j;
+  return null;
+}
+
+function decide(st,d,fx){
+  const id=curId(st), r=st.activeRow;
+  pushUndo(st,{t:'dec',id,prev:st.dec[id],prevSkip:st.skipped[id],prevCommitted:st.committed[r],row:r,cursor:st.cursor});
+  st.dec[id]=d; st.skipped[id]=false; st.committed[r]=null;
+  if(d && st.autoAdvance){
+    const nx=nextUndecidedWrap(st,r,st.cursor);
+    if(nx!=null) st.cursor=nx; else advanceRow(st,fx);
+  }
+}
+
+function setStar(st,v,fx){
+  const id=curId(st);
+  pushUndo(st,{t:'star',id,prev:st.stars[id],row:st.activeRow,cursor:st.cursor});
+  st.stars[id]=v;
+}
+
+function doSpace(st,fx){ // always decision-free
+  const id=curId(st);
+  if(st.dec[id]==null) st.skipped[id]=true;
+  const nx=nextUndecidedAfter(st,st.activeRow,st.cursor);
+  if(nx!=null) st.cursor=nx; else advanceRow(st,fx);
+}
+
+function doCommit(st,fx){
+  const id=curId(st), r=st.activeRow, ids=ROWS[r];
+  if(!st.rendered[id]){ fx.push({t:'flash'}); return; } // inert until rendered
+  const changes=[];
+  ids.forEach(fid=>{
+    const want = fid===id ? 'P' : (st.dec[fid]==null ? 'X' : st.dec[fid]);
+    if(want!==st.dec[fid] || st.skipped[fid]){
+      changes.push({id:fid,prev:st.dec[fid],prevSkip:st.skipped[fid]});
+      st.dec[fid]=want; st.skipped[fid]=false;
+    }
+  });
+  const kept=ids.filter(f=>st.dec[f]==='P').length;
+  const rej=ids.filter(f=>st.dec[f]==='X').length;
+  pushUndo(st,{t:'commit',row:r,changes,prevCommitted:st.committed[r],prevCursor:st.cursor});
+  st.committed[r]={kept,rej};
+  fx.push({t:'committed',row:r});
+  fx.push({t:'toast',msg: isSingle(r) ? 'Picked · '+STACKS[r].name : 'Kept '+kept+' · rejected '+rej});
+  st.lightbox=false;
+  advanceRow(st,fx);
+}
+
+function doUndo(st,fx){
+  const e=st.undo.pop();
+  if(!e){ fx.push({t:'toast',msg:'Nothing to undo'}); return; }
+  st.screen='board'; st.overlay=null; st.lightbox=false;
+  if(e.t==='dec'){
+    st.dec[e.id]=e.prev; st.skipped[e.id]=e.prevSkip; st.committed[e.row]=e.prevCommitted;
+    activateRow(st,e.row,e.cursor);
+  } else if(e.t==='star'){
+    st.stars[e.id]=e.prev; activateRow(st,e.row,e.cursor);
+  } else if(e.t==='commit'){ // one unit
+    e.changes.forEach(c=>{ st.dec[c.id]=c.prev; st.skipped[c.id]=c.prevSkip; });
+    st.committed[e.row]=e.prevCommitted;
+    activateRow(st,e.row,e.prevCursor);
+    fx.push({t:'toast',msg:'Un-committed · '+STACKS[e.row].name});
+  }
+}
+
+function summarize(st){
+  let picked=0,rejected=0,skipped=0,undecided=0,neverViewed=0;
+  FR.forEach(f=>{
+    const d=st.dec[f.id];
+    if(d==='P') picked++;
+    else if(d==='X') rejected++;
+    else if(st.skipped[f.id]) skipped++;
+    else undecided++;
+    if(!st.viewed[f.id]) neverViewed++;
+  });
+  const awaiting=GHOSTS.filter(g=>st.dec[g.id]==null).length;
+  const tentOnlyRejects=GHOSTS.filter(g=>g.ghost==='X'&&st.dec[g.id]==null).length;
+  return {picked,rejected,skipped,undecided,neverViewed,awaiting,tentOnlyRejects};
+}
+
+function summaryKey(st,k,fx){
+  const jump=(pred,scope,label)=>{
+    const f=FR.find(pred);
+    if(!f){ fx.push({t:'toast',msg:'No '+label}); return; }
+    st.screen='board'; if(scope!=null) st.scope=scope;
+    activateRow(st,f.s,f.i);
+    fx.push({t:'toast',msg:'First '+label});
+  };
+  switch(k){
+    case '1': jump(f=>st.dec[f.id]==='P',2,'pick'); break;
+    case '2': jump(f=>st.dec[f.id]==='X',3,'reject'); break;
+    case '3': jump(f=>st.dec[f.id]==null&&!st.skipped[f.id],1,'undecided frame'); break;
+    case '4': jump(f=>st.dec[f.id]==null&&st.skipped[f.id],1,'skipped frame'); break;
+    case '5': jump(f=>!st.viewed[f.id],null,'never-viewed frame'); break;
+    case '6': case 'r': st.overlay='review'; break;
+    case 'm': st.overlay='move'; break;
+    case 'e': st.overlay='export'; break;
+    case 'esc': st.screen='board'; break;
+    case 'undo': doUndo(st,fx); break;
+    case 'help': st.overlay='help'; break;
+  }
+  return fx;
+}
+
+function key(st,k){
+  const fx=[];
+  if(st.overlay==='help'){
+    if(k==='help'||k==='esc'||k==='return'){ st.overlay=null; st.hintsDismissed=true; }
+    return fx;
+  }
+  if(st.overlay==='review'){
+    if(k==='return'){
+      const n=summarize(st).awaiting;
+      if(n) fx.push({t:'toast',msg:'Stub — would confirm '+n+' tentative ✨ flag'+(n===1?'':'s')+' (origin → user)'});
+      st.overlay=null;
+    } else if(k==='esc') st.overlay=null;
+    return fx;
+  }
+  if(st.overlay==='move'||st.overlay==='export'){
+    if(k==='esc'||k==='return') st.overlay=null;
+    return fx;
+  }
+  if(st.screen==='start'){
+    if(k==='return'){ st.screen='board'; activateRow(st,0,landIdx(0)); }
+    else if(k==='help') st.overlay='help';
+    return fx;
+  }
+  if(st.screen==='summary') return summaryKey(st,k,fx);
+  // ---- board ----
+  if(k==='help'){ st.overlay='help'; return fx; }
+  if(k==='undo'){ doUndo(st,fx); return fx; }
+  const prevRow=st.activeRow;
+  switch(k){
+    case 'right': case 'l':
+      if(st.activeRow<NROWS-1) activateRow(st,st.activeRow+1,landIdx(st.activeRow+1));
+      else finish(st,fx);
+      break;
+    case 'left': case 'h':
+      if(st.activeRow>0) activateRow(st,st.activeRow-1,landIdx(st.activeRow-1));
+      break;
+    case 'down': case 'j': // spatial: move RIGHT along the row
+      if(st.lightbox){ if(st.cursor<ROWS[st.activeRow].length-1) st.cursor++; break; }
+      if(st.cursor<ROWS[st.activeRow].length-1) st.cursor++;
+      else if(st.activeRow<NROWS-1) activateRow(st,st.activeRow+1,landIdx(st.activeRow+1));
+      else finish(st,fx);
+      break;
+    case 'up': case 'k': // spatial: move LEFT along the row
+      if(st.lightbox){ if(st.cursor>0) st.cursor--; break; }
+      if(st.cursor>0) st.cursor--;
+      else if(st.activeRow>0) activateRow(st,st.activeRow-1,ROWS[st.activeRow-1].length-1);
+      break;
+    case 'space': doSpace(st,fx); break;
+    case 'p': decide(st,'P',fx); break;
+    case 'x': decide(st,'X',fx); break;
+    case 'u': decide(st,null,fx); break;
+    case 'return': doCommit(st,fx); break;
+    case 'z': st.lightbox=!st.lightbox; break;
+    case 'esc': st.lightbox=false; break;
+    case 'a': st.autoAdvance=!st.autoAdvance;
+      fx.push({t:'toast',msg:'Auto-advance '+(st.autoAdvance?'on':'off')}); break;
+    case 's': st.scope=(st.scope+1)%SCOPES.length;
+      fx.push({t:'toast',msg:'Scope: '+SCOPES[st.scope]}); break;
+    case 'slash': st.closeups=!st.closeups;
+      fx.push({t:'toast',msg:'Close-ups '+(st.closeups?'on':'off')}); break;
+    default:
+      if(/^[0-5]$/.test(k)) setStar(st,+k,fx);
+  }
+  if(st.lightbox && (st.activeRow!==prevRow || st.screen!=='board')) st.lightbox=false;
+  return fx;
+}
+/* ===CORE-END=== */
+
+/* ============================================================
+   UI layer — rendering, timers (shimmer), animation, input.
+   ============================================================ */
+const app=document.getElementById('app');
+const toastroot=document.getElementById('toastroot');
+let ST=newState();
+let animating=false;
+const pendingShim=new Map();
+let gidc=0;
+
+/* ---------- placeholder artwork ---------- */
+function artSVG(f){
+  const s=STACKS[f.s], H=s.hue, gid='g'+(gidc++);
+  const ink='hsl('+H+',35%,52%)', ink2='hsl('+H+',30%,36%)', hi='hsl('+H+',55%,68%)';
+  let b='';
+  switch(s.art){
+    case 'lineup':
+      for(let j=0;j<8;j++){
+        const x=27+j*35, up=[0,5,2,7,3,6,1,4][j];
+        b+='<path d="M'+(x-16)+',200 v-'+(56+up)+' a16,16 0 0 1 32,0 v'+(56+up)+' z" fill="'+ink2+'"/>'
+          +'<circle cx="'+x+'" cy="'+(112-up)+'" r="11.5" fill="'+ink+'"/>';
+      }
+      b+='<rect x="0" y="186" width="300" height="14" fill="rgba(0,0,0,.25)"/>';
+      break;
+    case 'venue':
+      b+='<polygon points="-10,152 44,38 96,152" fill="'+ink2+'"/>'
+        +'<polygon points="66,152 132,16 206,152" fill="'+ink+'" opacity=".85"/>'
+        +'<polygon points="176,152 242,52 310,152" fill="'+ink2+'"/>'
+        +'<rect x="0" y="152" width="300" height="48" fill="hsl('+H+',24%,13%)"/>'
+        +'<rect x="128" y="128" width="44" height="24" rx="3" fill="'+hi+'" opacity=".55"/>';
+      for(let j=0;j<14;j++) b+='<circle cx="'+(34+j*17)+'" cy="'+(166+(j%3)*8)+'" r="3" fill="'+ink+'" opacity=".6"/>';
+      break;
+    case 'kiss': {
+      const g=Math.max(9, 46-f.i*7);
+      const lx=150-g, rx=150+g;
+      b+='<path d="M'+(lx-22)+',200 v-62 a22,22 0 0 1 44,0 v62 z" fill="'+ink2+'"/>'
+        +'<circle cx="'+lx+'" cy="'+108+'" r="17" fill="'+ink+'"/>'
+        +'<path d="M'+(rx-22)+',200 v-58 a22,22 0 0 1 44,0 v58 z" fill="'+ink+'"/>'
+        +'<circle cx="'+rx+'" cy="'+112+'" r="16" fill="'+hi+'"/>';
+      if(f.star) b+='<text x="150" y="70" text-anchor="middle" font-size="20" fill="#f7768e">♥</text>';
+      break; }
+    case 'rings':
+      b+='<rect x="88" y="118" width="124" height="44" rx="14" fill="'+ink2+'"/>'
+        +'<circle cx="137" cy="102" r="25" fill="none" stroke="'+hi+'" stroke-width="5.5"/>'
+        +'<circle cx="167" cy="102" r="25" fill="none" stroke="'+ink+'" stroke-width="5.5"/>';
+      break;
+    case 'bouquet': {
+      const t=f.i/11, bx=30+240*t, by=170-152*Math.sin(Math.PI*t);
+      for(let j=0;j<6;j++)
+        b+='<circle cx="'+(28+j*49)+'" cy="'+(186-(j%2)*6)+'" r="15" fill="'+ink2+'"/>'
+          +'<line x1="'+(20+j*49)+'" y1="'+(176-(j%2)*6)+'" x2="'+(12+j*49)+'" y2="150" stroke="'+ink2+'" stroke-width="6" stroke-linecap="round"/>';
+      if(f.i>=8) for(let m=1;m<=3;m++)
+        b+='<line x1="'+(bx-10*m-8)+'" y1="'+(by-6-2*m)+'" x2="'+(bx-10*m+2)+'" y2="'+(by-2*m)+'" stroke="'+hi+'" stroke-width="2.5" opacity="'+(0.5-m*0.12)+'"/>';
+      b+='<circle cx="'+bx+'" cy="'+by+'" r="9" fill="'+hi+'"/>'
+        +'<circle cx="'+(bx-6)+'" cy="'+(by+5)+'" r="4.5" fill="'+ink+'"/>'
+        +'<circle cx="'+(bx+6)+'" cy="'+(by+5)+'" r="4.5" fill="'+ink+'"/>';
+      break; }
+    case 'grandma':
+      b+='<ellipse cx="150" cy="100" rx="82" ry="94" fill="none" stroke="'+ink2+'" stroke-width="9"/>'
+        +'<path d="M122,82 a28,28 0 0 1 56,0" stroke="'+hi+'" stroke-width="9" fill="none"/>'
+        +'<circle cx="150" cy="90" r="25" fill="'+ink+'"/>'
+        +'<path d="M116,164 a34,34 0 0 1 68,0 z" fill="'+ink2+'"/>';
+      break;
+    case 'reshoot': {
+      const rot=[0,2.2,-1.6][f.i], gx=[80,150,208][f.i];
+      b+='<g transform="rotate('+rot+' 150 100)">'
+        +'<rect x="68" y="28" width="164" height="144" fill="hsl('+H+',16%,70%)"/>'
+        +'<rect x="80" y="40" width="140" height="120" fill="hsl('+H+',30%,44%)"/>'
+        +'<circle cx="150" cy="86" r="21" fill="hsl('+H+',26%,26%)"/>'
+        +'<path d="M124,148 a26,26 0 0 1 52,0 z" fill="hsl('+H+',26%,26%)"/>'
+        +'<polygon points="'+gx+',42 '+(gx+30)+',42 '+(gx-14)+',158 '+(gx-44)+',158" fill="#fff" opacity=".10"/>'
+        +'</g>';
+      break; }
+    case 'phone':
+      b+='<circle cx="88" cy="126" r="27" fill="'+ink+'"/><rect x="58" y="150" width="60" height="50" rx="14" fill="'+ink2+'"/>'
+        +'<circle cx="160" cy="112" r="31" fill="'+ink2+'"/><rect x="126" y="140" width="68" height="60" rx="16" fill="'+ink+'"/>'
+        +'<circle cx="230" cy="128" r="25" fill="'+ink+'"/><rect x="202" y="150" width="56" height="50" rx="13" fill="'+ink2+'"/>'
+        +'<circle cx="42" cy="38" r="36" fill="#fff" opacity=".13"/><circle cx="42" cy="38" r="17" fill="#fff" opacity=".18"/>'
+        +'<text x="292" y="190" text-anchor="end" font-size="14" fill="#ffb457" opacity=".85" font-family="monospace">06 21 2009</text>';
+      break;
+    case 'ted':
+      b+='<circle cx="150" cy="88" r="39" fill="'+ink+'"/>'
+        +'<path d="M94,200 v-38 a56,56 0 0 1 112,0 v38 z" fill="'+ink2+'"/>'
+        +'<path d="M132,86 h13 M155,86 h13" stroke="#0b0d10" stroke-width="3.5" stroke-linecap="round"/>';
+      break;
+  }
+  return '<svg viewBox="0 0 300 200" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">'
+    +'<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1">'
+    +'<stop offset="0" stop-color="hsl('+H+',26%,19%)"/><stop offset="1" stop-color="hsl('+H+',32%,10%)"/>'
+    +'</linearGradient></defs><rect width="300" height="200" fill="url(#'+gid+')"/>'+b+'</svg>';
+}
+
+/* ---------- fragments ---------- */
+function pillHTML(f){
+  let cls='none';
+  if(f.tooClose) cls='close';
+  else if(f.pill.indexOf('Keep')===0) cls='keep';
+  else if(f.pill.indexOf('Toss')===0) cls='toss';
+  else if(f.pill.indexOf('Mixed')===0) cls='mixed';
+  return '<div class="pill '+cls+'">'+f.pill+'</div>';
+}
+function facesHTML(f){
+  const chips=f.faces.map(fc=>{
+    const cls=fc.closed?(fc.ok?'ok':'blink'):'open';
+    const eyes=fc.closed?'<i class="ec"></i><i class="ec"></i>':'<i class="eo"></i><i class="eo"></i>';
+    return '<div class="fchip '+cls+'">'+eyes+'</div>';
+  }).join('');
+  const closed=f.faces.filter(c=>c.closed), okc=closed.filter(c=>c.ok);
+  let note;
+  if(!closed.length) note='all eyes open';
+  else if(okc.length===closed.length) note='eyes shut — OK'+(STACKS[f.s].art==='kiss'?' (kiss)':'');
+  else note=closed.length===1?'one blink':closed.length+' eyes shut';
+  return '<div class="faces">'+chips+'<span class="fnote2">'+f.faces.length+' face'+(f.faces.length>1?'s':'')+' · '+note+'</span></div>';
+}
+function bubbleHTML(){
+  const f=FR[curId(ST)];
+  const facesRow=(ST.closeups&&f.faces.length)?facesHTML(f):'';
+  const sv=ST.stars[f.id];
+  const stars=sv?'<div class="bstars">'+'★'.repeat(sv)+'☆'.repeat(5-sv)+'</div>':'';
+  const d=ST.dec[f.id];
+  const dec=d?'<span class="bdec '+d+'">'+(d==='P'?'Picked':'Rejected')+'</span>'
+    :(f.ghost?'<span class="bghost">✨'+f.ghost+' tentative — '+f.why+' · counts for nothing until you decide</span>':'');
+  const extra=(stars||dec)?'<div class="brow">'+stars+dec+'</div>':'';
+  return pillHTML(f)+facesRow+extra;
+}
+function tileHTML(f){
+  const id=f.id, d=ST.dec[id], s=STACKS[f.s];
+  const cls=['tile'];
+  const isCur=ST.screen!=='start'&&f.s===ST.activeRow&&f.i===ST.cursor;
+  if(isCur) cls.push('cursor');
+  if(d==='P') cls.push('decP');
+  if(d==='X') cls.push('decX');
+  if(ST.scope>0&&!isCur){
+    const m=ST.scope===1?d==null:ST.scope===2?d==='P':d==='X';
+    if(!m) cls.push('scopedout');
+  }
+  const label=f.n>1?(s.short+' · '+(f.i+1)+'/'+f.n):s.name;
+  let badges='';
+  if(f.star) badges+='<div class="starb" title="recommended">✦</div>';
+  if(d) badges+='<div class="dchip '+(d==='P'?'p':'x')+'">'+(d==='P'?'P':'✕')+'</div>';
+  else if(f.ghost) badges+='<div class="gchip">✨'+f.ghost+'</div>';
+  if(ST.stars[id]) badges+='<div class="schip">★'+ST.stars[id]+'</div>';
+  const blurCss=f.blur?('filter:blur('+f.blur+'px);'):'';
+  const shim=!ST.rendered[id]?'<div class="shimmer"><span>rendering…</span></div>':'';
+  return '<div class="'+cls.join(' ')+'" data-id="'+id+'"><div class="frame">'
+    +'<div class="art" style="'+blurCss+'">'+artSVG(f)+'</div>'
+    +'<div class="lbl">'+label+'</div>'
+    +'<div class="edge" style="background:'+f.edge+'"></div>'
+    +shim+'</div>'+badges+'</div>';
+}
+function tilesHTML(r){
+  const ids=ROWS[r], s=STACKS[r];
+  if(s.tooClose){
+    let h='';
+    ids.forEach((id,ix)=>{
+      if(ix===s.tooClose[0]) h+='<div class="tgrp"><div class="banner"><span>too close to call — 5·6·7</span></div>';
+      h+=tileHTML(FR[id]);
+      if(ix===s.tooClose[s.tooClose.length-1]) h+='</div>';
+    });
+    return h;
+  }
+  return ids.map(id=>tileHTML(FR[id])).join('');
+}
+function activeRowHTML(r){
+  const s=STACKS[r], n=ROWS[r].length;
+  let note='';
+  if(s.unscored) note='<span class="honest">No read yet — '+(n>1?'grouped by visual similarity, no ✦':'unscored')+'</span>';
+  else if(s.tooClose) note='<span class="honest">no ✦ — top frames within the noise floor</span>';
+  else if(STARIDX[r]!=null) note='<span class="fnote">✦ frame '+(STARIDX[r]+1)+'</span>';
+  const tally=ST.committed[r]?(n===1?'<span class="tally">Picked ✓</span>'
+    :'<span class="tally">Kept '+ST.committed[r].kept+' · rejected '+ST.committed[r].rej+'</span>'):'';
+  const pad=s.tooClose?' padbanner':'';
+  const size=n===1?' one':(n<=3?' few':'');
+  return '<div class="row active" data-row="'+r+'">'
+    +'<div class="rowhead"><span class="rname">'+s.name+'</span>'
+    +'<span class="rmeta">'+(n===1?'single photo':n+' frames')+' · stop '+(r+1)+' of 9</span>'
+    +note+'<span class="sp"></span>'+tally+'</div>'
+    +'<div class="tiles'+pad+size+'">'+tilesHTML(r)+'</div>'
+    +'<div class="bubblewrap"><div class="caret"></div><div class="bubble">'+bubbleHTML()+'</div></div>'
+    +'</div>';
+}
+function collapsedRowHTML(r){
+  const s=STACKS[r], ids=ROWS[r];
+  let lead=ids[landIdx(r)];
+  if(ST.committed[r]){ const k=ids.find(id=>ST.dec[id]==='P'); if(k!=null) lead=k; }
+  const f=FR[lead];
+  const decs=ids.map(id=>ST.dec[id]);
+  const done=decs.every(d=>d!=null);
+  const ghosts=ids.filter(id=>FR[id].ghost&&ST.dec[id]==null).length;
+  let state='';
+  if(ST.committed[r]) state=ids.length===1?'<span class="tally">Picked ✓</span>'
+    :'<span class="tally">Kept '+ST.committed[r].kept+' · rejected '+ST.committed[r].rej+'</span>';
+  else{
+    const p=decs.filter(d=>d==='P').length, x=decs.filter(d=>d==='X').length, u=decs.filter(d=>d==null).length;
+    if(p||x) state='<span class="mini2">'+(p?p+' P':'')+(p&&x?' · ':'')+(x?x+' ✕':'')+(u?' · '+u+' undecided':'')+'</span>';
+    else state='<span class="mini2 dim2">undecided</span>';
+  }
+  if(ghosts) state+='<span class="gmini">✨'+ghosts+'</span>';
+  return '<div class="row collapsed'+(done?' done':'')+'" data-row="'+r+'">'
+    +'<div class="mini"><div class="art">'+artSVG(f)+'</div></div>'
+    +'<span class="cname">'+s.name+'</span>'
+    +'<span class="ccount">'+(ids.length===1?'single':ids.length+' frames')+'</span>'
+    +'<span class="sp"></span>'+state+(done?'<span class="check">✓</span>':'')
+    +'</div>';
+}
+function barHTML(){
+  const f=FR[curId(ST)];
+  const decided=ST.dec.filter(d=>d!=null).length;
+  const hint=ST.hintsDismissed
+    ?'<span class="hmini"><kbd>?</kbd> keys</span>'
+    :'<span id="hints"><kbd>H</kbd><kbd>L</kbd> rows · <kbd>J</kbd><kbd>K</kbd> ◀▶ frames · '
+      +'<kbd>P</kbd> pick <kbd>X</kbd> reject · <kbd>⏎</kbd> commit row · <kbd>Space</kbd> skip · '
+      +'<kbd>Z</kbd> big · <kbd>⌘Z</kbd> undo · <kbd>?</kbd> all keys</span>';
+  return '<div class="counter">'+(f.id+1)+' of 35 · stack '+(f.s+1)+' of 9 · frame '+(f.i+1)+' of '+f.n
+    +'<span class="fname"> · '+f.fn+'</span></div>'
+    +'<div id="prog"><div class="ptrack"><div class="pfill" style="width:'+(decided/35*100)+'%"></div></div>'
+    +'<div class="plabel">'+decided+' of 35 decided — your decisions only · ✨ never fills this</div></div>'
+    +'<span class="chip2'+(ST.autoAdvance?' on':'')+'">A · auto-advance '+(ST.autoAdvance?'ON':'off')+'</span>'
+    +'<span class="chip2'+(ST.scope?' on':'')+'">S · '+SCOPES[ST.scope]+'</span>'
+    +hint;
+}
+/* ---------- overlays ---------- */
+function startHTML(){
+  return '<div class="ovl"><div class="card">'
+    +'<div class="kicker">Cull this batch — mockup C · the Burst Board</div>'
+    +'<h1>June 14 — Red Rocks wedding + archive strays</h1>'
+    +'<div class="bigmeta">35 photos · 9 stops · 4 stacks <span class="dim3">(30 of 35 frames are in bursts)</span></div>'
+    +'<div class="opts">Lens: <b>Everything</b> (nothing hidden) · Auto-advance: <b>on</b> · Land on recommended ✦: <b>on</b></div>'
+    +'<p class="phil">One row per stop. The active row spreads <i>every</i> frame of its stack side by side — '
+    +'culling by comparison, not flipping. <kbd>J</kbd>/<kbd>K</kbd> move right/left across the row, '
+    +'<kbd>⏎</kbd> commits the whole row. Traversal is capture order; the AI marks frames, never reorders them.</p>'
+    +'<div class="go"><kbd>Return</kbd> begin · <kbd>?</kbd> keys</div>'
+    +'</div></div>';
+}
+function helpHTML(){
+  const row=(k,v)=>'<tr><td>'+k+'</td><td>'+v+'</td></tr>';
+  return '<div class="ovl"><div class="card">'
+    +'<h2>Keys — the Burst Board</h2>'
+    +'<div class="note"><b>Board grammar:</b> a stack is a horizontal row here, so “next frame in stack” is spatial — '
+    +'<kbd>↓</kbd>/<kbd>J</kbd> moves <b>right</b>, <kbd>↑</kbd>/<kbd>K</kbd> moves <b>left</b>. '
+    +'At a row’s edge they spill into the next / previous row. On a single-photo row they simply walk on — '
+    +'one grammar, no dead keys.</div>'
+    +'<div class="ksec">Move</div><table class="klist">'
+    +row('<kbd>→</kbd> / <kbd>L</kbd>','Next row — lands on its ✦, or frame 1 if the stack has no recommendation')
+    +row('<kbd>←</kbd> / <kbd>H</kbd>','Previous row')
+    +row('<kbd>↓</kbd> / <kbd>J</kbd>','Next frame (right); spills to the next row at the edge')
+    +row('<kbd>↑</kbd> / <kbd>K</kbd>','Previous frame (left); spills to the previous row’s last frame')
+    +row('<kbd>Space</kbd>','Skip — next undecided frame, else next row. Always decision-free.')
+    +'</table>'
+    +'<div class="ksec">Decide</div><table class="klist">'
+    +row('<kbd>P</kbd> / <kbd>X</kbd> / <kbd>U</kbd>','Pick / reject / clear the cursor frame (replaces any ✨ ghost)')
+    +row('<kbd>Return</kbd>','Commit the row: keep cursor frame + anything you picked, reject every still-undecided sibling, advance. '
+      +'On a single photo: pick it and advance. Inert until the cursor frame has rendered.')
+    +row('<kbd>⌘Z</kbd> / <kbd>⌫</kbd>','Undo — a row commit undoes as one unit')
+    +'</table>'
+    +'<div class="ksec">Grade &amp; look</div><table class="klist">'
+    +row('<kbd>1</kbd>–<kbd>5</kbd> / <kbd>0</kbd>','Stars / clear stars')
+    +row('<kbd>Z</kbd>','Lightbox the cursor frame at 2× — sticky while flipping with J/K; <kbd>Z</kbd>/<kbd>Esc</kbd> back')
+    +row('<kbd>/</kbd>','Toggle face close-ups on the cursor bubble')
+    +'</table>'
+    +'<div class="ksec">Run</div><table class="klist">'
+    +row('<kbd>A</kbd>','Toggle auto-advance (P/X hop to the next undecided frame)')
+    +row('<kbd>S</kbd>','Cycle scope: everything · undecided · picks · rejects (dims non-matching tiles)')
+    +row('<kbd>?</kbd>','This card (closing it dismisses the hint bar)')
+    +'</table>'
+    +'<div class="foot">Honesty rules in force: unscored frames say “No read yet”; the bouquet-toss top 3 are '
+    +'“too close to call” with no ✦; ✨ flags are tentative — they never fill the progress bar, never export, never trash. '
+    +'Not in this mockup: G/C/B compare surfaces, Shift+Z face zoom, I EXIF, color labels.</div>'
+    +'<div class="go"><kbd>Esc</kbd> close</div>'
+    +'</div></div>';
+}
+function summaryHTML(){
+  const sm=summarize(ST);
+  const line=(k,label,n,extra)=>'<div class="sumline"><kbd>'+k+'</kbd><span>'+label+'</span>'
+    +(extra?'<span class="dim3" style="font-size:11.5px">'+extra+'</span>':'')
+    +'<span class="num'+(n?'':' zero')+'">'+n+'</span></div>';
+  return '<div class="ovl"><div class="card">'
+    +'<div class="kicker">Run complete</div>'
+    +'<h1>June 14 — Red Rocks wedding + archive strays</h1>'
+    +line('1','Picked',sm.picked)
+    +line('2','Rejected',sm.rejected)
+    +line('3','Undecided',sm.undecided)
+    +line('4','Skipped',sm.skipped)
+    +line('5','Never viewed',sm.neverViewed)
+    +line('6','✨ awaiting review',sm.awaiting,'tentative — counted for nothing during the run')
+    +'<div class="sumline"><span class="dim3">Hidden by lens</span><span class="num zero">0</span></div>'
+    +'<div class="foot">Press a number to jump back into a scoped mini-run.</div>'
+    +'<div class="sumbtns">'
+    +'<span class="sbtn"><kbd>R</kbd> Review AI suggestions</span>'
+    +'<span class="sbtn"><kbd>M</kbd> Move rejects…</span>'
+    +'<span class="sbtn"><kbd>E</kbd> Export picks…</span>'
+    +'</div>'
+    +'<div class="go"><kbd>Esc</kbd> back to the board · <kbd>⌘Z</kbd> undo last commit</div>'
+    +'</div></div>';
+}
+function reviewHTML(){
+  const groups=new Map();
+  GHOSTS.forEach(g=>{ if(!groups.has(g.s)) groups.set(g.s,[]); groups.get(g.s).push(g); });
+  let h='';
+  groups.forEach((gs,si)=>{
+    h+='<div class="rgrp"><div class="rgname">'+STACKS[si].name+'</div>';
+    gs.forEach(g=>{
+      const d=ST.dec[g.id];
+      const status=d?'<span class="sup">superseded — you '+(d==='P'?'picked':'rejected')+' it</span>'
+        :'<span class="await">awaiting review</span>';
+      h+='<div class="rrow"><span class="gtag">✨'+g.ghost+'</span>'
+        +'<span class="rfr">frame '+(g.i+1)+' of '+g.n+'</span>'
+        +'<span class="rwhy">'+g.why+'</span>'+status+'</div>';
+    });
+    h+='</div>';
+  });
+  const n=summarize(ST).awaiting;
+  return '<div class="ovl"><div class="card">'
+    +'<h2>Review AI suggestions</h2>'
+    +'<p class="dim3" style="font-size:12.5px">Tentative ✨ flags counted for nothing during the run — not in your progress, '
+    +'not in the Picks set, never in export or move-to-trash. Confirming here is the <i>only</i> way they become yours (origin → user).</p>'
+    +h
+    +'<div class="go">'+(n?'<kbd>Return</kbd> confirm '+n+' awaiting (stub)':'Nothing awaiting — every ✨ was superseded by your own decisions')
+    +' · <kbd>Esc</kbd> back</div>'
+    +'</div></div>';
+}
+function moveHTML(){
+  const sm=summarize(ST);
+  const tentNote=sm.tentOnlyRejects
+    ?'<b>'+sm.tentOnlyRejects+' ✨-tentative-only reject'+(sm.tentOnlyRejects===1?'':'s')+' excluded</b> — unconfirmed AI flags never drive destructive operations.'
+    :'<b>0 tentative-only rejects to exclude</b> — every ✨X was superseded by your own decision. (Unconfirmed AI flags never drive destructive operations.)';
+  return '<div class="ovl"><div class="card">'
+    +'<h2>Move rejects… <span class="dim3">(stub)</span></h2>'
+    +'<p style="font-size:13.5px;margin:10px 0">Would move <b>'+sm.rejected+'</b> rejected original'+(sm.rejected===1?'':'s')
+    +' to a folder or Trash — with a manifest, undoable.</p>'
+    +'<div class="note">'+tentNote+'</div>'
+    +'<div class="go"><kbd>Esc</kbd> back</div>'
+    +'</div></div>';
+}
+function exportHTML(){
+  const sm=summarize(ST);
+  return '<div class="ovl"><div class="card">'
+    +'<h2>Export picks… <span class="dim3">(stub)</span></h2>'
+    +'<p style="font-size:13.5px;margin:10px 0">Would export <b>'+sm.picked+'</b> pick'+(sm.picked===1?'':'s')+'.</p>'
+    +'<div class="note">✨P tentative flags are <b>not</b> included — only frames you picked.</div>'
+    +'<div class="go"><kbd>Esc</kbd> back</div>'
+    +'</div></div>';
+}
+function lightboxHTML(){
+  const f=FR[curId(ST)];
+  const shim=!ST.rendered[f.id]?'<div class="shimmer"><span>rendering…</span></div>':'';
+  const d=ST.dec[f.id];
+  const dec=d?'<span class="bdec '+d+'">'+(d==='P'?'Picked':'Rejected')+'</span>'
+    :(f.ghost?'<span class="bghost">✨'+f.ghost+' tentative — '+f.why+'</span>':'');
+  const sv=ST.stars[f.id];
+  const stars=sv?'<span class="bstars">'+'★'.repeat(sv)+'☆'.repeat(5-sv)+'</span>':'';
+  return '<div class="ovl lb"><div class="lbwrap">'
+    +'<div class="lbview"><div class="lbzoom" style="'+(f.blur?('filter:blur('+(f.blur*1.6)+'px);'):'')+'">'+artSVG(f)+'</div>'
+    +'<div class="lbtag">2× · position locked across J/K</div>'+shim+'</div>'
+    +'<div class="lbcap">'+(f.star?'<span class="starb inl">✦</span> ':'')+'<b>'+STACKS[f.s].name+'</b>'
+    +' · frame '+(f.i+1)+' of '+f.n+' · <span class="fname">'+f.fn+'</span></div>'
+    +'<div class="lbinfo">'+pillHTML(f)+(ST.closeups&&f.faces.length?facesHTML(f):'')+dec+stars+'</div>'
+    +'<div class="lbhint"><kbd>J</kbd>/<kbd>K</kbd> flip (zoom stays) · <kbd>P</kbd>/<kbd>X</kbd>/<kbd>U</kbd> decide · '
+    +'<kbd>⏎</kbd> commit row · <kbd>Z</kbd>/<kbd>Esc</kbd> back</div>'
+    +'</div></div>';
+}
+/* ---------- render + effects ---------- */
+function render(){
+  let h='<div id="feed">';
+  for(let r=0;r<NROWS;r++){
+    h+=(ST.screen==='board'&&r===ST.activeRow)?activeRowHTML(r):collapsedRowHTML(r);
+  }
+  h+='</div><div id="bar">'+barHTML()+'</div>';
+  if(ST.screen==='start') h+=startHTML();
+  if(ST.screen==='summary'&&!ST.overlay) h+=summaryHTML();
+  if(ST.lightbox) h+=lightboxHTML();
+  if(ST.overlay==='help') h+=helpHTML();
+  if(ST.overlay==='review') h+=reviewHTML();
+  if(ST.overlay==='move') h+=moveHTML();
+  if(ST.overlay==='export') h+=exportHTML();
+  app.innerHTML=h;
+  requestAnimationFrame(()=>{ placeBubble(); scrollActive(); });
+  scheduleShimmers();
+}
+function scrollActive(){
+  if(ST.screen!=='board'||ST.lightbox||ST.overlay) return;
+  const el=document.querySelector('.row.active');
+  if(el) el.scrollIntoView({block:'center',behavior:'smooth'});
+}
+function placeBubble(){
+  const row=document.querySelector('.row.active'); if(!row) return;
+  const tiles=row.querySelector('.tiles'), tile=row.querySelector('.tile.cursor');
+  const wrap=row.querySelector('.bubblewrap'), bub=row.querySelector('.bubble'), car=row.querySelector('.caret');
+  if(!tiles||!tile||!wrap||!bub) return;
+  const tr=tile.getBoundingClientRect(), wr=tiles.getBoundingClientRect();
+  const c=tr.left-wr.left+tr.width/2;
+  bub.style.left=c+'px'; car.style.left=c+'px';
+  wrap.style.height=(bub.offsetHeight+16)+'px';
+  const br=bub.getBoundingClientRect();
+  let dx=0;
+  if(br.left<wr.left+2) dx=(wr.left+2)-br.left;
+  else if(br.right>wr.right-2) dx=(wr.right-2)-br.right;
+  if(dx) bub.style.left=(c+dx)+'px';
+}
+function scheduleShimmers(){
+  if(ST.screen!=='board') return;
+  ROWS[ST.activeRow].forEach((id,ix)=>{
+    if(ST.rendered[id]||pendingShim.has(id)) return;
+    pendingShim.set(id,setTimeout(()=>{
+      pendingShim.delete(id);
+      markRendered(ST,id);
+      const t=document.querySelector('.tile[data-id="'+id+'"] .shimmer');
+      if(t) t.remove();
+      if(ST.lightbox&&curId(ST)===id){
+        const ls=document.querySelector('.lbview .shimmer');
+        if(ls) ls.remove();
+      }
+    },260+ix*18));
+  });
+}
+function flashCursor(){
+  const host=ST.lightbox?document.querySelector('.lbview')
+    :document.querySelector('.tile.cursor .frame');
+  if(!host) return;
+  host.classList.add('flash');
+  setTimeout(()=>host.classList.remove('flash'),320);
+}
+function toast(msg){
+  const el=document.createElement('div');
+  el.className='toast'; el.textContent=msg;
+  toastroot.appendChild(el);
+  setTimeout(()=>el.classList.add('out'),1500);
+  setTimeout(()=>el.remove(),2000);
+  while(toastroot.children.length>3) toastroot.firstChild.remove();
+}
+function animateCommit(row){
+  animating=true;
+  const rowEl=document.querySelector('.row[data-row="'+row+'"]');
+  if(rowEl) rowEl.querySelectorAll('.tile').forEach(t=>{
+    const id=+t.dataset.id;
+    t.classList.add(ST.dec[id]==='P'?'keepglow':'zap');
+  });
+  setTimeout(()=>{ animating=false; render(); },360);
+}
+function dispatch(k){
+  if(animating) return;
+  const fx=key(ST,k);
+  fx.filter(e=>e.t==='toast').forEach(e=>toast(e.msg));
+  const commit=fx.find(e=>e.t==='committed');
+  if(commit){ animateCommit(commit.row); return; }
+  render();
+  if(fx.some(e=>e.t==='flash')) requestAnimationFrame(flashCursor);
+}
+/* ---------- input ---------- */
+function normKey(e){
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z') return 'undo';
+  if(e.metaKey||e.ctrlKey||e.altKey) return null;
+  switch(e.key){
+    case 'ArrowLeft':return 'left'; case 'ArrowRight':return 'right';
+    case 'ArrowUp':return 'up'; case 'ArrowDown':return 'down';
+    case 'Enter':return 'return'; case ' ':return 'space';
+    case 'Escape':return 'esc'; case 'Backspace':return 'undo';
+    case '?':return 'help'; case '/':return 'slash';
+  }
+  const k=e.key.toLowerCase();
+  return /^[a-z0-9]$/.test(k)?k:null;
+}
+window.addEventListener('keydown',e=>{
+  const k=normKey(e);
+  if(k==null) return;
+  e.preventDefault();
+  dispatch(k);
+});
+window.addEventListener('resize',()=>requestAnimationFrame(placeBubble));
+// optional pointer sugar: click a tile/row to move the cursor (every action has a key twin)
+app.addEventListener('click',e=>{
+  if(ST.screen!=='board'||ST.overlay||ST.lightbox||animating) return;
+  const tile=e.target.closest('.tile');
+  if(tile){ const f=FR[+tile.dataset.id]; activateRow(ST,f.s,f.i); render(); return; }
+  const row=e.target.closest('.row.collapsed');
+  if(row){ activateRow(ST,+row.dataset.row,landIdx(+row.dataset.row)); render(); }
+});
+render();
+</script>
+</body>
+</html>

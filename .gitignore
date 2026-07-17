@@ -6,3 +6,6 @@ sample-data/photos/
 sample-data/models/
 .claude/worktrees/
 scratchpad/
+# symlink form (worktrees symlink these from the main checkout; the dir/ patterns above do not match symlinks)
+sample-data/models
+sample-data/photos

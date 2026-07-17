@@ -3,11 +3,13 @@
 **What this covers**: As a photographer culling a group shot I want to check
 everyone's eyes/expression at a glance via face close-ups next to the loupe,
 without it being confused for the People view's face-confirmation flow (no
-catalog writes come from looking at it). Covered inventory items 34 (Cull-chrome-only
-112px crop panel) and 35 (display-only — nothing persisted). Source:
-`closeUpsPanel` at `Sources/TeststripApp/LibraryGridView.swift:3705-3730`,
-gated into the loupe body only `if presentation.showsCullChrome` at
-`:3550-3552`; crop generation in `refreshCloseUps(for:)` at `:3739-3768`.
+catalog writes come from looking at it). Covered inventory items 34
+(Cull-chrome-only 112px crop panel) and 35 (display-only — nothing
+persisted).
+
+**Source (re-verified 2026-07-16)**: `cullFacesReadsPanel` at `Sources/TeststripApp/LibraryGridView.swift:4014-4027`,
+gated into the loupe body only `if presentation.showsCullChrome && model.showsCullFacesPanel` at `:3822`;
+`closeUpsPanel` section at `:4029-4063`; `refreshCloseUps(for:)` at `:4130-4158`.
 
 **Correction to the assumed source of truth**: `refreshCloseUps` does **not**
 read the catalog's `face_observations` table. It runs a fresh, synchronous,
@@ -58,11 +60,17 @@ script/ax_drive.sh wait-vended Teststrip
    ```bash
    script/ax_drive.sh wait --role AXStaticText --contains "CLOSE-UPS"
    ```
-   Assert the panel renders at least one crop image (the panel is `if
-   !closeUpCrops.isEmpty`, so its mere presence already proves crops > 0):
+   Assert the panel renders at least one crop image. Since the culling-flow
+   shell (Task 5) the Close-Ups section always renders inside the faces+reads
+   right panel, holding its space with an honest "No faces" empty state as
+   its accessibility VALUE — so mere presence no longer proves crops > 0.
+   Assert the element exists AND the empty-state value is absent:
    ```bash
    script/ax_drive.sh find --contains "Face close-ups"
+   script/ax_drive.sh find --contains "No faces"   # expect exit nonzero (crops rendered)
    ```
+   (The whole panel is toggled by the bare `/` culling key,
+   `AppModel.showsCullFacesPanel`, default shown — don't press `/` mid-run.)
 3. Switch to Library workspace (⌘2) with the same asset selected/open in its
    loupe. Assert the Close-Ups panel is **absent** (cull-chrome-only claim):
    ```bash
@@ -84,10 +92,11 @@ script/ax_drive.sh wait-vended Teststrip
 - Step 2: the Close-Ups panel renders with at least one 112x112 crop while in
   the Cull workspace on an asset with detected faces. **Fails if** the panel
   never appears despite a `--faces` asset with confirmed multi-face
-  `face_observations`, or if it appears with zero crops.
+  `face_observations`, or if it still shows the "No faces" empty-state value
+  (zero crops).
 - Step 3: the panel is completely absent from the Library workspace's loupe
   for the identical asset. **Fails if** it renders in Library — that would
-  contradict the "Cull-chrome-only" claim in the source comment at `:3550`.
+  contradict the "Cull-chrome-only" claim in the gate at `:3822`.
 - Step 4: `person_assets`/`person_faces`/`dismissed_faces` counts are
   identical before and after interacting with a crop (`PA1==PA0`,
   `PF1==PF0`, `DF1==DF0`). **Fails if** any count changed — that would be a
@@ -110,7 +119,7 @@ script/ax_drive.sh wait-vended Teststrip
   fixture asset, not as an exact-match assertion on the rendered crop count.
 - Step 4's "click a crop" gesture was read from source as very likely a
   no-op (`Image(decorative:)` with no button/tap modifier at
-  `LibraryGridView.swift:3714-3723`) — if `ax_drive.sh find --role AXImage`
+  `LibraryGridView.swift:4046-4051`) — if `ax_drive.sh find --role AXImage`
   can't even locate a pressable target, that's expected; don't fabricate an
   interaction that doesn't exist in the source. The negative-write assertion
   still stands and is still worth capturing.
@@ -120,4 +129,14 @@ script/ax_drive.sh wait-vended Teststrip
   run.
 
 ## Run status
-UNRUN — needs human-present execution per test/scenarios/README.md
+UNRUN — needs human-present execution per test/scenarios/README.md.
+Reconciled 2026-07-16: the card carried two "Source" paragraphs from
+successive revisions (a stale one citing `closeUpsPanel` at
+`LibraryGridView.swift:3705-3730` gated only on `showsCullChrome`, and an
+accurate one citing `cullFacesReadsPanel`/`closeUpsPanel`/
+`refreshCloseUps(for:)` gated on `showsCullChrome && showsCullFacesPanel`)
+— verified both against the current working tree, kept the accurate one,
+deleted the stale one, and refreshed its line numbers (drifted ~26 lines
+since that paragraph was last written) plus two other citations of the same
+gate/panel that had gone stale alongside it (Expected step 3, Sharp edges).
+No other content changed.

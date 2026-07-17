@@ -1,5 +1,7 @@
 # Teststrip Culling Workflow Gap Audit
 
+*Status superseded as of 2026-07-16 — all 8 "Blocks the arc" gaps below (#1–#8) are now closed. See `docs/product/narrative-select-reference.md` and `docs/design-spikes/2026-07-16-culling-redesign/teststrip-signals-inventory.md` for current state.*
+
 > **For agentic workers:** This is an AUDIT REPORT, not an implementation plan — there are no tasks to execute. It exists to seed the next implementation plan. When that plan is written, use superpowers:writing-plans against the evidence below; every finding here is verified against code, not against prior plan documents.
 
 **Goal of this audit:** Verify, end-to-end in code, whether the app delivers the full narrative-select culling arc the design concept promises — import → auto-grouped stacks → best-of-set decisions → N-up survey confirm → metric tie-break → picks as the story's selects, with keyboard-fast single-frame rapid cull throughout — and produce a ranked, evidence-cited gap list.

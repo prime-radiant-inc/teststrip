@@ -1,8 +1,10 @@
 import TeststripCore
 
 /// The single-row cull HUD replacing the old header pills and command rail:
-/// filename, rating, color label, progress, undecided count, picks/rejects,
-/// and the assist verdict text — all in one strip over the stage.
+/// filename, rating, color label, progress, undecided count, and
+/// picks/rejects — all in one strip over the stage. The assist verdict is
+/// deliberately absent (one home per fact): the right panel's reads card
+/// owns it.
 struct CullHUDPresentation: Equatable {
     var filename: String
     var rating: Int
@@ -11,7 +13,6 @@ struct CullHUDPresentation: Equatable {
     var undecidedCount: Int
     var pickCount: Int
     var rejectCount: Int
-    var verdict: String?
     var scope: CullScope
     /// True while a rating keystroke's decision-toast echo window (2s) is
     /// still open for this frame, even if the resulting rating is 0.
@@ -22,7 +23,6 @@ struct CullHUDPresentation: Equatable {
         rating: Int,
         colorLabel: ColorLabel?,
         summary: CullingProgressSummary,
-        verdict: String?,
         scope: CullScope = .all,
         isRatingEchoActive: Bool = false
     ) {
@@ -35,7 +35,6 @@ struct CullHUDPresentation: Equatable {
         self.progressFraction = summary.totalCount > 0
             ? Double(summary.reviewedCount) / Double(summary.totalCount)
             : 0
-        self.verdict = verdict
         self.scope = scope
         self.isRatingEchoActive = isRatingEchoActive
     }

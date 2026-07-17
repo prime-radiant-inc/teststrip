@@ -151,8 +151,8 @@ public enum LiveMockupPlaceholders {
     public static let cullingFilmstrip = LiveMockupPlaceholder(
         id: "culling.filmstrip",
         title: "Culling filmstrip",
-        intendedBehavior: "Provide a bottom filmstrip for fast neighboring-frame navigation during loupe culling.",
-        currentFallback: "Bottom filmstrip shows fixed-size thumbnails around the current loaded-frame window, current-frame context, visible rating/flag state, and click targets for neighboring-frame navigation."
+        intendedBehavior: "Provide a bottom run strip for fast stop-to-stop navigation during loupe culling, plus session status at a glance.",
+        currentFallback: "Bottom run strip shows one stop per auto-grouped stack (a pill for multi-frame stacks, a thumbnail for standalones) with done/suggestion/current state and click targets for stop-to-stop navigation, backed by a status bar with the triple frame/stack/position counter, a confirmed-decision progress bar, auto-advance and scope chips, and the key-hint legend."
     )
 
     public static let cullingStackCull = LiveMockupPlaceholder(

@@ -3740,6 +3740,86 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try repository.asset(id: asset.id).metadata.flag, .reject)
     }
 
+    // U on a tentative ✨ flag is the provenance invariant's REMOVE gesture:
+    // it must route through the recorded-removal path (removed_ai_labels) so
+    // re-evaluation can never resurrect the cleared flag.
+    func testClearFlagCullingCommandRecordsTentativeAIFlagRemoval() throws {
+        let asset = makeAsset(id: "clear-tentative-flag", path: "/Photos/Job/clear-tentative-flag.cr2", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "clear-tentative-flag-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.flag = .pick
+                    metadata.aiUnconfirmedFields = [.flag]
+                }
+            }
+        )
+
+        try model.applyCullingCommand(.clearFlag)
+
+        let cleared = try repository.asset(id: asset.id).metadata
+        XCTAssertNil(cleared.flag)
+        XCTAssertFalse(cleared.aiUnconfirmedFields.contains(.flag))
+        XCTAssertTrue(try repository.removedAILabels(assetID: asset.id).contains(RemovedAILabel(field: .flag, value: "pick")))
+        XCTAssertNil(model.selectedAsset?.metadata.flag)
+    }
+
+    func testClearFlagCullingCommandOnUserFlagIsPlainClearWithoutRemovalRecord() throws {
+        let asset = makeAsset(id: "clear-user-flag", path: "/Photos/Job/clear-user-flag.cr2", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "clear-user-flag-model",
+            assets: [asset],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: asset.id) { metadata in
+                    metadata.flag = .pick
+                }
+            }
+        )
+
+        try model.applyCullingCommand(.clearFlag)
+
+        let cleared = try repository.asset(id: asset.id).metadata
+        XCTAssertNil(cleared.flag)
+        XCTAssertTrue(try repository.removedAILabels(assetID: asset.id).isEmpty)
+    }
+
+    // The Cull Grid / plain Grid batch "U" gesture (setFlagForSelectedAssets)
+    // must apply the same per-asset provenance routing as the single-asset U
+    // gesture above: a tentative-AI flag in the batch is a recorded removal,
+    // a user-origin flag in the same batch is a plain clear. Mixed selections
+    // handle each asset per its own origin.
+    func testBatchClearFlagRecordsTentativeAIFlagRemovalPerAssetOrigin() throws {
+        let tentative = makeAsset(id: "batch-clear-tentative", path: "/Photos/Job/batch-clear-tentative.cr2", rating: 0)
+        let userOrigin = makeAsset(id: "batch-clear-user", path: "/Photos/Job/batch-clear-user.cr2", rating: 0)
+        let (model, repository) = try makeModelWithCatalogAssets(
+            named: "batch-clear-flag-model",
+            assets: [tentative, userOrigin],
+            configureRepository: { repository in
+                try repository.updateMetadata(assetID: tentative.id) { metadata in
+                    metadata.flag = .pick
+                    metadata.aiUnconfirmedFields = [.flag]
+                }
+                try repository.updateMetadata(assetID: userOrigin.id) { metadata in
+                    metadata.flag = .reject
+                }
+            }
+        )
+        model.setBatchSelection(tentative.id, isSelected: true)
+        model.setBatchSelection(userOrigin.id, isSelected: true)
+
+        try model.setFlagForSelectedAssets(nil)
+
+        let clearedTentative = try repository.asset(id: tentative.id).metadata
+        XCTAssertNil(clearedTentative.flag)
+        XCTAssertFalse(clearedTentative.aiUnconfirmedFields.contains(.flag))
+        XCTAssertTrue(try repository.removedAILabels(assetID: tentative.id).contains(RemovedAILabel(field: .flag, value: "pick")))
+
+        let clearedUserOrigin = try repository.asset(id: userOrigin.id).metadata
+        XCTAssertNil(clearedUserOrigin.flag)
+        XCTAssertTrue(try repository.removedAILabels(assetID: userOrigin.id).isEmpty)
+    }
+
     func testColorLabelCullingCommandUpdatesSelectedAsset() throws {
         let (model, repository, asset) = try makeModelWithCatalogAsset(named: "color-label-command")
 
@@ -3958,10 +4038,11 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(4))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "keep-selected-stack-frame",
             assets: [first, selected, alternate, next]
         )
+        try seedLargePreviews(for: [first, selected, alternate, next], in: previewCache)
         model.select(selected.id)
 
         try model.promoteCurrentFrameAndRejectSiblings()
@@ -4000,10 +4081,11 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(4))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "loaded-stack-cull-session-progress",
             assets: [first, selected, alternate, next]
         )
+        try seedLargePreviews(for: [first, selected, alternate, next], in: previewCache)
         model.select(selected.id)
         let startedSession = try model.beginCullingSession(named: "Loaded Stack Cull")
 
@@ -4050,10 +4132,11 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(4))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "accept-selected-stack-shortcut",
             assets: [first, selected, alternate, next]
         )
+        try seedLargePreviews(for: [first, selected, alternate, next], in: previewCache)
         model.select(selected.id)
 
         try model.applyCullingShortcut(.promoteAndRejectSiblings)
@@ -4105,10 +4188,11 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(60))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: "persisted-stack-shortcut",
             assets: [lead, alternate]
         )
+        try seedLargePreviews(for: [lead, alternate], in: previewCache)
         let stackSet = AssetSet.manual(
             id: AssetSetID(rawValue: "work-stack-cull-session-1"),
             name: "Cull Stack 1",
@@ -4168,6 +4252,163 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(completion.rejectCount, 2)
         XCTAssertEqual(completion.picksSetID, AssetSetID(rawValue: "work-output-completion-summary-session-picks"))
         XCTAssertEqual(completion.detailText, "2 picks · 2 rejects — Cull persisted stacks")
+    }
+
+    // T7.5 review fix: the persisted-session arrival path
+    // (`selectPersistedCullingStack`) must route through the same gated
+    // landing helper as auto-grouped navigation, so ←/→, H/L, and Return's
+    // post-commit advance honor `cullLandOnRecommendedFrame` in a persisted
+    // stack-culling session too. Signals make the second stack's *second*
+    // frame the ✦ so frame 1 and the recommendation genuinely differ.
+    func testPersistedStackNavigationHonorsLandOnRecommendedFramePreference() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "persisted-landing-pref",
+            sessionID: "landing-pref-session"
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try fixture.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: fixture.secondLead.id, kind: .focus, value: .score(0.4), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: fixture.secondAlternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ])
+
+        // Default (land on recommended frame): arrival lands on the ✦, which
+        // the signals place on the second frame, not frame 1.
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        try fixture.model.applyCullingShortcut(.nextStack)
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondAlternate.id)
+
+        // Preference off: the same arrival lands on frame 1 (capture order),
+        // ignoring the ✦.
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.select(fixture.firstLead.id)
+        fixture.model.toggleCullLandOnRecommendedFrame()
+        try fixture.model.applyCullingShortcut(.nextStack)
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
+    }
+
+    // Regression fix: the sidebar stack-list click handler
+    // (`selectCullingStackSet`) called `recommendedCullingStackAssetID`
+    // directly instead of routing through the same gated
+    // `recommendedStackLandingAssetID` helper as every other arrival path,
+    // so a sidebar click ignored `cullLandOnRecommendedFrame` even though
+    // ←/→, H/L, Return's advance, and the run strip's click all honored it.
+    // Signals mirror the persisted-landing test's seeding pattern so the ✦
+    // is NOT frame 1.
+    func testSelectCullingStackSetHonorsLandOnRecommendedFramePreference() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "sidebar-stack-set-landing-pref",
+            sessionID: "sidebar-stack-set-landing-pref-session"
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try fixture.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: fixture.secondLead.id, kind: .focus, value: .score(0.4), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: fixture.secondAlternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ])
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+
+        // Default (land on recommended frame): clicking the second stack in
+        // the sidebar lands on the ✦, which the signals place on the
+        // alternate frame, not frame 1.
+        try fixture.model.selectCullingStackSet(id: fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondAlternate.id)
+
+        // Preference off: the same sidebar click lands on frame 1 (capture
+        // order), ignoring the ✦.
+        try fixture.model.applyAssetSet(id: fixture.firstSet.id)
+        fixture.model.toggleCullLandOnRecommendedFrame()
+        try fixture.model.selectCullingStackSet(id: fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetSetID, fixture.secondSet.id)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.secondLead.id)
+    }
+
+    // Integration fix (post-merge of lanes A/B): the run strip's click
+    // handler used a lane-fence-forced duplicate of the tie/rank/fallback
+    // glue (CullingStackRecommendation.landingAssetID, called directly from
+    // LibraryGridView) that did NOT honor cullLandOnRecommendedFrame — a
+    // click ignored the preference even though ←/→, H/L, and Return's
+    // advance all honored it. `selectStackLanding` is the public AppModel
+    // entry the click handler now routes through, so it shares the same
+    // gated helper as every other arrival path. Signals mirror the
+    // persisted-landing test's seeding pattern so the ✦ is NOT frame 1.
+    func testSelectStackLandingHonorsLandOnRecommendedFramePreference() throws {
+        let fixture = try makePersistedStackCullingFixture(
+            named: "run-strip-landing-pref",
+            sessionID: "run-strip-landing-pref-session"
+        )
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        try fixture.repository.recordEvaluationSignals([
+            EvaluationSignal(assetID: fixture.firstLead.id, kind: .focus, value: .score(0.4), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: fixture.firstAlternate.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ])
+        let stackAssetIDs = [fixture.firstLead.id, fixture.firstAlternate.id]
+
+        // Default (land on recommended frame): the click lands on the ✦,
+        // which the signals place on the alternate frame, not frame 1.
+        fixture.model.selectStackLanding(for: stackAssetIDs)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.firstAlternate.id)
+
+        // Preference off: the same click lands on frame 1 (capture order),
+        // ignoring the ✦.
+        fixture.model.toggleCullLandOnRecommendedFrame()
+        fixture.model.selectStackLanding(for: stackAssetIDs)
+        XCTAssertEqual(fixture.model.selectedAssetID, fixture.firstLead.id)
+    }
+
+    // Regression fix: beginStackCullingFromLatestImportCompletion (the
+    // initial landing when a new stack-cull session starts) called
+    // recommendedCullingStackAssetID directly instead of routing through the
+    // same gated recommendedStackLandingAssetID helper as every other
+    // arrival path, so starting a session ignored cullLandOnRecommendedFrame
+    // even though ←/→, H/L, Return's advance, the sidebar click, and the run
+    // strip's click all honored it. Signals mirror the persisted-landing
+    // test's seeding pattern so the ✦ is NOT frame 1.
+    func testBeginStackCullingFromLatestImportHonorsLandOnRecommendedFramePreference() throws {
+        let capturedAt = Date(timeIntervalSince1970: 100)
+        let stackFirst = makeAsset(
+            id: "initial-landing-pref-first",
+            path: "/Photos/Import/initial-landing-pref-first.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt)
+        )
+        let stackSecond = makeAsset(
+            id: "initial-landing-pref-second",
+            path: "/Photos/Import/initial-landing-pref-second.cr2",
+            rating: 0,
+            technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
+        )
+        let assets = [stackFirst, stackSecond]
+        let provenance = ProviderProvenance(provider: "local-image-metrics", model: "focus", version: "2", settingsHash: "default")
+        let signals = [
+            EvaluationSignal(assetID: stackFirst.id, kind: .focus, value: .score(0.4), confidence: 0.9, provenance: provenance),
+            EvaluationSignal(assetID: stackSecond.id, kind: .focus, value: .score(0.95), confidence: 0.9, provenance: provenance)
+        ]
+
+        // Default (land on recommended frame): starting the session lands on
+        // the ✦, which the signals place on the second frame, not frame 1.
+        let (onModel, onRepository, _) = try makeModelWithCompletedImportSession(
+            named: "initial-landing-pref-on",
+            assets: assets,
+            outputAssetIDs: assets.map(\.id)
+        )
+        try onRepository.recordEvaluationSignals(signals)
+        _ = try onModel.beginStackCullingFromLatestImportCompletion()
+        XCTAssertEqual(onModel.selectedAssetID, stackSecond.id)
+
+        // Preference off: the same session start lands on frame 1 (capture
+        // order), ignoring the ✦.
+        let (offModel, offRepository, _) = try makeModelWithCompletedImportSession(
+            named: "initial-landing-pref-off",
+            assets: assets,
+            outputAssetIDs: assets.map(\.id)
+        )
+        try offRepository.recordEvaluationSignals(signals)
+        offModel.toggleCullLandOnRecommendedFrame()
+        _ = try offModel.beginStackCullingFromLatestImportCompletion()
+        XCTAssertEqual(offModel.selectedAssetID, stackFirst.id)
     }
 
     func testOpeningCullingCompletionPicksAppliesTheOutputSet() throws {
@@ -4255,11 +4496,12 @@ final class AppModelTests: XCTestCase {
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(201))
         )
         let assets = [singletonFirst, singletonSecond, stackFirst, stackSecond]
-        let (model, repository, _) = try makeModelWithCompletedImportSession(
+        let (model, repository, previewCache) = try makeModelWithCompletedImportSession(
             named: "stack-cull-leftover-singles",
             assets: assets,
             outputAssetIDs: assets.map(\.id)
         )
+        try seedLargePreviews(for: assets, in: previewCache)
 
         let session = try model.beginStackCullingFromLatestImportCompletion()
         XCTAssertEqual(session.inputSetIDs.count, 1)
@@ -4307,11 +4549,12 @@ final class AppModelTests: XCTestCase {
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(1))
         )
         let assets = [stackFirst, stackSecond]
-        let (model, _, _) = try makeModelWithCompletedImportSession(
+        let (model, _, previewCache) = try makeModelWithCompletedImportSession(
             named: "stack-cull-no-leftover-singles",
             assets: assets,
             outputAssetIDs: assets.map(\.id)
         )
+        try seedLargePreviews(for: assets, in: previewCache)
 
         _ = try model.beginStackCullingFromLatestImportCompletion()
         try model.applyCullingShortcut(.promoteAndRejectSiblings)
@@ -4764,7 +5007,13 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .loupe)
     }
 
-    func testCullingShortcutMovesBetweenLoadedStacks() throws {
+    // T7.5 (spec breach): ←/→ walk the full STOP sequence — bursts AND
+    // standalones — not just multi-frame stacks. Previously `.nextStack`
+    // from the first burst skipped straight to the second burst, silently
+    // stranding the singleton; that skip is exactly the bug this test now
+    // asserts is fixed. See CullStackNavigationTests for the dedicated
+    // mixed-batch/all-singles coverage this update mirrors.
+    func testCullingShortcutMovesBetweenLoadedStacksAndStandaloneStops() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let firstStackFirst = makeAsset(
             id: "shortcut-first-stack-first",
@@ -4804,6 +5053,11 @@ final class AppModelTests: XCTestCase {
 
         try model.applyCullingShortcut(.nextStack)
 
+        // Lands on the standalone stop first — no longer skipped.
+        XCTAssertEqual(model.selectedAssetID, singleton.id)
+
+        try model.applyCullingShortcut(.nextStack)
+
         XCTAssertEqual(model.selectedAssetID, secondStackFirst.id)
 
         model.select(singleton.id)
@@ -4812,7 +5066,12 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedAssetID, firstStackFirst.id)
     }
 
-    func testCullingStackShortcutsIgnoreCatalogsWithoutLoadedStacks() throws {
+    // T7.5: a no-burst (all-singles) batch has no multi-frame stacks at
+    // all — every asset is its own stop, so ←/→ must walk photo-by-photo
+    // instead of no-opping ("no dead keys, one grammar," tutorial.md §4).
+    // Renamed from testCullingStackShortcutsIgnoreCatalogsWithoutLoadedStacks,
+    // which encoded the pre-fix no-op behavior this test now replaces.
+    func testCullingStackShortcutsWalkPhotoByPhotoWithoutLoadedStacks() throws {
         let capturedAt = Date(timeIntervalSince1970: 100)
         let first = makeAsset(
             id: "shortcut-stackless-first",
@@ -4832,11 +5091,11 @@ final class AppModelTests: XCTestCase {
         )
         model.select(second.id)
 
-        try model.applyCullingShortcut(.nextStack)
+        try model.applyCullingShortcut(.nextStack) // already the last stop — stays put
         XCTAssertEqual(model.selectedAssetID, second.id)
 
         try model.applyCullingShortcut(.previousStack)
-        XCTAssertEqual(model.selectedAssetID, second.id)
+        XCTAssertEqual(model.selectedAssetID, first.id)
     }
 
     func testCullingShortcutAdvancesAcrossWholeLoadedCatalog() throws {
@@ -4877,7 +5136,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(CullingShortcut(key: .character("P")), .pick)
         XCTAssertEqual(CullingShortcut(key: .character("x")), .reject)
         XCTAssertEqual(CullingShortcut(key: .character("u")), .clearFlag)
-        XCTAssertNil(CullingShortcut(key: .character("a")))
+        XCTAssertEqual(CullingShortcut(key: .character("a")), .toggleAutoAdvance)
+        XCTAssertNil(CullingShortcut(key: .character("q")))
     }
 
     func testBackgroundWorkQueueIsVisibleAndBounded() {
@@ -18051,6 +18311,16 @@ final class AppModelTests: XCTestCase {
         try Data("preview".utf8).write(to: url)
     }
 
+    // Task 7's render gate requires the staged frame's `.large` preview to
+    // be cached before Return/promoteAndRejectSiblings commits a stack
+    // decision — seed every candidate asset rather than tracking exactly
+    // which one lands staged.
+    private func seedLargePreviews(for assets: [Asset], in previewCache: PreviewCache) throws {
+        for asset in assets {
+            try writePreviewPlaceholder(to: previewCache.url(for: PreviewCacheKey(assetID: asset.id, level: .large)))
+        }
+    }
+
     private func sidebarRowCount(_ rowTitle: String, in sectionTitle: String, of model: AppModel) -> String? {
         model.sidebarSections
             .first { $0.title == sectionTitle }?
@@ -18725,10 +18995,14 @@ final class AppModelTests: XCTestCase {
             rating: 0,
             technicalMetadata: Self.technicalMetadata(capturedAt: capturedAt.addingTimeInterval(21))
         )
-        let (model, repository) = try makeModelWithCatalogAssets(
+        let (model, repository, previewCache) = try makeModelWithCatalogAssetsAndPreviewCache(
             named: name,
             assets: [firstLead, firstAlternate, secondLead, secondAlternate]
         )
+        // This fixture's callers routinely exercise promoteAndRejectSiblings,
+        // which force-commits only once the staged frame's `.large` preview
+        // is cached (Task 7's render gate).
+        try seedLargePreviews(for: [firstLead, firstAlternate, secondLead, secondAlternate], in: previewCache)
         let firstSet = AssetSet.manual(
             id: AssetSetID(rawValue: "work-stack-\(sessionID)-1"),
             name: "Cull Stack 1",
