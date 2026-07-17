@@ -33,10 +33,15 @@ over from any older card):
   (top-trailing overlay, orange-on-black, `:4495-4503`) rendered when
   `item.isRecommended`; a selection-highlight stroke (orange, 2pt) when
   `item.isSelected`; and, **below** the thumbnail (a sibling in the outer
-  `VStack`, not inside the button's `ZStack`), one badge per AI read via
-  `compareDecisionBadges(item.flawBadges)` (`:4515-4517`) — each flaw its
-  own small pill (`EYES CLOSED` / `SOFT`), replacing the old single red dot.
-  Tap dispatches `model.select(item.assetID)` (`:4475`).
+  `VStack`, not inside the button's `ZStack`), one mark per AI read via
+  `compareDecisionBadges(item.flawBadges)` (`:4515-4517`) — each flaw
+  (`EYES CLOSED` / `SOFT`), replacing the old single red dot. **Reconciled
+  2026-07-17**: each flaw's `CompareDecisionBadge.tone` is `.flaw` (not
+  `.destructive`), rendered as quiet, secondary-colored caption text (no
+  filled pill, no bold) — the text itself is unchanged, only the visual
+  weight; red stays reserved for the decision overlay's genuinely
+  destructive `.rejected` state above. Tap dispatches
+  `model.select(item.assetID)` (`:4475`).
 - **`CullingStackRailPresentation`**, `LibraryGridView.swift:6036-6169` —
   `Item.flawBadges` comes from `CompareSurveyPresentation.flawBadges(for:)`
   (`:5535-5546`; **exactly two** kinds exist today — `EYES CLOSED` when the

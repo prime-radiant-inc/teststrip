@@ -5735,16 +5735,18 @@ struct CompareSurveyPresentation: Equatable {
     /// Compact flaw reads (EYES CLOSED / SOFT) derived straight from
     /// persisted signals. Shared with other frame surfaces (e.g. the stack
     /// rail chips) so the wording and tone stay identical everywhere a flaw
-    /// badge appears.
+    /// badge appears. Tone is `.flaw`, not `.destructive` — a flaw badge is
+    /// a quality read, not a decision; red stays reserved for genuinely
+    /// destructive states (REJECTED).
     static func flawBadges(for signals: [EvaluationSignal]) -> [CompareDecisionBadge] {
         var badges: [CompareDecisionBadge] = []
         // Fractional eyesOpen is CIDetector noise on tiny/occluded faces;
-        // only 0.0 (all eyes shut) earns the destructive badge.
+        // only 0.0 (all eyes shut) earns the badge.
         if let eyesOpen = highestConfidenceScore(kind: .eyesOpen, in: signals), eyesOpen <= 0.0 {
-            badges.append(CompareDecisionBadge(text: "EYES CLOSED", tone: .destructive))
+            badges.append(CompareDecisionBadge(text: "EYES CLOSED", tone: .flaw))
         }
         if let focus = highestConfidenceScore(kind: .focus, in: signals), focus <= softFocusBadgeThreshold {
-            badges.append(CompareDecisionBadge(text: "SOFT", tone: .destructive))
+            badges.append(CompareDecisionBadge(text: "SOFT", tone: .flaw))
         }
         return badges
     }
@@ -5819,6 +5821,10 @@ struct CompareDecisionBadge: Equatable, Identifiable {
         case label
         case best
         case rank
+        /// An AI-read quality flaw (e.g. SOFT, EYES CLOSED) — not a
+        /// decision, so it renders as a quiet mark, not a filled pill. Red
+        /// stays reserved for `.destructive` (genuinely destructive states).
+        case flaw
     }
 
     var text: String
@@ -5829,23 +5835,40 @@ struct CompareDecisionBadge: Equatable, Identifiable {
     }
 }
 
-/// Renders each badge as its own small tone-colored pill. Shared by the
-/// compare survey tiles and the cull stack rail cells so both surfaces read
-/// AI-read/decision badges the same way.
+/// Renders each badge as its own small tone-colored pill — except `.flaw`
+/// badges, which render as a quiet caption-size mark instead (clearly
+/// subordinate to the photo, unlike the filled pills used for decisions and
+/// other metadata). Shared by the compare survey tiles and the cull stack
+/// rail cells so both surfaces read AI-read/decision badges the same way.
 @ViewBuilder
 private func compareDecisionBadges(_ badges: [CompareDecisionBadge]) -> some View {
     if !badges.isEmpty {
         HStack(spacing: 5) {
             ForEach(badges) { badge in
-                Text(badge.text)
-                    .font(.caption2.monospaced().weight(.bold))
-                    .foregroundStyle(compareBadgeForeground(for: badge.tone))
-                    .lineLimit(1)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(compareBadgeBackground(for: badge.tone), in: RoundedRectangle(cornerRadius: 4))
+                compareDecisionBadge(badge)
             }
         }
+    }
+}
+
+@ViewBuilder
+private func compareDecisionBadge(_ badge: CompareDecisionBadge) -> some View {
+    if badge.tone == .flaw {
+        // Text content is unchanged (still "SOFT"/"EYES CLOSED") — only the
+        // visual weight drops, so existing accessibility text matches keep
+        // working; lowercasing here would silently break every AX
+        // `--contains "SOFT"` query elsewhere in the app.
+        Text(badge.text)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+    } else {
+        Text(badge.text)
+            .font(.caption2.monospaced().weight(.bold))
+            .foregroundStyle(compareBadgeForeground(for: badge.tone))
+            .lineLimit(1)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(compareBadgeBackground(for: badge.tone), in: RoundedRectangle(cornerRadius: 4))
     }
 }
 
@@ -5855,6 +5878,8 @@ private func compareBadgeForeground(for tone: CompareDecisionBadge.Tone) -> Colo
         return .black
     case .positive, .destructive, .label:
         return .white
+    case .flaw:
+        return .secondary
     }
 }
 
@@ -5872,6 +5897,8 @@ private func compareBadgeBackground(for tone: CompareDecisionBadge.Tone) -> Colo
         return .blue.opacity(0.9)
     case .best, .rank:
         return .orange
+    case .flaw:
+        return .clear
     }
 }
 

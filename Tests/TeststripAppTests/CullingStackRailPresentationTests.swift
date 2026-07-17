@@ -439,8 +439,10 @@ final class CullingStackRailPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.items.map(\.assetID), [sharpEyesOpen.id, blink.id, soft.id])
         XCTAssertEqual(presentation.items[0].flawBadges, [])
-        XCTAssertEqual(presentation.items[1].flawBadges, [CompareDecisionBadge(text: "EYES CLOSED", tone: .destructive)])
-        XCTAssertEqual(presentation.items[2].flawBadges, [CompareDecisionBadge(text: "SOFT", tone: .destructive)])
+        // .flaw, not .destructive: a flaw badge is a quality read, not a
+        // decision — red stays reserved for genuinely destructive states.
+        XCTAssertEqual(presentation.items[1].flawBadges, [CompareDecisionBadge(text: "EYES CLOSED", tone: .flaw)])
+        XCTAssertEqual(presentation.items[2].flawBadges, [CompareDecisionBadge(text: "SOFT", tone: .flaw)])
     }
 
     func testItemsCarryPickRejectDecisionFromAssetFlag() {
