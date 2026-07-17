@@ -32,8 +32,10 @@ persona-7 "frame 1 / 120 vs Frame 1 of 130" drift). Scoped views
 **Stack grouping is auto-derived, not the persisted `asset_sets` rows.** The
 filmstrip's stacks come from `model.allCullingStacks(for: scopedAssets)` —
 the in-memory `AssetStackBuilder` clustering by capture-time proximity
-(`candidateStackMaximumCaptureGap = 2` seconds, `AppModel.swift:2184`), the
-same builder that backs the auto-grouped rows in `CullSidebarView`. This is a
+(`model.burstIntervalSeconds`, a persisted Settings preference — default
+`AssetStackBuilder.defaultMaximumCaptureGap = 2` seconds,
+`AppModel.swift:2543`), the same builder that backs the auto-grouped rows in
+`CullSidebarView`. This is a
 **different mechanism** from the `work-stack-` `asset_sets` rows used by the
 Return-gesture card (`cull-pass-scope-and-undo.md`). **`--smoke`'s synthetic
 photos are seeded 900 seconds apart** (`SmokeCatalogSeeder.swift:105`), which

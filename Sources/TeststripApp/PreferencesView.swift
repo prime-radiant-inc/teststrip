@@ -57,6 +57,18 @@ struct PreferencesView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Section {
+                Stepper(value: $model.burstIntervalSeconds, in: 1...30, step: 1) {
+                    Text("Burst interval: \(Int(model.burstIntervalSeconds))s")
+                }
+            } header: {
+                Text("Culling")
+            } footer: {
+                Text("Frames captured within this many seconds of each other, in the same folder, auto-group into a burst stack.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .frame(width: 420)

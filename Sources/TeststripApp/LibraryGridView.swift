@@ -4871,7 +4871,8 @@ private struct LoupeView: View {
             assets: model.assets,
             selectedAssetID: model.selectedAssetID,
             evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals(),
-            explicitStackScope: model.selectedCullingStackScope
+            explicitStackScope: model.selectedCullingStackScope,
+            stackBuilder: model.stackBuilder()
         )
     }
 
@@ -6741,7 +6742,8 @@ private struct ABCompareView: View {
             assets: model.assets,
             selectedAssetID: model.selectedAssetID,
             evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals(),
-            explicitStackScope: model.selectedCullingStackScope
+            explicitStackScope: model.selectedCullingStackScope,
+            stackBuilder: model.stackBuilder()
         ).recommendedAssetID
     }
 

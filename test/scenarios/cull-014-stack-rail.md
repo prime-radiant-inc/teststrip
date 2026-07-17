@@ -93,19 +93,20 @@ Source (re-verified against the working tree on this branch):
   (`cullingStackGuidanceAction`, `cull-011-hud.md` item 33). So the
   secondary "Keep recommended N" button, not the primary button, is the
   "keep the guidance pick" gesture.
-- **Fixture prerequisite**: the rail requires a stack with 2+ frames
-  (`stackScope.assetIDs.count > 1`, `LibraryGridView.swift:6102`) resolved
+- **Fixture prerequisite**: this card's multi-frame assertions (rank/✦,
+  "Frame N of M", keep/cut actions) require a stack with 2+ frames, resolved
   either from an explicit persisted `CullingStackScope` (the `work-stack-`
   `asset_sets` rows) or the same in-memory `AssetStackBuilder` auto-grouping
-  the filmstrip uses (`cull-013-filmstrip.md`). `--smoke`'s 900-second seed
-  spacing (`SmokeCatalogSeeder.swift:105`) is outside the 2-second
-  `candidateStackMaximumCaptureGap` (`AppModel.swift:2458`), so `--smoke`
-  produces **no auto-stacks and no persisted `work-stack-` sets** — this
-  card uses the `burst` seed variant (`TeststripBench seed-burst-catalog`),
-  whose capture times are 1s apart within each group, guaranteeing 4
-  multi-frame auto-stacks (3/4/3/4 frames) plus 4 singles — the same
-  fixture `cull-004-stack-promote-return.md` and `cull-021-stack-rail-nav.md`
-  use.
+  the filmstrip uses (`cull-013-filmstrip.md`) — a standalone still gets a
+  one-thumb rail entry (dogfood fix), just none of that multi-frame chrome.
+  `--smoke`'s 900-second seed spacing (`SmokeCatalogSeeder.swift:105`) is
+  outside the default 2-second `model.burstIntervalSeconds` (a persisted
+  Settings preference, `AppModel.swift:2543`), so `--smoke` produces **no
+  auto-stacks and no persisted `work-stack-` sets** — this card uses the
+  `burst` seed variant (`TeststripBench seed-burst-catalog`), whose capture
+  times are 1s apart within each group, guaranteeing 4 multi-frame
+  auto-stacks (3/4/3/4 frames) plus 4 singles — the same fixture
+  `cull-004-stack-promote-return.md` and `cull-021-stack-rail-nav.md` use.
 
 ## Pre-state
 ```bash
