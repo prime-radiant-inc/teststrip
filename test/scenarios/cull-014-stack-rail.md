@@ -44,12 +44,21 @@ Source (re-verified against the working tree on this branch):
   cells): `cullStackRailCell(_:)`, `LibraryGridView.swift:4473-4524` — each
   cell renders a `CachedPreviewImage` thumbnail, a decision overlay
   (`cullStackRailDecisionOverlay`, `:4530-4547`), the `✦` recommended
-  marker (`:4495-4503`), a selection-highlight stroke, and — **one badge
+  marker (`:4495-4503`), a selection-highlight stroke, and — **one mark
   per AI-read flaw**, not a single red dot —
-  `compareDecisionBadges(item.flawBadges)` (`:4515-4517`), each flaw its
-  own small pill (only two kinds exist today: `EYES CLOSED`/`SOFT`, see
-  `cull-021-stack-rail-nav.md`'s source notes on
-  `CompareSurveyPresentation.flawBadges`, `LibraryGridView.swift:5535-5546`).
+  `compareDecisionBadges(item.flawBadges)` (`:4515-4517`) (only two kinds
+  exist today: `EYES CLOSED`/`SOFT`, see `cull-021-stack-rail-nav.md`'s
+  source notes on `CompareSurveyPresentation.flawBadges`,
+  `LibraryGridView.swift:5535-5546`). **Reconciled 2026-07-17 (dogfood-r1
+  panel pass)**: a flaw's `CompareDecisionBadge.tone` is now `.flaw`, not
+  `.destructive`, and `compareDecisionBadge(_:)` (`LibraryGridView.swift:5855`)
+  renders `.flaw` as quiet, secondary-colored caption text — no filled
+  background, no bold — instead of the old bold red pill; the text content
+  itself is unchanged (still "SOFT"/"EYES CLOSED", not lowercased, so
+  existing AX `--contains` queries for it keep working); red
+  (`.destructive`) is now reserved for genuinely destructive states
+  (REJECTED). The text content (`EYES CLOSED`/`SOFT`) and the "one mark per
+  flaw kind" structure are unchanged — only the visual weight.
 - **`CullingStackRailPresentation.init`**, `LibraryGridView.swift:6054-6161`
   — the multi-frame-stack guard is at `:6102` (`stackScope.assetIDs.count >
   1`). It always builds exactly three action entries in this order
@@ -84,19 +93,20 @@ Source (re-verified against the working tree on this branch):
   (`cullingStackGuidanceAction`, `cull-011-hud.md` item 33). So the
   secondary "Keep recommended N" button, not the primary button, is the
   "keep the guidance pick" gesture.
-- **Fixture prerequisite**: the rail requires a stack with 2+ frames
-  (`stackScope.assetIDs.count > 1`, `LibraryGridView.swift:6102`) resolved
+- **Fixture prerequisite**: this card's multi-frame assertions (rank/✦,
+  "Frame N of M", keep/cut actions) require a stack with 2+ frames, resolved
   either from an explicit persisted `CullingStackScope` (the `work-stack-`
   `asset_sets` rows) or the same in-memory `AssetStackBuilder` auto-grouping
-  the filmstrip uses (`cull-013-filmstrip.md`). `--smoke`'s 900-second seed
-  spacing (`SmokeCatalogSeeder.swift:105`) is outside the 2-second
-  `candidateStackMaximumCaptureGap` (`AppModel.swift:2458`), so `--smoke`
-  produces **no auto-stacks and no persisted `work-stack-` sets** — this
-  card uses the `burst` seed variant (`TeststripBench seed-burst-catalog`),
-  whose capture times are 1s apart within each group, guaranteeing 4
-  multi-frame auto-stacks (3/4/3/4 frames) plus 4 singles — the same
-  fixture `cull-004-stack-promote-return.md` and `cull-021-stack-rail-nav.md`
-  use.
+  the filmstrip uses (`cull-013-filmstrip.md`) — a standalone still gets a
+  one-thumb rail entry (dogfood fix), just none of that multi-frame chrome.
+  `--smoke`'s 900-second seed spacing (`SmokeCatalogSeeder.swift:105`) is
+  outside the default 2-second `model.burstIntervalSeconds` (a persisted
+  Settings preference, `AppModel.swift:2543`), so `--smoke` produces **no
+  auto-stacks and no persisted `work-stack-` sets** — this card uses the
+  `burst` seed variant (`TeststripBench seed-burst-catalog`), whose capture
+  times are 1s apart within each group, guaranteeing 4 multi-frame
+  auto-stacks (3/4/3/4 frames) plus 4 singles — the same fixture
+  `cull-004-stack-promote-return.md` and `cull-021-stack-rail-nav.md` use.
 
 ## Pre-state
 ```bash
@@ -166,7 +176,7 @@ script/vm_scenario_run.sh ax wait-vended
    (`presentation.items`, `LibraryGridView.swift:6120-6129`) with the `✦`
    marker (via accessibility value, not a raw AX-findable glyph — see
    above) on exactly the recommended one, and — the reorg's actual change
-   from a single red dot — **one badge per AI-read flaw** on any cell whose
+   from a single red dot — **one mark per AI-read flaw** on any cell whose
    asset has `flawBadges`:
    ```bash
    script/ax_drive.sh find --role AXButton --label "Stack frame 1"
@@ -174,9 +184,13 @@ script/vm_scenario_run.sh ax wait-vended
    (cell accessibility label is `"Stack frame \(label)"`,
    `LibraryGridView.swift:4522`; value carries Selected/Recommended + each
    flaw badge's text per `stackChipAccessibilityValue`, `:4554-4558`; the
-   flaw pills themselves are separate `AXStaticText` children below the
+   flaw marks themselves are separate `AXStaticText` children below the
    thumbnail, `:4515-4517` — independently AX-findable by their text, e.g.
-   `find --role AXStaticText --contains "SOFT"`, unlike the `✦` marker).
+   `find --role AXStaticText --contains "SOFT"`, unlike the `✦` marker. As
+   of 2026-07-17 the flaw mark itself renders as quiet, secondary-colored
+   caption text — not a filled pill — but its text ("SOFT"/"EYES CLOSED",
+   not lowercased) and AX-findability are unchanged, so this assertion
+   still holds).
 
 ## Expected
 - Step 3: **Fails if** the primary button kept the recommended frame instead
@@ -192,8 +206,9 @@ script/vm_scenario_run.sh ax wait-vended
   stack.
 - Step 6: **Fails if** the cell count != stack member count, the `✦`
   (accessibility "Recommended") is on the wrong cell, or a cell with known
-  flaws (per `evaluation_signals`) shows no flaw badge — or shows the old
-  single-red-dot rendering instead of one pill per flaw kind.
+  flaws (per `evaluation_signals`) shows no flaw mark — or shows the old
+  single-red-dot rendering, or a bold filled-red pill (pre-2026-07-17),
+  instead of one quiet mark per flaw kind.
 
 ## Cleanup
 ```bash

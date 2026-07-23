@@ -13,4 +13,12 @@ final class RawBadgeLabelTests: XCTestCase {
     func testNonRawAssetRendersNoBadge() {
         XCTAssertNil(RawBadgeLabel.text(isRaw: false, hasBondedStill: false))
     }
+
+    func testAccessibilityLabelForRawPlusJPEG() {
+        XCTAssertEqual(RawBadgeLabel.accessibilityLabel(for: "RAW+JPEG"), "RAW with bonded JPEG")
+    }
+
+    func testAccessibilityLabelForRawAlone() {
+        XCTAssertEqual(RawBadgeLabel.accessibilityLabel(for: "RAW"), "RAW original")
+    }
 }

@@ -20,9 +20,9 @@ fresh grep, not carried over from any older card):
   than 2 scored quality kinds (`CullingStackRecommendation
   .normalizedQualityRead`'s `kindCount`, `LibraryGridView.swift:6443-6449`)
   the whole card is the empty state — `emptyState: "No read yet"`, no
-  verdict, no rationale phrases, no signal-bar rows — "**strictly gated on
-  the whole card, not just the verdict line**... deliberately stricter than
-  the HUD line, which still renders a single-signal read" (doc comment,
+  verdict, no signal rows — "**strictly gated on the whole card, not just
+  the verdict line**... deliberately stricter than the HUD line, which still
+  renders a single-signal read" (doc comment,
   `CullReadsCardPresentation.swift:9-12`). This is a genuinely different,
   *stricter* gate than the rail's own ✦ recommendation
   (`CullingStackRecommendation.rankedCandidates` via `CullingQualityScore
@@ -36,8 +36,9 @@ fresh grep, not carried over from any older card):
   the state this run's fixture actually produces — don't force it.
 - **AX surface for the Reads panel**, `cullFacesReadsPanel`
   (`LibraryGridView.swift:3988-4001`): the *whole* faces+reads right panel
-  (Close-Ups crops on top, the Reads card below) is one
-  `.accessibilityElement(children: .contain)` block carrying an explicit
+  (the Reads card on the left, the Close-Ups rail of face crops on the
+  right — reconciled 2026-07-17 from the old top/bottom stacked layout) is
+  one `.accessibilityElement(children: .contain)` block carrying an explicit
   `.accessibilityLabel("Reads")` and `.accessibilityValue(readsPresentation
   .emptyState ?? readsPresentation.verdictText ?? "")` — set directly from
   the presentation struct, independent of which inner view branch actually
@@ -131,13 +132,25 @@ script/vm_scenario_run.sh ax wait-vended
    are present with a `.score` value. **If fewer than 2**: assert the Reads
    panel still reads "No read yet" (`ax find --label "Reads" --contains "No
    read yet"`) even though evaluation has run — the honest empty state, not
-   a stale one. **If 2 or more**: assert the Reads panel now shows a
-   non-empty verdict (`ax find --label "Reads" --contains "No read yet"`
-   must now fail to match) and independently verify the verdict text isn't
-   fabricated by cross-checking `CullingAssistPresentation.verdict(for:)`'s
-   documented tone/text rules exist in the AX tree (a verdict `Text` and, if
-   `signalRows` is non-empty, per-kind percentage rows — `ax find --role
-   AXStaticText --contains "%"` should match at least one row).
+   a stale one. **If 2 or more**: assert `ax find --label "Reads" --contains
+   "No read yet"` now fails to match — the card has left the empty state —
+   then independently compute `normalizedQualityRead` (confidence-weighted
+   mean of the best component per whole-photo/face kind) and compare it
+   against `CullingAssistPresentation`'s thresholds (Keep >= 0.7, Toss <=
+   0.5) to predict which of three honest outcomes this fixture lands in:
+   (a) **decisive Keep/Toss** — assert an `AXStaticText` reading exactly
+   `"Keep"` or `"Toss"` (no "read" suffix, no percentage) matching the
+   predicted verdict; (b) **Mixed** (between the two thresholds) — assert
+   **no** `Keep`/`Toss` verdict text renders at all, per the honest-states
+   philosophy (a verdict that can't commit says nothing, not a "Mixed"
+   label) — don't treat its absence as a bug in this branch. Either way,
+   independently assert the whole-photo signal rows: `CullReadsCardPresentation
+   .canonicalSignalOrder` (Focus, Motion blur, Framing, Aesthetics) renders
+   as compact label+percentage rows — `ax find --role AXStaticText
+   --contains "%"` should match at least one row for whichever of those four
+   kinds actually has a signal — and confirm no face-specific kind (Face
+   quality, Eye sharpness, Eyes open) contributes a row here (they render on
+   the close-ups rail instead, per `cull-012-closeups-panel.md`).
 5. **Tie honest branch.** Compute the stack's tie state independently:
    ```bash
    script/vm_scenario_run.sh sql burst "SELECT asset_id, kind, value_json, confidence FROM evaluation_signals WHERE asset_id IN (<stack ids>);"

@@ -37,8 +37,8 @@ shows nothing), this card catches it where per-feature unit tests can't.
 3. **Enter culling.** AX-press **"Start culling"** (or "Review imported
    frames"). `waitFor` the culling surface.
 4. **Assert the verdict strip reads.** Re-dump; find an `AXStaticText` matching
-   **"Keep read N%"** or **"Toss read N%"** on the selected frame. A real
-   percentage must render — the provisional Keep/Toss read.
+   exactly **"Keep"** or **"Toss"** on the selected frame — no "read" suffix,
+   no percentage (a Mixed/indecisive read renders no verdict label at all).
 5. **Accept a recommendation.** AX-press the recommended-frame action
    (accessible label begins **"Keep recommended"** or **"Keep primary"**).
    Re-dump; confirm the picked frame now shows a pick/keep badge.
@@ -49,11 +49,15 @@ shows nothing), this card catches it where per-feature unit tests can't.
 - Step 2: asset count rose by exactly the number of imported frames; the
   completion panel offers culling actions. **Fails if** the count didn't rise
   (import silently no-op'd) or the completion panel never appears within 30s.
-- Step 4: a literal `Keep read N%` / `Toss read N%` string with a real N.
+- Step 4: a literal `Keep` or `Toss` string, exactly that word, no suffix.
   **Fails if** the strip is blank or shows a placeholder — evaluation didn't
-  reach the render. Quote the actual string. (Per the calibration note, a read
-  that seems *wrong* is a threshold issue, not a test failure — record the
-  value, don't fail the card on the verdict's polarity.)
+  reach the render — or if it shows the old `Keep read N%`/`Toss read N%`
+  wording. Quote the actual string. (Per the calibration note, a read that
+  seems *wrong* is a threshold issue, not a test failure — record the value,
+  don't fail the card on the verdict's polarity. If the read lands Mixed, no
+  verdict label renders at all — that's the honest-states behavior, not a
+  missing-render bug; pick a different fixture frame to test the render
+  itself.)
 - Step 5: the accepted frame gains a pick/keep badge. **Fails if** pressing the
   recommendation changes nothing.
 - Step 6: the picked frame is present in the Picks/Potential Picks view.

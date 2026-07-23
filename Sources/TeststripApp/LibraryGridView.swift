@@ -2359,60 +2359,67 @@ struct LibraryGridView: View {
             }
             LazyVGrid(columns: columns, spacing: gridLayout.gridSpacing) {
                 ForEach(model.assets, id: \.id.rawValue) { asset in
-                    AssetGridCell(
-                        asset: asset,
-                        previewURL: model.gridPreviewURL(for: asset.id),
-                        previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
-                        previewStatus: model.gridPreviewStatus(for: asset.id),
-                        isSelected: model.selectedAssetID == asset.id,
-                        isBatchSelected: model.isBatchSelected(asset.id),
-                        autopilotDecision: model.autopilotProposalDecision(for: asset.id),
-                        hasBondedStill: model.assetIDsWithBondedSecondaries.contains(asset.id)
-                    )
-                    .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
-                        selectAssetFromGrid(assetID)
-                    }
-                    .help("Double-click to open in Loupe")
-                    .contextMenu {
-                        Button("Open in Loupe") {
-                            model.openAssetInLoupe(asset.id)
+                    VStack(alignment: .leading, spacing: 3) {
+                        AssetGridCell(
+                            asset: asset,
+                            previewURL: model.gridPreviewURL(for: asset.id),
+                            previewCacheGeneration: model.previewCacheGeneration(for: asset.id),
+                            previewStatus: model.gridPreviewStatus(for: asset.id),
+                            isSelected: model.selectedAssetID == asset.id,
+                            isBatchSelected: model.isBatchSelected(asset.id),
+                            autopilotDecision: model.autopilotProposalDecision(for: asset.id)
+                        )
+                        .assetActivation(
+                            for: asset,
+                            model: model,
+                            focusCullingSurface: focusCullingSurface,
+                            openInLoupe: { model.openAssetInLibraryLoupe($0) }
+                        ) { assetID in
+                            selectAssetFromGrid(assetID)
                         }
-                        Divider()
-                        Button("Cull These") {
-                            cullSelection(anchoredOn: asset.id)
-                        }
-                        Divider()
-                        Menu("Rate") {
-                            ForEach(1...5, id: \.self) { rating in
-                                Button("Rate \(rating)") {
-                                    applyGridContextMenuRating(rating, anchoredOn: asset.id)
+                        .help("Double-click to open in Loupe")
+                        .contextMenu {
+                            Button("Open in Loupe") {
+                                model.openAssetInLibraryLoupe(asset.id)
+                            }
+                            Divider()
+                            Button("Cull These") {
+                                cullSelection(anchoredOn: asset.id)
+                            }
+                            Divider()
+                            Menu("Rate") {
+                                ForEach(1...5, id: \.self) { rating in
+                                    Button("Rate \(rating)") {
+                                        applyGridContextMenuRating(rating, anchoredOn: asset.id)
+                                    }
+                                }
+                                Button("Clear Rating") {
+                                    applyGridContextMenuRating(0, anchoredOn: asset.id)
                                 }
                             }
-                            Button("Clear Rating") {
-                                applyGridContextMenuRating(0, anchoredOn: asset.id)
-                            }
-                        }
-                        Menu("Flag") {
-                            Button("Pick") {
-                                applyGridContextMenuFlag(.pick, anchoredOn: asset.id)
-                            }
-                            Button("Reject") {
-                                applyGridContextMenuFlag(.reject, anchoredOn: asset.id)
-                            }
-                            Button("Unflag") {
-                                applyGridContextMenuFlag(nil, anchoredOn: asset.id)
-                            }
-                        }
-                        Menu("Label") {
-                            ForEach(ColorLabel.allCases, id: \.self) { label in
-                                Button(label.rawValue.capitalized) {
-                                    applyGridContextMenuLabel(label, anchoredOn: asset.id)
+                            Menu("Flag") {
+                                Button("Pick") {
+                                    applyGridContextMenuFlag(.pick, anchoredOn: asset.id)
+                                }
+                                Button("Reject") {
+                                    applyGridContextMenuFlag(.reject, anchoredOn: asset.id)
+                                }
+                                Button("Unflag") {
+                                    applyGridContextMenuFlag(nil, anchoredOn: asset.id)
                                 }
                             }
-                            Button("Clear Label") {
-                                applyGridContextMenuLabel(nil, anchoredOn: asset.id)
+                            Menu("Label") {
+                                ForEach(ColorLabel.allCases, id: \.self) { label in
+                                    Button(label.rawValue.capitalized) {
+                                        applyGridContextMenuLabel(label, anchoredOn: asset.id)
+                                    }
+                                }
+                                Button("Clear Label") {
+                                    applyGridContextMenuLabel(nil, anchoredOn: asset.id)
+                                }
                             }
                         }
+                        rawBadgeCaption(for: asset)
                     }
                     .id(asset.id.rawValue)
                     .task(id: asset.id.rawValue) {
@@ -2973,6 +2980,23 @@ struct LibraryGridView: View {
             suppressedSelectionScrollAssetID = assetID.rawValue
         }
         model.select(assetID)
+    }
+
+    // Below the thumb, not over it: a RAW+JPEG chip splashed across the
+    // image dominated the whole grid (dogfood feedback). A muted caption
+    // matches how Compare's assetCaption already renders under-thumb
+    // metadata.
+    @ViewBuilder
+    private func rawBadgeCaption(for asset: Asset) -> some View {
+        if let rawBadgeText = RawBadgeLabel.text(
+            isRaw: asset.isRawOriginal,
+            hasBondedStill: model.assetIDsWithBondedSecondaries.contains(asset.id)
+        ) {
+            Text(rawBadgeText)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(RawBadgeLabel.accessibilityLabel(for: rawBadgeText))
+        }
     }
 
     private func showSaveSearchPopover() {
@@ -3755,6 +3779,16 @@ private struct RejectRelocationBannerView: View {
     }
 }
 
+/// A single close-up rail entry: the cropped face image plus the compact
+/// on-face read marks `CloseUpFacesPresentation` computed alongside it.
+private struct LoupeCloseUpCrop {
+    var id: Int
+    var image: CGImage
+    var eyesState: CloseUpFacesPresentation.EyesState
+    var isSmiling: Bool
+    var sharpnessTone: CloseUpFacesPresentation.SharpnessTone?
+}
+
 private struct LoupeView: View {
     var model: AppModel
     var beginExport: () -> Void
@@ -3763,7 +3797,7 @@ private struct LoupeView: View {
 
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var isDecisionToastVisible = false
-    @State private var closeUpCrops: [(id: Int, image: CGImage)] = []
+    @State private var closeUpCrops: [LoupeCloseUpCrop] = []
     // The completion state is dismissible so the handoff doesn't block a user
     // who just wants to look around: an explicit "Continue culling" button
     // dismisses it, and switching scope or moving to another asset (e.g. via
@@ -3839,7 +3873,7 @@ private struct LoupeView: View {
                 }
             }
             if presentation.showsCullChrome {
-                runStrip(isStackActive: stackPresentation.isVisible)
+                runStrip(isStackActive: stackPresentation.isMultiFrameStack)
             } else {
                 libraryLoupeNavBar
             }
@@ -4004,18 +4038,22 @@ private struct LoupeView: View {
     }
 
 
-    private static let cullFacesReadsPanelWidth: CGFloat = 300
+    private static let cullFacesReadsPanelWidth: CGFloat = 340
+    private static let closeUpsRailWidth: CGFloat = 132
+    private static let closeUpCropSize: CGFloat = 112
 
-    // Faces + reads right panel: face close-ups on top, the frame's reads
-    // card below. One home per fact — the verdict and rationale render here
-    // and nowhere else. Fixed width, and both sections hold their space with
-    // honest empty states so the stage geometry never shifts while cull
-    // chrome is up; `/` hides the whole panel (model.showsCullFacesPanel).
+    // Faces + reads right panel: the frame's reads card on the left, face
+    // close-ups as a vertical rail on the right. One home per fact — the
+    // verdict renders here and nowhere else. Fixed width, and both sections
+    // hold their space with honest empty states so the stage geometry never
+    // shifts while cull chrome is up; `/` hides the whole panel
+    // (model.showsCullFacesPanel).
     private var cullFacesReadsPanel: some View {
         let readsPresentation = CullReadsCardPresentation.presentation(for: model.selectedEvaluationSignals)
-        return VStack(alignment: .leading, spacing: 16) {
-            closeUpsPanel
+        return HStack(alignment: .top, spacing: 12) {
             readsCard(readsPresentation)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            closeUpsRail
         }
         .padding(10)
         .frame(width: Self.cullFacesReadsPanelWidth)
@@ -4026,7 +4064,7 @@ private struct LoupeView: View {
         .accessibilityValue(readsPresentation.emptyState ?? readsPresentation.verdictText ?? "")
     }
 
-    private var closeUpsPanel: some View {
+    private var closeUpsRail: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("CLOSE-UPS")
                 .font(.caption2.monospaced().weight(.semibold))
@@ -4037,35 +4075,75 @@ private struct LoupeView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ScrollView {
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 112), spacing: 8, alignment: .leading)],
-                        alignment: .leading,
-                        spacing: 8
-                    ) {
+                    VStack(spacing: 10) {
                         ForEach(closeUpCrops, id: \.id) { crop in
-                            Image(decorative: crop.image, scale: 1)
-                                .resizable()
-                                .aspectRatio(1, contentMode: .fit)
-                                .frame(width: 112, height: 112)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .strokeBorder(Color.white.opacity(0.14))
-                                }
+                            closeUpCropCell(crop)
                         }
                     }
                 }
             }
         }
+        .frame(width: Self.closeUpsRailWidth)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Face close-ups")
         .accessibilityValue(closeUpCrops.isEmpty ? "No faces" : "\(closeUpCrops.count) faces")
     }
 
-    // The frame's whole-frame read: verdict, rationale phrases, and per-kind
-    // signal bars, strictly gated by CullReadsCardPresentation — with fewer
-    // than two scored kinds only the honest "No read yet" empty state
-    // renders, holding the card's home in the panel.
+    // One face crop plus its compact on-face read marks (eyes, smile,
+    // sharpness) — small glyphs immediately below the crop, never bars or
+    // long text, and never a mark for a read the photo doesn't have.
+    private func closeUpCropCell(_ crop: LoupeCloseUpCrop) -> some View {
+        VStack(spacing: 4) {
+            Image(decorative: crop.image, scale: 1)
+                .resizable()
+                .aspectRatio(1, contentMode: .fit)
+                .frame(width: Self.closeUpCropSize, height: Self.closeUpCropSize)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Color.white.opacity(0.14))
+                }
+            closeUpMarks(crop)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Face")
+        .accessibilityValue(closeUpMarksAccessibilityValue(crop))
+    }
+
+    private func closeUpMarks(_ crop: LoupeCloseUpCrop) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: crop.eyesState == .closed ? "eye.slash" : "eye")
+                .foregroundStyle(crop.eyesState == .closed ? .orange : .secondary)
+            if crop.isSmiling {
+                Image(systemName: "face.smiling")
+                    .foregroundStyle(.secondary)
+            }
+            if let sharpnessTone = crop.sharpnessTone {
+                Circle()
+                    .fill(sharpnessTone == .sharp ? Color.green : Color.orange)
+                    .frame(width: 6, height: 6)
+            }
+        }
+        .font(.system(size: 10))
+    }
+
+    private func closeUpMarksAccessibilityValue(_ crop: LoupeCloseUpCrop) -> String {
+        var segments = [crop.eyesState == .closed ? "Eyes closed" : "Eyes open"]
+        if crop.isSmiling {
+            segments.append("Smiling")
+        }
+        if let sharpnessTone = crop.sharpnessTone {
+            segments.append(sharpnessTone == .sharp ? "Sharp" : "Soft")
+        }
+        return segments.joined(separator: ", ")
+    }
+
+    // The frame's whole-frame read: verdict plus one compact text row per
+    // whole-photo signal, in CullReadsCardPresentation's fixed canonical
+    // order — one home per fact, no duplicated list-plus-bars layout, no
+    // thermometer bars. With fewer than two scored kinds only the honest
+    // "No read yet" empty state renders, holding the card's home in the
+    // panel.
     private func readsCard(_ presentation: CullReadsCardPresentation) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("READS")
@@ -4082,26 +4160,16 @@ private struct LoupeView: View {
                         .foregroundStyle(readsToneColor(presentation.verdictTone))
                         .lineLimit(1)
                 }
-                ForEach(presentation.rationalePhrases, id: \.self) { phrase in
-                    Text(phrase)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
                 ForEach(presentation.signalRows, id: \.kind.rawValue) { row in
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
-                            Text(EvaluationSignalPresentation.displayName(for: row.kind))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                            Text(EvaluationSignalPresentation.percentage(row.score))
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                        ProgressView(value: min(max(row.score, 0), 1))
-                            .tint(.orange)
+                    HStack(spacing: 6) {
+                        Text(EvaluationSignalPresentation.displayName(for: row.kind))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        Text(EvaluationSignalPresentation.percentage(row.score))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -4115,8 +4183,6 @@ private struct LoupeView: View {
             return .green
         case .caution:
             return .yellow
-        case .neutral:
-            return .secondary
         case .waiting:
             return .orange
         }
@@ -4133,7 +4199,8 @@ private struct LoupeView: View {
             model.setLoupeFaceFocuses([])
             return
         }
-        let result = await Task.detached(priority: .utility) { () -> (crops: [(id: Int, image: CGImage)], faceFocuses: [LoupeZoomFocus]) in
+        let wholePhotoSignals = model.selectedEvaluationSignals
+        let result = await Task.detached(priority: .utility) { () -> (crops: [LoupeCloseUpCrop], faceFocuses: [LoupeZoomFocus]) in
             guard let faces = try? CoreImageFaceExpressionAnalyzer().detectFaces(previewURL: previewURL),
                   !faces.isEmpty,
                   let source = CGImageSourceCreateWithURL(previewURL as CFURL, nil),
@@ -4142,10 +4209,19 @@ private struct LoupeView: View {
             }
             let presentation = CloseUpFacesPresentation(
                 faces: faces,
-                imagePixelSize: CGSize(width: image.width, height: image.height)
+                imagePixelSize: CGSize(width: image.width, height: image.height),
+                wholePhotoSignals: wholePhotoSignals
             )
-            let crops = presentation.crops.compactMap { crop in
-                image.cropping(to: crop.pixelRect).map { (id: crop.id, image: $0) }
+            let crops = presentation.crops.compactMap { crop -> LoupeCloseUpCrop? in
+                image.cropping(to: crop.pixelRect).map { croppedImage in
+                    LoupeCloseUpCrop(
+                        id: crop.id,
+                        image: croppedImage,
+                        eyesState: crop.eyesState,
+                        isSmiling: crop.isSmiling,
+                        sharpnessTone: crop.sharpnessTone
+                    )
+                }
             }
             let faceFocuses = faces.map { face in
                 LoupeZoomFocus(x: face.normalizedBounds.midX, y: face.normalizedBounds.midY)
@@ -4383,12 +4459,13 @@ private struct LoupeView: View {
         }
     }
 
-    // Task 6: one stop per auto-grouped stack (a pill for a multi-frame
-    // stack, a thumb for a standalone) plus a status bar below — replaces
-    // the old flat filmstrip, where a burst of a dozen near-duplicates cost
-    // a dozen tiles instead of one stop. Per-frame recommendation (✦) stays
-    // owned by the stack rail (`cullStackRailCell`), which is the only place
-    // a specific frame within a stack is still individually addressable.
+    // Task 6: one stop per auto-grouped stack (a small photo-stack visual
+    // for a multi-frame stack, a plain thumb for a standalone) plus a status
+    // bar below — replaces the old flat filmstrip, where a burst of a dozen
+    // near-duplicates cost a dozen tiles instead of one stop. Per-frame
+    // recommendation (✦) stays owned by the stack rail (`cullStackRailCell`),
+    // which is the only place a specific frame within a stack is still
+    // individually addressable.
     private func runStrip(isStackActive: Bool) -> some View {
         let scopedAssets = CullScopeOrdering.filteredAssets(model.assets, scope: model.cullScope)
         let stacks = model.allCullingStacks(for: scopedAssets)
@@ -4473,10 +4550,12 @@ private struct LoupeView: View {
             if stop.isStandalone {
                 runStripStandaloneThumb(stop)
             } else {
-                runStripPill(stop)
+                runStripStackThumb(stop)
             }
         }
         .buttonStyle(.plain)
+        // The machine-fact label (file range · time) lives here, in the
+        // tooltip, not as ambient chrome on the stack visual below.
         .help(stop.label)
         .accessibilityLabel("Stop \(stop.label)")
         .accessibilityValue(runStripStopAccessibilityValue(stop))
@@ -4503,38 +4582,16 @@ private struct LoupeView: View {
         return segments.joined(separator: ", ")
     }
 
-    private func runStripPill(_ stop: CullRunStripPresentation.Stop) -> some View {
-        HStack(spacing: 5) {
-            Text(stop.label)
-                .font(.caption2.monospaced())
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Text("\(stop.assetIDs.count)")
-                .font(.caption2.weight(.bold))
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(Capsule().fill(Color.white.opacity(0.15)))
-            if stop.sparkleCount > 0 {
-                Label("\(stop.sparkleCount)", systemImage: DesignGlyph.ai.symbolName)
-                    .labelStyle(.titleAndIcon)
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-            }
-            if stop.isDone {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.green)
-            }
-        }
-        .padding(.horizontal, 10)
-        .frame(height: 44)
-        .background(Capsule().fill(Color.black.opacity(0.4)))
-        .overlay(
-            Capsule().strokeBorder(stop.isCurrent ? Color.orange : Color.white.opacity(0.12), lineWidth: stop.isCurrent ? 2 : 1)
-        )
-    }
+    private static let runStripThumbSize = CGSize(width: 64, height: 44)
 
-    private func runStripStandaloneThumb(_ stop: CullRunStripPresentation.Stop) -> some View {
+    // The photo-card content shared by a standalone stop and a stack's front
+    // card: preview image, sparkle badge, done checkmark, and the
+    // current-stop selection ring. Factored out so the two stop shapes below
+    // can never drift apart on how the frame itself renders. The sparkle
+    // badge shows a bare icon for a standalone (0 or 1 possible) but the
+    // pending count for a stack, where 2+ members can each carry a pending
+    // AI suggestion — same distinction the old pill/thumb pair made.
+    private func runStripThumbnailFace(_ stop: CullRunStripPresentation.Stop, sparkleShowsCount: Bool) -> some View {
         ZStack(alignment: .topTrailing) {
             RoundedRectangle(cornerRadius: 5)
                 .fill(Color.black.opacity(0.55))
@@ -4551,14 +4608,21 @@ private struct LoupeView: View {
                     .foregroundStyle(.secondary)
             }
             if stop.sparkleCount > 0 {
-                Image(systemName: DesignGlyph.ai.symbolName)
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.orange)
-                    .padding(3)
-                    .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
+                Group {
+                    if sparkleShowsCount {
+                        Label("\(stop.sparkleCount)", systemImage: DesignGlyph.ai.symbolName)
+                            .labelStyle(.titleAndIcon)
+                    } else {
+                        Image(systemName: DesignGlyph.ai.symbolName)
+                    }
+                }
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.orange)
+                .padding(3)
+                .background(.black.opacity(0.48), in: RoundedRectangle(cornerRadius: 4))
             }
         }
-        .frame(width: 64, height: 44)
+        .frame(width: Self.runStripThumbSize.width, height: Self.runStripThumbSize.height)
         .clipShape(RoundedRectangle(cornerRadius: 5))
         .overlay(alignment: .bottomLeading) {
             if stop.isDone {
@@ -4573,6 +4637,44 @@ private struct LoupeView: View {
             RoundedRectangle(cornerRadius: 5)
                 .strokeBorder(stop.isCurrent ? Color.orange : Color.white.opacity(0.12), lineWidth: stop.isCurrent ? 2 : 1)
         }
+    }
+
+    private func runStripStandaloneThumb(_ stop: CullRunStripPresentation.Stop) -> some View {
+        runStripThumbnailFace(stop, sparkleShowsCount: false)
+    }
+
+    // A multi-frame stop renders as a small photo stack — the lead frame's
+    // thumbnail on top of 1-2 offset card layers behind it, plus a count
+    // badge — instead of the old wide text pill. The machine-fact label
+    // (file range · time) lives in the stop's `.help` tooltip (set by the
+    // caller, runStripStop) rather than as ambient chrome here.
+    private func runStripStackThumb(_ stop: CullRunStripPresentation.Stop) -> some View {
+        ZStack(alignment: .topTrailing) {
+            if stop.assetIDs.count > 2 {
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.black.opacity(0.3))
+                    .frame(width: Self.runStripThumbSize.width, height: Self.runStripThumbSize.height)
+                    .offset(x: 4, y: 4)
+            }
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.black.opacity(0.42))
+                .frame(width: Self.runStripThumbSize.width, height: Self.runStripThumbSize.height)
+                .offset(x: 2, y: 2)
+            runStripThumbnailFace(stop, sparkleShowsCount: true)
+            // Bottom-trailing, not top-trailing: the sparkle badge already
+            // owns the frame's top-right corner, and this reads naturally
+            // where the offset layers behind peek out.
+            Text("\(stop.assetIDs.count)")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(Capsule().fill(Color.black.opacity(0.7)))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .offset(x: 6, y: 6)
+        }
+        .padding(.trailing, 6)
+        .padding(.bottom, 6)
     }
 
     private static let cullStackRailThumbnailSize = CGSize(width: 120, height: 84)
@@ -4605,10 +4707,12 @@ private struct LoupeView: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
-                    Text(presentation.positionText)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if !presentation.positionText.isEmpty {
+                        Text(presentation.positionText)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                     if let rationaleText = presentation.rationaleText {
                         Text(rationaleText)
                             .font(.caption2)
@@ -4767,7 +4871,8 @@ private struct LoupeView: View {
             assets: model.assets,
             selectedAssetID: model.selectedAssetID,
             evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals(),
-            explicitStackScope: model.selectedCullingStackScope
+            explicitStackScope: model.selectedCullingStackScope,
+            stackBuilder: model.stackBuilder()
         )
     }
 
@@ -5683,16 +5788,18 @@ struct CompareSurveyPresentation: Equatable {
     /// Compact flaw reads (EYES CLOSED / SOFT) derived straight from
     /// persisted signals. Shared with other frame surfaces (e.g. the stack
     /// rail chips) so the wording and tone stay identical everywhere a flaw
-    /// badge appears.
+    /// badge appears. Tone is `.flaw`, not `.destructive` — a flaw badge is
+    /// a quality read, not a decision; red stays reserved for genuinely
+    /// destructive states (REJECTED).
     static func flawBadges(for signals: [EvaluationSignal]) -> [CompareDecisionBadge] {
         var badges: [CompareDecisionBadge] = []
         // Fractional eyesOpen is CIDetector noise on tiny/occluded faces;
-        // only 0.0 (all eyes shut) earns the destructive badge.
+        // only 0.0 (all eyes shut) earns the badge.
         if let eyesOpen = highestConfidenceScore(kind: .eyesOpen, in: signals), eyesOpen <= 0.0 {
-            badges.append(CompareDecisionBadge(text: "EYES CLOSED", tone: .destructive))
+            badges.append(CompareDecisionBadge(text: "EYES CLOSED", tone: .flaw))
         }
         if let focus = highestConfidenceScore(kind: .focus, in: signals), focus <= softFocusBadgeThreshold {
-            badges.append(CompareDecisionBadge(text: "SOFT", tone: .destructive))
+            badges.append(CompareDecisionBadge(text: "SOFT", tone: .flaw))
         }
         return badges
     }
@@ -5767,6 +5874,10 @@ struct CompareDecisionBadge: Equatable, Identifiable {
         case label
         case best
         case rank
+        /// An AI-read quality flaw (e.g. SOFT, EYES CLOSED) — not a
+        /// decision, so it renders as a quiet mark, not a filled pill. Red
+        /// stays reserved for `.destructive` (genuinely destructive states).
+        case flaw
     }
 
     var text: String
@@ -5777,23 +5888,40 @@ struct CompareDecisionBadge: Equatable, Identifiable {
     }
 }
 
-/// Renders each badge as its own small tone-colored pill. Shared by the
-/// compare survey tiles and the cull stack rail cells so both surfaces read
-/// AI-read/decision badges the same way.
+/// Renders each badge as its own small tone-colored pill — except `.flaw`
+/// badges, which render as a quiet caption-size mark instead (clearly
+/// subordinate to the photo, unlike the filled pills used for decisions and
+/// other metadata). Shared by the compare survey tiles and the cull stack
+/// rail cells so both surfaces read AI-read/decision badges the same way.
 @ViewBuilder
 private func compareDecisionBadges(_ badges: [CompareDecisionBadge]) -> some View {
     if !badges.isEmpty {
         HStack(spacing: 5) {
             ForEach(badges) { badge in
-                Text(badge.text)
-                    .font(.caption2.monospaced().weight(.bold))
-                    .foregroundStyle(compareBadgeForeground(for: badge.tone))
-                    .lineLimit(1)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(compareBadgeBackground(for: badge.tone), in: RoundedRectangle(cornerRadius: 4))
+                compareDecisionBadge(badge)
             }
         }
+    }
+}
+
+@ViewBuilder
+private func compareDecisionBadge(_ badge: CompareDecisionBadge) -> some View {
+    if badge.tone == .flaw {
+        // Text content is unchanged (still "SOFT"/"EYES CLOSED") — only the
+        // visual weight drops, so existing accessibility text matches keep
+        // working; lowercasing here would silently break every AX
+        // `--contains "SOFT"` query elsewhere in the app.
+        Text(badge.text)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+    } else {
+        Text(badge.text)
+            .font(.caption2.monospaced().weight(.bold))
+            .foregroundStyle(compareBadgeForeground(for: badge.tone))
+            .lineLimit(1)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(compareBadgeBackground(for: badge.tone), in: RoundedRectangle(cornerRadius: 4))
     }
 }
 
@@ -5803,6 +5931,8 @@ private func compareBadgeForeground(for tone: CompareDecisionBadge.Tone) -> Colo
         return .black
     case .positive, .destructive, .label:
         return .white
+    case .flaw:
+        return .secondary
     }
 }
 
@@ -5820,6 +5950,8 @@ private func compareBadgeBackground(for tone: CompareDecisionBadge.Tone) -> Colo
         return .blue.opacity(0.9)
     case .best, .rank:
         return .orange
+    case .flaw:
+        return .clear
     }
 }
 
@@ -6207,7 +6339,7 @@ struct CullingStackRailPresentation: Equatable {
             )
         }
 
-        guard stackScope.assetIDs.count > 1,
+        guard !stackScope.assetIDs.isEmpty,
               let selectedIndex = stackScope.assetIDs.firstIndex(of: selectedAssetID) else {
             items = []
             titleText = ""
@@ -6219,11 +6351,16 @@ struct CullingStackRailPresentation: Equatable {
             tooCloseBanner = nil
             return
         }
-        let rankedCandidates = CullingStackRecommendation.rankedCandidates(
+        // A standalone (single-photo stop) still gets a rail entry — its own
+        // thumb, decision marks intact — but none of the stack-only chrome:
+        // no rank/✦ (nothing to be recommended over), no "Frame N of M", no
+        // keep/cut actions (there are no alternates to reject or keep-all).
+        let isStandalone = stackScope.assetIDs.count == 1
+        let rankedCandidates = isStandalone ? [] : CullingStackRecommendation.rankedCandidates(
             stackAssetIDs: stackScope.assetIDs,
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
-        let tiedLeaderIDs = CullingStackRecommendation.tiedLeaderIDs(
+        let tiedLeaderIDs = isStandalone ? nil : CullingStackRecommendation.tiedLeaderIDs(
             stackAssetIDs: stackScope.assetIDs,
             evaluationSignalsByAssetID: evaluationSignalsByAssetID
         )
@@ -6242,13 +6379,6 @@ struct CullingStackRailPresentation: Equatable {
                 decision: DecisionState(flag: assetsByID[assetID]?.metadata.flag)
             )
         }
-        if let stackIndex = stackScope.stackIndex,
-           let stackCount = stackScope.stackCount {
-            titleText = "Stack \(stackIndex) of \(stackCount)"
-        } else {
-            titleText = "Stack"
-        }
-        positionText = "Frame \(selectedIndex + 1) of \(stackScope.assetIDs.count)"
         rationaleText = stackScope.rationaleText
         tooCloseBanner = tiedLeaderIDs.map { leaderIDs in
             let frameLabels = leaderIDs.compactMap { leaderID in
@@ -6256,6 +6386,21 @@ struct CullingStackRailPresentation: Equatable {
             }
             return "too close to call — \(frameLabels.joined(separator: "·"))"
         }
+        guard !isStandalone else {
+            titleText = "Standalone"
+            positionText = ""
+            keepActionTitle = ""
+            keepActionHelp = ""
+            actions = []
+            return
+        }
+        if let stackIndex = stackScope.stackIndex,
+           let stackCount = stackScope.stackCount {
+            titleText = "Stack \(stackIndex) of \(stackCount)"
+        } else {
+            titleText = "Stack"
+        }
+        positionText = "Frame \(selectedIndex + 1) of \(stackScope.assetIDs.count)"
         keepActionTitle = "Keep frame \(selectedIndex + 1) · cut \(stackScope.assetIDs.count - 1)"
         keepActionHelp = "Keep selected frame and reject stack alternates"
         actions = [
@@ -6284,6 +6429,13 @@ struct CullingStackRailPresentation: Equatable {
 
     var isVisible: Bool {
         !items.isEmpty
+    }
+
+    // A standalone's rail entry is visible (`isVisible`) but isn't a stack —
+    // gates chrome that only makes sense with siblings to navigate/act on,
+    // like the run strip's "↑↓/J K stacks" and "↵ accept best" legend hints.
+    var isMultiFrameStack: Bool {
+        items.count > 1
     }
 
     var recommendedAssetID: AssetID? {
@@ -6576,6 +6728,10 @@ enum RawBadgeLabel {
         guard isRaw else { return nil }
         return hasBondedStill ? "RAW+JPEG" : "RAW"
     }
+
+    static func accessibilityLabel(for text: String) -> String {
+        text == "RAW+JPEG" ? "RAW with bonded JPEG" : "RAW original"
+    }
 }
 
 private struct ABCompareView: View {
@@ -6586,7 +6742,8 @@ private struct ABCompareView: View {
             assets: model.assets,
             selectedAssetID: model.selectedAssetID,
             evaluationSignalsByAssetID: model.selectedCullingStackEvaluationSignals(),
-            explicitStackScope: model.selectedCullingStackScope
+            explicitStackScope: model.selectedCullingStackScope,
+            stackBuilder: model.stackBuilder()
         ).recommendedAssetID
     }
 
@@ -6993,7 +7150,12 @@ private struct CompareView: View {
                 isSelected: model.selectedAssetID == asset.id,
                 isBatchSelected: model.isBatchSelected(asset.id)
             )
-            .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
+            .assetActivation(
+                for: asset,
+                model: model,
+                focusCullingSurface: focusCullingSurface,
+                openInLoupe: { model.openAssetInLoupe($0) }
+            ) { assetID in
                 model.select(assetID)
             }
             compareDecisionBadges(presentation.tileBadges(for: asset))
@@ -7281,17 +7443,22 @@ enum AssetActivationFocusPolicy {
 }
 
 private extension View {
+    // `openInLoupe` is which loupe a double-click lands in: Library-workspace
+    // callers (the grid, Timeline) pass `openAssetInLibraryLoupe`; the Cull
+    // workspace's Compare tile passes `openAssetInLoupe` to stay in the
+    // culling loupe.
     func assetActivation(
         for asset: Asset,
         model: AppModel,
         focusCullingSurface: @escaping () -> Void,
+        openInLoupe: @escaping (AssetID) -> Void,
         selectAsset: @escaping (AssetID) -> Void
     ) -> some View {
         let doubleClick = TapGesture(count: 2).onEnded {
             if AssetActivationFocusPolicy.shouldFocusCullingSurface(for: .openInLoupe) {
                 focusCullingSurface()
             }
-            model.openAssetInLoupe(asset.id)
+            openInLoupe(asset.id)
         }
         return Button {
             if NSEvent.modifierFlags.contains(.shift) {
@@ -7793,7 +7960,12 @@ private struct TimelineWorkspaceView: View {
                             isBatchSelected: model.isBatchSelected(asset.id),
                             autopilotDecision: model.autopilotProposalDecision(for: asset.id)
                         )
-                        .assetActivation(for: asset, model: model, focusCullingSurface: focusCullingSurface) { assetID in
+                        .assetActivation(
+                            for: asset,
+                            model: model,
+                            focusCullingSurface: focusCullingSurface,
+                            openInLoupe: { model.openAssetInLibraryLoupe($0) }
+                        ) { assetID in
                             selectAsset(assetID)
                         }
                         .id("timeline-\(asset.id.rawValue)")
@@ -9310,7 +9482,6 @@ private struct AssetGridCell: View {
     var isSelected: Bool
     var isBatchSelected = false
     var autopilotDecision: AutopilotProposalKind? = nil
-    var hasBondedStill = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -9351,12 +9522,6 @@ private struct AssetGridCell: View {
                     }
                 }
                 .padding(6)
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if hasBondedStill, let rawBadgeText = RawBadgeLabel.text(isRaw: asset.isRawOriginal, hasBondedStill: hasBondedStill) {
-                    rawBadge(rawBadgeText)
-                        .padding(6)
-                }
             }
             .background(
                 RoundedRectangle(cornerRadius: 5)
@@ -9424,15 +9589,6 @@ private struct AssetGridCell: View {
             .accessibilityLabel(badge.isKeep ? "Proposed keep" : "Proposed cut")
     }
 
-    private func rawBadge(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2.monospaced().weight(.semibold))
-            .foregroundStyle(.orange)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(.black.opacity(0.55), in: Capsule())
-            .accessibilityLabel(text == "RAW+JPEG" ? "RAW with bonded JPEG" : "RAW original")
-    }
 
     private var metadataOverlay: some View {
         let presentation = AssetGridMetadataBadgePresentation.presentation(for: asset)

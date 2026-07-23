@@ -147,6 +147,21 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedView, .loupe)
     }
 
+    // Library-grid activation (double-click, "Open in Loupe" context menu)
+    // opens the plain-chrome Library loupe, never the culling loupe that
+    // `openAssetInLoupe` (above) is reserved for Cull-workspace callers.
+    func testOpenAssetInLibraryLoupeSelectsAssetAndSwitchesView() {
+        let first = makeAsset(id: "first", size: 1)
+        let second = makeAsset(id: "second", size: 2)
+        let model = AppModel(sidebarSections: [], selectedView: .grid, assets: [first, second])
+
+        model.openAssetInLibraryLoupe(second.id)
+
+        XCTAssertEqual(model.selectedAsset?.id, second.id)
+        XCTAssertEqual(model.selectedView, .libraryLoupe)
+        XCTAssertNotEqual(model.selectedView, .loupe)
+    }
+
     func testSelectedAssetPositionTextShowsFrameWithinLibrary() {
         let first = makeAsset(id: "first", size: 1)
         let second = makeAsset(id: "second", size: 2)

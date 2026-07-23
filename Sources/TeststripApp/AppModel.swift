@@ -2535,6 +2535,18 @@ public final class AppModel {
     }
     static let defaultCardImportDestinationDefaultsKey = "AppModel.defaultCardImportDestination"
 
+    // How wide a capture-time window (seconds) groups burst frames into a
+    // stack (`stackBuilder()`, the single source of truth every live
+    // stack-building path — `allCullingStacks(for:)`, the rail, A/B
+    // compare — shares). Persists across sessions like the other
+    // preferences above; default matches AssetStackBuilder's own default.
+    public var burstIntervalSeconds: Double = AssetStackBuilder.defaultMaximumCaptureGap {
+        didSet {
+            sessionRestoreDefaults?.set(burstIntervalSeconds, forKey: Self.burstIntervalSecondsDefaultsKey)
+        }
+    }
+    static let burstIntervalSecondsDefaultsKey = "AppModel.burstIntervalSeconds"
+
     // Bumped by the Metadata ▸ Batch Metadata… menu command so the library view
     // can open the batch-metadata sheet from the keyboard without the action
     // having to live as a top-level toolbar button.
@@ -2663,7 +2675,6 @@ public final class AppModel {
     private static let previewGenerationMaximumAutomaticAttempts = 3
     static let sourceAvailabilityBatchSize = 100
     private static let defaultCompareAssetLimit = 8
-    private static let candidateStackMaximumCaptureGap: TimeInterval = 2
     private static let manualCullSessionTitle = "Compare Manual Cull"
 
     public var selectedAsset: Asset? {
@@ -4690,6 +4701,9 @@ public final class AppModel {
             model.defaultCreator = sessionRestoreDefaults.string(forKey: defaultCreatorDefaultsKey) ?? ""
             model.defaultCopyright = sessionRestoreDefaults.string(forKey: defaultCopyrightDefaultsKey) ?? ""
             model.defaultCardImportDestination = sessionRestoreDefaults.string(forKey: defaultCardImportDestinationDefaultsKey) ?? ""
+            if sessionRestoreDefaults.object(forKey: burstIntervalSecondsDefaultsKey) != nil {
+                model.burstIntervalSeconds = sessionRestoreDefaults.double(forKey: burstIntervalSecondsDefaultsKey)
+            }
         }
         return model
     }
@@ -6636,7 +6650,8 @@ public final class AppModel {
             assets: assets,
             selectedAssetID: selectedAssetID,
             evaluationSignalsByAssetID: selectedCullingStackEvaluationSignals(),
-            explicitStackScope: selectedCullingStackScope
+            explicitStackScope: selectedCullingStackScope,
+            stackBuilder: stackBuilder()
         ).recommendedAssetID
         let presentation = ABComparePresentation(
             assets: assets,
@@ -12913,8 +12928,12 @@ public final class AppModel {
         }
     }
 
-    private func stackBuilder() -> AssetStackBuilder {
-        AssetStackBuilder(maximumCaptureGap: Self.candidateStackMaximumCaptureGap)
+    // The single source of truth every live stack-building path shares —
+    // `allCullingStacks(for:)`, the cull rail, and A/B compare all build
+    // from this rather than constructing their own `AssetStackBuilder`, so
+    // `burstIntervalSeconds` only has to be threaded through once.
+    func stackBuilder() -> AssetStackBuilder {
+        AssetStackBuilder(maximumCaptureGap: burstIntervalSeconds)
     }
 
     private func visualSimilarityVectorsByAssetID(for assets: [Asset]) -> [AssetID: [Double]] {

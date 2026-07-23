@@ -57,6 +57,22 @@ final class AppModelSessionRestoreTests: XCTestCase {
         XCTAssertEqual(modelB.defaultCardImportDestination, "/Volumes/Photos")
     }
 
+    func testRestoresBurstIntervalSeconds() throws {
+        let directory = try makeTemporaryDirectory(named: "restore-burst-interval")
+        let defaults = try makeIsolatedDefaults()
+        let catalogA = try makeCatalog(directory: directory)
+
+        let modelA = try AppModel.load(catalog: catalogA, sessionRestoreDefaults: defaults)
+        XCTAssertEqual(modelA.burstIntervalSeconds, AssetStackBuilder.defaultMaximumCaptureGap)
+
+        modelA.burstIntervalSeconds = 8
+
+        let catalogB = try makeCatalog(directory: directory)
+        let modelB = try AppModel.load(catalog: catalogB, sessionRestoreDefaults: defaults)
+
+        XCTAssertEqual(modelB.burstIntervalSeconds, 8)
+    }
+
     func testRestoresSelectedAssetSetScope() throws {
         let directory = try makeTemporaryDirectory(named: "restore-scope")
         let defaults = try makeIsolatedDefaults()

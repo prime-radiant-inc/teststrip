@@ -1,10 +1,16 @@
 import TeststripCore
 
-/// The right-panel reads card model: the frame's Keep/Toss/Mixed verdict,
-/// the short rationale phrases behind it, and a per-kind signal row for
-/// each kind's defect-inverted bar. Reuses `CullingAssistPresentation`'s
-/// verdict/rationale computations and `CullingStackRecommendation`'s
-/// per-kind component scoring rather than re-deriving either.
+/// The right-panel reads card model: the frame's Keep/Toss verdict plus a
+/// per-kind signal row for each whole-photo read. Reuses
+/// `CullingAssistPresentation`'s verdict computation and
+/// `CullingStackRecommendation`'s per-kind component scoring rather than
+/// re-deriving either.
+///
+/// One home per fact: each whole-photo signal appears exactly once, in a
+/// fixed canonical order that never depends on score (so the card doesn't
+/// reshuffle photo to photo). Face-specific kinds (faceQuality,
+/// eyeSharpness, eyesOpen, smile) never appear here — they render on the
+/// close-ups rail (`CloseUpFacesPresentation`) instead.
 ///
 /// Strictly gated on the whole card, not just the verdict line: with fewer
 /// than two scored quality kinds there is no card at all (`emptyState`
@@ -16,9 +22,12 @@ struct CullReadsCardPresentation: Equatable {
         var score: Double
     }
 
+    /// Fixed display order for whole-photo signal rows, identical for every
+    /// photo regardless of score.
+    static let canonicalSignalOrder: [EvaluationKind] = [.focus, .motionBlur, .framing, .aesthetics]
+
     var verdictText: String?
     var verdictTone: CullingAssistPresentation.Tone
-    var rationalePhrases: [String]
     var signalRows: [SignalRow]
     var emptyState: String?
 
@@ -28,7 +37,6 @@ struct CullReadsCardPresentation: Equatable {
             return CullReadsCardPresentation(
                 verdictText: nil,
                 verdictTone: .waiting,
-                rationalePhrases: [],
                 signalRows: [],
                 emptyState: "No read yet"
             )
@@ -37,19 +45,18 @@ struct CullReadsCardPresentation: Equatable {
         return CullReadsCardPresentation(
             verdictText: verdict?.text,
             verdictTone: verdict?.tone ?? .waiting,
-            rationalePhrases: CullingAssistPresentation.rationalePhrases(for: signals),
             signalRows: Self.signalRows(for: signals),
             emptyState: nil
         )
     }
 
-    // Strongest signal first, so the top bar in the card is the strongest
-    // read; kind name breaks ties for a deterministic order.
+    // Canonical order, not score order — a row present for a photo always
+    // lands in the same place. Kinds with no signal are simply absent
+    // (never a fake zero-scored row).
     private static func signalRows(for signals: [EvaluationSignal]) -> [SignalRow] {
-        CullingStackRecommendation.bestComponentByKind(for: signals)
-            .map { SignalRow(kind: $0.key, score: $0.value.score) }
-            .sorted { lhs, rhs in
-                lhs.score != rhs.score ? lhs.score > rhs.score : lhs.kind.rawValue < rhs.kind.rawValue
-            }
+        let bestComponentByKind = CullingStackRecommendation.bestComponentByKind(for: signals)
+        return canonicalSignalOrder.compactMap { kind in
+            bestComponentByKind[kind].map { SignalRow(kind: kind, score: $0.score) }
+        }
     }
 }

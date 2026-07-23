@@ -704,11 +704,14 @@ final class CompareSurveyPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.signalBadges(for: best), [
             CompareDecisionBadge(text: "✦ BEST", tone: .best)
         ])
+        // .flaw, not .destructive: a flaw badge is a quality read, not a
+        // decision — red stays reserved for genuinely destructive states
+        // (REJECTED).
         XCTAssertEqual(presentation.signalBadges(for: blink), [
-            CompareDecisionBadge(text: "EYES CLOSED", tone: .destructive)
+            CompareDecisionBadge(text: "EYES CLOSED", tone: .flaw)
         ])
         XCTAssertEqual(presentation.signalBadges(for: soft), [
-            CompareDecisionBadge(text: "SOFT", tone: .destructive)
+            CompareDecisionBadge(text: "SOFT", tone: .flaw)
         ])
     }
 
