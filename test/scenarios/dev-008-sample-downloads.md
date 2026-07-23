@@ -100,16 +100,22 @@ non-failing result — do not treat SKIP as a card failure.
 - Step 6: exit `0`, final line `face model ready: /Users/jesse/git/projects/teststrip/sample-data/models/auraface-v1.mlpackage`,
   and `sample-data/models/auraface-v1.mlpackage` exists as a directory
   (`.mlpackage` bundles are directories, not files — `ditto -x -k` unzips
-  the `.zip` in place per the wrapper's lines 42–48).
+  the `.zip` in place per the wrapper's lines 42–48). The wrapper then chains
+  `script/compile_face_models.sh`, so stdout also carries a
+  `compiled: auraface-v1.mlmodelc (...)` (or `up to date:`) line and
+  `sample-data/models/auraface-v1.mlmodelc` exists as a directory — the
+  runtime loads only that compiled form. **Fails if** the `.mlmodelc` is
+  missing after this step.
 
 ## Cleanup
 ```bash
 rm -rf "$DEST"   # only if step 4/5 ran; $DEST is a throwaway mktemp dir this card created
 ```
-`sample-data/models/auraface-v1.mlpackage` (step 6) is intentionally left in
-place — it's gitignored, machine-local cached state that other
-face-recognition cards and dogfood sessions expect to already be present;
-do not delete it as part of this card's cleanup.
+`sample-data/models/auraface-v1.mlpackage` and its compiled sibling
+`auraface-v1.mlmodelc` (step 6) are intentionally left in place — they're
+gitignored, machine-local cached state that other face-recognition cards and
+dogfood sessions expect to already be present; do not delete them as part of
+this card's cleanup.
 
 ## Sharp edges
 - `download_sample_photos.sh --limit` counts *manifest rows processed*, not

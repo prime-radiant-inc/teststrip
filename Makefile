@@ -10,7 +10,7 @@
 # test/scenarios/README.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help build test verify run smoke package package-dry reset clean
+.PHONY: help build test verify run smoke package package-dry reset clean models
 
 help: ## List available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  \033[36m%-13s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -18,10 +18,13 @@ help: ## List available targets
 build: ## Compile all targets (swift build)
 	swift build
 
-test: ## Run the Swift unit tests (swift test)
+models: ## Compile Core ML face models when stale (runtime loads only .mlmodelc)
+	script/compile_face_models.sh
+
+test: models ## Run the Swift unit tests (swift test)
 	swift test
 
-verify: ## Full host-safe gate: unit tests + sandboxed build + headless verifiers
+verify: models ## Full host-safe gate: unit tests + sandboxed build + headless verifiers
 	script/verify_headless_workflows.sh
 
 run: ## Build and launch against your real library (dogfooding)

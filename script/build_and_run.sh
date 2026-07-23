@@ -55,7 +55,7 @@ build_app_bundle() {
   teststrip_build_products "$ROOT_DIR"
   local build_dir
   build_dir="$(teststrip_build_bin_path "$ROOT_DIR")"
-  teststrip_assemble_bundle "$ROOT_DIR" "$build_dir" "$APP_BUNDLE"
+  teststrip_assemble_bundle "$ROOT_DIR" "$build_dir" "$APP_BUNDLE" clone
 
   local worker_codesign=(codesign --force --sign -)
   local app_codesign=(codesign --force --sign -)
