@@ -32,26 +32,26 @@ thumbnails) and 40 (guidance text/action set — resolved below by reading
 
 Source (re-verified against the working tree on this branch):
 - **Rail placement and structure**: `cullingStackRail(presentation:)`,
-  `Sources/TeststripApp/LibraryGridView.swift:4721-4808` — a vertical
+  `Sources/TeststripApp/LibraryGridView.swift:4728-4815` — a vertical
   `VStack` (title/position/rationale text, then a `ScrollView`/`LazyVStack`
   of per-frame thumbnail cells, then a footer `HStack` holding the primary
-  Keep `Button` (`:4764-4777`) and, when
+  Keep `Button` (`:4771-4784`) and, when
   `presentation.actions.dropFirst()` is non-empty, an `ellipsis.circle`
-  `Menu` labeled "More stack actions" (`:4778-4796`) wrapping the secondary
+  `Menu` labeled "More stack actions" (`:4785-4803`) wrapping the secondary
   actions. Placed leftmost in the loupe's middle `HStack`, shown only when
-  `presentation.showsCullChrome` — `:3862-3865`.
+  `presentation.showsCullChrome` — `:3869-3872`.
 - **Per-frame cells** (the "chips" of the old description; now thumbnail
-  cells): `cullStackRailCell(_:)`, `LibraryGridView.swift:4810-4861` — each
+  cells): `cullStackRailCell(_:)`, `LibraryGridView.swift:4817-4868` — each
   cell renders a `CachedPreviewImage` thumbnail, a decision overlay
-  (`cullStackRailDecisionOverlay`, `:4866-4883`), the `✦` recommended
-  marker (`:4832-4840`), a selection-highlight stroke, and — **one mark
+  (`cullStackRailDecisionOverlay`, `:4873-4890`), the `✦` recommended
+  marker (`:4839-4847`), a selection-highlight stroke, and — **one mark
   per AI-read flaw**, not a single red dot —
-  `compareDecisionBadges(item.flawBadges)` (`:4852-4854`) (only two kinds
+  `compareDecisionBadges(item.flawBadges)` (`:4859-4861`) (only two kinds
   exist today: `EYES CLOSED`/`SOFT`, see `cull-021-stack-rail-nav.md`'s
   source notes on `CompareSurveyPresentation.flawBadges`,
-  `LibraryGridView.swift:5821-5832`). **Reconciled 2026-07-17 (dogfood-r1
+  `LibraryGridView.swift:5828-5839`). **Reconciled 2026-07-17 (dogfood-r1
   panel pass)**: a flaw's `CompareDecisionBadge.tone` is now `.flaw`, not
-  `.destructive`, and `compareDecisionBadge(_:)` (`LibraryGridView.swift:5935`)
+  `.destructive`, and `compareDecisionBadge(_:)` (`LibraryGridView.swift:5942`)
   renders `.flaw` as quiet, secondary-colored caption text — no filled
   background, no bold — instead of the old bold red pill; the text content
   itself is unchanged (still "SOFT"/"EYES CLOSED", not lowercased, so
@@ -59,15 +59,15 @@ Source (re-verified against the working tree on this branch):
   (`.destructive`) is now reserved for genuinely destructive states
   (REJECTED). The text content (`EYES CLOSED`/`SOFT`) and the "one mark per
   flaw kind" structure are unchanged — only the visual weight.
-- **`CullingStackRailPresentation.init`**, `LibraryGridView.swift:6319-6455`
+- **`CullingStackRailPresentation.init`**, `LibraryGridView.swift:6326-6462`
   — the standalone-vs-stack guard is `isStandalone = stackScope.assetIDs.count
-  == 1` (`:6385`); when true, `init` returns early before building actions or
-  position text (`:6416-6423`). Otherwise it always builds exactly three
-  action entries in this order (`:6433-6454`):
+  == 1` (`:6392`); when true, `init` returns early before building actions or
+  position text (`:6423-6430`). Otherwise it always builds exactly three
+  action entries in this order (`:6440-6461`):
   1. `.keepSelectedAndRejectAlternates` — title `"Keep frame N · cut M"`,
      always enabled, help `"Keep selected frame and reject stack
      alternates"`.
-  2. `Self.rankedAction(...)` (`:6487-6527`) — **`.keepTopRanked([top2])`**
+  2. `Self.rankedAction(...)` (`:6494-6534`) — **`.keepTopRanked([top2])`**
      titled `"Keep top 2"` if the stack has >2 frames and 2+ ranked
      candidates exist; otherwise **`.keepRecommended(assetID)`** titled
      `"Keep recommended N"`, or `nil` (omitted) if there's no ranked
@@ -75,22 +75,22 @@ Source (re-verified against the working tree on this branch):
      the case).
   3. `.keepAll` — title `"Keep all N"`, always enabled.
   `CullingStackAction`, the real action enum, is exactly four cases
-  (`:6530-6535`): `keepSelectedAndRejectAlternates`, `keepTopRanked([AssetID])`,
+  (`:6537-6542`): `keepSelectedAndRejectAlternates`, `keepTopRanked([AssetID])`,
   `keepRecommended(AssetID)`, `keepAll`. `CullingStackActionPresentation`
-  is the view-layer presentation wrapper (`:6537-6573`), not a
+  is the view-layer presentation wrapper (`:6544-6580`), not a
   `TeststripCore` model.
 - **The rail's primary "Keep" button does not follow keepRecommended/
   topRanked guidance** — its handler `keepSelectedStackFrame()`
-  (`LibraryGridView.swift:5020-5026`) calls
+  (`LibraryGridView.swift:5027-5033`) calls
   `model.promoteCurrentFrameAndRejectSiblings()` unconditionally on whatever
   frame is currently *selected*, regardless of which frame the ranking
   recommends. The recommended/top-ranked guidance only surfaces via (a) the
   secondary action button, dispatched through `performCullingStackAction`
-  (`:5041-5052`: `.keepRecommended` → `keepRecommendedStackFrame(_:)`
-  (`:5028-5031`, selects the recommended asset first, then calls the same
+  (`:5048-5059`: `.keepRecommended` → `keepRecommendedStackFrame(_:)`
+  (`:5035-5038`, selects the recommended asset first, then calls the same
   `keepSelectedStackFrame()`) and `.keepTopRanked` →
-  `keepTopRankedStackFrames(_:)`, `:5033-5039`) and (b) the `✦` marker on
-  the recommended cell (`:4832-4840`). There is no third surface: the HUD
+  `keepTopRankedStackFrames(_:)`, `:5040-5046`) and (b) the `✦` marker on
+  the recommended cell (`:4839-4847`). There is no third surface: the HUD
   carries no verdict at all (`CullHUDPresentation`'s doc comment — "the
   assist verdict is deliberately absent... the right panel's reads card owns
   it" — see `cull-011-hud.md`), and the reads card's `verdictText`
@@ -178,7 +178,7 @@ script/vm_scenario_run.sh ax wait-vended
    evaluation-signal read predicted, regardless of which frame was selected
    beforehand.
 6. Assert each stack member has its own thumbnail cell
-   (`presentation.items`, `LibraryGridView.swift:6399-6408`) with the `✦`
+   (`presentation.items`, `LibraryGridView.swift:6406-6415`) with the `✦`
    marker (via accessibility value, not a raw AX-findable glyph — see
    above) on exactly the recommended one, and — the reorg's actual change
    from a single red dot — **one mark per AI-read flaw** on any cell whose
@@ -187,10 +187,10 @@ script/vm_scenario_run.sh ax wait-vended
    script/ax_drive.sh find --role AXButton --label "Stack frame 1"
    ```
    (cell accessibility label is `"Stack frame \(label)"`,
-   `LibraryGridView.swift:4859`; value carries Selected/Recommended + each
-   flaw badge's text per `stackChipAccessibilityValue`, `:4890-4894`; the
+   `LibraryGridView.swift:4866`; value carries Selected/Recommended + each
+   flaw badge's text per `stackChipAccessibilityValue`, `:4897-4901`; the
    flaw marks themselves are separate `AXStaticText` children below the
-   thumbnail, `:4852-4854` — independently AX-findable by their text, e.g.
+   thumbnail, `:4859-4861` — independently AX-findable by their text, e.g.
    `find --role AXStaticText --contains "SOFT"`, unlike the `✦` marker. As
    of 2026-07-17 the flaw mark itself renders as quiet, secondary-colored
    caption text — not a filled pill — but its text ("SOFT"/"EYES CLOSED",
@@ -270,3 +270,12 @@ pre-existing drift and is now `:3862-3865`, a +16 shift, while everything
 from `cullingStackRail`'s own declaration onward — through
 `CullingStackActionPresentation` — carries the full +27). No prose or
 behavior claims changed, only line numbers.
+
+**Reconciled 2026-07-28 (fix/cull-followups exhaustive-switch citation
+shift)**: `LoupeView.cullCompletion`'s proposal-kind partition (well before
+`cullingStackRail` in the file) was rewritten from two `filter` calls to an
+exhaustive `switch` over `AutopilotProposalKind`, adding 7 lines ahead of
+every citation in this card — every `LibraryGridView.swift` line number
+above shifted by exactly +7 (e.g. `cullingStackRail` `:4721-4808` →
+`:4728-4815`), re-verified by directly reading each cited symbol, not by
+assuming the offset. No prose or behavior claims changed.

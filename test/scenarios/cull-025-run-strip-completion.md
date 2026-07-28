@@ -30,7 +30,7 @@ card):
   → window `7..<13`; anchor=0 → `0..<6`; anchor=19 → `14..<20`.
 - **Rendering**, `runStrip`/`runStripStop`/`runStripStackThumb`/
   `runStripStandaloneThumb`/`runStripThumbnailFace`
-  (`Sources/TeststripApp/LibraryGridView.swift:4496-4705`). **Reconciled
+  (`Sources/TeststripApp/LibraryGridView.swift:4503-4712`). **Reconciled
   2026-07-17 (dogfood-r1 panel pass)**: a multi-frame stop no longer renders
   as a wide text pill (`label` + count + sparkle chip in a `Capsule`) — it
   now renders `runStripStackThumb`, a small **photo stack**: the lead
@@ -49,7 +49,7 @@ card):
   checkmark overlay is unchanged for both shapes. Both button forms still
   carry `.help(stop.label)`, `.accessibilityLabel("Stop \(stop.label)")`,
   and `.accessibilityValue(runStripStopAccessibilityValue(stop))`
-  (`:4586-4588`) — the value is `["Current"]/["Done"] + "N frame(s)" +
+  (`:4593-4595`) — the value is `["Current"]/["Done"] + "N frame(s)" +
   ["N suggestion(s)"]` joined by `", "` — the **only** reliable AX read of
   `isCurrent`/`sparkleCount` (the visual glyphs themselves aren't
   independently AX-findable, per `cull-021-stack-rail-nav.md`'s identical
@@ -71,7 +71,7 @@ card):
   `stacks`) — this is the tutorial's "stop" model wearing the label
   "stack"; don't read a standalone's "stack S of Σ" segment as a bug.
 - **User-origin-only progress**: `runStripStatusBar`
-  (`LibraryGridView.swift:4536-4560`) computes `progressFraction =
+  (`LibraryGridView.swift:4543-4567`) computes `progressFraction =
   reviewedCount / totalCount` from `model.cullingProgressSummary`
   (`AppModel.swift:2754-2763`), whose `pickCount`/`rejectCount` come from
   `cullingDecisionCount(flag:repository:)` →
@@ -153,16 +153,16 @@ card):
   false in general; see the kind-aware contract above for what actually
   holds.
 - **Rendering the summary**, `cullCompletionStage`
-  (`LibraryGridView.swift:3933-4013`): exact text —
+  (`LibraryGridView.swift:3940-4020`): exact text —
   `Text("Nothing left to decide")`; `Text("\(picks) picks · \(rejects)
   rejects")`; a run-coverage line, `cullCompletionRunDetailText`
-  (`:4008-4013`): `"\(skipped) skipped · \(neverViewed) never viewed ·
+  (`:4015-4020`): `"\(skipped) skipped · \(neverViewed) never viewed ·
   \(sparkleAwaiting) AI \(sparkleAwaiting == 1 ? "suggestion" :
   "suggestions") awaiting review"`. `undecided` itself is **never rendered
   directly** here — the gate that reveals this whole stage already proves
   it's 0, so a direct display would be redundant; this card confirms 0 via
   the presentation math instead. Action button titles
-  (`:3985-4002`): `"Export"`, `"Move Rejects…"`, `"Move Rejects to
+  (`:3992-4009`): `"Export"`, `"Move Rejects…"`, `"Move Rejects to
   Trash…"`, `"Review Picks"`, `"Review AI Suggestions"`, `"Save Picks as
   Set"`. `"Review AI Suggestions"` calls `reviewAutopilotRun()` →
   `beginAutopilotReview()` (the same flow `cull-017-autopilot-review.md`
@@ -519,6 +519,27 @@ Run once per leg (separate launches); quit each instance before the next.
   autopilot-evaluate-commands.md` and `cull-017-autopilot-review.md` own
   that path end-to-end; this card only needs *some* pending proposal rows
   to exist, and seeds them directly for determinism (Source above).
+- **The run strip's per-stop ✨ chip and the completion stage's
+  `sparkleAwaiting` count use deliberately different rules — expect them to
+  disagree in this card's own fixture.** The chip's source set,
+  `pendingSparkleAssetIDs = Set(model.pendingAutopilotProposals.map(\.assetID))`
+  (`LibraryGridView.swift:4518`, counted per-stop at
+  `CullRunStripPresentation.swift:40`:
+  `stack.assetIDs.filter { pendingSparkleAssetIDs.contains($0) }.count`), is
+  both kind-blind (no `.pick`/`.reject`/`.keyword` split) and flag-blind (no
+  check of `confirmedProjection.flag`) — it means "this frame has *some*
+  pending AI proposal, full stop." The completion stage's
+  `sparkleAwaiting` (`CullCompletionPresentation.summary`, Source above) is
+  kind-aware and, for FLAG-kind proposals, excludes any asset whose flag is
+  already confirmed. In this card's Leg A fixture, after Steps 5 and 7
+  confirm `smoke-4`'s and `smoke-16`'s flags directly (never touching their
+  seeded `autopilot_proposals` rows, which stay `pending`), both stops keep
+  badging `"1 suggestion"` on the run strip straight through to completion,
+  while the completion line simultaneously reads `"0 AI suggestions
+  awaiting review"` — a live runner should expect and report this exact
+  disagreement, not flag it as a test failure. The chip's semantics here are
+  an open product decision, not a bug pinned down by this card (tracked on
+  the kata board).
 
 ## Run status
 NOT RUN — authored 2026-07-16, source-cited against the working tree by
@@ -561,3 +582,20 @@ tree (`38-122` → `43-133`, `:94-103` → `:103-112`, `:111,119` → `:121,130`
 (`:140-163` → `:147-172`, `:173-188` → `:182-198`) and the two new
 kind-aware tests cited (`:241-255`, `:257-271`, `:273-290`). Still not
 carried over from a live run — pending live VM execution.
+
+**Reconciled 2026-07-28 (fix/cull-followups exhaustive-switch citation
+shift, plus a new Sharp-edges bullet)**: `LoupeView.cullCompletion`'s
+proposal-kind partition was rewritten from two `filter` calls to an
+exhaustive `switch` over `AutopilotProposalKind`, adding 7 lines ahead of
+every `LibraryGridView.swift` citation in this card — every one shifted by
+exactly +7 (e.g. `runStrip`'s citation `:4496-4705` → `:4503-4712`,
+`cullCompletionStage` `:3933-4013` → `:3940-4020`), re-verified by directly
+reading each cited symbol. `CullCompletionPresentation.swift`,
+`CullFilmstripPresentation.swift`, `AppModel.swift`, and
+`CullRunStripPresentation.swift` citations are untouched (none of those
+files changed). Also added a Sharp-edges bullet documenting that the run
+strip's ✨ chip (kind-blind, flag-blind) and the completion stage's
+`sparkleAwaiting` (kind-aware) disagree by design on this card's own
+fixture — not a new finding, just making explicit something this card's
+Leg A already exercises without calling it out. No other prose or behavior
+claims changed. Still NOT RUN.
