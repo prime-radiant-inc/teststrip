@@ -30,7 +30,7 @@ card):
   → window `7..<13`; anchor=0 → `0..<6`; anchor=19 → `14..<20`.
 - **Rendering**, `runStrip`/`runStripStop`/`runStripStackThumb`/
   `runStripStandaloneThumb`/`runStripThumbnailFace`
-  (`Sources/TeststripApp/LibraryGridView.swift:4445-4642`). **Reconciled
+  (`Sources/TeststripApp/LibraryGridView.swift:4480-4689`). **Reconciled
   2026-07-17 (dogfood-r1 panel pass)**: a multi-frame stop no longer renders
   as a wide text pill (`label` + count + sparkle chip in a `Capsule`) — it
   now renders `runStripStackThumb`, a small **photo stack**: the lead
@@ -49,7 +49,7 @@ card):
   checkmark overlay is unchanged for both shapes. Both button forms still
   carry `.help(stop.label)`, `.accessibilityLabel("Stop \(stop.label)")`,
   and `.accessibilityValue(runStripStopAccessibilityValue(stop))`
-  (`:4550-4559`) — the value is `["Current"]/["Done"] + "N frame(s)" +
+  (`:4570-4572`) — the value is `["Current"]/["Done"] + "N frame(s)" +
   ["N suggestion(s)"]` joined by `", "` — the **only** reliable AX read of
   `isCurrent`/`sparkleCount` (the visual glyphs themselves aren't
   independently AX-findable, per `cull-021-stack-rail-nav.md`'s identical
@@ -57,23 +57,23 @@ card):
   visual reorg, so every `find`/`--contains` assertion below (which reads
   the accessibility label/value, not the rendered `Text`) still holds
   unchanged. A click routes through `AppModel.selectStackLanding(for:)`
-  (`AppModel.swift:7196-7201`) — the same preference-gated
+  (`AppModel.swift:7213-7218`) — the same preference-gated
   recommended-or-first landing helper `←`/`→`/`H`/`L` use (see
   `cull-022-flow-grammar-walk.md`'s T7.5 citation) — so a stop click never
   disagrees with keyboard arrival.
 - **Triple counter**, `CullFilmstripPresentation.tripleCounterText`
-  (`Sources/TeststripApp/CullFilmstripPresentation.swift:87-104`):
+  (`Sources/TeststripApp/CullFilmstripPresentation.swift:59-76`):
   `"\(frameIndex+1) of \(totalFrames) · stack \(stackIndex+1) of
   \(stacks.count)"`, **plus** `" · frame \(withinStackIndex+1) of
   \(stackAssetIDs.count)"` **only when** the current stop has more than one
-  member (`:98-102`). The word "stack" always appears in the second segment
+  member (`:71-74`). The word "stack" always appears in the second segment
   even for a standalone stop (every stop, size 1 or N, is one entry in
   `stacks`) — this is the tutorial's "stop" model wearing the label
   "stack"; don't read a standalone's "stack S of Σ" segment as a bug.
 - **User-origin-only progress**: `runStripStatusBar`
-  (`LibraryGridView.swift:4432-4456`) computes `progressFraction =
+  (`LibraryGridView.swift:4520-4544`) computes `progressFraction =
   reviewedCount / totalCount` from `model.cullingProgressSummary`
-  (`AppModel.swift:2741-2750`), whose `pickCount`/`rejectCount` come from
+  (`AppModel.swift:2754-2763`), whose `pickCount`/`rejectCount` come from
   `cullingDecisionCount(flag:repository:)` →
   `CatalogRepository.assetCount(ids:confirmedFlag:)` — **confirmed flags
   only** (`cull-026-tentative-never-commits.md`'s citation of this exact
@@ -121,32 +121,32 @@ card):
   `.reviewAISuggestions` appended only if `sparkleAwaiting > 0`;
   `.savePicksAsSet` appended only if `picks > 0`.
 - **Rendering the summary**, `cullCompletionStage`
-  (`LibraryGridView.swift:3883-3963`): exact text —
+  (`LibraryGridView.swift:3917-3997`): exact text —
   `Text("Nothing left to decide")`; `Text("\(picks) picks · \(rejects)
   rejects")`; a run-coverage line, `cullCompletionRunDetailText`
-  (`:3958-3963`): `"\(skipped) skipped · \(neverViewed) never viewed ·
+  (`:3992-3997`): `"\(skipped) skipped · \(neverViewed) never viewed ·
   \(sparkleAwaiting) AI \(sparkleAwaiting == 1 ? "suggestion" :
   "suggestions") awaiting review"`. `undecided` itself is **never rendered
   directly** here — the gate that reveals this whole stage already proves
   it's 0, so a direct display would be redundant; this card confirms 0 via
   the presentation math instead. Action button titles
-  (`:3932-3956`): `"Export"`, `"Move Rejects…"`, `"Move Rejects to
+  (`:3969-3986`): `"Export"`, `"Move Rejects…"`, `"Move Rejects to
   Trash…"`, `"Review Picks"`, `"Review AI Suggestions"`, `"Save Picks as
   Set"`. `"Review AI Suggestions"` calls `reviewAutopilotRun()` →
   `beginAutopilotReview()` (the same flow `cull-017-autopilot-review.md`
   drives end-to-end — not re-driven here). `"Save Picks as Set"` calls
-  `model.saveCullingPicksAsSet()` (`AppModel.swift:5644-5670`): with **no**
+  `model.saveCullingPicksAsSet()` (`AppModel.swift:5660-5686`): with **no**
   active persisted culling session (burst seeds directly, bypassing
   `IngestService` — same gap `cull-021-stack-rail-nav.md` documents), it
-  takes the ad-hoc branch (`:5659-5669`) — snapshots
+  takes the ad-hoc branch (`:5675-5686`) — snapshots
   `assets.filter { confirmedProjection.flag == .pick }.map(\.id)` into a
   **new** `AssetSet(membership: .snapshot(...))`, named via
-  `suggestedPicksSetName` (`:5672-5680`: `"Catalog Picks"` absent an active
+  `suggestedPicksSetName` (`:5688-5696`: `"Catalog Picks"` absent an active
   set/search context). Persisted at `asset_sets.membership_json`; a
   `.snapshot([AssetID])` encodes at JSON path `$.snapshot._0`, each element
   `{"rawValue": "<id>"}` (`CatalogRepository
   .workSessionAssetMembershipSelector`, `Sources/TeststripCore/Catalog/
-  CatalogRepository.swift:3395-3414`, the same path shape `cull-021`
+  CatalogRepository.swift:3405-3414`, the same path shape `cull-021`
   documents for `work-stack-` sets, applied here to a plain saved set).
 - **Fixture and seeding gap**: neither `autopilot_proposals` rows nor a
   tentative-AI flag are produced by any seed command (`cull-026`'s
@@ -161,8 +161,8 @@ card):
   produces zero proposals for a stack with zero rankable signals — the same
   honest-branch risk `cull-021`/`cull-024` already flag for this exact
   fixture). `reconstructAutopilotStateAfterLoad()` (`AppModel.swift:
-  9927-9943`, called unconditionally from `AppModel.load(catalog:)` at
-  `:4685`) reloads `pendingAutopilotProposals` from **any** pending rows at
+  9944-9960`, called unconditionally from `AppModel.load(catalog:)` at
+  `:4698`) reloads `pendingAutopilotProposals` from **any** pending rows at
   launch — hand-seeded or not — so this technique is picked up exactly like
   a real run's output. Side effect: since it also derives
   `autopilotRunSummary` from the newest `run_id`'s rows, the plain
