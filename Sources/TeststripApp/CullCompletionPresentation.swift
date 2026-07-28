@@ -30,7 +30,11 @@ struct CullCompletionPresentation: Equatable {
     /// instead. skipped = skipped ∖ decided (a skipped-then-decided frame
     /// counts as decided, subtracted here so the tracker never needs a
     /// write-back); neverViewed = scope ∖ viewed; sparkleAwaiting = pending
-    /// proposals ∩ scope.
+    /// proposals ∩ scope ∖ user-decided (a proposal can go stale — its asset
+    /// gets a user-origin flag decision through some path other than
+    /// committing the proposal — and still sit `pending`; such an asset is
+    /// no longer awaiting review, so it's filtered here at display time,
+    /// without touching the proposal row or the review queue).
     static func summary(
         assets: [Asset],
         viewedAssetIDs: Set<AssetID>,
@@ -57,7 +61,7 @@ struct CullCompletionPresentation: Equatable {
             if !viewedAssetIDs.contains(asset.id) {
                 neverViewedCount += 1
             }
-            if pendingProposalAssetIDs.contains(asset.id) {
+            if pendingProposalAssetIDs.contains(asset.id) && asset.metadata.confirmedProjection.flag == nil {
                 sparkleAwaitingCount += 1
             }
         }
