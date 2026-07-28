@@ -30,7 +30,7 @@ card):
   → window `7..<13`; anchor=0 → `0..<6`; anchor=19 → `14..<20`.
 - **Rendering**, `runStrip`/`runStripStop`/`runStripStackThumb`/
   `runStripStandaloneThumb`/`runStripThumbnailFace`
-  (`Sources/TeststripApp/LibraryGridView.swift:4480-4689`). **Reconciled
+  (`Sources/TeststripApp/LibraryGridView.swift:4496-4705`). **Reconciled
   2026-07-17 (dogfood-r1 panel pass)**: a multi-frame stop no longer renders
   as a wide text pill (`label` + count + sparkle chip in a `Capsule`) — it
   now renders `runStripStackThumb`, a small **photo stack**: the lead
@@ -49,7 +49,7 @@ card):
   checkmark overlay is unchanged for both shapes. Both button forms still
   carry `.help(stop.label)`, `.accessibilityLabel("Stop \(stop.label)")`,
   and `.accessibilityValue(runStripStopAccessibilityValue(stop))`
-  (`:4570-4572`) — the value is `["Current"]/["Done"] + "N frame(s)" +
+  (`:4586-4588`) — the value is `["Current"]/["Done"] + "N frame(s)" +
   ["N suggestion(s)"]` joined by `", "` — the **only** reliable AX read of
   `isCurrent`/`sparkleCount` (the visual glyphs themselves aren't
   independently AX-findable, per `cull-021-stack-rail-nav.md`'s identical
@@ -71,7 +71,7 @@ card):
   `stacks`) — this is the tutorial's "stop" model wearing the label
   "stack"; don't read a standalone's "stack S of Σ" segment as a bug.
 - **User-origin-only progress**: `runStripStatusBar`
-  (`LibraryGridView.swift:4520-4544`) computes `progressFraction =
+  (`LibraryGridView.swift:4536-4560`) computes `progressFraction =
   reviewedCount / totalCount` from `model.cullingProgressSummary`
   (`AppModel.swift:2754-2763`), whose `pickCount`/`rejectCount` come from
   `cullingDecisionCount(flag:repository:)` →
@@ -83,54 +83,86 @@ card):
   label.
 - **Completion summary**, `CullCompletionPresentation.summary`/
   `.presentation` (`Sources/TeststripApp/CullCompletionPresentation.swift:
-  38-122`): classifies every asset in `model.assets` (the **full session
-  array**, not scope-filtered — the doc comment at `:94-103` is explicit)
+  43-133`): classifies every asset in `model.assets` (the **full session
+  array**, not scope-filtered — the doc comment at `:103-112` is explicit)
   by `confirmedProjection.flag`: `.pick`/`.reject` increment picks/rejects
   and insert into `decidedAssetIDs`; `nil` (raw-undecided **or**
   tentative-AI) increments `undecided`. `neverViewed = scope ∖ viewed`,
-  `sparkleAwaiting = pendingProposalAssetIDs ∩ scope ∖ {asset already has a
-  confirmed flag}` (Task 3, 2026-07-28: a proposal can go stale — its asset
-  gets a user-origin flag decision through some path other than committing
-  the proposal — and still sit `pending`; such an asset no longer counts as
-  awaiting review. Display-time filter only: `autopilot_proposals` and the
-  review queue are untouched), `skipped = skippedAssetIDs ∩ scope ∖
-  decidedAssetIDs`. **Structural facts this card leans on**: whenever
-  `presentation(...)` returns non-nil (gated on `undecided == 0`,
-  `:111,119`), `decidedAssetIDs` is provably the *entire* scope (every asset
-  fell into the `.pick`/`.reject` branch, none into `nil`) — so `skipped` is
-  **always exactly 0** at completion, regardless of what was actually
-  Space-skipped along the way, and this is a guaranteed invariant, not a
-  fixture-specific observation. **Task 3's corollary, load-bearing for Leg
-  A below**: `sparkleAwaiting` is likewise **always exactly 0** the instant
-  the completion stage renders — every asset in scope already has
-  `confirmedProjection.flag != nil` by the same `undecided == 0` fact, which
-  is precisely the condition the new filter excludes, so `.reviewAISuggestions`
-  can never be appended once this stage is actually showing, regardless of
-  how many `autopilot_proposals` rows are still `pending` in the DB. The
+  `skipped = skippedAssetIDs ∩ scope ∖ decidedAssetIDs`. **Structural facts
+  this card leans on**: whenever `presentation(...)` returns non-nil (gated
+  on `undecided == 0`, `:121,130`), `decidedAssetIDs` is provably the
+  *entire* scope (every asset fell into the `.pick`/`.reject` branch, none
+  into `nil`) — so `skipped` is **always exactly 0** at completion,
+  regardless of what was actually Space-skipped along the way, and this is
+  a guaranteed invariant, not a fixture-specific observation.
+
+  **`sparkleAwaiting`'s kind-aware contract (2026-07-28, supersedes the
+  original Task 3 corollary below)**: `summary` takes two pending-proposal
+  sets split by `AutopilotProposalKind` at the `LibraryGridView`
+  `cullCompletion` call site — `pendingFlagProposalAssetIDs` (`.pick`/
+  `.reject`) and `pendingKeywordProposalAssetIDs` (`.keyword`). A pending
+  FLAG proposal is excluded once its asset's flag is user-confirmed (the
+  original Task 3 filter, unchanged); since completion structurally
+  guarantees every in-scope asset's flag IS confirmed (the same fact
+  `skipped`'s guarantee above leans on), **no pending flag proposal ever
+  contributes to `sparkleAwaiting` at completion, regardless of fixture**.
+  A pending KEYWORD proposal, in contrast, counts **regardless of the
+  asset's flag** — a keyword suggestion has nothing to do with the flag
+  decision — so `sparkleAwaiting` at completion is exactly the count of
+  in-scope assets still carrying a pending keyword proposal. It is **no
+  longer structurally guaranteed to be 0**: this card's own Leg A fixture
+  (Pre-state below) seeds only FLAG-kind proposals (`kind: 'reject'`/
+  `'pick'` on `smoke-4`/`smoke-16`), so the *predicted* `sparkleAwaiting` at
+  completion is still 0 for THIS fixture — but that is now a fixture fact,
+  not an invariant. **What failure looks like**: a regression that reverts
+  to kind-blind filtering (checking `confirmedProjection.flag == nil`
+  against the union of both sets, or against a single unsplit set) would
+  silently drop any pending keyword proposal on an already-decided asset,
+  under-reporting `sparkleAwaiting` and hiding `.reviewAISuggestions` even
+  though a genuine keyword suggestion sits unreviewed — the bug Finding 1
+  (`fix/cull-followups`,
+  `testSparkleAwaitingCountsPendingKeywordProposalEvenWithConfirmedFlag`,
+  `Tests/TeststripAppTests/CullCompletionTests.swift:241-255`) fixed. The
   **mandatory negatives**
-  (`Tests/TeststripAppTests/CullCompletionTests.swift:140-163`
+  (`Tests/TeststripAppTests/CullCompletionTests.swift:147-172`
   `testTentativeOnlyFlagCountsAsUndecidedAndSparkleAwaitingNeverPickedOrRejected`;
-  `:173-188`
-  `testSparkleAwaitingExcludesAssetWithPendingProposalAndConfirmedFlag`):
+  `:182-198`
+  `testSparkleAwaitingExcludesAssetWithPendingProposalAndConfirmedFlag`;
+  `:257-271`
+  `testSparkleAwaitingStillExcludesPendingFlagProposalWithConfirmedFlag`;
+  `:273-290`
+  `testSparkleAwaitingCountsMixedFlagAndKeywordProposalsExactly`):
   a tentative-only flag (either value) counts in `undecided` **and**
   `sparkleAwaiting`, **never** in `picks`/`rejects`, and its scope is not
-  complete; a pending proposal whose asset already carries a confirmed flag
-  is excluded from `sparkleAwaiting` even though the proposal row itself is
-  left `pending`, untouched. Actions (`:73-82`): the core four
-  (`export`/`moveRejects`/`moveRejectsToTrash`/`reviewPicks`) always;
-  `.reviewAISuggestions` appended only if `sparkleAwaiting > 0`;
-  `.savePicksAsSet` appended only if `picks > 0`.
+  complete; a pending FLAG proposal whose asset already carries a confirmed
+  flag is excluded from `sparkleAwaiting` even though the proposal row
+  itself is left `pending`, untouched; a pending KEYWORD proposal is
+  counted even when its asset's flag is confirmed; a mixed set of flag and
+  keyword proposals counts exactly the genuinely-awaiting subset. Actions
+  (`:82-91`): the core four (`export`/`moveRejects`/`moveRejectsToTrash`/
+  `reviewPicks`) always; `.reviewAISuggestions` appended only if
+  `sparkleAwaiting > 0`; `.savePicksAsSet` appended only if `picks > 0`.
+
+  *Original Task 3 corollary (2026-07-28, superseded by the kind-aware
+  contract above)*: this card previously claimed `sparkleAwaiting` was
+  **always exactly 0** the instant the completion stage renders, on the
+  theory that every asset in scope already has a confirmed flag by the
+  `undecided == 0` fact. That reasoning only ever covered FLAG proposals —
+  it never accounted for pending KEYWORD proposals, which Finding 1
+  corrected `summary` to count independently of the flag. The corollary is
+  false in general; see the kind-aware contract above for what actually
+  holds.
 - **Rendering the summary**, `cullCompletionStage`
-  (`LibraryGridView.swift:3917-3997`): exact text —
+  (`LibraryGridView.swift:3933-4013`): exact text —
   `Text("Nothing left to decide")`; `Text("\(picks) picks · \(rejects)
   rejects")`; a run-coverage line, `cullCompletionRunDetailText`
-  (`:3992-3997`): `"\(skipped) skipped · \(neverViewed) never viewed ·
+  (`:4008-4013`): `"\(skipped) skipped · \(neverViewed) never viewed ·
   \(sparkleAwaiting) AI \(sparkleAwaiting == 1 ? "suggestion" :
   "suggestions") awaiting review"`. `undecided` itself is **never rendered
   directly** here — the gate that reveals this whole stage already proves
   it's 0, so a direct display would be redundant; this card confirms 0 via
   the presentation math instead. Action button titles
-  (`:3969-3986`): `"Export"`, `"Move Rejects…"`, `"Move Rejects to
+  (`:3985-4002`): `"Export"`, `"Move Rejects…"`, `"Move Rejects to
   Trash…"`, `"Review Picks"`, `"Review AI Suggestions"`, `"Save Picks as
   Set"`. `"Review AI Suggestions"` calls `reviewAutopilotRun()` →
   `beginAutopilotReview()` (the same flow `cull-017-autopilot-review.md`
@@ -329,21 +361,27 @@ later card in the same session that needs the pristine baseline.
    deliberate full walk's *predicted* (not structurally guaranteed) outcome
    — if it comes back nonzero, report the observed number rather than
    treating it as an automatic fail (see Sharp edges). `sparkleAwaiting`
-   not reading exactly `0` **is** a fail — this is the live demonstration of
-   Task 3's display-time filter: deciding `smoke-4`/`smoke-16` directly
-   (Steps 5/7) confirmed their **flags** but never touched the two seeded
+   not reading exactly `0` **is** a fail for THIS fixture — this is the live
+   demonstration of the kind-aware filter's FLAG-proposal half (Source's
+   kind-aware contract): deciding `smoke-4`/`smoke-16` directly (Steps 5/7)
+   confirmed their **flags** but never touched the two seeded
    `autopilot_proposals` rows themselves (only `beginAutopilotReview()`'s
    commit/dismiss flow does that), so both rows should still read
    `status='pending'` even though `sparkleAwaiting` correctly reads `0` —
-   confirm the rows are untouched live:
+   both seeded proposals are FLAG kind (`kind='reject'` on `smoke-4`,
+   `kind='pick'` on `smoke-16`, per Pre-state's seed SQL), so this fixture
+   never exercises the KEYWORD half of the contract (a pending keyword
+   proposal would instead keep `sparkleAwaiting` nonzero here, by design).
+   Confirm the rows are untouched live:
    ```bash
    script/vm_scenario_run.sh sql burst "SELECT count(*) FROM autopilot_proposals WHERE status='pending';"   # still 2
    ```
 10. **Ceremony actions, gated correctly.** Confirm "Save Picks as Set" is
     present (real work to do: `picks=14>0`) and "Review AI Suggestions" is
-    **absent** — Task 3's fix: `sparkleAwaiting=0` since both proposal-
-    bearing assets (`smoke-4`/`smoke-16`) already carry confirmed flags,
-    even with their proposal rows still `pending` per Step 9:
+    **absent** — the kind-aware filter: `sparkleAwaiting=0` since both
+    proposal-bearing assets (`smoke-4`/`smoke-16`) already carry confirmed
+    flags and both proposals are FLAG kind (not keyword), even with their
+    proposal rows still `pending` per Step 9:
     ```bash
     script/vm_scenario_run.sh ax find --role AXButton --contains "Save Picks as Set"
     script/vm_scenario_run.sh ax find --role AXButton --contains "Review AI Suggestions"   # expect not-found
@@ -423,17 +461,22 @@ all.
   a genuine invariant violation, not a fixture quirk).
 - Step 9: **Fails if** `skipped` is nonzero (no exceptions — this is a
   structural guarantee, see Source), or if `sparkleAwaiting` isn't exactly
-  0 (Task 3's display-time filter — see Source's corollary), or if the
-  seeded `autopilot_proposals` rows are no longer `pending` (would mean
-  something silently auto-committed/dismissed them — the filter must not
-  touch the proposal rows). `neverViewed` nonzero is reportable-not-fatal
-  (see Sharp edges) unless the Step 1/6 walk was skipped, in which case
-  investigate before dismissing it.
+  0 for THIS fixture (the kind-aware filter's FLAG-proposal half — see
+  Source's kind-aware contract; this is a fixture fact since both seeded
+  proposals are FLAG kind, not a general invariant — a fixture seeding a
+  pending KEYWORD proposal on an already-decided asset should instead show
+  a nonzero `sparkleAwaiting`), or if the seeded `autopilot_proposals` rows
+  are no longer `pending` (would mean something silently
+  auto-committed/dismissed them — the filter must not touch the proposal
+  rows). `neverViewed` nonzero is reportable-not-fatal (see Sharp edges)
+  unless the Step 1/6 walk was skipped, in which case investigate before
+  dismissing it.
 - Step 10: **Fails if** "Save Picks as Set" is missing despite having real
-  work to do, if "Review AI Suggestions" is present (it must not be, per
-  Task 3 — both proposal-bearing assets are already user-decided), if the
-  saved set's membership disagrees with the confirmed-picks list, or if the
-  set name isn't `"Catalog Picks"`.
+  work to do, if "Review AI Suggestions" is present (it must not be, for
+  THIS fixture — both proposal-bearing assets are already user-decided and
+  both proposals are FLAG kind, per the kind-aware contract), if the saved
+  set's membership disagrees with the confirmed-picks list, or if the set
+  name isn't `"Catalog Picks"`.
 - Steps 12-14: **Fails if** any in-window stop is missing, any out-of-window
   stop is present, or the window boundaries disagree with
   `CullStripWindowing.centeredWindow`'s documented formula for that
@@ -498,3 +541,23 @@ their seeded proposals stay `pending`) is exactly the over-report scenario
 the fix targets, so the predicted `sparkleAwaiting` at completion dropped
 from `2` to `0` and "Review AI Suggestions" flipped from present to absent.
 Still not carried over from a live run — pending live VM execution.
+
+**Reconciled 2026-07-28 (Finding 1, kind-aware `sparkleAwaiting`)**: Task
+3's original fix (above) was kind-blind — it excluded ANY pending proposal
+once its asset's flag was confirmed, including a pending KEYWORD proposal,
+which has nothing to do with the flag. `summary` now takes separate
+`pendingFlagProposalAssetIDs`/`pendingKeywordProposalAssetIDs` sets; the
+Source's "Completion summary" bullet and Task 3 corollary were rewritten in
+place for the kind-aware contract (the corollary claiming `sparkleAwaiting`
+is *always* 0 at completion is now false in general — only the FLAG half of
+that claim still holds structurally). This card's fixture is unaffected
+(both seeded proposals are FLAG kind), so Leg A's predicted numbers (`0`
+sparkleAwaiting, "Review AI Suggestions" absent) are unchanged — Steps 9-10
+and their Expected bullets gained a note that this is now a fixture fact,
+not a structural guarantee, plus the FLAG-kind clarification. Source's
+`CullCompletionPresentation.swift` line citations re-swept to the new
+tree (`38-122` → `43-133`, `:94-103` → `:103-112`, `:111,119` → `:121,130`,
+`:73-82` → `:82-91`); `CullCompletionTests.swift` citations re-swept
+(`:140-163` → `:147-172`, `:173-188` → `:182-198`) and the two new
+kind-aware tests cited (`:241-255`, `:257-271`, `:273-290`). Still not
+carried over from a live run — pending live VM execution.
