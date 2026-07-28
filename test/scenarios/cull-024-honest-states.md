@@ -23,38 +23,49 @@ one-signal read, or a clean winner that isn't really there.
 Source (re-verified against the working tree on this branch, **2026-07-16**;
 fresh grep, not carried over from any older card):
 - **Reads panel gating**, `CullReadsCardPresentation.presentation(for:)`
-  (`Sources/TeststripApp/CullReadsCardPresentation.swift:45-74`): three
+  (`Sources/TeststripApp/CullReadsCardPresentation.swift:51-97`): three
   states, all keyed off `CullingStackRecommendation.normalizedQualityRead`'s
   `kindCount` (`LibraryGridView.swift:6610-6616`). **Zero rankable kinds**
   (the function returns `nil`) is the only "no read at all" state:
   `emptyState: "No read yet"`, no verdict, no rows
-  (`CullReadsCardPresentation.swift:46-54`). **Exactly one scored kind** is
-  a genuine PARTIAL read (`:55-65`) — reconciled here from this card's
-  original (2026-07-16) claim that a single kind rendered "No read yet";
-  Jesse's ruling (2026-07-23), implemented fix/cull-followups Task 2
-  (2026-07-28), made the old `kindCount >= 2` whole-card gate the FULL-read
-  threshold instead: the single row still renders (the same canonical-order
-  `signalRows(for:)`, `:79-84`), but no verdict is ever computed —
+  (`CullReadsCardPresentation.swift:52-60`). **Exactly one scored kind that
+  is one of the four whole-photo canonical kinds** is a genuine PARTIAL
+  read (`:81-87`) — reconciled here from this card's original (2026-07-16)
+  claim that a single kind rendered "No read yet"; Jesse's ruling
+  (2026-07-23), implemented fix/cull-followups Task 2 (2026-07-28), made
+  the old `kindCount >= 2` whole-card gate the FULL-read threshold instead:
+  the single row still renders (the same canonical-order `signalRows(for:)`,
+  `:102-107`), but no verdict is ever computed —
   `CullingAssistPresentation.verdict` is not called in this branch — and
-  `earlyReadCaveat` (`:43`) carries the exact copy `"early read — 1
-  signal"`, which the view renders in place of the verdict line. **Two or
-  more kinds** is the FULL read (`:66-74`): verdict
-  (`CullingAssistPresentation.verdict`, unchanged) plus every scored row,
-  `earlyReadCaveat` nil. The doc comment (`:15-26`) documents exactly these
-  three states.
+  `earlyReadCaveat` (`:49`) carries the exact copy `"early read — 1
+  signal"`, which the view renders in place of the verdict line. **Exactly
+  one scored kind that is face-specific instead** (`faceQuality`/
+  `eyeSharpness`/`eyesOpen` — `kindCount` counts all seven rankable kinds,
+  but `signalRows(for:)`, `:102-107`, only ever renders the four
+  whole-photo ones) falls back to the *same* "No read yet" empty state
+  (`:70-78`) rather than a caveat with nothing to show for it — a
+  reviewer-found gap in this task's first pass (a lone face-specific
+  signal originally rendered the caveat with an empty row list, an
+  honest-states violation), fixed in a same-day fix/cull-followups Task 2
+  follow-up commit, 2026-07-28; that signal's own home is the close-ups
+  rail, not this card. **Two or more kinds** is the FULL read (`:89-97`):
+  verdict (`CullingAssistPresentation.verdict`, unchanged) plus every
+  scored row, `earlyReadCaveat` nil. The doc comment (`:15-32`) documents
+  exactly these three states, including the face-specific exception.
   This remains a genuinely different gate than the rail's own ✦
   recommendation (`CullingStackRecommendation.rankedCandidates` via
   `CullingQualityScore.qualityScore`, `LibraryGridView.swift:6564-6580` and
   `Sources/TeststripCore/Evaluation/CullingQualityScore.swift:35-44`), which
-  only needs **1** rankable kind (`guard !scoreByKind.isEmpty`) — but the
-  divergence it produces is narrower than this card originally described:
-  because the Reads panel now also renders *something* for any 1-kind
-  frame, a frame can carry the rail's ✦ (a "Recommended" accessibility
-  value) while its *own* Reads panel shows a PARTIAL read with **no
-  verdict** — not, as this card previously said, while it "still says 'No
-  read yet'" (see Step 6, reconciled below, for the exact current
-  assertion). Assert whichever state this run's fixture actually
-  produces — don't force it.
+  only needs **1** rankable kind of *any* type, including face-specific
+  (`guard !scoreByKind.isEmpty`) — so the divergence this produces now
+  takes two forms: a lone whole-photo kind gives a PARTIAL read with **no
+  verdict** on this card while the rail's chip may read "Recommended" (not,
+  as this card previously said, while it "still says 'No read yet'"); a
+  lone face-specific kind gives a genuine "No read yet" on this card while
+  the rail's chip may *still* read "Recommended" (the rail ranks
+  face-specific kinds too). See Step 6, reconciled below, for the exact
+  current assertions for both. Assert whichever state this run's fixture
+  actually produces — don't force it.
 - **AX surface for the Reads panel**, `cullFacesReadsPanel`
   (`LibraryGridView.swift:4051-4070`): the *whole* faces+reads right panel
   (the Reads card on the left, the Close-Ups rail of face crops on the
@@ -167,18 +178,31 @@ script/vm_scenario_run.sh ax wait-vended
      --label "Reads" --contains "No read yet"`) even though evaluation has
      run — the honest empty state, not a stale one — with no verdict and no
      rows.
-   - **Exactly one (a PARTIAL read)**: assert `ax find --label "Reads"
-     --contains "No read yet"` now fails to match — the card has left the
-     empty state — and instead assert the exact early-read caveat renders in
-     place of a verdict: `ax find --label "Reads" --contains "early read —
-     1 signal"` (exact copy, `CullReadsCardPresentation.swift:63`). Assert
-     **no** `AXStaticText` reads exactly `"Keep"` or `"Toss"` — a partial
-     read never computes a verdict (`CullingAssistPresentation.verdict` is
-     not consulted in this branch, `CullReadsCardPresentation.swift:55-65`)
-     — and assert exactly one whole-photo signal row renders (`ax find
-     --role AXStaticText --contains "%"` matches exactly one row, for
-     whichever of the four canonical kinds — Focus, Motion blur, Framing,
-     Aesthetics — actually has the signal).
+   - **Exactly one**: this count doesn't distinguish *which* kind — split
+     further on whether that lone kind is one of the four whole-photo
+     canonical kinds or one of the three face-specific ones
+     (`faceQuality`/`eyeSharpness`/`eyesOpen`):
+     - **Whole-photo kind (a PARTIAL read)**: assert `ax find --label
+       "Reads" --contains "No read yet"` now fails to match — the card has
+       left the empty state — and instead assert the exact early-read
+       caveat renders in place of a verdict: `ax find --label "Reads"
+       --contains "early read — 1 signal"` (exact copy,
+       `CullReadsCardPresentation.swift:86`). Assert **no** `AXStaticText`
+       reads exactly `"Keep"` or `"Toss"` — a partial read never computes a
+       verdict (`CullingAssistPresentation.verdict` is not consulted in
+       this branch, `CullReadsCardPresentation.swift:61-88`) — and assert
+       exactly one whole-photo signal row renders (`ax find --role
+       AXStaticText --contains "%"` matches exactly one row, for whichever
+       of the four canonical kinds — Focus, Motion blur, Framing,
+       Aesthetics — actually has the signal).
+     - **Face-specific kind**: assert the Reads panel still reads "No read
+       yet" (`ax find --label "Reads" --contains "No read yet"`) — a lone
+       face-specific signal has zero renderable whole-photo rows, so this
+       card honestly falls back to the empty state rather than showing a
+       caveat with nothing to show for it
+       (`CullReadsCardPresentation.swift:70-78`); that signal's own read
+       lives on the close-ups rail instead (`cull-012-closeups-panel.md`),
+       not this card.
    - **Two or more (a FULL read)**: assert `ax find --label "Reads"
      --contains "No read yet"` fails to match, then independently compute
      `normalizedQualityRead` (confidence-weighted mean of the best component
@@ -230,17 +254,30 @@ script/vm_scenario_run.sh ax wait-vended
    Do not force any of these three branches — assert only the one this run's
    fixture actually produced, cited against the independent computation
    above.
-6. **Divergence check (only if the live data happens to produce it):** if
-   the selected frame has exactly one scored kind — so its own Reads panel
-   is in the PARTIAL-read branch (step 4: one row, the "early read — 1
-   signal" caveat, no verdict) — while the rail's chip for that same frame
-   reads "Recommended" (step 5's tie-free branch, with this frame as the
-   winner), assert this is **not** a bug — it's the documented gate mismatch
-   in Source above: the rail's ✦ needs only 1 kind for a *recommendation*,
-   the Reads panel needs 2 kinds for a *verdict*. Both surfaces render some
-   read for a 1-kind frame; they disagree only on whether it's decisive
-   enough to name a winner. If the live data doesn't produce this
-   combination, skip this step; don't manufacture it.
+6. **Divergence check (only if the live data happens to produce it):** two
+   independent variants, either or neither of which may appear on a given
+   run:
+   - If the selected frame has exactly one scored **whole-photo** kind — so
+     its own Reads panel is in the PARTIAL-read branch (step 4: one row,
+     the "early read — 1 signal" caveat, no verdict) — while the rail's
+     chip for that same frame reads "Recommended" (step 5's tie-free
+     branch, with this frame as the winner), assert this is **not** a bug
+     — it's the documented gate mismatch in Source above: the rail's ✦
+     needs only 1 kind for a *recommendation*, the Reads panel needs 2
+     kinds for a *verdict*. Both surfaces render some read for a 1-kind
+     frame; they disagree only on whether it's decisive enough to name a
+     winner.
+   - If instead the selected frame's *only* scored kind is face-specific
+     (`faceQuality`/`eyeSharpness`/`eyesOpen`) — so its own Reads panel is
+     back in the "No read yet" empty state (step 4's face-specific
+     sub-branch) — while the rail's chip for that same frame still reads
+     "Recommended" (the rail's `qualityScore` ranks face-specific kinds
+     too, unlike this card's `signalRows`), assert this is **also not** a
+     bug: same verdict-vs-recommendation gate mismatch, just landing on
+     the empty state because this card has nothing whole-photo to show —
+     not because the read doesn't exist.
+   If the live data doesn't produce either combination, skip this step;
+   don't manufacture it.
 
 ## Expected
 - Step 2: **Fails if** the Reads panel shows anything other than "No read
@@ -248,22 +285,26 @@ script/vm_scenario_run.sh ax wait-vended
   "Recommended" or a flaw badge pre-evaluation — that would mean a surface
   is claiming an AI read that doesn't exist yet.
 - Step 4: **Fails if** the Reads panel's state disagrees with the
-  independently-counted scored-kind total: zero kinds must show "No read
-  yet"; exactly one kind must show the single row plus the exact caveat
-  "early read — 1 signal" and no `Keep`/`Toss` text; two or more kinds must
-  show every scored row and, per the Keep/Toss/Mixed math, either a matching
-  verdict or no verdict text at all — "No read yet" must never appear once
-  there's at least one scored kind. Regardless of what the rail is doing.
+  independently-counted scored-kind total and kind identity: zero kinds
+  must show "No read yet"; exactly one kind must show either (a) the
+  single row plus the exact caveat "early read — 1 signal" and no
+  `Keep`/`Toss` text, if that kind is one of the four whole-photo canonical
+  kinds, or (b) "No read yet" with no caveat and no rows, if that kind is
+  face-specific instead; two or more kinds must show every scored row and,
+  per the Keep/Toss/Mixed math, either a matching verdict or no verdict
+  text at all. Regardless of what the rail is doing.
 - Step 5: **Fails if** the rail's tie/no-tie/no-signal state disagrees with
   the independently-computed `tooCloseToCallMargin` check, if a
   "Recommended" chip and the too-close-to-call banner ever both appear at
   once (they are mutually exclusive by construction), or if the banner
   names the wrong frames.
-- Step 6: **Fails if** it treats the real verdict-vs-recommendation gate
-  mismatch as an error, or if it fabricates the divergence — including by
-  asserting a 1-kind frame's Reads panel says "No read yet" instead of
-  rendering its PARTIAL read — when the live data didn't actually produce
-  it.
+- Step 6: **Fails if** it treats either real verdict-vs-recommendation gate
+  mismatch as an error, or if it fabricates a divergence — including by
+  asserting a 1-whole-photo-kind frame's Reads panel says "No read yet"
+  instead of rendering its PARTIAL read, or by asserting a
+  1-face-specific-kind frame's Reads panel shows a caveat instead of "No
+  read yet" — when the live data didn't actually produce the combination
+  being asserted.
 
 ## Cleanup
 ```bash
@@ -278,15 +319,21 @@ script/vm_scenario_run.sh ax wait-vended
   observed; don't retry until a tie happens to appear.
 - **The Reads panel and the rail read from different scoring functions**
   (`normalizedQualityRead`'s confidence-weighted mean vs. `qualityScore`'s
-  summed defect-inversion) — but both now have the same effective 1-kind
-  floor for "is there a read at all" (fix/cull-followups Task 2,
-  2026-07-28: the Reads panel's old 2-kind floor on the *whole card* is
-  gone; only `CullingAssistPresentation.verdict` still has a 2-kind floor).
-  The two surfaces are deliberately allowed to disagree only on whether
-  there's a **verdict/recommendation** for a single-kind frame — not on
-  whether there's a read at all. Don't conflate the two or treat a
+  summed defect-inversion), and their "is there a read at all" floors are
+  *not* quite the same, even after fix/cull-followups Task 2 (2026-07-28)
+  removed the Reads panel's old 2-kind floor on the *whole card*: the
+  rail's `qualityScore` renders *something* for any 1 rankable kind of
+  *any* type, whole-photo or face-specific. The Reads panel renders
+  *something* (a PARTIAL read) for a 1-kind frame only when that kind is
+  one of the four whole-photo canonical kinds — a lone face-specific kind
+  still falls back to "No read yet" on this card (a same-day
+  fix/cull-followups Task 2 follow-up, 2026-07-28, closed a gap where the
+  first version rendered the early-read caveat with zero rows for exactly
+  this case); that signal's own read lives on the close-ups rail instead.
+  Only `CullingAssistPresentation.verdict` has a clean, unconditional
+  2-kind floor. Don't conflate any of these three floors, or treat a
   disagreement as automatically wrong; check step 4's independent
-  kind-count first.
+  kind-count *and kind identity* first.
 - **`✦` itself is not independently AX-findable** on the rail (it's a
   `Text("✦")` nested inside a `Button` that already carries an explicit
   `.accessibilityLabel`/`.accessibilityValue`) — assert its absence under a
@@ -322,3 +369,19 @@ Expected, Sharp edges) that described the old two-state (empty vs. full)
 gate was rewritten to describe the current three-state gate, with line
 citations re-verified against the current file. Still NOT RUN — this
 reconciliation is a source-only re-verification, not a live VM execution.
+
+**Reconciled again, same day (task-reviewer finding on the partial-read
+change):** the first version of the PARTIAL-read branch didn't check
+whether the lone scored kind actually had a renderable whole-photo row —
+`kindCount` counts all seven rankable kinds (four whole-photo, three
+face-specific: `faceQuality`/`eyeSharpness`/`eyesOpen`), so a frame whose
+only signal was face-specific rendered the "early read — 1 signal" caveat
+with an empty row list, an honest-states violation (a caveat claiming a
+signal this card shows nothing for). Fixed in
+`CullReadsCardPresentation.swift` (falls back to "No read yet" when
+`signalRows(for:)` is empty) with a red-proofed unit test
+(`testSingleFaceSpecificSignalFallsBackToNoReadYetNotAPhantomCaveat`), and
+every passage in this card asserting "exactly one scored kind → PARTIAL
+read" unqualified (Source, Step 4, Step 6, Expected, Sharp edges) was
+re-qualified to distinguish the whole-photo case (PARTIAL read) from the
+face-specific case ("No read yet"). Still NOT RUN.

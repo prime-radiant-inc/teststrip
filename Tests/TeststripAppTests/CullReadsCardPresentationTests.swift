@@ -89,6 +89,28 @@ final class CullReadsCardPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.earlyReadCaveat, "early read — 1 signal")
     }
 
+    // kindCount counts across all seven rankable kinds, including the three
+    // face-specific ones (faceQuality, eyeSharpness, eyesOpen) — but
+    // signalRows only ever renders the four whole-photo canonical kinds. A
+    // photo whose only scored signal is face-specific (e.g. a People ▸ Scan
+    // for Faces pass with no local-image-metrics run) must not render the
+    // early-read caveat with nothing to show for it — that would be a
+    // caveat claiming a signal this card never displays. With no renderable
+    // whole-photo row, this is genuinely no read at all here — the
+    // face-specific signal's home is the close-ups rail (one home per
+    // fact), not this card.
+    func testSingleFaceSpecificSignalFallsBackToNoReadYetNotAPhantomCaveat() {
+        let presentation = CullReadsCardPresentation.presentation(for: [
+            signal(kind: .faceQuality, value: .score(0.9), confidence: 1.0)
+        ])
+
+        XCTAssertEqual(presentation.emptyState, "No read yet")
+        XCTAssertNil(presentation.verdictText)
+        XCTAssertEqual(presentation.verdictTone, .waiting)
+        XCTAssertEqual(presentation.signalRows, [])
+        XCTAssertNil(presentation.earlyReadCaveat)
+    }
+
     // Zero scored kinds is the only state with no read at all — the
     // "No read yet" empty state is unchanged by the partial-read behavior
     // above, and the card carries no caveat when there's nothing to caveat.
