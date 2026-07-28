@@ -80,19 +80,23 @@ Source (re-verified against the working tree on this branch):
   `TeststripCore` model.
 - **The rail's primary "Keep" button does not follow keepRecommended/
   topRanked guidance** — its handler `keepSelectedStackFrame()`
-  (`LibraryGridView.swift:4785-4791`) calls
+  (`LibraryGridView.swift:4993-4999`) calls
   `model.promoteCurrentFrameAndRejectSiblings()` unconditionally on whatever
   frame is currently *selected*, regardless of which frame the ranking
   recommends. The recommended/top-ranked guidance only surfaces via (a) the
   secondary action button, dispatched through `performCullingStackAction`
-  (`:4806-4817`: `.keepRecommended` → `keepRecommendedStackFrame(_:)`
-  (`:4793-4796`, selects the recommended asset first, then calls the same
+  (`:5014-5025`: `.keepRecommended` → `keepRecommendedStackFrame(_:)`
+  (`:5001-5004`, selects the recommended asset first, then calls the same
   `keepSelectedStackFrame()`) and `.keepTopRanked` →
-  `keepTopRankedStackFrames(_:)`, `:4798-4804`) and (b) the `✦` marker on
-  the recommended cell and the HUD's stack-guidance verdict text
-  (`cullingStackGuidanceAction`, `cull-011-hud.md` item 33). So the
-  secondary "Keep recommended N" button, not the primary button, is the
-  "keep the guidance pick" gesture.
+  `keepTopRankedStackFrames(_:)`, `:5006-5012`) and (b) the `✦` marker on
+  the recommended cell (`:4805-4813`). There is no third surface: the HUD
+  carries no verdict at all (`CullHUDPresentation`'s doc comment — "the
+  assist verdict is deliberately absent... the right panel's reads card owns
+  it" — see `cull-011-hud.md`), and the reads card's `verdictText`
+  (`CullReadsCardPresentation.swift`) is a per-frame Keep/Toss/Mixed read
+  over whole-photo quality signals, unrelated to which stack member is
+  recommended. So the secondary "Keep recommended N" button, not the primary
+  button, is the "keep the guidance pick" gesture.
 - **Fixture prerequisite**: this card's multi-frame assertions (rank/✦,
   "Frame N of M", keep/cut actions) require a stack with 2+ frames, resolved
   either from an explicit persisted `CullingStackScope` (the `work-stack-`
@@ -230,9 +234,13 @@ script/vm_scenario_run.sh ax wait-vended
 - The primary/secondary button distinction (item 40's real resolution) is a
   meaningfully different behavior than "guidance text = keepRecommended
   falling back to topRanked" as originally assumed — that fallback logic
-  (`rankedAction`) governs only the *secondary* button's label/target and
-  the HUD's stack-guidance verdict text, never the primary Keep button's
-  actual write. Do not conflate the two in the runner.
+  (`rankedAction`) governs only the *secondary* button's label/target, never
+  the primary Keep button's actual write. The `✦` marker is computed from
+  the same ranked-candidate/tied-leader data via a separate `recommendation`
+  local in `CullingStackRailPresentation.init`, not via `rankedAction`
+  itself. Neither the HUD nor the reads card carries any stack-guidance
+  verdict text — see the Source section above. Do not conflate the two in
+  the runner.
 - `evaluation_signals` schema was re-verified this pass
   (`CatalogMigrations.swift:63-76`): the kind column is named `kind`, not
   `signal_kind` as an earlier draft of this card had it — use `kind` in any
