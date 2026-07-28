@@ -83,24 +83,40 @@ card):
   label.
 - **Completion summary**, `CullCompletionPresentation.summary`/
   `.presentation` (`Sources/TeststripApp/CullCompletionPresentation.swift:
-  34-118`): classifies every asset in `model.assets` (the **full session
-  array**, not scope-filtered — the doc comment at `:90-99` is explicit)
+  38-122`): classifies every asset in `model.assets` (the **full session
+  array**, not scope-filtered — the doc comment at `:94-103` is explicit)
   by `confirmedProjection.flag`: `.pick`/`.reject` increment picks/rejects
   and insert into `decidedAssetIDs`; `nil` (raw-undecided **or**
   tentative-AI) increments `undecided`. `neverViewed = scope ∖ viewed`,
-  `sparkleAwaiting = pendingProposalAssetIDs ∩ scope`, `skipped =
-  skippedAssetIDs ∩ scope ∖ decidedAssetIDs`. **Structural fact this card
-  leans on**: whenever `presentation(...)` returns non-nil (gated on
-  `undecided == 0`, `:107,115`), `decidedAssetIDs` is provably the *entire*
-  scope (every asset fell into the `.pick`/`.reject` branch, none into
-  `nil`) — so `skipped` is **always exactly 0** at completion, regardless
-  of what was actually Space-skipped along the way; this is a guaranteed
-  invariant, not a fixture-specific observation. The **mandatory negative**
-  (`Tests/TeststripAppTests/CullCompletionTests.swift:124-147`,
-  `testTentativeOnlyFlagCountsAsUndecidedAndSparkleAwaitingNeverPickedOrRejected`):
+  `sparkleAwaiting = pendingProposalAssetIDs ∩ scope ∖ {asset already has a
+  confirmed flag}` (Task 3, 2026-07-28: a proposal can go stale — its asset
+  gets a user-origin flag decision through some path other than committing
+  the proposal — and still sit `pending`; such an asset no longer counts as
+  awaiting review. Display-time filter only: `autopilot_proposals` and the
+  review queue are untouched), `skipped = skippedAssetIDs ∩ scope ∖
+  decidedAssetIDs`. **Structural facts this card leans on**: whenever
+  `presentation(...)` returns non-nil (gated on `undecided == 0`,
+  `:111,119`), `decidedAssetIDs` is provably the *entire* scope (every asset
+  fell into the `.pick`/`.reject` branch, none into `nil`) — so `skipped` is
+  **always exactly 0** at completion, regardless of what was actually
+  Space-skipped along the way, and this is a guaranteed invariant, not a
+  fixture-specific observation. **Task 3's corollary, load-bearing for Leg
+  A below**: `sparkleAwaiting` is likewise **always exactly 0** the instant
+  the completion stage renders — every asset in scope already has
+  `confirmedProjection.flag != nil` by the same `undecided == 0` fact, which
+  is precisely the condition the new filter excludes, so `.reviewAISuggestions`
+  can never be appended once this stage is actually showing, regardless of
+  how many `autopilot_proposals` rows are still `pending` in the DB. The
+  **mandatory negatives**
+  (`Tests/TeststripAppTests/CullCompletionTests.swift:140-163`
+  `testTentativeOnlyFlagCountsAsUndecidedAndSparkleAwaitingNeverPickedOrRejected`;
+  `:173-188`
+  `testSparkleAwaitingExcludesAssetWithPendingProposalAndConfirmedFlag`):
   a tentative-only flag (either value) counts in `undecided` **and**
   `sparkleAwaiting`, **never** in `picks`/`rejects`, and its scope is not
-  complete. Actions (`:69-78`): the core four
+  complete; a pending proposal whose asset already carries a confirmed flag
+  is excluded from `sparkleAwaiting` even though the proposal row itself is
+  left `pending`, untouched. Actions (`:73-82`): the core four
   (`export`/`moveRejects`/`moveRejectsToTrash`/`reviewPicks`) always;
   `.reviewAISuggestions` appended only if `sparkleAwaiting > 0`;
   `.savePicksAsSet` appended only if `picks > 0`.
@@ -308,25 +324,29 @@ later card in the same session that needs the pristine baseline.
    ```bash
    script/vm_scenario_run.sh ax find --role AXStaticText --contains "AI suggestions awaiting review"
    ```
-   Expect it to read exactly `"0 skipped · 0 never viewed · 2 AI
+   Expect it to read exactly `"0 skipped · 0 never viewed · 0 AI
    suggestions awaiting review"`. `neverViewed = 0` is Steps 1+6's
    deliberate full walk's *predicted* (not structurally guaranteed) outcome
    — if it comes back nonzero, report the observed number rather than
    treating it as an automatic fail (see Sharp edges). `sparkleAwaiting`
-   not reading exactly `2` **is** a fail: both seeded proposals should
-   still be `status='pending'` — deciding `smoke-4`/`smoke-16` directly
-   (Steps 5/7) confirmed their **flags** but never touched the proposal
-   rows themselves (only `beginAutopilotReview()`'s commit/dismiss flow
-   does that) — confirm live:
+   not reading exactly `0` **is** a fail — this is the live demonstration of
+   Task 3's display-time filter: deciding `smoke-4`/`smoke-16` directly
+   (Steps 5/7) confirmed their **flags** but never touched the two seeded
+   `autopilot_proposals` rows themselves (only `beginAutopilotReview()`'s
+   commit/dismiss flow does that), so both rows should still read
+   `status='pending'` even though `sparkleAwaiting` correctly reads `0` —
+   confirm the rows are untouched live:
    ```bash
    script/vm_scenario_run.sh sql burst "SELECT count(*) FROM autopilot_proposals WHERE status='pending';"   # still 2
    ```
-10. **Ceremony actions, gated correctly.** Confirm both follow-up actions
-    are present (both have real work: `sparkleAwaiting=2>0`,
-    `picks=14>0`):
+10. **Ceremony actions, gated correctly.** Confirm "Save Picks as Set" is
+    present (real work to do: `picks=14>0`) and "Review AI Suggestions" is
+    **absent** — Task 3's fix: `sparkleAwaiting=0` since both proposal-
+    bearing assets (`smoke-4`/`smoke-16`) already carry confirmed flags,
+    even with their proposal rows still `pending` per Step 9:
     ```bash
-    script/vm_scenario_run.sh ax find --role AXButton --contains "Review AI Suggestions"
     script/vm_scenario_run.sh ax find --role AXButton --contains "Save Picks as Set"
+    script/vm_scenario_run.sh ax find --role AXButton --contains "Review AI Suggestions"   # expect not-found
     ```
     Press "Save Picks as Set". Ground truth — a new set exists, named
     "Catalog Picks" (no active session/search context), containing
@@ -403,14 +423,17 @@ all.
   a genuine invariant violation, not a fixture quirk).
 - Step 9: **Fails if** `skipped` is nonzero (no exceptions — this is a
   structural guarantee, see Source), or if `sparkleAwaiting` isn't exactly
-  2, or if the seeded `autopilot_proposals` rows are no longer `pending`
-  (would mean something silently auto-committed/dismissed them).
-  `neverViewed` nonzero is reportable-not-fatal (see Sharp edges) unless
-  the Step 1/6 walk was skipped, in which case investigate before
-  dismissing it.
-- Step 10: **Fails if** either action is missing despite having work to do,
-  if the saved set's membership disagrees with the confirmed-picks list, or
-  if the set name isn't `"Catalog Picks"`.
+  0 (Task 3's display-time filter — see Source's corollary), or if the
+  seeded `autopilot_proposals` rows are no longer `pending` (would mean
+  something silently auto-committed/dismissed them — the filter must not
+  touch the proposal rows). `neverViewed` nonzero is reportable-not-fatal
+  (see Sharp edges) unless the Step 1/6 walk was skipped, in which case
+  investigate before dismissing it.
+- Step 10: **Fails if** "Save Picks as Set" is missing despite having real
+  work to do, if "Review AI Suggestions" is present (it must not be, per
+  Task 3 — both proposal-bearing assets are already user-decided), if the
+  saved set's membership disagrees with the confirmed-picks list, or if the
+  set name isn't `"Catalog Picks"`.
 - Steps 12-14: **Fails if** any in-window stop is missing, any out-of-window
   stop is present, or the window boundaries disagree with
   `CullStripWindowing.centeredWindow`'s documented formula for that
@@ -466,3 +489,12 @@ directly reading `CullRunStripPresentation.swift`, `CullCompletionPresentation.s
 `Tests/TeststripAppTests/CullRunStripPresentationTests.swift`/
 `CullCompletionTests.swift`, not carried over from any older card; pending
 live VM execution per `test/scenarios/README.md`.
+
+**Reconciled 2026-07-28 (Task 3, ✨-awaiting display-time filter)**: Leg A's
+Steps 9-10 and Expected bullets updated for
+`CullCompletionPresentation.summary`'s corrected `sparkleAwaiting` math —
+this card's own fixture (`smoke-4`/`smoke-16` decided directly via `P` while
+their seeded proposals stay `pending`) is exactly the over-report scenario
+the fix targets, so the predicted `sparkleAwaiting` at completion dropped
+from `2` to `0` and "Review AI Suggestions" flipped from present to absent.
+Still not carried over from a live run — pending live VM execution.
