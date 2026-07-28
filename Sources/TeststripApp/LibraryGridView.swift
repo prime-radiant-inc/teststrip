@@ -3817,12 +3817,19 @@ private struct LoupeView: View {
     // asset/scope.
     private var cullCompletion: CullCompletionPresentation? {
         guard !isCullCompletionDismissed else { return nil }
-        let pendingFlagProposalAssetIDs = Set(
-            model.pendingAutopilotProposals.filter { $0.kind != .keyword }.map(\.assetID)
-        )
-        let pendingKeywordProposalAssetIDs = Set(
-            model.pendingAutopilotProposals.filter { $0.kind == .keyword }.map(\.assetID)
-        )
+        // Exhaustive over `AutopilotProposalKind` so a future fourth kind
+        // forces a decision here rather than silently landing in the flag
+        // set and inheriting flag-gating.
+        var pendingFlagProposalAssetIDs = Set<AssetID>()
+        var pendingKeywordProposalAssetIDs = Set<AssetID>()
+        for proposal in model.pendingAutopilotProposals {
+            switch proposal.kind {
+            case .pick, .reject:
+                pendingFlagProposalAssetIDs.insert(proposal.assetID)
+            case .keyword:
+                pendingKeywordProposalAssetIDs.insert(proposal.assetID)
+            }
+        }
         return CullCompletionPresentation.presentation(
             assets: model.assets,
             viewedAssetIDs: model.cullRunTracker.viewedAssetIDs,
