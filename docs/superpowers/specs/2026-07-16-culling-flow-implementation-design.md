@@ -121,6 +121,10 @@ the single source for the `?` overlay and the Culling menu):
   verdict-badge gate) — deliberately stricter than today's HUD line, which
   renders content off a single signal. Signals reaching the UI are already
   current-scale-only (SQL-layer gating); no new filtering needed.
+  [Superseded 2026-07-28: the HUD never carried a read/verdict at all — see
+  `Sources/TeststripApp/CullHUDPresentation.swift`'s doc comment — and the
+  reads-card gate landed as three-state (empty/partial/full), not a binary
+  one; see `CullReadsCardPresentation.swift`'s doc comment.]
 
 **Progress and completion.** "Decided" = user-origin flag, already computed
 throughout via `confirmedProjection.flag` (✨ tentative never counts — no
