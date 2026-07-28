@@ -20,6 +20,9 @@ final class CullReadsCardPresentationTests: XCTestCase {
             CullReadsCardPresentation.SignalRow(kind: .aesthetics, score: 0.9)
         ])
         XCTAssertNil(presentation.emptyState)
+        // A FULL read (>=2 scored kinds) never carries the early-read caveat
+        // — that's exclusive to a PARTIAL (exactly one kind) read.
+        XCTAssertNil(presentation.earlyReadCaveat)
     }
 
     // The row order is a fixed canonical order — identical for every photo,
@@ -66,17 +69,29 @@ final class CullReadsCardPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.signalRows.map(\.kind), [.focus])
     }
 
-    func testExactlyOneScoredKindGatesTheWholeCard() {
+    // Exactly one scored kind is a genuine PARTIAL read, not a render wall:
+    // the kindCount>=2 gate is the FULL-read threshold, not a gate on the
+    // whole card. The single row renders, but no verdict is ever computed
+    // off one signal — CullingAssistPresentation.verdict is not consulted
+    // here — and an explicit early-read caveat stands in for the verdict
+    // line instead.
+    func testExactlyOneScoredKindRendersPartialReadWithEarlyReadCaveat() {
         let presentation = CullReadsCardPresentation.presentation(for: [
             signal(kind: .focus, value: .score(0.96), confidence: 1.0)
         ])
 
-        XCTAssertEqual(presentation.emptyState, "No read yet")
+        XCTAssertNil(presentation.emptyState)
         XCTAssertNil(presentation.verdictText)
         XCTAssertEqual(presentation.verdictTone, .waiting)
-        XCTAssertEqual(presentation.signalRows, [])
+        XCTAssertEqual(presentation.signalRows, [
+            CullReadsCardPresentation.SignalRow(kind: .focus, score: 0.96)
+        ])
+        XCTAssertEqual(presentation.earlyReadCaveat, "early read — 1 signal")
     }
 
+    // Zero scored kinds is the only state with no read at all — the
+    // "No read yet" empty state is unchanged by the partial-read behavior
+    // above, and the card carries no caveat when there's nothing to caveat.
     func testZeroSignalsGatesTheWholeCard() {
         let presentation = CullReadsCardPresentation.presentation(for: [])
 
@@ -84,6 +99,7 @@ final class CullReadsCardPresentationTests: XCTestCase {
         XCTAssertNil(presentation.verdictText)
         XCTAssertEqual(presentation.verdictTone, .waiting)
         XCTAssertEqual(presentation.signalRows, [])
+        XCTAssertNil(presentation.earlyReadCaveat)
     }
 
     private func signal(kind: EvaluationKind, value: EvaluationValue, confidence: Double) -> EvaluationSignal {

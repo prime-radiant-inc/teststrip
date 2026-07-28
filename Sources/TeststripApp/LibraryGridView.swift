@@ -4061,7 +4061,12 @@ private struct LoupeView: View {
         .background(Color.black.opacity(0.26))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Reads")
-        .accessibilityValue(readsPresentation.emptyState ?? readsPresentation.verdictText ?? "")
+        .accessibilityValue(
+            readsPresentation.emptyState
+                ?? readsPresentation.verdictText
+                ?? readsPresentation.earlyReadCaveat
+                ?? ""
+        )
     }
 
     private var closeUpsRail: some View {
@@ -4141,9 +4146,11 @@ private struct LoupeView: View {
     // The frame's whole-frame read: verdict plus one compact text row per
     // whole-photo signal, in CullReadsCardPresentation's fixed canonical
     // order — one home per fact, no duplicated list-plus-bars layout, no
-    // thermometer bars. With fewer than two scored kinds only the honest
-    // "No read yet" empty state renders, holding the card's home in the
-    // panel.
+    // thermometer bars. With zero scored kinds only the honest "No read
+    // yet" empty state renders. With exactly one scored kind (a PARTIAL
+    // read) the lone row still renders, but in place of the verdict line is
+    // a quiet early-read caveat — never a fabricated Keep/Toss off one
+    // signal. Either way the card's home in the panel never disappears.
     private func readsCard(_ presentation: CullReadsCardPresentation) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("READS")
@@ -4159,6 +4166,10 @@ private struct LoupeView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(readsToneColor(presentation.verdictTone))
                         .lineLimit(1)
+                } else if let earlyReadCaveat = presentation.earlyReadCaveat {
+                    Text(earlyReadCaveat)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 ForEach(presentation.signalRows, id: \.kind.rawValue) { row in
                     HStack(spacing: 6) {
