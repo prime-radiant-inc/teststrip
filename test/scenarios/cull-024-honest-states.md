@@ -83,26 +83,30 @@ fresh grep, not carried over from any older card):
   This card treats the container-level value as authoritative since it's
   the deliberate override, not an incidental match.
 - **Rail tie suppression**, `CullingStackRailPresentation.init`
-  (`LibraryGridView.swift:6137-6279`): computes `tiedLeaderIDs` via
-  `CullingStackRecommendation.tiedLeaderIDs` (`:6222-6225`, defined at
-  `:6457-6474` — leaders are every candidate whose `normalizedQualityRead`
-  is within `tooCloseToCallMargin = 0.03` of the top read, `:6455`, `nil`
-  when fewer than 2 candidates qualify). "A tie can't defend a single
-  winner, so the ✦ is suppressed entirely rather than arbitrarily picking
-  one tied leader to crown" (`:6226-6227`) —
+  (`LibraryGridView.swift:6303-6439`): computes `tiedLeaderIDs` via
+  `CullingStackRecommendation.tiedLeaderIDs` (call site `:6374-6377`,
+  defined at `:6624-6641` — leaders are every candidate whose
+  `normalizedQualityRead` is within `tooCloseToCallMargin = 0.03` of the top
+  read, `:6622`, `nil` when fewer than 2 candidates qualify, `:6640`). "A
+  tie can't defend a single winner, so the ✦ is suppressed entirely rather
+  than arbitrarily picking one tied leader to crown" (`:6378-6379`) —
   `recommendation = tiedLeaderIDs == nil ? rankedCandidates.first : nil`
-  (`:6228`), so under a tie **no** rail chip's `isRecommended` is `true`
+  (`:6380`), so under a tie **no** rail chip's `isRecommended` is `true`
   and **no** chip's accessibility value contains `"Recommended"`
-  (`stackChipAccessibilityValue`, `:4620-4624`: `isSelected ? "Selected" :
+  (`stackChipAccessibilityValue`, `:4874-4878`: `isSelected ? "Selected" :
   (isRecommended ? "Recommended" : "Not selected")`). The banner:
   `tooCloseBanner = tiedLeaderIDs.map { "too close to call — <frame
-  labels·joined by ·>" }` (`:6249-6254`), rendered as an orange
+  labels·joined by ·>" }` (`:6394-6399`), rendered as an orange
   `Text(tooCloseBanner)` directly under the rail's title/position text
-  (`:4478-4483`) only when non-nil. The "Keep recommended N" secondary
-  action is suppressed the same way (`:6322-6326`), leaving only "Keep
-  selected", "Keep top 2" (if 3+ frames), and "Keep all" — a tie removes
-  the machine's naming of a winner from every surface it would otherwise
-  appear on, not just the ✦.
+  (`:4733-4738`) only when non-nil. The "Keep recommended N" secondary
+  action is suppressed the same way: the guard `tiedLeaderIDs == nil, let
+  recommendation = rankedCandidates.first else { return nil }` inside
+  `Self.rankedAction` (`:6489-6493`; call site passing `tiedLeaderIDs` at
+  `:6425-6430`) — corrected from this card's stale `:6322-6326` citation,
+  which had drifted onto unrelated `stackScope`-resolution code — leaving
+  only "Keep selected", "Keep top 2" (if 3+ frames), and "Keep all" — a tie
+  removes the machine's naming of a winner from every surface it would
+  otherwise appear on, not just the ✦.
 - **Fixture**: `burst` (`Sources/TeststripBench/SmokeCatalogSeeder.swift:
   33-54`) — 4 auto-groupable stacks (3/4/3/4 frames). A freshly-seeded
   `burst` catalog has **zero** `evaluation_signals` rows (confirm:
