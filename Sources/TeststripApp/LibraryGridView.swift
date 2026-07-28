@@ -3817,11 +3817,18 @@ private struct LoupeView: View {
     // asset/scope.
     private var cullCompletion: CullCompletionPresentation? {
         guard !isCullCompletionDismissed else { return nil }
+        let pendingFlagProposalAssetIDs = Set(
+            model.pendingAutopilotProposals.filter { $0.kind != .keyword }.map(\.assetID)
+        )
+        let pendingKeywordProposalAssetIDs = Set(
+            model.pendingAutopilotProposals.filter { $0.kind == .keyword }.map(\.assetID)
+        )
         return CullCompletionPresentation.presentation(
             assets: model.assets,
             viewedAssetIDs: model.cullRunTracker.viewedAssetIDs,
             skippedAssetIDs: model.cullRunTracker.skippedAssetIDs,
-            pendingProposalAssetIDs: Set(model.pendingAutopilotProposals.map(\.assetID)),
+            pendingFlagProposalAssetIDs: pendingFlagProposalAssetIDs,
+            pendingKeywordProposalAssetIDs: pendingKeywordProposalAssetIDs,
             scope: model.cullScope
         )
     }
@@ -3832,10 +3839,19 @@ private struct LoupeView: View {
         let completion = presentation.showsCullChrome ? cullCompletion : nil
         VStack(spacing: 0) {
             if presentation.showsCullChrome {
-                // The autopilot banner stays visible above the stage
-                // regardless of completion state, so its review affordance
-                // is never hidden; it's also folded into the completion
-                // state below once everything in scope is decided.
+                // An undismissed autopilot banner (with its own Review/Undo
+                // All buttons) reappears inside `cullCompletionStage` once
+                // completion takes over above the stage — gated on
+                // `model.autopilotRunSummary`, same as here — so its review
+                // affordance survives completion on its own, independent of
+                // sparkleAwaiting. Once the banner IS dismissed, the
+                // completion stage's own "Review AI Suggestions" ceremony
+                // button is the only way back, reachable exactly when
+                // `sparkleAwaiting > 0` (`CullCompletionPresentation
+                // .summary`, kind-aware): a pending KEYWORD proposal keeps
+                // it reachable regardless of the asset's flag decision, but
+                // a pending FLAG proposal superseded by a direct decision
+                // does not.
                 if completion == nil, let summary = model.autopilotRunSummary {
                     autopilotBanner(summary: summary)
                 }
