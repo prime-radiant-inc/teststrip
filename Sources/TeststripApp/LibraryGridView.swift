@@ -3817,11 +3817,25 @@ private struct LoupeView: View {
     // asset/scope.
     private var cullCompletion: CullCompletionPresentation? {
         guard !isCullCompletionDismissed else { return nil }
+        // Exhaustive over `AutopilotProposalKind` so a future fourth kind
+        // forces a decision here rather than silently landing in the flag
+        // set and inheriting flag-gating.
+        var pendingFlagProposalAssetIDs = Set<AssetID>()
+        var pendingKeywordProposalAssetIDs = Set<AssetID>()
+        for proposal in model.pendingAutopilotProposals {
+            switch proposal.kind {
+            case .pick, .reject:
+                pendingFlagProposalAssetIDs.insert(proposal.assetID)
+            case .keyword:
+                pendingKeywordProposalAssetIDs.insert(proposal.assetID)
+            }
+        }
         return CullCompletionPresentation.presentation(
             assets: model.assets,
             viewedAssetIDs: model.cullRunTracker.viewedAssetIDs,
             skippedAssetIDs: model.cullRunTracker.skippedAssetIDs,
-            pendingProposalAssetIDs: Set(model.pendingAutopilotProposals.map(\.assetID)),
+            pendingFlagProposalAssetIDs: pendingFlagProposalAssetIDs,
+            pendingKeywordProposalAssetIDs: pendingKeywordProposalAssetIDs,
             scope: model.cullScope
         )
     }
@@ -3832,10 +3846,19 @@ private struct LoupeView: View {
         let completion = presentation.showsCullChrome ? cullCompletion : nil
         VStack(spacing: 0) {
             if presentation.showsCullChrome {
-                // The autopilot banner stays visible above the stage
-                // regardless of completion state, so its review affordance
-                // is never hidden; it's also folded into the completion
-                // state below once everything in scope is decided.
+                // An undismissed autopilot banner (with its own Review/Undo
+                // All buttons) reappears inside `cullCompletionStage` once
+                // completion takes over above the stage — gated on
+                // `model.autopilotRunSummary`, same as here — so its review
+                // affordance survives completion on its own, independent of
+                // sparkleAwaiting. Once the banner IS dismissed, the
+                // completion stage's own "Review AI Suggestions" ceremony
+                // button is the only way back, reachable exactly when
+                // `sparkleAwaiting > 0` (`CullCompletionPresentation
+                // .summary`, kind-aware): a pending KEYWORD proposal keeps
+                // it reachable regardless of the asset's flag decision, but
+                // a pending FLAG proposal superseded by a direct decision
+                // does not.
                 if completion == nil, let summary = model.autopilotRunSummary {
                     autopilotBanner(summary: summary)
                 }
@@ -4061,7 +4084,12 @@ private struct LoupeView: View {
         .background(Color.black.opacity(0.26))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Reads")
-        .accessibilityValue(readsPresentation.emptyState ?? readsPresentation.verdictText ?? "")
+        .accessibilityValue(
+            readsPresentation.emptyState
+                ?? readsPresentation.verdictText
+                ?? readsPresentation.earlyReadCaveat
+                ?? ""
+        )
     }
 
     private var closeUpsRail: some View {
@@ -4141,9 +4169,11 @@ private struct LoupeView: View {
     // The frame's whole-frame read: verdict plus one compact text row per
     // whole-photo signal, in CullReadsCardPresentation's fixed canonical
     // order — one home per fact, no duplicated list-plus-bars layout, no
-    // thermometer bars. With fewer than two scored kinds only the honest
-    // "No read yet" empty state renders, holding the card's home in the
-    // panel.
+    // thermometer bars. With zero scored kinds only the honest "No read
+    // yet" empty state renders. With exactly one scored kind (a PARTIAL
+    // read) the lone row still renders, but in place of the verdict line is
+    // a quiet early-read caveat — never a fabricated Keep/Toss off one
+    // signal. Either way the card's home in the panel never disappears.
     private func readsCard(_ presentation: CullReadsCardPresentation) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("READS")
@@ -4159,6 +4189,10 @@ private struct LoupeView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(readsToneColor(presentation.verdictTone))
                         .lineLimit(1)
+                } else if let earlyReadCaveat = presentation.earlyReadCaveat {
+                    Text(earlyReadCaveat)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 ForEach(presentation.signalRows, id: \.kind.rawValue) { row in
                     HStack(spacing: 6) {

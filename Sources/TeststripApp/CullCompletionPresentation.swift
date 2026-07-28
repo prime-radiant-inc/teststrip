@@ -29,13 +29,23 @@ struct CullCompletionPresentation: Equatable {
     /// frames surface in `sparkleAwaiting` via their pending proposals
     /// instead. skipped = skipped ∖ decided (a skipped-then-decided frame
     /// counts as decided, subtracted here so the tracker never needs a
-    /// write-back); neverViewed = scope ∖ viewed; sparkleAwaiting = pending
-    /// proposals ∩ scope.
+    /// write-back); neverViewed = scope ∖ viewed; sparkleAwaiting is
+    /// kind-aware, since a pending proposal's relationship to "still
+    /// awaiting review" depends on what it proposes: a pending KEYWORD
+    /// proposal (`AutopilotProposalKind.keyword`) has nothing to do with the
+    /// flag, so it counts regardless of the asset's flag state; a pending
+    /// FLAG proposal (`.pick`/`.reject`) counts only while the asset's flag
+    /// is still unconfirmed — once a user-origin flag decision lands (via
+    /// this proposal's own review flow or some other path entirely), that
+    /// proposal has gone stale and no longer represents awaiting review,
+    /// even though its row is left `pending` (a display-time filter only —
+    /// `autopilot_proposals` and the review queue are untouched).
     static func summary(
         assets: [Asset],
         viewedAssetIDs: Set<AssetID>,
         skippedAssetIDs: Set<AssetID>,
-        pendingProposalAssetIDs: Set<AssetID>
+        pendingFlagProposalAssetIDs: Set<AssetID>,
+        pendingKeywordProposalAssetIDs: Set<AssetID>
     ) -> CullCompletionPresentation {
         var pickCount = 0
         var rejectCount = 0
@@ -57,7 +67,10 @@ struct CullCompletionPresentation: Equatable {
             if !viewedAssetIDs.contains(asset.id) {
                 neverViewedCount += 1
             }
-            if pendingProposalAssetIDs.contains(asset.id) {
+            let flagProposalAwaitsReview = pendingFlagProposalAssetIDs.contains(asset.id)
+                && asset.metadata.confirmedProjection.flag == nil
+            let keywordProposalAwaitsReview = pendingKeywordProposalAssetIDs.contains(asset.id)
+            if flagProposalAwaitsReview || keywordProposalAwaitsReview {
                 sparkleAwaitingCount += 1
             }
         }
@@ -101,7 +114,8 @@ struct CullCompletionPresentation: Equatable {
         assets: [Asset],
         viewedAssetIDs: Set<AssetID>,
         skippedAssetIDs: Set<AssetID>,
-        pendingProposalAssetIDs: Set<AssetID>,
+        pendingFlagProposalAssetIDs: Set<AssetID>,
+        pendingKeywordProposalAssetIDs: Set<AssetID>,
         scope: CullScope
     ) -> CullCompletionPresentation? {
         guard scope == .unrated || scope == .all else { return nil }
@@ -110,7 +124,8 @@ struct CullCompletionPresentation: Equatable {
             assets: assets,
             viewedAssetIDs: viewedAssetIDs,
             skippedAssetIDs: skippedAssetIDs,
-            pendingProposalAssetIDs: pendingProposalAssetIDs
+            pendingFlagProposalAssetIDs: pendingFlagProposalAssetIDs,
+            pendingKeywordProposalAssetIDs: pendingKeywordProposalAssetIDs
         )
         guard summary.undecided == 0 else { return nil }
         return summary

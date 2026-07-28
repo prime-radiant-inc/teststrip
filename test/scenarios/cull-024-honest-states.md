@@ -2,80 +2,122 @@
 
 **What this covers**: as a photographer relying on the AI reads to break
 ties, I need the UI to be honest about what it doesn't know rather than
-inventing a confident-looking answer. Before evaluation runs, the loupe's
-Reads panel must say so plainly ("No read yet"), not show a stale or
-default verdict. When evaluation genuinely produces a photo finish — two or
-more frames in a stack scoring within the ranking's noise floor of each
-other — no single frame gets crowned: the rail suppresses its ✦ marker
-entirely and shows a "too close to call" banner instead of guessing. Both
-states are reachable only by the *actual* evaluation output of this run's
-fixture, so this card follows `cull-021-stack-rail-nav.md`'s honest-branch
-discipline: assert whichever state the live evaluation genuinely produces,
-never force a tie or a clean winner that isn't really there.
+inventing a confident-looking answer. Before evaluation runs (zero scored
+whole-photo kinds), the loupe's Reads panel must say so plainly ("No read
+yet"), not show a stale or default verdict. Once evaluation has produced
+exactly one scored whole-photo kind, the panel is honest in a different
+way: it shows that lone signal plus an explicit "early read — 1 signal"
+caveat instead of either fabricating a verdict or falling back to a blank
+"No read yet" — one scored kind is real information, but not enough to
+commit to Keep/Toss (Jesse's ruling, 2026-07-23; implemented
+fix/cull-followups Task 2, 2026-07-28). When evaluation genuinely produces a
+photo finish — two or more frames in a stack scoring within the ranking's
+noise floor of each other — no single frame gets crowned: the rail
+suppresses its ✦ marker entirely and shows a "too close to call" banner
+instead of guessing. All of these states are reachable only by the *actual*
+evaluation output of this run's fixture, so this card follows
+`cull-021-stack-rail-nav.md`'s honest-branch discipline: assert whichever
+state the live evaluation genuinely produces, never force a tie, a
+one-signal read, or a clean winner that isn't really there.
 
 Source (re-verified against the working tree on this branch, **2026-07-16**;
 fresh grep, not carried over from any older card):
 - **Reads panel gating**, `CullReadsCardPresentation.presentation(for:)`
-  (`Sources/TeststripApp/CullReadsCardPresentation.swift:25-44`): with fewer
-  than 2 scored quality kinds (`CullingStackRecommendation
-  .normalizedQualityRead`'s `kindCount`, `LibraryGridView.swift:6443-6449`)
-  the whole card is the empty state — `emptyState: "No read yet"`, no
-  verdict, no signal rows — "**strictly gated on the whole card, not just
-  the verdict line**... deliberately stricter than the HUD line, which still
-  renders a single-signal read" (doc comment,
-  `CullReadsCardPresentation.swift:9-12`). This is a genuinely different,
-  *stricter* gate than the rail's own ✦ recommendation
-  (`CullingStackRecommendation.rankedCandidates` via `CullingQualityScore
-  .qualityScore`, `LibraryGridView.swift:6415-6417` and
+  (`Sources/TeststripApp/CullReadsCardPresentation.swift:51-97`): three
+  states, all keyed off `CullingStackRecommendation.normalizedQualityRead`'s
+  `kindCount` (`LibraryGridView.swift:6633-6639`). **Zero rankable kinds**
+  (the function returns `nil`) is the only "no read at all" state:
+  `emptyState: "No read yet"`, no verdict, no rows
+  (`CullReadsCardPresentation.swift:52-60`). **Exactly one scored kind that
+  is one of the four whole-photo canonical kinds** is a genuine PARTIAL
+  read (`:81-87`) — reconciled here from this card's original (2026-07-16)
+  claim that a single kind rendered "No read yet"; Jesse's ruling
+  (2026-07-23), implemented fix/cull-followups Task 2 (2026-07-28), made
+  the old `kindCount >= 2` whole-card gate the FULL-read threshold instead:
+  the single row still renders (the same canonical-order `signalRows(for:)`,
+  `:102-107`), but no verdict is ever computed —
+  `CullingAssistPresentation.verdict` is not called in this branch — and
+  `earlyReadCaveat` (`:49`) carries the exact copy `"early read — 1
+  signal"`, which the view renders in place of the verdict line. **Exactly
+  one scored kind that is face-specific instead** (`faceQuality`/
+  `eyeSharpness`/`eyesOpen` — `kindCount` counts all seven rankable kinds,
+  but `signalRows(for:)`, `:102-107`, only ever renders the four
+  whole-photo ones) falls back to the *same* "No read yet" empty state
+  (`:70-78`) rather than a caveat with nothing to show for it — a
+  reviewer-found gap in this task's first pass (a lone face-specific
+  signal originally rendered the caveat with an empty row list, an
+  honest-states violation), fixed in a same-day fix/cull-followups Task 2
+  follow-up commit, 2026-07-28; that signal's own home is the close-ups
+  rail, not this card. **Two or more kinds** is the FULL read (`:89-97`):
+  verdict (`CullingAssistPresentation.verdict`, unchanged) plus every
+  scored row, `earlyReadCaveat` nil. The doc comment (`:15-32`) documents
+  exactly these three states, including the face-specific exception.
+  This remains a genuinely different gate than the rail's own ✦
+  recommendation (`CullingStackRecommendation.rankedCandidates` via
+  `CullingQualityScore.qualityScore`, `LibraryGridView.swift:6587-6603` and
   `Sources/TeststripCore/Evaluation/CullingQualityScore.swift:35-44`), which
-  only needs **1** rankable kind (`guard !scoreByKind.isEmpty`) — so it is
-  possible, and not a bug, for a frame to carry the rail's ✦ (or land a
-  "Recommended" accessibility value) while its *own* Reads panel still says
-  "No read yet", if that frame happens to have exactly one scored signal
-  kind while its sibling(s) have zero. Assert this divergence only if it's
-  the state this run's fixture actually produces — don't force it.
+  only needs **1** rankable kind of *any* type, including face-specific
+  (`guard !scoreByKind.isEmpty`) — so the divergence this produces now
+  takes two forms: a lone whole-photo kind gives a PARTIAL read with **no
+  verdict** on this card while the rail's chip may read "Recommended" (not,
+  as this card previously said, while it "still says 'No read yet'"); a
+  lone face-specific kind gives a genuine "No read yet" on this card while
+  the rail's chip may *still* read "Recommended" (the rail ranks
+  face-specific kinds too). See Step 6, reconciled below, for the exact
+  current assertions for both. Assert whichever state this run's fixture
+  actually produces — don't force it.
 - **AX surface for the Reads panel**, `cullFacesReadsPanel`
-  (`LibraryGridView.swift:3988-4001`): the *whole* faces+reads right panel
+  (`LibraryGridView.swift:4074-4093`): the *whole* faces+reads right panel
   (the Reads card on the left, the Close-Ups rail of face crops on the
   right — reconciled 2026-07-17 from the old top/bottom stacked layout) is
   one `.accessibilityElement(children: .contain)` block carrying an explicit
-  `.accessibilityLabel("Reads")` and `.accessibilityValue(readsPresentation
-  .emptyState ?? readsPresentation.verdictText ?? "")` — set directly from
-  the presentation struct, independent of which inner view branch actually
-  renders. This mirrors `cull-021`'s own lesson about the rail's `✦`
-  (assert the deliberate accessibility override, not an incidentally
-  matching inner `Text`): match `--label "Reads" --contains "No read yet"`
-  (per `script/ax_drive.sh`'s matching rule, both `--label`'s exact
-  title/description/value match and `--contains`'s substring search over
-  title/description/value/placeholder are ANDed, so this pins the
-  container whose title is exactly "Reads" AND whose value contains "No
-  read yet" — `script/ax_drive.sh:169-187`). Because `.contain` (not
-  `.combine`) is used, the inner `Text("No read yet")`
-  (`LibraryGridView.swift:4043-4051`, the `readsCard` empty-state branch)
-  is *also* independently AX-findable as its own element — either match
-  should agree; this card treats the container-level value as authoritative
-  since it's the deliberate override, not an incidental match.
+  `.accessibilityLabel("Reads")` and a three-way fallback
+  `.accessibilityValue(readsPresentation.emptyState ?? readsPresentation
+  .verdictText ?? readsPresentation.earlyReadCaveat ?? "")` (`:4087-4092`)
+  — extended from the old two-way `emptyState ?? verdictText ?? ""` by
+  fix/cull-followups Task 2 (2026-07-28) so the container's value doesn't
+  collapse to `""` for a PARTIAL read — set directly from the presentation
+  struct, independent of which inner view branch actually renders. This
+  mirrors `cull-021`'s own lesson about the rail's `✦` (assert the
+  deliberate accessibility override, not an incidentally matching inner
+  `Text`): for the pre-evaluation state match `--label "Reads" --contains
+  "No read yet"`; for a PARTIAL read match `--label "Reads" --contains
+  "early read — 1 signal"` (per `script/ax_drive.sh`'s matching rule, both
+  `--label`'s exact title/description/value match and `--contains`'s
+  substring search over title/description/value/placeholder are ANDed, so
+  this pins the container whose title is exactly "Reads" AND whose value
+  contains the target substring — `script/ax_drive.sh:169-187`). Because
+  `.contain` (not `.combine`) is used, the inner `Text` for whichever branch
+  is active — `emptyState` (`LibraryGridView.swift:4182-4185`, the
+  `readsCard` empty-state branch) or the caveat (`:4192-4195`) — is *also*
+  independently AX-findable as its own element; either match should agree.
+  This card treats the container-level value as authoritative since it's
+  the deliberate override, not an incidental match.
 - **Rail tie suppression**, `CullingStackRailPresentation.init`
-  (`LibraryGridView.swift:6137-6279`): computes `tiedLeaderIDs` via
-  `CullingStackRecommendation.tiedLeaderIDs` (`:6222-6225`, defined at
-  `:6457-6474` — leaders are every candidate whose `normalizedQualityRead`
-  is within `tooCloseToCallMargin = 0.03` of the top read, `:6455`, `nil`
-  when fewer than 2 candidates qualify). "A tie can't defend a single
-  winner, so the ✦ is suppressed entirely rather than arbitrarily picking
-  one tied leader to crown" (`:6226-6227`) —
+  (`LibraryGridView.swift:6326-6462`): computes `tiedLeaderIDs` via
+  `CullingStackRecommendation.tiedLeaderIDs` (call site `:6397-6400`,
+  defined at `:6647-6664` — leaders are every candidate whose
+  `normalizedQualityRead` is within `tooCloseToCallMargin = 0.03` of the top
+  read, `:6645`, `nil` when fewer than 2 candidates qualify, `:6663`). "A
+  tie can't defend a single winner, so the ✦ is suppressed entirely rather
+  than arbitrarily picking one tied leader to crown" (`:6401-6402`) —
   `recommendation = tiedLeaderIDs == nil ? rankedCandidates.first : nil`
-  (`:6228`), so under a tie **no** rail chip's `isRecommended` is `true`
+  (`:6403`), so under a tie **no** rail chip's `isRecommended` is `true`
   and **no** chip's accessibility value contains `"Recommended"`
-  (`stackChipAccessibilityValue`, `:4620-4624`: `isSelected ? "Selected" :
+  (`stackChipAccessibilityValue`, `:4897-4901`: `isSelected ? "Selected" :
   (isRecommended ? "Recommended" : "Not selected")`). The banner:
   `tooCloseBanner = tiedLeaderIDs.map { "too close to call — <frame
-  labels·joined by ·>" }` (`:6249-6254`), rendered as an orange
+  labels·joined by ·>" }` (`:6417-6422`), rendered as an orange
   `Text(tooCloseBanner)` directly under the rail's title/position text
-  (`:4478-4483`) only when non-nil. The "Keep recommended N" secondary
-  action is suppressed the same way (`:6322-6326`), leaving only "Keep
-  selected", "Keep top 2" (if 3+ frames), and "Keep all" — a tie removes
-  the machine's naming of a winner from every surface it would otherwise
-  appear on, not just the ✦.
+  (`:4756-4761`) only when non-nil. The "Keep recommended N" secondary
+  action is suppressed the same way: the guard `tiedLeaderIDs == nil, let
+  recommendation = rankedCandidates.first else { return nil }` inside
+  `Self.rankedAction` (`:6512-6516`; call site passing `tiedLeaderIDs` at
+  `:6448-6453`) — corrected from this card's stale `:6322-6326` citation,
+  which had drifted onto unrelated `stackScope`-resolution code — leaving
+  only "Keep selected", "Keep top 2" (if 3+ frames), and "Keep all" — a tie
+  removes the machine's naming of a winner from every surface it would
+  otherwise appear on, not just the ✦.
 - **Fixture**: `burst` (`Sources/TeststripBench/SmokeCatalogSeeder.swift:
   33-54`) — 4 auto-groupable stacks (3/4/3/4 frames). A freshly-seeded
   `burst` catalog has **zero** `evaluation_signals` rows (confirm:
@@ -114,7 +156,7 @@ script/vm_scenario_run.sh ax wait-vended
    about: `ax find --contains "too close to call"` must fail to match.
 3. **Trigger evaluation** so the rest of this card means something: Culling
    ▸ "Evaluate Visible" (⇧⌘E, `requestVisibleAssetEvaluations`,
-   `AppModel.swift:9188`) — wait for cached previews first if needed, then
+   `AppModel.swift:9434`) — wait for cached previews first if needed, then
    poll (staying frontmost via `wait-vended` each poll, per
    `test/scenarios/README.md`'s idle-wedge caution):
    ```bash
@@ -129,28 +171,59 @@ script/vm_scenario_run.sh ax wait-vended
    Count how many of the seven rankable kinds (`focus`, `eyesOpen`,
    `faceQuality`, `eyeSharpness`, `motionBlur`, `aesthetics`, `framing` —
    `CullingQualityScore.qualityComponent`, `CullingQualityScore.swift:9-31`)
-   are present with a `.score` value. **If fewer than 2**: assert the Reads
-   panel still reads "No read yet" (`ax find --label "Reads" --contains "No
-   read yet"`) even though evaluation has run — the honest empty state, not
-   a stale one. **If 2 or more**: assert `ax find --label "Reads" --contains
-   "No read yet"` now fails to match — the card has left the empty state —
-   then independently compute `normalizedQualityRead` (confidence-weighted
-   mean of the best component per whole-photo/face kind) and compare it
-   against `CullingAssistPresentation`'s thresholds (Keep >= 0.7, Toss <=
-   0.5) to predict which of three honest outcomes this fixture lands in:
-   (a) **decisive Keep/Toss** — assert an `AXStaticText` reading exactly
-   `"Keep"` or `"Toss"` (no "read" suffix, no percentage) matching the
-   predicted verdict; (b) **Mixed** (between the two thresholds) — assert
-   **no** `Keep`/`Toss` verdict text renders at all, per the honest-states
-   philosophy (a verdict that can't commit says nothing, not a "Mixed"
-   label) — don't treat its absence as a bug in this branch. Either way,
-   independently assert the whole-photo signal rows: `CullReadsCardPresentation
-   .canonicalSignalOrder` (Focus, Motion blur, Framing, Aesthetics) renders
-   as compact label+percentage rows — `ax find --role AXStaticText
-   --contains "%"` should match at least one row for whichever of those four
-   kinds actually has a signal — and confirm no face-specific kind (Face
-   quality, Eye sharpness, Eyes open) contributes a row here (they render on
-   the close-ups rail instead, per `cull-012-closeups-panel.md`).
+   are present with a `.score` value — this count is exactly
+   `normalizedQualityRead`'s `kindCount` (`LibraryGridView.swift:6633-6639`).
+   Branch on the count — three honest outcomes, not two:
+   - **Zero**: assert the Reads panel still reads "No read yet" (`ax find
+     --label "Reads" --contains "No read yet"`) even though evaluation has
+     run — the honest empty state, not a stale one — with no verdict and no
+     rows.
+   - **Exactly one**: this count doesn't distinguish *which* kind — split
+     further on whether that lone kind is one of the four whole-photo
+     canonical kinds or one of the three face-specific ones
+     (`faceQuality`/`eyeSharpness`/`eyesOpen`):
+     - **Whole-photo kind (a PARTIAL read)**: assert `ax find --label
+       "Reads" --contains "No read yet"` now fails to match — the card has
+       left the empty state — and instead assert the exact early-read
+       caveat renders in place of a verdict: `ax find --label "Reads"
+       --contains "early read — 1 signal"` (exact copy,
+       `CullReadsCardPresentation.swift:86`). Assert **no** `AXStaticText`
+       reads exactly `"Keep"` or `"Toss"` — a partial read never computes a
+       verdict (`CullingAssistPresentation.verdict` is not consulted in
+       this branch, `CullReadsCardPresentation.swift:61-88`) — and assert
+       exactly one whole-photo signal row renders (`ax find --role
+       AXStaticText --contains "%"` matches exactly one row, for whichever
+       of the four canonical kinds — Focus, Motion blur, Framing,
+       Aesthetics — actually has the signal).
+     - **Face-specific kind**: assert the Reads panel still reads "No read
+       yet" (`ax find --label "Reads" --contains "No read yet"`) — a lone
+       face-specific signal has zero renderable whole-photo rows, so this
+       card honestly falls back to the empty state rather than showing a
+       caveat with nothing to show for it
+       (`CullReadsCardPresentation.swift:70-78`); that signal's own read
+       lives on the close-ups rail instead (`cull-012-closeups-panel.md`),
+       not this card.
+   - **Two or more (a FULL read)**: assert `ax find --label "Reads"
+     --contains "No read yet"` fails to match, then independently compute
+     `normalizedQualityRead` (confidence-weighted mean of the best component
+     per whole-photo/face kind) and compare it against
+     `CullingAssistPresentation`'s thresholds (Keep >= 0.7, Toss <= 0.5) to
+     predict which of three honest outcomes this fixture lands in: (a)
+     **decisive Keep/Toss** — assert an `AXStaticText` reading exactly
+     `"Keep"` or `"Toss"` (no "read" suffix, no percentage, no caveat text)
+     matching the predicted verdict; (b) **Mixed** (between the two
+     thresholds) — assert **no** `Keep`/`Toss` verdict text and no early-
+     read caveat render at all, per the honest-states philosophy (a verdict
+     that can't commit says nothing, not a "Mixed" label) — don't treat its
+     absence as a bug in this branch. Either way, independently assert the
+     whole-photo signal rows: `CullReadsCardPresentation.canonicalSignalOrder`
+     (Focus, Motion blur, Framing, Aesthetics) renders as compact
+     label+percentage rows — `ax find --role AXStaticText --contains "%"`
+     should match at least one row for whichever of those four kinds
+     actually has a signal.
+   All three branches: confirm no face-specific kind (Face quality, Eye
+   sharpness, Eyes open) ever contributes a row here (they render on the
+   close-ups rail instead, per `cull-012-closeups-panel.md`).
 5. **Tie honest branch.** Compute the stack's tie state independently:
    ```bash
    script/vm_scenario_run.sh sql burst "SELECT asset_id, kind, value_json, confidence FROM evaluation_signals WHERE asset_id IN (<stack ids>);"
@@ -158,8 +231,8 @@ script/vm_scenario_run.sh ax wait-vended
    apply `CullingQualityScore.qualityComponent`'s per-kind formula
    (`CullingQualityScore.swift:9-31`) to get each frame's
    confidence-weighted mean (`normalizedQualityRead`,
-   `LibraryGridView.swift:6443-6449`), and check whether 2+ frames land
-   within `0.03` of the top score (`tooCloseToCallMargin`, `:6455`).
+   `LibraryGridView.swift:6633-6639`), and check whether 2+ frames land
+   within `0.03` of the top score (`tooCloseToCallMargin`, `:6645`).
    **Branch on what's actually true**:
    - **If a genuine tie exists** (2+ frames within the margin): assert the
      rail shows the `"too close to call — <frame labels>"` banner (`ax find
@@ -181,31 +254,57 @@ script/vm_scenario_run.sh ax wait-vended
    Do not force any of these three branches — assert only the one this run's
    fixture actually produced, cited against the independent computation
    above.
-6. **Divergence check (only if the live data happens to produce it):** if
-   the selected frame's own reads panel says "No read yet" (step 4's <2-kind
-   branch) while the rail's chip for that same frame reads "Recommended"
-   (step 5's tie-free branch, with this frame as the winner), assert this is
-   **not** a bug — it's the documented gate mismatch in Source above (the
-   rail needs only 1 kind, the reads panel needs 2). If the live data
-   doesn't produce this combination, skip this step; don't manufacture it.
+6. **Divergence check (only if the live data happens to produce it):** two
+   independent variants, either or neither of which may appear on a given
+   run:
+   - If the selected frame has exactly one scored **whole-photo** kind — so
+     its own Reads panel is in the PARTIAL-read branch (step 4: one row,
+     the "early read — 1 signal" caveat, no verdict) — while the rail's
+     chip for that same frame reads "Recommended" (step 5's tie-free
+     branch, with this frame as the winner), assert this is **not** a bug
+     — it's the documented gate mismatch in Source above: the rail's ✦
+     needs only 1 kind for a *recommendation*, the Reads panel needs 2
+     kinds for a *verdict*. Both surfaces render some read for a 1-kind
+     frame; they disagree only on whether it's decisive enough to name a
+     winner.
+   - If instead the selected frame's *only* scored kind is face-specific
+     (`faceQuality`/`eyeSharpness`/`eyesOpen`) — so its own Reads panel is
+     back in the "No read yet" empty state (step 4's face-specific
+     sub-branch) — while the rail's chip for that same frame still reads
+     "Recommended" (the rail's `qualityScore` ranks face-specific kinds
+     too, unlike this card's `signalRows`), assert this is **also not** a
+     bug: same verdict-vs-recommendation gate mismatch, just landing on
+     the empty state because this card has nothing whole-photo to show —
+     not because the read doesn't exist.
+   If the live data doesn't produce either combination, skip this step;
+   don't manufacture it.
 
 ## Expected
 - Step 2: **Fails if** the Reads panel shows anything other than "No read
   yet" before any evaluation has run, or if any rail chip shows
   "Recommended" or a flaw badge pre-evaluation — that would mean a surface
   is claiming an AI read that doesn't exist yet.
-- Step 4: **Fails if** the Reads panel's empty/non-empty state disagrees
-  with the independently-counted scored-kind total (>=2 kinds must show a
-  verdict; <2 kinds must show "No read yet"), regardless of what the rail
-  is doing.
+- Step 4: **Fails if** the Reads panel's state disagrees with the
+  independently-counted scored-kind total and kind identity: zero kinds
+  must show "No read yet"; exactly one kind must show either (a) the
+  single row plus the exact caveat "early read — 1 signal" and no
+  `Keep`/`Toss` text, if that kind is one of the four whole-photo canonical
+  kinds, or (b) "No read yet" with no caveat and no rows, if that kind is
+  face-specific instead; two or more kinds must show every scored row and,
+  per the Keep/Toss/Mixed math, either a matching verdict or no verdict
+  text at all. Regardless of what the rail is doing.
 - Step 5: **Fails if** the rail's tie/no-tie/no-signal state disagrees with
   the independently-computed `tooCloseToCallMargin` check, if a
   "Recommended" chip and the too-close-to-call banner ever both appear at
   once (they are mutually exclusive by construction), or if the banner
   names the wrong frames.
-- Step 6: **Fails if** it treats a real gate-mismatch divergence as an
-  error, or if it fabricates the divergence when the live data didn't
-  actually produce it.
+- Step 6: **Fails if** it treats either real verdict-vs-recommendation gate
+  mismatch as an error, or if it fabricates a divergence — including by
+  asserting a 1-whole-photo-kind frame's Reads panel says "No read yet"
+  instead of rendering its PARTIAL read, or by asserting a
+  1-face-specific-kind frame's Reads panel shows a caveat instead of "No
+  read yet" — when the live data didn't actually produce the combination
+  being asserted.
 
 ## Cleanup
 ```bash
@@ -219,11 +318,22 @@ script/vm_scenario_run.sh ax wait-vended
   outcome, not evidence the card is broken. Report which branch was
   observed; don't retry until a tie happens to appear.
 - **The Reads panel and the rail read from different scoring functions**
-  (`normalizedQualityRead`'s confidence-weighted mean with a 2-kind floor,
-  vs. `qualityScore`'s summed defect-inversion with a 1-kind floor) — they
-  are deliberately allowed to disagree on "is there a read at all" for a
-  single-kind frame. Don't conflate the two or treat a disagreement as
-  automatically wrong; check step 4's independent kind-count first.
+  (`normalizedQualityRead`'s confidence-weighted mean vs. `qualityScore`'s
+  summed defect-inversion), and their "is there a read at all" floors are
+  *not* quite the same, even after fix/cull-followups Task 2 (2026-07-28)
+  removed the Reads panel's old 2-kind floor on the *whole card*: the
+  rail's `qualityScore` renders *something* for any 1 rankable kind of
+  *any* type, whole-photo or face-specific. The Reads panel renders
+  *something* (a PARTIAL read) for a 1-kind frame only when that kind is
+  one of the four whole-photo canonical kinds — a lone face-specific kind
+  still falls back to "No read yet" on this card (a same-day
+  fix/cull-followups Task 2 follow-up, 2026-07-28, closed a gap where the
+  first version rendered the early-read caveat with zero rows for exactly
+  this case); that signal's own read lives on the close-ups rail instead.
+  Only `CullingAssistPresentation.verdict` has a clean, unconditional
+  2-kind floor. Don't conflate any of these three floors, or treat a
+  disagreement as automatically wrong; check step 4's independent
+  kind-count *and kind identity* first.
 - **`✦` itself is not independently AX-findable** on the rail (it's a
   `Text("✦")` nested inside a `Button` that already carries an explicit
   `.accessibilityLabel`/`.accessibilityValue`) — assert its absence under a
@@ -231,12 +341,12 @@ script/vm_scenario_run.sh ax wait-vended
   not by searching for the glyph. See `cull-021-stack-rail-nav.md`'s Sharp
   edges for the full explanation and the contrast with the Compare survey's
   independently-findable `"✦ BEST"` badge (a different, unrelated
-  mechanism — `LibraryGridView.swift:5624`, `CompareSurveyPresentation`,
+  mechanism — `LibraryGridView.swift:5814`, `CompareSurveyPresentation`,
   out of scope for this card).
 - **The Compare survey has its own, separate tie mechanism** — tied
   contenders render a `"tied"` rank badge instead of `"#N"`
   (`CompareSurveyPresentation.rankBadges(for:)`, `LibraryGridView.swift:
-  5584-5602`) — this is a different surface (Compare's contenders-only
+  5779-5792`) — this is a different surface (Compare's contenders-only
   mode) from the rail's `tooCloseBanner` this card exercises, and is not
   driven here.
 
@@ -248,3 +358,58 @@ directly reading `CullReadsCardPresentation.swift`, `LibraryGridView.swift`
 `Sources/TeststripCore/Evaluation/CullingQualityScore.swift`, not carried
 over from any older card; pending live VM execution per
 `test/scenarios/README.md`.
+
+**Reconciled 2026-07-28** (fix/cull-followups Task 2, kata #3): the
+kindCount==1 branch changed from "No read yet" to a genuine PARTIAL read
+(one row + the exact "early read — 1 signal" caveat, no verdict) —
+`CullReadsCardPresentation.swift` and the `readsCard`/`cullFacesReadsPanel`
+views in `LibraryGridView.swift` were re-read against the working tree, and
+every passage in this card (What this covers, Source, Steps 4/5/6,
+Expected, Sharp edges) that described the old two-state (empty vs. full)
+gate was rewritten to describe the current three-state gate, with line
+citations re-verified against the current file. Still NOT RUN — this
+reconciliation is a source-only re-verification, not a live VM execution.
+
+**Reconciled again, same day (task-reviewer finding on the partial-read
+change):** the first version of the PARTIAL-read branch didn't check
+whether the lone scored kind actually had a renderable whole-photo row —
+`kindCount` counts all seven rankable kinds (four whole-photo, three
+face-specific: `faceQuality`/`eyeSharpness`/`eyesOpen`), so a frame whose
+only signal was face-specific rendered the "early read — 1 signal" caveat
+with an empty row list, an honest-states violation (a caveat claiming a
+signal this card shows nothing for). Fixed in
+`CullReadsCardPresentation.swift` (falls back to "No read yet" when
+`signalRows(for:)` is empty) with a red-proofed unit test
+(`testSingleFaceSpecificSignalFallsBackToNoReadYetNotAPhantomCaveat`), and
+every passage in this card asserting "exactly one scored kind → PARTIAL
+read" unqualified (Source, Step 4, Step 6, Expected, Sharp edges) was
+re-qualified to distinguish the whole-photo case (PARTIAL read) from the
+face-specific case ("No read yet"). Still NOT RUN.
+
+**Reconciled 2026-07-28 (fix/cull-followups citation re-sweep)**: every
+`LibraryGridView.swift` citation was re-verified by directly reading the
+cited lines, not by assuming a fixed offset — this branch's
+completion-summary fix (`CullCompletionPresentation`/`LibraryGridView.swift`)
+added 16 lines ahead of everything in `CullingStackRailPresentation`/
+`CullReadsCardPresentation`-adjacent code, and most citations shifted by
+exactly that much (e.g. `normalizedQualityRead`'s `kindCount` moved
+`6610-6616` → `6626-6632`). Two Sharp-edges citations, however, turned out
+to already be badly stale independent of this branch's edits and needed
+more than a uniform shift: `CompareSurveyPresentation.rankBadges(for:)`
+(cited `5584-5602`, actually `5772-5785`) and the `"✦ BEST"` badge literal
+(cited `5624`, actually `5807`) — both off by ~170 lines even against this
+branch's own starting point, predating this reconciliation. Also fixed
+`requestVisibleAssetEvaluations` (`AppModel.swift`, cited `9188`, actually
+`9434` — untouched by this branch, so this drift is likewise pre-existing).
+`CullReadsCardPresentation.swift` citations were re-verified and needed no
+changes (that file is untouched on this branch). Still NOT RUN.
+
+**Reconciled 2026-07-28 (fix/cull-followups exhaustive-switch citation
+shift)**: `LoupeView.cullCompletion`'s proposal-kind partition was rewritten
+from two `filter` calls to an exhaustive `switch` over
+`AutopilotProposalKind`, adding 7 lines ahead of every `LibraryGridView.swift`
+citation in this card — every one shifted by exactly +7 (e.g.
+`normalizedQualityRead`'s `kindCount` `:6626-6632` → `:6633-6639`),
+re-verified by directly reading each cited symbol. `AppModel.swift` and
+`CullReadsCardPresentation.swift` citations are untouched (neither file
+changed). No prose or behavior claims changed. Still NOT RUN.

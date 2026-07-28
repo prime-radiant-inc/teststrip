@@ -16,7 +16,8 @@ final class CullCompletionTests: XCTestCase {
             ],
             viewedAssetIDs: [],
             skippedAssetIDs: [],
-            pendingProposalAssetIDs: [],
+            pendingFlagProposalAssetIDs: [],
+            pendingKeywordProposalAssetIDs: [],
             scope: .all
         )
         XCTAssertNil(presentation)
@@ -27,7 +28,8 @@ final class CullCompletionTests: XCTestCase {
             assets: [],
             viewedAssetIDs: [],
             skippedAssetIDs: [],
-            pendingProposalAssetIDs: [],
+            pendingFlagProposalAssetIDs: [],
+            pendingKeywordProposalAssetIDs: [],
             scope: .all
         )
         XCTAssertNil(presentation)
@@ -39,7 +41,8 @@ final class CullCompletionTests: XCTestCase {
                 assets: Self.decidedAssets(picks: 3, rejects: 2),
                 viewedAssetIDs: [],
                 skippedAssetIDs: [],
-                pendingProposalAssetIDs: [],
+                pendingFlagProposalAssetIDs: [],
+                pendingKeywordProposalAssetIDs: [],
                 scope: scope
             )
             XCTAssertEqual(presentation?.picks, 3, "scope \(scope)")
@@ -57,7 +60,8 @@ final class CullCompletionTests: XCTestCase {
                 assets: Self.decidedAssets(picks: 3, rejects: 2),
                 viewedAssetIDs: [],
                 skippedAssetIDs: [],
-                pendingProposalAssetIDs: [],
+                pendingFlagProposalAssetIDs: [],
+                pendingKeywordProposalAssetIDs: [],
                 scope: scope
             )
             XCTAssertNil(presentation, "scope \(scope)")
@@ -76,7 +80,8 @@ final class CullCompletionTests: XCTestCase {
             assets: model.assets,
             viewedAssetIDs: [],
             skippedAssetIDs: [],
-            pendingProposalAssetIDs: [],
+            pendingFlagProposalAssetIDs: [],
+            pendingKeywordProposalAssetIDs: [],
             scope: model.cullScope
         )
         XCTAssertNil(presentation)
@@ -105,7 +110,8 @@ final class CullCompletionTests: XCTestCase {
             assets: assets,
             viewedAssetIDs: [assets[0].id, assets[1].id, assets[2].id, assets[3].id],
             skippedAssetIDs: [assets[1].id, assets[2].id],
-            pendingProposalAssetIDs: [assets[5].id, AssetID(rawValue: "outside-scope")]
+            pendingFlagProposalAssetIDs: [assets[5].id, AssetID(rawValue: "outside-scope")],
+            pendingKeywordProposalAssetIDs: []
         )
 
         XCTAssertEqual(summary.picks, 2)
@@ -121,14 +127,15 @@ final class CullCompletionTests: XCTestCase {
     // Mirrors the sparkleAwaiting out-of-scope exclusion above: a skip
     // recorded for an asset ID outside the completion scope (e.g. a frame
     // skipped in a previous cull run, or in another scope) must not inflate
-    // `skipped` — skippedAssetIDs ∩ scope, same as pendingProposalAssetIDs ∩ scope.
+    // `skipped` — skippedAssetIDs ∩ scope, same as pendingFlagProposalAssetIDs ∩ scope.
     func testSummarySkippedCountExcludesOutOfScopeAssetID() {
         let asset = Self.asset(id: "in-scope-not-skipped")
         let summary = CullCompletionPresentation.summary(
             assets: [asset],
             viewedAssetIDs: [],
             skippedAssetIDs: [AssetID(rawValue: "outside-scope")],
-            pendingProposalAssetIDs: []
+            pendingFlagProposalAssetIDs: [],
+            pendingKeywordProposalAssetIDs: []
         )
 
         XCTAssertEqual(summary.skipped, 0)
@@ -144,7 +151,8 @@ final class CullCompletionTests: XCTestCase {
                 assets: [asset],
                 viewedAssetIDs: [asset.id],
                 skippedAssetIDs: [],
-                pendingProposalAssetIDs: [asset.id]
+                pendingFlagProposalAssetIDs: [asset.id],
+                pendingKeywordProposalAssetIDs: []
             )
             XCTAssertEqual(summary.picks, 0, "flag \(flag)")
             XCTAssertEqual(summary.rejects, 0, "flag \(flag)")
@@ -155,16 +163,138 @@ final class CullCompletionTests: XCTestCase {
                 assets: [asset],
                 viewedAssetIDs: [asset.id],
                 skippedAssetIDs: [],
-                pendingProposalAssetIDs: [asset.id],
+                pendingFlagProposalAssetIDs: [asset.id],
+                pendingKeywordProposalAssetIDs: [],
                 scope: .all
             )
             XCTAssertNil(presentation, "flag \(flag)")
         }
     }
 
+    // MARK: - sparkleAwaiting filters user-decided assets at display time (Task 3)
+    //
+    // pendingFlagProposalAssetIDs/autopilot_proposals stay untouched — a proposal
+    // can go stale (its asset gets a user-origin flag decision through some
+    // other path than committing the proposal) and still sit there as
+    // "pending". sparkleAwaiting must not count that asset as awaiting
+    // review; it already has a decision.
+
+    func testSparkleAwaitingExcludesAssetWithPendingProposalAndConfirmedFlag() {
+        // The user decided the frame directly (e.g. P/X) after autopilot
+        // proposed it; the proposal row is still pending, but a confirmed
+        // (user-origin) flag means this asset is no longer genuinely
+        // awaiting review.
+        let decidedAfterProposal = Self.asset(id: "decided-after-proposal", flag: .pick)
+        let summary = CullCompletionPresentation.summary(
+            assets: [decidedAfterProposal],
+            viewedAssetIDs: [decidedAfterProposal.id],
+            skippedAssetIDs: [],
+            pendingFlagProposalAssetIDs: [decidedAfterProposal.id],
+            pendingKeywordProposalAssetIDs: []
+        )
+        XCTAssertEqual(summary.sparkleAwaiting, 0)
+        // The row's only pending asset is decided, so it correctly disappears.
+        XCTAssertFalse(summary.actions.contains(.reviewAISuggestions))
+    }
+
+    func testSparkleAwaitingStillCountsAssetWithPendingProposalAndTentativeOnlyFlag() {
+        // INVARIANT: a tentative (AI-unconfirmed) flag is not a decision —
+        // the pending proposal still counts as genuinely awaiting review.
+        let tentativePending = Self.asset(id: "tentative-pending", flag: .pick, tentative: true)
+        let summary = CullCompletionPresentation.summary(
+            assets: [tentativePending],
+            viewedAssetIDs: [tentativePending.id],
+            skippedAssetIDs: [],
+            pendingFlagProposalAssetIDs: [tentativePending.id],
+            pendingKeywordProposalAssetIDs: []
+        )
+        XCTAssertEqual(summary.sparkleAwaiting, 1)
+        XCTAssertTrue(summary.actions.contains(.reviewAISuggestions))
+    }
+
+    func testSparkleAwaitingCountsOnlyTheUserUndecidedSubsetOfPendingProposals() {
+        // Mixed set: a user-decided asset (excluded), a tentative-only
+        // asset (still counted), and a never-flagged asset (still counted)
+        // — sparkleAwaiting is exactly the undecided-pending subset, 2 of 3.
+        let decided = Self.asset(id: "decided", flag: .reject)
+        let tentative = Self.asset(id: "tentative", flag: .pick, tentative: true)
+        let neverFlagged = Self.asset(id: "never-flagged")
+        let summary = CullCompletionPresentation.summary(
+            assets: [decided, tentative, neverFlagged],
+            viewedAssetIDs: [decided.id, tentative.id, neverFlagged.id],
+            skippedAssetIDs: [],
+            pendingFlagProposalAssetIDs: [decided.id, tentative.id, neverFlagged.id],
+            pendingKeywordProposalAssetIDs: []
+        )
+        XCTAssertEqual(summary.sparkleAwaiting, 2)
+    }
+
+    // MARK: - sparkleAwaiting is kind-aware (Finding 1, 2026-07-28)
+    //
+    // AutopilotProposalKind has three cases: .pick, .reject (flag proposals)
+    // and .keyword. A pending keyword proposal has nothing to do with the
+    // flag decision — it's a wholly separate piece of unreviewed AI output —
+    // so it must count toward sparkleAwaiting regardless of whether the
+    // asset's flag is already user-confirmed. A pending flag proposal keeps
+    // the original Task 3 filter: excluded once the flag is user-confirmed.
+
+    func testSparkleAwaitingCountsPendingKeywordProposalEvenWithConfirmedFlag() {
+        // Pre-fix, a single kind-blind proposal set hid this asset's pending
+        // keyword proposal too, once its flag was confirmed — even though
+        // the keyword suggestion is still genuinely unreviewed.
+        let confirmedWithKeywordProposal = Self.asset(id: "confirmed-keyword-pending", flag: .pick)
+        let summary = CullCompletionPresentation.summary(
+            assets: [confirmedWithKeywordProposal],
+            viewedAssetIDs: [confirmedWithKeywordProposal.id],
+            skippedAssetIDs: [],
+            pendingFlagProposalAssetIDs: [],
+            pendingKeywordProposalAssetIDs: [confirmedWithKeywordProposal.id]
+        )
+        XCTAssertEqual(summary.sparkleAwaiting, 1)
+        XCTAssertTrue(summary.actions.contains(.reviewAISuggestions))
+    }
+
+    func testSparkleAwaitingStillExcludesPendingFlagProposalWithConfirmedFlag() {
+        // The original Task 3 fix must hold under the kind-aware split: a
+        // pending *flag* proposal (.pick/.reject) is excluded once the flag
+        // itself is user-confirmed.
+        let confirmedWithFlagProposal = Self.asset(id: "confirmed-flag-pending", flag: .pick)
+        let summary = CullCompletionPresentation.summary(
+            assets: [confirmedWithFlagProposal],
+            viewedAssetIDs: [confirmedWithFlagProposal.id],
+            skippedAssetIDs: [],
+            pendingFlagProposalAssetIDs: [confirmedWithFlagProposal.id],
+            pendingKeywordProposalAssetIDs: []
+        )
+        XCTAssertEqual(summary.sparkleAwaiting, 0)
+        XCTAssertFalse(summary.actions.contains(.reviewAISuggestions))
+    }
+
+    func testSparkleAwaitingCountsMixedFlagAndKeywordProposalsExactly() {
+        // Three assets: a confirmed flag with a stale pending flag proposal
+        // (excluded), a confirmed flag with a pending keyword proposal
+        // (counted — a keyword proposal ignores the flag decision), and an
+        // undecided asset with a pending flag proposal (counted, same as
+        // before Finding 1). Exact count: 2 of 3.
+        let confirmedFlagStale = Self.asset(id: "confirmed-flag-stale", flag: .reject)
+        let confirmedWithKeyword = Self.asset(id: "confirmed-with-keyword", flag: .pick)
+        let undecidedWithFlagProposal = Self.asset(id: "undecided-with-flag-proposal")
+        let summary = CullCompletionPresentation.summary(
+            assets: [confirmedFlagStale, confirmedWithKeyword, undecidedWithFlagProposal],
+            viewedAssetIDs: [confirmedFlagStale.id, confirmedWithKeyword.id, undecidedWithFlagProposal.id],
+            skippedAssetIDs: [],
+            pendingFlagProposalAssetIDs: [confirmedFlagStale.id, undecidedWithFlagProposal.id],
+            pendingKeywordProposalAssetIDs: [confirmedWithKeyword.id]
+        )
+        XCTAssertEqual(summary.sparkleAwaiting, 2)
+    }
+
     func testPresentationCarriesRunCountsWhenComplete() {
-        // Fully decided scope: a0 pick (viewed, pending keyword suggestion),
-        // a1 reject (skipped then decided), a2 pick (never viewed).
+        // Fully decided scope: a0 pick (viewed; also carries a pending
+        // autopilot proposal, but the flag is already user-confirmed — the
+        // proposal went stale rather than tracking the direct decision, so
+        // a0 is excluded from sparkleAwaiting), a1 reject (skipped then
+        // decided), a2 pick (never viewed).
         let assets = [
             Self.asset(id: "a0", flag: .pick),
             Self.asset(id: "a1", flag: .reject),
@@ -174,7 +304,8 @@ final class CullCompletionTests: XCTestCase {
             assets: assets,
             viewedAssetIDs: [assets[0].id, assets[1].id],
             skippedAssetIDs: [assets[1].id],
-            pendingProposalAssetIDs: [assets[0].id],
+            pendingFlagProposalAssetIDs: [assets[0].id],
+            pendingKeywordProposalAssetIDs: [],
             scope: .all
         )
 
@@ -183,7 +314,7 @@ final class CullCompletionTests: XCTestCase {
         XCTAssertEqual(presentation?.undecided, 0)
         XCTAssertEqual(presentation?.skipped, 0)
         XCTAssertEqual(presentation?.neverViewed, 1)
-        XCTAssertEqual(presentation?.sparkleAwaiting, 1)
+        XCTAssertEqual(presentation?.sparkleAwaiting, 0)
     }
 
     // MARK: - Actions
@@ -193,24 +324,45 @@ final class CullCompletionTests: XCTestCase {
             assets: Self.decidedAssets(picks: 0, rejects: 2),
             viewedAssetIDs: [],
             skippedAssetIDs: [],
-            pendingProposalAssetIDs: [],
+            pendingFlagProposalAssetIDs: [],
+            pendingKeywordProposalAssetIDs: [],
             scope: .all
         )
         XCTAssertEqual(presentation?.actions, [.export, .moveRejects, .moveRejectsToTrash, .reviewPicks])
     }
 
-    func testActionsAppendReviewAISuggestionsAndSavePicksWhenApplicable() {
+    func testActionsAppendSavePicksWhenApplicable() {
         let assets = Self.decidedAssets(picks: 1, rejects: 1)
         let presentation = CullCompletionPresentation.presentation(
             assets: assets,
             viewedAssetIDs: [],
             skippedAssetIDs: [],
-            pendingProposalAssetIDs: [assets[0].id],
+            pendingFlagProposalAssetIDs: [],
+            pendingKeywordProposalAssetIDs: [],
             scope: .all
         )
         XCTAssertEqual(
             presentation?.actions,
-            [.export, .moveRejects, .moveRejectsToTrash, .reviewPicks, .reviewAISuggestions, .savePicksAsSet]
+            [.export, .moveRejects, .moveRejectsToTrash, .reviewPicks, .savePicksAsSet]
+        )
+    }
+
+    func testActionsOmitReviewAISuggestionsWhenTheOnlyPendingAssetIsUserDecided() {
+        // assets[0] (a confirmed pick) carries a pending proposal that went
+        // stale — the user decided it directly rather than via the proposal
+        // review flow. It's the only pending asset, so the row disappears.
+        let assets = Self.decidedAssets(picks: 1, rejects: 1)
+        let presentation = CullCompletionPresentation.presentation(
+            assets: assets,
+            viewedAssetIDs: [],
+            skippedAssetIDs: [],
+            pendingFlagProposalAssetIDs: [assets[0].id],
+            pendingKeywordProposalAssetIDs: [],
+            scope: .all
+        )
+        XCTAssertEqual(
+            presentation?.actions,
+            [.export, .moveRejects, .moveRejectsToTrash, .reviewPicks, .savePicksAsSet]
         )
     }
 
@@ -252,7 +404,8 @@ final class CullCompletionTests: XCTestCase {
             assets: model.assets,
             viewedAssetIDs: [],
             skippedAssetIDs: [],
-            pendingProposalAssetIDs: [],
+            pendingFlagProposalAssetIDs: [],
+            pendingKeywordProposalAssetIDs: [],
             scope: model.cullScope
         )
         XCTAssertNil(presentation)
