@@ -147,6 +147,15 @@ of the session. A card run afterward that depends on the pristine
 "11/24 flagged, 0 tentative" `--smoke` baseline should `rm -rf
 "${TMPDIR:-/tmp}/teststrip-vm-seeds/smoke/Teststrip"` first.
 
+**Runner note (2026-07-28)**: a runner agent's sandbox may block `rm -rf`
+outright (host policy, independent of this repo). If so, and the local
+template is already verified pristine (`SELECT count(*), sum(flag IS NOT
+NULL), sum(tentative)` matches 24/11/0 with no `aiUnconfirmedFields` set
+anywhere), the initial `rm -rf` + `sync smoke` reseed is redundant — it
+would just rebuild an identical template — so skip straight to the patch
+step. Don't skip this check silently; state explicitly in the run report
+that the reseed was skipped and why.
+
 ## Steps
 1. **Confirm the seed landed as a genuine tentative AI reject** (live VM
    catalog, not just the template):
@@ -164,9 +173,17 @@ of the session. A card run afterward that depends on the pristine
    ```
    Assert `RAW_REJECT = CONFIRMED_REJECT + 2` (our two tentative rejects are
    the entire delta).
-2. **HUD/progress counts it as undecided.** `ax wait-vended`; ⌘1 for Cull;
-   `S` to "All frames". Assert the HUD's session-cluster text shows
-   `CONFIRMED_REJECT`, not `RAW_REJECT`:
+2. **HUD/progress counts it as undecided.** `ax wait-vended`; ⌘1 for Cull.
+   `AppModel.cullScope` defaults to `.all` (`AppModel.swift:2189`) and is
+   never reset on entering Cull, so a fresh launch is already in "All
+   frames" scope — **do not press `S`**: `CullScope.next()`
+   (`AppModel.swift:316-356`, `CaseIterable` order `unrated → picks →
+   rejects → all`) advances *forward* from `.all`, landing on `.unrated`,
+   not back on `.all` — the opposite of what this step needs. (Confirmed
+   live: no scope chip is present pre-press, matching
+   `CullHUDPresentation.showsScopeChip = scope != .all`,
+   `CullHUDPresentation.swift:44`.) Assert the HUD's session-cluster text
+   shows `CONFIRMED_REJECT`, not `RAW_REJECT`:
    ```bash
    script/vm_scenario_run.sh ax find --role AXStaticText --contains "$CONFIRMED_REJECT rejects"
    ```
@@ -193,8 +210,11 @@ of the session. A card run afterward that depends on the pristine
    $CONFIRMED_REJECT to Trash"` (`ax find --contains "Move $CONFIRMED_REJECT to Trash"`)
    — **not** `RAW_REJECT` — proving the preflight already excluded both
    tentative ids before any move happened. Assert the primary is disabled
-   (AXEnabled false, per `app-010`/`app-017`'s confirm-gate pattern) until
-   the checkbox is toggled — the checkbox's own label is the *other*,
+   until the checkbox is toggled — `ax_drive.sh` has no verb that surfaces
+   `AXEnabled` (`find`/`press` only report labels), so use the same proxy
+   `app-010`'s card text describes: the standing hint `"Check the box
+   above to enable “Move $CONFIRMED_REJECT to Trash”."` must be present
+   in the AX tree pre-toggle and gone post-toggle. The checkbox's own label is the *other*,
    mode-agnostic phrasing (`"Move $CONFIRMED_REJECT reject
    \($CONFIRMED_REJECT == 1 ? "photo" : "photos") to Trash"`, per Source
    above — do not expect it to match "to Trash" with no leading text, and
@@ -232,9 +252,14 @@ of the session. A card run afterward that depends on the pristine
    until it's no longer `pending` — note the column is `status`, not
    `state`; `CatalogMigrations.swift:30-37`, `cull-021`'s own citation of
    this table uses `state` and is stale on this point), then assert the
-   `.xmp` sidecar carries `ts:Pick="reject"`:
+   `.xmp` sidecar carries `ts:Pick="reject"`. The sidecar path is the
+   **whole** original filename (extension included) plus `.xmp` appended
+   — `XMPSidecarStore.defaultSidecarURL`
+   (`Sources/TeststripCore/Metadata/XMPSidecarStore.swift:21-23`:
+   `originalURL.appendingPathExtension("xmp")`) — i.e. `smoke-1.jpg.xmp`,
+   **not** `smoke-1.xmp`:
    ```bash
-   SIDECAR=$(dirname "$CONFIRM_SRC")/"$(basename "$CONFIRM_SRC" .jpg).xmp"
+   SIDECAR="${CONFIRM_SRC}.xmp"
    grep -o 'ts:Pick="[^"]*"' "$SIDECAR"
    ```
 7. **Overriding leg**: navigate to `$OVERRIDE_ID`'s frame and press `P`
@@ -248,7 +273,8 @@ of the session. A card run afterward that depends on the pristine
    ```
    Expect `pick|0` — the AI's tentative reject is gone, replaced by a
    confirmed pick, no lingering tentative marker. Once synced, assert the
-   `.xmp` sidecar carries `ts:Pick="pick"`.
+   `.xmp` sidecar (`SIDECAR="${OVERRIDE_SRC}.xmp"`, per step 6's naming
+   note) carries `ts:Pick="pick"`.
 8. **Re-open the preflight: only the confirmed reject is now eligible.**
    Repeat step 4's menu path. Assert the primary button now reads exactly
    `"Move 1 to Trash"` (`$CONFIRM_ID` is the only reject in the whole
@@ -328,12 +354,79 @@ rm -rf "${TMPDIR:-/tmp}/teststrip-vm-seeds/smoke/Teststrip"
   time this card doesn't need. See Cleanup for resetting the template.
 
 ## Run status
-NOT RUN — authored 2026-07-16, source-cited against the working tree by
+**PASS — run live 2026-07-28, app 878f1939 (Tart VM `teststrip-e2e`).** All 8
+steps passed; the provenance invariant held throughout — no tentative-only
+flag ever counted as decided, drove a move/trash, or wrote a sidecar.
+
+Per-step evidence:
+- Step 1: live catalog `smoke-1|reject|1`, `smoke-2|reject|1`;
+  `RAW_REJECT=7`, `CONFIRMED_REJECT=5` (delta exactly 2). PASS.
+- Step 2: skipped the `S` press (see Pre-state note above — default scope
+  is already `.all`; pressing `S` would have left it). HUD session-cluster
+  text read `"6 picks, 5 rejects, 13 left"` — `ax find --contains "5
+  rejects"` matched, `ax find --contains "7 rejects"` did not. PASS.
+- Step 3: loupe reached `smoke-1.jpg` at deck position 1 and `smoke-2.jpg`
+  at position 2 via `Space`. PASS.
+- Step 4: preflight primary read exactly `"Move 5 to Trash"` (`ax find
+  --contains "Move 7 to Trash"` found nothing); disabled-hint `"Check the
+  box above to enable “Move 5 to Trash”."` present pre-toggle, gone
+  post-toggle (see updated Step 4 note re: `ax_drive.sh` having no
+  `AXEnabled` verb); checkbox label read `"Move 5 reject photos to
+  Trash"` (mode-agnostic, distinct from the primary); move completed,
+  `"Move back"` completion marker appeared. PASS.
+- Step 5: `SELECT id FROM assets WHERE id IN (...)` → both rows present;
+  `relocation_manifest_entries` count = 0; both original files present on
+  disk at their recorded `original_path`s; total asset count dropped from
+  24 to 19 (exactly the 5 confirmed rejects, not 7). PASS — this is the
+  card's safety-critical assertion and it held cleanly.
+- Step 6: pressed `X` on `smoke-1` → `reject|0` immediately;
+  `metadata_sync_state.status = synced`; sidecar `smoke-1.jpg.xmp`
+  (found only after fixing the card's sidecar-path formula — see card fix
+  below) carried `ts:Pick="reject"`. PASS.
+- Step 7: pressed `P` on `smoke-2` → `pick|0` immediately; synced; sidecar
+  `smoke-2.jpg.xmp` carried `ts:Pick="pick"`. PASS.
+- Step 8: reopened the preflight — primary read exactly `"Move 1 to
+  Trash"` (only `smoke-1` remained a reject catalog-wide); dismissed via
+  Cancel without executing; verified no second move occurred (asset count
+  still 19, `smoke-1` row still present). PASS.
+
+Card fixes applied this run (card bugs, not app bugs):
+1. **Step 2's "`S` to All frames" instruction was backwards.**
+   `AppModel.cullScope` defaults to `.all` and is never reset entering
+   Cull; `CullScope.next()`'s `CaseIterable` order is `unrated → picks →
+   rejects → all`, so pressing `S` from the default advances to
+   `.unrated`, moving *away* from All frames, not toward it. Corrected to
+   not press `S` and cite the source.
+2. **Steps 6/7's sidecar-path formula was wrong.** `SIDECAR=$(dirname
+   "$SRC")/"$(basename "$SRC" .jpg).xmp"` strips the image extension
+   before appending `.xmp`, producing `smoke-1.xmp`. The actual
+   convention (`XMPSidecarStore.defaultSidecarURL`,
+   `XMPSidecarStore.swift:21-23`) is `originalURL.appendingPathExtension
+   ("xmp")` — i.e. `smoke-1.jpg.xmp`, keeping the original extension.
+   Corrected to `SIDECAR="${SRC}.xmp"`.
+
+Runner deviation (documented, not a weakening): the Pre-state's opening
+`rm -rf "${TMPDIR:-/tmp}/teststrip-vm-seeds/smoke/Teststrip"` was refused
+by the runner's sandbox policy. The local template was independently
+verified pristine first (24 assets, 11 flagged matching
+`SmokeCatalogSeeder`'s `index%5==0 reject / index%3==0 pick` formula, 0
+`aiUnconfirmedFields` anywhere) — i.e. bitwise identical to what a fresh
+reseed would produce — so the reseed was skipped and the patch applied
+directly to the already-pristine template. `sync smoke` afterward
+correctly treated the template as idempotent (did not reseed) and pushed
+the patch to the VM. See the added Pre-state "Runner note" above.
+
+No app bugs found. The invariant under test — tentative-only AI flags are
+inert everywhere a real decision matters, and only an explicit
+confirm/override gesture makes them relocation-eligible/sidecar-eligible —
+held completely across every assertion, including the safety-critical
+step 5 (no relocation, no sidecar, no row loss for either tentative asset).
+
+Prior authoring pass: 2026-07-16, source-cited against the working tree by
 directly reading `Metadata.swift`, `AppModel.swift` (`cullUndecidedCount`,
 `cullingProgressSummary`, `rejectRelocationScope`, `moveRejectsToTrash`,
 `setFlagForSelectedAsset`, `removeAIField`), `CatalogRepository.swift`
 (`assetCount(ids:confirmedFlag:)`, `confirmedFieldClauseSQL`),
 `CullHUDPresentation.swift`, `LibraryGridView.swift`
 (`RejectRelocationSheetPresentation`), `XMPPacket.swift`, and
-`SmokeCatalogSeeder.swift`, not carried over from any older card; pending
-live VM execution per `test/scenarios/README.md`.
+`SmokeCatalogSeeder.swift`.
