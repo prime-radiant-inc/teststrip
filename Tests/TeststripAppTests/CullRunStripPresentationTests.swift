@@ -29,8 +29,7 @@ final class CullRunStripPresentationTests: XCTestCase {
         let (stops, windowStart) = CullRunStripPresentation.stops(
             assets: assets,
             stacks: stacks,
-            selectedAssetID: nil,
-            pendingSparkleAssetIDs: []
+            selectedAssetID: nil
         )
 
         XCTAssertEqual(windowStart, 0)
@@ -54,8 +53,7 @@ final class CullRunStripPresentationTests: XCTestCase {
         let (stops, _) = CullRunStripPresentation.stops(
             assets: stackA + [standalone],
             stacks: stacks,
-            selectedAssetID: AssetID(rawValue: "a2"),
-            pendingSparkleAssetIDs: []
+            selectedAssetID: AssetID(rawValue: "a2")
         )
 
         XCTAssertEqual(stops.map(\.isCurrent), [true, false])
@@ -69,8 +67,7 @@ final class CullRunStripPresentationTests: XCTestCase {
         let (stops, _) = CullRunStripPresentation.stops(
             assets: [picked, rejected],
             stacks: stacks,
-            selectedAssetID: nil,
-            pendingSparkleAssetIDs: []
+            selectedAssetID: nil
         )
 
         XCTAssertEqual(stops.count, 1)
@@ -89,33 +86,11 @@ final class CullRunStripPresentationTests: XCTestCase {
         let (stops, _) = CullRunStripPresentation.stops(
             assets: [confirmedPick, tentativePick],
             stacks: stacks,
-            selectedAssetID: nil,
-            pendingSparkleAssetIDs: []
+            selectedAssetID: nil
         )
 
         XCTAssertEqual(stops.count, 1)
         XCTAssertFalse(stops[0].isDone)
-    }
-
-    func testSparkleCountCountsPendingSparkleAssetIDsWithinTheStop() {
-        let a1 = Self.asset(id: "a1")
-        let a2 = Self.asset(id: "a2")
-        let b1 = Self.asset(id: "b1")
-        let c1 = Self.asset(id: "c1")
-        let stacks = [
-            AssetStack(assetIDs: [a1.id, a2.id]),
-            AssetStack(assetIDs: [b1.id]),
-            AssetStack(assetIDs: [c1.id])
-        ]
-
-        let (stops, _) = CullRunStripPresentation.stops(
-            assets: [a1, a2, b1, c1],
-            stacks: stacks,
-            selectedAssetID: nil,
-            pendingSparkleAssetIDs: [a1.id, a2.id, b1.id]
-        )
-
-        XCTAssertEqual(stops.map(\.sparkleCount), [2, 1, 0])
     }
 
     func testWindowingCentersTheCurrentStopWithinVisibleLimit() {
@@ -126,7 +101,6 @@ final class CullRunStripPresentationTests: XCTestCase {
             assets: assets,
             stacks: stacks,
             selectedAssetID: assets[10].id,
-            pendingSparkleAssetIDs: [],
             visibleLimit: 6
         )
 
@@ -142,7 +116,6 @@ final class CullRunStripPresentationTests: XCTestCase {
             assets: assets,
             stacks: stacks,
             selectedAssetID: assets[1].id,
-            pendingSparkleAssetIDs: [],
             visibleLimit: 6
         )
 
@@ -158,7 +131,6 @@ final class CullRunStripPresentationTests: XCTestCase {
             assets: assets,
             stacks: stacks,
             selectedAssetID: assets[19].id,
-            pendingSparkleAssetIDs: [],
             visibleLimit: 6
         )
 
@@ -175,7 +147,6 @@ final class CullRunStripPresentationTests: XCTestCase {
             assets: stackA + [standalone],
             stacks: stacks,
             selectedAssetID: nil,
-            pendingSparkleAssetIDs: [],
             visibleLimit: 12
         )
 
